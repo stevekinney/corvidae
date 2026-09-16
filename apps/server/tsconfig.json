@@ -1,0 +1,11 @@
+{
+  "extends": "@repo/typescript-configuration/server.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "scripts"],
+  "exclude": ["node_modules", "coverage", "**/dist/**"]
+}

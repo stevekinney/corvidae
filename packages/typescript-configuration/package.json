@@ -1,0 +1,9 @@
+{
+  "name": "@repo/typescript-configuration",
+  "private": true,
+  "exports": {
+    "./base.json": "./base.json",
+    "./server.json": "./server.json",
+    "./library.json": "./library.json"
+  }
+}

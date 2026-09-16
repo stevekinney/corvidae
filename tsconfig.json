@@ -1,0 +1,9 @@
+{
+  "extends": "@repo/typescript-configuration/base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "types": ["bun"]
+  },
+  "include": ["scripts"],
+  "exclude": ["node_modules", "apps", "packages"]
+}
