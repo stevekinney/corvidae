@@ -1,0 +1,73 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "motion": {
+    "$type": "duration",
+    "fast": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "instant": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "normal": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "moderate": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "slow": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "spin": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "pulse": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "progress": {
+      "bar": {
+        "indeterminate": {
+          "$value": {
+            "value": 0,
+            "unit": "ms"
+          }
+        }
+      },
+      "ring": {
+        "spin": {
+          "$value": {
+            "value": 0,
+            "unit": "ms"
+          }
+        }
+      }
+    },
+    "base": {
+      "$type": "duration",
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    }
+  }
+}

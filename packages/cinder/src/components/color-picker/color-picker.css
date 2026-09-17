@@ -1,0 +1,260 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../color-swatch-picker/color-swatch-picker.css';
+@import '../copy-button/copy-button.css';
+
+@layer cinder.components {
+  /* ========================================
+ * COLOR PICKER
+ * ======================================== */
+
+  .cinder-color-picker {
+    container-type: inline-size;
+    container-name: cinder-color-picker;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    width: 100%;
+    max-width: 280px;
+
+    /* structural-pattern: the thumb sits over arbitrary picked colors, so the
+     * white ring and dark edge stay fixed; dark chrome gets one extra outer ring. */
+    --_cinder-color-picker-thumb-border: #fff; /* cinder-allow-raw-color: structural-pattern — thumb contrast ring over arbitrary picked color */
+    /* prettier-ignore */
+    --_cinder-color-picker-thumb-shadow-edge: rgba(0, 0, 0, 0.5); /* cinder-allow-raw-color: structural-pattern — thumb outline over arbitrary picked color */
+    --_cinder-color-picker-thumb-shadow-support-light: transparent;
+    /* prettier-ignore */
+    --_cinder-color-picker-thumb-shadow-support-dark: rgba(255, 255, 255, 0.65); /* cinder-allow-raw-color: structural-pattern — thumb outline over dark chrome */
+    --_cinder-color-picker-thumb-shadow-support: light-dark(
+      var(--_cinder-color-picker-thumb-shadow-support-light),
+      var(--_cinder-color-picker-thumb-shadow-support-dark)
+    );
+    --_cinder-color-picker-thumb-shadow:
+      0 0 0 1px var(--_cinder-color-picker-thumb-shadow-edge),
+      0 0 0 2px var(--_cinder-color-picker-thumb-shadow-support);
+  }
+
+  .cinder-color-picker[data-cinder-disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* ── 2D gradient ──────────────────────────────────────────────────────── */
+
+  .cinder-color-picker__gradient {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--cinder-radius-sm);
+    /* domain-rendering: the saturation/value square paints the full color space
+     * the user is picking from — its hue fill (fallback) and the black/white
+     * value+saturation axes are intrinsic to the control, not themeable. The raw
+     * values are declared once as custom properties (each with a same-line
+     * marker) so the multi-line gradient value carries no unmarked color. */
+    /* prettier-ignore */
+    --_cinder-color-picker-hue-fill: var(--cinder-color-picker-hue, hsl(0, 100%, 50%)); /* cinder-allow-raw-color: domain-rendering — hue fill fallback */
+    /* prettier-ignore */
+    --_cinder-color-picker-value-axis: linear-gradient(to top, #000, transparent); /* cinder-allow-raw-color: domain-rendering — value (black) axis */
+    /* prettier-ignore */
+    --_cinder-color-picker-saturation-axis: linear-gradient(to right, #fff, transparent); /* cinder-allow-raw-color: domain-rendering — saturation (white) axis */
+    background-color: var(--_cinder-color-picker-hue-fill);
+    background-image:
+      var(--_cinder-color-picker-value-axis), var(--_cinder-color-picker-saturation-axis);
+    touch-action: none;
+    cursor: crosshair;
+    outline: none;
+  }
+
+  .cinder-color-picker__gradient:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-color-picker__gradient-handle {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    /* structural-pattern: the draggable thumb sits over the user's chosen color,
+     * so its white ring + contrast outline are hue-agnostic devices. */
+    border: 2px solid var(--_cinder-color-picker-thumb-border);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: var(--_cinder-color-picker-thumb-shadow);
+    pointer-events: none;
+  }
+
+  /* ── Sliders ──────────────────────────────────────────────────────────── */
+
+  .cinder-color-picker__hue,
+  .cinder-color-picker__alpha {
+    position: relative;
+    height: 12px;
+    border-radius: var(--cinder-radius-full);
+    outline: none;
+    touch-action: none;
+  }
+
+  .cinder-color-picker__hue {
+    /* domain-rendering: the full-spectrum hue rail IS the control's data — the
+     * user picks a hue along it. Declared on one line so the marker covers every
+     * stop; it is the literal color wheel, never a theme surface. */
+    /* prettier-ignore */
+    --_cinder-color-picker-hue-spectrum: linear-gradient(to right, hsl(0, 100%, 50%), hsl(60, 100%, 50%), hsl(120, 100%, 50%), hsl(180, 100%, 50%), hsl(240, 100%, 50%), hsl(300, 100%, 50%), hsl(360, 100%, 50%)); /* cinder-allow-raw-color: domain-rendering — full hue spectrum rail */
+    background: var(--_cinder-color-picker-hue-spectrum);
+  }
+
+  .cinder-color-picker__alpha {
+    background-color: var(--cinder-checker-base);
+    background-image:
+      linear-gradient(to right, transparent, var(--cinder-color-picker-base, currentColor)),
+      linear-gradient(45deg, var(--cinder-checker-tile) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--cinder-checker-tile) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--cinder-checker-tile) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--cinder-checker-tile) 75%);
+    background-size:
+      auto,
+      8px 8px,
+      8px 8px,
+      8px 8px,
+      8px 8px;
+    background-position:
+      0 0,
+      0 0,
+      0 4px,
+      4px -4px,
+      -4px 0;
+  }
+
+  .cinder-color-picker__hue:focus-visible,
+  .cinder-color-picker__alpha:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-color-picker__hue-thumb,
+  .cinder-color-picker__alpha-thumb {
+    position: absolute;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    /* structural-pattern: slider thumb sits over the hue rail / alpha
+     * checkerboard, so its ring + outline follow the gradient handle. */
+    border: 2px solid var(--_cinder-color-picker-thumb-border);
+    border-radius: 50%;
+    background: transparent;
+    transform: translate(-50%, -50%);
+    box-shadow: var(--_cinder-color-picker-thumb-shadow);
+    pointer-events: none;
+  }
+
+  /* ── Footer row: preview chip + copyable formats ─────────────────────── */
+
+  .cinder-color-picker__footer {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-color-picker__preview {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: var(--cinder-color-picker-preview, transparent);
+    border: 1px solid var(--cinder-border);
+  }
+
+  .cinder-color-picker__preview[data-cinder-alpha] {
+    background-color: var(--cinder-checker-base);
+    background-image:
+      linear-gradient(
+        var(--cinder-color-picker-preview, transparent),
+        var(--cinder-color-picker-preview, transparent)
+      ),
+      linear-gradient(45deg, var(--cinder-checker-tile) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--cinder-checker-tile) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--cinder-checker-tile) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--cinder-checker-tile) 75%);
+    background-size:
+      auto,
+      8px 8px,
+      8px 8px,
+      8px 8px,
+      8px 8px;
+    background-position:
+      0 0,
+      0 0,
+      0 4px,
+      4px -4px,
+      -4px 0;
+  }
+
+  .cinder-color-picker__formats {
+    display: grid;
+    min-width: 0;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-color-picker .cinder-color-picker__format {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--cinder-text-muted);
+    font-family: var(--cinder-font-mono, monospace);
+    font-size: var(--cinder-text-xs, 0.75rem);
+    line-height: 1;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-color-picker .cinder-color-picker__format span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-color-picker .cinder-color-picker__format:hover:not(:disabled),
+  .cinder-color-picker .cinder-color-picker__format:focus-visible {
+    color: var(--cinder-text-default);
+    text-decoration: underline;
+  }
+
+  .cinder-color-picker .cinder-color-picker__format:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+
+  .cinder-color-picker__hex-value {
+    font-family: var(--cinder-font-mono, monospace);
+    font-size: var(--cinder-text-xs, 0.75rem);
+    color: var(--cinder-text-muted);
+    line-height: 1;
+    user-select: all;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── Swatches (via ColorSwatchPicker composition) ─────────────────────── */
+
+  .cinder-color-picker__swatches {
+    /* No extra rules needed — ColorSwatchPicker's own CSS handles layout/sizing.
+       This class exists as a composition hook for consumers who need to override. */
+  }
+
+  @media (forced-colors: active) {
+    .cinder-color-picker__gradient:focus,
+    .cinder-color-picker__gradient:focus-visible,
+    .cinder-color-picker__hue:focus,
+    .cinder-color-picker__hue:focus-visible,
+    .cinder-color-picker__alpha:focus,
+    .cinder-color-picker__alpha:focus-visible {
+      outline: 3px solid Highlight;
+      outline-offset: 2px;
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@repo/interoperability",
+  "private": true,
+  "description": "Shared tool interoperability types and materialization utilities",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@repo/lifecycle": "workspace:*",
+    "@standard-schema/spec": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@repo/typescript-configuration": "workspace:*",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

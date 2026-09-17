@@ -1,0 +1,125 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    label: {
+      type: 'string',
+      description: 'Accessible label for the chart. Required for screen readers.',
+    },
+    description: {
+      type: 'string',
+      description: 'Optional description rendered below the label.',
+    },
+    data: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: {
+          anyOf: [
+            {
+              type: 'string',
+            },
+            {
+              type: 'number',
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+      },
+      description:
+        'Rows of data. Each row must include the keys named by the `xField`, `yField`, and `valueField` props.',
+    },
+    xField: {
+      type: 'string',
+      description: 'Key on each datum used for the x-axis (columns).',
+    },
+    yField: {
+      type: 'string',
+      description: 'Key on each datum used for the y-axis (rows).',
+    },
+    valueField: {
+      type: 'string',
+      description: 'Key on each datum used for the numeric cell value.',
+    },
+    colorScale: {
+      enum: ['sequential', 'diverging'],
+      description: 'Color interpolation scale. Default `sequential`.',
+      default: 'sequential',
+    },
+    cellLabelsVisible: {
+      type: 'boolean',
+      description: 'Show cell value labels. Default `true`.',
+      default: true,
+    },
+    height: {
+      type: 'number',
+      description: 'Pixel height of the chart viewport. Default `280`.',
+      default: 280,
+    },
+    loading: {
+      type: 'boolean',
+      description: 'Whether the chart is in a loading state. Default `false`.',
+      default: false,
+    },
+    dataTableCaption: {
+      type: 'string',
+      description: 'Custom data table caption; falls back to `label`.',
+    },
+    dataTableVisibility: {
+      enum: ['screen-reader-only', 'visible', 'hidden'],
+      description: 'Controls data table visibility. Default `screen-reader-only`.',
+      default: 'screen-reader-only',
+    },
+    theme: {
+      type: 'object',
+      properties: {
+        foreground: {
+          type: 'string',
+        },
+        muted: {
+          type: 'string',
+        },
+        grid: {
+          type: 'string',
+        },
+        background: {
+          type: 'string',
+        },
+        palette: {
+          type: 'array',
+          items: {
+            type: 'string',
+          },
+        },
+      },
+      additionalProperties: false,
+      description: 'Partial visual theme override.',
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class applied to the root element.',
+    },
+  },
+  additionalProperties: false,
+  required: ['data', 'label', 'valueField', 'xField', 'yField'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'empty',
+        reason: 'function-or-snippet',
+        description: 'Snippet rendered when the chart has no data.',
+      },
+      {
+        name: 'loadingContent',
+        reason: 'function-or-snippet',
+        description: 'Snippet rendered while the chart is loading.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

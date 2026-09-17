@@ -1,0 +1,456 @@
+/**
+ * Builds and writes `packages/components/components.json`, the machine-readable
+ * index of every public cinder component.
+ *
+ * Usage:
+ *   bun run scripts/generate-manifest.ts           # write components.json
+ *   bun run scripts/generate-manifest.ts --check   # diff against committed file; non-zero on drift
+ *
+ * The generator fails loudly when `extractAllComponentMetadata()` returns any
+ * errors — a partial manifest is never written to disk.
+ *
+ * `hasExamples` and `hasConstraints` are derived from the committed JSON
+ * artifacts on disk. Use the orchestrator (`bun run components:generate`)
+ * after changing component metadata or constraints so the manifest observes
+ * the current artifact set.
+ */
+
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+import Ajv from 'ajv/dist/2020.js';
+import * as prettier from 'prettier';
+import { assertPrettierResolvesToRoot } from './lib/prettier-resolution.ts';
+
+import type { CategoryId, StatusLevel } from '../src/manifest.meta.ts';
+import { categories, overlapFamilies, statusLevels } from '../src/manifest.meta.ts';
+import type {
+  A11yMetadata,
+  AvoidWhenEntry,
+  ComponentMetadata,
+} from './generate-component-metadata.ts';
+import { extractAllComponentMetadata } from './generate-component-metadata.ts';
+import { discoverComponentEnhancements } from './lib/component-enhancements.ts';
+import { parseJsonFile, readJsonFile } from './lib/read-json-file.ts';
+import { readTokenNamespaces } from './token-namespaces.ts';
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+/** A single entry in `components.json#components`. */
+export type ManifestComponent = {
+  /** PascalCase name for use in prose and documentation. Equals `exportName`. */
+  name: string;
+  /** Kebab-case canonical identifier, matching the component directory name. */
+  id: string;
+  /**
+   * Import specifier consumers use. E.g. `"@repo/cinder"`.
+   */
+  import: string;
+  /** PascalCase named export the component ships under. */
+  exportName: string;
+  /** Category identifier from the closed set in `manifest.meta.ts`. */
+  category: CategoryId;
+  /** Status identifier from the closed set in `manifest.meta.ts`. */
+  status: StatusLevel;
+  /** One-sentence description of what this component is for. */
+  purpose: string;
+  /** Free-form classification tags. */
+  tags: string[];
+  /** When to prefer this component over similar alternatives. */
+  useWhen: string[];
+  /** When NOT to use this component, each with an optional alternative component id. */
+  avoidWhen: AvoidWhenEntry[];
+  /** Kebab-case ids of related components. */
+  related: string[];
+  /** Accessibility metadata, present only when a11y tags were authored. */
+  a11y?: A11yMetadata;
+  /**
+   * True when the component directory contains a `{id}.constraints.ts` file.
+   * The constraints sidecar is read by local component tooling.
+   */
+  hasConstraints: boolean;
+  /**
+   * True when the component has a committed examples sidecar. The sidecar is
+   * read by local component tooling.
+   */
+  hasExamples: boolean;
+  /** Package-relative paths for local machine-readable artifacts. */
+  artifacts: {
+    schema: string;
+    variables: string;
+    examples?: string;
+    constraints?: string;
+    enhancement?: string;
+  };
+};
+
+/** The full shape of `components.json`. */
+export type Manifest = {
+  $schema: string;
+  manifestVersion: 1;
+  package: {
+    name: string;
+    framework: 'svelte';
+    frameworkVersionRange: string;
+    classPrefix: string;
+    cssVarPrefix: string;
+    tokenNamespaces: string[];
+    stylesEntry: string;
+    schemaDialect: string;
+  };
+  categories: Record<CategoryId, { label: string; description: string }>;
+  statusLevels: Record<StatusLevel, string>;
+  overlapFamilies: Record<string, readonly string[]>;
+  components: ManifestComponent[];
+};
+
+// ---------------------------------------------------------------------------
+// Filesystem roots (resolved relative to this script)
+// ---------------------------------------------------------------------------
+
+const PACKAGE_ROOT = join(import.meta.dir, '..');
+const COMPONENTS_ROOT = join(PACKAGE_ROOT, 'src', 'components');
+
+const MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
+const SCHEMA_PATH = join(PACKAGE_ROOT, 'src', 'schemas', 'manifest.schema.json');
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a kebab-case component id to PascalCase.
+ * "button-group" → "ButtonGroup"
+ */
+function kebabToPascal(id: string): string {
+  return id
+    .split('-')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join('');
+}
+
+/**
+ * Check whether the committed examples artifact exists on disk for a
+ * component. We base the manifest flag on the artifact's presence so the
+ * manifest cannot advertise an artifact that is absent from the package.
+ */
+function hasExamplesArtifact(id: string, isExperimental: boolean): boolean {
+  const componentDir = isExperimental
+    ? join(COMPONENTS_ROOT, 'experimental', id)
+    : join(COMPONENTS_ROOT, id);
+  return existsSync(join(componentDir, `${id}.examples.json`));
+}
+
+/**
+ * Check whether the generated constraints artifact exists on disk. We base
+ * the manifest flag on the artifact, not the source sidecar, for the same
+ * reason as `hasExamplesArtifact`.
+ */
+function hasConstraintsArtifact(id: string, isExperimental: boolean): boolean {
+  const componentDir = isExperimental
+    ? join(COMPONENTS_ROOT, 'experimental', id)
+    : join(COMPONENTS_ROOT, id);
+  return existsSync(join(componentDir, `${id}.constraints.json`));
+}
+
+/** Paths are local tooling artifacts, independent of the public package entry. */
+function artifactPath(id: string, isExperimental: boolean, suffix: string): string {
+  const directory = isExperimental ? `experimental/${id}` : id;
+  const filename = suffix === 'enhancement' ? `${id}-enhancement.ts` : `${id}.${suffix}.json`;
+  return `src/components/${directory}/${filename}`;
+}
+
+/** Return the manifest subpath when this component owns a runtime enhancement. */
+export function enhancementArtifactPath(
+  id: string,
+  isExperimental: boolean,
+  componentsRoot: string = COMPONENTS_ROOT,
+): string | undefined {
+  const enhancement = discoverComponentEnhancements(
+    [{ name: id, isExperimental }],
+    componentsRoot,
+  )[0];
+  return enhancement === undefined ? undefined : artifactPath(id, isExperimental, 'enhancement');
+}
+
+// ---------------------------------------------------------------------------
+// Core builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the manifest from all discovered component metadata.
+ *
+ * Throws when:
+ * - `extractAllComponentMetadata()` returns any errors (partial manifest is
+ *   never emitted — callers must fix all annotations first).
+ * - The produced manifest fails validation against `manifest.schema.json`.
+ */
+/**
+ * Format an extraction-errors list into the human-readable message that
+ * `buildManifest()` throws when annotations are incomplete.
+ *
+ * Exported separately from `buildManifest()` so tests can exercise the
+ * "fail loudly" path without mocking the extractor — mocking entire modules
+ * with `mock.module()` leaks across files in a single `bun test` run and
+ * breaks unrelated suites.
+ */
+export function formatExtractionErrorMessage(
+  errors: ReadonlyArray<{ componentId: string; reason: string }>,
+): string {
+  const shown = errors.slice(0, 10);
+  const lines = shown.map((e) => `  [${e.componentId}] ${e.reason}`);
+  const tail =
+    errors.length > 10
+      ? `  … and ${errors.length - 10} more errors (${errors.length} total)`
+      : `  (${errors.length} error${errors.length === 1 ? '' : 's'} total)`;
+  return `Cannot build manifest — ${errors.length} component${errors.length === 1 ? '' : 's'} have extraction errors:\n${lines.join('\n')}\n${tail}\n\nFix all @cinder metadata annotations before generating the manifest.`;
+}
+
+/** One dangling `avoidWhen.alternative`: the owning component and the bad id. */
+export type DanglingAlternative = { componentId: string; alternative: string };
+
+/**
+ * Find every `avoidWhen.alternative` that does not resolve to a real component
+ * id in the set. The page renders an alternative as a `/c/<id>` link, so a
+ * dangling id would ship a dead link — the generator fails on any hit.
+ *
+ * Exported (like {@link formatExtractionErrorMessage}) so the referential-
+ * integrity check is unit-testable without reading the filesystem.
+ */
+export function findDanglingAlternatives(
+  components: ReadonlyArray<Pick<ManifestComponent, 'id' | 'avoidWhen'>>,
+): DanglingAlternative[] {
+  const componentIds = new Set(components.map((entry) => entry.id));
+  const dangling: DanglingAlternative[] = [];
+  for (const entry of components) {
+    for (const guidance of entry.avoidWhen) {
+      if (guidance.alternative !== undefined && !componentIds.has(guidance.alternative)) {
+        dangling.push({ componentId: entry.id, alternative: guidance.alternative });
+      }
+    }
+  }
+  return dangling;
+}
+
+/** Format the dangling-alternative failure message thrown by `buildManifest`. */
+export function formatDanglingAlternativeMessage(dangling: DanglingAlternative[]): string {
+  const lines = dangling.map(
+    (d) => `  [${d.componentId}] avoidWhen alternative '${d.alternative}'`,
+  );
+  return `Cannot build manifest — ${dangling.length} @avoidWhen alternative(s) do not match any component id:\n${lines.join('\n')}\n\nUse the kebab-case id of an existing component, or drop the ' | <id>' suffix.`;
+}
+
+export async function buildManifest(): Promise<Manifest> {
+  // 1. Extract metadata from every component's .svelte file.
+  const { metadata, errors } = await extractAllComponentMetadata();
+
+  if (errors.length > 0) {
+    throw new Error(formatExtractionErrorMessage(errors));
+  }
+
+  // The internal library uses the same framework version as the root catalog.
+  const rootPackage = await readJsonFile<{ catalog: { svelte: string } }>(
+    join(PACKAGE_ROOT, '..', '..', 'package.json'),
+  );
+  const frameworkVersionRange = rootPackage.catalog.svelte;
+
+  // 3. Build per-component entries in parallel.
+  const componentEntries = await Promise.all(
+    metadata.map(async (meta: ComponentMetadata): Promise<ManifestComponent> => {
+      const exportName = kebabToPascal(meta.id);
+      const hasExamplesFlag = hasExamplesArtifact(meta.id, meta.isExperimental);
+      const hasConstraintsFlag = hasConstraintsArtifact(meta.id, meta.isExperimental);
+
+      const artifacts: ManifestComponent['artifacts'] = {
+        schema: artifactPath(meta.id, meta.isExperimental, 'schema'),
+        variables: artifactPath(meta.id, meta.isExperimental, 'variables'),
+      };
+
+      if (hasExamplesFlag) {
+        artifacts.examples = artifactPath(meta.id, meta.isExperimental, 'examples');
+      }
+      if (hasConstraintsFlag) {
+        artifacts.constraints = artifactPath(meta.id, meta.isExperimental, 'constraints');
+      }
+      const enhancementArtifact = enhancementArtifactPath(meta.id, meta.isExperimental);
+      if (enhancementArtifact !== undefined) {
+        artifacts.enhancement = enhancementArtifact;
+      }
+
+      return {
+        name: exportName,
+        id: meta.id,
+        import: '@repo/cinder',
+        exportName,
+        category: meta.category,
+        status: meta.status,
+        purpose: meta.purpose,
+        tags: meta.tags,
+        useWhen: meta.useWhen,
+        avoidWhen: meta.avoidWhen,
+        related: meta.related,
+        hasConstraints: hasConstraintsFlag,
+        hasExamples: hasExamplesFlag,
+        artifacts,
+        ...(meta.a11y !== undefined ? { a11y: meta.a11y } : {}),
+      };
+    }),
+  );
+
+  // 4. The metadata is already sorted stable-first, experimental-last,
+  //    alphabetical within each group (matching discoverComponents).
+  //    No re-sorting needed here — extractAllComponentMetadata preserves the
+  //    discover order modulo the stable/experimental split.
+
+  // 4a. Cross-check every `avoidWhen.alternative` resolves to a real component
+  //     id. The page renders the alternative as a `/c/<id>` link, so a dangling
+  //     id would ship a dead link — fail generation instead.
+  const danglingAlternatives = findDanglingAlternatives(componentEntries);
+  if (danglingAlternatives.length > 0) {
+    throw new Error(formatDanglingAlternativeMessage(danglingAlternatives));
+  }
+
+  // 5. Assemble the manifest.
+  const manifest: Manifest = {
+    $schema: './src/schemas/manifest.schema.json',
+    manifestVersion: 1,
+    package: {
+      name: '@repo/cinder',
+      framework: 'svelte',
+      frameworkVersionRange,
+      classPrefix: 'cinder-',
+      cssVarPrefix: '--cinder-',
+      // Derived from the generated registry rather than hand-listed: this array
+      // ships in components.json, and the hand-written version advertised
+      // `color` -- a namespace CIN-33 deleted -- alongside names that had
+      // drifted from the corpus.
+      tokenNamespaces: readTokenNamespaces(),
+      stylesEntry: '@repo/cinder',
+      schemaDialect: 'https://json-schema.org/draft/2020-12/schema',
+    },
+    categories,
+    statusLevels,
+    overlapFamilies,
+    components: componentEntries,
+  };
+
+  // 6. Validate the manifest against manifest.schema.json before returning.
+  const schemaText = await Bun.file(SCHEMA_PATH).text();
+  const schema = parseJsonFile<object>(schemaText);
+
+  const ajv = new Ajv({ strict: false });
+  const validate = ajv.compile(schema);
+  const valid = validate(manifest);
+
+  if (!valid) {
+    const validationErrors = (validate.errors ?? [])
+      .map((e) => `  ${e.instancePath || '(root)'}: ${e.message ?? 'unknown error'}`)
+      .join('\n');
+    throw new Error(`Generated manifest failed schema validation:\n${validationErrors}`);
+  }
+
+  return manifest;
+}
+
+/**
+ * Format JSON output through prettier so the on-disk form matches what
+ * lint-staged's prettier pass would produce. Without this, prettier reformats
+ * the file on commit and `manifest:check` then reports drift on the next run.
+ */
+async function formatJson(content: string, filepath: string): Promise<string> {
+  assertPrettierResolvesToRoot();
+  const options = await prettier.resolveConfig(filepath);
+  return prettier.format(content, { ...options, filepath, parser: 'json' });
+}
+
+/**
+ * Build the manifest and write it to `packages/components/components.json`.
+ * Throws if extraction errors exist (never writes a partial manifest).
+ */
+export async function writeManifest(): Promise<void> {
+  const manifest = await buildManifest();
+  const content = await formatJson(JSON.stringify(manifest, null, 2) + '\n', MANIFEST_PATH);
+  await Bun.write(MANIFEST_PATH, content);
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry point
+// ---------------------------------------------------------------------------
+
+function reportManifestDiff(committed: string, generated: string): void {
+  const committedLines = committed.split('\n');
+  const generatedLines = generated.split('\n');
+  const maxLines = Math.max(committedLines.length, generatedLines.length);
+
+  let diffLines = 0;
+  for (let i = 0; i < maxLines && diffLines < 40; i++) {
+    const committed_line = committedLines[i] ?? '';
+    const generated_line = generatedLines[i] ?? '';
+    if (committed_line !== generated_line) {
+      process.stderr.write(`- ${committed_line}\n`);
+      process.stderr.write(`+ ${generated_line}\n`);
+      diffLines++;
+    }
+  }
+
+  if (diffLines >= 40) {
+    process.stderr.write('... (diff truncated — run manifest:generate to see full changes)\n');
+  }
+}
+
+async function main(): Promise<void> {
+  const checkMode = process.argv.includes('--check');
+
+  if (checkMode) {
+    // Regenerate into memory, compare against committed file.
+    let manifest: Manifest;
+    try {
+      manifest = await buildManifest();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`manifest:check — build failed:\n${message}\n`);
+      process.exit(1);
+    }
+
+    const generated = await formatJson(JSON.stringify(manifest, null, 2) + '\n', MANIFEST_PATH);
+
+    if (!existsSync(MANIFEST_PATH)) {
+      process.stderr.write(
+        'manifest:check — components.json does not exist. Run `bun run manifest:generate` to create it.\n',
+      );
+      process.exit(1);
+    }
+
+    const committed = await Bun.file(MANIFEST_PATH).text();
+
+    if (generated === committed) {
+      process.stdout.write('manifest:check — OK\n');
+      return;
+    }
+
+    // Produce a readable unified diff.
+    process.stderr.write(
+      'manifest:check — drift detected. Run `bun run manifest:generate` to fix:\n\n',
+    );
+
+    reportManifestDiff(committed, generated);
+
+    process.exit(1);
+  }
+
+  // Generate mode: write the manifest to disk.
+  try {
+    await writeManifest();
+    process.stdout.write(`manifest:generate — wrote components.json\n`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`manifest:generate — failed:\n${message}\n`);
+    process.exit(1);
+  }
+}
+
+if (import.meta.main) {
+  await main();
+}

@@ -1,0 +1,123 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category form
+   * @status stable
+   * @purpose Fieldset that owns the bound value, shared name, and validation state for a set of mutually exclusive radio children.
+   * @tag form
+   * @tag selection
+   * @useWhen Picking exactly one option from a small fixed set where every choice should stay visible.
+   * @useWhen Sharing a single error and description across a set of related radios.
+   * @avoidWhen Selecting zero or more independent options — use checkbox-group instead.
+   * @related checkbox-group
+   */
+  export type { RadioGroupContext, RadioGroupProps } from './radio-group.types.ts';
+</script>
+
+<script lang="ts">
+  import type { RadioGroupProps } from './radio-group.types.ts';
+  import { setRadioGroupContext } from './radio-group-context.ts';
+
+  import {
+    ariaInvalid,
+    composeDescribedBy,
+    describeId,
+    errorId as buildErrorId,
+  } from '../../_internal/field-control.ts';
+  import { classNames } from '../../utilities/class-names.ts';
+  import { devWarn } from '../../utilities/dev-warn.ts';
+
+  let {
+    value = $bindable(''),
+    name,
+    label: legend,
+    description,
+    error,
+    disabled = false,
+    required = false,
+    variant = 'default',
+    class: className,
+    children,
+  }: RadioGroupProps = $props();
+
+  // Group ID is needed to scope the description/error ids; consumers don't
+  // pass an id because the group itself is a fieldset, not a labelled input.
+  const groupId = $props.id();
+  const descriptionId = $derived(describeId(groupId, !!description));
+  const errId = $derived(buildErrorId(groupId, !!error));
+  const describedBy = $derived(composeDescribedBy(descriptionId, errId));
+
+  setRadioGroupContext({
+    get name() {
+      return name;
+    },
+    get value() {
+      return value;
+    },
+    get disabled() {
+      return disabled;
+    },
+    get invalid() {
+      return !!error;
+    },
+    get required() {
+      return required;
+    },
+    select(next) {
+      value = next;
+    },
+  });
+
+  // Warn once when no accessible group name is provided. The `hasWarned` flag
+  // stops the effect re-firing on every `legend` change — matching the
+  // tree.svelte convention and dev-warn.ts's guidance against a warn-only
+  // effect that re-subscribes on each update.
+  let hasWarnedNoLegend = false;
+  $effect(() => {
+    if (!legend && !hasWarnedNoLegend) {
+      hasWarnedNoLegend = true;
+      devWarn(
+        '[cinder/RadioGroup] A <fieldset> was rendered without a label prop. The fieldset will have no <legend>, which makes it inaccessible. Provide a label prop to describe the group.',
+      );
+    }
+  });
+</script>
+
+<!--
+  `aria-invalid` on the <fieldset> (implicit role=group) is a deliberate
+  best-effort supplemental signal; per-radio invalidity is also set on each
+  <input type="radio"> via context, and the visible error is referenced through
+  aria-describedby. ARIA does not formally list aria-invalid for role=group, so
+  the lint rule is a false positive for this documented, tested tradeoff.
+-->
+<!-- svelte-ignore a11y_role_supports_aria_props_implicit -->
+<fieldset
+  class={classNames('cinder-radio-group', className)}
+  aria-invalid={ariaInvalid(!!error)}
+  aria-required={required || undefined}
+  aria-describedby={describedBy}
+  data-cinder-disabled={disabled || undefined}
+  data-cinder-required={required || undefined}
+  data-variant={variant === 'card' ? 'card' : undefined}
+>
+  {#if legend}
+    <legend class="cinder-radio-group__legend">
+      {legend}
+      {#if required}
+        <span class="cinder-_required-marker" aria-hidden="true">*</span>
+      {/if}
+    </legend>
+  {/if}
+
+  <div class="cinder-radio-group__items">
+    {@render children()}
+  </div>
+
+  {#if description}
+    <p id={descriptionId} class="cinder-radio-group__description">{description}</p>
+  {/if}
+
+  {#if error}
+    <p id={errId} class="cinder-radio-group__error" aria-live="polite">{error}</p>
+  {/if}
+</fieldset>

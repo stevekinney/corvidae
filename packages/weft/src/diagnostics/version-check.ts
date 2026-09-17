@@ -1,0 +1,139 @@
+/**
+ * Version compatibility check for running workflows against registered versions.
+ *
+ * Scans storage for active (running/pending) workflows, groups by type,
+ * and compares stored versions with currently registered versions to
+ * determine deployment safety.
+ *
+ * @module diagnostics/version-check
+ */
+
+import { decodeWorkflowState } from '../core/engine/validation.ts';
+import { isTopLevelWorkflowStateKey } from '../core/engine/workflow-state-stream.ts';
+import type { WorkflowDefinition } from '../core/types.ts';
+import { DEFAULT_WORKFLOW_VERSION, checkVersionCompatibility } from '../core/versioning.ts';
+import type { Storage } from '../storage/interface.ts';
+import type { VersionCheckReport, WorkflowTypeReport } from './types.ts';
+
+interface WorkflowTypeGroup {
+  count: number;
+  versionCounts: Map<string, number>;
+  /** Only workflows with a persisted `revision` — see {@link WorkflowTypeReport.revisionCounts}. */
+  revisionCounts: Map<string, number>;
+  /** Workflows with no persisted `revision` — see {@link WorkflowTypeReport.unpinnedRunningCount}. */
+  unpinnedCount: number;
+}
+
+async function groupActiveWorkflowsByType(
+  storage: Storage,
+): Promise<Map<string, WorkflowTypeGroup>> {
+  const groups = new Map<string, WorkflowTypeGroup>();
+  for await (const [key, bytes] of storage.scan('wf:')) {
+    // `wf:` also matches side-records (`wf:{id}:ckpt`, `:timeline:`, `:offload`,
+    // `:archive`, index keys). Only top-level `wf:{id}` records are workflow states;
+    // a side-record would decode into a bogus WorkflowState and form spurious
+    // groups. Use the same allowlist filter as the engine's own scans.
+    if (!isTopLevelWorkflowStateKey(key)) continue;
+    // Decode through `decodeWorkflowState` so older flat-shaped persisted records
+    // are lifted into the current `versionTuple` representation before we read it.
+    const state = decodeWorkflowState(bytes);
+    if (state.status !== 'running' && state.status !== 'pending') continue;
+
+    const storedVersion = state.versionTuple.workflowVersion;
+    let group = groups.get(state.type);
+    if (!group) {
+      group = { count: 0, versionCounts: new Map(), revisionCounts: new Map(), unpinnedCount: 0 };
+      groups.set(state.type, group);
+    }
+    group.count++;
+    group.versionCounts.set(storedVersion, (group.versionCounts.get(storedVersion) ?? 0) + 1);
+    // Kept out of `revisionCounts` entirely — a dynamic source's `revision`
+    // is any non-empty, bounded string with no reserved values, so a
+    // sentinel key inside the same map could collide with a genuinely
+    // pinned run that happens to use that literal string.
+    if (state.revision === undefined) {
+      group.unpinnedCount++;
+    } else {
+      group.revisionCounts.set(state.revision, (group.revisionCounts.get(state.revision) ?? 0) + 1);
+    }
+  }
+  return groups;
+}
+
+function findMostCommonVersion(versionCounts: Map<string, number>): string {
+  let storedVersion = '';
+  let maxCount = 0;
+  for (const [version, count] of versionCounts) {
+    if (count > maxCount) {
+      maxCount = count;
+      storedVersion = version;
+    }
+  }
+  return storedVersion;
+}
+
+function buildWorkflowTypeReports(
+  groups: Map<string, WorkflowTypeGroup>,
+  registrations: Record<string, WorkflowDefinition>,
+): WorkflowTypeReport[] {
+  const reports: WorkflowTypeReport[] = [];
+  for (const [type, group] of groups) {
+    const registration = registrations[type];
+    if (!registration) continue;
+
+    const storedVersion = findMostCommonVersion(group.versionCounts);
+    const registeredVersion = registration.version ?? DEFAULT_WORKFLOW_VERSION;
+    const compatibility = checkVersionCompatibility(storedVersion, registeredVersion);
+
+    reports.push({
+      type,
+      storedVersion,
+      registeredVersion,
+      runningCount: group.count,
+      compatibility,
+      revisionCounts: Object.fromEntries(group.revisionCounts),
+      unpinnedRunningCount: group.unpinnedCount,
+    });
+  }
+  return reports;
+}
+
+function computeOverallVerdict(
+  reports: WorkflowTypeReport[],
+): VersionCheckReport['overallVerdict'] {
+  for (const report of reports) {
+    if (report.compatibility === 'incompatible') return 'unsafe';
+  }
+  return 'safe';
+}
+
+/**
+ * Scans active (running and pending) workflows in `storage`, groups them by
+ * type, and compares stored workflow versions against currently registered
+ * versions to determine deployment safety.
+ *
+ * Returns a {@link VersionCheckReport} with a per-type breakdown and an
+ * `overallVerdict` of `'safe'` or `'unsafe'`. Typically
+ * called by the `weft version:check` CLI command.
+ *
+ * @example
+ * ```ts
+ * import { MemoryStorage, runVersionCheck, workflow } from '@repo/weft';
+ *
+ * await using storage = new MemoryStorage();
+ *
+ * const ping = workflow({ name: 'ping', version: '1.0.0' })
+ *   .execute(async function* () { return 'pong'; });
+ * const report = await runVersionCheck(storage, { ping });
+ * console.log(report.overallVerdict); // 'safe'
+ * ```
+ */
+export async function runVersionCheck(
+  storage: Storage,
+  registrations: Record<string, WorkflowDefinition>,
+): Promise<VersionCheckReport> {
+  const groups = await groupActiveWorkflowsByType(storage);
+  const workflowTypes = buildWorkflowTypeReports(groups, registrations);
+  const overallVerdict = computeOverallVerdict(workflowTypes);
+  return { workflowTypes, overallVerdict };
+}

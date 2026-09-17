@@ -1,0 +1,139 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+
+@layer cinder.components {
+  /* ========================================
+   * CHOICE GRID ITEM — selectable answer tile
+   * ======================================== */
+
+  .cinder-choice-grid-item {
+    /* Stable sizing: min-height ensures cells never shrink when feedback state
+     * text/icons appear. Width is determined by the parent grid track. */
+    min-block-size: 4rem;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: var(--cinder-space-4) var(--cinder-space-3);
+    border-radius: var(--cinder-radius-lg);
+    border: 2px solid var(--cinder-border-muted);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
+    cursor: pointer;
+    user-select: none;
+    transition:
+      background var(--cinder-duration-fast) ease,
+      border-color var(--cinder-duration-fast) ease,
+      box-shadow var(--cinder-duration-fast) ease;
+    outline: none; /* Focus ring provided via box-shadow below. */
+
+    /* Touch target: ensure at least 44px for mobile accessibility. */
+    touch-action: manipulation;
+  }
+
+  /* Item content wrapper — prevents the flex alignment from collapsing the
+   * children when they are shorter than the min-height baseline. */
+  .cinder-choice-grid-item__content {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-medium);
+    line-height: var(--cinder-leading-snug);
+    pointer-events: none; /* Clicks bubble to the item div. */
+  }
+
+  /* ----------------------------------------
+   * Hover (non-touch devices only)
+   * ---------------------------------------- */
+
+  @media (hover: hover) {
+    /* Neutral hover only. Excludes selected and graded (correct/incorrect/
+     * pending) tiles so their accent/feedback colors aren't clobbered to a
+     * neutral raised fill on hover — those states own their own hover rules
+     * (or intentionally stay flat). */
+    .cinder-choice-grid-item:not([data-cinder-disabled]):not([data-cinder-selected]):not(
+        [data-cinder-state]
+      ):hover {
+      border-color: var(--cinder-border);
+      background: var(--cinder-surface-raised);
+    }
+  }
+
+  /* ----------------------------------------
+   * Focus ring
+   * ---------------------------------------- */
+
+  .cinder-choice-grid-item:focus-visible {
+    border-color: var(--cinder-accent-solid);
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* Forced Colors Mode — box-shadow rings are invisible; use a real outline. */
+  @media (forced-colors: active) {
+    .cinder-choice-grid-item:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+    }
+  }
+
+  /* ----------------------------------------
+   * Selected state
+   * ---------------------------------------- */
+
+  /* Selected uses accent border + accent text with no filled background,
+   * matching the segmented-control convention. */
+  .cinder-choice-grid-item[data-cinder-selected] {
+    border-color: var(--cinder-accent-solid);
+    color: var(--cinder-accent-text);
+  }
+
+  @media (hover: hover) {
+    /* Excludes graded tiles (a wrong pick can be both selected AND
+     * data-cinder-state) so hover doesn't flip their feedback border to accent
+     * — the feedback border must keep dominating on hover as it does at rest.
+     * Mirrors the neutral-hover guard above. */
+    .cinder-choice-grid-item[data-cinder-selected]:not([data-cinder-disabled]):not(
+        [data-cinder-state]
+      ):hover {
+      border-color: var(--cinder-accent-solid-hover);
+    }
+  }
+
+  /* ----------------------------------------
+   * Disabled state
+   * ---------------------------------------- */
+
+  .cinder-choice-grid-item[data-cinder-disabled] {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  /* ----------------------------------------
+   * Feedback states — correct / incorrect / pending
+   * Dimensions are IDENTICAL to the neutral state (stable cell sizing guarantee).
+   * Only color / border / text change.
+   * ---------------------------------------- */
+
+  /* Correct */
+  .cinder-choice-grid-item[data-cinder-state='correct'] {
+    border-color: var(--cinder-status-success-border);
+    background: var(--cinder-status-success-background);
+    color: var(--cinder-status-success-text);
+  }
+
+  /* Incorrect */
+  .cinder-choice-grid-item[data-cinder-state='incorrect'] {
+    border-color: var(--cinder-status-danger-border);
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+  }
+
+  /* Pending */
+  .cinder-choice-grid-item[data-cinder-state='pending'] {
+    border-color: var(--cinder-status-warning-border);
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+}

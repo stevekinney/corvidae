@@ -1,0 +1,25 @@
+{
+  "name": "@repo/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "clean": "rm -rf build coverage",
+    "dev": "bun --watch run src/index.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/shared": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/typescript-configuration": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

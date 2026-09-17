@@ -1,0 +1,36 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    align: {
+      enum: ['left', 'center', 'right'],
+      description: 'Visual alignment for numeric columns.',
+      default: 'left',
+    },
+    as: {
+      enum: ['td', 'th'],
+      description:
+        'When `\'th\'`, renders a `<th scope="row">` instead of `<td>`, marking this\ncell as the row-header identifier for assistive technology. The component\nsets `scope="row"` itself (so `scope` is not part of the prop surface).\nDefaults to `\'td\'` so existing consumers are unaffected.\n\nThe attribute surface is `HTMLTdAttributes` for both modes — `<td>` and\n`<th>` share `HTMLTableCellElement`, so `colspan`, `rowspan`, `headers`, and\n`abbr` are all forwarded regardless of `as`. Only `scope` is removed from the\nprop surface, because the component owns it (`scope="row"` when `as=\'th\'`).',
+      default: 'td',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-table__cell`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description:
+          "Cell content. Optional so that empty `<td>` cells (used in spanning\ntable layouts) are a valid, non-throwing state. When omitted the cell\nrenders empty, which is valid HTML for a `<td>`.\n\n**Note for TypeScript consumers:** the Snippet type is never called externally\nby consuming code — Svelte's compiler handles invocation internally. Making\nthis optional is therefore safe as an API change: no external caller calls\n`props.children()` on a Svelte component's props.",
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

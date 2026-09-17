@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "size": {
+      "enum": ["sm", "md", "lg"],
+      "description": "Spinner size.",
+      "default": "md"
+    },
+    "variant": {
+      "enum": ["default", "arc"],
+      "description": "Visual treatment.",
+      "default": "default"
+    },
+    "label": {
+      "type": "string",
+      "description": "Accessible loading label.",
+      "default": "Loading"
+    },
+    "class": {
+      "type": "string",
+      "description": "Extra classes appended to the root element."
+    }
+  },
+  "additionalProperties": false
+}

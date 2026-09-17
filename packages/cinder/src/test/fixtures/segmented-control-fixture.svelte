@@ -1,0 +1,160 @@
+<script lang="ts" module>
+  import type { SvelteSet } from 'svelte/reactivity';
+
+  type FixtureOptionBase = {
+    label: string;
+    current?: boolean;
+    currentToken?: 'page' | 'step' | 'location' | 'date' | 'time' | 'true';
+    onclick?: (event: MouseEvent) => void;
+    tabindex?: number;
+    disabled?: boolean;
+    controls?: string;
+  };
+
+  export type FixtureOption = FixtureOptionBase &
+    ({ value: string; href?: string } | { href: string; value?: string });
+
+  export type FixtureProps = {
+    id: string;
+    label: string;
+    name?: string;
+    options: readonly FixtureOption[];
+    selectionMode?: 'single' | 'multiple';
+    value?: string | SvelteSet<string> | undefined;
+    onValueChange?: (next: string | SvelteSet<string> | undefined) => void;
+    variant?: 'radiogroup' | 'tablist' | 'navigation';
+    size?: 'sm' | 'md' | 'lg';
+    density?: 'toolbar';
+    orientation?: 'horizontal' | 'vertical';
+    detached?: boolean;
+    fullWidth?: boolean;
+    labelVisible?: boolean;
+    disabled?: boolean;
+    selectionRequired?: boolean;
+    className?: string;
+    showLeadingIcon?: boolean;
+    allowUnsupportedMultipleVariant?: boolean;
+    rest?: Record<string, unknown>;
+  };
+</script>
+
+<script lang="ts">
+  import { untrack } from 'svelte';
+  import Segment from '../../components/segment/segment.svelte';
+  import SegmentedControl from '../../components/segmented-control/segmented-control.svelte';
+
+  let {
+    id,
+    label,
+    name,
+    options,
+    selectionMode = 'single',
+    value = $bindable(),
+    onValueChange,
+    variant,
+    size,
+    density,
+    orientation,
+    detached,
+    fullWidth,
+    labelVisible,
+    disabled,
+    selectionRequired,
+    className,
+    showLeadingIcon = false,
+    allowUnsupportedMultipleVariant = false,
+    rest = {},
+  }: FixtureProps = $props();
+
+  void untrack(() => onValueChange);
+
+  const multipleVariant = $derived(
+    allowUnsupportedMultipleVariant || variant === 'radiogroup' ? variant : undefined,
+  );
+</script>
+
+<!--
+  Branching by selectionMode narrows the SegmentedControlProps discriminated
+  union for `svelte-check`. Each branch can resolve `value` to the right type
+  (string for single, SvelteSet for multiple) without a cast at the spread
+  site.
+-->
+{#snippet segments()}
+  {#each options as option (option.value ?? option.href ?? option.label)}
+    {#if option.href !== undefined}
+      <Segment
+        value={option.value}
+        href={option.href}
+        current={option.current}
+        currentToken={option.currentToken}
+        disabled={option.disabled}
+        onclick={option.onclick}
+        tabindex={option.tabindex}
+      >
+        {option.label}
+      </Segment>
+    {:else if showLeadingIcon}
+      <Segment
+        value={option.value ?? option.href ?? ''}
+        disabled={option.disabled}
+        controls={option.controls}
+      >
+        {#snippet leading()}<span data-test-icon></span>{/snippet}
+        {option.label}
+      </Segment>
+    {:else}
+      <Segment
+        value={option.value ?? option.href ?? ''}
+        disabled={option.disabled}
+        controls={option.controls}
+      >
+        {option.label}
+      </Segment>
+    {/if}
+  {/each}
+{/snippet}
+
+{#if selectionMode === 'multiple'}
+  <SegmentedControl
+    {id}
+    {label}
+    {name}
+    selectionMode="multiple"
+    bind:value={value as SvelteSet<string> | undefined}
+    variant={multipleVariant as 'radiogroup' | undefined}
+    {size}
+    {density}
+    {orientation}
+    {detached}
+    {fullWidth}
+    {labelVisible}
+    {disabled}
+    {onValueChange}
+    class={className}
+    {...rest}
+  >
+    {@render segments()}
+  </SegmentedControl>
+{:else}
+  <SegmentedControl
+    {id}
+    {label}
+    {name}
+    selectionMode="single"
+    bind:value={value as string | undefined}
+    {variant}
+    {size}
+    {density}
+    {orientation}
+    {detached}
+    {fullWidth}
+    {labelVisible}
+    {disabled}
+    {selectionRequired}
+    {onValueChange}
+    class={className}
+    {...rest}
+  >
+    {@render segments()}
+  </SegmentedControl>
+{/if}

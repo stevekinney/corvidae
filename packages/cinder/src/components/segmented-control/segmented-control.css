@@ -1,0 +1,453 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * SEGMENTED CONTROL
+ * ======================================== */
+
+  .cinder-segmented-control-container {
+    display: inline-flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    /* `inline-flex` only governs how THIS element lays out its own children —
+       it does nothing to stop an ancestor from stretching this element's own
+       box. A CSS Grid cell (or a flex row with the default align-items:
+       stretch) will still stretch it to fill the full cross-size, leaving the
+       pill's border/background way wider than its buttons. Pin it to its
+       content so it only goes full-width when explicitly requested via
+       data-cinder-full-width below. */
+    inline-size: fit-content;
+  }
+
+  .cinder-segmented-control-container:has([data-cinder-full-width]) {
+    display: flex;
+    /* Logical, not physical `width` — mixing the two for the same axis on one
+       element is ambiguous. Using inline-size throughout means this cleanly
+       overrides the base rule's inline-size:fit-content via normal cascade
+       (higher specificity), with no physical/logical conflict. */
+    inline-size: 100%;
+  }
+
+  .cinder-segmented-control-label {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  /* ── Attached (default) ─────────────────────────────────────────────────── */
+
+  .cinder-segmented-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    padding: 1px;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-inset);
+  }
+
+  /* ── Full width ─────────────────────────────────────────────────────────── */
+
+  .cinder-segmented-control[data-cinder-full-width] {
+    display: flex;
+    width: 100%;
+  }
+
+  .cinder-segmented-control[data-cinder-full-width] .cinder-segmented-control-option {
+    flex: 1;
+  }
+
+  /* ── Vertical orientation ───────────────────────────────────────────────── */
+
+  .cinder-segmented-control[data-cinder-orientation='vertical'] {
+    flex-direction: column;
+  }
+
+  /* ── Detached ────────────────────────────────────────────────────────────── */
+
+  .cinder-segmented-control[data-cinder-detached] {
+    gap: var(--cinder-space-1);
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+
+  .cinder-segmented-control[data-cinder-detached] .cinder-segmented-control-option {
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+  }
+
+  /* ── Disabled group ─────────────────────────────────────────────────────── */
+
+  .cinder-segmented-control[aria-disabled='true'] {
+    /* opacity centralized in foundation.css disabled-visual rule (0.6) */
+    pointer-events: none;
+  }
+
+  /* ── Option base ────────────────────────────────────────────────────────── */
+
+  .cinder-segmented-control-option {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cinder-space-1);
+    border: 0;
+    /* Concentric with the attached container: it is `--cinder-radius-md` and insets
+       its options by exactly its 1px padding, so the option's radius has to be that
+       same token minus that same inset. It used to be derived from
+       `--cinder-radius-sm` — an unrelated step on the scale — which put a 5px curve
+       inside an 8px one at a 1px inset where 7px was required. Two curves with
+       different centers read as off-axis, which is what "all of the different
+       rounded corners look really bad" was describing. Deriving from the
+       container's own token means it cannot drift again when the scale moves.
+       The detached variant overrides this below: it has no padding and no border,
+       so its options are not nested inside anything and take the full radius. */
+    border-radius: calc(var(--cinder-radius-md) - 1px);
+    background: transparent;
+    color: var(--cinder-text-muted);
+    cursor: pointer;
+    font-weight: var(--cinder-font-medium);
+    line-height: 1;
+    text-decoration: none;
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* Separator between attached options */
+  .cinder-segmented-control:not([data-cinder-detached])
+    .cinder-segmented-control-option:not(:first-child)::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 0;
+    block-size: 60%;
+    border-inline-start: 1px solid var(--cinder-border-muted);
+    transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-segmented-control:not([data-cinder-detached])
+    .cinder-segmented-control-option[data-cinder-selected]:not(:first-child)::before,
+  .cinder-segmented-control:not([data-cinder-detached])
+    .cinder-segmented-control-option[data-cinder-current]:not(:first-child)::before,
+  .cinder-segmented-control:not([data-cinder-detached])
+    .cinder-segmented-control-option[data-cinder-pressed]:not(:first-child)::before,
+  .cinder-segmented-control:not([data-cinder-detached])
+    [data-cinder-selected]
+    + .cinder-segmented-control-option::before,
+  .cinder-segmented-control:not([data-cinder-detached])
+    [data-cinder-current]
+    + .cinder-segmented-control-option::before,
+  .cinder-segmented-control:not([data-cinder-detached])
+    [data-cinder-pressed]
+    + .cinder-segmented-control-option::before {
+    opacity: 0;
+  }
+
+  .cinder-segmented-control[data-cinder-orientation='vertical']
+    .cinder-segmented-control-option:not(:first-child)::before {
+    inset-inline-start: unset;
+    inset-block-start: 0;
+    inline-size: 60%;
+    block-size: auto;
+    border-inline-start: none;
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  /* ── Size variants ──────────────────────────────────────────────────────── */
+
+  /* sm: 1.5rem = 24px @ 16px base — WCAG 2.5.8 minimum touch target.
+ * Note: 2.5.8 also requires >=24px of offset space between adjacent targets
+ * smaller than 24px in either dimension. Attached options sit flush against
+ * each other so the bounding box must stay >= 24px; do not reduce this. */
+  .cinder-segmented-control[data-cinder-size='sm'] .cinder-segmented-control-option {
+    min-block-size: 1.5rem;
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-2);
+    font-size: var(--cinder-text-xs);
+  }
+
+  /* md: 2rem = 32px — comfortable middle ground */
+  .cinder-segmented-control[data-cinder-size='md'] .cinder-segmented-control-option {
+    min-block-size: 2rem;
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-2);
+    font-size: var(--cinder-text-sm);
+  }
+
+  /* lg: 2.75rem = 44px — recommended pointer/touch target per WCAG 2.5.5 */
+  .cinder-segmented-control[data-cinder-size='lg'] .cinder-segmented-control-option {
+    min-block-size: 2.75rem;
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3, 0.75rem);
+    font-size: var(--cinder-text-sm);
+  }
+
+  /* density="toolbar" resolves through the component to data-cinder-size="sm",
+ * so font and (for detached or vertical toolbars) inline padding flow from
+ * the `sm` rule above; attached horizontal toolbars pick up the 12px inline
+ * padding from the override block below because they match the
+ * `[data-cinder-size='sm']` arm of that rule. The only declaration this
+ * block owns is the cross-component height contract:
+ * Chip[density=toolbar], DiffStatistics[variant=compact][density=toolbar],
+ * and Button (size="sm") all pin to --cinder-control-height-sm so they line
+ * up in editor toolbars. We do the same here so the SegmentedControl in a
+ * toolbar row matches its siblings' bounding height even though its
+ * effective `sm` typography stays compact. The height pin is currently
+ * unscoped by orientation — vertical toolbar density is not a supported
+ * combination, since stacking 32px options vertically would defeat the
+ * row-alignment contract; treat vertical + toolbar as undefined. */
+  .cinder-segmented-control[data-cinder-density='toolbar'] .cinder-segmented-control-option {
+    min-block-size: var(--cinder-control-height-sm);
+  }
+
+  /* Attached horizontal options need at least 12px between the inter-segment
+ * separator (rendered as a ::before pseudo-element at inset-inline-start: 0)
+ * and the option label. The base `sm` and `md` size rules use --cinder-space-2
+ * (0.5rem = 8px), which causes labels to pinch against the separator. Bump
+ * the inline padding to --cinder-space-3 (0.75rem = 12px) on attached
+ * horizontal sm/md controls only — `lg` already uses --cinder-space-3, and
+ * detached/vertical variants keep their per-size defaults. Toolbar-density
+ * controls resolve to data-cinder-size="sm" via the Svelte component, so
+ * attached horizontal toolbars match the `sm` arm of this selector and
+ * correctly receive the 12px inline padding too. */
+  .cinder-segmented-control:not(
+      [data-cinder-detached]
+    )[data-cinder-orientation='horizontal'][data-cinder-size='sm']
+    .cinder-segmented-control-option,
+  .cinder-segmented-control:not(
+      [data-cinder-detached]
+    )[data-cinder-orientation='horizontal'][data-cinder-size='md']
+    .cinder-segmented-control-option {
+    padding-inline: var(--cinder-space-3, 0.75rem);
+  }
+
+  /* ── Hover ──────────────────────────────────────────────────────────────── */
+
+  /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't
+ * "stick" after tap on touch devices that emulate :hover. */
+  @media (hover: hover) {
+    .cinder-segmented-control-option:hover:not(:disabled):not([aria-disabled='true']):not(
+        [data-cinder-selected]
+      ):not([data-cinder-current]):not([data-cinder-pressed]) {
+      background: color-mix(in oklch, var(--cinder-accent-solid), transparent 90%);
+      color: var(--cinder-text-default);
+    }
+
+    /* Selected/pressed segments get hover feedback too, so they don't read as
+   * disabled. Darken the accent fill via the theme-aware accent-hover token
+   * while keeping the selected contrast color (inherited from the resting
+   * selected/pressed rules). A selected-but-disabled segment stays focusable
+   * and is marked with aria-disabled="true" rather than the native disabled
+   * attribute (see segmented-control.a11y.md / the C6 selected-but-disabled
+   * contract), so guard on BOTH :not(:disabled) and :not([aria-disabled='true'])
+   * to keep hover chrome off disabled segments. */
+    .cinder-segmented-control-option[data-cinder-selected]:hover:not(:disabled):not(
+        [aria-disabled='true']
+      ),
+    .cinder-segmented-control-option[data-cinder-current]:hover:not(:disabled):not(
+        [aria-disabled='true']
+      ),
+    .cinder-segmented-control-option[data-cinder-pressed]:hover:not(:disabled):not(
+        [aria-disabled='true']
+      ) {
+      background: var(--cinder-accent-solid-hover);
+    }
+  }
+
+  /* ── Focus ──────────────────────────────────────────────────────────────── */
+
+  .cinder-segmented-control-option:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+    z-index: 1;
+  }
+
+  /* ── Disabled option ────────────────────────────────────────────────────── */
+
+  .cinder-segmented-control-option:disabled,
+  .cinder-segmented-control-option[aria-disabled='true'] {
+    cursor: not-allowed;
+    /* opacity centralized in foundation.css disabled-visual rule (0.6) */
+  }
+
+  /* ── Selected (single mode) ─────────────────────────────────────────────── */
+
+  .cinder-segmented-control-option[data-cinder-selected] {
+    background: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    box-shadow: var(--cinder-shadow-sm);
+  }
+
+  .cinder-segmented-control-option[data-cinder-current] {
+    background: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    box-shadow: var(--cinder-shadow-sm);
+  }
+
+  .cinder-segmented-control-option-icon {
+    opacity: 0.9;
+  }
+
+  /* ── Pressed (multiple mode) ────────────────────────────────────────────── */
+
+  .cinder-segmented-control-option[data-cinder-pressed] {
+    background: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    box-shadow: var(--cinder-shadow-sm);
+  }
+
+  /* For the default pill variant: the `[data-cinder-selected]` rule (specificity
+   * 0,1,0) is declared after `:focus-visible` (0,1,0) and wins by cascade order,
+   * replacing the focus ring's box-shadow with shadow-sm. Re-assert the ring so
+   * the selected+focused segment still shows a visible ring in single and multiple
+   * selection modes. Scope to :not([data-cinder-variant='tablist']) so this does
+   * not conflict with the tablist re-assert below.
+   * Specificity 0,3,0 beats the base shadow-sm rule's 0,2,0 — intentional. */
+  .cinder-segmented-control:not([data-cinder-variant='tablist'])
+    .cinder-segmented-control-option[data-cinder-selected]:focus-visible,
+  .cinder-segmented-control:not([data-cinder-variant='tablist'])
+    .cinder-segmented-control-option[data-cinder-pressed]:focus-visible,
+  .cinder-segmented-control:not([data-cinder-variant='tablist'])
+    .cinder-segmented-control-option[data-cinder-current]:focus-visible {
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+    z-index: 1;
+  }
+
+  /* Forced-colors: selected/pressed segments also need outline fallback. Selection
+   * semantics apply (the segment represents a chosen option) → Highlight. */
+  @media (forced-colors: active) {
+    .cinder-segmented-control:not([data-cinder-variant='tablist'])
+      .cinder-segmented-control-option[data-cinder-selected]:focus-visible,
+    .cinder-segmented-control:not([data-cinder-variant='tablist'])
+      .cinder-segmented-control-option[data-cinder-pressed]:focus-visible,
+    .cinder-segmented-control:not([data-cinder-variant='tablist'])
+      .cinder-segmented-control-option[data-cinder-current]:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 1px;
+      box-shadow: none;
+    }
+  }
+
+  /* ── Tablist variant (single mode only) ─────────────────────────────────────
+ * See documentation/decisions/segmented-control-tablist-variant.md. The tablist variant
+ * carries tab semantics for externally owned panels, so it must read as a
+ * tab strip rather than the default filled-pill radiogroup. All rules here are
+ * scoped to single-selection roots so the invalid `selectionMode="multiple"` +
+ * `variant="tablist"` combination keeps the radiogroup/multiple pill visuals;
+ * visual isolation of that combination is proven in the Playwright regression.
+ *
+ * These rules come after the base selected/pressed/separator declarations so
+ * the tablist treatment deliberately wins, and each override matches or
+ * exceeds the specificity of the base selector it replaces without broadening
+ * to non-tablist roots.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+  /* Strip the surface-inset container chrome: no background, no enclosing border,
+ * no inset padding. Layout, sizing, density, and full-width behavior are
+ * unaffected because they key off other selectors. */
+  .cinder-segmented-control[data-cinder-selection-mode='single'][data-cinder-variant='tablist'] {
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+
+  /* Suppress the connected-bar separators between attached tablist options. The
+ * base separator and its vertical variant both render via the option
+ * ::before; neutralize them here for tablists only. */
+  .cinder-segmented-control[data-cinder-selection-mode='single'][data-cinder-variant='tablist']:not(
+      [data-cinder-detached]
+    )
+    .cinder-segmented-control-option:not(:first-child)::before {
+    content: none;
+  }
+
+  /* Selected tab: accent text, no filled background, no selected shadow. The
+ * underline-style indicator (below) carries the selected affordance instead. */
+  .cinder-segmented-control[data-cinder-selection-mode='single'][data-cinder-variant='tablist']
+    .cinder-segmented-control-option[data-cinder-selected] {
+    background: transparent;
+    color: var(--cinder-accent-text);
+  }
+
+  /* The base `[data-cinder-selected]` rule paints the filled-pill drop shadow via
+ * box-shadow; strip it for tablists. Scope to `:not(:focus-visible)` so this
+ * does not run on the focused selected tab — the focus ring (also box-shadow)
+ * must survive there. */
+  .cinder-segmented-control[data-cinder-selection-mode='single'][data-cinder-variant='tablist']
+    .cinder-segmented-control-option[data-cinder-selected]:not(:focus-visible) {
+    box-shadow: none;
+  }
+
+  /* Re-assert the focus ring on the selected + focused tab. Stripping the pill
+ * shadow above is not enough: the base `[data-cinder-selected]` rule
+ * (box-shadow: shadow-sm, specificity 0,2,0) is declared after the base
+ * `:focus-visible` ring rule (equal specificity), so on a focused selected tab
+ * the base selected shadow would otherwise win and the ring would vanish. This
+ * higher-specificity tablist rule, declared last, restores the exact base ring
+ * shadow so keyboard focus stays visible on the active tab. */
+  .cinder-segmented-control[data-cinder-selection-mode='single'][data-cinder-variant='tablist']
+    .cinder-segmented-control-option[data-cinder-selected]:focus-visible {
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  /* Forced-colors / Windows High Contrast: box-shadow rings are suppressed by the
+ * UA, so the base option focus ring (outline: transparent + box-shadow) becomes
+ * invisible. Substitute a system-color outline, matching the Tabs component. */
+  @media (forced-colors: active) {
+    .cinder-segmented-control-option:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 1px;
+    }
+
+    /* Forced-colors: selected+focused tab in tablist → selection semantics → Highlight. */
+    .cinder-segmented-control[data-cinder-selection-mode='single'][data-cinder-variant='tablist']
+      .cinder-segmented-control-option[data-cinder-selected]:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 1px;
+      box-shadow: none;
+    }
+  }
+
+  /* Selected hover must not restore the filled pill — keep the selected tab's
+ * transparent background and accent text. Unselected hover keeps the base
+ * accent-tint treatment from the base hover rule. */
+  @media (hover: hover) {
+    .cinder-segmented-control[data-cinder-selection-mode='single'][data-cinder-variant='tablist']
+      .cinder-segmented-control-option[data-cinder-selected]:hover {
+      background: transparent;
+      color: var(--cinder-accent-text);
+    }
+  }
+
+  /* Accent indicator on the selected tab edge. The option is already
+ * position: relative (base rule), so the absolutely positioned ::after anchors
+ * to it without changing layout. Horizontal tablists place the indicator on the
+ * block-end edge spanning the inline axis; the vertical override below moves it
+ * to the inline-start edge spanning the block axis. */
+  .cinder-segmented-control[data-cinder-selection-mode='single'][data-cinder-variant='tablist']
+    .cinder-segmented-control-option[data-cinder-selected]::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    block-size: 2px;
+    background: var(--cinder-accent-solid);
+    border-radius: var(--cinder-radius-full);
+  }
+
+  /* Vertical tablist indicator: inline-start edge, spanning the block axis. */
+  .cinder-segmented-control[data-cinder-selection-mode='single'][data-cinder-variant='tablist'][data-cinder-orientation='vertical']
+    .cinder-segmented-control-option[data-cinder-selected]::after {
+    inset-inline: 0 auto;
+    inset-block: 0;
+    inline-size: 2px;
+    block-size: auto;
+  }
+}

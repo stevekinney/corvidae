@@ -1,0 +1,1166 @@
+/**
+ * `createLazyAgent` — a type-preserving lazy `RunnableAgent` wrapper (AB-21).
+ *
+ * Mirrors `createLazyGenerate` (AB-20): a shared `unloaded | loading | loaded`
+ * cache for the underlying `RunnableAgent`, with a rejection clearing only
+ * the matching pending load so a later call retries. What's new here is
+ * per-run state, because `RunnableAgent.run()` is synchronous and must
+ * return an `AgentRun` handle immediately — before the underlying agent has
+ * necessarily loaded. Each `run()` call therefore owns an isolated
+ * `waiting | started | terminal` state machine that:
+ *
+ *   - buffers events that arrive before the underlying agent resolves,
+ *   - resolves `result()`/`unwrap()`/`output()` through the real handle once
+ *     it exists (delegating rather than re-implementing their logic),
+ *   - and races `abort()` against resolution: if abort wins, the underlying
+ *     agent's `run()` is never called; if resolution wins, the underlying
+ *     handle is stored before any pending abort is forwarded, and forwarded
+ *     at most once.
+ */
+
+import { Conversation } from '@repo/conversationalist';
+import type { RuntimeServices, Subscription } from '@repo/lifecycle';
+import { createDefaultRuntimeServices } from '@repo/lifecycle';
+
+import type { AgentRun, RunEvent, UnwrappedValue } from './agent-run';
+import { CompletedRunIterationError } from './agent-run';
+import type { ChildRunDescriptor } from './child-run';
+import { createClosedAcknowledgement } from './closed-acknowledgement';
+import type { AgentRunError } from './errors';
+import {
+  AbortAgentRunError,
+  AgentContractError,
+  AsyncDefinitionLoadError,
+  toAgentRunError,
+} from './errors';
+import { RunAbortedEvent, RunCompletedEvent, RunErrorEvent } from './events';
+import type { AgentGenerationProfile } from './generation-profile';
+import type { AgentRunLivenessSnapshot } from './liveness';
+import { LIVENESS_POLICY_VERSION } from './liveness';
+import { deepFreeze } from './providers/backend-descriptor-attachment';
+import type {
+  AgentInput,
+  AgentRunContext,
+  DefinitionResolvingAgent,
+  ResolveRunOptions,
+  RunnableAgent,
+} from './runnable-agent';
+import { OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
+import type { CleanupAcknowledgement, FinishReason, RunResult, TokenUsage } from './types';
+
+/**
+ * The two shapes a loader may resolve to (AB-15's `AgentModule<O, H>`): the
+ * agent directly, or a module namespace object exposing it as `default` —
+ * the shape a bare `import(path)` produces. There is no unwrapping for any
+ * OTHER named export; a caller with a named export selects it themselves
+ * inside the loader (`() => import('./agent').then((m) => m.researcher)`),
+ * exactly as `createLazyGenerate` (AB-20) already requires.
+ */
+export type AgentModule<O, H extends boolean> =
+  RunnableAgent<O, H> | { default: RunnableAgent<O, H> };
+
+export type LazyAgentLoader<O, H extends boolean> = () =>
+  AgentModule<O, H> | PromiseLike<AgentModule<O, H>>;
+
+export interface CreateLazyAgentOptions<H extends boolean = false> {
+  /** Human-readable label included in lazy loading and contract error messages. */
+  label?: string | undefined;
+  /**
+   * A provisional runtime witness for this lazy agent's `H` (AB-234), used
+   * ONLY before the loader has ever resolved. `createLazyAgent` returns a
+   * `RunnableAgent` synchronously — before loading starts — so there is no
+   * real witness to report yet; the returned agent's `hasOutput` getter
+   * falls back to this value until then. Once the underlying agent has
+   * loaded, `hasOutput` switches to reading THAT agent's own `hasOutput`
+   * directly — the real, load-derived truth — so an inaccurate or omitted
+   * `options.hasOutput` cannot leave a permanently wrong witness once
+   * loading completes (see the getter's own doc comment below). Defaults to
+   * `false`, matching `H`'s default.
+   *
+   * Typed as `H` itself, not a bare `boolean` (review round 2, Copilot):
+   * `createLazyAgent<Output, true>(loader, { hasOutput: false })` — a value
+   * that disagrees with the call's own `H` argument — is a compile-time
+   * error, not a silently-accepted mismatch, tightening this from "may be
+   * wrong at the type level, corrected at runtime once loaded" to "cannot
+   * be wrong at the type level in the first place." See
+   * `RunnableAgent.hasOutput`'s doc comment (`runnable-agent.ts`) for why
+   * this witness exists at all.
+   */
+  hasOutput?: H | undefined;
+
+  /**
+   * The generation-capability snapshot exposed on the returned agent (AB-64,
+   * AB-245), alongside `name: options.label ?? '(lazy)'`. Never derived
+   * from the underlying agent — a profile read must never trigger a module
+   * load. Omitted means the lazy agent reports `mode: 'opaque'`
+   * (`readGenerationProfile`'s default fallback).
+   */
+  generationProfile?: AgentGenerationProfile | undefined;
+
+  /**
+   * AB-92/AB-252 (AB-325): the clock the synthetic liveness snapshot reads
+   * through for the window before the underlying agent resolves (see
+   * {@link createDeferredAgentRun}). Defaults to the real implementation
+   * (`createDefaultRuntimeServices` from `lifecycle`).
+   */
+  runtime?: RuntimeServices | undefined;
+}
+
+// A fresh object per call — never a shared module-level singleton. `RunResult.usage`
+// is a plain, externally-visible object; sharing one mutable instance across every
+// synthetic (load-failure, contract-failure, or pre-start-abort) result would let a
+// mutation on one run's `result.usage` bleed into every other run's.
+function zeroUsage(): TokenUsage {
+  return { prompt: 0, completion: 0, total: 0 };
+}
+
+function buildFallbackConversation(input: AgentInput): Conversation {
+  if (typeof input === 'string') {
+    const conversation = new Conversation();
+    conversation.appendUserMessage(input);
+    return conversation;
+  }
+  return new Conversation(structuredClone(input.conversation));
+}
+
+function isCallable(value: unknown): value is (...args: never[]) => unknown {
+  return typeof value === 'function';
+}
+
+/**
+ * Validates the shape `AgentRun` promises: `result`, `unwrap`, `abort`,
+ * `children`, `abortChild` (AB-50), iteration, and disposal. Without
+ * checking the AB-50 pair, a lazy loader resolving to an older or untyped
+ * third-party handle would pass this guard and then throw a raw
+ * `TypeError: underlying.children is not a function` the first time
+ * `createDeferredAgentRun`'s own `children()`/`abortChild()` delegate to
+ * it — instead of the contract failure this validator exists to surface as
+ * `AgentContractError`.
+ */
+function isValidAgentRunHandle(value: unknown): value is AgentRun<unknown, boolean> {
+  if (value === null || typeof value !== 'object') return false;
+  const candidate = value as Record<PropertyKey, unknown>;
+  return (
+    isCallable(candidate['result']) &&
+    isCallable(candidate['unwrap']) &&
+    isCallable(candidate['abort']) &&
+    isCallable(candidate['children']) &&
+    isCallable(candidate['abortChild']) &&
+    // AB-204: an untyped or older lazy-loaded agent whose handle predates
+    // `closed()` would otherwise pass this check and then throw a raw
+    // TypeError the first time this wrapper's own `closed()` delegates to
+    // it, instead of the contract failure this validator exists to surface.
+    isCallable(candidate['closed']) &&
+    // AB-214 review (PRRT_kwDORvupsc6esZSb): `snapshot`/`subscribeSnapshot`
+    // are mandatory `AgentRun` members too — an untyped, JavaScript, or
+    // older third-party handle missing either must fail this contract
+    // check with `AgentContractError`, not a raw `TypeError` the first time
+    // this wrapper delegates to a liveness method that isn't there.
+    isCallable(candidate['snapshot']) &&
+    isCallable(candidate['subscribeSnapshot']) &&
+    isCallable(candidate[Symbol.asyncIterator]) &&
+    isCallable(candidate[Symbol.dispose])
+  );
+}
+
+function isRunnableAgent(value: unknown): value is RunnableAgent<unknown, boolean> {
+  if (value === null || typeof value !== 'object') return false;
+  const candidate = value as Record<PropertyKey, unknown>;
+  // `RunnableAgent` requires a string `name` (`runnable-agent.ts`), not just
+  // a callable `run`. Without checking `name` too, a raw `import(path)`
+  // module namespace that happens to export both a `default` agent AND an
+  // unrelated top-level function named `run` (e.g. a helper re-exported
+  // alongside the agent) would itself satisfy this predicate — so `resolve()`
+  // would treat the whole module namespace as the agent and bypass the
+  // `default` unwrapping, later invoking the unrelated `run` with
+  // `AgentInput`. A module namespace object has no `name` binding, so this
+  // check rejects it and falls through to the `default` unwrapping branch.
+  //
+  // `hasOutput` (AB-234 review round 2, Codex P1) must also be validated as
+  // an actual `boolean`, not merely present-or-absent: an untyped or
+  // pre-AB-234 module resolving to an object with `run`/`name` but no
+  // `hasOutput` would otherwise pass this guard, and the lazy wrapper's own
+  // `hasOutput` getter would then read `undefined` off it — which
+  // `isSuccessfulRunResult` treats as falsy, silently reopening the exact
+  // soundness gap this issue closes. Failing the contract check here
+  // instead routes it through the existing `AgentContractError` path (see
+  // both call sites below) rather than publishing a missing property as a
+  // witness.
+  return (
+    isCallable(candidate['run']) &&
+    typeof candidate['name'] === 'string' &&
+    typeof candidate['hasOutput'] === 'boolean'
+  );
+}
+
+// ---------------------------------------------------------------------------
+// A minimal push-based async iterator: buffers events pushed before a
+// consumer starts iterating, and parks the consumer's `next()` call when the
+// buffer is empty and the stream isn't done yet. Deliberately simpler than
+// `agent-run.ts`'s observable-backed version — there is no upstream
+// observable here, only events this module pushes itself.
+// ---------------------------------------------------------------------------
+interface EventQueue {
+  push(event: RunEvent): void;
+  complete(): void;
+  fail(error: unknown): void;
+  /**
+   * Registers a callback invoked exactly once, the first time the
+   * consumer's iterator `return()` is called (an early `break`/`return`
+   * out of a `for await`). Lets the pump loop that feeds this queue stop
+   * draining the underlying run and propagate `return()` to it in turn,
+   * instead of continuing to buffer events nobody will ever read.
+   */
+  onReturn(callback: () => void): void;
+  [Symbol.asyncIterator](): AsyncIterator<RunEvent>;
+}
+
+function createEventQueue(): EventQueue {
+  const buffered: RunEvent[] = [];
+  let done = false;
+  let pendingError: unknown;
+  let hasPendingError = false;
+  let waitResolve: ((result: IteratorResult<RunEvent>) => void) | null = null;
+  let waitReject: ((error: unknown) => void) | null = null;
+  // Guards against concurrent or repeated iteration — matches `AgentRun`'s
+  // own contract (`createAgentRun` throws `CompletedRunIterationError` for
+  // the same misuse) rather than silently splitting events between two
+  // consumers or replaying a finished stream.
+  let iterating = false;
+  let consumed = false;
+  let onReturnCallback: (() => void) | null = null;
+
+  return {
+    onReturn(callback) {
+      onReturnCallback = callback;
+    },
+    push(event) {
+      if (done) return;
+      if (waitResolve) {
+        const resolve = waitResolve;
+        waitResolve = null;
+        waitReject = null;
+        resolve({ value: event, done: false });
+        return;
+      }
+      buffered.push(event);
+    },
+    complete() {
+      if (done) return;
+      done = true;
+      if (waitResolve) {
+        const resolve = waitResolve;
+        waitResolve = null;
+        waitReject = null;
+        resolve({ value: undefined, done: true });
+      }
+    },
+    fail(error) {
+      if (done) return;
+      done = true;
+      if (waitReject) {
+        const reject = waitReject;
+        waitResolve = null;
+        waitReject = null;
+        reject(error);
+        return;
+      }
+      hasPendingError = true;
+      pendingError = error;
+    },
+    [Symbol.asyncIterator](): AsyncIterator<RunEvent> {
+      if (iterating || consumed) {
+        throw new CompletedRunIterationError();
+      }
+      iterating = true;
+      return {
+        next(): Promise<IteratorResult<RunEvent>> {
+          if (buffered.length > 0) {
+            const event = buffered.shift();
+            if (event !== undefined) return Promise.resolve({ value: event, done: false });
+          }
+          if (hasPendingError) {
+            const error = pendingError;
+            hasPendingError = false;
+            pendingError = undefined;
+            iterating = false;
+            consumed = true;
+            return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+          }
+          if (done) {
+            iterating = false;
+            consumed = true;
+            return Promise.resolve({ value: undefined as unknown as RunEvent, done: true });
+          }
+          return new Promise<IteratorResult<RunEvent>>((resolve, reject) => {
+            waitResolve = (result) => {
+              if (result.done) {
+                iterating = false;
+                consumed = true;
+              }
+              resolve(result);
+            };
+            waitReject = (error) => {
+              iterating = false;
+              consumed = true;
+              reject(error instanceof Error ? error : new Error(String(error)));
+            };
+          });
+        },
+        return(): Promise<IteratorResult<RunEvent>> {
+          iterating = false;
+          consumed = true;
+          // Mark the queue itself done — `push()` becomes a no-op from here
+          // on, so a pump that hasn't yet noticed `onReturn` can't keep
+          // growing `buffered` — and notify the registered pump exactly
+          // once so it stops draining the underlying run and propagates
+          // `return()` to it in turn.
+          if (!done) {
+            done = true;
+            const callback = onReturnCallback;
+            onReturnCallback = null;
+            callback?.();
+          }
+          return Promise.resolve({ value: undefined as unknown as RunEvent, done: true });
+        },
+      };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// createDeferredAgentRun — the per-run handle
+// ---------------------------------------------------------------------------
+
+/**
+ * Wraps an async `resolveAgent()` call in a synchronously-returned `AgentRun`
+ * — buffering events, forwarding `abort()`/`[Symbol.dispose]()`, and settling
+ * `result()`/`unwrap()`/`output()`/iteration once the promise resolves and
+ * the resolved agent's own run settles. `createLazyAgent` uses this to defer
+ * its module load; `bureau` (AB-22) reuses it unchanged to defer its own
+ * async per-run setup (session load, flow-control admission) behind
+ * `Bureau.run`'s required synchronous return, with `resolveAgent` closing
+ * over that setup and handing back a one-shot `RunnableAgent` to delegate
+ * to. A `resolveAgent` rejection settles the handle's `result()` with
+ * `finishReason: 'error'` — it never surfaces as an unhandled rejection.
+ */
+export function createDeferredAgentRun<O, H extends boolean>(
+  resolveAgent: () => Promise<RunnableAgent<O, H>>,
+  rawInput: AgentInput,
+  rawContext: AgentRunContext | undefined,
+  label: string,
+  // AB-92/AB-252 (AB-325): the clock the synthetic liveness snapshot
+  // (`syntheticSnapshot`, below — the window before the underlying agent
+  // resolves) reads its timestamps through. Optional and additive so
+  // `bureau`'s existing call sites keep working unchanged; defaults to the
+  // real implementation.
+  runtime: RuntimeServices = createDefaultRuntimeServices(),
+): AgentRun<O, H> {
+  // Snapshot a `{ conversation }` input synchronously, at `run()` call time —
+  // matching `createAgent`'s snapshot-at-`run()` semantics. Without this, the
+  // caller's `ConversationHistory` object would be read only later (once the
+  // underlying agent loads and its own `run()` clones it), so a mutation made
+  // during the load-wait window would leak into this run.
+  const input: AgentInput =
+    typeof rawInput === 'string'
+      ? rawInput
+      : { conversation: structuredClone(rawInput.conversation) };
+
+  // Shallow-copy `context` too, for the same reason: `agentName`,
+  // `traceContext`, and `withTraceContext` are otherwise read only once the
+  // underlying agent finally loads, so a caller mutating the object it
+  // passed in — after `run()` already returned — would leak into this run.
+  // `signal` is deliberately copied by reference, not cloned (an
+  // `AbortSignal` has no clone operation and identity is the point: this
+  // wrapper's own listener and the one the underlying agent attaches must
+  // observe the same signal).
+  const context: AgentRunContext | undefined = rawContext ? { ...rawContext } : undefined;
+
+  type PerRunState = 'waiting' | 'started' | 'terminal';
+  let state: PerRunState = 'waiting';
+  // Reads `state` through a function so TypeScript's control-flow narrowing
+  // — which otherwise keeps `state` pinned to its literal initial value
+  // across the `await` inside the resolution IIFE below, since it can't see
+  // the reassignments `requestAbort`/`finalizeSynthetic` perform from
+  // outside that IIFE's own textual body — doesn't produce a false
+  // "no overlap" comparison error against a state this run can genuinely be
+  // in by the time that `await` resumes.
+  function isTerminal(): boolean {
+    return state === 'terminal';
+  }
+  let underlying: AgentRun<O, H> | undefined;
+  let abortReason: string | undefined;
+  let abortForwarded = false;
+  // closed()'s not-required fast path (AB-204) — `abortReason` alone can't
+  // serve this: a caller may abort with no reason, leaving it `undefined`.
+  let cancelRequested = false;
+  // Set only on the invalid-handle rejection path below, to the REAL
+  // outcome of the best-effort disposal attempted there — never silently
+  // defaulted to `completed` the way a genuine "no underlying run ever
+  // existed" synthetic completion is, since cleanup here was attempted
+  // (and may have failed) rather than genuinely unnecessary.
+  let invalidHandleDisposalOutcome: CleanupAcknowledgement | undefined;
+
+  // AB-88/AB-214 liveness state for the window before `underlying` exists
+  // (or when it never will — a synthetic finalize). `syntheticTerminal`
+  // flips once `finalizeSynthetic` runs, so `snapshot()`/`subscribeSnapshot`
+  // stop reporting a fresh 'created' snapshot after the wrapper's OWN
+  // `result()` has already settled (AB-214 review PRRT_kwDORvupsc6esZSF).
+  // `pendingSnapshotObservers` holds every `subscribeSnapshot` registered
+  // before `underlying` resolves so it can be transferred to a real
+  // subscription once `underlying` exists (PRRT_kwDORvupsc6esZSA).
+  let syntheticTerminal = false;
+  interface PendingSnapshotRecord {
+    readonly observer: (snapshot: AgentRunLivenessSnapshot) => void;
+    closed: boolean;
+    realSubscription?: Subscription | undefined;
+  }
+  const pendingSnapshotObservers = new Set<PendingSnapshotRecord>();
+
+  function syntheticSnapshot(): AgentRunLivenessSnapshot {
+    const now = runtime.clock.nowISO();
+    return {
+      id: label,
+      kind: 'agent-run',
+      startedAt: now,
+      revision: syntheticTerminal ? 1 : 0,
+      status: syntheticTerminal ? 'terminal' : 'created',
+      lastTransitionAt: now,
+      // AB-241 review finding: `context.principal` is already resolved by
+      // the time this wrapper is constructed (both `createLazyAgent`'s
+      // module-load case and bureau's own async per-run setup pass it
+      // through unchanged), so a caller's immediate `snapshot()` or first
+      // `subscribeSnapshot()` delivery — before `underlying` resolves —
+      // reports the same owner the eventually-settled run will.
+      ...(context?.principal !== undefined ? { owner: context.principal } : {}),
+      projection: 'redacted',
+      ownership: 'independent',
+      detached: false,
+      durability: 'process-local',
+      cancellable: !syntheticTerminal,
+      attempt: 0,
+      reachability: syntheticTerminal ? 'not-applicable' : 'unknown',
+      progress: syntheticTerminal ? 'not-applicable' : 'unknown',
+      assessment: syntheticTerminal ? 'terminal' : 'healthy',
+      observedAt: runtime.monotonic.now(),
+      missedPulseCount: 0,
+      policyVersion: LIVENESS_POLICY_VERSION,
+      evidence: [],
+    };
+  }
+
+  function notifySyntheticTerminal(): void {
+    const terminalSnapshot = syntheticSnapshot();
+    const subscriberSnapshot = [...pendingSnapshotObservers];
+    for (const record of subscriberSnapshot) {
+      if (record.closed) continue;
+      record.closed = true;
+      try {
+        record.observer(terminalSnapshot);
+      } catch {
+        // Same observer-isolation reasoning as `ActiveRunLiveness.notify()`.
+      }
+    }
+    pendingSnapshotObservers.clear();
+  }
+
+  const queue = createEventQueue();
+
+  let settleResultPromise!: (result: RunResult<O, H>) => void;
+  let resultSettled = false;
+  const resultPromise = new Promise<RunResult<O, H>>((resolve) => {
+    settleResultPromise = resolve;
+  });
+
+  function settleResult(result: RunResult<O, H>): void {
+    if (resultSettled) return;
+    resultSettled = true;
+    settleResultPromise(result);
+    detachSignalListener?.();
+  }
+
+  function finalizeSynthetic(
+    error: AgentRunError,
+    finishReason: FinishReason,
+    isAbort: boolean,
+  ): void {
+    if (state === 'terminal') return;
+    state = 'terminal';
+    // Only a genuinely underlying-less finalize (this run never got a real
+    // `ActiveRun` at all) needs the synthetic terminal snapshot — one that
+    // resolved `underlying` reports its own real terminal state instead
+    // (AB-214 review PRRT_kwDORvupsc6esZSF).
+    if (!underlying) {
+      syntheticTerminal = true;
+      notifySyntheticTerminal();
+    }
+    const conversation = buildFallbackConversation(input);
+    const result = {
+      conversation,
+      steps: [],
+      content: '',
+      usage: zeroUsage(),
+      finishReason,
+      error,
+    } as RunResult<O, H>;
+    if (isAbort) {
+      queue.push(new RunAbortedEvent(0, conversation, error, zeroUsage(), undefined, abortReason));
+    } else {
+      queue.push(new RunErrorEvent(0, error, 'contract'));
+    }
+    queue.push(new RunCompletedEvent(result));
+    queue.complete();
+    settleResult(result);
+  }
+
+  function requestAbort(reason?: string): void {
+    if (state === 'terminal') return;
+    cancelRequested = true;
+    abortReason = reason;
+    if (state === 'waiting') {
+      // Settle the abort immediately rather than waiting for `resolveAgent()`
+      // to finish — a hung or slow loader would otherwise make a supposedly
+      // fast cancellation hang too. The shared load itself is NOT cancelled
+      // (module loads aren't cancellable, matching `createLazyGenerate`'s
+      // AB-20 precedent): it continues in the background so the cache still
+      // gets populated, but this run's outer resolution IIFE checks
+      // `state === 'terminal'` before ever calling `agent.run()`.
+      finalizeSynthetic(
+        new AbortAgentRunError('The agent run was aborted while loading a lazy agent', reason),
+        'aborted',
+        true,
+      );
+      return;
+    }
+    // state === 'started'
+    if (underlying && !abortForwarded) {
+      abortForwarded = true;
+      underlying.abort(reason);
+    }
+  }
+
+  let detachSignalListener: (() => void) | undefined;
+  const signal = context?.signal;
+  if (signal) {
+    if (signal.aborted) {
+      requestAbort(typeof signal.reason === 'string' ? signal.reason : undefined);
+    } else {
+      const onAbort = (): void => {
+        requestAbort(typeof signal.reason === 'string' ? signal.reason : undefined);
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      // Detach on settlement so a long-lived signal (a request-scoped or
+      // root controller) doesn't keep this closure — and everything it
+      // closes over (the run's state, `underlying`) — alive after the run
+      // is done.
+      detachSignalListener = () => signal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  // Draining `handle`'s own event stream is deliberately NOT started the
+  // moment `handle` exists — only once this wrapper's OWN consumer actually
+  // asks for events (`consumerRequestedIteration`, set by
+  // `publicHandle[Symbol.asyncIterator]`). A caller who only ever calls
+  // `result()` (the other documented consumption pattern) never subscribes,
+  // so a long, tool-heavy, or streaming run doesn't grow an unbounded buffer
+  // of events nobody will read — matching `createAgentRun`'s own handle,
+  // which likewise only subscribes to its observable on first iteration.
+  let consumerRequestedIteration = false;
+  let eventsPumpStarted = false;
+
+  function startPumpingEvents(): void {
+    if (eventsPumpStarted) return;
+    if (!underlying) return;
+    if (!consumerRequestedIteration) return;
+    eventsPumpStarted = true;
+    const handle = underlying;
+    // Manual iteration (rather than `for await...of handle`) so an early
+    // `return()` from OUR queue's consumer can interrupt the pump loop
+    // between `next()` calls and propagate `return()` onto the underlying
+    // run's iterator — stopping it from draining further, instead of
+    // continuing to pull and buffer events nobody will ever read.
+    const iterator = handle[Symbol.asyncIterator]();
+    let stoppedByConsumer = false;
+    queue.onReturn(() => {
+      stoppedByConsumer = true;
+      void iterator.return?.();
+    });
+    void (async () => {
+      try {
+        for (;;) {
+          if (stoppedByConsumer) break;
+          const result = await iterator.next();
+          if (stoppedByConsumer) break;
+          if (result.done) {
+            queue.complete();
+            return;
+          }
+          queue.push(result.value);
+        }
+      } catch (error) {
+        if (!stoppedByConsumer) queue.fail(error);
+      }
+    })();
+  }
+
+  function watchResult(handle: AgentRun<O, H>): void {
+    void handle.result().then(
+      (result) => {
+        state = 'terminal';
+        settleResult(result);
+        return undefined;
+      },
+      (error: unknown) => {
+        // `AgentRun.result()` is documented to always resolve, even on
+        // abort or error (the terminal `RunResult` carries `.error`) — but
+        // that's a contract only `createAgentRun`-produced handles are
+        // guaranteed to uphold. A third-party `RunnableAgent` whose `result()`
+        // rejects instead would otherwise leave this wrapper's `resultPromise`
+        // pending forever; fold it into the same synthetic-result shape.
+        state = 'terminal';
+        settleResult({
+          conversation: buildFallbackConversation(input),
+          steps: [],
+          content: '',
+          usage: zeroUsage(),
+          finishReason: 'error',
+          error: toAgentRunError(error, { kind: 'contract' }),
+        });
+      },
+    );
+  }
+
+  void (async () => {
+    let agent: RunnableAgent<O, H>;
+    try {
+      agent = await resolveAgent();
+    } catch (cause) {
+      // `resolveAgent` (the shared loader cache's `resolve()`) always
+      // rejects with an `AsyncDefinitionLoadError` already — it wraps every
+      // loader failure before this catch ever sees it. `toAgentRunError`
+      // passes an already-`AgentRunError` value through unchanged, so this
+      // is just a type-safe way to hand `finalizeSynthetic` the error
+      // without asserting a specific subclass here. `finalizeSynthetic` is
+      // itself a no-op once `state` is already `'terminal'` (an abort that
+      // settled while this load was in flight), so no explicit guard is
+      // needed here.
+      finalizeSynthetic(
+        toAgentRunError(cause, { kind: 'load', code: 'LOAD_FAILED' }),
+        'error',
+        false,
+      );
+      return;
+    }
+
+    // An abort that arrived while `resolveAgent()` was in flight already
+    // settled this run synthetically (see `requestAbort`) — do not start the
+    // underlying agent at all.
+    if (isTerminal()) return;
+
+    if (!isRunnableAgent(agent)) {
+      finalizeSynthetic(
+        new AgentContractError(
+          `Lazy agent "${label}" resolved to a value without a callable run() method`,
+          agent,
+        ),
+        'error',
+        false,
+      );
+      return;
+    }
+
+    let handle: AgentRun<O, H>;
+    try {
+      handle = agent.run(input, context);
+    } catch (cause) {
+      finalizeSynthetic(
+        new AgentContractError(`Lazy agent "${label}" threw synchronously from run()`, cause),
+        'error',
+        false,
+      );
+      return;
+    }
+
+    if (!isValidAgentRunHandle(handle)) {
+      // `agent.run()` has already started this handle's underlying work —
+      // provider/tool calls can continue unobserved if nothing disposes it.
+      // Best-effort: an otherwise-valid handle missing only `closed()` (or
+      // any other single required member) still very likely has a callable
+      // `[Symbol.dispose]`; guard rather than assume, since a handle this
+      // malformed could be missing that too. AB-204 review: `handle` can
+      // also be `null`/`undefined`/a primitive — `isValidAgentRunHandle`
+      // already rejects those, but probing `[Symbol.dispose]` on one
+      // directly would throw a raw TypeError outside this `try`, rejecting
+      // this detached resolution task and leaving `resultPromise`/
+      // `closed()` pending forever instead of reaching
+      // `finalizeSynthetic()` below. Guard the shape before probing it.
+      const disposable =
+        handle !== null && typeof handle === 'object'
+          ? (handle as unknown as Record<PropertyKey, unknown>)
+          : undefined;
+      const disposeFn = disposable?.[Symbol.dispose];
+      if (isCallable(disposeFn)) {
+        try {
+          disposeFn.call(handle);
+          // AB-204 review: a non-throwing `[Symbol.dispose]()` is not proof
+          // cleanup has actually completed — the built-in `AgentRun`
+          // disposer, for example, only requests cancellation synchronously
+          // and lets provider/tool work continue winding down afterward.
+          // Without the rejected handle's own acknowledgement there is no
+          // way to confirm completion, so this stays `unresolved` rather
+          // than claiming a `completed` this wrapper cannot verify.
+          invalidHandleDisposalOutcome = { status: 'unresolved', reason: 'unknown-effect' };
+        } catch (disposalError) {
+          // The AgentContractError result itself is unaffected — a
+          // throwing disposer doesn't change that outcome, and must not
+          // mask it — but closed() must still be able to report that
+          // cleanup genuinely failed, not silently claim `completed`.
+          invalidHandleDisposalOutcome = { status: 'failed', error: disposalError };
+        }
+      } else {
+        // No disposer to call at all: cleanup here is genuinely
+        // undetermined, not "nothing needed cleanup".
+        invalidHandleDisposalOutcome = { status: 'unresolved', reason: 'unknown-effect' };
+      }
+      finalizeSynthetic(
+        new AgentContractError(`Lazy agent "${label}" returned an invalid run handle`, handle),
+        'error',
+        false,
+      );
+      return;
+    }
+
+    // `agent.run()` can itself settle this wrapper synthetically — a custom
+    // agent that reacts to `context.signal` (or that calls back into an
+    // already-returned reference to this same lazy handle) synchronously
+    // during its own `run()`. `requestAbort` sees `state === 'waiting'` at
+    // that point (this run hasn't reached `'started'` yet) and finalizes.
+    // Recheck here before overwriting that terminal state: the wrapper
+    // already reported an aborted result, so the handle `agent.run()` just
+    // returned must be disposed rather than left running unobserved.
+    if (isTerminal()) {
+      handle[Symbol.dispose]();
+      return;
+    }
+
+    // Store the handle and flip to 'started' BEFORE any later `abort()` call
+    // can be forwarded — the "resolution wins" half of the required race
+    // behavior. The "abort wins" half is the two `isTerminal()` checks
+    // above, which run first and return without ever storing `handle`. From
+    // this point, `requestAbort` sees `state === 'started'` and forwards
+    // directly to `underlying`, exactly once (guarded by `abortForwarded`).
+    underlying = handle;
+    // AB-214 review (PRRT_kwDORvupsc6esZSA): an observer registered while
+    // `underlying` was still unresolved must keep receiving updates once it
+    // exists, not stay stuck on the one synthetic 'created' snapshot it got
+    // synchronously at subscribe time. Transfer each pending subscription to
+    // a real one against `underlying`, so THIS record's own `unsubscribe()`
+    // closure (already handed to the caller) now tears down the real
+    // subscription instead.
+    for (const record of pendingSnapshotObservers) {
+      if (record.closed) continue;
+      record.realSubscription = underlying.subscribeSnapshot(record.observer);
+    }
+    pendingSnapshotObservers.clear();
+    state = 'started';
+    // From here on, `context.signal` (already passed to `agent.run()`
+    // above) is the underlying agent's own responsibility to honor — this
+    // wrapper's listener existed only to cover the window before an
+    // underlying run existed at all. Detaching now avoids a second,
+    // wrapper-driven `abort()` call racing a compliant agent's own
+    // signal-triggered one for the same reason.
+    detachSignalListener?.();
+
+    watchResult(handle);
+    startPumpingEvents();
+  })();
+
+  const publicHandle = {
+    result(): Promise<RunResult<O, H>> {
+      return resultPromise;
+    },
+
+    unwrap(): Promise<UnwrappedValue<O, H>> {
+      return resultPromise.then((result) => {
+        if (underlying) return underlying.unwrap();
+        // A result with no `underlying` only ever comes from
+        // `finalizeSynthetic`, which never produces `finishReason:
+        // 'stop-condition'` — there is no successful value to unwrap here.
+        throw result.error;
+      });
+    },
+
+    output(): Promise<O> {
+      return resultPromise.then((result) => {
+        if (underlying) {
+          const underlyingOutput = (
+            underlying as unknown as { output?: (() => Promise<O>) | undefined }
+          ).output;
+          if (typeof underlyingOutput === 'function') {
+            return underlyingOutput.call(underlying);
+          }
+          throw new AgentContractError(
+            `Lazy agent "${label}" has no output() accessor for this run`,
+          );
+        }
+        // Same reasoning as `unwrap()` above: no `underlying` means this
+        // result came from `finalizeSynthetic`, which never succeeds.
+        throw result.error;
+      });
+    },
+
+    abort(reason?: string): void {
+      requestAbort(reason);
+    },
+
+    // AB-50 — before `underlying` resolves there is no real child registry
+    // to read yet (the wrapped run hasn't started), so `children()` reads
+    // empty and `abortChild()` is a no-op, matching `AgentRun`'s own opt-in
+    // default. Once resolved, both delegate straight through.
+    children(): readonly ChildRunDescriptor[] {
+      return underlying ? underlying.children() : [];
+    },
+
+    abortChild(childId: string, reason?: string): void {
+      underlying?.abortChild(childId, reason);
+    },
+
+    // AB-204: delegated through the shared helper so a caller-supplied
+    // `options.signal` properly bounds THIS call's wait (races the signal
+    // against settlement) instead of blocking on `resultPromise` no matter
+    // what — the underlying run that DOES resolve by the time this run
+    // terminates still gets its own `closed()` consulted via
+    // `resolveOutcome` below; a `finalizeSynthetic` completion (aborted
+    // before the wrapped agent resolved) has nothing else to await, so
+    // `completed` is accurate.
+    closed: createClosedAcknowledgement({
+      result: resultPromise,
+      // `cancelRequested` alone misses a cancellation delivered through
+      // `context.signal` AFTER this wrapper detaches its own listener
+      // (ownership transfers directly to the underlying agent's run() once
+      // it exists — see `detachSignalListener` above) — reading the signal
+      // directly here still catches that case.
+      //
+      // AB-204 review (PRRT_kwDORvupsc6esJjg): `underlying !== undefined`
+      // must ALSO disqualify the fast path, even with no cancellation at
+      // all — an underlying run can fulfill `result()` with a nontrivial
+      // cleanup outcome on its own (e.g. a durable Bureau path hitting an
+      // engine disposal it classifies `unresolved`/`unreachable` with no
+      // cancellation involved). Without this, `evaluateNotRequired()` would
+      // return `not-required` without ever consulting `underlying.closed()`
+      // below, hiding that outcome — the same class of bug the session
+      // wrapper's `activeInnerRun` check (PRRT_kwDORvupsc6enump) already
+      // fixed for `SessionHandle`.
+      disqualifiesFastPath: () =>
+        cancelRequested ||
+        (signal?.aborted ?? false) ||
+        invalidHandleDisposalOutcome !== undefined ||
+        underlying !== undefined,
+      hasInFlightWork: () => false,
+      resolveOutcome: () =>
+        underlying
+          ? underlying.closed()
+          : Promise.resolve(invalidHandleDisposalOutcome ?? { status: 'completed' }),
+    }),
+
+    // AB-88/AB-214 — before `underlying` resolves there is no real
+    // `ActiveRun` to delegate a snapshot to yet, so this wrapper reports a
+    // synthetic snapshot (mirroring `children()`'s empty-default pattern
+    // above): 'created' while still waiting, 'terminal' once a genuinely
+    // underlying-less finalize has run (PRRT_kwDORvupsc6esZSF). Once
+    // `underlying` resolves, both delegate straight through.
+    snapshot(): AgentRunLivenessSnapshot {
+      if (underlying) return underlying.snapshot();
+      return syntheticSnapshot();
+    },
+
+    subscribeSnapshot(
+      observer: (snapshot: AgentRunLivenessSnapshot) => void,
+      options?: { signal?: AbortSignal },
+    ) {
+      if (underlying) return underlying.subscribeSnapshot(observer, options);
+
+      const record: PendingSnapshotRecord = { observer, closed: false };
+      const alreadyAborted = options?.signal?.aborted ?? false;
+
+      try {
+        observer(syntheticSnapshot());
+      } catch {
+        // Same observer-isolation reasoning as `ActiveRunLiveness.notify()`.
+      }
+
+      function unsubscribe(): void {
+        if (record.closed) return;
+        record.closed = true;
+        pendingSnapshotObservers.delete(record);
+        record.realSubscription?.unsubscribe();
+      }
+
+      if (alreadyAborted || syntheticTerminal) {
+        record.closed = true;
+      } else {
+        // Kept pending (AB-214 review PRRT_kwDORvupsc6esZSA) — transferred
+        // to a real subscription against `underlying` once it exists, or
+        // notified once if this run finalizes synthetically first. Never
+        // closed here just because `underlying` doesn't exist YET.
+        pendingSnapshotObservers.add(record);
+        options?.signal?.addEventListener('abort', unsubscribe, { once: true });
+      }
+
+      return {
+        unsubscribe,
+        get closed() {
+          return record.closed || (record.realSubscription?.closed ?? false);
+        },
+      };
+    },
+
+    [Symbol.dispose](): void {
+      cancelRequested = true;
+      if (underlying) {
+        underlying[Symbol.dispose]();
+        return;
+      }
+      requestAbort(abortReason);
+    },
+
+    [Symbol.asyncIterator](): AsyncIterator<RunEvent> {
+      consumerRequestedIteration = true;
+      // No-ops until `underlying` exists — the "waiting" window's events
+      // still arrive via `finalizeSynthetic`/queue.push directly.
+      startPumpingEvents();
+      return queue[Symbol.asyncIterator]();
+    },
+    // `output()` is defined unconditionally at runtime — whether the
+    // underlying agent actually has an `output` schema isn't known until it
+    // resolves. `OutputMethod<O, H>` (a conditional type on the generic `H`)
+    // hides it at the type level for `H = false`, matching the same
+    // single-cast pattern `agent-run.ts`'s `createAgentRun` uses for the
+    // same reason: TypeScript can't resolve a conditional intersection
+    // against an unresolved generic `H`.
+  } as AgentRun<O, H>;
+
+  return publicHandle;
+}
+
+// ---------------------------------------------------------------------------
+// createLazyAgent — the public factory
+// ---------------------------------------------------------------------------
+
+type LazyAgentState<O, H extends boolean> =
+  | { kind: 'unloaded' }
+  | { kind: 'loading'; pending: Promise<RunnableAgent<O, H>> }
+  | { kind: 'loaded'; agent: RunnableAgent<O, H> };
+
+/**
+ * Deep-freezes a caller-supplied `AgentGenerationProfile` before it is
+ * exposed on the returned agent, and forces `selector: 'unavailable'` and
+ * `projection: 'privileged'` regardless of what the caller's profile claims.
+ * `generationProfile` is documented as an immutable snapshot; unlike
+ * `createAgent` (which builds the object itself from scratch),
+ * `createLazyAgent` receives it ready-made from the caller, so freezing the
+ * nested collections here — in place, their references shared with (never
+ * copied from) the caller's own objects — is what actually closes the
+ * mutation vector for a caller who built the profile by hand rather than
+ * through `createAgent`. Each attached descriptor's own object graph is
+ * deep-frozen too, via `backend-descriptor-attachment.ts`'s `deepFreeze`
+ * (shared rather than duplicated) — freezing only the containing
+ * `descriptors` array would leave a hand-built descriptor's own fields
+ * (`model`, `aliases`, …) mutable.
+ *
+ * The top-level object IS a fresh shallow copy (never the caller's own
+ * object): AB-64's verification walk fixes `selector: 'unavailable'`
+ * permanently for a standalone or lazy agent, which has no Bureau, no
+ * policy, and no catalog to select through, and fixes `projection:
+ * 'privileged'` for any profile read directly off an agent (the caller
+ * already holds the `GenerateFunction` and therefore its descriptors) — so
+ * a caller-supplied `'available'` selector or `'general'` projection must
+ * never survive unchanged. Reusing the caller's object in place would make
+ * forcing these two fields impossible without also being able to mutate a
+ * field the `Object.freeze` below has already locked.
+ */
+function freezeGenerationProfile(profile: AgentGenerationProfile): AgentGenerationProfile {
+  if (profile.preferences) {
+    if (profile.preferences.requiredCapabilities) {
+      Object.freeze(profile.preferences.requiredCapabilities);
+    }
+    if (profile.preferences.preferredProviders) {
+      Object.freeze(profile.preferences.preferredProviders);
+    }
+    if (profile.preferences.preferredModels) {
+      Object.freeze(profile.preferences.preferredModels);
+    }
+    Object.freeze(profile.preferences);
+  }
+  if (profile.allowedCandidates) {
+    for (const candidate of profile.allowedCandidates) Object.freeze(candidate);
+    Object.freeze(profile.allowedCandidates);
+  }
+  for (const descriptor of profile.descriptors) deepFreeze(descriptor);
+  Object.freeze(profile.descriptors);
+  return Object.freeze({ ...profile, projection: 'privileged', selector: 'unavailable' });
+}
+
+/**
+ * Lazily loads and memoizes a `RunnableAgent`, sharing its first load across
+ * concurrent calls and returning `RunnableAgent<O, H>` itself — the same
+ * shape as an eagerly-constructed agent, so it slots into an
+ * `AgentDefinitions` map (AB-22) without unwrapping.
+ *
+ * `run()` is always synchronous, even while the underlying agent is still
+ * loading: it returns an `AgentRun` handle immediately, buffering any events
+ * emitted once loading completes and the underlying agent starts.
+ */
+export function createLazyAgent<O = never, H extends boolean = false>(
+  loader: LazyAgentLoader<O, H>,
+  options: CreateLazyAgentOptions<H> = {},
+): RunnableAgent<O, H> {
+  const label = options.label ?? 'anonymous';
+  let state: LazyAgentState<O, H> = { kind: 'unloaded' };
+
+  function resolve(): Promise<RunnableAgent<O, H>> {
+    if (state.kind === 'loaded') return Promise.resolve(state.agent);
+    if (state.kind === 'loading') return state.pending;
+
+    const pending = (async () => {
+      let loaded: AgentModule<O, H>;
+      try {
+        loaded = await loader();
+      } catch (cause) {
+        throw new AsyncDefinitionLoadError(
+          'LOAD_FAILED',
+          `Failed to load lazy agent "${label}"`,
+          cause,
+        );
+      }
+      // Unwrap the `import(path)` module-namespace shape. `isRunnableAgent`
+      // is checked FIRST — a value that's already directly runnable is used
+      // as-is, so an agent that happens to also carry an unrelated
+      // `default` property of its own is never misread as a module.
+      // Anything else (no `run`, no `default`) is returned unchanged and
+      // caught by the `isRunnableAgent` validation every call site already
+      // performs on the resolved value.
+      if (isRunnableAgent(loaded)) return loaded;
+      if (loaded !== null && typeof loaded === 'object' && 'default' in loaded) {
+        return loaded.default;
+      }
+      return loaded;
+    })();
+
+    state = { kind: 'loading', pending };
+    void pending.then(
+      (agent) => {
+        if (state.kind === 'loading' && state.pending === pending) {
+          state = { kind: 'loaded', agent };
+        }
+        return undefined;
+      },
+      () => {
+        if (state.kind === 'loading' && state.pending === pending) {
+          state = { kind: 'unloaded' };
+        }
+        return undefined;
+      },
+    );
+    return pending;
+  }
+
+  const resolveRunOptions: ResolveRunOptions = async (rawInput, context) => {
+    // Snapshot a `{ conversation }` input synchronously, before the loader
+    // is ever awaited — matching `run()`'s own snapshot-at-invocation
+    // semantics (this protocol promises to resolve the exact `RunOptions`
+    // `run()` would build). Without this, a caller mutating its
+    // `ConversationHistory` while the load is pending would leak into the
+    // resolved options.
+    const input: AgentInput =
+      typeof rawInput === 'string'
+        ? rawInput
+        : { conversation: structuredClone(rawInput.conversation) };
+    // Shallow-copy `context` too, before the loader is awaited — same
+    // reasoning as `createDeferredAgentRun`'s own context copy. Without
+    // this, a caller mutating `signal`/`agentName`/`traceContext`/
+    // `withTraceContext` on the object it passed in while the load is
+    // still pending would leak into the resolved `RunOptions`, unlike both
+    // `run()` and an eager (already-loaded) resolver.
+    const resolvedContext: AgentRunContext | undefined = context ? { ...context } : undefined;
+    const agent = await resolve();
+    // Validate the same contract `run()` does — a `null`/non-object load
+    // result would otherwise throw a raw `TypeError` here instead of the
+    // promised `AgentContractError`, and an object exposing the resolver
+    // symbol but no callable `run()` isn't a `RunnableAgent` at all.
+    if (!isRunnableAgent(agent)) {
+      throw new AgentContractError(
+        `Lazy agent "${label}" resolved to a value without a callable run() method`,
+        agent,
+      );
+    }
+    // `RunnableAgent` doesn't itself declare the definition-resolution
+    // symbol — it's an optional, private capability (`runnable-agent.ts`).
+    // The cast only widens what we look for; `typeof resolver !== 'function'`
+    // below is the actual runtime guard.
+    const definitionResolvingAgent = agent as RunnableAgent<O, H> & DefinitionResolvingAgent;
+    const resolver = definitionResolvingAgent[OPERATIVE_RESOLVE_RUN_OPTIONS];
+    if (typeof resolver !== 'function') {
+      throw new AgentContractError(`Lazy agent "${label}" does not support definition resolution`);
+    }
+    // Invoke through the object, not as a bare extracted function, so a
+    // resolver implemented as a method that reads instance state via `this`
+    // (a custom `DefinitionResolvingAgent`, not necessarily `createAgent`'s
+    // own arrow-function implementation) still gets `agent` as its receiver.
+    return definitionResolvingAgent[OPERATIVE_RESOLVE_RUN_OPTIONS]!(input, resolvedContext);
+  };
+
+  const agent = {
+    name: options.label ?? '(lazy)',
+    ...(options.generationProfile
+      ? { generationProfile: freezeGenerationProfile(options.generationProfile) }
+      : {}),
+    /**
+     * A live witness, not a value frozen at construction time (AB-234
+     * review, Codex: `options.hasOutput` alone left exactly the gap this
+     * issue closes — a caller who supplies `H = true` without also passing
+     * `{ hasOutput: true }` would otherwise get a permanently-`false`
+     * witness even after the underlying, genuinely schema-backed agent has
+     * loaded). Once `resolve()` has settled to a `'loaded'` agent, this
+     * defers to THAT agent's own `hasOutput` — the real, load-derived
+     * truth — falling back to the caller-declared `options.hasOutput`
+     * (default `false`) only for the window before the loader has ever
+     * resolved. Every consumer that matters (`createSubagentTool`'s
+     * post-`result()` narrowing, most notably) reads `hasOutput` only after
+     * awaiting the run's result, by which point loading has necessarily
+     * completed, so this always observes the loaded value in practice.
+     */
+    get hasOutput(): boolean {
+      // `state.agent` is whatever the loader resolved to — `resolve()`
+      // caches it before `isRunnableAgent` gets a chance to reject it (that
+      // rejection happens per-call-site, as an `AgentContractError` on the
+      // run itself, not by unsetting `state`). So `state.agent` can be
+      // `null`, a primitive, or any other malformed value here, not just a
+      // well-formed-but-untyped object (AB-234 review round 2, Codex P2:
+      // a bare `typeof state.agent.hasOutput` on a `null`-resolved loader
+      // throws a raw `TypeError` from THIS getter, masking the promised
+      // `AgentContractError`/`SubagentRunError` the run itself would
+      // otherwise surface). Route through the same `isRunnableAgent` guard
+      // both call sites already use — it null/object-checks `state.agent`
+      // before ever touching `.hasOutput` — instead of dereferencing it
+      // directly, so a malformed loaded value can never make this getter
+      // throw or return anything but a real `boolean`.
+      if (state.kind === 'loaded' && isRunnableAgent(state.agent)) {
+        return state.agent.hasOutput;
+      }
+      return options.hasOutput ?? false;
+    },
+    run(input: AgentInput, context?: AgentRunContext): AgentRun<O, H> {
+      return createDeferredAgentRun(
+        resolve,
+        input,
+        context,
+        label,
+        options.runtime ?? createDefaultRuntimeServices(),
+      );
+    },
+    [OPERATIVE_RESOLVE_RUN_OPTIONS]: resolveRunOptions,
+  };
+
+  return agent;
+}

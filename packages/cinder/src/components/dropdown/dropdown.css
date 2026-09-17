@@ -1,0 +1,546 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * DROPDOWN
+ * ======================================== */
+
+  .cinder-dropdown {
+    position: relative;
+    display: inline-block;
+  }
+
+  .cinder-dropdown-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cinder-space-2);
+    min-block-size: var(--cinder-button-height-md);
+    padding-block: var(--cinder-button-padding-y-md);
+    padding-inline: var(--cinder-button-padding-x-md);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-button-radius-md);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
+    font: inherit;
+    font-size: var(--cinder-button-font-size-md);
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-dropdown-trigger:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-dropdown-trigger-ring, var(--cinder-ring-color));
+  }
+
+  .cinder-button-group
+    > .cinder-dropdown[data-cinder-button-group-item]
+    > .cinder-dropdown-trigger:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width)
+      var(--_cinder-dropdown-trigger-ring, var(--cinder-ring-color));
+  }
+
+  @media (forced-colors: active) {
+    /* box-shadow is suppressed in Windows High Contrast Mode, so paint a
+   * solid outline that respects ButtonText for visible focus. */
+    .cinder-dropdown-trigger:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+
+    .cinder-button-group
+      > .cinder-dropdown[data-cinder-button-group-item]
+      > .cinder-dropdown-trigger:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
+  .cinder-dropdown-trigger[aria-expanded='true'] {
+    background: var(--cinder-surface-pressed);
+  }
+
+  .cinder-dropdown-trigger__caret {
+    display: block;
+    flex: none;
+    inline-size: 0.75em;
+    block-size: 0.75em;
+    opacity: 0.65;
+  }
+
+  /* ----------------------------------------
+ * Trigger wrapper
+ * ---------------------------------------- */
+
+  .cinder-dropdown__trigger {
+    display: inline-block;
+  }
+
+  /* ----------------------------------------
+ * Menu panel
+ * ---------------------------------------- */
+
+  .cinder-dropdown__menu,
+  .cinder-dropdown-menu {
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    box-shadow: var(--cinder-shadow-overlay);
+  }
+
+  .cinder-dropdown__menu {
+    position: absolute;
+    z-index: var(--cinder-z-dropdown);
+    min-width: 12rem;
+    padding: var(--cinder-space-1) 0;
+    overflow: hidden;
+
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-dropdown-menu {
+    position: absolute;
+    inset-block-start: calc(100% + var(--cinder-space-1));
+    inset-inline-end: 0;
+    min-width: 12rem;
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100vh - 2rem);
+    margin: 0;
+    padding: var(--cinder-space-1);
+    overflow-y: auto;
+    outline: none;
+  }
+
+  .cinder-dropdown-menu[data-cinder-position-ready='false'] {
+    visibility: hidden;
+  }
+
+  .cinder-dropdown-menu[data-cinder-position-ready] {
+    inset: auto;
+  }
+
+  .cinder-dropdown-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    width: 100%;
+    min-height: var(--cinder-control-height-lg);
+    padding-block: var(--cinder-space-2-5);
+    padding-inline: var(--cinder-space-3);
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-default);
+    cursor: pointer;
+    font-size: var(--cinder-text-sm);
+    text-align: left;
+    user-select: none;
+    outline: none;
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* Scoped to the BEM-style menu (.cinder-dropdown__menu), which uses padding-block-only
+ * (no horizontal inset). Items inset themselves so the rounded hover/focus background
+ * doesn't bleed into the menu's outer corners. The flat-named .cinder-dropdown-menu
+ * variant already has padding on all sides — items there sit at full width. */
+  .cinder-dropdown__menu .cinder-dropdown-item {
+    width: calc(100% - var(--cinder-space-1) * 2);
+    margin-inline: var(--cinder-space-1);
+  }
+
+  .cinder-dropdown-item[data-disabled] {
+    pointer-events: none;
+    /* opacity centralized in foundation.css disabled-visual rule (0.6) */
+  }
+
+  .cinder-dropdown-item[data-cinder-variant='default']:focus-visible {
+    background: var(--cinder-surface-hover);
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width)
+      var(--_cinder-dropdown-item-ring, var(--cinder-ring-color));
+  }
+
+  .cinder-dropdown-item[data-cinder-variant='danger'] {
+    --_cinder-dropdown-item-ring: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-dropdown-item[data-cinder-variant='danger']:focus-visible {
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width)
+      var(--_cinder-dropdown-item-ring, var(--cinder-ring-color));
+  }
+
+  /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't
+ * "stick" after tap. Placed before :active rules so press feedback wins on tap. */
+  @media (hover: hover) {
+    .cinder-dropdown-trigger:hover:not([aria-expanded='true']) {
+      background: var(--cinder-surface-hover);
+    }
+
+    .cinder-dropdown-item[data-cinder-variant='default']:hover {
+      background: var(--cinder-surface-hover);
+    }
+
+    .cinder-dropdown-item[data-cinder-variant='danger']:hover {
+      background: var(--cinder-status-danger-background);
+      color: var(--cinder-status-danger-text);
+    }
+  }
+
+  /* :active stays unwrapped — fires on tap. */
+  .cinder-dropdown-item[data-cinder-variant='default']:active {
+    background: var(--cinder-surface-pressed);
+  }
+
+  .cinder-dropdown-item[data-cinder-variant='danger']:active {
+    background: var(--cinder-status-danger-border);
+    color: var(--cinder-status-danger-text);
+  }
+
+  @media (forced-colors: active) {
+    /* Inset box-shadow rings vanish in HCM — paint a solid outline instead. */
+    .cinder-dropdown-item[data-cinder-variant='default']:focus-visible,
+    .cinder-dropdown-item[data-cinder-variant='danger']:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
+  .cinder-dropdown-item--inset {
+    padding-inline-start: var(--cinder-space-8);
+  }
+
+  .cinder-dropdown-label {
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-dropdown-separator {
+    height: 1px;
+    margin-block: var(--cinder-space-1);
+    background: var(--cinder-border-faint);
+  }
+
+  /* ----------------------------------------
+ * Popover-API positioning (CSS Anchor Positioning)
+ * ----------------------------------------
+ *
+ * When popover="auto" is set, the menu is promoted to the top layer where
+ * its containing block becomes the viewport — percent-based offsets like
+ * `top: 100%` no longer point at the trigger. The component sets
+ * `anchor-name` on the trigger wrapper and `position-anchor` on the menu so
+ * we can use anchor() to position relative to the trigger regardless of the
+ * top-layer promotion.
+ *
+ * `position-try-fallbacks: flip-block, flip-inline` lets the browser flip
+ * to the opposite side if the natural placement would clip the viewport.
+ *
+ * The anchor() rules are gated behind `@supports` so that browsers which
+ * shipped popover but not anchor positioning (a roughly 6-month window in
+ * Chrome / Firefox, mostly past as of this writing) fall through to the
+ * `:not([popover])`-style fallback path below. Without the gate, those
+ * browsers would render the menu at viewport-relative `inset: auto`.
+ */
+
+  @supports (anchor-name: --x) and (position-anchor: --x) and (top: anchor(bottom)) {
+    .cinder-dropdown-menu[popover] {
+      position: fixed;
+      inset: auto;
+      inset-block-start: calc(anchor(bottom) + var(--cinder-space-1));
+      inset-inline-end: anchor(right);
+      inset-inline-start: auto;
+      position-try-fallbacks: flip-block, flip-inline;
+    }
+
+    .cinder-dropdown-menu[popover][data-cinder-placement='bottom-start'] {
+      inset-inline-start: anchor(left);
+      inset-inline-end: auto;
+    }
+
+    .cinder-dropdown-menu[popover][data-cinder-placement='top-start'],
+    .cinder-dropdown-menu[popover][data-cinder-placement='top-end'] {
+      inset-block-start: auto;
+      inset-block-end: calc(anchor(top) + var(--cinder-space-1));
+    }
+
+    .cinder-dropdown-menu[popover][data-cinder-placement='top-start'] {
+      inset-inline-start: anchor(left);
+      inset-inline-end: auto;
+    }
+
+    .cinder-dropdown-menu[popover][dir='rtl'][data-cinder-placement='bottom-start'],
+    .cinder-dropdown-menu[popover][dir='rtl'][data-cinder-placement='top-start'] {
+      inset-inline-end: anchor(right);
+      inset-inline-start: auto;
+    }
+
+    .cinder-dropdown-menu[popover][dir='rtl'][data-cinder-placement='bottom-end'],
+    .cinder-dropdown-menu[popover][dir='rtl'][data-cinder-placement='top-end'] {
+      inset-inline-start: anchor(left);
+      inset-inline-end: auto;
+    }
+
+    .cinder-dropdown__menu[popover] {
+      position: fixed;
+      margin: 0;
+      inset: auto;
+      inset-block-start: calc(anchor(bottom) + var(--cinder-space-1));
+      position-try-fallbacks: flip-block, flip-inline;
+    }
+
+    .cinder-dropdown[data-cinder-placement='bottom-start'] .cinder-dropdown__menu[popover] {
+      inset-inline-start: anchor(left);
+    }
+
+    .cinder-dropdown[data-cinder-placement='bottom-end'] .cinder-dropdown__menu[popover] {
+      inset-inline-end: anchor(right);
+      inset-inline-start: auto;
+    }
+
+    .cinder-dropdown[data-cinder-placement='top-start'] .cinder-dropdown__menu[popover],
+    .cinder-dropdown[data-cinder-placement='top-end'] .cinder-dropdown__menu[popover] {
+      inset-block-start: auto;
+      inset-block-end: calc(anchor(top) + var(--cinder-space-1));
+    }
+
+    .cinder-dropdown[data-cinder-placement='top-start'] .cinder-dropdown__menu[popover] {
+      inset-inline-start: anchor(left);
+      inset-inline-end: auto;
+    }
+
+    .cinder-dropdown[data-cinder-placement='top-end'] .cinder-dropdown__menu[popover] {
+      inset-inline-end: anchor(right);
+      inset-inline-start: auto;
+    }
+  }
+
+  /* ----------------------------------------
+ * Non-popover fallback path
+ *
+ * Browsers without the popover API render the menu inside the dropdown's
+ * relatively-positioned root, so percent-based offsets work normally.
+ * ---------------------------------------- */
+
+  .cinder-dropdown[data-cinder-placement='bottom-start'] .cinder-dropdown__menu:not([popover]) {
+    position: absolute;
+    inset-block-start: calc(100% + var(--cinder-space-1));
+    inset-inline-start: 0;
+  }
+
+  .cinder-dropdown[data-cinder-placement='bottom-end'] .cinder-dropdown__menu:not([popover]) {
+    position: absolute;
+    inset-block-start: calc(100% + var(--cinder-space-1));
+    inset-inline-end: 0;
+  }
+
+  .cinder-dropdown[data-cinder-placement='top-start'] .cinder-dropdown__menu:not([popover]) {
+    position: absolute;
+    inset-block-start: auto;
+    inset-block-end: calc(100% + var(--cinder-space-1));
+    inset-inline-start: 0;
+  }
+
+  .cinder-dropdown[data-cinder-placement='top-end'] .cinder-dropdown__menu:not([popover]) {
+    position: absolute;
+    inset-block-start: auto;
+    inset-block-end: calc(100% + var(--cinder-space-1));
+    inset-inline-end: 0;
+  }
+
+  /* ----------------------------------------
+ * Reduced motion
+ * ----------------------------------------
+ *
+ * The motion-preference path uses an entrance animation that fades opacity
+ * 0 → 1. When reduced motion is preferred, the animation is skipped — but
+ * the menu must still be visible, so we set opacity: 1 unconditionally below.
+ */
+
+  .cinder-dropdown__menu {
+    opacity: 1;
+  }
+
+  /*
+   * Fallback (non-popover-API) branch entry animation only. The `[popover]`
+   * branch below owns its own enter/exit via `@starting-style` +
+   * `transition-behavior: allow-discrete` — layering this keyframe
+   * `animation` on top of it as well would fight that transition for the
+   * same `opacity`/`translate` properties on the same element.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    .cinder-dropdown__menu:not([popover]) {
+      animation: cinder-dropdown-enter var(--cinder-duration-fast) var(--cinder-ease-standard)
+        forwards;
+    }
+
+    @keyframes cinder-dropdown-enter {
+      from {
+        opacity: 0;
+        translate: 0 -0.25rem;
+      }
+      to {
+        opacity: 1;
+        translate: 0 0;
+      }
+    }
+  }
+
+  /* `:where(...)` around the `:root`/preference-attribute condition (CIN-376
+   * round 17 review — see the closing rule below for the full story): a
+   * selector's condition prefix still needs to SELECT the same elements
+   * whether or not the app has explicitly forced motion on, but it must not
+   * outrank the later `[data-cinder-closing]` override once closing starts.
+   * `:where()` zeroes the specificity of everything inside it while
+   * matching identically, so this selector's specificity collapses to that
+   * of the bare `.cinder-dropdown__menu:not([popover])` it's attached to —
+   * letting the closing rule's genuinely higher specificity (one more
+   * attribute selector) win on its own, with no reliance on source-order
+   * tie-breaking or a `:root`-anchored selector (which the build's
+   * class-anchoring guard for component CSS sidecars rejects outright). */
+  :where(:root:is([data-cinder-reduced-motion='false'], [data-reduced-motion='off']))
+    .cinder-dropdown__menu:not([popover]) {
+    animation: cinder-dropdown-enter var(--cinder-duration-fast) var(--cinder-ease-standard)
+      forwards;
+  }
+
+  /* ----------------------------------------
+ * Exit transition (CIN-376, OVERLAY-POLICY.md § "Transition lifecycle")
+ * ----------------------------------------
+ *
+ * Non-popover-API fallback branch only (`:not([popover])`) — the component
+ * keeps this element mounted for the duration of this transition instead of
+ * removing it the instant `open` goes false (see dropdown.svelte's
+ * `exitState`/`AnchoredOverlayExitState`). Named properties, never `all`, so
+ * `waitForTransitionCompletion` can enumerate them.
+ * ---------------------------------------- */
+
+  .cinder-dropdown__menu:not([popover]) {
+    transition:
+      opacity var(--cinder-duration-fast) var(--cinder-ease-standard),
+      translate var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* This selector must genuinely OUTRANK the explicit-motion
+   * entry-animation override above (CIN-376 round 17 review): that rule's
+   * `forwards`-filled `animation` kept winning and supplying
+   * `opacity: 1`/`translate: 0` even while closing, whenever an application
+   * explicitly forced motion on — so `animation: none` below never took
+   * effect. Rather than raising THIS selector's specificity (a `:root`
+   * prefix here would violate the build's class-anchoring guard for
+   * component CSS sidecars, which rejects any selector whose first compound
+   * isn't a class), the entry rule's condition prefix above is wrapped in
+   * `:where(...)` instead, zeroing its specificity contribution — this
+   * selector's ordinary extra `[data-cinder-closing]` attribute is then
+   * sufficient to win outright, no tie-break needed. */
+  .cinder-dropdown__menu:not([popover])[data-cinder-closing] {
+    /* The entry `animation` above uses `forwards` fill, so it keeps supplying
+     * opacity/translate for this element even after the keyframe finishes —
+     * without disabling it here, that held value overrides the closing
+     * declarations below and the exit transition never visibly plays. */
+    animation: none;
+    opacity: 0;
+    translate: 0 -0.25rem;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-dropdown__menu:not([popover]) {
+      transition: none;
+    }
+  }
+
+  /* Explicit-preference override, OUTSIDE the media query: an application
+   * that explicitly sets its preference to reduced motion
+   * (`data-cinder-reduced-motion="true"` / `data-reduced-motion="on"`, see
+   * use-reduced-motion.svelte.ts's `applyReducedMotionPreference`) must
+   * collapse this transition even while the OS-level media query itself
+   * still reports `no-preference` — the media query above only ever reflects
+   * the OS setting, never the app's own explicit override. Mirrors the
+   * explicit-off override above (`[data-cinder-reduced-motion='false']`),
+   * just for the opposite (force-on) direction. */
+  :root[data-cinder-reduced-motion='true'] .cinder-dropdown__menu:not([popover]) {
+    transition: none;
+  }
+
+  /* ----------------------------------------
+ * Popover-API path exit transition (native equivalent)
+ * ----------------------------------------
+ *
+ * `menu.hidePopover()` (dropdown.svelte) synchronously removes this element
+ * from the top layer — there is no JS hook to delay that the way
+ * `waitForTransitionCompletion` does for the fallback branch above. The
+ * platform-native equivalent is `transition-behavior: allow-discrete` +
+ * `@starting-style`, which lets the UA itself defer the discrete
+ * `display`/`overlay` flip until the named transitions finish. This keeps
+ * entry/exit symmetric and reduced-motion-safe without a JS wait.
+ * ---------------------------------------- */
+
+  .cinder-dropdown__menu[popover] {
+    opacity: 0;
+    translate: 0 -0.25rem;
+    /* `display`/`overlay` stay at their :popover-open computed values for the
+     full transition (that's what `allow-discrete` buys), so without this the
+     visually-fading-out menu would remain hit-testable and a stray click
+     could still activate an item during teardown. */
+    pointer-events: none;
+    transition:
+      opacity var(--cinder-duration-fast) var(--cinder-ease-standard),
+      translate var(--cinder-duration-fast) var(--cinder-ease-standard),
+      display var(--cinder-duration-fast) allow-discrete,
+      overlay var(--cinder-duration-fast) allow-discrete;
+  }
+
+  .cinder-dropdown__menu[popover]:popover-open {
+    opacity: 1;
+    translate: 0 0;
+    pointer-events: auto;
+  }
+
+  @starting-style {
+    .cinder-dropdown__menu[popover]:popover-open {
+      opacity: 0;
+      translate: 0 -0.25rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-dropdown__menu[popover] {
+      transition: none;
+    }
+  }
+
+  /* Explicit-preference override, OUTSIDE the media query (CIN-376 round 16
+   * review): unlike the fallback branch above, this native Popover-API path
+   * has NO JS teardown (`AnchoredOverlayExitState`/`waitForTransitionCompletion`)
+   * to collapse the wait when reduced motion is active — `menu.hidePopover()`
+   * relies entirely on this CSS transition (via `allow-discrete`) actually
+   * being `none` to skip the wait. Without this selector, an application
+   * that explicitly sets its preference to reduced motion while the OS
+   * media query still reports `no-preference` would still run the full
+   * opacity/translate exit transition here, ignoring the explicit
+   * preference entirely. Mirrors the explicit-off override above, for the
+   * opposite (force-on) direction. */
+  :root[data-cinder-reduced-motion='true'] .cinder-dropdown__menu[popover] {
+    transition: none;
+  }
+}

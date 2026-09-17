@@ -1,0 +1,103 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-hover-card__trigger {
+    display: inline-flex;
+  }
+
+  .cinder-hover-card {
+    position: fixed;
+    z-index: var(--cinder-z-popover);
+    max-width: min(20rem, calc(100vw - 2rem));
+    /* --cinder-space-4 (1rem) gives a card-like inset — one step above popover's
+       --cinder-space-3 (0.75rem) to reflect the richer preview-card surface. */
+    padding: var(--cinder-space-4);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    box-shadow: var(--cinder-shadow-lg);
+    opacity: 0;
+    transform: translateY(2px) scale(0.98);
+    transition:
+      opacity var(--cinder-duration-fast) var(--cinder-ease-standard),
+      transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* Reset browser-default paragraph margins on first/last flow children so
+     content never touches the border and spacing is determined by `padding`
+     alone, not paragraph margin accidents. */
+  .cinder-hover-card > :first-child {
+    margin-block-start: 0;
+  }
+
+  .cinder-hover-card > :last-child {
+    margin-block-end: 0;
+  }
+
+  .cinder-hover-card[data-cinder-position-ready='true'] {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  /* Exit transition: the component keeps the card mounted for the duration
+   of this transition (see hover-card.svelte's `closing` state) instead of
+   removing it the instant `open` goes false, so this can actually play.
+   Declared after the `[data-cinder-position-ready='true']` rule above so it
+   wins at equal specificity, mirroring the base (closed) opacity/transform —
+   the card fades back out exactly the way it faded in. */
+  .cinder-hover-card[data-cinder-closing] {
+    opacity: 0;
+    transform: translateY(2px) scale(0.98);
+    pointer-events: none;
+  }
+
+  .cinder-hover-card__arrow {
+    position: absolute;
+    width: 0.625rem;
+    height: 0.625rem;
+    background: inherit;
+    border-inline-start: 1px solid var(--cinder-border);
+    border-block-start: 1px solid var(--cinder-border);
+  }
+
+  /* The arrow is a square rotated onto its corner (a "diamond") with a
+   border only on its inline-start/block-start edges. At each rotation below,
+   the bordered corner is the one that points OUTWARD past the panel edge —
+   the panel's own fill and border cover the opposite (unbordered) corner, so
+   the two shapes read as one continuous outline instead of a doubled seam.
+   The -0.3125rem inset is half the 0.625rem square (`-size / 2`): it centers
+   the square ON the panel edge, so the rotated corner pokes out by
+   `(size / 2) * sqrt(2)` (~0.44rem) beyond it. */
+
+  /* Panel is BELOW trigger - arrow tip points UP. */
+  .cinder-hover-card[data-cinder-placement^='bottom'] .cinder-hover-card__arrow {
+    top: -0.3125rem;
+    rotate: 45deg;
+  }
+
+  /* Panel is ABOVE trigger - arrow tip points DOWN. */
+  .cinder-hover-card[data-cinder-placement^='top'] .cinder-hover-card__arrow {
+    bottom: -0.3125rem;
+    rotate: 225deg;
+  }
+
+  /* Panel is to the RIGHT of trigger - arrow tip points LEFT. */
+  .cinder-hover-card[data-cinder-placement^='right'] .cinder-hover-card__arrow {
+    left: -0.3125rem;
+    rotate: 315deg;
+  }
+
+  /* Panel is to the LEFT of trigger - arrow tip points RIGHT. */
+  .cinder-hover-card[data-cinder-placement^='left'] .cinder-hover-card__arrow {
+    right: -0.3125rem;
+    rotate: 135deg;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-hover-card {
+      transition: none;
+      transform: none;
+    }
+  }
+}

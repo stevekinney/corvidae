@@ -1,0 +1,196 @@
+/**
+ * Internal overlay contract shared by Modal, Drawer, Dropdown, Popover, Tooltip,
+ * and Toast.
+ *
+ * See `OVERLAY-POLICY.md` (sibling of this file) for the full policy. Helpers
+ * here implement that policy in code so individual overlay components don't
+ * each invent their own scroll-lock counter, escape stack, or focus-restore
+ * routine.
+ *
+ * **All overlay markup must be SSR-empty**: Cinder overlays render an empty
+ * placeholder (or nothing at all) during server-side rendering, regardless of
+ * their `open` prop. Each Svelte component gates its `{#if}` block on local
+ * state set by a client-only `$effect`. This keeps the hydration
+ * model simple — overlays only ever attach to the DOM after the client takes
+ * over — at the cost of a one-frame delay for `open={true}` initial state.
+ */
+
+/// <reference lib="dom" />
+
+import { flushSync } from 'svelte';
+
+/**
+ * Z-index layer constants. Mirror the `--cinder-z-*` CSS custom properties.
+ * Components should prefer the CSS variables in stylesheets; these JS constants
+ * are for inline-style fallbacks and ordering checks in tests.
+ */
+export const Z_LAYERS = {
+  tooltip: 1000,
+  dropdown: 1100,
+  popover: 1100,
+  backdrop: 1150,
+  modal: 1200,
+  toast: 1300,
+  dragPreview: 1400,
+} as const;
+
+export type OverlayLayer = keyof typeof Z_LAYERS;
+
+// ---------------------------------------------------------------------------
+// Escape stack
+// ---------------------------------------------------------------------------
+
+/**
+ * Stack of ESC handlers. Top-most overlay handles ESC; lower overlays ignore
+ * the event. Each overlay registers a handler on open and unregisters on close.
+ *
+ * The stack lives in module scope so all Cinder overlays share it. It persists
+ * for the lifetime of the JS module — under bun:test that means it is shared
+ * across every test in a file, so suites that leave handlers registered must
+ * call `resetEscapeStack()` between cases to avoid leaking state. In
+ * production this is fine (a real app has at most a handful of stacked overlays
+ * at once). It is a plain LIFO stack: each `pushEscapeHandler` call appends one
+ * entry and returns a one-shot `release` token that removes that entry's most
+ * recent occurrence. Overlays push exactly once per open and release via the
+ * returned token, so duplicates don't arise in practice; releasing a token
+ * twice (or releasing a handler already gone) is a no-op.
+ */
+/**
+ * An escape-stack handler. Receives the originating `KeyboardEvent` so a
+ * handler that owns the keystroke (e.g. a nested interactive popup closing on
+ * Escape) can call `event.preventDefault()` to stop the key from also reaching
+ * the page's default action. Most overlays ignore the argument and just close.
+ */
+type EscapeHandler = (event: KeyboardEvent) => void;
+
+const escapeStack: EscapeHandler[] = [];
+
+/**
+ * Register a handler to be called when ESC is pressed and this overlay is at
+ * the top of the stack. The handler receives the originating `KeyboardEvent`.
+ * Returns a `release` function the overlay must call on close.
+ *
+ * The first handler pushed installs the global keydown listener; the last
+ * handler popped removes it.
+ */
+export function pushEscapeHandler(handler: EscapeHandler): () => void {
+  escapeStack.push(handler);
+  if (escapeStack.length === 1 && typeof window !== 'undefined') {
+    window.addEventListener('keydown', onEscapeKeydown, { capture: true });
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const index = escapeStack.lastIndexOf(handler);
+    if (index !== -1) escapeStack.splice(index, 1);
+    if (escapeStack.length === 0 && typeof window !== 'undefined') {
+      window.removeEventListener('keydown', onEscapeKeydown, { capture: true });
+    }
+  };
+}
+
+function onEscapeKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape') return;
+  const handler = escapeStack.at(-1);
+  if (!handler) return;
+  // We don't preventDefault here — whether the keystroke should be swallowed is
+  // the topmost handler's call, so we pass the event through and let it decide
+  // (a nested popup that owns Escape calls event.preventDefault(); a plain
+  // overlay that's fine letting native dialog ESC also fire does not).
+  //
+  // `handler` is invoked via a plain `window.addEventListener` callback, not
+  // one of Svelte's own event-delegated listeners, so state writes inside it
+  // (e.g. `open = false`) wouldn't otherwise flush to the DOM — or release
+  // this handler's own stack entry via its owning `$effect`'s cleanup — until
+  // the next microtask. `flushSync` forces that update (and this handler's
+  // release, if it closes synchronously) to land within this same keydown
+  // dispatch, so a second Escape immediately after reaches the next handler
+  // down the stack rather than the one that just closed.
+  flushSync(() => {
+    handler(event);
+  });
+}
+
+/**
+ * Test-only: clear the escape stack. Useful between tests to ensure a fresh
+ * starting state. Not part of the public overlay API.
+ */
+export function resetEscapeStack(): void {
+  escapeStack.length = 0;
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', onEscapeKeydown, { capture: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scroll lock (counted)
+// ---------------------------------------------------------------------------
+
+let scrollLockCount = 0;
+let originalBodyOverflow: string | null = null;
+
+/**
+ * Acquire the body scroll lock. Full-viewport overlays that dim the page —
+ * Modal, Drawer, and the standalone Backdrop (via its `scrollLocked` prop) — call
+ * this. Counted: nested overlays each acquire and release; the lock is only
+ * released when the count reaches zero, so a Modal opened inside a Drawer (or a
+ * Backdrop behind either) doesn't accidentally restore scroll when one of them
+ * closes.
+ *
+ * Returns a `release` function the overlay must call on close.
+ */
+export function lockBodyScroll(): () => void {
+  if (typeof document === 'undefined') return () => {};
+  if (scrollLockCount === 0) {
+    originalBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  scrollLockCount += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    scrollLockCount = Math.max(0, scrollLockCount - 1);
+    if (scrollLockCount === 0) {
+      document.body.style.overflow = originalBodyOverflow ?? '';
+      originalBodyOverflow = null;
+    }
+  };
+}
+
+/**
+ * Test-only: forcibly reset the scroll-lock counter. Use between tests that
+ * mount overlays with scroll lock to avoid leaking state into other tests.
+ */
+export function resetScrollLock(): void {
+  scrollLockCount = 0;
+  originalBodyOverflow = null;
+  if (typeof document !== 'undefined') {
+    document.body.style.overflow = '';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Focus restore
+// ---------------------------------------------------------------------------
+
+/**
+ * Capture the currently-focused element. Pair with {@link restoreFocusTo}.
+ *
+ * Returns null on the server or when no element has focus (focus is on the
+ * body). Callers should fall back to a sensible default (e.g. the trigger
+ * element) when null.
+ */
+export function captureFocus(): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  const active = document.activeElement;
+  if (active && active !== document.body && active instanceof HTMLElement) {
+    return active;
+  }
+  return null;
+}
+
+// Note: `restoreFocusTo` lives in `utilities/focus.ts` (returns a boolean so
+// candidate-list iteration can short-circuit). Overlays import it directly
+// from that module.

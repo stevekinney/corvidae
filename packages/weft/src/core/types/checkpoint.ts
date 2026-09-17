@@ -1,0 +1,408 @@
+import type { ContextOperationRequest } from '../context/operation-request.ts';
+import { WeftError } from '../weft-error.ts';
+import type { FailureCategory, OperationId, WorkflowId } from './identity.ts';
+import type { Duration, RetryPolicy } from './retry-retention.ts';
+import type { SearchAttributeValue } from './search-attributes.ts';
+import type { WorkflowLogRecord } from './workflow-log.ts';
+
+/** Version tag for Worker-mode operation replay signatures stored in checkpoints. */
+export const WORKER_REPLAY_SIGNATURE_FORMAT = 'weft-worker-operation-signature-v1';
+
+/**
+ * Canonical fingerprint of an operation yielded by a Worker-mode workflow.
+ *
+ * The Worker runner stores these optional signatures next to cached operation
+ * results so recovery can prove a cached result still belongs to the operation
+ * currently yielded by the workflow code before replaying it.
+ *
+ * @example
+ * ```ts
+ * import type { WorkerReplayOperationSignature } from '@repo/weft';
+ *
+ * const signature: WorkerReplayOperationSignature = {
+ *   format: 'weft-worker-operation-signature-v1',
+ *   operationType: 'activity',
+ *   stableFieldsDigest: '0123456789abcdef',
+ *   stableFieldsByteLength: 128,
+ * };
+ *
+ * void signature;
+ * ```
+ */
+export interface WorkerReplayOperationSignature {
+  /** Signature format tag. */
+  format: typeof WORKER_REPLAY_SIGNATURE_FORMAT;
+  /** Operation type or kind used by the workflow runner. */
+  operationType: string;
+  /** SHA-256 digest of the canonical stable operation fields. */
+  stableFieldsDigest: string;
+  /** Encoded byte length of the canonical stable operation fields. */
+  stableFieldsByteLength: number;
+}
+
+/**
+ * Failed operation outcome cached by a Worker-mode checkpoint.
+ *
+ * Stored in a dedicated side table rather than inside `accumulatedResults` so
+ * user-controlled result values can never be reinterpreted as internal failure
+ * records by matching an object shape.
+ *
+ * @example
+ * ```ts
+ * import type { WorkerReplayOperationFailure } from '@repo/weft';
+ *
+ * const failure: WorkerReplayOperationFailure = {
+ *   status: 'failed',
+ *   error: 'activity timed out',
+ *   failureCategory: 'timeout',
+ * };
+ *
+ * void failure;
+ * ```
+ */
+export interface WorkerReplayOperationFailure {
+  /** Failed operation status marker. */
+  status: 'failed';
+  /** Error message captured from the failed operation outcome. */
+  error: string;
+  /** Optional JavaScript error name captured from the failed operation outcome. */
+  errorName?: string;
+  /** Optional Weft failure category captured from the failed operation outcome. */
+  failureCategory?: FailureCategory;
+}
+
+// ---------------------------------------------------------------------------
+// Checkpoint: snapshot of workflow at a yield* boundary
+// ---------------------------------------------------------------------------
+
+/**
+ * Durable snapshot of a workflow's execution state persisted at each
+ * `yield` boundary. Contains the accumulated operation results, local
+ * variables, search attributes, and the step counter.
+ * Users don't construct checkpoints directly; the engine manages them.
+ * Available via time-travel APIs and {@link WorkflowReplay}.
+ *
+ * @example
+ * ```ts
+ * import { workflow, Engine, type Checkpoint } from '@repo/weft';
+ *
+ * const engine = new Engine({ checkpointHistory: 5 });
+ * engine.register(workflow({ name: 'counter' }).execute(async function* () { return 42; }));
+ * const handle = await engine.start('counter', null);
+ * await handle.result();
+ * // Checkpoints are persisted by the engine; retrieve via engine.getCheckpoint()
+ * const _engine: typeof engine = engine;
+ * void _engine;
+ * ```
+ */
+export interface Checkpoint {
+  workflowId: WorkflowId;
+  step: number;
+  locals: Record<string, unknown>;
+  accumulatedResults: Array<[number, unknown]>;
+  /**
+   * Highest accumulated-result step whose replay data has been emitted to the
+   * workflow event log. Missing means no consumed results have been emitted yet,
+   * which is how old unpruned checkpoints are read.
+   */
+  accumulatedResultReplayWatermark?: number;
+  /**
+   * Worker-mode replay guards for cached operation results. Inline execution
+   * ignores this optional field; Worker recovery uses it to prove a cached
+   * result still belongs to the yielded operation before reusing it.
+   */
+  workerReplaySignatures?: Array<[number, WorkerReplayOperationSignature]>;
+  /**
+   * Worker-mode failed operation outcomes keyed by step. Completed operation
+   * results stay in `accumulatedResults`; failed outcomes live here so replay
+   * can throw them back into the generator without trusting user result shape.
+   */
+  workerReplayFailures?: Array<[number, WorkerReplayOperationFailure]>;
+  // Signals are not checkpoint fields. Buffered signal payloads are persisted
+  // separately under `sig:` storage keys and consumed atomically with commits.
+  searchAttributes: Record<string, SearchAttributeValue>;
+  /** User-defined workflow code version. Checked during recovery. */
+  version: string;
+  /**
+   * Checkpoint schema version. Distinct from `version` (which is the
+   * user's workflow code version). Bumped whenever the engine changes
+   * the on-disk checkpoint format. Pre-1.0: refuse to load older versions.
+   */
+  schemaVersion: number;
+  createdAt: number;
+  /**
+   * The {@link WorkflowState.workflowExecutionToken} of the run this
+   * checkpoint was saved for (WFT-21). Stamped once at the run's initial
+   * checkpoint (fresh `start()` or `fork()`, each of which mints a fresh
+   * token) and carried forward unchanged by every later `advanceCheckpoint`
+   * call for that same execution — never re-derived per step, since the
+   * token identifies the EXECUTION, not the step.
+   *
+   * Exists so a caller correlating an independently-read checkpoint against
+   * an independently-read {@link WorkflowState} (as `engine.replayTo()`
+   * does) can tell apart the run this checkpoint actually belongs to from a
+   * LATER run that reused the same workflow id via `onTerminalConflict:
+   * 'start-new'` — an exact-identity check a timestamp comparison alone
+   * cannot make reliably (same-millisecond writes, non-monotonic clocks).
+   * `undefined` only on a checkpoint persisted before this field existed (a
+   * pre-upgrade checkpoint) — callers fall back to a `createdAt` comparison
+   * for those, same as before this field existed.
+   */
+  workflowExecutionToken?: string;
+}
+
+/**
+ * Current checkpoint schema version. Skipped from `1` to `2` to make the
+ * discontinuity unambiguous — pre-versioned checkpoints (no field) are
+ * conceptually `< 1`, and v2 introduces the `ParallelOperationCacheEntry`
+ * format with per-branch slots for `ctx.all` / `ctx.runAll` partial
+ * persistence.
+ */
+export const CURRENT_CHECKPOINT_SCHEMA_VERSION = 2;
+
+/**
+ * Thrown by `validateCheckpointShape` when a checkpoint's
+ * `schemaVersion` does not match the engine's current version. A mismatched
+ * checkpoint is rejected, never upgraded in place: the engine loads only
+ * checkpoints stamped with the exact current schema version.
+ */
+export class CheckpointSchemaVersionError extends WeftError<'CheckpointSchemaVersionError'> {
+  constructor(
+    public readonly found: number | 'pre-versioned',
+    public readonly expected: number,
+  ) {
+    super(
+      'CheckpointSchemaVersionError',
+      found === 'pre-versioned'
+        ? `Checkpoint has no schemaVersion field (pre-versioned format); engine expects schemaVersion ${expected}. ` +
+            `Pre-1.0: in-flight workflows must be drained before upgrade.`
+        : found > expected
+          ? `Checkpoint schemaVersion ${found} is newer than engine version ${expected}. ` +
+            `The engine is too old to read this checkpoint.`
+          : `Checkpoint schemaVersion ${found} is older than engine version ${expected}. ` +
+            `Pre-1.0: in-flight workflows must be drained before upgrade.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Checkpoint history: time-travel debugging
+// ---------------------------------------------------------------------------
+
+/** Summary metadata for a single checkpoint history entry. */
+export type CheckpointSummary = {
+  step: number;
+  timestamp: number;
+  sizeBytes: number;
+};
+
+/** Full deserialized state at a specific checkpoint step. */
+export type CheckpointState = Pick<
+  Checkpoint,
+  'step' | 'locals' | 'searchAttributes' | 'version' | 'createdAt'
+>;
+
+/**
+ * Options for `engine.pruneCheckpoints()`.
+ *
+ * @example
+ * ```ts
+ * import { workflow, Engine, type PruneCheckpointsOptions } from '@repo/weft';
+ *
+ * const engine = new Engine({ checkpointHistory: 10 });
+ * engine.register(workflow({ name: 'process' }).execute(async function* () { return 'done'; }));
+ *
+ * const handle = await engine.start('process', null);
+ * await handle.result();
+ *
+ * const options: PruneCheckpointsOptions = { keepLast: 5 };
+ * const result = await engine.pruneCheckpoints(handle.id, options);
+ * void result;
+ * ```
+ */
+export type PruneCheckpointsOptions = {
+  /** Number of newest checkpoint history entries to retain. Must be a non-negative integer. */
+  keepLast: number;
+  /** Abort the prune before its destructive deletes are issued. */
+  signal?: AbortSignal;
+};
+
+/** Outcome of `engine.pruneCheckpoints()`. */
+export type PruneCheckpointsResult = {
+  /**
+   * Number of checkpoint history entries selected by this call for deletion.
+   * Storage deletes are idempotent, so concurrent overlapping prune calls can
+   * each count the same entry even though it is physically deleted only once.
+   */
+  removed: number;
+  /**
+   * Number of checkpoint history entries observed by this call and excluded
+   * from its deletion plan. Concurrent checkpoint writes or prunes can change
+   * the actual number of entries in storage after the scan.
+   */
+  retained: number;
+};
+
+// ---------------------------------------------------------------------------
+// Operation types
+// ---------------------------------------------------------------------------
+
+export type OperationKind = 'activity' | 'timer' | 'signal-wait' | 'child-workflow';
+
+export interface OperationRequest {
+  id: OperationId;
+  workflowId: WorkflowId;
+  kind: OperationKind;
+  queue: string;
+  activityName?: string;
+  input?: unknown;
+  attempt: number;
+  retryPolicy: RetryPolicy;
+  scheduledAt: number;
+  timeout?: Duration;
+  idempotencyKey?: string;
+  /** Visibility timeout in milliseconds. Defaults to 30 000. */
+  visibilityTimeout?: number;
+}
+
+export type OperationOutcome =
+  { status: 'completed'; value: unknown } | WorkerReplayOperationFailure;
+
+// ---------------------------------------------------------------------------
+// Timer entry for scheduler
+// ---------------------------------------------------------------------------
+
+/**
+ * Persistent record of a single scheduled timer. Stored under a
+ * deterministic key so timers survive process restarts; the engine
+ * resumes the associated workflow when the timer fires.
+ *
+ * Most code receives `TimerEntry` values from the scheduler; users only
+ * construct one when implementing an external scheduler that drives
+ * `engine.fireTimer()` (e.g. a Service Worker periodic-sync handler).
+ *
+ * @example
+ * ```ts
+ * import { Engine, type TimerEntry } from '@repo/weft';
+ * declare const engine: Engine;
+ * declare const entry: TimerEntry;
+ * await engine.fireTimer(entry);
+ * ```
+ */
+export interface TimerEntry {
+  id: string;
+  workflowId: WorkflowId;
+  fireAt: number;
+  kind:
+    | 'sleep'
+    | 'visibility-timeout'
+    | 'execution-deadline'
+    | 'delayed-start'
+    | 'schedule'
+    | 'terminal-cleanup'
+    | 'teardown'
+    | 'wait-condition';
+  executionTimeoutMs?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Worker message protocol (postMessage between main thread and Web Workers)
+// ---------------------------------------------------------------------------
+
+export type WorkerInboundMessage =
+  | {
+      type: 'run';
+      protocolVersion?: number;
+      turnId?: number;
+      maxProtocolMessageBytes?: number;
+      workflowId: WorkflowId;
+      workflowExecutionToken?: string;
+      /**
+       * The dispatching run's persisted `WorkflowState.revision` (WFT-20),
+       * when known. Captured worker-side and re-stamped on every outbound
+       * message for this workflow's remaining turns (including `resume`
+       * turns, which never resend this field) — see
+       * `workers/workflow-runner.ts`'s `workflowRevisions` map.
+       */
+      workflowRevision?: string;
+      workflowType: string;
+      checkpoint: ArrayBuffer;
+      input: unknown;
+      executionStateOwnerId?: string;
+      deadline?: number;
+      headers?: [string, string][];
+      /**
+       * Whether the engine host has an `EngineOptions.onLog` sink installed. The
+       * worker routes `ctx.log` records back to the host (as a `log` outbound
+       * message) only when this is `true`; otherwise it logs to the worker's own
+       * console, preserving the default. Omitted (treated as `false`) when no host
+       * sink exists, so a worker can never lose logs to a no-op host callback.
+       */
+      hostHasLogSink?: boolean;
+    }
+  | {
+      type: 'resume';
+      protocolVersion?: number;
+      turnId?: number;
+      maxProtocolMessageBytes?: number;
+      workflowId: WorkflowId;
+      checkpoint: ArrayBuffer;
+      operationResult: OperationOutcome;
+      /** See {@link WorkerInboundMessage} `run.hostHasLogSink`; carried on every turn so a rebuilt or resumed worker keeps the capability. */
+      hostHasLogSink?: boolean;
+    }
+  | { type: 'cancel'; protocolVersion?: number; turnId?: number; workflowId: WorkflowId };
+
+export type WorkerOutboundMessage =
+  | {
+      type: 'checkpoint';
+      protocolVersion?: number;
+      turnId?: number;
+      workflowId: WorkflowId;
+      checkpoint: ArrayBuffer;
+      operationRequest: OperationRequest | ContextOperationRequest;
+      /** Echo of the captured `run.workflowRevision` (WFT-20) — see that field's doc. */
+      workflowRevision?: string;
+    }
+  | {
+      type: 'completed';
+      protocolVersion?: number;
+      turnId?: number;
+      workflowId: WorkflowId;
+      result: unknown;
+      /** Echo of the captured `run.workflowRevision` (WFT-20) — see that field's doc. */
+      workflowRevision?: string;
+    }
+  | {
+      type: 'failed';
+      protocolVersion?: number;
+      turnId?: number;
+      workflowId: WorkflowId;
+      error: string;
+      errorStack?: string;
+      /** Populated when the execution strategy can classify the failure cause. */
+      failureCategory?: FailureCategory;
+      /** Echo of the captured `run.workflowRevision` (WFT-20) — see that field's doc. */
+      workflowRevision?: string;
+    }
+  | {
+      /**
+       * A `ctx.log` record forwarded from a worker to the engine host's
+       * `EngineOptions.onLog` sink (#529). Unlike the other variants, `log` is a
+       * NON-TERMINAL, best-effort observability message: it carries no turn-protocol
+       * state, never settles or clears the worker turn, and never reaches the strict
+       * accept-or-discard gate. The host delivers a record to the sink IFF the sending
+       * worker owns `workflowId` (active or parked) AND `record.workflowId` matches the
+       * envelope AND the record is a structurally valid `WorkflowLogRecord` within the
+       * size cap; otherwise the record is dropped — a wrong-owner, malformed, oversize,
+       * or out-of-turn `log` is never a protocol violation and never discards the
+       * worker. A between-turns self-log (a fire-and-forget log resolving while the
+       * worker is parked) IS delivered, because the worker still owns its parked
+       * workflow. The worker emits these only when the inbound message reported
+       * `hostHasLogSink: true`.
+       */
+      type: 'log';
+      protocolVersion?: number;
+      workflowId: WorkflowId;
+      record: WorkflowLogRecord;
+    };

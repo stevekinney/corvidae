@@ -1,0 +1,365 @@
+/**
+ * Drift test for packages/cinder/documentation/tokens.md.
+ *
+ * Since CIN-30, packages/cinder/documentation/tokens.md's token tables are GENERATED (see
+ * `generate-artifacts.ts`) from the DTCG corpus at `src/tokens/`, between
+ * `<!-- BEGIN/END GENERATED TOKEN TABLE -->` markers -- `tokens:generate
+ * -- --check` already fails on any drift between the committed doc and a
+ * fresh generation. This test's value-drift check reads the same corpus data
+ * the generator does (not `tokens-base.css`, and not by shelling out to the
+ * generator itself) as an independent, faster-to-diagnose cross-check: it
+ * fails with a clear per-token diff rather than the generator's file-level
+ * "drifted, regenerate" error. The other test in this file (focus-ring-policy
+ * and theming doc references) is unrelated to CIN-30 and unchanged.
+ *
+ * Test files may use `any` per project conventions.
+ */
+
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import { describe, expect, test } from 'bun:test';
+
+import { loadCorpus } from '../../scripts/tokens/generate.ts';
+import {
+  buildBaseDocuments,
+  buildBaseIndex,
+  buildTokenRegistryFromIndexes,
+  themeAwarePaths,
+} from '../../scripts/tokens/registry.ts';
+import { createValueResolver } from '../../scripts/tokens/resolve.ts';
+import { serializeEntryValue } from '../../scripts/tokens/value-entry.ts';
+import { readRootTokenValues } from '../test/token-introspection.ts';
+
+const PACKAGE_ROOT = join(import.meta.dir, '..', '..');
+const TOKENS_CSS = join(PACKAGE_ROOT, 'src', 'styles', 'tokens-base.css');
+const TOKENS_DOC = join(PACKAGE_ROOT, 'documentation', 'tokens.md');
+const FOCUS_RING_POLICY_DOC = join(PACKAGE_ROOT, 'documentation', 'focus-ring-policy.md');
+const THEMING_DOC = join(PACKAGE_ROOT, 'documentation', 'theming.md');
+
+/**
+ * The corpus's own view of "every base token's `:root` value", built the
+ * same way `generate-artifacts.ts` builds it for documentation/tokens.md's "Default"
+ * column -- `buildBaseIndex` (Stage 4's `baseIndex`, factored out to
+ * `registry.ts`) plus a resolver over the same base documents, so a
+ * mismatch here means the doc and the corpus disagree, not that this test's
+ * own derivation differs from the generator's.
+ */
+async function readCorpusTokenValues(): Promise<Map<string, string>> {
+  const { resolver, documentsByPath } = await loadCorpus();
+  const baseIndex = buildBaseIndex(resolver, documentsByPath);
+  const baseDocuments = buildBaseDocuments(resolver, documentsByPath);
+  const resolveReferences = createValueResolver(baseDocuments);
+  const registry = buildTokenRegistryFromIndexes(
+    baseIndex,
+    themeAwarePaths(resolver, documentsByPath),
+  );
+
+  const values = new Map<string, string>();
+  for (const entry of registry.entries) {
+    const corpusEntry = baseIndex.get(entry.path)!;
+    values.set(entry.cssProperty, serializeEntryValue(corpusEntry, baseIndex, resolveReferences));
+  }
+  return values;
+}
+
+function appendUnquotedCharacter(
+  normalized: string,
+  whitespace: boolean,
+  character: string,
+): { normalized: string; whitespace: boolean } {
+  let next = normalized;
+  if (character === ',' || character === ')') next = next.trimEnd();
+  else if (whitespace && next.length > 0 && !/[(),]$/.test(next)) next += ' ';
+  return { normalized: next + character, whitespace: false };
+}
+
+function normalizeTokenValue(value: string): string {
+  let normalized = '';
+  let quote: '"' | "'" | undefined;
+  let whitespace = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (quote !== undefined) {
+      normalized += character;
+      if (character === quote && value[index - 1] !== '\\') quote = undefined;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      if (whitespace && normalized.length > 0) normalized += ' ';
+      whitespace = false;
+      quote = character;
+      normalized += character;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      whitespace = true;
+      continue;
+    }
+    const next = appendUnquotedCharacter(normalized, whitespace, character);
+    normalized = next.normalized;
+    whitespace = next.whitespace;
+  }
+  return normalized.trim();
+}
+
+function extractDocTokens(markdown: string): { duplicates: string[]; tokens: Map<string, string> } {
+  // Doc lists tokens as inline code in table rows: `` `--cinder-space-4` ``.
+  // We deliberately only count tokens that appear inside backticks at the start
+  // of a table cell (i.e. `| \`--cinder-...\``) so that incidental mentions in
+  // prose (e.g. "override `--cinder-accent-solid` to re-derive both") don't count.
+  const tokens = new Map<string, string>();
+  const duplicates: string[] = [];
+  // Matches internal `--_cinder-*` tokens as well as public `--cinder-*` ones:
+  // the corpus side of this comparison reads every registry entry, and the docs
+  // generator emits a row for each, so a narrower pattern here would report a
+  // correctly generated internal token as missing from the doc.
+  // The value's code-span delimiter is a backtick RUN whose length depends on the
+  // value (see toCodeSpan in generate-artifacts.ts), so match it with a
+  // backreference rather than assuming one backtick -- otherwise a value
+  // containing a backtick parses truncated and reports a false mismatch.
+  const rowPattern =
+    /^\|\s*`(--_?cinder-[a-z0-9-]+)`\s*\|\s*(?:(`+)(.+?)\2|<code>(.*?)<\/code>|((?:\\.|[^|])*?))\s*\|/gm;
+  for (const match of markdown.matchAll(rowPattern)) {
+    if (!match[1]) continue;
+    if (tokens.has(match[1])) duplicates.push(match[1]);
+    // Undo the generator's Markdown-table pipe escaping before comparing. The
+    // generator's `toTableCell` (generate-artifacts.ts) doubles the run of
+    // backslashes immediately preceding each `|` before appending the
+    // escaping backslash -- a run of `k` backslashes becomes `2k + 1` -- so
+    // that it is losslessly invertible for ANY corpus value, not just ones
+    // with no pre-existing backslash before a pipe. This is the exact inverse:
+    // a run of `m` backslashes (always odd -- GFM's left-to-right pairing
+    // always reads the trailing one as escaping the pipe) recovers `(m - 1) /
+    // 2` original backslashes plus the literal pipe.
+    // match[3] is the span body; strip the single space of padding toCodeSpan adds
+    // when the content starts or ends with a backtick, then undo pipe escaping.
+    const markdownBody = match[3];
+    const htmlBody = match[4];
+    const fallbackBody = match[5];
+    let decoded: string;
+    if (markdownBody !== undefined) {
+      // Markdown code spans contain the generator's backslash-doubled table
+      // escapes. Validate and decode this raw text before doing anything else;
+      // entity decoding here would turn a literal `&#124;` into a pipe and make
+      // it look like a malformed table delimiter.
+      const body = markdownBody.replace(/^ (?=`)/, '').replace(/(?<=`) $/, '');
+      const evenRunPipe = /(?<!\\)(?:\\\\)*\|/.exec(body);
+      if (evenRunPipe)
+        throw new Error(
+          `${match[1]}: doc table cell has an unescaped pipe (even backslash run) at index ` +
+            `${evenRunPipe.index} -- malformed row, not a valid encoder output: ${JSON.stringify(body)}`,
+        );
+      decoded = body.replace(
+        /(\\*)\|/g,
+        (_match, backslashes: string) => '\\'.repeat(Math.floor(backslashes.length / 2)) + '|',
+      );
+    } else if (htmlBody !== undefined) {
+      // The HTML fallback is the only branch whose content is entity-escaped.
+      // Decode after branch selection so decoded `&#124;` cannot be mistaken for
+      // a raw Markdown table delimiter by the invariant above.
+      decoded = htmlBody
+        .replace(/&#(?:x([0-9a-f]+)|(\d+));/gi, (_entity, hex: string, decimal: string) =>
+          String.fromCodePoint(Number.parseInt(hex ?? decimal, hex ? 16 : 10)),
+        )
+        .replaceAll('&quot;', '"')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&amp;', '&')
+        // Prettier normalizes numeric entities for asterisks and underscores
+        // to Markdown backslash escapes even inside inline HTML. Undo that
+        // formatting-only representation so the corpus value round-trips.
+        .replace(/\\([*_])/g, '$1');
+    } else {
+      decoded = (fallbackBody ?? '').replace(
+        /(\\*)\|/g,
+        (_match, backslashes: string) => '\\'.repeat(Math.floor(backslashes.length / 2)) + '|',
+      );
+    }
+    tokens.set(match[1], normalizeTokenValue(decoded));
+  }
+  return { duplicates: duplicates.toSorted(), tokens };
+}
+
+function expectFocusRingReferences(markdown: string, tokens: ReadonlyMap<string, string>): void {
+  const references = extractDocTokens(markdown);
+  expect(references.duplicates).toEqual([]);
+  for (const token of [
+    '--cinder-ring-width',
+    '--cinder-ring-offset',
+    '--cinder-ring-offset-color',
+  ]) {
+    const expected = tokens.get(token);
+    expect(expected).toBeDefined();
+    expect(references.tokens.get(token), token).toBe(expected);
+  }
+}
+
+describe('documentation/tokens.md drift', () => {
+  test('documents exactly the tokens declared in the corpus', async () => {
+    const [corpusTokens, doc] = await Promise.all([
+      readCorpusTokenValues(),
+      readFile(TOKENS_DOC, 'utf8'),
+    ]);
+
+    const { duplicates, tokens: docTokens } = extractDocTokens(doc);
+
+    // Sanity floor: a parser regression that silently returns a tiny set would
+    // otherwise show up as a confusing "missing from corpus: [137 tokens]" diff
+    // rather than a clear "the parser broke" signal. The real count sits well
+    // above 100; 50 leaves room to delete tokens without lowering this floor.
+    expect(corpusTokens.size).toBeGreaterThan(50);
+    expect(docTokens.size).toBeGreaterThan(50);
+
+    const missingFromDoc = [...corpusTokens.keys()]
+      .filter((token) => !docTokens.has(token))
+      .toSorted();
+    const missingFromCorpus = [...docTokens.keys()]
+      .filter((token) => !corpusTokens.has(token))
+      .toSorted();
+    const mismatchedValues = [...corpusTokens]
+      .flatMap(([token, value]) => {
+        const documented = docTokens.get(token);
+        return documented === undefined || documented === normalizeTokenValue(value)
+          ? []
+          : [`${token}: docs=${documented} source=${normalizeTokenValue(value)}`];
+      })
+      .toSorted();
+
+    expect({ duplicates, missingFromDoc, missingFromCorpus, mismatchedValues }).toEqual({
+      duplicates: [],
+      missingFromDoc: [],
+      missingFromCorpus: [],
+      mismatchedValues: [],
+    });
+  });
+
+  test('extractDocTokens fails loudly on a malformed row with an unescaped (even-run) pipe', () => {
+    // The encoder always produces an ODD backslash run before an escaped
+    // pipe (2k + 1 for any k >= 0). A cell body containing a pipe preceded
+    // by an EVEN run (0, 2, ...) could never come from correctly generated
+    // output -- decoding it anyway would silently accept a malformed row and
+    // could mask a future regression in the encoder's own pipe escaping.
+    const zeroBackslashes = '| `--cinder-example` | `foo|bar` |\n';
+    expect(() => extractDocTokens(zeroBackslashes)).toThrow(/unescaped pipe/);
+
+    const evenBackslashes = '| `--cinder-example` | `foo\\\\|bar` |\n';
+    expect(() => extractDocTokens(evenBackslashes)).toThrow(/unescaped pipe/);
+
+    // The legitimate, correctly-encoded form (odd run) must still decode
+    // without throwing.
+    const oddBackslashes = '| `--cinder-example` | `foo\\|bar` |\n';
+    expect(() => extractDocTokens(oddBackslashes)).not.toThrow();
+    expect(extractDocTokens(oddBackslashes).tokens.get('--cinder-example')).toBe(
+      normalizeTokenValue('foo|bar'),
+    );
+  });
+
+  test('keeps Markdown entity text literal and decodes entities only in HTML code fallback', () => {
+    const markdown = '| `--cinder-markdown` | `literal &#x7c; &#124; &amp;` |\n';
+    const html = '| `--cinder-html` | <code>literal &#124; &amp;</code> |\n';
+
+    expect(extractDocTokens(markdown).tokens.get('--cinder-markdown')).toBe(
+      'literal &#x7c; &#124; &amp;',
+    );
+    expect(extractDocTokens(html).tokens.get('--cinder-html')).toBe('literal | &');
+  });
+
+  test('preserves a literal backslash before a pipe in the HTML code fallback', () => {
+    const html = '| `--cinder-html` | <code>literal \\&#x7c; value</code> |\n';
+    expect(extractDocTokens(html).tokens.get('--cinder-html')).toBe('literal \\| value');
+  });
+
+  test('decodes formatter escapes inside the HTML code fallback', () => {
+    const html = '| `--cinder-markdown` | <code>\\*A\\*&#x7c;\\_B\\_&#126;C&#126;</code> |\n';
+    expect(extractDocTokens(html).tokens.get('--cinder-markdown')).toBe('*A*|_B_~C~');
+  });
+
+  describe('focused guide token references', () => {
+    const values = new Map([
+      ['--cinder-ring-width', '2px'],
+      ['--cinder-ring-offset', '2px'],
+      ['--cinder-ring-offset-color', 'var(--cinder-surface-raised)'],
+    ]);
+    const compact = [...values]
+      .map(([name, value]) => `| \`${name}\` | \`${value}\` | role |`)
+      .join('\n');
+
+    test('accepts compact Markdown tables produced by the root formatter', () => {
+      expectFocusRingReferences(compact, values);
+    });
+
+    test('accepts padded Markdown columns without changing token values', () => {
+      const padded = compact.replaceAll('` |', '`        |');
+      expectFocusRingReferences(padded, values);
+    });
+
+    test('rejects an incorrect token value', () => {
+      expect(() => expectFocusRingReferences(compact.replace('`2px`', '`3px`'), values)).toThrow();
+    });
+
+    test('rejects a missing required token row', () => {
+      const missing = compact.split('\n').slice(1).join('\n');
+      expect(() => expectFocusRingReferences(missing, values)).toThrow();
+    });
+
+    test('rejects a value mentioned outside its required token row', () => {
+      const misplaced =
+        compact.replace('`var(--cinder-surface-raised)`', '`transparent`') +
+        '\n`var(--cinder-surface-raised)`';
+      expect(() => expectFocusRingReferences(misplaced, values)).toThrow();
+    });
+
+    test('rejects duplicate token rows', () => {
+      expect(() => expectFocusRingReferences(compact + '\n' + compact, values)).toThrow();
+    });
+  });
+
+  test('keeps exact token references in focused guides current', async () => {
+    const [css, focusRingPolicy, theming] = await Promise.all([
+      readFile(TOKENS_CSS, 'utf8'),
+      readFile(FOCUS_RING_POLICY_DOC, 'utf8'),
+      readFile(THEMING_DOC, 'utf8'),
+    ]);
+    const tokens = readRootTokenValues(css);
+    const value = (token: string) => {
+      const resolved = tokens.get(token);
+      expect(resolved).toBeDefined();
+      return resolved!;
+    };
+
+    expectFocusRingReferences(focusRingPolicy, tokens);
+
+    const scopedThemeBlock = (theme: 'light' | 'dark') => {
+      const block = theming.match(
+        new RegExp(`^  \\[data-theme='${theme}'\\] \\{([\\s\\S]*?)\\n  \\}`, 'm'),
+      )?.[1];
+      expect(block).toBeDefined();
+      return block!;
+    };
+    const darkTheme = scopedThemeBlock('dark');
+    const lightTheme = scopedThemeBlock('light');
+
+    for (const token of [
+      '--cinder-surface',
+      '--cinder-surface-raised',
+      '--cinder-text-default',
+      // `--cinder-border-ink`, not `--cinder-border`: since CIN-245 the three
+      // structural tiers are one arm-independent `color-mix()` over the ink, so
+      // the ink is the token that carries the two theme arms and the one a
+      // scoped-theme example has to redeclare.
+      '--cinder-border-ink',
+      '--cinder-accent-solid',
+    ]) {
+      const [light, dark] =
+        value(token)
+          .match(/^light-dark\((.*),(.*)\)$/)
+          ?.slice(1)
+          .map((arm) => arm.trim()) ?? [];
+      expect(light).toBeDefined();
+      expect(dark).toBeDefined();
+      expect(lightTheme).toContain(`${token}: ${light};`);
+      expect(darkTheme).toContain(`${token}: ${dark};`);
+    }
+  });
+});

@@ -1,0 +1,708 @@
+import type { AnyToolbox, HeadlessPermissionPolicyConfiguration, Tool } from '@repo/armorer';
+import { createHeadlessPermissionPolicyHooks, createToolbox } from '@repo/armorer';
+import { Conversation } from '@repo/conversationalist';
+import type { RuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { ZodType } from 'zod';
+
+import type { AgentRun } from './agent-run';
+import { createAgentRun } from './agent-run';
+import { noToolCalls } from './conditions/predicates';
+import { createActiveRun } from './create-run';
+import type { AgentGenerationProfile, AgentPreferences } from './generation-profile';
+import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
+import type { ProviderName } from './providers/types';
+import type { AgentRunContext, DefinitionResolvingAgent } from './runnable-agent';
+import { OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
+import { toOutputJsonSchema } from './structured-output/response-schema';
+import type {
+  ContextManagementOptions,
+  ConversationHistory,
+  GenerateFunction,
+  OperativeExecuteOptions,
+  RetryOptions,
+  RunOptions,
+  StopCondition,
+} from './types';
+
+// ---------------------------------------------------------------------------
+// CreateAgentOptions — the options bag
+//
+// `generate` is REQUIRED here (no bureau to inherit a provider from).
+// `tools` is a name-keyed map: the map KEY is canonical, not the tool's
+// inner `.name` (map-form avoids the `.name`-disagreement authoring bug).
+// ---------------------------------------------------------------------------
+
+/**
+ * Fields shared by every `CreateAgentOptions` tool-configuration variant.
+ * Split out from `CreateAgentOptions` so the exclusive tool-configuration
+ * union below can be intersected with it.
+ */
+export interface CreateAgentOptionsBase {
+  /**
+   * The LLM provider function. REQUIRED — no bureau to inherit from.
+   * Receives a `GenerateContext` and returns a `GenerateResponse`.
+   */
+  generate: GenerateFunction;
+
+  /**
+   * Identifies this agent — stamped on curated `tool.*` bubble events
+   * (`AgentRunContext.agentName`'s standalone-path default) and populates
+   * the returned agent's `RunnableAgent.name`. Optional here (unlike the
+   * final `RunnableAgent` contract, where AB-15 makes it required): a
+   * `createAgent` result already satisfies `RunnableAgent<O, H>`
+   * structurally without one, defaulting to `'(agent)'`.
+   */
+  name?: string | undefined;
+
+  /**
+   * System instructions injected as a system message on step 0.
+   * Prepended to every run started by this agent.
+   */
+  instructions?: string | undefined;
+
+  /**
+   * Stop conditions checked after each step.
+   *
+   * Defaults to `stopWhen.noToolCalls()` when omitted — `createAgent` (unlike
+   * the lower-level `createActiveRun`, which never applies a default) has no
+   * caller to fall back on, and a run with no stop condition at all runs
+   * every step to `maximumSteps` (`DEFAULT_MAXIMUM_STEPS`, 25) before
+   * exiting with `finishReason: 'maximum-steps'`. For a plain text-in/
+   * text-out agent this default is exactly "stop once the model replies
+   * without calling a tool" — pass an explicit `stopWhen` (including
+   * `stopWhen.toolCalled(...)` for agents that MUST end on a tool call, e.g.
+   * `createHandoffTool`) to override it.
+   */
+  stopWhen?: (StopCondition | StopCondition[]) | undefined;
+
+  /** Hard cap on the number of steps before the loop exits. */
+  maximumSteps?: number | undefined;
+
+  /** Options forwarded to toolbox.execute() within the loop. */
+  executeOptions?: OperativeExecuteOptions | undefined;
+
+  /** Retry configuration for transient generate failures. */
+  retry?: RetryOptions | undefined;
+
+  /** Context window management (compaction). */
+  contextManagement?: ContextManagementOptions | undefined;
+
+  /**
+   * Zod schema for the validated terminal `output` value (AB-18) — the
+   * single validated output contract. Drives type inference
+   * (`z.output<typeof schema>`), the provider-native JSON Schema sent to the
+   * model, and runtime validation of the model's final text. There is no
+   * separate `responseSchema`/`responseJsonSchema` pair and no non-Zod
+   * Standard Schema branch.
+   *
+   * MUST NOT declare a field intended to carry binary or media content
+   * (AB-70's amendment to this issue) — `output` is JSON-only, and a
+   * generated asset a run produces belongs in `RunResult.parts` as a
+   * managed-asset reference part, never inlined as base64 here.
+   */
+  output?: ZodType | undefined;
+
+  /**
+   * The Agent-requirements-and-preferences layer of AB-64's precedence
+   * model (AB-245). Populates the returned agent's
+   * `generationProfile.preferences` verbatim; consumed by AB-66's
+   * not-yet-built selector, never by this function.
+   */
+  generationPreferences?: AgentPreferences | undefined;
+
+  /**
+   * Candidates a future selector (AB-66) may choose among. Supplying this
+   * promotes the returned agent's `generationProfile.mode` to `'selectable'`
+   * regardless of how many `BackendDescriptor`s `generate` itself carries.
+   * `generationProfile.selector` still always reads `'unavailable'` here —
+   * a `createAgent` agent has no Bureau, no policy configuration, and no
+   * catalog, so it can never select (AB-64's verification walk).
+   */
+  allowedCandidates?:
+    readonly { readonly provider: ProviderName; readonly model: string }[] | undefined;
+
+  /**
+   * The AB-92/AB-252 injectable runtime-service seam: wall time, monotonic
+   * time, timers, identifiers, randomness, and deferred-work tracking.
+   * `createAgent` resolves `options.runtime ?? createDefaultRuntimeServices()`
+   * exactly once, at agent construction, and passes the SAME resolved
+   * instance into every run this agent starts — two runs from one agent
+   * share one clock; two agents never share one. Unconfigured (the
+   * default), a run reads the real globals; a test composes its own
+   * deterministic instance with `createManualRuntimeServices()` from
+   * `@repo/operative`.
+   */
+  runtime?: RuntimeServices | undefined;
+}
+
+/**
+ * The exclusive tool-configuration surface of `CreateAgentOptions`. Encodes
+ * the runtime-enforced exclusivity at the type level: `toolbox` is exclusive
+ * with BOTH `tools` and `permissions`, which may otherwise be combined
+ * freely (including "neither" — no tool configuration at all) —
+ * `tools`/`permissions` combined with `toolbox` is a type error, not just a
+ * runtime throw.
+ *
+ * Deliberately just two variants, not one per row of the accepted matrix
+ * ("no tool configuration", `tools`, `permissions`, `tools` + `permissions`,
+ * `toolbox`): a caller commonly forwards an already-optional value, e.g.
+ * `const tools: Record<string, Tool> | undefined = maybeTools();
+ * createAgent({ generate, tools })`. A one-variant-per-row union rejects
+ * that — `tools: X | undefined` doesn't structurally match either "tools
+ * required" or "tools absent". Widening `tools` and `permissions` to
+ * `T | undefined` within a single non-toolbox variant accepts every
+ * combination of "present, absent, or explicitly undefined" for both at
+ * once, while the separate toolbox variant still excludes both.
+ *
+ * The excluded `toolbox`/`tools`/`permissions` fields in each variant are
+ * typed `?: undefined` rather than omitted, so an explicitly `undefined`
+ * value (e.g. `{ toolbox, tools: undefined }`) is still accepted —
+ * `undefined` is treated as omitted, matching the runtime guards in
+ * `validateCreateAgentOptions`. `?: undefined` (rather than `?: never`)
+ * keeps this true even under `exactOptionalPropertyTypes: true`, where an
+ * optional property no longer implicitly includes `undefined` — this repo
+ * currently disables that flag (`tsconfig.base.json`), but the excluded
+ * fields don't depend on it either way.
+ */
+export type CreateAgentToolConfiguration =
+  | {
+      tools?: Record<string, Tool> | undefined;
+      toolbox?: undefined;
+      permissions?: HeadlessPermissionPolicyConfiguration | undefined;
+    }
+  | { tools?: undefined; toolbox: AnyToolbox; permissions?: undefined };
+
+/**
+ * Options for `createAgent({...})`. Distinct from the old `DefineAgentOptions`
+ * (which requires a `toolbox`). Here `tools` is a name-keyed map and `generate`
+ * is unconditionally required — there is no bureau to inherit a provider from.
+ *
+ * The tool-configuration fields (`tools`, `toolbox`, `permissions`) are
+ * mutually exclusive along the axes documented on
+ * `CreateAgentToolConfiguration`:
+ *
+ * - `tools` — agent tools as a name-keyed map. The map key is the canonical
+ *   tool name; the tool's own `.name` property is ignored (key wins).
+ *   Optional — an agent with no tools is valid for pure-generation tasks.
+ *   Mutually exclusive with `toolbox`.
+ * - `toolbox` — a pre-built `Toolbox` instance, used as-is for every run
+ *   started by this agent. Mutually exclusive with `tools` (which composes a
+ *   fresh internal toolbox instead) and with `permissions` (which configures
+ *   a toolbox this factory builds itself).
+ *
+ *   Unlike `tools`, a `toolbox` you pass here is NOT rebuilt per run — every
+ *   `run()` call shares this exact instance. Armorer's cross-request approval
+ *   flow additionally requires versioned tools, request-scoped authority in
+ *   `executeOptions.requestContext`, the same authority re-authenticated when
+ *   calling `toolbox.resumeApproval()`, and approval state shared between the
+ *   issuing and resuming toolbox. A module-scoped toolbox supplies process-local
+ *   state; multi-process or restart-safe hosts must configure the same durable
+ *   `ApprovalStateStore` and `approvalSecret` on every toolbox instance.
+ *
+ *   Because the instance is shared, concurrent runs against the same
+ *   `StandaloneAgent` will cross-fire each other's toolbox events and share
+ *   budget/loop-detection counters — the same tradeoff as constructing the
+ *   toolbox yourself and reusing it. If you don't need cross-run state
+ *   (approvals, budgets), use `tools` instead for per-run isolation.
+ * - `permissions` — headless deny-by-default permission mode (AB-94,
+ *   armorer's `createHeadlessPermissionPolicyHooks`). When set, every tool
+ *   call is checked against an explicit allowlist/denylist and an optional
+ *   capability-tier policy and synchronous per-call gate — anything unlisted
+ *   or that would otherwise require human approval is denied outright (this
+ *   run never parks on a human). A denial feeds the model a tool-error
+ *   result and the loop continues; it never throws and never terminates the
+ *   run.
+ *
+ *   For the opposite mode — parking on a pending approval instead of denying
+ *   it — pass a pre-built `toolbox` (with its own approval policy) and use
+ *   `stopWhen: stopWhen.pendingApproval()`. `permissions` only configures a
+ *   toolbox this factory builds itself, so it's mutually exclusive with
+ *   `toolbox`.
+ *
+ * This is a `type` (intersecting `CreateAgentOptionsBase` with the
+ * `CreateAgentToolConfiguration` union), not an `interface`, as of AB-16 —
+ * enforcing exclusivity requires a union, and TypeScript interfaces can't
+ * `extends` a type containing a union, nor declaration-merge into one. A
+ * consumer that previously wrote `interface MyOptions extends
+ * CreateAgentOptions` for the full options bag needs `MyOptions =
+ * CreateAgentOptions & { ... }` instead; extending or declaration-merging
+ * onto just the non-exclusive fields still works via the separately
+ * exported `CreateAgentOptionsBase` interface.
+ */
+export type CreateAgentOptions = CreateAgentOptionsBase & CreateAgentToolConfiguration;
+
+/**
+ * Defensively copies and deep-freezes `preferences` before it becomes part
+ * of the cached, frozen `generationProfile` snapshot. `Object.freeze` on the
+ * profile object alone is shallow — without this, a caller holding the same
+ * `AgentPreferences` object (or one of its array fields) it passed to
+ * `generationPreferences` could mutate it after `createAgent()` returns and
+ * retroactively change what the already-constructed agent reports.
+ */
+function freezeGenerationPreferences(preferences: AgentPreferences): AgentPreferences {
+  return Object.freeze({
+    ...(preferences.requiredCapabilities
+      ? { requiredCapabilities: Object.freeze([...preferences.requiredCapabilities]) }
+      : {}),
+    ...(preferences.preferredProviders
+      ? { preferredProviders: Object.freeze([...preferences.preferredProviders]) }
+      : {}),
+    ...(preferences.preferredModels
+      ? { preferredModels: Object.freeze([...preferences.preferredModels]) }
+      : {}),
+    ...(preferences.minimumContextWindowTokens !== undefined
+      ? { minimumContextWindowTokens: preferences.minimumContextWindowTokens }
+      : {}),
+  });
+}
+
+/** Same rationale as {@link freezeGenerationPreferences}, for `allowedCandidates`. */
+function freezeAllowedCandidates(
+  candidates: NonNullable<CreateAgentOptionsBase['allowedCandidates']>,
+): NonNullable<CreateAgentOptionsBase['allowedCandidates']> {
+  return Object.freeze(candidates.map((candidate) => Object.freeze({ ...candidate })));
+}
+
+/**
+ * Validates the mutually-exclusive option combinations in
+ * `CreateAgentOptions` once, at `createAgent()` call time (not per-run).
+ */
+function validateCreateAgentOptions(options: CreateAgentOptions): void {
+  if (options.tools && options.toolbox) {
+    throw new Error(
+      'createAgent: `tools` and `toolbox` are mutually exclusive. Pass `tools` for a fresh, ' +
+        'per-run internal toolbox, or `toolbox` to use a pre-built Toolbox instance as-is across ' +
+        "every run (required for armorer's cross-request approval flow, where " +
+        '`toolbox.resumeApproval` must share the same `approvalSecret` that minted the pending ' +
+        'approval).',
+    );
+  }
+
+  if (options.toolbox && options.permissions) {
+    throw new Error(
+      'createAgent: `permissions` configures a freshly-built internal toolbox and cannot be ' +
+        'combined with `toolbox` (a pre-built Toolbox instance already owns its own policy and ' +
+        'hooks). Configure permissions directly on the toolbox you pass, via ' +
+        '`createHeadlessPermissionPolicyHooks`, instead.',
+    );
+  }
+
+  // AB-18: an unrepresentable `output` schema fails FAST, synchronously, at
+  // `createAgent()` call time — not on `await run.result()` after a run has
+  // already started. `toOutputJsonSchema` throws `OutputSchemaConversionError`
+  // for a schema `z.toJSONSchema` can't convert; its result is discarded here
+  // (the loop recomputes it per run via `resolveResponseFormat`, a cheap
+  // re-derivation once this guard has already proven the schema convertible).
+  if (options.output) {
+    toOutputJsonSchema(options.output);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// StandaloneAgent — the runtime agent returned by createAgent()
+//
+// NOT a `RunnableAgent` from the deleted synchronous builder chain (AB-22).
+// The runtime object just needs `.run()`.
+// ---------------------------------------------------------------------------
+
+/**
+ * The runtime agent returned by `createAgent({...})`. Bureau-less, in-memory
+ * only. Calling `.run(input)` starts a new ephemeral run each time.
+ */
+export interface StandaloneAgent<
+  O = never,
+  H extends boolean = false,
+> extends DefinitionResolvingAgent {
+  /**
+   * This agent's identity — `options.name`, defaulting to `'(agent)'` when
+   * omitted. Makes a `createAgent` result structurally satisfy
+   * `RunnableAgent<O, H>` (AB-21), so it can be passed to `createLazyAgent`
+   * or placed in an `AgentDefinitions` map without a cast.
+   */
+  readonly name: string;
+
+  /**
+   * A runtime witness for `H` (AB-234) — `output !== undefined` in the
+   * options this agent was created with. See `RunnableAgent.hasOutput`'s
+   * doc comment (`runnable-agent.ts`) for why this exists alongside the
+   * compile-time-only `H` parameter.
+   */
+  readonly hasOutput: boolean;
+
+  /**
+   * This agent's immutable generation-capability snapshot (AB-64, AB-245),
+   * computed once at `createAgent()` call time from `options.generate`'s
+   * attached `BackendDescriptor`(s): `'fixed'` for exactly one, `'routed'`
+   * for more than one, `'opaque'` for none — promoted to `'selectable'`
+   * when `options.allowedCandidates` was supplied. Read it with
+   * `readGenerationProfile(agent)` rather than this field directly.
+   */
+  readonly generationProfile: AgentGenerationProfile;
+
+  /**
+   * Start a new in-memory run.
+   *
+   * - `run('some text')` starts a fresh conversation: `instructions` (if
+   *   given) is appended as a system message, followed by `input` as a user
+   *   message.
+   * - `run({ conversation })` starts the loop from an existing
+   *   `ConversationHistory` — the shape a stateless HTTP chat host holds
+   *   between requests. The history is SNAPSHOTTED: this run CLONES it
+   *   before wrapping it in a fresh internal `Conversation`, so the run's
+   *   state and the caller's `ConversationHistory` object are independent
+   *   from the moment `run()` is called — the run never mutates the
+   *   caller's object, and later mutations by the caller (a stateless host
+   *   commonly holds a mutable reference it keeps touching between turns)
+   *   never affect an in-flight run. This matches the durable path's
+   *   existing snapshot semantics. `instructions` is NOT re-appended in
+   *   this form — the supplied history is assumed to already carry
+   *   whatever system context it needs, so resuming it repeatedly never
+   *   duplicates system messages.
+   *
+   * `context` (AB-21's `AgentRunContext`) is optional, matching
+   * `RunnableAgent.run`: `signal` becomes `RunOptions.signal`, `agentName`
+   * overrides the run's stamped agent name, `traceContext` becomes
+   * `RunOptions.parentContext`, and `withTraceContext` is forwarded as-is.
+   *
+   * Returns an `AgentRun` handle — NOT a Promise (non-thenable by design).
+   * Access the result via `handle.result()`.
+   *
+   * Declared as a property-typed function, not method shorthand — see
+   * `RunnableAgent.run`'s doc comment (`runnable-agent.ts`) for why.
+   */
+  run: (
+    input: string | { conversation: ConversationHistory },
+    context?: AgentRunContext,
+  ) => AgentRun<O, H>;
+}
+
+// Re-export AgentRun from agent-run.ts so callers who import from create-agent
+// still get the canonical type.
+export type { AgentRun };
+
+// ---------------------------------------------------------------------------
+// createAgent — the public factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a standalone, bureau-less agent. `generate` is required — there is
+ * no bureau to inherit a provider from. Runs are in-memory and ephemeral;
+ * there is no durability, no session, no shared memory.
+ *
+ * For bureau-owned agents (with shared tools, hooks, memory, and durability),
+ * use `bureau.agent({...})` instead (Phase E).
+ *
+ * @example
+ * ```ts
+ * const agent = createAgent({
+ *   generate: myProvider,
+ *   instructions: 'You are a research assistant.',
+ *   tools: { search: searchTool },
+ * });
+ *
+ * const run = agent.run('Summarize the Q3 report.');
+ * for await (const event of run) { ... }  // iterate, OR
+ * const result = await run.result();       // await — same handle
+ * ```
+ *
+ * @example Stateless chat host with a shared toolbox and park-on-approval
+ * ```ts
+ * import { createToolbox } from '@repo/armorer';
+ * import { createAgent, stopWhen } from '@repo/operative';
+ *
+ * // Built once for this process. This example requires both HTTP requests to
+ * // reach this toolbox instance. Multi-process or restart-safe hosts must also
+ * // configure every toolbox with the same durable ApprovalStateStore.
+ * // Approval-gated tools must declare a stable version, for example `version: '1'`.
+ * const toolbox = createToolbox([deleteFileTool], {
+ *   approvalPolicy: { mode: 'on-mutation' },
+ *   approvalSecret: Bun.env['APPROVAL_SECRET'],
+ * });
+ *
+ * const requestContext = {
+ *   authority: {
+ *     principalId: currentUser.id,
+ *     tenantId: currentTenant.id,
+ *     ownerId: currentSession.id,
+ *     capabilities: currentAuthorization.capabilities,
+ *     authorizationRevision: currentAuthorization.revision,
+ *   },
+ *   audience: 'tenant',
+ *   agentId,
+ *   runId,
+ * } as const;
+ *
+ * const agent = createAgent({
+ *   generate: myProvider,
+ *   toolbox,
+ *   executeOptions: { requestContext },
+ *   // Combined with noToolCalls(): pendingApproval() alone never stops a
+ *   // normal, no-tool-call turn, so a plain text reply would otherwise run
+ *   // to maximumSteps instead of finishing.
+ *   stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
+ * });
+ *
+ * // Turn 1: run from the client-POSTed history.
+ * const run = agent.run({ conversation: clientHistory });
+ * const result = await run.result();
+ * const pending = result.steps.at(-1)?.results.find((r) => r.pendingApproval)?.pendingApproval;
+ * // ...send `pending` to a human, store `result.conversation.current` server-side...
+ *
+ * // Later, authenticate the approval request and build a fresh context with
+ * // the same bound identity fields. Do not reuse an expired request deadline.
+ * const approvalRequestContext = {
+ *   authority: {
+ *     principalId: approvalUser.id,
+ *     tenantId: approvalTenant.id,
+ *     ownerId: approvalSession.id,
+ *     capabilities: approvalAuthorization.capabilities,
+ *     authorizationRevision: approvalAuthorization.revision,
+ *   },
+ *   audience: requestContext.audience,
+ *   agentId: requestContext.agentId,
+ *   runId: requestContext.runId,
+ *   deadline: Date.now() + 30_000,
+ * };
+ * const resumedResult = await toolbox.resumeApproval(signedApproval, {
+ *   requestContext: approvalRequestContext,
+ * });
+ * // `result.conversation` already has an `action_required` tool-result for
+ * // this call (the loop appends it before stopWhen ever runs) — appending
+ * // `resumedResult` on top would leave two results for the same call, which
+ * // most providers reject on the next turn. Use conversationalist's
+ * // resolveToolResult(conversation, callId, resumedResult) to replace the
+ * // pending result before starting the next run.
+ * ```
+ */
+export function createAgent<O>(
+  options: CreateAgentOptions & { output: ZodType<O> },
+): StandaloneAgent<O, true>;
+export function createAgent(options: CreateAgentOptions & { output?: undefined }): StandaloneAgent;
+export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknown, boolean>;
+export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknown, boolean> {
+  validateCreateAgentOptions(options);
+
+  const {
+    generate,
+    tools,
+    toolbox: providedToolbox,
+    instructions,
+    permissions,
+    output,
+    name: configuredName,
+    // Default to `noToolCalls()` when the caller doesn't supply a `stopWhen`
+    // — see the doc comment on `CreateAgentOptionsBase.stopWhen`. Falls back
+    // to `createActiveRun`'s own "no stop conditions at all" behavior only
+    // when explicitly overridden with an empty array.
+    stopWhen = noToolCalls(),
+    // Consumed only to build `generationProfile` below (AB-245) — neither
+    // field is a `RunOptions` member, so both are destructured out here
+    // rather than left to fall into `...rest` and leak onto the
+    // `RunOptions` bag `buildRunOptions` hands to `createActiveRun`.
+    generationPreferences,
+    allowedCandidates,
+    // AB-92/AB-252 — destructured out (rather than left in `...rest`) so it
+    // can be resolved to a concrete `RuntimeServices` instance exactly once
+    // below, at agent construction, and that SAME instance handed to every
+    // run this agent starts.
+    runtime: providedRuntime,
+    // Review findings (AB-241): `principal` is inherently per-call
+    // attribution (AB-21's `AgentRunContext.principal`), never a
+    // construction-time concept — `CreateAgentOptionsBase` declares no such
+    // field. But TypeScript's excess-property check only fires against an
+    // object LITERAL, so a caller passing a widened or plain-JS options
+    // object that happens to carry a `principal` key would otherwise have
+    // it survive into `rest` undetected. Destructured out and discarded
+    // here (the cast is narrow and exists ONLY to name and strip this one
+    // unsupported key; `principal` itself is never read from `options`)
+    // rather than merely reordering the later spread, since reordering
+    // alone still leaked a construction-time value through on a run whose
+    // own `context.principal` was omitted (the later conditional spread is
+    // a no-op when `context?.principal` is `undefined`, so nothing
+    // overwrites whatever `rest.principal` would otherwise have carried).
+    principal: _discardedConstructionTimePrincipal,
+    ...rest
+  } = options as CreateAgentOptions & { principal?: unknown };
+
+  const resolvedName = configuredName ?? '(agent)';
+
+  // AB-92/AB-252: resolved once, here, rather than per-run — two runs from
+  // this agent share one clock; two agents never share one.
+  const runtime = providedRuntime ?? createDefaultRuntimeServices();
+
+  // AB-64 AC2/AB-245: exactly one attached descriptor is `'fixed'`, more
+  // than one is `'routed'` (e.g. `createRoutingGenerate`'s union), none is
+  // `'opaque'` — never invented for a custom `GenerateFunction`. Supplying
+  // `allowedCandidates` promotes the mode to `'selectable'` regardless of
+  // descriptor count. `selector` always reads `'unavailable'`: a
+  // `createAgent` agent has no Bureau, no policy, and no catalog, so it can
+  // never select (AB-64's verification walk).
+  const attachedDescriptors = readBackendDescriptors(generate);
+  const generationProfile: AgentGenerationProfile = Object.freeze({
+    mode: allowedCandidates
+      ? 'selectable'
+      : attachedDescriptors.length === 1
+        ? 'fixed'
+        : attachedDescriptors.length > 1
+          ? 'routed'
+          : 'opaque',
+    revision: 1,
+    projection: 'privileged',
+    descriptors: attachedDescriptors,
+    ...(generationPreferences
+      ? { preferences: freezeGenerationPreferences(generationPreferences) }
+      : {}),
+    ...(allowedCandidates ? { allowedCandidates: freezeAllowedCandidates(allowedCandidates) } : {}),
+    freshness: runtime.clock.nowISO(),
+    selector: 'unavailable',
+  });
+
+  // Pre-compute tool entries once (pure transform — no per-run state).
+  // The map key is canonical — override each tool's inner `.name` with the
+  // map key so that the LLM-issued tool call name always matches the key,
+  // regardless of what the tool was originally authored with. Skipped
+  // entirely when a pre-built `toolbox` is supplied (mutually exclusive).
+  const toolEntries = tools
+    ? Object.entries(tools).map(([key, tool]) => ({
+        ...tool.configuration,
+        name: key,
+      }))
+    : [];
+
+  // Shared by `run()` and the AB-21 definition-resolution protocol below —
+  // both need the exact same `RunOptions` bag; only what happens to it
+  // (start an in-memory run vs. hand it to a durable engine) differs.
+  function buildRunOptions(
+    input: string | { conversation: ConversationHistory },
+    context?: AgentRunContext,
+  ): RunOptions {
+    // A caller-supplied `toolbox` is used AS-IS, shared across every run —
+    // that's the point (see the `toolbox` option's doc comment: it's what
+    // makes armorer's cross-request approval flow possible). Otherwise
+    // build a fresh Toolbox for each run: `createActiveRun` attaches
+    // listeners to the toolbox emitter and the toolbox tracks per-instance
+    // state (loop detection, budget counters), so a toolbox this factory
+    // owns must not be shared between concurrent runs.
+    const toolbox =
+      providedToolbox ??
+      createToolbox(
+        toolEntries,
+        permissions ? { policy: createHeadlessPermissionPolicyHooks(permissions) } : undefined,
+      );
+
+    const conversation =
+      typeof input === 'string'
+        ? (() => {
+            // Build a fresh Conversation for each run (ephemeral — no session state).
+            // AB-321: the same resolved `runtime` this function forwards into
+            // `RunOptions` below, so the fresh conversation's id/timestamps
+            // read through the identical seam.
+            const fresh = new Conversation(undefined, { runtime });
+            if (instructions) {
+              fresh.appendSystemMessage(instructions);
+            }
+            fresh.appendUserMessage(input);
+            return fresh;
+          })()
+        : // Snapshot semantics: CLONE the supplied history before wrapping it
+          // in a fresh Conversation instance. `Conversation`'s constructor
+          // only validates its input — it does not copy it — so without the
+          // clone this run's initial node would alias the caller's own
+          // ConversationHistory object. A stateless host commonly holds a
+          // mutable reference it keeps touching between turns; aliasing
+          // would let either side's mutations leak into the other. The
+          // clone makes this run's state and the caller's object fully
+          // independent from the moment `run()` is called: later mutations
+          // by the caller (or by another run resuming the same object)
+          // never affect this in-flight run, and this run never mutates the
+          // caller's object (`ConversationHistory` is a structuredClone-safe
+          // tree — see `durable/types.ts`).
+          new Conversation(structuredClone(input.conversation), { runtime });
+
+    return {
+      generate,
+      toolbox,
+      conversation,
+      stopWhen,
+      output,
+      // AB-92/AB-252 — the SAME instance resolved once above, shared by
+      // every run this agent starts.
+      runtime,
+      // Review finding (AB-241): `rest` comes BEFORE every per-call
+      // `AgentRunContext`-derived field below, not after. `CreateAgentOptions`
+      // declares no `principal` (or `signal`/`childRegistry`/etc.) of its own,
+      // but TypeScript's excess-property check only fires against an object
+      // LITERAL — a caller passing a widened or plain-JS options object that
+      // happens to carry one of these keys would otherwise have it survive
+      // into `rest` and silently clobber the correct per-call value spread
+      // after it. `principal` in particular is inherently per-call
+      // attribution, never a construction-time concept, so a stray
+      // construction-time value must never be able to override the run's
+      // actual caller-supplied principal.
+      ...rest,
+      // AB-21: `AgentRunContext` fields translate onto their `RunOptions`
+      // equivalents — `agentName` stamps curated `tool.*` events (falling
+      // back to this agent's own `name`), `signal` drives per-run abort,
+      // `traceContext` is `RunOptions.parentContext` (the field this engine
+      // already uses for the same concept), and `withTraceContext` forwards
+      // unchanged.
+      agentName: context?.agentName ?? resolvedName,
+      ...(context?.signal ? { signal: context.signal } : {}),
+      ...(context?.traceContext !== undefined ? { parentContext: context.traceContext } : {}),
+      ...(context?.withTraceContext ? { withTraceContext: context.withTraceContext } : {}),
+      // AB-233 — also thread `childRegistry` into `RunOptions` itself (not
+      // just `createAgentRun`'s option below), so `run-step.ts` can hand it
+      // to every tool call as `ToolContext.executionContext.childRegistry`.
+      ...(context?.childRegistry ? { childRegistry: context.childRegistry } : {}),
+      // AB-300 — thread `delegatedAuthority` into `RunOptions` itself, so
+      // `run-step.ts` can hand it to every tool call as
+      // `ToolContext.executionContext.delegatedAuthority`, exactly as
+      // `childRegistry` does above.
+      ...(context?.delegatedAuthority !== undefined
+        ? { delegatedAuthority: context.delegatedAuthority }
+        : {}),
+      // AB-241 — `AgentRunContext.principal` forwards into `RunOptions.principal`
+      // the same way `signal`/`traceContext` do above.
+      ...(context?.principal !== undefined ? { principal: context.principal } : {}),
+    };
+  }
+
+  return {
+    name: resolvedName,
+    hasOutput: output !== undefined,
+    generationProfile,
+    run(
+      input: string | { conversation: ConversationHistory },
+      context?: AgentRunContext,
+    ): AgentRun<unknown, boolean> {
+      // AB-241 review finding: `createActiveRun` derives `LivenessSnapshot.owner`
+      // exclusively from its third `dependencies.owner` argument, not from
+      // `RunOptions.principal` — passing `principal` only into `RunOptions` (via
+      // `buildRunOptions` above) left every direct-dispatch run's settled
+      // snapshot reporting `owner: undefined` regardless of the supplied
+      // principal, contradicting the promised branch-independent attribution.
+      const runOptions = buildRunOptions(input, context);
+      const activeRun = createActiveRun(
+        runOptions,
+        undefined,
+        runOptions.principal !== undefined ? { owner: runOptions.principal } : undefined,
+      );
+      return createAgentRun<unknown, boolean>(activeRun, {
+        hasOutput: output !== undefined,
+        // AB-50 — opt-in: only present when the caller supplied one.
+        ...(context?.childRegistry ? { childRegistry: context.childRegistry } : {}),
+      });
+    },
+    // AB-21's definition-resolution protocol: resolves the same `RunOptions`
+    // bag `run()` builds, without starting an in-memory run, so a durable
+    // engine can drive it through `createActiveRun(options, durable)`
+    // directly. Private/unstable — see `runnable-agent.ts`.
+    [OPERATIVE_RESOLVE_RUN_OPTIONS](
+      input: string | { conversation: ConversationHistory },
+      context?: AgentRunContext,
+    ): Promise<RunOptions> {
+      return Promise.resolve(buildRunOptions(input, context));
+    },
+  };
+}

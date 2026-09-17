@@ -1,0 +1,46 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    target: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+      description:
+        'CSS selector string or `null` specifying where the portal content is appended. Defaults to `document.body` when `null` or omitted.',
+    },
+    disabled: {
+      type: 'boolean',
+      description:
+        'When true, renders the content inline in normal document flow instead of teleporting it to the target.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class applied to the portal wrapper element.',
+    },
+    inheritAttributes: {
+      type: 'boolean',
+      description:
+        'When true (default), HTML attributes passed to the portal are forwarded onto the wrapper element inside the target.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

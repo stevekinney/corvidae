@@ -1,0 +1,407 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../form-field/form-field.css';
+
+@layer cinder.components {
+  /* ========================================
+ * INPUT
+ * ======================================== */
+
+  /* One recipe for the invalid border's hover step, shared by the three
+   * surfaces that can paint that edge: the bare input, the host wrapper that
+   * takes ownership when an addon appears, and the group. Deriving it three
+   * times over is what pushed this file past its raw-color allowance, and a
+   * single declaration keeps the three in step by construction — they are the
+   * same edge, and a divergence between them would be a bug rather than a
+   * choice.
+   */
+  .cinder-input,
+  .cinder-input-host,
+  .cinder-input-group {
+    --_cinder-input-invalid-border-hover: oklch(
+      from var(--cinder-status-danger-solid) calc(l - 0.06) c h
+    );
+  }
+
+  /* ----------------------------------------
+ * Field wrapper
+ * ---------------------------------------- */
+
+  .cinder-input-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1-5);
+    inline-size: 100%;
+  }
+
+  /* ----------------------------------------
+ * Label
+ * ---------------------------------------- */
+
+  .cinder-input-field__label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    line-height: 1;
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-input-field__label[data-disabled] {
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+  }
+
+  /* ----------------------------------------
+ * Input element
+ * ---------------------------------------- */
+
+  .cinder-input {
+    display: block;
+    width: 100%;
+    min-height: 2.25rem;
+    padding: var(--cinder-space-1-5) var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+    font-family: inherit;
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-default);
+    background: var(--cinder-surface-raised);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    appearance: none;
+
+    transition:
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-input::placeholder {
+    color: var(--cinder-text-subtle);
+  }
+
+  /* Sticky-hover suppression on touch. */
+  @media (hover: hover) {
+    .cinder-input:hover:not(:disabled) {
+      border-color: var(--cinder-border-strong);
+    }
+  }
+
+  .cinder-input[data-cinder-native-date] {
+    cursor: pointer;
+  }
+
+  /* The browser still owns the native calendar. We hide the inconsistent WebKit
+   indicator while keeping its hit area inside the input, aligned under the
+   design-system calendar glyph. */
+  .cinder-input[data-cinder-native-date]::-webkit-calendar-picker-indicator {
+    opacity: 0;
+  }
+
+  /* Focus ring — same pattern as Button so the system is visually consistent. */
+  .cinder-input:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-input-ring, var(--cinder-ring-color));
+  }
+
+  /* Windows High Contrast Mode: box-shadow is suppressed by the browser. Restore
+ * focus visibility using the system Highlight color which is guaranteed to
+ * contrast the field surface in WHCM.
+ */
+  @media (forced-colors: active) {
+    .cinder-input:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 1px;
+    }
+  }
+
+  /* ----------------------------------------
+ * Disabled state
+ * ---------------------------------------- */
+
+  .cinder-input:disabled {
+    background: var(--cinder-surface-inset);
+    border-color: var(--cinder-border-muted);
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+  }
+
+  .cinder-input:disabled::placeholder {
+    color: var(--cinder-text-disabled);
+  }
+
+  /* ----------------------------------------
+ * Code variant
+ * ---------------------------------------- */
+
+  .cinder-input[data-cinder-variant='code'] {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    tab-size: var(--cinder-type-tab-size);
+  }
+
+  /* Defensive: `<input>` is a void element and can't host a `<code>`
+   descendant, so this can't target `.cinder-input` itself. Nothing renders
+   a `<code>` inside the field wrapper today, but if a consumer ever
+   overlays one (e.g. a syntax-highlighted backdrop), match it to the
+   control's own metrics directly (not `font: inherit`) — the wrapper
+   itself carries no metric declarations, so inheriting from it would give
+   an overlay <code> the wrapper's ordinary (sans) font. Declaring the same
+   explicit values the control uses keeps the wrapper's label, description,
+   error, and any addons in their normal font; only a <code> overlay
+   matches the control. Excludes the leading/trailing addon slots (and
+   anything a consumer renders inside them) — a <code> badge or icon label
+   in an addon is the consumer's own content and keeps whatever styling
+   they gave it. */
+  .cinder-input-field[data-cinder-variant='code']
+    :where(code):not(
+      .cinder-input-group__leading,
+      .cinder-input-group__leading *,
+      .cinder-input-group__trailing,
+      .cinder-input-group__trailing *
+    ) {
+    all: unset;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    tab-size: var(--cinder-type-tab-size);
+  }
+
+  /* ----------------------------------------
+ * Error / invalid state
+ * ---------------------------------------- */
+
+  /* Use the danger token so the error border matches the error text and alert
+ * components — one semantic color, used consistently.
+ */
+  .cinder-input[aria-invalid='true'] {
+    --_cinder-input-ring: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-status-danger-solid);
+  }
+
+  @media (hover: hover) {
+    .cinder-input[aria-invalid='true']:hover:not(:disabled) {
+      border-color: var(--_cinder-input-invalid-border-hover);
+    }
+  }
+
+  /* ----------------------------------------
+ * Supporting text
+ * ---------------------------------------- */
+
+  .cinder-input-field__description {
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+    margin: 0;
+  }
+
+  .cinder-input-field__error {
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-status-danger-text);
+    margin: 0;
+  }
+
+  /* ----------------------------------------
+ * Input host (no addons)
+ * ---------------------------------------- */
+
+  /* The control wrapper is always rendered so the native <input> keeps one
+   position in the tree when an addon appears or disappears (see
+   input.svelte). Without addons the wrapper is `.cinder-input-host` instead of
+   `.cinder-input-group`, and `display: contents` removes its box: the input
+   takes part in the parent's layout exactly as a bare element did, so a
+   flex-row parent still sizes the input itself rather than a shrink-wrapped
+   div around it. The host still carries `data-cinder-full-width` so ancestors
+   that detect a full-width control by direct child (access-gate.css) keep
+   matching. */
+  .cinder-input-host {
+    display: contents;
+    /* The host and the group are the SAME element: when an addon appears the
+       class swaps, and `.cinder-input-group`'s border-color transition runs
+       from whatever the host computed. Pin the host's resting border colours
+       to the group's so the appearing border does not fade in from
+       `currentcolor` (the initial value). A boxless element paints nothing,
+       so these are inert until the swap. Same source order as the group's
+       state rules, so disabled wins over invalid here too. */
+    border-color: var(--cinder-border);
+  }
+  /* The host is hovered whenever the input inside it is (`:hover` matches an
+     ancestor of the hovered element even when that ancestor has no box), so
+     the hover colours are mirrored too — with the same precedence as the
+     group's rules below: invalid beats resting, hover beats both, disabled
+     beats everything. Sticky-hover suppression on touch, as for the group. */
+  @media (hover: hover) {
+    .cinder-input-host:hover:not([data-disabled]) {
+      border-color: var(--cinder-border-strong);
+    }
+  }
+  .cinder-input-host[data-invalid] {
+    --_cinder-input-ring: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-status-danger-solid);
+  }
+  @media (hover: hover) {
+    .cinder-input-host[data-invalid]:hover:not([data-disabled]) {
+      border-color: var(--_cinder-input-invalid-border-hover);
+    }
+  }
+  .cinder-input-host[data-disabled] {
+    border-color: var(--cinder-border-muted);
+  }
+  /* Ring ownership moves from the input to the wrapper when an addon appears.
+     The host is boxless and paints nothing, but its computed box-shadow is
+     what the group's box-shadow transition would start from, so pin it to the
+     group's ring while the input inside is focused — the same token math as
+     `.cinder-input-group:focus-within` below. */
+  .cinder-input-host:focus-within {
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-input-ring, var(--cinder-ring-color));
+  }
+
+  /* ----------------------------------------
+ * Input group (leading / trailing addons)
+ * ---------------------------------------- */
+
+  .cinder-input-group {
+    display: flex;
+    align-items: stretch;
+    position: relative;
+    inline-size: 100%;
+    background: var(--cinder-surface-raised);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    transition:
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* Inner input: strip its own chrome, inherit the group's. `border-style`
+     rather than the `border` shorthand: the shorthand would reset the input's
+     computed border-color to `currentcolor`, and because the input is the
+     same element before and after an addon is removed, its own border-color
+     transition would then run from the text colour when its border comes
+     back. Leaving the colour alone keeps it equal on both sides of the swap,
+     for the invalid and disabled states too. */
+  .cinder-input-group > .cinder-input {
+    border-style: none;
+    border-radius: 0;
+    background: transparent;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-inline: var(--cinder-space-3);
+    /* The input keeps its own focus ring VALUE inside the group and the clip
+       hides it, rather than setting `box-shadow: none`: the input is the same
+       element before and after an addon is removed, and a value change would
+       run its box-shadow transition — the ring fading in while the group's
+       ring vanished. With the value unchanged and only the clip toggling
+       (not a transitioned property), ring ownership moves between the input
+       and the wrapper without any animation. The clip is the border box, so
+       nothing the input paints itself is affected. */
+    clip-path: inset(0);
+  }
+
+  /* When an addon is present on a given side, the input trims its padding on
+   that side; the addon container owns the visual inset. */
+  .cinder-input-group--leading > .cinder-input {
+    padding-inline-start: var(--cinder-space-1);
+  }
+  .cinder-input-group--trailing > .cinder-input {
+    padding-inline-end: var(--cinder-space-2);
+  }
+
+  .cinder-input-group--native-date > .cinder-input {
+    padding-inline-end: var(--cinder-space-10);
+  }
+
+  .cinder-input-group > .cinder-input:focus-visible {
+    /* cinder-focus-ring-owner: parent — the .cinder-input-group wrapper paints
+       the ring for the whole grouped control; the input's own ring is clipped
+       away above, not zeroed, so the swap does not animate it. */
+    outline: none;
+  }
+
+  /* Hover mirrors the standalone input. Sticky-hover suppression on touch. */
+  @media (hover: hover) {
+    .cinder-input-group:hover:not(.cinder-input-group--disabled) {
+      border-color: var(--cinder-border-strong);
+    }
+  }
+
+  /* Focus ring on the group via :focus-within — same token math as standalone. */
+  .cinder-input-group:focus-within {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-input-ring, var(--cinder-ring-color));
+  }
+
+  @media (forced-colors: active) {
+    .cinder-input-group:focus-within {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 1px;
+    }
+  }
+
+  /* Invalid state. */
+  .cinder-input-group--invalid {
+    --_cinder-input-ring: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-status-danger-solid);
+  }
+  @media (hover: hover) {
+    .cinder-input-group--invalid:hover:not(.cinder-input-group--disabled) {
+      border-color: var(--_cinder-input-invalid-border-hover);
+    }
+  }
+
+  /* Disabled state. */
+  .cinder-input-group--disabled {
+    background: var(--cinder-surface-inset);
+    border-color: var(--cinder-border-muted);
+    cursor: not-allowed;
+  }
+  .cinder-input-group--disabled > .cinder-input {
+    background: transparent;
+    color: var(--cinder-text-disabled);
+  }
+
+  /* Addon containers — decorative default sizing. */
+  .cinder-input-group__leading,
+  .cinder-input-group__trailing {
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    max-inline-size: 40%;
+    gap: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-2);
+    padding-inline-end: var(--cinder-space-1);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  /* Interactive addons get a tighter wrapper so the consumer's control owns the inset.
+   overflow: visible allows the inner control's focus ring to paint outside the container. */
+  .cinder-input-group__leading:not([aria-hidden]),
+  .cinder-input-group__trailing:not([aria-hidden]) {
+    padding-inline: var(--cinder-space-1);
+    overflow: visible;
+  }
+
+  .cinder-input-group__date-icon {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: var(--cinder-space-3);
+    display: inline-flex;
+    align-items: center;
+    padding-inline: 0;
+    pointer-events: none;
+  }
+}

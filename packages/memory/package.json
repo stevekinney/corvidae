@@ -1,0 +1,28 @@
+{
+  "name": "@repo/memory",
+  "private": true,
+  "description": "Pure utility functions for agent memory: temporal decay, MMR diversity, BM25 text search, and hybrid result merging.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "zod": "catalog:",
+    "@repo/weft": "workspace:*",
+    "@repo/armorer": "workspace:*",
+    "@repo/interoperability": "workspace:*",
+    "@repo/lifecycle": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@repo/typescript-configuration": "workspace:*",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

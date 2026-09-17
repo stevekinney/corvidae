@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "parameter-field",
+  "import": "@repo/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Parameter override",
+      "description": "Show an inherited value with a local override.",
+      "code": "<script lang=\"ts\">\n  import { ParameterField } from '@repo/cinder';\n</script>\n\n<ParameterField id=\"timeout\" label=\"Timeout\" base={30} unit=\"seconds\" />\n"
+    }
+  ]
+}

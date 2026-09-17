@@ -1,0 +1,1060 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category data-display
+   * @status alpha
+   * @purpose ARIA data grid foundation for spreadsheet-like datasets with explicit row identity, column sizing, keyboard navigation, range selection, and pinning metadata.
+   * @tag grid
+   * @tag data
+   * @tag spreadsheet
+   * @useWhen Rendering interactive tabular data that will need grid behavior such as selection, virtualization, resizing, or editing.
+   * @useWhen You need role=grid semantics instead of native table semantics.
+   * @avoidWhen You only need a semantic read-only table — use DataTable or the Table family instead.
+   * @avoidWhen You need resize handles, drag-to-reorder controls, or editing today — DataGrid does not provide them yet.
+   * @related data-table, table
+   */
+  export type {
+    DataGridCellContext,
+    DataGridColumnDef,
+    DataGridColumnPin,
+    DataGridColumnPinning,
+    DataGridColumnSizing,
+    DataGridDensity,
+    DataGridProps,
+    DataGridSelectionMode,
+    DataGridSelectionModel,
+    DataGridSortComparator,
+    DataGridSortDirection,
+    DataGridSortModel,
+    DataGridSortModelItem,
+  } from './data-grid.types.ts';
+</script>
+
+<script lang="ts" generics="TRow">
+  import { tick } from 'svelte';
+  import type { Attachment } from 'svelte/attachments';
+
+  import { classNames } from '../../utilities/class-names.ts';
+  import { copyToClipboard } from '../../utilities/clipboard.ts';
+  import { devWarn } from '../../utilities/dev-warn.ts';
+  import {
+    DataGridColumnModel,
+    getDataGridColumnValue,
+    type ResolvedDataGridColumn,
+  } from './_internal/column-model.svelte.ts';
+  import type { DataGridCellCoordinate } from './_internal/geometry.ts';
+  import { dataGridKeyToAction } from './_internal/keyboard-model.ts';
+  import { DataGridSelectionModel as InternalDataGridSelectionModel } from './_internal/selection-model.svelte.ts';
+  import {
+    getActiveDataGridSortModel,
+    getNextDataGridSortModel,
+    getSortedDataGridRowIndices,
+  } from './_internal/sort-model.ts';
+  import { DataGridVirtualizationAdapter } from './_internal/virtualization-adapter.svelte.ts';
+  import type {
+    DataGridProps,
+    DataGridSelectionModel,
+    DataGridSortModelItem,
+  } from './data-grid.types.ts';
+
+  const interactiveDescendantSelector = [
+    'a[href]',
+    'button',
+    'input',
+    'select',
+    'textarea',
+    '[contenteditable=""]',
+    '[contenteditable="true"]',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(',');
+
+  const defaultVirtualRowHeight = 44;
+
+  let {
+    rows,
+    columns,
+    getRowId,
+    density = 'comfortable',
+    stickyHeader = true,
+    virtualizeRows = false,
+    virtualizeColumns = false,
+    rowHeight,
+    columnOrder,
+    columnSizing,
+    columnPinning,
+    selectionMode = 'none',
+    selectionModel = $bindable<DataGridSelectionModel | undefined>(undefined),
+    onSelectionModelChange,
+    sortModel = $bindable([]),
+    onSortModelChange,
+    rowClass,
+    getRowAriaLabel,
+    class: className,
+    'aria-label': ariaLabel,
+    'aria-labelledby': ariaLabelledBy,
+    onkeydown: consumerOnKeydown,
+    ...rest
+  }: DataGridProps<TRow> = $props();
+
+  const columnModel = new DataGridColumnModel<TRow>({
+    columns: () => columns,
+    columnOrder: () => columnOrder,
+    columnSizing: () => columnSizing,
+    columnPinning: () => columnPinning,
+  });
+
+  let liveRegionMessage = $state('');
+  let renderedLiveRegionMessage = $state('');
+  let liveRegionAnnouncementSequence = $state(0);
+  let measuredGridWidth = $state<number | undefined>();
+  let measuredGridScrollportWidth = $state<number | undefined>();
+  let isRightToLeft = $state(false);
+
+  const activeSortModel = $derived(
+    getActiveDataGridSortModel(columnModel.orderedColumns, sortModel),
+  );
+  const sortedRowIndices = $derived(
+    getSortedDataGridRowIndices(rows, columnModel.orderedColumns, activeSortModel),
+  );
+  const keyedRows = $derived.by(() => {
+    const records = rows.map((row, rowIndex) => ({
+      row,
+      rowId: getRowId(row),
+      rowIndex,
+    }));
+    const rowIdCounts = new Map<string, number>();
+    for (const { rowId } of records) {
+      rowIdCounts.set(rowId, (rowIdCounts.get(rowId) ?? 0) + 1);
+    }
+    const rowIdOccurrences = new Map<string, number>();
+    return records.map((record) => {
+      const occurrence = rowIdOccurrences.get(record.rowId) ?? 0;
+      rowIdOccurrences.set(record.rowId, occurrence + 1);
+      const hasDuplicateRowId = (rowIdCounts.get(record.rowId) ?? 0) > 1;
+      const uniqueRowId = hasDuplicateRowId ? `${record.rowId}\u0000${occurrence}` : record.rowId;
+      return {
+        ...record,
+        rowDomId: uniqueRowId,
+        rowKey: uniqueRowId,
+      };
+    });
+  });
+  const sortedKeyedRows = $derived(
+    sortedRowIndices.flatMap((rowIndex) => keyedRows[rowIndex] ?? []),
+  );
+  const resolvedRowHeight = $derived(resolveVirtualRowHeight(rowHeight));
+  const shouldWarnVirtualRowHeightFallback = $derived(
+    virtualizeRows && !isValidVirtualRowHeight(rowHeight),
+  );
+  const shouldVirtualizeRows = $derived(virtualizeRows && sortedKeyedRows.length > 0);
+  const shouldVirtualizeColumns = $derived(
+    virtualizeColumns &&
+      columnModel.unpinnedColumns.length > 0 &&
+      measuredGridWidth !== undefined &&
+      measuredGridWidth > 0 &&
+      !isRightToLeft &&
+      typeof window !== 'undefined',
+  );
+  const rowVirtualizer = new DataGridVirtualizationAdapter({
+    getScrollElement: () => gridElement ?? null,
+    getRowCount: () => sortedKeyedRows.length,
+    getRowKey: (index) => sortedKeyedRows[index]?.rowKey ?? index,
+    getRowHeight: () => resolvedRowHeight,
+    getColumnCount: () => columnModel.unpinnedColumns.length,
+    getColumnKey: (index) => columnModel.unpinnedColumns[index]?.key ?? index,
+    getColumnWidth: (index) => columnModel.unpinnedColumns[index]?.width ?? 150,
+    getOverscan: () => 5,
+    getInitialHeight: () => resolvedRowHeight * 10,
+    getInitialWidth: () => measuredGridWidth ?? 1_000,
+    getScrollPaddingStart: () => getHeaderHeight(),
+    getScrollPaddingInlineStart: () => columnModel.leftPinnedWidth,
+    getScrollPaddingInlineEnd: () => columnModel.rightPinnedWidth,
+  });
+  const observeHeaderSize: Attachment<HTMLElement> = (node) => {
+    if (typeof ResizeObserver === 'undefined') return;
+
+    let previousHeight = getElementHeight(node);
+    const observer = new ResizeObserver(() => {
+      const nextHeight = getElementHeight(node);
+      if (nextHeight === previousHeight) return;
+
+      previousHeight = nextHeight;
+      rowVirtualizer.refreshMeasurements();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  };
+  const observeGridSize: Attachment<HTMLElement> = (node) => {
+    const updateGridMeasurement = (): void => {
+      const rect = node.getBoundingClientRect();
+      measuredGridWidth = rect.width || node.clientWidth || undefined;
+      measuredGridScrollportWidth = node.clientWidth || rect.width || undefined;
+      isRightToLeft = getComputedStyle(node).direction === 'rtl';
+    };
+
+    updateGridMeasurement();
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(updateGridMeasurement);
+    observer.observe(node);
+    return () => observer.disconnect();
+  };
+  const delegateBodyEvents: Attachment<HTMLElement> = (node) => {
+    node.addEventListener('click', handleBodyClick);
+    node.addEventListener('keydown', handleBodyKeydown);
+    return () => {
+      node.removeEventListener('click', handleBodyClick);
+      node.removeEventListener('keydown', handleBodyKeydown);
+    };
+  };
+  const virtualRows = $derived(rowVirtualizer.virtualRows);
+  const virtualColumns = $derived(rowVirtualizer.virtualColumns);
+  const virtualColumnLeadingSpacer = $derived(virtualColumns[0]?.start ?? 0);
+  const virtualColumnTrailingSpacer = $derived.by(() => {
+    const lastColumn = virtualColumns.at(-1);
+    if (!lastColumn) return 0;
+
+    return Math.max(0, rowVirtualizer.totalWidth - (lastColumn.start + lastColumn.size));
+  });
+  const gridContentWidth = $derived(
+    shouldVirtualizeColumns
+      ? columnModel.leftPinnedWidth + rowVirtualizer.totalWidth + columnModel.rightPinnedWidth
+      : undefined,
+  );
+  const shouldShowColumnOverflowShadow = $derived(
+    gridContentWidth !== undefined &&
+      measuredGridScrollportWidth !== undefined &&
+      gridContentWidth > measuredGridScrollportWidth,
+  );
+  const gridTemplateColumns = $derived.by(() => {
+    if (!shouldVirtualizeColumns) {
+      return columnModel.renderColumns.map((column) => `${column.width}px`).join(' ');
+    }
+
+    return [
+      ...columnModel.leftPinnedColumns.map((column) => `${column.width}px`),
+      `${virtualColumnLeadingSpacer}px`,
+      ...virtualColumns.map((item) => `${item.size}px`),
+      `${virtualColumnTrailingSpacer}px`,
+      ...columnModel.rightPinnedColumns.map((column) => `${column.width}px`),
+    ].join(' ');
+  });
+  const renderedColumns = $derived.by(() => {
+    if (!shouldVirtualizeColumns) return columnModel.renderColumns;
+
+    const virtualUnpinnedColumns = virtualColumns.flatMap((item) => {
+      const column = columnModel.unpinnedColumns[item.index];
+      return column ? [column] : [];
+    });
+
+    return [
+      ...columnModel.leftPinnedColumns,
+      ...virtualUnpinnedColumns,
+      ...columnModel.rightPinnedColumns,
+    ];
+  });
+  const renderedRows = $derived.by(() => {
+    if (!shouldVirtualizeRows) {
+      return sortedKeyedRows.map((keyedRow, visualRowIndex) => ({
+        keyedRow,
+        visualRowIndex,
+        start: 0,
+        size: resolvedRowHeight,
+        virtualized: false,
+      }));
+    }
+
+    return virtualRows.flatMap((item) => {
+      const keyedRow = sortedKeyedRows[item.index];
+      return keyedRow
+        ? [
+            {
+              keyedRow,
+              visualRowIndex: item.index,
+              start: item.start,
+              size: item.size,
+              virtualized: true,
+            },
+          ]
+        : [];
+    });
+  });
+  const bodyHeight = $derived(shouldVirtualizeRows ? `${rowVirtualizer.totalHeight}px` : undefined);
+  const duplicateRowIds = $derived.by(() => {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+    for (const { rowId } of keyedRows) {
+      if (seen.has(rowId)) duplicates.add(rowId);
+      else seen.add(rowId);
+    }
+    return [...duplicates];
+  });
+  const firstRowDomId = $derived(sortedKeyedRows[0]?.rowDomId);
+  const firstColumnKey = $derived(columnModel.renderColumns[0]?.key);
+  const rowDomIds = $derived(sortedKeyedRows.map((row) => row.rowDomId));
+  const columnKeys = $derived(columnModel.renderColumns.map((column) => column.key));
+  const gridId = $props.id();
+  let requestedActiveRowIndex = $state(0);
+  let requestedActiveColumnKey = $state<string | undefined>();
+  const selectionState = new InternalDataGridSelectionModel({
+    rowIds: () => rowDomIds,
+    columnKeys: () => columnKeys,
+  });
+  const activeRowIndex = $derived(
+    sortedKeyedRows.length > 0 ? Math.min(requestedActiveRowIndex, sortedKeyedRows.length - 1) : 0,
+  );
+  const activeColumnIndex = $derived.by(() => {
+    const index = columnModel.renderColumns.findIndex(
+      (column) => column.key === requestedActiveColumnKey,
+    );
+    return index >= 0 ? index : 0;
+  });
+  const activeRowDomId = $derived(
+    sortedKeyedRows.length > 0
+      ? sortedKeyedRows[Math.min(activeRowIndex, sortedKeyedRows.length - 1)]?.rowDomId
+      : firstRowDomId,
+  );
+  const activeColumnKey = $derived(columnModel.renderColumns[activeColumnIndex]?.key);
+  const canExposeActiveCell = $derived(!(shouldVirtualizeRows && typeof window === 'undefined'));
+  const activeCellId = $derived(
+    canExposeActiveCell && activeRowDomId !== undefined && firstColumnKey !== undefined
+      ? getCellId(activeRowDomId, activeColumnKey ?? firstColumnKey)
+      : undefined,
+  );
+  const activeCellCoordinates = $derived(
+    activeRowDomId !== undefined && activeColumnKey !== undefined
+      ? { rowId: activeRowDomId, columnKey: activeColumnKey }
+      : undefined,
+  );
+  const resolvedSelectionModel = $derived(selectionModel ?? []);
+  const selectedRowIds = $derived(
+    selectionMode === 'none' ? new Set<string>() : new Set(resolvedSelectionModel),
+  );
+  const resolvedAriaLabel = $derived(
+    typeof ariaLabel === 'string' && ariaLabel.trim().length > 0 ? ariaLabel : undefined,
+  );
+  const resolvedAriaLabelledBy = $derived(
+    typeof ariaLabelledBy === 'string' && ariaLabelledBy.trim().length > 0
+      ? ariaLabelledBy
+      : undefined,
+  );
+
+  let hasWarnedNoLabel = false;
+  let warnedDuplicateRowIdsSignature: string | undefined;
+  let previousActiveCellId: string | undefined;
+  let previousActiveVirtualRowIndex: number | undefined;
+  let previousActiveVirtualColumnIndex: number | undefined;
+  let previousShouldVirtualizeRows = false;
+  let previousShouldVirtualizeColumns = false;
+  let hasInitializedActiveCell = false;
+  let previousSelectionRowIds: readonly string[] | undefined;
+  let previousSelectionColumnKeys: readonly string[] | undefined;
+  let gridElement: HTMLDivElement | undefined;
+  let headerElement: HTMLDivElement | undefined;
+  let liveRegionTimeoutId: ReturnType<typeof setTimeout> | undefined;
+  let liveRegionVersion = 0;
+  let warnedVirtualRowHeightFallback = false;
+
+  $effect(() => {
+    if (!resolvedAriaLabel && !resolvedAriaLabelledBy && !hasWarnedNoLabel) {
+      hasWarnedNoLabel = true;
+      devWarn('[cinder-data-grid] DataGrid requires either aria-label or aria-labelledby.');
+    }
+  });
+
+  $effect(() => {
+    if (duplicateRowIds.length === 0) {
+      warnedDuplicateRowIdsSignature = undefined;
+      return;
+    }
+
+    const signature = JSON.stringify(duplicateRowIds);
+    if (signature === warnedDuplicateRowIdsSignature) return;
+
+    warnedDuplicateRowIdsSignature = signature;
+    devWarn(
+      `[cinder-data-grid] getRowId returned duplicate row ids: ${duplicateRowIds
+        .map((rowId) => JSON.stringify(rowId))
+        .join(', ')}. Row ids must be unique.`,
+    );
+  });
+
+  $effect(() => {
+    if (!shouldWarnVirtualRowHeightFallback || warnedVirtualRowHeightFallback) return;
+
+    warnedVirtualRowHeightFallback = true;
+    devWarn(
+      '[cinder-data-grid] DataGrid row virtualization is using the default rowHeight of 44px. Pass a positive finite rowHeight to match your row layout.',
+    );
+  });
+
+  $effect(() => {
+    const nextMessage = liveRegionMessage;
+    void liveRegionAnnouncementSequence;
+    const currentVersion = ++liveRegionVersion;
+
+    if (liveRegionTimeoutId) {
+      clearTimeout(liveRegionTimeoutId);
+      liveRegionTimeoutId = undefined;
+    }
+
+    renderedLiveRegionMessage = '';
+    if (nextMessage === '') return;
+
+    liveRegionTimeoutId = setTimeout(() => {
+      if (liveRegionVersion !== currentVersion) return;
+      renderedLiveRegionMessage = nextMessage;
+      liveRegionTimeoutId = undefined;
+    }, 0);
+
+    return () => {
+      if (!liveRegionTimeoutId) return;
+      clearTimeout(liveRegionTimeoutId);
+      liveRegionTimeoutId = undefined;
+    };
+  });
+
+  $effect(() => {
+    const cellId = activeCellId;
+    const activeVirtualRowIndex = activeRowIndex;
+    const activeVirtualColumnIndex = getUnpinnedColumnIndex(activeColumnKey);
+    const didActiveCellChange = cellId !== previousActiveCellId;
+    const didActiveVirtualRowChange = activeVirtualRowIndex !== previousActiveVirtualRowIndex;
+    const didActiveVirtualColumnChange =
+      activeVirtualColumnIndex !== previousActiveVirtualColumnIndex;
+    const didEnableRowVirtualization = shouldVirtualizeRows && !previousShouldVirtualizeRows;
+    const didEnableColumnVirtualization =
+      shouldVirtualizeColumns && !previousShouldVirtualizeColumns;
+    if (
+      cellId === undefined ||
+      (!didActiveCellChange &&
+        !didActiveVirtualRowChange &&
+        !didActiveVirtualColumnChange &&
+        !didEnableRowVirtualization &&
+        !didEnableColumnVirtualization)
+    ) {
+      previousActiveCellId = cellId;
+      previousActiveVirtualRowIndex = activeVirtualRowIndex;
+      previousActiveVirtualColumnIndex = activeVirtualColumnIndex;
+      previousShouldVirtualizeRows = shouldVirtualizeRows;
+      previousShouldVirtualizeColumns = shouldVirtualizeColumns;
+      return;
+    }
+
+    if (!hasInitializedActiveCell) {
+      hasInitializedActiveCell = true;
+      previousActiveCellId = cellId;
+      previousActiveVirtualRowIndex = activeVirtualRowIndex;
+      previousActiveVirtualColumnIndex = activeVirtualColumnIndex;
+      previousShouldVirtualizeRows = shouldVirtualizeRows;
+      previousShouldVirtualizeColumns = shouldVirtualizeColumns;
+      return;
+    }
+
+    previousActiveCellId = cellId;
+    previousActiveVirtualRowIndex = activeVirtualRowIndex;
+    previousActiveVirtualColumnIndex = activeVirtualColumnIndex;
+    previousShouldVirtualizeRows = shouldVirtualizeRows;
+    previousShouldVirtualizeColumns = shouldVirtualizeColumns;
+    if (shouldVirtualizeRows && (didActiveVirtualRowChange || didEnableRowVirtualization)) {
+      rowVirtualizer.scrollToRow(activeRowIndex);
+    }
+    if (
+      shouldVirtualizeColumns &&
+      (didActiveVirtualColumnChange || didEnableColumnVirtualization) &&
+      activeVirtualColumnIndex !== undefined
+    ) {
+      rowVirtualizer.scrollToColumn(activeVirtualColumnIndex);
+    }
+    if (didActiveCellChange) void scrollActiveCellIntoView(cellId);
+  });
+
+  $effect(() => {
+    const previousRowIds = previousSelectionRowIds;
+    const previousColumnKeys = previousSelectionColumnKeys;
+    const isInitialSelectionReconciliation =
+      previousRowIds === undefined || previousColumnKeys === undefined;
+    const didSelectionGeometryChange =
+      !isInitialSelectionReconciliation &&
+      (didStringArrayChange(previousRowIds, rowDomIds) ||
+        didStringArrayChange(previousColumnKeys, columnKeys));
+    previousSelectionRowIds = rowDomIds;
+    previousSelectionColumnKeys = columnKeys;
+    if (!isInitialSelectionReconciliation && !didSelectionGeometryChange) return;
+
+    selectionState.reconcile(activeCellCoordinates);
+    if (!didSelectionGeometryChange) return;
+
+    syncRequestedActiveCell();
+  });
+
+  function syncRequestedActiveCell(): void {
+    const activeCell = selectionState.activeCell;
+    if (!activeCell) return;
+
+    const nextActiveRowIndex = rowDomIds.indexOf(activeCell.rowId);
+    if (nextActiveRowIndex >= 0 && requestedActiveRowIndex !== nextActiveRowIndex) {
+      requestedActiveRowIndex = nextActiveRowIndex;
+    }
+    if (requestedActiveColumnKey !== activeCell.columnKey) {
+      requestedActiveColumnKey = activeCell.columnKey;
+    }
+  }
+
+  function didStringArrayChange(
+    previousValues: readonly string[],
+    nextValues: readonly string[],
+  ): boolean {
+    if (previousValues.length !== nextValues.length) return true;
+    return previousValues.some((value, index) => value !== nextValues[index]);
+  }
+
+  function getCellId(rowId: string, columnKey: string): string {
+    return `${gridId}-cell-r-${toDomIdSegment(rowId)}-c-${toDomIdSegment(columnKey)}`;
+  }
+
+  function toDomIdSegment(value: string): string {
+    const segment = Array.from(value, (character) => character.codePointAt(0)?.toString(16) ?? '0');
+    return segment.length > 0 ? segment.join('_') : 'empty';
+  }
+
+  function isValidVirtualRowHeight(value: number | undefined): value is number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0;
+  }
+
+  function resolveVirtualRowHeight(value: number | undefined): number {
+    return isValidVirtualRowHeight(value) ? value : defaultVirtualRowHeight;
+  }
+
+  function formatDataGridValue(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (value instanceof Date) return value.toISOString();
+    return String(value);
+  }
+
+  function getRowClass(row: TRow, rowIndex: number): string | undefined {
+    if (typeof rowClass === 'function') return rowClass(row, rowIndex);
+    return rowClass;
+  }
+
+  function getResolvedRowAriaLabel(row: TRow, rowIndex: number): string | undefined {
+    const label = getRowAriaLabel?.(row, rowIndex);
+    return typeof label === 'string' && label.trim().length > 0 ? label : undefined;
+  }
+
+  function getCellStyle(column: ResolvedDataGridColumn<TRow>): string {
+    const customProperties = [
+      `--_cinder-data-grid-column-width: ${column.width}px`,
+      `grid-column: ${getCellGridColumn(column)}`,
+    ];
+    if (column.pin === 'left') {
+      customProperties.push(`--_cinder-data-grid-pin-left-offset: ${column.pinOffset}px`);
+    }
+    if (column.pin === 'right') {
+      customProperties.push(`--_cinder-data-grid-pin-right-offset: ${column.pinOffset}px`);
+    }
+    return customProperties.join('; ');
+  }
+
+  function getRowStyle(row: {
+    virtualized: boolean;
+    start: number;
+    size: number;
+  }): string | undefined {
+    if (!row.virtualized) return undefined;
+
+    return [
+      `--_cinder-data-grid-row-translate-y: ${row.start}px`,
+      `--_cinder-data-grid-row-height: ${row.size}px`,
+    ].join('; ');
+  }
+
+  function getHeaderHeight(): number {
+    return headerElement ? getElementHeight(headerElement) : 0;
+  }
+
+  function getElementHeight(element: HTMLElement): number {
+    const offsetHeight = element.offsetHeight;
+    if (offsetHeight > 0) return offsetHeight;
+
+    return element.getBoundingClientRect().height || 0;
+  }
+
+  function getColumnSortModelItem(columnKey: string): DataGridSortModelItem | undefined {
+    return activeSortModel.find((item) => item.key === columnKey);
+  }
+
+  function getColumnSortPriority(columnKey: string): number | undefined {
+    const index = activeSortModel.findIndex((item) => item.key === columnKey);
+    return index >= 0 && activeSortModel.length > 1 ? index + 1 : undefined;
+  }
+
+  function getHeaderAriaSort(
+    column: ResolvedDataGridColumn<TRow>,
+    sortItem: DataGridSortModelItem | undefined,
+  ): DataGridSortModelItem['direction'] | undefined {
+    return activeSortModel[0]?.key === column.key ? sortItem?.direction : undefined;
+  }
+
+  function getSortStateDescription(
+    sortItem: DataGridSortModelItem | undefined,
+    sortPriority: number | undefined,
+  ): string {
+    if (!sortItem) return 'not sorted';
+    if (sortPriority === undefined) return `sorted ${sortItem.direction}`;
+    return `sorted ${sortItem.direction}, priority ${sortPriority}`;
+  }
+
+  function handleColumnHeaderClick(column: ResolvedDataGridColumn<TRow>, event: MouseEvent): void {
+    if (!column.sortable) return;
+
+    const nextSortModel = getNextDataGridSortModel(activeSortModel, column.key, event.shiftKey);
+    sortModel = nextSortModel;
+    onSortModelChange?.(nextSortModel);
+  }
+
+  function getCellCoordinate(
+    rowIndex: number,
+    columnIndex: number,
+  ): DataGridCellCoordinate | undefined {
+    const rowId = rowDomIds[Math.min(Math.max(rowIndex, 0), rowDomIds.length - 1)];
+    const columnKey = columnKeys[Math.min(Math.max(columnIndex, 0), columnKeys.length - 1)];
+    if (rowId === undefined || columnKey === undefined) return undefined;
+    return { rowId, columnKey };
+  }
+
+  function getUnpinnedColumnIndex(columnKey: string | undefined): number | undefined {
+    if (columnKey === undefined) return undefined;
+    const index = columnModel.unpinnedColumns.findIndex((column) => column.key === columnKey);
+    return index >= 0 ? index : undefined;
+  }
+
+  function getCellGridColumn(column: ResolvedDataGridColumn<TRow>): number {
+    if (!shouldVirtualizeColumns) return column.renderIndex;
+
+    const leftPinnedCount = columnModel.leftPinnedColumns.length;
+    if (column.pin === 'left') {
+      const leftPinnedIndex = columnModel.leftPinnedColumns.findIndex(
+        (item) => item.key === column.key,
+      );
+      return Math.max(0, leftPinnedIndex) + 1;
+    }
+
+    const visibleUnpinnedIndex = virtualColumns.findIndex((item) => item.key === column.key);
+    if (visibleUnpinnedIndex >= 0) return leftPinnedCount + 2 + visibleUnpinnedIndex;
+
+    const rightPinnedIndex = columnModel.rightPinnedColumns.findIndex(
+      (item) => item.key === column.key,
+    );
+    return leftPinnedCount + 2 + virtualColumns.length + 1 + Math.max(0, rightPinnedIndex);
+  }
+
+  async function scrollActiveCellIntoView(cellId: string): Promise<void> {
+    await tick();
+    document.getElementById(cellId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  function moveActiveCell(rowIndex: number, columnIndex: number, extend = false): void {
+    if (sortedKeyedRows.length === 0 || columnModel.renderColumns.length === 0) return;
+    requestedActiveRowIndex = Math.min(Math.max(rowIndex, 0), sortedKeyedRows.length - 1);
+    requestedActiveColumnKey =
+      columnModel.renderColumns[
+        Math.min(Math.max(columnIndex, 0), columnModel.renderColumns.length - 1)
+      ]?.key;
+
+    const cell = getCellCoordinate(rowIndex, columnIndex);
+    if (cell) selectionState.setActiveCell(cell, { extend });
+  }
+
+  function setSelectionModel(nextSelectionModel: DataGridSelectionModel): void {
+    selectionModel = nextSelectionModel;
+    onSelectionModelChange?.(nextSelectionModel);
+  }
+
+  function updateRowSelection(rowId: string, event: MouseEvent | KeyboardEvent): void {
+    if (selectionMode === 'none') return;
+    if (selectionMode === 'single') {
+      setSelectionModel([rowId]);
+      return;
+    }
+
+    const isToggle = event.ctrlKey || event.metaKey;
+    if (event.shiftKey) return;
+    if (!isToggle) {
+      setSelectionModel([rowId]);
+      return;
+    }
+
+    const nextSelection = new Set(resolvedSelectionModel);
+    if (nextSelection.has(rowId)) nextSelection.delete(rowId);
+    else nextSelection.add(rowId);
+    setSelectionModel([...nextSelection]);
+  }
+
+  function selectActiveCell(event: KeyboardEvent): void {
+    const row = sortedKeyedRows[activeRowIndex];
+    if (!row || activeColumnKey === undefined || activeRowDomId === undefined) return;
+    selectionState.setActiveCell(
+      { rowId: activeRowDomId, columnKey: activeColumnKey },
+      { extend: event.shiftKey, toggle: event.ctrlKey || event.metaKey },
+    );
+    updateRowSelection(row.rowId, event);
+  }
+
+  function collapseSelectionToActiveCell(): void {
+    const hasCellSelection = selectionState.selectedCellCoordinates.length > 0;
+    const hasRowSelection = resolvedSelectionModel.length > 0;
+    if (!hasCellSelection && !hasRowSelection) return;
+    if (hasCellSelection) selectionState.collapseToActiveCell();
+    if (selectionMode === 'none') return;
+
+    const row = sortedKeyedRows[activeRowIndex];
+    setSelectionModel(row ? [row.rowId] : []);
+  }
+
+  async function copySelectedCells(): Promise<void> {
+    const cells =
+      selectionState.selectedCellCoordinates.length > 0
+        ? sortCellsByGridOrder(selectionState.selectedCellCoordinates)
+        : activeCellCoordinates
+          ? [activeCellCoordinates]
+          : [];
+    if (cells.length === 0) return;
+
+    const rowsByDomId = new Map(keyedRows.map((row) => [row.rowDomId, row.row]));
+    const columnsByKey = new Map(columnModel.renderColumns.map((column) => [column.key, column]));
+    const cellsByRow = new Map<string, DataGridCellCoordinate[]>();
+    for (const cell of cells) {
+      const rowCells = cellsByRow.get(cell.rowId);
+      if (rowCells) rowCells.push(cell);
+      else cellsByRow.set(cell.rowId, [cell]);
+    }
+    const text = [...cellsByRow.entries()]
+      .map(([rowId, rowCells]) => {
+        const row = rowsByDomId.get(rowId);
+        if (!row) return '';
+        return rowCells
+          .map((cell) => {
+            const column = columnsByKey.get(cell.columnKey);
+            if (!column) return '';
+            return formatDataGridValue(getDataGridColumnValue(row, column));
+          })
+          .join('\t');
+      })
+      .join('\n');
+
+    const copied = await copyToClipboard(text);
+    if (copied) {
+      announceCopiedCells(`Copied ${cells.length} ${cells.length === 1 ? 'cell' : 'cells'}`);
+      return;
+    }
+    announceCopiedCells('Copy failed');
+  }
+
+  function announceCopiedCells(message: string): void {
+    liveRegionMessage = message;
+    liveRegionAnnouncementSequence += 1;
+  }
+
+  function sortCellsByGridOrder(
+    cells: readonly DataGridCellCoordinate[],
+  ): DataGridCellCoordinate[] {
+    const rowIndexes = new Map(rowDomIds.map((rowId, index) => [rowId, index]));
+    const columnIndexes = new Map(columnKeys.map((columnKey, index) => [columnKey, index]));
+    const sortedCells = [...cells];
+    sortedCells.sort((left, right) => {
+      const leftRowIndex = rowIndexes.get(left.rowId) ?? Number.POSITIVE_INFINITY;
+      const rightRowIndex = rowIndexes.get(right.rowId) ?? Number.POSITIVE_INFINITY;
+      if (leftRowIndex !== rightRowIndex) return leftRowIndex - rightRowIndex;
+
+      const leftColumnIndex = columnIndexes.get(left.columnKey) ?? Number.POSITIVE_INFINITY;
+      const rightColumnIndex = columnIndexes.get(right.columnKey) ?? Number.POSITIVE_INFINITY;
+      return leftColumnIndex - rightColumnIndex;
+    });
+    return sortedCells;
+  }
+
+  function handleCellClick(
+    event: MouseEvent,
+    rowId: string,
+    rowDomId: string,
+    columnKey: string,
+    rowIndex: number,
+  ): void {
+    requestedActiveRowIndex = rowIndex;
+    requestedActiveColumnKey = columnKey;
+    selectionState.setActiveCell(
+      { rowId: rowDomId, columnKey },
+      { extend: event.shiftKey, toggle: event.ctrlKey || event.metaKey },
+    );
+    updateRowSelection(rowId, event);
+    if (!isInteractiveEventTarget(event)) gridElement?.focus({ preventScroll: true });
+  }
+
+  function handleBodyClick(event: MouseEvent): void {
+    const cell = getCellEventDetail(event);
+    if (!cell) return;
+    handleCellClick(event, cell.rowId, cell.rowDomId, cell.columnKey, cell.rowIndex);
+  }
+
+  function handleCellKeydown(
+    event: KeyboardEvent,
+    rowId: string,
+    rowDomId: string,
+    columnKey: string,
+    rowIndex: number,
+  ): void {
+    if (isInteractiveEventTarget(event)) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    event.stopPropagation();
+    requestedActiveRowIndex = rowIndex;
+    requestedActiveColumnKey = columnKey;
+    selectionState.setActiveCell(
+      { rowId: rowDomId, columnKey },
+      { extend: event.shiftKey, toggle: event.ctrlKey || event.metaKey },
+    );
+    updateRowSelection(rowId, event);
+    gridElement?.focus({ preventScroll: true });
+  }
+
+  function handleBodyKeydown(event: KeyboardEvent): void {
+    const cell = getCellEventDetail(event);
+    if (!cell) return;
+    handleCellKeydown(event, cell.rowId, cell.rowDomId, cell.columnKey, cell.rowIndex);
+  }
+
+  function getCellEventDetail(
+    event: Event,
+  ): { rowId: string; rowDomId: string; columnKey: string; rowIndex: number } | undefined {
+    if (!(event.target instanceof Element)) return undefined;
+    const cell = event.target.closest<HTMLElement>('.cinder-data-grid__cell');
+    if (!cell) return undefined;
+
+    const { cinderRowId, cinderRowDomId, cinderColumnKey, cinderRowIndex } = cell.dataset;
+    const rowIndex = Number(cinderRowIndex);
+    if (
+      cinderRowId === undefined ||
+      cinderRowDomId === undefined ||
+      cinderColumnKey === undefined ||
+      !Number.isInteger(rowIndex)
+    ) {
+      return undefined;
+    }
+
+    return {
+      rowId: cinderRowId,
+      rowDomId: cinderRowDomId,
+      columnKey: cinderColumnKey,
+      rowIndex,
+    };
+  }
+
+  function handleKeydown(event: KeyboardEvent): void {
+    if (consumerOnKeydown) {
+      (consumerOnKeydown as (event: KeyboardEvent) => void)(event);
+    }
+    if (event.defaultPrevented) return;
+    if (event.target instanceof Element && event.target.closest('.cinder-data-grid__sort-button')) {
+      return;
+    }
+    if (isInteractiveEventTarget(event)) return;
+
+    if (sortedKeyedRows.length === 0 || columnModel.renderColumns.length === 0) return;
+
+    const action = dataGridKeyToAction(event, {
+      activeRowIndex,
+      activeColumnIndex,
+      rowCount: sortedKeyedRows.length,
+      columnCount: columnModel.renderColumns.length,
+    });
+    if (!action) return;
+
+    event.preventDefault();
+
+    if (action.type === 'move-cell') {
+      moveActiveCell(action.rowIndex, action.columnIndex, action.extend);
+      return;
+    }
+
+    if (action.type === 'select-all') {
+      selectionState.selectAll();
+      syncRequestedActiveCell();
+      if (selectionMode === 'multiple') {
+        setSelectionModel(sortedKeyedRows.map((row) => row.rowId));
+      } else if (selectionMode === 'single') {
+        const row = sortedKeyedRows[activeRowIndex];
+        setSelectionModel(row ? [row.rowId] : []);
+      }
+      return;
+    }
+
+    if (action.type === 'collapse-selection') {
+      collapseSelectionToActiveCell();
+      return;
+    }
+
+    if (action.type === 'select-active-cell') {
+      selectActiveCell(event);
+      return;
+    }
+
+    if (action.type === 'copy-selection') {
+      void copySelectedCells();
+    }
+  }
+
+  function isInteractiveEventTarget(event: Event): boolean {
+    if (!(event.target instanceof Element)) return false;
+    const interactiveElement = event.target.closest(interactiveDescendantSelector);
+    return interactiveElement !== null && interactiveElement !== gridElement;
+  }
+</script>
+
+<div
+  {...rest}
+  bind:this={gridElement}
+  class={classNames('cinder-data-grid', className)}
+  role="grid"
+  aria-rowcount={rows.length + 1}
+  aria-colcount={columnModel.orderedColumns.length}
+  aria-label={resolvedAriaLabel}
+  aria-labelledby={resolvedAriaLabelledBy}
+  aria-activedescendant={activeCellId}
+  aria-multiselectable="true"
+  tabindex="0"
+  onkeydown={handleKeydown}
+  data-cinder-density={density}
+  data-cinder-sticky-header={stickyHeader ? 'true' : undefined}
+  data-cinder-virtualized-rows={shouldVirtualizeRows ? 'true' : undefined}
+  data-cinder-virtualized-columns={shouldVirtualizeColumns ? 'true' : undefined}
+  data-cinder-column-overflow={shouldShowColumnOverflowShadow ? 'true' : undefined}
+  style:--_cinder-data-grid-template-columns={gridTemplateColumns}
+  style:--_cinder-data-grid-content-width={gridContentWidth === undefined
+    ? undefined
+    : `${gridContentWidth}px`}
+  {@attach rowVirtualizer.mountScrollContainer}
+  {@attach observeGridSize}
+>
+  <div
+    bind:this={headerElement}
+    class="cinder-data-grid__header-row"
+    role="row"
+    aria-rowindex="1"
+    {@attach observeHeaderSize}
+  >
+    {#each renderedColumns as column (column.key)}
+      {@const sortItem = getColumnSortModelItem(column.key)}
+      {@const sortPriority = getColumnSortPriority(column.key)}
+      <div
+        class="cinder-data-grid__header-cell"
+        role="columnheader"
+        aria-colindex={column.colIndex}
+        aria-sort={column.sortable ? getHeaderAriaSort(column, sortItem) : undefined}
+        data-cinder-pin={column.pin}
+        data-cinder-sortable={column.sortable ? 'true' : undefined}
+        data-cinder-sort-direction={sortItem?.direction}
+        style={getCellStyle(column)}
+      >
+        {#if column.sortable}
+          <button
+            class="cinder-data-grid__sort-button"
+            type="button"
+            onclick={(event) => handleColumnHeaderClick(column, event)}
+          >
+            <span class="cinder-data-grid__header-content">
+              {#if typeof column.header === 'function'}
+                {@render column.header()}
+              {:else}
+                {column.header}
+              {/if}
+            </span>
+            <span class="cinder-data-grid__sort-indicator" aria-hidden="true">
+              {#if sortItem?.direction === 'ascending'}
+                Asc
+              {:else if sortItem?.direction === 'descending'}
+                Desc
+              {/if}
+            </span>
+            {#if sortPriority !== undefined}
+              <span class="cinder-data-grid__sort-priority" aria-hidden="true">
+                {sortPriority}
+              </span>
+            {/if}
+            <span class="cinder-sr-only">{getSortStateDescription(sortItem, sortPriority)}</span>
+          </button>
+        {:else if typeof column.header === 'function'}
+          {@render column.header()}
+        {:else}
+          {column.header}
+        {/if}
+      </div>
+    {/each}
+  </div>
+
+  <div
+    class="cinder-data-grid__body"
+    role="rowgroup"
+    style:height={bodyHeight}
+    data-cinder-virtualized={shouldVirtualizeRows ? 'true' : undefined}
+    {@attach delegateBodyEvents}
+  >
+    {#each renderedRows as renderedRow (renderedRow.keyedRow.rowKey)}
+      {@const keyedRow = renderedRow.keyedRow}
+      {@const row = keyedRow.row}
+      {@const rowId = keyedRow.rowId}
+      {@const rowDomId = keyedRow.rowDomId}
+      {@const rowIndex = renderedRow.visualRowIndex}
+      <div
+        class={classNames('cinder-data-grid__row', getRowClass(row, rowIndex))}
+        role="row"
+        aria-rowindex={rowIndex + 2}
+        aria-label={getResolvedRowAriaLabel(row, rowIndex)}
+        aria-selected={selectedRowIds.has(rowId) ? 'true' : undefined}
+        data-cinder-selected={selectedRowIds.has(rowId) ? '' : undefined}
+        data-cinder-virtual-index={rowIndex}
+        style={getRowStyle(renderedRow)}
+      >
+        {#each renderedColumns as column (column.key)}
+          {@const value = getDataGridColumnValue(row, column)}
+          {@const cellId = getCellId(rowDomId, column.key)}
+          {@const cellCoordinates = { rowId: rowDomId, columnKey: column.key }}
+          {@const isSelectedCell = selectionState.isCellSelected(cellCoordinates)}
+          {@const isAnchorCell = selectionState.isAnchorCell(cellCoordinates)}
+          <div
+            id={cellId}
+            class="cinder-data-grid__cell"
+            role={column.rowHeader ? 'rowheader' : 'gridcell'}
+            aria-colindex={column.colIndex}
+            aria-selected={isSelectedCell ? 'true' : undefined}
+            tabindex="-1"
+            data-cinder-pin={column.pin}
+            data-cinder-active={activeCellId === cellId ? 'true' : undefined}
+            data-cinder-selected={isSelectedCell ? '' : undefined}
+            data-cinder-anchor={isAnchorCell ? 'true' : undefined}
+            data-cinder-row-id={rowId}
+            data-cinder-row-dom-id={rowDomId}
+            data-cinder-column-key={column.key}
+            data-cinder-row-index={rowIndex}
+            style={getCellStyle(column)}
+          >
+            {#if column.cell}
+              {@render column.cell({ row, value, editing: false })}
+            {:else}
+              {formatDataGridValue(value)}
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/each}
+  </div>
+</div>
+
+<div
+  class="cinder-sr-only cinder-data-grid__live-region"
+  role="status"
+  aria-live="polite"
+  aria-atomic="true"
+>
+  {renderedLiveRegionMessage}
+</div>

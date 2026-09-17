@@ -1,0 +1,56 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    feature: {
+      type: 'string',
+      description: 'The feature being gated.',
+    },
+    state: {
+      enum: [
+        'supported',
+        'unsupported',
+        'permission-needed',
+        'permission-limited',
+        'permission-denied',
+        'loading',
+        'unavailable',
+      ],
+      description: 'Current availability state.',
+    },
+    variant: {
+      enum: ['inline', 'banner', 'callout'],
+      description: 'Presentation variant.',
+      default: 'inline',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-capability-gate`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['feature', 'state'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'actions',
+        reason: 'function-or-snippet',
+        description: "Action row content; receives the gate's own `dismiss` function.",
+      },
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description: 'Custom content rendered below the status text and before the actions.',
+      },
+      {
+        name: 'onDismiss',
+        reason: 'function-or-snippet',
+        description: 'Called when the gate is dismissed.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

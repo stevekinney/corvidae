@@ -1,0 +1,154 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-marquee {
+    --_cinder-marquee-play-state: running;
+    display: block;
+    position: relative;
+  }
+
+  .cinder-marquee__viewport {
+    overflow: clip;
+    position: relative;
+  }
+
+  .cinder-marquee__control {
+    position: absolute;
+    z-index: 1;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    border: 0;
+    white-space: nowrap;
+  }
+
+  .cinder-marquee__control:focus-visible {
+    inset-block-start: 0.5rem;
+    inset-inline-start: 0.5rem;
+    inline-size: auto;
+    block-size: auto;
+    margin: 0;
+    padding: 0.375rem 0.625rem;
+    clip-path: none;
+    border: 1px solid var(--cinder-border-strong, currentColor);
+    /* Fallback retained: this rule is forced-colors-defensive throughout
+       (--cinder-surface, Canvas / --cinder-text-default, CanvasText), so the radius keeps
+       one too. Value tracks --cinder-radius-sm. */
+    border-radius: var(--cinder-radius-sm, 0.25rem);
+    background: var(--cinder-surface, Canvas);
+    color: var(--cinder-text-default, CanvasText);
+    font: inherit;
+    line-height: 1.2;
+  }
+
+  .cinder-marquee__viewport:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-marquee__viewport:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+      box-shadow: none;
+    }
+  }
+
+  .cinder-marquee__track {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-marquee-gap);
+    inline-size: max-content;
+    animation: cinder-marquee-horizontal var(--cinder-marquee-duration) linear infinite;
+    animation-play-state: var(--_cinder-marquee-play-state);
+    will-change: transform;
+  }
+
+  .cinder-marquee[data-cinder-ready='false'] .cinder-marquee__track {
+    animation-play-state: paused;
+  }
+
+  .cinder-marquee[data-cinder-manual-paused='true'] .cinder-marquee__track {
+    --_cinder-marquee-play-state: paused;
+  }
+
+  .cinder-marquee__item {
+    flex: 0 0 auto;
+  }
+
+  .cinder-marquee[data-cinder-direction='vertical'] .cinder-marquee__track {
+    flex-direction: column;
+    animation-name: cinder-marquee-vertical;
+  }
+
+  .cinder-marquee[data-cinder-direction='vertical'] .cinder-marquee__viewport {
+    block-size: 8rem;
+  }
+
+  .cinder-marquee[data-cinder-direction='vertical'] .cinder-marquee__item {
+    inline-size: 100%;
+  }
+
+  @keyframes cinder-marquee-horizontal {
+    to {
+      transform: translateX(calc(-50% - (var(--cinder-marquee-gap) / 2)));
+    }
+  }
+
+  @keyframes cinder-marquee-vertical {
+    to {
+      transform: translateY(calc(-50% - (var(--cinder-marquee-gap) / 2)));
+    }
+  }
+
+  @media (hover: hover) {
+    .cinder-marquee[data-cinder-pause-hover='true']:not([data-cinder-manual-resumed='true']):hover
+      .cinder-marquee__track {
+      --_cinder-marquee-play-state: paused;
+    }
+  }
+
+  .cinder-marquee[data-cinder-pause-focus='true']:not(
+      [data-cinder-manual-resumed='true']
+    ):focus-within
+    .cinder-marquee__track {
+    --_cinder-marquee-play-state: paused;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-marquee__viewport {
+      overflow: auto;
+    }
+
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-marquee__track {
+      animation: none;
+      transform: none;
+    }
+
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-marquee__item[aria-hidden='true'] {
+      display: none;
+    }
+  }
+
+  :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on'])
+    .cinder-marquee__viewport {
+    overflow: auto;
+  }
+
+  :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on']) .cinder-marquee__track {
+    animation: none;
+    transform: none;
+  }
+
+  :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on'])
+    .cinder-marquee__item[aria-hidden='true'] {
+    display: none;
+  }
+}

@@ -1,0 +1,79 @@
+# Button
+
+A clickable button or anchor with built-in loading state, icon slots, and a discriminated prop union that forces consumers to provide an accessible name at compile time.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { Button } from '@repo/cinder';
+</script>
+
+<Button variant="primary" size="md" label="Save" />
+```
+
+When `href` is set, the component renders as `<a>`; otherwise it renders as `<button>`. Setting `loading` swaps in a spinner, blocks the consumer's `onclick`, forces `aria-disabled` / `aria-busy`, and strips `href` to prevent navigation.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `class` | `string` | no | — | Custom class merged with `.cinder-button`. |
+| `fullWidth` | `boolean` | no | `false` | Expand to container width. |
+| `href` | `string` | no | — | Render as an anchor `<a>` element with this href. |
+| `iconOnly` | `boolean` | no | `false` | Render the button with only an icon. Requires an accessible name source. |
+| `label` | `string` | no | — | Visible text label. Must be non-empty if provided. |
+| `loading` | `boolean` | no | `false` | Disable the button and show a spinner. |
+| `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` \| `"xl"` | no | `"md"` | Size of the button. |
+| `variant` | `"primary"` \| `"secondary"` \| `"soft"` \| `"danger"` \| `"soft-danger"` \| `"ghost"` \| `"ghost-danger"` | no | `"secondary"` | Visual style. |
+| `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
+| `leadingIcon` | `(opaque)` | no | — | DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden. If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. Not expressible in JSON Schema; see the component types for the signature. |
+| `trailingIcon` | `(opaque)` | no | — | DECORATIVE icon rendered after the label/children. Always wrapped in aria-hidden. Same accessible-name guidance as `leadingIcon`. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+- `--cinder-button-background`
+- `--cinder-button-border`
+- `--cinder-button-font-size-lg`
+- `--cinder-button-font-size-md`
+- `--cinder-button-font-size-sm`
+- `--cinder-button-font-size-xl`
+- `--cinder-button-font-size-xs`
+- `--cinder-button-foreground`
+- `--cinder-button-height-lg`
+- `--cinder-button-height-md`
+- `--cinder-button-height-sm`
+- `--cinder-button-height-xl`
+- `--cinder-button-height-xs`
+- `--cinder-button-padding-x-lg`
+- `--cinder-button-padding-x-md`
+- `--cinder-button-padding-x-sm`
+- `--cinder-button-padding-x-xl`
+- `--cinder-button-padding-x-xs`
+- `--cinder-button-padding-y-lg`
+- `--cinder-button-padding-y-md`
+- `--cinder-button-padding-y-sm`
+- `--cinder-button-padding-y-xl`
+- `--cinder-button-padding-y-xs`
+- `--cinder-button-radius`
+- `--cinder-button-radius-lg`
+- `--cinder-button-radius-md`
+- `--cinder-button-radius-sm`
+- `--cinder-button-radius-xl`
+- `--cinder-button-radius-xs`
+
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

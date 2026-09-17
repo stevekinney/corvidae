@@ -1,0 +1,332 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * CHIP
+ * ======================================== */
+
+  .cinder-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    padding: var(--cinder-space-0-5) var(--cinder-space-2);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    line-height: 1.25;
+    border-radius: var(--cinder-radius-full);
+    border: 1px solid var(--cinder-border);
+    white-space: nowrap;
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-default);
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-chip[data-cinder-breakable] {
+    white-space: normal;
+  }
+
+  .cinder-chip[data-cinder-breakable] .cinder-chip__label {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    unicode-bidi: isolate;
+  }
+
+  .cinder-chip[data-cinder-breakable] .cinder-chip__icon {
+    flex: 0 0 auto;
+    align-self: flex-start;
+  }
+
+  .cinder-chip[data-cinder-breakable] .cinder-chip__remove {
+    flex: 0 0 auto;
+  }
+
+  /* Mode is expressed through internal affordances, never through a separate
+ * chip-root surface. Display, resting toggle, and removable roots share this
+ * same surface contract. */
+
+  button.cinder-chip {
+    font: inherit;
+    cursor: pointer;
+    appearance: none;
+  }
+
+  /* ----------------------------------------
+ * Size variants
+ * ---------------------------------------- */
+
+  .cinder-chip[data-cinder-size='sm'] {
+    font-size: var(--cinder-text-2xs, 0.625rem);
+    padding: 0 var(--cinder-space-1);
+    line-height: 1rem;
+  }
+
+  .cinder-chip[data-cinder-size='md'] {
+    font-size: var(--cinder-text-xs);
+    padding: var(--cinder-space-0-5) var(--cinder-space-2);
+  }
+
+  /* density="toolbar": opt the chip into the shared --cinder-control-height-sm
+ * tier so it lines up with sibling Button (size="sm") and SegmentedControl
+ * (density="toolbar"). The base `display: inline-flex; align-items: center`
+ * already centers the chip text vertically — we just need to set the box
+ * height. box-sizing: border-box is explicit so border width does not push
+ * the rendered height above 32px. */
+  .cinder-chip[data-cinder-density='toolbar'] {
+    box-sizing: border-box;
+    min-block-size: var(--cinder-control-height-sm);
+  }
+
+  /* ----------------------------------------
+ * Color variants
+ * ---------------------------------------- */
+
+  .cinder-chip[data-cinder-variant='neutral'] {
+    background: var(--cinder-status-neutral-background);
+    color: var(--cinder-status-neutral-text);
+    border-color: var(--cinder-status-neutral-border);
+  }
+
+  .cinder-chip[data-cinder-variant='success'] {
+    background: var(--cinder-status-success-background);
+    color: var(--cinder-status-success-text);
+    border-color: var(--cinder-status-success-border);
+  }
+
+  .cinder-chip[data-cinder-variant='warning'] {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+    border-color: var(--cinder-status-warning-border);
+  }
+
+  .cinder-chip[data-cinder-variant='danger'] {
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+    border-color: var(--cinder-status-danger-border);
+  }
+
+  .cinder-chip[data-cinder-variant='info'] {
+    background: var(--cinder-status-info-background);
+    color: var(--cinder-status-info-text);
+    border-color: var(--cinder-status-info-border);
+  }
+
+  .cinder-chip[data-cinder-variant='accent'] {
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
+    border-color: var(--cinder-accent-border);
+  }
+
+  /* Third-party colour is decorative only. Keep the semantic foreground on the
+   * semantic surface so arbitrary brand colours cannot reduce text contrast in
+   * either theme; use the brand solely for a restrained tint and border. */
+  .cinder-chip[data-cinder-variant='neutral']:not(:disabled):not([data-cinder-disabled]):not(
+      :focus-visible
+    )[style*='--_cinder-chip-brand-color'] {
+    color: var(--cinder-text-default);
+    background: color-mix(
+      in oklch,
+      var(--_cinder-chip-brand-color) 8%,
+      var(--cinder-surface-raised) 92%
+    );
+    border-color: color-mix(
+      in oklch,
+      var(--_cinder-chip-brand-color) 35%,
+      var(--cinder-border) 65%
+    );
+  }
+
+  /* ----------------------------------------
+ * Hover states (button chips only)
+ * ---------------------------------------- */
+
+  /* Hover tint: a flat overlay drawn over the chip's existing background.
+ * Uses `light-dark()` so the overlay darkens in light mode and lightens
+ * in dark mode, following `color-scheme` (driven by `prefers-color-scheme`
+ * and any `[data-theme]` override on an ancestor). This replaces a
+ * `filter: brightness()` toggle that previously needed a
+ * prefers-color-scheme media query. */
+  /* Sticky-hover suppression on touch: hover-only chrome wrapped so it doesn't
+ * "stick" after tap on touch devices that emulate :hover. */
+  @media (hover: hover) {
+    button.cinder-chip:hover:not(:disabled) {
+      /* The flat hover overlay is a single neutral black/white tint, declared
+       * once here so its raw value has one home. It is a structural device (a
+       * darken/lighten film over whatever the chip background is), not a
+       * themeable status surface. */
+      /* cinder-allow-raw-color: structural-pattern — neutral hover overlay tint, not a themeable surface */
+      --_cinder-chip-hover-overlay: light-dark(oklch(0% 0 0 / 0.08), oklch(100% 0 0 / 0.1));
+
+      background-image: linear-gradient(
+        var(--_cinder-chip-hover-overlay),
+        var(--_cinder-chip-hover-overlay)
+      );
+    }
+  }
+
+  /* ----------------------------------------
+ * Pressed state (toggle chips)
+ * ---------------------------------------- */
+
+  .cinder-chip[aria-pressed='true'][data-cinder-variant='neutral'] {
+    background: var(--cinder-surface-pressed);
+    color: var(--cinder-text-default);
+    border-color: var(--cinder-border-strong);
+  }
+
+  /* Neutral pressed state is a restrained selection shift on the shared chip
+ * surface, not a full inversion. Status pressed recipes remain intentionally
+ * separate until their readable-foreground cleanup lands. */
+  .cinder-chip[aria-pressed='true'][data-cinder-variant='success'] {
+    background: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-contrast);
+    border-color: var(--cinder-status-success-solid);
+  }
+
+  .cinder-chip[aria-pressed='true'][data-cinder-variant='warning'] {
+    background: var(--cinder-status-warning-solid);
+    color: var(--cinder-status-warning-contrast);
+    border-color: var(--cinder-status-warning-solid);
+  }
+
+  .cinder-chip[aria-pressed='true'][data-cinder-variant='danger'] {
+    background: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-contrast);
+    border-color: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-chip[aria-pressed='true'][data-cinder-variant='info'] {
+    background: var(--cinder-status-info-solid);
+    color: var(--cinder-status-info-contrast);
+    border-color: var(--cinder-status-info-solid);
+  }
+
+  .cinder-chip[aria-pressed='true'][data-cinder-variant='accent'] {
+    background: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    border-color: var(--cinder-accent-solid);
+  }
+
+  /* ----------------------------------------
+ * Focus-visible ring
+ * ---------------------------------------- */
+
+  button.cinder-chip:focus-visible,
+  .cinder-chip__remove:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    /* Ring replaces the border while focused rather than stacking on it — the two
+       together read as one heavier shape than either was designed to be. */
+    border-color: transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    button.cinder-chip:focus-visible,
+    .cinder-chip__remove:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+  }
+
+  /* ----------------------------------------
+ * Disabled state
+ * ---------------------------------------- */
+
+  /* Disabled visual is expressed with muted COLOR tokens, not `opacity`.
+   * A root `opacity: 0.5` creates a stacking context the children composite
+   * THROUGH — so the label can never be more opaque than its parent, and the
+   * disabled-text token (4.61:1 on its own) gets halved to ~1.9:1 and fails
+   * WCAG AA. Muting per-property instead lets the label keep full contrast
+   * via --cinder-text-disabled while the border/background still read as
+   * disabled. Covers both the removable/display path (data-cinder-disabled)
+   * and the toggle-button path (native :disabled). */
+  button.cinder-chip:disabled,
+  .cinder-chip[data-cinder-disabled] {
+    cursor: not-allowed;
+    background: var(--cinder-surface-inset);
+    border-color: var(--cinder-border-muted);
+  }
+
+  .cinder-chip__remove:disabled {
+    cursor: not-allowed;
+  }
+
+  .cinder-chip[data-cinder-disabled] .cinder-chip__label,
+  button.cinder-chip:disabled .cinder-chip__label {
+    color: var(--cinder-text-disabled);
+  }
+
+  /* Icons and the remove affordance carry the muted treatment so the chip still
+   * reads as disabled even though the label stays at full contrast. */
+  .cinder-chip[data-cinder-disabled] .cinder-chip__icon,
+  button.cinder-chip:disabled .cinder-chip__icon,
+  .cinder-chip[data-cinder-disabled] .cinder-chip__remove,
+  button.cinder-chip:disabled .cinder-chip__remove {
+    color: var(--cinder-text-disabled);
+    opacity: 0.6;
+  }
+
+  /* ----------------------------------------
+ * Icon slot
+ * ---------------------------------------- */
+
+  .cinder-chip__icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    line-height: 0;
+  }
+
+  /* ----------------------------------------
+ * Remove button
+ * ---------------------------------------- */
+
+  .cinder-chip__remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1rem;
+    block-size: 1rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    border-radius: var(--cinder-radius-full);
+    font: inherit;
+    margin-inline-start: var(--cinder-space-0-5);
+    appearance: none;
+    /* Anchor the WCAG 2.5.5 hit-area pseudo-element. */
+    position: relative;
+  }
+
+  /* Expand the interactive hit area to 44×44 px (WCAG 2.5.5) without affecting layout.
+ * Anchored to the right edge so the expansion never encroaches into the label on the left. */
+  .cinder-chip__remove::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 44px;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+
+  @media (hover: hover) {
+    .cinder-chip__remove:hover:not(:disabled) {
+      background-color: var(--cinder-surface-hover);
+    }
+  }
+
+  /* ----------------------------------------
+ * Reduced motion
+ * ---------------------------------------- */
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off']) .cinder-chip {
+      transition: none;
+    }
+  }
+}

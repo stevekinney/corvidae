@@ -1,0 +1,276 @@
+/**
+ * Color parsing and luminance utilities for swatch contrast computation.
+ *
+ * Supported input formats: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`,
+ * `rgb(r, g, b)`, `rgba(r, g, b, a)`, `hsl(h, s%, l%)`, `hsla(h, s%, l%, a)`,
+ * and `hwb(h w% b% / a)`.
+ * All other CSS color syntaxes are treated as opaque with best-effort `'white'` contrast.
+ */
+
+type RgbaComponents = { r: number; g: number; b: number; a: number };
+
+/** Parse a hex, rgb(a), or hsl(a) color string into RGBA components (0–255, alpha 0–1). */
+export function parseColor(input: string): RgbaComponents | null {
+  const trimmed = input.trim().toLowerCase();
+
+  // Hex formats
+  const hexMatch = trimmed.match(/^#([0-9a-f]{3,8})$/);
+  if (hexMatch) {
+    return parseHex(hexMatch[1]!);
+  }
+
+  // rgb / rgba
+  const rgbMatch = trimmed.match(/^rgba?\(\s*([^)]+)\)$/);
+  if (rgbMatch) {
+    return parseRgb(rgbMatch[1]!);
+  }
+
+  // hsl / hsla
+  const hslMatch = trimmed.match(/^hsla?\(\s*([^)]+)\)$/);
+  if (hslMatch) {
+    return parseHsl(hslMatch[1]!);
+  }
+
+  const hwbMatch = trimmed.match(/^hwb\(\s*([^)]+)\)$/);
+  if (hwbMatch) {
+    return parseHwb(hwbMatch[1]!);
+  }
+
+  return null;
+}
+
+function parseHex(hex: string): RgbaComponents | null {
+  const expanded =
+    hex.length === 3 || hex.length === 4
+      ? hex
+          .split('')
+          .map((digit) => digit + digit)
+          .join('')
+      : hex;
+  if (expanded.length !== 6 && expanded.length !== 8) return null;
+  return {
+    r: parseInt(expanded.slice(0, 2), 16),
+    g: parseInt(expanded.slice(2, 4), 16),
+    b: parseInt(expanded.slice(4, 6), 16),
+    a: expanded.length === 8 ? parseInt(expanded.slice(6, 8), 16) / 255 : 1,
+  };
+}
+
+function parseChannelValue(raw: string): number {
+  const trimmed = raw.trim();
+  // Reject slash-alpha syntax (e.g. "255 / 50%") — we only support comma-separated legacy syntax
+  if (trimmed.includes('/')) return NaN;
+  if (trimmed.endsWith('%')) {
+    return Math.max(0, Math.min(255, (parseFloat(trimmed) / 100) * 255));
+  }
+  return Math.max(0, Math.min(255, parseFloat(trimmed)));
+}
+
+function parseAlphaValue(raw: string): number {
+  const trimmed = raw.trim();
+  // Reject slash-alpha syntax
+  if (trimmed.includes('/')) return NaN;
+  if (trimmed.endsWith('%')) {
+    return Math.max(0, Math.min(1, parseFloat(trimmed) / 100));
+  }
+  return Math.max(0, Math.min(1, parseFloat(trimmed)));
+}
+
+function parseRgb(inner: string): RgbaComponents | null {
+  // Reject modern slash-alpha syntax (e.g. "rgb(255 0 0 / 50%)")
+  if (inner.includes('/')) return null;
+  const parts = inner.split(',').map((p) => p.trim());
+  if (parts.length < 3 || parts.length > 4) return null;
+
+  const p0 = parts[0] ?? '';
+  const p1 = parts[1] ?? '';
+  const p2 = parts[2] ?? '';
+  const r = parseChannelValue(p0);
+  const g = parseChannelValue(p1);
+  const b = parseChannelValue(p2);
+  const a = parts.length === 4 ? parseAlphaValue(parts[3] ?? '') : 1;
+
+  if ([r, g, b, a].some(isNaN)) return null;
+  return { r, g, b, a };
+}
+
+function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  // Wrap hue to [0, 360)
+  h = ((h % 360) + 360) % 360;
+  // Clamp s and l to [0, 1]
+  s = Math.max(0, Math.min(1, s));
+  l = Math.max(0, Math.min(1, l));
+
+  if (s === 0) {
+    const v = Math.round(l * 255);
+    return { r: v, g: v, b: v };
+  }
+
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+
+  let rp = 0,
+    gp = 0,
+    bp = 0;
+  if (h < 60) {
+    rp = c;
+    gp = x;
+    bp = 0;
+  } else if (h < 120) {
+    rp = x;
+    gp = c;
+    bp = 0;
+  } else if (h < 180) {
+    rp = 0;
+    gp = c;
+    bp = x;
+  } else if (h < 240) {
+    rp = 0;
+    gp = x;
+    bp = c;
+  } else if (h < 300) {
+    rp = x;
+    gp = 0;
+    bp = c;
+  } else {
+    rp = c;
+    gp = 0;
+    bp = x;
+  }
+
+  return {
+    r: Math.round((rp + m) * 255),
+    g: Math.round((gp + m) * 255),
+    b: Math.round((bp + m) * 255),
+  };
+}
+
+function parseHsl(inner: string): RgbaComponents | null {
+  // Reject modern slash-alpha syntax (e.g. "hsl(0 100% 50% / 50%)")
+  if (inner.includes('/')) return null;
+  const parts = inner.split(',').map((p) => p.trim());
+  if (parts.length < 3 || parts.length > 4) return null;
+
+  const p0 = parts[0] ?? '';
+  const p1 = parts[1] ?? '';
+  const p2 = parts[2] ?? '';
+  const h = parseFloat(p0); // unitless degrees
+  const sPct = parsePercentage(p1);
+  const lPct = parsePercentage(p2);
+  const a = parts.length === 4 ? parseAlphaValue(parts[3] ?? '') : 1;
+
+  if ([h, sPct, lPct, a].some(isNaN)) return null;
+
+  const { r, g, b } = hslToRgb(h, sPct / 100, lPct / 100);
+  return { r, g, b, a };
+}
+
+function parsePercentage(raw: string): number {
+  return raw.endsWith('%') ? parseFloat(raw) : NaN;
+}
+
+function isHwbSyntax(
+  hueRaw: string,
+  whitenessRaw: string,
+  blacknessRaw: string,
+  alphaRaw: string | undefined,
+): boolean {
+  const numberPattern = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+  const percentagePattern = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?%$/i;
+  if (
+    !numberPattern.test(hueRaw) ||
+    !percentagePattern.test(whitenessRaw) ||
+    !percentagePattern.test(blacknessRaw)
+  )
+    return false;
+  if (alphaRaw !== undefined && !numberPattern.test(alphaRaw) && !percentagePattern.test(alphaRaw))
+    return false;
+
+  return true;
+}
+
+function parseHwb(inner: string): RgbaComponents | null {
+  const [channels = '', alphaRaw] = inner.split('/').map((part) => part.trim());
+  const parts = channels.split(/\s+/);
+  if (parts.length !== 3 || inner.split('/').length > 2) return null;
+
+  const hueRaw = parts[0] ?? '';
+  const hue = Number.parseFloat(hueRaw);
+  const whitenessRaw = parts[1] ?? '';
+  const blacknessRaw = parts[2] ?? '';
+  if (!isHwbSyntax(hueRaw, whitenessRaw, blacknessRaw, alphaRaw)) return null;
+
+  const whiteness = Number.parseFloat(whitenessRaw) / 100;
+  const blackness = Number.parseFloat(blacknessRaw) / 100;
+  const alpha = alphaRaw === undefined ? 1 : parseAlphaValue(alphaRaw);
+  if ([hue, whiteness, blackness, alpha].some(Number.isNaN)) return null;
+
+  return hwbToRgb(hue, whiteness, blackness, alpha);
+}
+
+function hwbToRgb(
+  hue: number,
+  whiteness: number,
+  blackness: number,
+  alpha: number,
+): RgbaComponents {
+  whiteness = Math.max(0, Math.min(1, whiteness));
+  blackness = Math.max(0, Math.min(1, blackness));
+  if (whiteness + blackness >= 1) {
+    const gray = Math.round((whiteness / (whiteness + blackness)) * 255);
+    return { r: gray, g: gray, b: gray, a: alpha };
+  }
+
+  const pure = hslToRgb(hue, 1, 0.5);
+  const scale = 1 - whiteness - blackness;
+  return {
+    r: Math.round((pure.r / 255) * scale * 255 + whiteness * 255),
+    g: Math.round((pure.g / 255) * scale * 255 + whiteness * 255),
+    b: Math.round((pure.b / 255) * scale * 255 + whiteness * 255),
+    a: alpha,
+  };
+}
+
+/**
+ * Return true when the color has a non-opaque alpha channel.
+ * Supports: `#rgba`, `#rrggbbaa`, `rgba(...)`, `hsla(...)`.
+ * Any unsupported format returns false (treated as opaque).
+ */
+export function hasAlpha(input: string): boolean {
+  const parsed = parseColor(input);
+  if (!parsed) return false;
+  return parsed.a < 1;
+}
+
+/** Linearize a single sRGB channel (0–255) per WCAG 2.x. */
+function linearize(channel: number): number {
+  const cs = channel / 255;
+  return cs <= 0.04045 ? cs / 12.92 : ((cs + 0.055) / 1.055) ** 2.4;
+}
+
+/**
+ * Compute WCAG 2.x relative luminance from an RGB triple (channels 0–255).
+ * https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
+ */
+export function relativeLuminance({ r, g, b }: { r: number; g: number; b: number }): number {
+  return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
+}
+
+/**
+ * Return `'black'` or `'white'` — whichever has higher WCAG contrast ratio against
+ * the given color. Falls back to `'white'` when the color cannot be parsed.
+ *
+ * Alpha is ignored: the indicator color is chosen against the swatch's intended
+ * solid color, not its composite with whatever surface sits behind it.
+ */
+export function pickContrastColor(input: string): 'black' | 'white' {
+  const parsed = parseColor(input);
+  if (!parsed) return 'white';
+
+  const L = relativeLuminance(parsed);
+  // WCAG contrast ratio against black (L2=0) and white (L2=1)
+  const contrastBlack = (L + 0.05) / 0.05;
+  const contrastWhite = 1.05 / (L + 0.05);
+  return contrastBlack >= contrastWhite ? 'black' : 'white';
+}

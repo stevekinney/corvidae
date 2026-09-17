@@ -1,0 +1,323 @@
+import type { ActivityContext, ActivityDefinition, ActivityFunction } from './activity.ts';
+import type {
+  StepWorkflowFunction,
+  WorkflowDefinition,
+  WorkflowFunction,
+} from './workflow-function.ts';
+
+/**
+ * Module-augmentation target for typed workflow names. Add entries with
+ * `input` and `output` fields to make `engine.register`, `engine.start`, and
+ * `WorkflowHandle.result()` type-safe for string workflow names.
+ *
+ * `weft codegen`-generated entries additionally carry `revision`/
+ * `workflowVersion` string-literal fields for compile-time introspection —
+ * see `documentation/reference/cli.md#codegen` for the generated shape.
+ * Neither is required here: {@link WorkflowInput}/{@link WorkflowOutput}
+ * read only `input`/`output`, so a hand-authored entry (as below) never
+ * needs to supply them.
+ *
+ * @example
+ * ```ts
+ * import type { WorkflowRegistry } from '@repo/weft';
+ *
+ * interface WelcomeInput {
+ *   name: string;
+ * }
+ *
+ * interface WelcomeOutput {
+ *   greeting: string;
+ * }
+ *
+ * declare module '@repo/weft' {
+ *   interface WorkflowRegistry {
+ *     welcome: { input: WelcomeInput; output: WelcomeOutput };
+ *   }
+ * }
+ *
+ * const welcomeInput: WorkflowRegistry['welcome']['input'] = { name: 'Ada' };
+ * void welcomeInput;
+ * ```
+ */
+export interface WorkflowRegistry {}
+
+export type WorkflowRegistryEntry = { input: unknown; output: unknown; services?: unknown };
+
+declare const defaultWorkflowRegistry: unique symbol;
+declare const defaultActivityTypes: unique symbol;
+
+/**
+ * Default workflow registry carried by `new Engine()` when no local registry
+ * type parameters are supplied. It preserves module-augmented workflow names
+ * without adding a hidden dynamic-name fallback.
+ */
+export type DefaultWorkflowRegistry = WorkflowRegistry & {
+  readonly [defaultWorkflowRegistry]: true;
+};
+
+/**
+ * Default activity registry carried by `new Engine()` when no local activity
+ * type parameter is supplied. After the global `ActivityTypes` augmentation
+ * surface was removed, an engine constructed without explicit activity type
+ * parameters carries no known activity names; users opt in via the chained
+ * builder API (`workflow({...}).activities({...})`) or `Engine.create({ activities })`.
+ */
+export type DefaultActivityTypes = {
+  readonly [defaultActivityTypes]: true;
+};
+
+export type IsDefaultWorkflowRegistry<TRegistry extends object> =
+  TRegistry extends DefaultWorkflowRegistry ? true : false;
+
+/**
+ * Broad workflow-definition constraint used by {@link Engine.create} and the
+ * typed builder methods. `never` in the input position lets concrete
+ * definitions such as `WorkflowDefinition<string, string>` satisfy the
+ * constraint under strict function variance.
+ *
+ * @example
+ * ```ts
+ * import { workflow, type AnyWorkflowDefinition } from '@repo/weft';
+ *
+ * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
+ *   return `Hello, ${input}`;
+ * });
+ * const definition: AnyWorkflowDefinition = greet;
+ * void definition;
+ * ```
+ */
+export type AnyWorkflowDefinition = {
+  readonly name: string;
+  readonly handler: WorkflowFunction<never, unknown, never> | StepWorkflowFunction<never>;
+};
+
+/**
+ * Broad activity-definition constraint used by {@link Engine.create} and
+ * `Engine.register`. It models the callable values returned by
+ * {@link activity} so registration keeps colocated retry, timeout, schema,
+ * and middleware metadata attached to the function object.
+ *
+ * @example
+ * ```ts
+ * import { activity, type AnyActivityDefinition } from '@repo/weft';
+ *
+ * const greet = activity({ name: 'greet', execute: async (name: string) => `Hello, ${name}` });
+ * const definition: AnyActivityDefinition = greet;
+ * void definition;
+ * ```
+ */
+export type AnyActivityDefinition = {
+  readonly name: string;
+  readonly execute: ActivityFunction<never>;
+} & ((input: never, context?: ActivityContext) => Promise<unknown>);
+
+export type WorkflowInput<
+  TRegistry extends object,
+  TName extends string,
+> = TName extends keyof TRegistry
+  ? TRegistry[TName] extends { input: infer TInput }
+    ? TInput
+    : unknown
+  : unknown;
+
+export type WorkflowOutput<
+  TRegistry extends object,
+  TName extends string,
+> = TName extends keyof TRegistry
+  ? TRegistry[TName] extends { output: infer TOutput }
+    ? TOutput
+    : unknown
+  : unknown;
+
+export type WorkflowServices<
+  TRegistry extends object,
+  TName extends string,
+> = TName extends keyof TRegistry
+  ? TRegistry[TName] extends { services: infer TServices }
+    ? TServices
+    : unknown
+  : unknown;
+
+export type WorkflowServicesUnion<TRegistry extends object> = [keyof TRegistry & string] extends [
+  never,
+]
+  ? unknown
+  : {
+      [Name in keyof TRegistry & string]: WorkflowServices<TRegistry, Name>;
+    }[keyof TRegistry & string];
+
+export type ActivityArguments<
+  TActivities extends object,
+  TName extends string,
+> = TName extends keyof TActivities
+  ? TActivities[TName] extends () => unknown
+    ? []
+    : TActivities[TName] extends (input: infer TInput) => unknown
+      ? [input: TInput]
+      : [input: unknown]
+  : [input?: unknown];
+
+export type ActivityResult<
+  TActivities extends object,
+  TName extends string,
+> = TName extends keyof TActivities
+  ? TActivities[TName] extends (...arguments_: infer _TArguments) => infer TResult
+    ? Awaited<TResult>
+    : unknown
+  : unknown;
+
+export type RegisteredActivityFunction<
+  TActivities extends object,
+  TName extends string,
+> = TName extends keyof TActivities
+  ? TActivities[TName] extends () => infer TResult
+    ? () => TResult
+    : TActivities[TName] extends (input: infer TInput) => infer TResult
+      ? (input: TInput) => TResult
+      : never
+  : never;
+
+type UnionToIntersection<TUnion> = (
+  TUnion extends unknown ? (value: TUnion) => void : never
+) extends (value: infer TIntersection) => void
+  ? TIntersection
+  : never;
+
+type MergeDefinitionEntries<TUnion> = [TUnion] extends [never]
+  ? {}
+  : UnionToIntersection<TUnion> extends infer TIntersection
+    ? TIntersection extends object
+      ? TIntersection
+      : {}
+    : {};
+
+/**
+ * Infer a workflow registry entry from one concrete workflow definition. This
+ * is used by `Engine.register`, where the definition's literal `name`
+ * carries the registry key.
+ *
+ * @example
+ * ```ts
+ * import { workflow, type InferWorkflowEntry } from '@repo/weft';
+ *
+ * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
+ *   return `Hello, ${input}`;
+ * });
+ * type GreetWorkflow = InferWorkflowEntry<typeof greet>;
+ * const input: GreetWorkflow['greet']['input'] = 'Ada';
+ * void input;
+ * ```
+ */
+export type InferWorkflowEntry<TDefinition extends AnyWorkflowDefinition> =
+  TDefinition extends WorkflowDefinition<
+    infer TInput,
+    infer TOutput,
+    infer TName extends string,
+    infer TServices
+  >
+    ? { [Name in TName]: { input: TInput; output: TOutput; services: TServices } }
+    : never;
+
+type InferWorkflowEntryForKey<TName extends string, TDefinition extends AnyWorkflowDefinition> =
+  TDefinition extends WorkflowDefinition<infer TInput, infer TOutput, string, infer TServices>
+    ? { [Name in TName]: { input: TInput; output: TOutput; services: TServices } }
+    : never;
+
+/**
+ * Infer a workflow registry from a definition map. Map keys are the source of
+ * truth for `Engine.create`, and runtime creation validates each key against
+ * `definition.name` before registration.
+ *
+ * @example
+ * ```ts
+ * import { workflow, type InferWorkflowEntries } from '@repo/weft';
+ *
+ * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
+ *   return `Hello, ${input}`;
+ * });
+ * type Workflows = InferWorkflowEntries<{ greet: typeof greet }>;
+ * const output: Workflows['greet']['output'] = 'Hello, Ada';
+ * void output;
+ * ```
+ */
+export type InferWorkflowEntries<TDefinitions extends Record<string, AnyWorkflowDefinition>> = [
+  keyof TDefinitions & string,
+] extends [never]
+  ? {}
+  : MergeDefinitionEntries<
+      {
+        [Name in keyof TDefinitions & string]: InferWorkflowEntryForKey<Name, TDefinitions[Name]>;
+      }[keyof TDefinitions & string]
+    >;
+
+type ActivityDefinitionFunction<TInput, TOutput> = [TInput] extends [void]
+  ? () => Promise<Awaited<TOutput>>
+  : (input: TInput) => Promise<Awaited<TOutput>>;
+
+type ActivityEntryForDefinition<TName extends string, TInput, TOutput> = Record<
+  TName,
+  ActivityDefinitionFunction<TInput, TOutput>
+>;
+
+/**
+ * Infer an activity registry entry from one concrete activity definition.
+ * The signature intentionally routes through {@link ActivityArguments} and
+ * {@link ActivityResult} so zero-input activities remain zero-argument
+ * entries instead of widening to optional-input functions.
+ *
+ * @example
+ * ```ts
+ * import { activity, type InferActivityEntry } from '@repo/weft';
+ *
+ * const ping = activity({ name: 'ping', execute: async () => 'pong' });
+ * type PingActivity = InferActivityEntry<typeof ping>;
+ * const run: PingActivity['ping'] = async () => 'pong';
+ * void run;
+ * ```
+ */
+export type InferActivityEntry<TDefinition extends AnyActivityDefinition> =
+  TDefinition extends ActivityDefinition<infer TInput, infer TOutput, infer TName extends string>
+    ? {
+        [Name in TName]: (
+          ...arguments_: ActivityArguments<ActivityEntryForDefinition<Name, TInput, TOutput>, Name>
+        ) => Promise<
+          Awaited<ActivityResult<ActivityEntryForDefinition<Name, TInput, TOutput>, Name>>
+        >;
+      }
+    : never;
+
+type InferActivityEntryForKey<TName extends string, TDefinition extends AnyActivityDefinition> =
+  TDefinition extends ActivityDefinition<infer TInput, infer TOutput>
+    ? {
+        [Name in TName]: (
+          ...arguments_: ActivityArguments<ActivityEntryForDefinition<Name, TInput, TOutput>, Name>
+        ) => Promise<
+          Awaited<ActivityResult<ActivityEntryForDefinition<Name, TInput, TOutput>, Name>>
+        >;
+      }
+    : never;
+
+/**
+ * Infer an activity registry from a definition map. Map keys are the source of
+ * truth for `Engine.create`, and runtime creation validates each key against
+ * `definition.name` before registration.
+ *
+ * @example
+ * ```ts
+ * import { activity, type InferActivityEntries } from '@repo/weft';
+ *
+ * const greet = activity({ name: 'greet', execute: async (name: string) => `Hello, ${name}` });
+ * type Activities = InferActivityEntries<{ greet: typeof greet }>;
+ * const run: Activities['greet'] = async (name) => `Hello, ${name}`;
+ * void run;
+ * ```
+ */
+export type InferActivityEntries<TDefinitions extends Record<string, AnyActivityDefinition>> = [
+  keyof TDefinitions & string,
+] extends [never]
+  ? {}
+  : MergeDefinitionEntries<
+      {
+        [Name in keyof TDefinitions & string]: InferActivityEntryForKey<Name, TDefinitions[Name]>;
+      }[keyof TDefinitions & string]
+    >;

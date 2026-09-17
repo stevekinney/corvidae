@@ -1,0 +1,485 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category overlay
+   * @status stable
+   * @purpose Floating toolbar anchored to a text selection that exposes a comment-on-selection action with an inline composer.
+   * @tag overlay
+   * @tag selection
+   * @useWhen Letting readers annotate or comment on a highlighted range of text in a document or article surface.
+   * @useWhen Surfacing selection-scoped actions such as quote, share, or comment near the user's pointer.
+   * @avoidWhen Anchoring generic non-selection content to a trigger — use popover.
+   * @avoidWhen Building a general-purpose floating toolbar unrelated to text selection — compose a popover with custom controls.
+   * @related popover
+   */
+  export type {
+    SelectionPopoverPosition,
+    SelectionPopoverProps,
+  } from './selection-popover.types.ts';
+</script>
+
+<script lang="ts">
+  import type { Placement, VirtualElement } from '@floating-ui/dom';
+  import type { SelectionPopoverProps } from './selection-popover.types.ts';
+  import { onDestroy, tick } from 'svelte';
+
+  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
+  import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
+  import { pushEscapeHandler } from '../../_internal/overlay.ts';
+  import { createClickOutside } from '../../utilities/attachments.ts';
+  import { classNames } from '../../utilities/class-names.ts';
+  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import { createPortalAttachment } from '../portal/index.ts';
+  import { createVirtualKeyboardDismissal } from './virtual-keyboard-dismissal.svelte.ts';
+
+  let {
+    id,
+    position,
+    open = false,
+    onCommentSubmit,
+    onExpand,
+    onCancel,
+    onClose,
+    onExitComplete,
+    class: customClassName,
+    ...rest
+  }: SelectionPopoverProps = $props();
+
+  let expanded = $state(false);
+  let commentBody = $state('');
+  let textareaElement = $state<HTMLTextAreaElement | null>(null);
+  let composerFormElement = $state<HTMLDivElement | null>(null);
+  let popoverElement = $state<HTMLDivElement | null>(null);
+  let restoreFocusElement: HTMLElement | null = null;
+  let wasOpen = false;
+  let closeRequested = false;
+  let isRestoringFocus = false;
+  // A count, not a boolean: a multi-pointer gesture (two-finger touch, pen +
+  // touch, etc.) can have more than one pointer down at once. Releasing one
+  // must not re-arm scroll-dismissal while another is still held.
+  let activePointerCount = 0;
+  const pointerIsDown = () => activePointerCount > 0;
+
+  // Tracks pointer button state for the component's FULL mounted lifetime —
+  // not just while open. A drag-select gesture that opens this popover (via
+  // the consumer's selectionchange handler, per selection-popover.examples.json)
+  // starts with a pointerdown that happens BEFORE the popover is open/enabled,
+  // so movement-dismissal's own gate (in createVirtualKeyboardDismissal, keyed
+  // off this getter) needs pointer state that was already being tracked when
+  // that pointerdown fired, not state that only starts listening once the
+  // popover opens. See createVirtualKeyboardDismissal's isPointerDown option.
+  $effect(() => {
+    const markPointerDown = () => {
+      activePointerCount += 1;
+    };
+    const markPointerUp = () => {
+      activePointerCount = Math.max(0, activePointerCount - 1);
+    };
+    const pointerTrackingOptions: AddEventListenerOptions = { capture: true, passive: true };
+    window.addEventListener('pointerdown', markPointerDown, pointerTrackingOptions);
+    window.addEventListener('pointerup', markPointerUp, pointerTrackingOptions);
+    window.addEventListener('pointercancel', markPointerUp, pointerTrackingOptions);
+    return () => {
+      window.removeEventListener('pointerdown', markPointerDown, pointerTrackingOptions);
+      window.removeEventListener('pointerup', markPointerUp, pointerTrackingOptions);
+      window.removeEventListener('pointercancel', markPointerUp, pointerTrackingOptions);
+      activePointerCount = 0;
+    };
+  });
+
+  // Snapshot of the last live virtual anchor OBJECT — not just its
+  // coordinates — so `virtualAnchor` below can return the exact same
+  // reference across a close instead of switching to a newly-constructed
+  // one. `anchored-overlay.svelte.ts`'s positioning effect tracks
+  // `anchor()`'s return value as a reactive dependency: even a
+  // same-coordinates-but-different-object swap makes it tear down and
+  // rebuild (resetting `positionStyle` for a tick before the async Floating
+  // UI recomputation restores it), so a consumer clearing `position` in the
+  // same update that flips `open` false must not trigger a reference change
+  // at all, not just an eventually-equivalent one.
+  let lastVirtualAnchor: VirtualElement | null = null;
+
+  const virtualAnchor = $derived.by<VirtualElement | null>(() => {
+    if (!position) return lastVirtualAnchor;
+
+    // Use the selection height when provided so floating-ui sees the real bottom
+    // edge of the selection. Without this, `bottom` equals `top` (zero-height
+    // point anchor), and when `flip` switches to bottom-placement the panel's
+    // top is set to `anchor.bottom + offset = position.y + 8` — inside the
+    // selection line — causing the observed ~8.5 px overlap (issue #369).
+    const selectionHeight = position.height ?? 0;
+    // A plain, already-resolved rect object — not a closure reading
+    // `position.x`/`.y` live — so the anchor stays valid (a fixed rect, not a
+    // reference back to now-null `position`) for as long as this SAME
+    // wrapper object is returned during a close.
+    const rect = {
+      x: position.x,
+      y: position.y,
+      top: position.y,
+      left: position.x,
+      right: position.x,
+      bottom: position.y + selectionHeight,
+      width: 0,
+      height: selectionHeight,
+    } as DOMRect;
+
+    const anchor: VirtualElement = { getBoundingClientRect: () => rect };
+    lastVirtualAnchor = anchor;
+    return anchor;
+  });
+
+  const isPositionedOpen = $derived(open && position != null);
+
+  const reducedMotion = useReducedMotion();
+  // Shared anchored-overlay exit-transition lifecycle (OVERLAY-POLICY.md §
+  // "Transition lifecycle"). This component never unmounts its own element,
+  // so `renderPanel`/`isClosing` drive `data-cinder-visible`/
+  // `data-cinder-closing` rather than an `{#if}` gate — but the same
+  // await-completion + generation-guard contract applies before the popover
+  // is removed from the tab order.
+  const exitState = createAnchoredOverlayExitState({
+    getOpen: () => isPositionedOpen,
+    getPanelElement: () => popoverElement,
+    getReducedMotion: () => reducedMotion.current,
+    // Deferred composer reset (CIN-376 round 17 review): closing externally
+    // (e.g. an outside pointerdown) used to reset `expanded`/`commentBody`
+    // the instant the close began, swapping the retained, still-fading
+    // panel's visible content from the full composer to the collapsed
+    // trigger mid-fade. Resetting only once the exit transition genuinely
+    // finishes keeps the composer's content and dimensions stable for the
+    // whole fade, matching HANDLE_CANCEL/HANDLE_SUBMIT's own explicit resets
+    // (those are user-initiated and already look correct, since the user
+    // just watched the content they typed get submitted/discarded).
+    onClosed: () => {
+      expanded = false;
+      commentBody = '';
+      // Lets a consumer wrapping this component in its own `{#if}` decouple
+      // that mount gate from the live open state (CIN-376 round 20 review —
+      // ReviewEditor's `{#if showSelectionPopover}` destroyed the whole
+      // component instance the instant its close handler cleared
+      // `selectionPopoverPosition`/`selectionPopoverExpanded`, before this
+      // component's OWN retained-exit lifecycle ever got a chance to run).
+      onExitComplete?.();
+    },
+  });
+
+  const anchoredOverlay = createAnchoredOverlay({
+    // Gated on `exitState.renderPanel`, not `exitState.isClosing`: `$effect`s
+    // (where `exitState.sync()` runs, and where `isClosing` actually flips
+    // true) fire after a render has already committed. When a documented
+    // close clears `position` in the same update that flips `open` false,
+    // `isPositionedOpen` goes false in THIS render, one tick before
+    // `exitState.sync()` ever runs — so `isClosing` still reads its
+    // pre-close (false) value here, and `createAnchoredOverlay` would
+    // briefly take its closed path, clearing `positionStyle`/`positionReady`
+    // before the async Floating UI recomputation restores them.
+    // `renderPanel` doesn't have this lag: it's a plain `$state` that's
+    // already `true` from the prior render and isn't reset until the
+    // completion callback actually fires, so reading it here in the same
+    // tick correctly keeps positioning active.
+    // `open()` is `exitState.renderPanel` ALONE, not `isPositionedOpen ||
+    // exitState.renderPanel`: this callback runs inside
+    // `createAnchoredOverlay`'s own positioning `$effect`, so reading
+    // `isPositionedOpen` here — a `$derived` that recomputes whenever
+    // `position` changes — still subscribes that effect to it as a
+    // fine-grained dependency, even when the overall `||` result doesn't
+    // change, causing it to briefly tear down/rebuild on every ordinary
+    // close. `renderPanel` alone is stable throughout the open session —
+    // see Popover's `anchoredOverlay` for the fuller explanation of this
+    // same fix (CIN-376 round 12).
+    open: () => exitState.renderPanel,
+    // `virtualAnchor` itself now returns the SAME object reference across a
+    // close (see its own definition above) — no separate `?? lastVirtualAnchor`
+    // fallback needed here, and no reference change at the exact moment
+    // `position` goes null.
+    anchor: () => virtualAnchor,
+    panel: () => popoverElement,
+    placement: () => 'top' as Placement,
+    offset: () => 8,
+    shiftPadding: () => 16,
+    shiftCrossAxis: () => true,
+    widthMode: () => 'none',
+  });
+  const portalAttachment = createPortalAttachment({
+    target: () => document.body,
+    inheritAttributes: true,
+  });
+
+  $effect(() => {
+    exitState.sync();
+  });
+
+  onDestroy(() => {
+    exitState.destroy();
+  });
+
+  const canSubmit = $derived(commentBody.trim().length > 0);
+
+  function rememberFocus(): void {
+    if (restoreFocusElement) return;
+    const activeElement = document.activeElement;
+    restoreFocusElement = activeElement instanceof HTMLElement ? activeElement : null;
+  }
+
+  // The remembered element describes "what had focus before this popover
+  // opened", which stays true for the popover's whole open lifetime — not just
+  // until the first restore. Keeping the reference here (rather than spending
+  // it) is what lets a second restore work: expand -> cancel restores once
+  // while the popover stays open, and a later Escape must restore again
+  // instead of dropping focus on <body> (issue #1269). The reference is
+  // released where the `wasOpen` latch resets, so the next open re-arms it,
+  // and by onFocusMovedOutside once the user genuinely moves on.
+  function restoreFocus(preventScroll = true): void {
+    const target = restoreFocusElement;
+    if (!target) return;
+    // Focus is already where it belongs, so there is nothing to restore. Now
+    // that the reference outlives the first restore, this is what keeps an
+    // external close following an internal cancel/submit from driving focus
+    // onto the same element a second time.
+    if (document.activeElement === target) return;
+    // .focus() dispatches `focusin` synchronously, and the window-level
+    // ownership-tracking listener below can't otherwise tell this
+    // component-driven restoration apart from the user genuinely moving on
+    // to something outside the popover. Flag it so that listener exempts it.
+    // Load-bearing now that the reference outlives the restore: without the
+    // exemption, restoring to the (outside-the-popover) pre-open owner would
+    // trip onFocusMovedOutside and clear the very reference we are keeping.
+    isRestoringFocus = true;
+    target.focus({ preventScroll });
+    isRestoringFocus = false;
+  }
+
+  function requestClose(preventScroll = false): void {
+    if (closeRequested) return;
+    closeRequested = true;
+    onClose?.();
+    restoreFocus(preventScroll);
+    // The latch only needs to survive the current synchronous burst of
+    // scroll/resize events (so a coalesced movement dismisses once, not
+    // once per event). Release it on a microtask so a controlled consumer
+    // that declines the close (keeps `open` true, e.g. to let re-expansion
+    // happen) doesn't leave every later Escape/outside-click/scroll/resize
+    // dismissal permanently swallowed.
+    queueMicrotask(() => {
+      closeRequested = false;
+    });
+  }
+
+  function closePopover(): void {
+    requestClose();
+  }
+
+  function handleExpand(): void {
+    rememberFocus();
+    expanded = true;
+    onExpand?.();
+    // tick() resolves once Svelte flushes the expanded state to the DOM (so the
+    // textarea exists), aligned with the codebase's flush timing — faster and
+    // more idiomatic than waiting a paint frame via requestAnimationFrame.
+    void tick().then(() => textareaElement?.focus({ preventScroll: true }));
+  }
+
+  function handleCancel(): void {
+    expanded = false;
+    commentBody = '';
+    onCancel?.();
+    restoreFocus();
+  }
+
+  function handleSubmit(): void {
+    const trimmedBody = commentBody.trim();
+    if (!trimmedBody) return;
+
+    onCommentSubmit?.(trimmedBody);
+    expanded = false;
+    commentBody = '';
+    restoreFocus();
+  }
+
+  // Escape ownership (CIN-428). The shared internal function below holds the
+  // dismiss logic — expanded-restore/cancel first stage, else close — and
+  // the escape-stack registration further down is the ONLY caller: this is
+  // no longer duplicated as a local `onkeydown` branch, so it fires
+  // regardless of where focus sits while the popover is open, not just
+  // while focus is inside its own DOM tree.
+  function dismissEscape(event?: KeyboardEvent): void {
+    // Uniform swallow-at-the-top (CIN-428): both stages consume the key.
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (expanded) {
+      handleCancel();
+    } else {
+      closePopover();
+    }
+  }
+
+  $effect(() => {
+    if (!isPositionedOpen) return;
+    const releaseEscape = pushEscapeHandler(dismissEscape);
+    return releaseEscape;
+  });
+
+  function handleKeydown(event: KeyboardEvent): void {
+    if ((event.key === 'Enter' || event.key === ' ') && !expanded && !event.defaultPrevented) {
+      event.preventDefault();
+      handleExpand();
+    }
+  }
+
+  function handleTextareaKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      handleSubmit();
+    }
+  }
+
+  // Outside-pointerdown dismiss via the shared overlay primitive (OVERLAY-POLICY § Outside-click).
+  // pointerdown (not click) so the popover closes before a fresh text selection commits.
+  // $derived keeps the attachment stable across renders (recreating it would re-bind the
+  // document listener every update); enabled gates it to the open state.
+  const dismissOnOutsidePointerdown = $derived(
+    // capture: false preserves the original bubble-phase semantics
+    // (the previous document.addEventListener call had no capture arg).
+    createClickOutside({
+      handler: closePopover,
+      enabled: () => isPositionedOpen,
+      eventType: 'pointerdown',
+      capture: false,
+    }),
+  );
+
+  createVirtualKeyboardDismissal({
+    enabled: () => isPositionedOpen,
+    panel: () => popoverElement,
+    composerForm: () => composerFormElement,
+    composerOwnsKeyboard: () => expanded || commentBody.trim().length > 0,
+    isRestoringFocus: () => isRestoringFocus,
+    isPointerDown: pointerIsDown,
+    onDismiss: (preventScroll) => requestClose(preventScroll),
+    onFocusMovedOutside: () => {
+      restoreFocusElement = null;
+    },
+  });
+
+  $effect(() => {
+    if (!isPositionedOpen) {
+      // Only act on the true -> false transition. This keeps the close logic
+      // (state reset + focus restore) from re-running on unrelated effect
+      // re-evaluations while already closed.
+      if (wasOpen) {
+        wasOpen = false;
+        // `expanded`/`commentBody` are NOT reset here: the retained closing
+        // panel (kept mounted through its exit transition, see `exitState`
+        // below) would otherwise instantly swap its visible content from the
+        // full composer to the compact "Add comment" trigger while still
+        // fading out — the same content and dimensions that were open
+        // should be what animates out. Reset only once the exit genuinely
+        // finishes, via `exitState`'s `onClosed` callback below.
+        //
+        // Return focus to wherever it was before the popover opened, then
+        // release the reference: this open session is over, so the next open
+        // must re-arm from whatever has focus then rather than reuse a stale
+        // element. restoreFocus() null-guards and no-ops when the target
+        // already has focus, so an internal close that already restored does
+        // not drive focus a second time.
+        restoreFocus();
+        restoreFocusElement = null;
+      }
+      return;
+    }
+
+    // Capture the pre-open focus owner once, on the false -> true transition,
+    // before focus can move into the popover. This guarantees something to
+    // restore to on an external close even if the popover is never expanded,
+    // while never re-capturing mid-open (which would otherwise re-grab focus
+    // after an internal close-and-restore left the popover open).
+    if (!wasOpen) {
+      wasOpen = true;
+      closeRequested = false;
+      rememberFocus();
+    }
+  });
+</script>
+
+<!--
+  `aria-hidden`/`inert` are placed AFTER `{...rest}` below deliberately: in
+  Svelte, a later attribute on an element wins over an earlier one, including
+  one supplied via spread — with `{...rest}` last (as it was before), a
+  consumer passing `inert={false}`/`aria-hidden={null}` through rest props
+  would silently defeat the closing-state semantics. These two are
+  component-owned lifecycle state (CIN-376), not something a consumer prop
+  should be able to cancel, so they always win regardless of what `rest`
+  carries.
+-->
+<div
+  bind:this={popoverElement}
+  {id}
+  class={classNames('cinder-selection-popover', customClassName)}
+  data-cinder-expanded={expanded ? '' : undefined}
+  data-cinder-position-ready={anchoredOverlay.positionReady}
+  data-cinder-placement={anchoredOverlay.resolvedPlacement}
+  data-cinder-visible={exitState.renderPanel ? '' : undefined}
+  data-cinder-closing={exitState.isClosing ? '' : undefined}
+  style={anchoredOverlay.positionStyle}
+  role="toolbar"
+  aria-label="Selection actions"
+  onkeydown={handleKeydown}
+  {@attach portalAttachment}
+  {@attach dismissOnOutsidePointerdown}
+  {...rest}
+  aria-hidden={exitState.isClosing ? 'true' : undefined}
+  inert={exitState.isClosing ? true : undefined}
+>
+  {#if expanded}
+    <div bind:this={composerFormElement} class="cinder-selection-popover__form">
+      <textarea
+        bind:this={textareaElement}
+        bind:value={commentBody}
+        class="cinder-selection-popover__textarea"
+        aria-label="Comment text"
+        placeholder="Add a comment..."
+        rows={2}
+        onkeydown={handleTextareaKeydown}></textarea>
+      <div class="cinder-selection-popover__actions">
+        <button
+          type="button"
+          class="cinder-selection-popover__cancel"
+          onclick={handleCancel}
+          aria-label="Cancel"
+        >
+          <svg class="cinder-selection-popover__icon" aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="cinder-selection-popover__submit"
+          onclick={handleSubmit}
+          disabled={!canSubmit}
+          aria-label="Submit comment"
+          title="Submit comment"
+        >
+          <svg class="cinder-selection-popover__icon" aria-hidden="true" viewBox="0 0 24 24">
+            <path d="m22 2-7 20-4-9-9-4Z" />
+            <path d="M22 2 11 13" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  {:else}
+    <button
+      type="button"
+      class="cinder-selection-popover__button"
+      onclick={handleExpand}
+      aria-label="Add comment"
+      title="Add comment to selection"
+    >
+      <svg class="cinder-selection-popover__icon" aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h6" />
+        <path d="M19 3v6" />
+        <path d="M16 6h6" />
+      </svg>
+    </button>
+  {/if}
+</div>

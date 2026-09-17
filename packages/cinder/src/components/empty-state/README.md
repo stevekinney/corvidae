@@ -1,0 +1,48 @@
+# EmptyState
+
+Placeholder layout for zero-data views, with optional illustration, heading, and action.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { Button } from '@repo/cinder';
+  import { EmptyState } from '@repo/cinder';
+</script>
+
+<EmptyState title="No results found" description="Try adjusting your filters or search query.">
+  {#snippet action()}
+    <Button variant="primary" label="Clear filters" />
+  {/snippet}
+</EmptyState>
+```
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `class` | `string` | no | — | Additional class merged onto the `.cinder-empty-state` root element. |
+| `description` | `string` | no | — | Secondary descriptive text rendered as a paragraph below the title. |
+| `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the title element. |
+| `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
+| `action` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
+| `icon` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

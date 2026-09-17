@@ -1,0 +1,265 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* =========================================================
+   ButtonGroup — layout-only barrel for related action buttons
+   ========================================================= */
+
+  .cinder-button-group {
+    display: inline-flex;
+    align-items: stretch;
+    /* New stacking context keeps focus-ring z-index elevation local to this
+     group — a focused child in one group never paints over a sibling group. */
+    isolation: isolate;
+  }
+
+  .cinder-button-group[data-cinder-orientation='horizontal'] {
+    flex-direction: row;
+  }
+
+  .cinder-button-group[data-cinder-orientation='vertical'] {
+    flex-direction: column;
+  }
+
+  /* Position context so the focused-child z-index elevation works. */
+  .cinder-button-group > [data-cinder-button-group-item] {
+    position: relative;
+    z-index: 0;
+  }
+
+  /* Split buttons use Dropdown as the direct group participant, with the actual
+   trigger button nested inside it. Make the wrapper behave like a button-shaped
+   flex item so the trigger fills the grouped control instead of floating inside
+   a stretched inline-block. */
+  .cinder-button-group > .cinder-dropdown[data-cinder-button-group-item] {
+    display: inline-flex;
+  }
+
+  .cinder-button-group
+    > .cinder-dropdown[data-cinder-button-group-item]
+    > .cinder-dropdown-trigger {
+    min-block-size: 100%;
+  }
+
+  /* Elevate the highlighted participant so its focus ring paints over adjacent
+   buttons' borders and is never clipped. Kept in sync with the seam-suppression
+   selectors below — every state that suppresses a seam (:hover, :active,
+   :focus-within) also elevates, so the highlighted surface is never cut or
+   under-painted by a neighbor. */
+  .cinder-button-group > [data-cinder-button-group-item]:where(:hover, :active, :focus-within) {
+    z-index: 1;
+  }
+
+  /* ── Border collapse via seam on the group-item pseudo-element ────────── */
+  /* Negative-margin overlap let a transparent-bordered variant (primary/danger)
+ * notch the shared hairline against a bordered one (secondary). Instead each
+ * non-first item paints one deterministic 1px seam on its inner edge via a
+ * ::before pseudo-element owned by the group. Drawn on the item wrapper, not
+ * the button, so it never competes with the button's focus-ring box-shadow and
+ * never doubles with the button's own border. */
+  .cinder-button-group > [data-cinder-button-group-item]:not(:first-child)::before {
+    content: '';
+    position: absolute;
+    z-index: 1;
+    background: var(--cinder-border);
+    pointer-events: none;
+  }
+
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:not(:first-child)::before {
+    inset-block: 0;
+    inset-inline-start: 0;
+    inline-size: 1px;
+  }
+
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:not(:first-child)::before {
+    inset-inline: 0;
+    inset-block-start: 0;
+    block-size: 1px;
+  }
+
+  /* Suppress the seam for the highlighted (hovered, active, or focused) participant
+ * and the seam that sits immediately at its far boundary (owned by the next sibling).
+ *
+ * WHY TWO RULES:
+ * Each non-first group item paints its own ::before seam on its near edge. When item B
+ * is highlighted, two seams become problematic:
+ *   1. B's own ::before — sits at B's near (left/top) edge inside the highlight area.
+ *   2. The next sibling C's ::before — sits at B's far (right/bottom) edge, also
+ *      hugging the highlighted surface.
+ * Suppressing only (1) leaves (2) as a visible divider cutting through the far edge of
+ * the highlight. Both must be hidden so the highlighted button reads as one clean shape.
+ *
+ * THE FAR-EDGE SEAM IS THE NEXT SIBLING'S ::before:
+ * The seam at the highlighted item's far edge is owned by the item that immediately
+ * FOLLOWS it (that next item's near-edge ::before sits on the shared boundary). So we
+ * target it with the adjacent-sibling combinator: highlighted-item + next-item::before.
+ * (No :has() / previous-sibling trickery needed — the seam lives on the later item.)
+ *
+ * VERTICAL ORIENTATION:
+ * The same ::before mechanism is used for vertical groups (block axis), so the same
+ * suppression selectors apply unchanged — orientation only affects the seam's
+ * inset/inline placement, not its ownership or z-index model.
+ *
+ * FORCED COLORS:
+ * The forced-colors @media rule further below remaps the seam to CanvasText. These
+ * opacity:0 rules run inside the same stacking context, so forced-colors highlight
+ * feedback (system Highlight background) replaces the seam visually. The seam
+ * suppression is safe: the system highlight is already a visible indicator.
+ *
+ * FOCUS RING PROTECTION:
+ * The focused participant is additionally lifted to z-index:1 by the
+ * :where(:hover,:focus-within) rule above, so its focus ring also paints over any
+ * seam on the far side. The opacity:0 here is a belt-and-suspenders complement. */
+
+  /* 1. Drop the highlighted item's own near-edge seam. */
+  .cinder-button-group
+    > [data-cinder-button-group-item]:where(:hover, :active, :focus-within):not(
+      :first-child
+    )::before {
+    opacity: 0;
+  }
+
+  /* 2. Drop the seam at the highlighted item's far edge — owned by the NEXT item's
+   *    near-edge ::before. The adjacent-sibling combinator targets that following item
+   *    directly; it is necessarily non-first, so it always has a ::before. */
+  .cinder-button-group
+    > [data-cinder-button-group-item]:where(:hover, :active, :focus-within)
+    + [data-cinder-button-group-item]::before {
+    opacity: 0;
+  }
+
+  /* Zero BOTH borders that meet at each junction so the pseudo-element line is the
+ * only thing between two buttons. Uses -color: transparent (not border-width: 0)
+ * to preserve box geometry so the radius-flattening rules and heights are
+ * unaffected.
+ *
+ * Both sides matter: with the negative-margin overlap gone, adjacent buttons no
+ * longer share a hairline, so a bordered variant (e.g. secondary) would render
+ * its own end border AND the next item's seam — a doubled 2px divider. Each
+ * non-first item drops its seam-facing START border, and each non-last item
+ * drops its seam-facing END border, leaving exactly the one `::before` seam.
+ *
+ * The two-arm `:is(.cinder-button, button)` selector intentionally mirrors the
+ * radius-flattening rules below: a grouped item is contractually a `<Button>`,
+ * a toggle `<button>`, or a `<Dropdown>` whose trigger is a button (see
+ * button-group.a11y.md — the group is a visual container for button-shaped
+ * actions, never a form input). So the seam and the transparent borders land on
+ * the same elements that already get their corners flattened; if a future
+ * non-button item type is supported, update both rule sets together. The
+ * `:not([role='menu'] *):not([role='menuitem'])` guard keeps a split-button's
+ * dropdown menu items from being touched. */
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:not(:first-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):not(:first-child) {
+    border-inline-start-color: transparent;
+  }
+
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:not(:last-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):not(:last-child) {
+    border-inline-end-color: transparent;
+  }
+
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:not(:first-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):not(:first-child) {
+    border-block-start-color: transparent;
+  }
+
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:not(:last-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):not(:last-child) {
+    border-block-end-color: transparent;
+  }
+
+  /* Forced colors: the pseudo-element background may not map to a system color,
+ * so remap to CanvasText. The seam-facing border stays transparent (not
+ * restored) so exactly one separator renders — the pseudo-element line. */
+  @media (forced-colors: active) {
+    .cinder-button-group > [data-cinder-button-group-item]:not(:first-child)::before {
+      background: CanvasText;
+    }
+  }
+
+  /* ── Border-radius flattening ─────────────────────────────────────────── */
+  /*
+ * Every selector targets the visible button via :is(.cinder-button, button).
+ * The :not([role='menu'] *):not([role='menuitem']) guard prevents dropdown
+ * menu items from having their corners zeroed.
+ *
+ * When the participant *is* the button (no nesting), the second comma-arm of
+ * each rule matches it directly without the guard — a direct child of
+ * button-group can never be a menu item.
+ */
+
+  /* Horizontal — middle children: zero all corners. */
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:not(:first-child):not(:last-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):not(:first-child):not(
+      :last-child
+    ) {
+    border-radius: 0;
+  }
+
+  /* Horizontal — first child: zero the inline-end corners. */
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:first-child:not(:only-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):first-child:not(:only-child) {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  /* Horizontal — last child: zero the inline-start corners. */
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:last-child:not(:only-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='horizontal']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):last-child:not(:only-child) {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+  }
+
+  /* Vertical — middle children: zero all corners. */
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:not(:first-child):not(:last-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):not(:first-child):not(
+      :last-child
+    ) {
+    border-radius: 0;
+  }
+
+  /* Vertical — first child: zero the block-end corners. */
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:first-child:not(:only-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):first-child:not(:only-child) {
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  /* Vertical — last child: zero the block-start corners. */
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:last-child:not(:only-child)
+    :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
+  .cinder-button-group[data-cinder-orientation='vertical']
+    > [data-cinder-button-group-item]:is(.cinder-button, button):last-child:not(:only-child) {
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "@repo/operative",
+  "description": "A composable agent loop with lazy Anthropic, OpenAI, and Gemini providers exposed through its source entry point.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@repo/weft": "workspace:*",
+    "@repo/armorer": "workspace:*",
+    "@repo/conversationalist": "workspace:*",
+    "@repo/interoperability": "workspace:*",
+    "@repo/lifecycle": "workspace:*",
+    "zod": "catalog:",
+    "@opentelemetry/api": "catalog:",
+    "@google/genai": "catalog:",
+    "@anthropic-ai/sdk": "catalog:",
+    "openai": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@repo/typescript-configuration": "workspace:*",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  },
+  "private": true
+}

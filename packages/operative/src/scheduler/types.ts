@@ -1,0 +1,96 @@
+import type { RunOptions, RunResult } from '../types';
+
+/**
+ * Priority levels for scheduler tasks, from highest (1) to lowest (4).
+ */
+export type SchedulerPriority = 'immediate' | 'scheduled' | 'background' | 'ambient';
+
+/**
+ * Numeric weights for priority comparison. Lower numbers are higher priority.
+ */
+export const PRIORITY_WEIGHT: Record<SchedulerPriority, number> = {
+  immediate: 1,
+  scheduled: 2,
+  background: 3,
+  ambient: 4,
+};
+
+/**
+ * Returns true if priority `a` is strictly higher than priority `b`.
+ */
+export function isHigherPriority(a: SchedulerPriority, b: SchedulerPriority): boolean {
+  return PRIORITY_WEIGHT[a] < PRIORITY_WEIGHT[b];
+}
+
+/**
+ * `Omit<T, K>` collapses a union `T` into one merged, looser shape (it maps
+ * over `K`, not over `T`'s members) — for `RunOptions`, that would flatten
+ * away the AB-236 `runId`/`steering` discriminated pair. This distributes
+ * `Omit` over each union member first, so `SchedulerRunOptions` keeps that
+ * pairing intact.
+ */
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
+
+/**
+ * Omits `runId` as well as `generate`/`toolbox`: a scheduled run's `runId`
+ * is always DERIVED by `create-scheduler.ts` at dispatch time — the
+ * durable path already generates `${SCHEDULER_RUN_ID_PREFIX}${task.id}-N`
+ * (a stable id a later preemption can suspend/resume by), and the
+ * in-memory path derives `${SCHEDULER_RUN_ID_PREFIX}${task.id}` the same
+ * way — and injects it into the options this factory's return value feeds
+ * into `createActiveRun`/`executeLoop`, overwriting anything supplied here.
+ * A caller can never meaningfully set it themselves. Without this
+ * omission, `RunOptions`'s AB-236 `runId`/`steering` pairing would force a
+ * caller configuring a steering-enabled scheduled task to invent a
+ * throwaway `runId` that gets silently discarded — the same reasoning
+ * `session-handle.ts`'s `SessionRunOptions` documents.
+ */
+export type SchedulerRunOptions = DistributiveOmit<RunOptions, 'generate' | 'toolbox' | 'runId'> &
+  Partial<Pick<RunOptions, 'generate' | 'toolbox'>>;
+
+/**
+ * A task descriptor submitted to the scheduler.
+ */
+export interface SchedulerTask {
+  /** Unique identifier for this task. */
+  readonly id: string;
+  /** Priority lane for scheduling. */
+  readonly priority: SchedulerPriority;
+  /** Factory that creates RunOptions when the task is dispatched. */
+  readonly createRun: () => SchedulerRunOptions | Promise<SchedulerRunOptions>;
+  /** Called when the task completes successfully. */
+  readonly onComplete?: ((result: RunResult) => void | Promise<void>) | undefined;
+  /** Called when the task is preempted before completion. */
+  readonly onPreempted?: ((reason: string) => void | Promise<void>) | undefined;
+  /** Whether this task should be re-queued after preemption. Default: true for background/ambient, false for immediate/scheduled. */
+  readonly requeue?: boolean | undefined;
+  /** Maximum number of times this task can be requeued. Default: 3. */
+  readonly maxRequeues?: number | undefined;
+  /** Optional metadata for logging and diagnostics. */
+  readonly metadata?: Record<string, unknown> | undefined;
+}
+
+/**
+ * Observable scheduler state snapshot.
+ */
+export interface SchedulerState {
+  /** The currently executing task, if any. */
+  readonly activeTask: SchedulerTaskSummary | undefined;
+  /** Queued tasks grouped by priority lane. */
+  readonly queued: Readonly<Record<SchedulerPriority, readonly SchedulerTaskSummary[]>>;
+  /** Total number of tasks completed since scheduler start. */
+  readonly completedCount: number;
+  /** Total number of tasks preempted since scheduler start. */
+  readonly preemptedCount: number;
+  /** Whether the scheduler has no active or queued tasks. */
+  readonly idle: boolean;
+}
+
+/**
+ * A lightweight summary of a task for state inspection.
+ */
+export interface SchedulerTaskSummary {
+  readonly id: string;
+  readonly priority: SchedulerPriority;
+  readonly metadata?: Record<string, unknown> | undefined;
+}

@@ -1,0 +1,44 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    role: {
+      enum: ['user', 'assistant', 'system'],
+      description: 'Role of the speaker — drives visual treatment.',
+    },
+    datetime: {
+      type: 'string',
+      description:
+        'The machine-readable date/time value placed on the `<time datetime>` attribute.',
+    },
+    timestamp: {
+      type: 'string',
+      description:
+        'Human-readable display text rendered inside the `<time>` element.\nFalls back to `datetime` when omitted.',
+    },
+    name: {
+      type: 'string',
+      description: 'Optional speaker name override (defaults derived from role).',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-message`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['role'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Message body content.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

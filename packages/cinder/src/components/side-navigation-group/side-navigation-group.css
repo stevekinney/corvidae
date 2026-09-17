@@ -1,0 +1,170 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * SIDE NAVIGATION GROUP
+ * ======================================== */
+
+  .cinder-side-navigation-group {
+    list-style: none;
+  }
+
+  /* ----------------------------------------
+ * Disclosure trigger
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-group__trigger {
+    appearance: none;
+    display: flex;
+    inline-size: 100%;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-height: 2rem;
+    padding-inline: var(--cinder-space-3);
+    padding-block: var(--cinder-space-1-5);
+
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-none);
+    text-align: start;
+
+    color: var(--cinder-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--cinder-radius-sm);
+
+    cursor: pointer;
+    user-select: none;
+
+    transition:
+      color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (hover: hover) {
+    .cinder-side-navigation-group__trigger:hover:not(:disabled) {
+      color: var(--cinder-text-default);
+      background-color: var(--cinder-surface-hover);
+    }
+  }
+
+  /* Focus ring — Strategy B-inset.
+   *
+   * The trigger is `inline-size: 100%` inside an unpadded list/nav, so it
+   * spans the full width of the SideNavigation container. The standard OUTSET
+   * ring (offset 1px + width 3px) would paint 4px past BOTH container edges
+   * (clipped where the app sidebar sets `overflow: hidden`) and, vertically,
+   * 4px into the active item directly below — landing the ring in the same
+   * pixels as that item's `--cinder-surface-inset` background and flattening
+   * the focus signal. The policy-sanctioned B-inset variant (focus-ring-policy.md,
+   * trigger #1: focusable row full-bleed against a container edge) paints a
+   * single-band ring entirely within the trigger's own border box — no
+   * overhang, no neighbor or container bleed, zero layout shift. The
+   * `--_cinder-side-navigation-group-trigger-ring` fallback hook matches the
+   * tab/dropdown/number-input inset-ring convention. */
+  .cinder-side-navigation-group__trigger:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width)
+      var(--_cinder-side-navigation-group-trigger-ring, var(--cinder-ring-color));
+  }
+
+  /* Forced-colors fallback for the inset ring. Inset box-shadow rings vanish
+   * in Windows High Contrast Mode, so repaint the outline channel with a
+   * NEGATIVE offset that draws the outline INSIDE the trigger border box — a
+   * positive/outset offset would reintroduce the overhang this trigger was
+   * changed to avoid. `ButtonText` is the policy-correct system color for the
+   * <button> the trigger renders as. */
+  @media (forced-colors: active) {
+    .cinder-side-navigation-group__trigger:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
+  .cinder-side-navigation-group__trigger:disabled {
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  /* ----------------------------------------
+ * Contains-active — a descendant item is the current page. Hints "you are
+ * here" even when collapsed, but stays subordinate to the active item's
+ * accent: a color step-up plus a heavier weight, not full accent.
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-group[data-cinder-contains-active]
+    .cinder-side-navigation-group__trigger {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-side-navigation-group[data-cinder-contains-active] .cinder-side-navigation-group__label {
+    font-weight: var(--cinder-font-bold);
+  }
+
+  /* ----------------------------------------
+ * Icon
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-group__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex-shrink: 0;
+  }
+
+  /* ----------------------------------------
+ * Label — takes remaining space
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-group__label {
+    flex: 1;
+    text-align: start;
+  }
+
+  /* ----------------------------------------
+ * Badge — pushed end-ward, before chevron
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-group__badge {
+    margin-inline-start: auto;
+  }
+
+  /* ----------------------------------------
+ * Chevron — rotates when expanded
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-group__chevron {
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex-shrink: 0;
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-side-navigation-group[data-cinder-expanded] .cinder-side-navigation-group__chevron {
+    transform: rotate(180deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-side-navigation-group__chevron {
+      transition: none;
+    }
+  }
+
+  /* ----------------------------------------
+ * Disclosed panel
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-group__panel {
+    list-style: none;
+    margin: 0;
+    padding-block: 0;
+    padding-inline-start: var(--cinder-space-3);
+    padding-inline-end: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+  }
+}

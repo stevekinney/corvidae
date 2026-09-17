@@ -1,0 +1,33 @@
+{
+  "name": "@repo/testing",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",
+    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun test src",
+    "lint:fix": "oxlint --fix --deny-warnings --type-aware --tsconfig ./tsconfig.json src"
+  },
+  "dependencies": {
+    "svelte": "catalog:",
+    "zod": "catalog:",
+    "typescript": "catalog:",
+    "happy-dom": "catalog:",
+    "@testing-library/svelte": "catalog:",
+    "@playwright/test": "catalog:",
+    "@axe-core/playwright": "catalog:",
+    "postcss-value-parser": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/typescript-configuration": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "pngjs": "catalog:",
+    "pixelmatch": "catalog:",
+    "@types/pngjs": "catalog:"
+  }
+}

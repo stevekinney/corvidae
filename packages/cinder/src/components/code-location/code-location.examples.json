@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "code-location",
+  "import": "@repo/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "CodeLocation",
+      "description": "Render a compact file, line, and column reference.",
+      "code": "<script lang=\"ts\">\n  import { CodeLocation } from '@repo/cinder';\n</script>\n\n<CodeLocation file=\"src/routes/+page.svelte\" />\n"
+    }
+  ]
+}

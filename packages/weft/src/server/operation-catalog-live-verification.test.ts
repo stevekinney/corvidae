@@ -1,0 +1,208 @@
+import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+/**
+ * Operation-catalog live verification — verifies that `serve()` wires the
+ * live `OperationRegistry` + `REST_BINDINGS` into `handleRequest`, and that
+ * `weft.workflows.get` resolves end-to-end through the shared pipeline.
+ */
+
+import { afterEach, describe, expect, it } from 'bun:test';
+
+import { Engine } from '../core/engine.ts';
+import type { WorkflowContext } from '../core/types.ts';
+import { workflow } from '../core/types.ts';
+import { MemoryStorage } from '../storage/memory.ts';
+import { signJWT } from './authentication.ts';
+import { serve, type WeftServer } from './index.ts';
+import { jsonRecord, propertyRecord, record } from './protocol-test-support.ts';
+import { createLiveOperationRegistry, REST_BINDINGS } from './rest-bindings.ts';
+
+const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (
+  ctx: WorkflowContext,
+  _input: unknown,
+) {
+  return yield* ctx.waitForSignal<string>('release');
+});
+
+const TEST_SECRET = 'operation-catalog-live-secret-1234567890';
+
+function createHoldEngine(): Engine {
+  const storage = new MemoryStorage();
+  const engine = new Engine({ storage });
+  engine.register(holdWorkflow);
+  return engine;
+}
+
+async function waitForStatus(
+  engine: Engine,
+  workflowId: string,
+  status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out',
+  timeoutMilliseconds = 500,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    const state = await engine.get(workflowId);
+    if (state?.status === status) return;
+    await sleepForTesting(5);
+  }
+  throw new Error(`workflow ${workflowId} did not reach ${status} in time`);
+}
+
+async function issueJwt(): Promise<string> {
+  return signJWT({ sub: 'operation-catalog-user' }, TEST_SECRET);
+}
+
+async function postJsonRpc(
+  server: WeftServer,
+  method: string,
+  params: Record<string, unknown>,
+  token: string,
+): Promise<Response> {
+  return fetch(`${server.url}/jsonrpc`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: crypto.randomUUID(),
+      method,
+      params,
+    }),
+  });
+}
+
+describe('operation catalog — live operation registry matches REST_BINDINGS', () => {
+  it('The runtime API has one transport-neutral operation catalog', async () => {
+    const engine = createHoldEngine();
+    const getHandle = await engine.start('hold', { track: 'get' }, { id: 'parity-get' });
+    const restSignalHandle = await engine.start(
+      'hold',
+      { track: 'signal-rest' },
+      { id: 'parity-signal-rest' },
+    );
+    const jsonRpcSignalHandle = await engine.start(
+      'hold',
+      { track: 'signal-jsonrpc' },
+      { id: 'parity-signal-jsonrpc' },
+    );
+
+    await waitForStatus(engine, getHandle.id, 'running');
+    await waitForStatus(engine, restSignalHandle.id, 'running');
+    await waitForStatus(engine, jsonRpcSignalHandle.id, 'running');
+
+    const server = serve({
+      engine,
+      port: 0,
+      auth: { jwt: { secret: TEST_SECRET } },
+    });
+    const token = await issueJwt();
+
+    try {
+      const restGet = await fetch(`${server.url}/v1/workflows/${getHandle.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(restGet.status).toBe(200);
+      const restGetBody = record(await restGet.json(), 'REST workflow response');
+
+      const jsonRpcGet = await postJsonRpc(
+        server,
+        'weft.workflows.get',
+        { workflowId: getHandle.id },
+        token,
+      );
+      expect(jsonRpcGet.status).toBe(200);
+      const jsonRpcGetBody = record(await jsonRpcGet.json(), 'JSON-RPC workflow response');
+      const jsonRpcGetResult = propertyRecord(jsonRpcGetBody, 'result');
+
+      expect(jsonRpcGetBody['error']).toBeUndefined();
+      expect(restGetBody['id']).toBe(getHandle.id);
+      expect(jsonRpcGetResult?.['id']).toBe(getHandle.id);
+
+      const restSignal = await fetch(
+        `${server.url}/v1/workflows/${restSignalHandle.id}/signal/release`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ payload: 'rest-release' }),
+        },
+      );
+      expect(restSignal.status).toBe(200);
+      expect(await restSignal.json()).toEqual({ ok: true });
+
+      const jsonRpcSignal = await postJsonRpc(
+        server,
+        'weft.workflows.signal',
+        {
+          workflowId: jsonRpcSignalHandle.id,
+          signalName: 'release',
+          payload: 'jsonrpc-release',
+        },
+        token,
+      );
+      expect(jsonRpcSignal.status).toBe(200);
+      expect(await jsonRpcSignal.json()).toEqual({
+        jsonrpc: '2.0',
+        id: expect.any(String),
+        result: { ok: true },
+      });
+
+      expect(restSignalHandle.result()).resolves.toBe('rest-release');
+      expect(jsonRpcSignalHandle.result()).resolves.toBe('jsonrpc-release');
+    } finally {
+      await server.stop();
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('createLiveOperationRegistry resolves every operation referenced by REST_BINDINGS', () => {
+    const registry = createLiveOperationRegistry();
+    for (const binding of REST_BINDINGS) {
+      const operation = registry.get(binding.operationName);
+      expect(operation).toBeDefined();
+      expect(operation?.name).toBe(binding.operationName);
+    }
+  });
+
+  it('REST_BINDINGS mounts weft.workflows.get at GET /v1/workflows/:id', () => {
+    const binding = REST_BINDINGS.find((b) => b.method === 'GET' && b.path === '/v1/workflows/:id');
+    expect(binding).toBeDefined();
+    expect(binding?.operationName).toBe('weft.workflows.get');
+  });
+});
+
+describe('operation catalog — end-to-end serve() to REST pipeline', () => {
+  let server: WeftServer | undefined;
+
+  afterEach(async () => {
+    await server?.stop();
+    server = undefined;
+  });
+
+  it('GET /v1/workflows/:id returns the workflow state', async () => {
+    const engine = createHoldEngine();
+    const handle = await engine.start('hold', { track: 8 }, {});
+    await waitForStatus(engine, handle.id, 'running');
+
+    server = serve({ engine, port: 0 });
+    const response = await fetch(`${server.url}/v1/workflows/${handle.id}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/json');
+    const body = record(await response.json(), 'workflow response');
+    expect(body['id']).toBe(handle.id);
+  });
+
+  it('GET /openapi.json returns a valid OpenAPI 3.1 document that includes the route', async () => {
+    const engine = createHoldEngine();
+    server = serve({ engine, port: 0 });
+
+    const response = await fetch(`${server.url}/openapi.json`);
+    expect(response.status).toBe(200);
+    const doc = jsonRecord(await response.text(), 'OpenAPI document');
+    expect(doc['openapi']).toMatch(/^3\.1/);
+    expect(record(doc['paths'], 'OpenAPI paths')['/api/v1/workflows/{id}']).toBeDefined();
+  });
+});

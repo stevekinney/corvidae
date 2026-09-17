@@ -1,0 +1,63 @@
+<script lang="ts" module>
+  /** Test-only fixture: composes RadioGroup with N Radio children for testing. */
+  export type RadioGroupFixtureProps = {
+    name: string;
+    value?: string;
+    label?: string;
+    description?: string;
+    error?: string;
+    disabled?: boolean;
+    required?: boolean;
+    variant?: 'default' | 'card';
+    options: Array<{
+      id: string;
+      value: string;
+      label: string;
+      disabled?: boolean;
+      description?: string;
+      /** Caller-supplied describedby to test composition. Mapped to `aria-describedby`. */
+      ariaDescribedBy?: string;
+    }>;
+  };
+</script>
+
+<script lang="ts">
+  import RadioGroup from '../../components/radio-group/radio-group.svelte';
+  import Radio from '../../components/_radio/radio.svelte';
+
+  let {
+    name,
+    value = $bindable(''),
+    label,
+    description,
+    error,
+    disabled = false,
+    required = false,
+    variant,
+    options,
+  }: RadioGroupFixtureProps = $props();
+</script>
+
+<RadioGroup
+  {name}
+  bind:value
+  {...label !== undefined ? { label } : {}}
+  {...description !== undefined ? { description } : {}}
+  {...error !== undefined ? { error } : {}}
+  {...variant !== undefined ? { variant } : {}}
+  {disabled}
+  {required}
+>
+  {#each options as option (option.id)}
+    <Radio
+      id={option.id}
+      value={option.value}
+      label={option.label}
+      {...option.disabled !== undefined ? { disabled: option.disabled } : {}}
+      {...option.description !== undefined ? { description: option.description } : {}}
+      {...option.ariaDescribedBy !== undefined
+        ? { 'aria-describedby': option.ariaDescribedBy }
+        : {}}
+    />
+  {/each}
+</RadioGroup>

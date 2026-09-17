@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "class": {
+      "type": "string",
+      "description": "Additional class merged onto the `.cinder-feed-event` root element."
+    },
+    "datetime": {
+      "type": "string",
+      "description": "ISO 8601 datetime string. Rendered as `<time datetime={datetime}>` so\nassistive tech and parsers receive a machine-readable timestamp. This is\nalways the authoritative value; the visible label is separate (see\n`timestamp` / `timestampLabel`)."
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "Visible time label, as plain text — the common case (`\"2m ago\"`,\n`\"May 12, 3:30 PM\"`). Rendered inside the `<time>` element. Optional, with a\ndeliberate three-way contract:\n\n- **omitted** (`undefined`) and no `timestampLabel` → falls back to the raw\n  `datetime` string, which is deterministic and SSR-safe (no locale or\n  timezone dependence).\n- **explicit empty string** (`timestamp=\"\"`) → renders no visible label.\n  This is treated as \"intentionally blank\", NOT as omitted, so it does\n  **not** trigger the `datetime` fallback. Use it to hide the label while\n  keeping the machine-readable `<time datetime>` for assistive tech.\n- **non-empty string** → rendered verbatim."
+    },
+    "tone": {
+      "enum": ["neutral", "info", "success", "warning", "error"],
+      "description": "Semantic tone for the rail marker (icon badge or dot).\nColour is never the only signal — pair a non-neutral tone with a\ndistinct icon shape or state wording in the entry body.",
+      "default": "neutral"
+    },
+    "variant": {
+      "enum": ["icon", "minimal"],
+      "description": "Icon variant: renders a circular badge on the rail with the icon inside.",
+      "default": "icon"
+    }
+  },
+  "additionalProperties": false,
+  "required": ["datetime"],
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "children",
+        "reason": "function-or-snippet",
+        "description": "Main event body — the description, links, and secondary metadata. Passed as\nthe default children snippet:\n\n```svelte\n<FeedEvent datetime=\"…\" timestamp=\"2m ago\">\n  <strong>{user.name}</strong> pushed 3 commits\n</FeedEvent>\n```"
+      },
+      {
+        "name": "icon",
+        "reason": "function-or-snippet",
+        "description": "Required for the icon variant. Type-enforced by the discriminated union."
+      },
+      {
+        "name": "timestampLabel",
+        "reason": "function-or-snippet",
+        "description": "Rich visible time label, for the rare case where the label needs markup\n(e.g. an `<abbr>` or nested element). Takes precedence over `timestamp` when\nboth are supplied. Most consumers should use the `timestamp` string instead."
+      }
+    ]
+  }
+}

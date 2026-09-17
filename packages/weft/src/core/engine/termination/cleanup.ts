@@ -1,0 +1,499 @@
+import type { BatchOperation } from '../../../storage/interface.ts';
+import { KEYS, encodeStorageKeyComponent, storageHas } from '../../../storage/interface.ts';
+import { CleanupWarningEvent } from '../../events.ts';
+import type { WorkflowState, WorkflowStatus } from '../../types.ts';
+import { asyncActivityWorkflowPrefix } from '../async-activity-records.ts';
+import { forgetCommittedCheckpointBytes } from '../checkpoint-commit-snapshots.ts';
+import type { EngineInternals } from '../internals.ts';
+import { settleSleepTimerAcknowledgements } from '../sleep-timer-acknowledgements.ts';
+import { parseTerminalCleanupTimerId, workflowFeedListenerKey } from '../state-utilities.ts';
+import { releaseWorkflowConcurrencySlot } from '../workflow-concurrency.ts';
+import type { WorkflowStateCommitCallback } from './state-commit-callbacks.ts';
+
+export type TerminationCallbacks = {
+  dispatchEvent: (event: Event) => void;
+  forwardEventToHandle: (workflowId: string, event: Event) => void;
+  broadcast: (message: { type: string; workflowId: string }) => void;
+  swallowPromiseRejection: (promise: Promise<unknown> | undefined) => Promise<void>;
+  handleCleanupError: (source: string, error: unknown, workflowId?: string) => void;
+  handleScheduledWorkflowTerminal: (workflowId: string) => Promise<void>;
+  loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null>;
+  runSerializedWorkflowStateWrite: <Result>(
+    workflowId: string,
+    writeOperation: () => Promise<Result>,
+  ) => Promise<Result>;
+  /** SELF-transition (complete): fences on this engine's own claim. See ADR 0002. */
+  commitSelfWorkflowStateOperations: WorkflowStateCommitCallback;
+  /** EXTERNAL terminal transition (suspend): rotates the claim epoch. See ADR 0002. */
+  commitExternalTerminalWorkflowStateOperations: WorkflowStateCommitCallback;
+  cleanupReviews: (workflowId: string) => Promise<void>;
+};
+
+export const TERMINAL_WORKFLOW_STATUSES: ReadonlySet<WorkflowStatus> = new Set<WorkflowStatus>([
+  'completed',
+  'failed',
+  'cancelled',
+  'timed-out',
+]);
+
+/**
+ * Non-terminal statuses a workflow can be *forcibly* terminated from — cancel/
+ * timeout (`terminateWorkflow`) or system fail (`failWorkflow`). Both read this
+ * single constant so they cannot drift. `'suspended'` is included (a paused run
+ * must still be reachable by cancel/fail, else the CAS no-ops and the run is
+ * stranded); `completeWorkflow` deliberately excludes it (a suspended run's
+ * generator is evicted, so it can never reach normal completion).
+ */
+export const FORCIBLY_TERMINABLE_STATUSES = [
+  'running',
+  'pending',
+  'suspended',
+] as const satisfies readonly WorkflowStatus[];
+
+/**
+ * Tracked-key waiter kinds share an identical shape: a per-workflow map of
+ * `TrackedWaiterKeys` (string | Set<string>) referencing entries in a flat
+ * waiter map. Sleep timers and review escalations have different shapes and
+ * are handled separately.
+ */
+type TrackedWaiterKind = 'signal' | 'update' | 'review';
+
+type TrackedWaiterMaps = {
+  waiters: Map<string, unknown>;
+  byWorkflow: Map<string, string | Set<string>>;
+};
+
+function selectTrackedWaiterMaps(
+  internals: EngineInternals,
+  kind: TrackedWaiterKind,
+): TrackedWaiterMaps {
+  // Each branch is a literal lookup — collapsing this into a Record at module
+  // scope would require capturing `internals`, which is created per Engine.
+  const dispatch = {
+    signal: () => ({
+      waiters: internals.signalWaiters,
+      byWorkflow: internals.signalWaitersByWorkflow,
+    }),
+    update: () => ({
+      waiters: internals.updateWaiters,
+      byWorkflow: internals.updateWaitersByWorkflow,
+    }),
+    review: () => ({
+      waiters: internals.reviewWaiters,
+      byWorkflow: internals.reviewWaitersByWorkflow,
+    }),
+  } satisfies Record<TrackedWaiterKind, () => TrackedWaiterMaps>;
+  return dispatch[kind]();
+}
+
+function cleanupTrackedWaiter(
+  internals: EngineInternals,
+  workflowId: string,
+  kind: TrackedWaiterKind,
+): void {
+  const { waiters, byWorkflow } = selectTrackedWaiterMaps(internals, kind);
+  const keys = byWorkflow.get(workflowId);
+  if (!keys) return;
+  if (typeof keys === 'string') {
+    waiters.delete(keys);
+  } else {
+    for (const key of keys) waiters.delete(key);
+  }
+  byWorkflow.delete(workflowId);
+}
+
+function cleanupSleepResolvers(internals: EngineInternals, workflowId: string): void {
+  const sleepOps = internals.sleepResolversByWorkflow.get(workflowId);
+  if (sleepOps) {
+    for (const operationId of sleepOps) {
+      const key = `${workflowId}:${operationId}`;
+      const resolver = internals.sleepResolvers.get(key);
+      if (resolver) resolver.resolve();
+      internals.sleepResolvers.delete(key);
+    }
+    internals.sleepResolversByWorkflow.delete(workflowId);
+  }
+  internals.sleepTimersFiredWithoutResolver.delete(workflowId);
+}
+
+/**
+ * Delete the in-memory sleep resolvers for a workflow WITHOUT calling them.
+ * Unlike {@link cleanupSleepResolvers} (which resolves each resolver — safe on a
+ * terminal path because the abort/terminal-state backstop stops the woken
+ * operation loop), suspend fires no abort and the status stays non-terminal, so
+ * resolving here could drive an evicted generator. Delete-only leaves the
+ * `processSleepOperation` loop dormant; the durable sleep timer in storage is
+ * untouched and re-arms when the workflow is resumed and the generator replays.
+ */
+function evictSleepResolversWithoutResolving(internals: EngineInternals, workflowId: string): void {
+  const sleepOps = internals.sleepResolversByWorkflow.get(workflowId);
+  if (sleepOps) {
+    for (const operationId of sleepOps) {
+      internals.sleepResolvers.delete(`${workflowId}:${operationId}`);
+    }
+    internals.sleepResolversByWorkflow.delete(workflowId);
+  }
+  internals.sleepTimersFiredWithoutResolver.delete(workflowId);
+}
+
+/**
+ * Resolve and delete the in-process `ctx.waitUntil` condition waiter for a
+ * workflow (at most one — see EngineInternals.conditionWaiters). Like
+ * {@link cleanupSleepResolvers}, calling the resolver is safe on a terminal path:
+ * the woken `processWaitConditionOperation` loop re-checks the workflow status (or
+ * the engine abort) and exits without driving a gone generator. Leaving it
+ * unresolved would dangle the processor's `await promise` after the run is
+ * terminal.
+ */
+function cleanupConditionWaiters(internals: EngineInternals, workflowId: string): void {
+  const resolver = internals.conditionWaiters.get(workflowId);
+  if (!resolver) return;
+  resolver();
+  internals.conditionWaiters.delete(workflowId);
+}
+
+/**
+ * Delete the in-process condition waiter for a workflow WITHOUT resolving it.
+ * Suspend evicts the inline generator, so resolving here could drive a gone
+ * generator (the same reasoning as {@link evictSleepResolversWithoutResolving}).
+ * Delete-only leaves the `processWaitConditionOperation` loop dormant; the
+ * durable checkpoint replays the wait-condition when the workflow resumes.
+ */
+function evictConditionWaitersWithoutResolving(
+  internals: EngineInternals,
+  workflowId: string,
+): void {
+  internals.conditionWaiters.delete(workflowId);
+}
+
+function cleanupReviewEscalations(
+  internals: EngineInternals,
+  workflowId: string,
+  callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection'>,
+): void {
+  const reviewIds = internals.workflowReviewIds.get(workflowId);
+  if (!reviewIds) return;
+  for (const reviewId of reviewIds) {
+    internals.reviewEscalationHandlers.delete(reviewId);
+    const timers = internals.reviewTimerIds.get(reviewId);
+    if (timers) {
+      for (const timerId of timers) {
+        void callbacks.swallowPromiseRejection(internals.scheduler.cancel(timerId, workflowId));
+      }
+      internals.reviewTimerIds.delete(reviewId);
+    }
+  }
+  internals.workflowReviewIds.delete(workflowId);
+}
+
+const TRACKED_WAITER_KINDS: readonly TrackedWaiterKind[] = ['signal', 'update', 'review'];
+
+/**
+ * Remove any pending signal, update, and sleep waiters for a workflow. This
+ * prevents memory leaks and ensures that cancelled/completed/failed workflows
+ * cannot accept new signals, updates, or resolve orphaned sleep timers.
+ */
+export function cleanupWaiters(
+  internals: EngineInternals,
+  workflowId: string,
+  callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection'>,
+): void {
+  for (const kind of TRACKED_WAITER_KINDS) {
+    cleanupTrackedWaiter(internals, workflowId, kind);
+  }
+  cleanupSleepResolvers(internals, workflowId);
+  cleanupConditionWaiters(internals, workflowId);
+  cleanupReviewEscalations(internals, workflowId, callbacks);
+
+  // Release the per-workflow coordinated-update delivery-claim set so it cannot
+  // leak one entry per completed workflow on a long-lived engine.
+  internals.deliveredPendingUpdateIds.delete(workflowId);
+  internals.workflowNestingDepths.delete(workflowId);
+  internals.workflowHeaders.delete(workflowId);
+  internals.workflowServices.delete(workflowId);
+  internals.workflowTypeByWorkflowId.delete(workflowId);
+}
+
+/**
+ * Evict only the in-flight OPERATION waiters for a workflow that is being
+ * suspended (signal/update/review waiters, review escalations, and sleep
+ * resolvers), WITHOUT resolving them and WITHOUT touching the non-serialized
+ * `services`, headers, type, or nesting-depth bookkeeping.
+ *
+ * Suspend parks the inline run (evicting its context/generator), so a signal or
+ * update arriving afterwards must NOT wake the dormant operation loop and drive
+ * the gone generator — it should buffer durably and be replayed when the
+ * workflow resumes. Deleting (not resolving) each waiter leaves the loop dormant
+ * and severs that wake path; the durable signal/sleep state in storage is
+ * untouched, so resume replays it. This is the suspend-specific complement to
+ * {@link cleanupWaiters}, which is for terminal transitions and additionally
+ * drops `services` and resolves sleep resolvers — both wrong for a pause.
+ */
+export function evictSuspendedWorkflowWaiters(
+  internals: EngineInternals,
+  workflowId: string,
+  callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection'>,
+): void {
+  settleSleepTimerAcknowledgements(internals, workflowId, 'suspended');
+  for (const kind of TRACKED_WAITER_KINDS) {
+    cleanupTrackedWaiter(internals, workflowId, kind);
+  }
+  evictSleepResolversWithoutResolving(internals, workflowId);
+  evictConditionWaitersWithoutResolving(internals, workflowId);
+  cleanupReviewEscalations(internals, workflowId, callbacks);
+}
+
+/**
+ * Remove durable records keyed by `workflowId` that otherwise leak after a
+ * workflow reaches a terminal state.
+ *
+ * - When `includeOutputArtifacts` is `false` (used by `completeWorkflow`
+ *   and `failWorkflow`), only internal bookkeeping is swept: pending
+ *   signals. Output artifacts - offloaded values, blob stream chunks,
+ *   shared state, and event history - are preserved so consumers can
+ *   still read them via `getStreamChunks()`, `getOffload()`,
+ *   `Engine.getEvents()`, etc. after `handle.result()` resolves.
+ * - When `includeOutputArtifacts` is `true` (used by `terminateWorkflow`),
+ *   the workflow has been cancelled or timed out and no consumer is
+ *   waiting on output artifacts, so everything except `ev:` (preserved
+ *   for the events endpoint) is removed.
+ *
+ * Concurrency note: we assume all writers for a workflow's prefixed keys
+ * originate from that workflow's own execution. By the time this runs, the
+ * workflow is already terminal and cannot schedule new writes. The
+ * persisted `terminal-cleanup` timer invokes this after terminalization, so
+ * any write that races the scan must have come from a background task that
+ * itself still holds a handle to the terminal workflow. Those are
+ * caller-level bugs we don't try to paper over here.
+ *
+ * Scale note: deletes are flushed in batches of `CLEANUP_BATCH_SIZE` so
+ * workflows with many blobs/signals do not allocate a single oversized
+ * operation array.
+ */
+export async function cleanupWorkflowStorage(
+  internals: EngineInternals,
+  workflowId: string,
+  includeOutputArtifacts: boolean,
+): Promise<void> {
+  const encodedWorkflowId = encodeStorageKeyComponent(workflowId);
+
+  // Always sweep internal state. Signals are workflow-scoped scratch space,
+  // and the effect log holds per-operation dedup records that have no consumers
+  // after the workflow terminates - leaving them behind would leak linearly with
+  // effect volume across the engine's lifetime.
+  const prefixes: string[] = [
+    KEYS.activityReconciliationPrefix(workflowId),
+    KEYS.childCancellationPrefix(workflowId),
+    asyncActivityWorkflowPrefix(workflowId),
+    KEYS.signalAcceptedResponsePrefix(workflowId),
+    `sig:${encodedWorkflowId}:`,
+    `state:execution:${encodedWorkflowId}:`,
+    `tool-effect:${encodedWorkflowId}:`,
+  ];
+
+  if (includeOutputArtifacts) {
+    // Terminated workflows have no waiting consumers, so drop the output
+    // artifacts too. Event history is still preserved via the omission of
+    // the `ev:` prefix - callers that want it gone should use a storage
+    // TTL or explicit pruning.
+    prefixes.push(`offload:${encodedWorkflowId}:`, `blob:${encodedWorkflowId}:`);
+  }
+
+  await internals.storage.delete(KEYS.workflowHeaders(workflowId));
+  await internals.storage.delete(KEYS.signalSequence(workflowId));
+  await releaseWorkflowConcurrencySlot(internals, workflowId);
+  // The "expects services" marker is per-run bookkeeping, not an output artifact,
+  // so drop it on every terminal cleanup regardless of `includeOutputArtifacts`.
+  await internals.storage.delete(KEYS.workflowHasServices(workflowId));
+  // The finalizer-state payload (#446) is per-run bookkeeping written by
+  // `ctx.setFinalizerState`. A completed/failed workflow never runs its finalizer,
+  // so the recorded value would otherwise leak permanently — sweep it here. But a
+  // cancelled/timed-out workflow that owes an engine-driven finalizer still needs
+  // this key as the finalizer's input: skip the sweep while teardown is outstanding
+  // (the finalizer clears it on success, or its dead-letter path deletes it). The
+  // gate reads the DURABLE owed-marker rather than in-process tracking, so it stays
+  // correct after a crash/recover — the marker rides the same terminal batch as the
+  // finalizer state, and `recoverAll` never resumes a terminal workflow, so there is
+  // no in-memory state to re-hydrate that an empty boot could lose.
+  if (!(await storageHas(internals.storage, KEYS.teardownOwed(workflowId)))) {
+    await internals.storage.delete(KEYS.finalizerState(workflowId));
+  }
+
+  // Use the storage adapter's native prefix deletion when available
+  // (e.g., BunSQLiteStorage's prepared DELETE...WHERE key >= ? AND key < ?).
+  // This replaces per-key scan-then-delete loops with a single SQL statement
+  // per prefix - a significant win on the activity-completion hot path.
+  // Deletions are sequential to avoid multiplying memory pressure on adapters
+  // that materialize matching keys before deleting.
+  if (internals.storage.deletePrefix) {
+    for (const prefix of prefixes) {
+      await internals.storage.deletePrefix(prefix);
+    }
+    return;
+  }
+
+  // Fallback for storage adapters without deletePrefix: scan and batch-delete.
+  const CLEANUP_BATCH_SIZE = 500;
+  let deleteOperations: BatchOperation[] = [];
+  const flush = async (): Promise<void> => {
+    if (deleteOperations.length === 0) return;
+    await internals.storage.batch(deleteOperations);
+    deleteOperations = [];
+  };
+
+  for (const prefix of prefixes) {
+    for await (const [key] of internals.storage.scan(prefix)) {
+      deleteOperations.push({ type: 'delete', key });
+      if (deleteOperations.length >= CLEANUP_BATCH_SIZE) {
+        await flush();
+      }
+    }
+  }
+
+  await flush();
+}
+
+/**
+ * Shared synchronous cleanup invoked from every terminal-state transition
+ * before result delivery. Drops only in-memory state so workflow resolution
+ * is no longer blocked on storage cleanup. Durable scratch cleanup is
+ * retried later through a persisted `terminal-cleanup` timer.
+ *
+ */
+export function cleanupTerminalWorkflowMemory(
+  internals: EngineInternals,
+  workflowId: string,
+  callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection'>,
+): void {
+  settleSleepTimerAcknowledgements(internals, workflowId, 'terminal');
+  internals.workflowsNeedingTerminalCleanup.delete(workflowId);
+  forgetCommittedCheckpointBytes(internals, workflowId);
+  internals.checkpoints.delete(workflowId);
+  internals.heartbeatDetails.delete(workflowId);
+  internals.lastHeartbeatDetailsByStep.delete(workflowId);
+  for (const [token, pending] of internals.pendingAsyncActivities) {
+    if (pending.workflowId === workflowId) {
+      internals.pendingAsyncActivities.delete(token);
+    }
+  }
+  internals.eventLogHeads.delete(workflowId);
+  internals.pendingTimelineEntries.delete(workflowId);
+  internals.pendingAsyncActivityResolutions ??= new Map();
+  internals.pendingAsyncActivityResolutions.delete(workflowId);
+  internals.pendingAtomicWorkflowCommitSideEffects ??= new Map();
+  internals.pendingAtomicWorkflowCommitSideEffects.delete(workflowId);
+  internals.parkedInlineWorkflows.delete(workflowId);
+  // Strategy-side twin of parkedInlineWorkflows above: a run that parked retains
+  // its Context in the inline strategy so query handlers stay callable. Drop it
+  // on every terminal path (complete/fail route here without strategy.cancelWorkflow),
+  // or query() would resolve handlers against a terminal run and the Context would
+  // leak for the engine's lifetime. Idempotent with terminate's cancelWorkflow.
+  internals.inlineStrategy?.clearParkedContext(workflowId);
+  internals.workflowVersionTuples.delete(workflowId);
+  internals.cancelHandlersByWorkflow.delete(workflowId);
+  // Drop any remaining feed-listener buckets for this workflow.
+  // Transports normally unsubscribe when their subscription ends,
+  // but a crashed or leaked connection would otherwise retain its
+  // closure for the engine's lifetime. Per-workflow cleanup here
+  // matches the other maps above and prevents unbounded growth.
+  internals.workflowFeedListeners.delete(workflowFeedListenerKey(workflowId, 'events'));
+  internals.workflowFeedListeners.delete(workflowFeedListenerKey(workflowId, 'tokens'));
+  cleanupWaiters(internals, workflowId, callbacks);
+}
+
+export function cleanupTerminalWorkflowImmediately(
+  internals: EngineInternals,
+  workflowId: string,
+  callbacks: TerminationCallbacks,
+): void {
+  cleanupTerminalWorkflowMemory(internals, workflowId, callbacks);
+}
+
+export async function cleanupTerminalWorkflowSynchronously(
+  internals: EngineInternals,
+  workflowId: string,
+  includeOutputArtifacts: boolean,
+  callbacks: TerminationCallbacks,
+): Promise<void> {
+  cleanupTerminalWorkflowMemory(internals, workflowId, callbacks);
+  await cleanupTerminalWorkflowDurableState(
+    internals,
+    workflowId,
+    includeOutputArtifacts,
+    callbacks,
+  );
+}
+
+export async function cleanupTerminalWorkflowDurableState(
+  internals: EngineInternals,
+  workflowId: string,
+  includeOutputArtifacts: boolean,
+  callbacks: TerminationCallbacks,
+): Promise<void> {
+  await callbacks.cleanupReviews(workflowId);
+  await cleanupWorkflowStorage(internals, workflowId, includeOutputArtifacts);
+  await internals.storage.delete(KEYS.terminalCleanupNeeded(workflowId));
+}
+
+export async function runDeferredTerminalCleanup(
+  internals: EngineInternals,
+  workflowId: string,
+  timerId: string,
+  callbacks: TerminationCallbacks,
+): Promise<void> {
+  const parsedTimer = parseTerminalCleanupTimerId(timerId);
+  if (!parsedTimer) {
+    callbacks.handleCleanupError(
+      'cleanupTerminalWorkflowDurableState',
+      new Error(`Ignoring malformed terminal cleanup timer id "${timerId}"`),
+      workflowId,
+    );
+    return;
+  }
+
+  const state = await callbacks.loadWorkflowState(workflowId);
+  if (!state || !TERMINAL_WORKFLOW_STATUSES.has(state.status)) {
+    return;
+  }
+
+  if (state.terminalCleanupToken !== parsedTimer.terminalCleanupToken) {
+    return;
+  }
+
+  try {
+    await finalizeScheduledWorkflowTerminal(internals, workflowId, callbacks);
+    await cleanupTerminalWorkflowDurableState(
+      internals,
+      workflowId,
+      parsedTimer.includeOutputArtifacts,
+      callbacks,
+    );
+    await internals.storage.delete(KEYS.scheduleRun(workflowId));
+  } catch (error) {
+    callbacks.handleCleanupError('cleanupTerminalWorkflowDurableState', error, workflowId);
+    throw error;
+  }
+}
+
+export function handleCleanupError(
+  _internals: EngineInternals,
+  source: string,
+  error: unknown,
+  workflowId: string | undefined,
+  callbacks: Pick<TerminationCallbacks, 'dispatchEvent'>,
+): void {
+  const normalizedError = error instanceof Error ? error : new Error(String(error));
+  callbacks.dispatchEvent(new CleanupWarningEvent(source, normalizedError, workflowId));
+}
+
+export async function finalizeScheduledWorkflowTerminal(
+  _internals: EngineInternals,
+  workflowId: string,
+  callbacks: Pick<TerminationCallbacks, 'handleCleanupError' | 'handleScheduledWorkflowTerminal'>,
+): Promise<void> {
+  try {
+    await callbacks.handleScheduledWorkflowTerminal(workflowId);
+  } catch (error) {
+    callbacks.handleCleanupError('handleScheduledWorkflowTerminal', error, workflowId);
+  }
+}

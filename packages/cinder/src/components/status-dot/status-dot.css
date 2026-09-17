@@ -1,0 +1,131 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * STATUS DOT
+ *
+ * Small colored dot with optional visible label communicating binary or
+ * enumerated state. Color is driven exclusively from the
+ * `data-cinder-status` attribute — never hard-code hex values when
+ * consuming this component. Dot sizing is exposed as the
+ * `--cinder-status-dot-size` custom property so callers can override per
+ * instance without forking.
+ * ======================================== */
+
+  .cinder-status-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    font-size: var(--cinder-text-sm);
+    line-height: 1.25;
+    color: var(--cinder-text-default);
+    vertical-align: middle;
+  }
+
+  .cinder-status-dot[data-cinder-state] {
+    padding: var(--cinder-space-0-5) var(--cinder-space-2);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-status-dot[data-cinder-state='connected'] {
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-status-dot[data-cinder-state='connecting'] {
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-status-dot[data-cinder-state='disconnected'] {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-status-dot[data-cinder-state='error'] {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-status-dot__indicator {
+    display: inline-block;
+    flex-shrink: 0;
+    inline-size: var(--cinder-status-dot-size);
+    block-size: var(--cinder-status-dot-size);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-status-dot-color);
+  }
+
+  .cinder-status-dot__label {
+    color: inherit;
+  }
+
+  /* ----------------------------------------
+ * Size variants
+ * ---------------------------------------- */
+
+  .cinder-status-dot[data-cinder-size='sm'] {
+    --cinder-status-dot-size: 0.5rem; /* 8px */
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-status-dot[data-cinder-size='md'] {
+    --cinder-status-dot-size: 0.625rem; /* 10px */
+  }
+
+  /* ----------------------------------------
+ * Status → semantic token mapping
+ * ---------------------------------------- */
+
+  .cinder-status-dot[data-cinder-status='online'] {
+    --cinder-status-dot-color: var(--cinder-status-success-solid);
+  }
+
+  .cinder-status-dot[data-cinder-status='offline'] {
+    --cinder-status-dot-color: var(--cinder-text-muted);
+  }
+
+  .cinder-status-dot[data-cinder-status='warning'] {
+    --cinder-status-dot-color: var(--cinder-status-warning-solid);
+  }
+
+  .cinder-status-dot[data-cinder-status='danger'] {
+    --cinder-status-dot-color: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-status-dot[data-cinder-status='pending'] {
+    --cinder-status-dot-color: var(--cinder-status-info-solid);
+  }
+
+  .cinder-status-dot[data-cinder-status='neutral'] {
+    --cinder-status-dot-color: var(--cinder-border-strong);
+  }
+
+  .cinder-status-dot[data-cinder-status='success'] {
+    --cinder-status-dot-color: var(--cinder-status-success-solid);
+  }
+
+  .cinder-status-dot[data-cinder-status='accent'] {
+    --cinder-status-dot-color: var(--cinder-accent-solid);
+  }
+
+  .cinder-status-dot[data-cinder-state='connecting'] .cinder-status-dot__indicator {
+    animation: cinder-status-dot-pulse var(--cinder-duration-pulse) ease-in-out infinite;
+  }
+
+  @keyframes cinder-status-dot-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-status-dot[data-cinder-state='connecting']
+      .cinder-status-dot__indicator {
+      animation: none;
+    }
+  }
+}

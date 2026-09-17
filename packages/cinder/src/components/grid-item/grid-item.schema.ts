@@ -1,0 +1,200 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    span: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'integer',
+          minimum: 1,
+        },
+      ],
+      description: 'Number of columns this item spans.',
+    },
+    columnStart: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'integer',
+          not: {
+            const: 0,
+          },
+        },
+      ],
+      description: 'Explicit `grid-column-start` value.',
+    },
+    columnEnd: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'integer',
+          not: {
+            const: 0,
+          },
+        },
+      ],
+      description: 'Explicit `grid-column-end` value.',
+    },
+    rowSpan: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'integer',
+          minimum: 1,
+        },
+      ],
+      description: 'Number of rows this item spans.',
+    },
+    rowStart: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'integer',
+          not: {
+            const: 0,
+          },
+        },
+      ],
+      description: 'Explicit `grid-row-start` value.',
+    },
+    rowEnd: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'integer',
+          not: {
+            const: 0,
+          },
+        },
+      ],
+      description:
+        'Explicit `grid-row-end` value. Takes precedence over `rowSpan` when both are set.',
+    },
+    as: {
+      enum: [
+        'object',
+        'slot',
+        'a',
+        'abbr',
+        'address',
+        'article',
+        'aside',
+        'audio',
+        'b',
+        'bdi',
+        'bdo',
+        'blockquote',
+        'button',
+        'canvas',
+        'caption',
+        'cite',
+        'code',
+        'data',
+        'datalist',
+        'dd',
+        'del',
+        'details',
+        'dfn',
+        'dialog',
+        'div',
+        'dl',
+        'dt',
+        'em',
+        'fieldset',
+        'figcaption',
+        'figure',
+        'footer',
+        'form',
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+        'h5',
+        'h6',
+        'header',
+        'hgroup',
+        'i',
+        'iframe',
+        'ins',
+        'kbd',
+        'label',
+        'legend',
+        'li',
+        'main',
+        'map',
+        'mark',
+        'menu',
+        'meter',
+        'nav',
+        'ol',
+        'output',
+        'p',
+        'picture',
+        'pre',
+        'progress',
+        'q',
+        'rp',
+        'rt',
+        'ruby',
+        's',
+        'samp',
+        'search',
+        'section',
+        'select',
+        'small',
+        'span',
+        'strong',
+        'sub',
+        'summary',
+        'sup',
+        'table',
+        'tbody',
+        'td',
+        'template',
+        'textarea',
+        'tfoot',
+        'th',
+        'thead',
+        'time',
+        'tr',
+        'u',
+        'ul',
+        'var',
+        'video',
+      ],
+      description: 'Rendered HTML tag.',
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class merged with `.cinder-grid-item`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Grid item contents.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

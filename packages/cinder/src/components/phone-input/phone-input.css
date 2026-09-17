@@ -1,0 +1,108 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../input/input.css';
+@import '../select/select.css';
+@layer cinder.components {
+  /* ========================================
+ * PHONE INPUT
+ * ======================================== */
+
+  .cinder-phone-input-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1-5);
+    inline-size: 100%;
+    container-type: inline-size;
+    container-name: cinder-phone-input;
+  }
+
+  .cinder-phone-input-field__label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    line-height: 1;
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-phone-input-field__label[data-disabled] {
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+  }
+
+  .cinder-phone-input {
+    display: grid;
+    grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr);
+    gap: var(--cinder-space-2);
+    align-items: stretch;
+  }
+
+  @container cinder-phone-input (max-width: 22rem) {
+    .cinder-phone-input {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .cinder-phone-input__country {
+    position: relative;
+    min-inline-size: 0;
+  }
+
+  .cinder-phone-input__country .cinder-select-field {
+    inline-size: 100%;
+  }
+
+  .cinder-phone-input__country .cinder-select {
+    color: transparent;
+  }
+
+  .cinder-phone-input__country .cinder-select option {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-phone-input__country-summary {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 50%;
+    inset-inline-start: var(--cinder-space-3);
+    max-inline-size: calc(100% - var(--cinder-space-10));
+    overflow: hidden;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translateY(-50%);
+  }
+
+  .cinder-phone-input__country[data-disabled] .cinder-phone-input__country-summary {
+    color: var(--cinder-text-disabled);
+  }
+
+  .cinder-phone-input__country[data-disabled] .cinder-select:disabled {
+    color: transparent;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-phone-input__country .cinder-select {
+      text-indent: -9999px;
+    }
+
+    .cinder-phone-input__country .cinder-select option {
+      text-indent: 0;
+    }
+  }
+
+  .cinder-phone-input-field__description {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-phone-input-field__error {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-status-danger-text);
+  }
+}

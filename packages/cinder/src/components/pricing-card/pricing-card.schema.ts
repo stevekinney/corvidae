@@ -1,0 +1,76 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    name: {
+      type: 'string',
+      description: 'Plan name displayed as the card heading.',
+    },
+    price: {
+      type: 'string',
+      description: 'Price string, e.g. "$9/mo" or "Free".',
+    },
+    features: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description: 'Feature strings to display in the bulleted list.',
+    },
+    callToActionLabel: {
+      type: 'string',
+      description: 'Label for the call-to-action button.',
+    },
+    href: {
+      type: 'string',
+      description:
+        'When set, the CTA renders as an anchor (`<a href>`) instead of a\n`<button>`. The outer card structure stays a fixed `<div>` — only the\ninner CTA element swaps.',
+    },
+    rel: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+      description: '`rel` for the CTA anchor. Only applied when `href` is set.',
+    },
+    caveat: {
+      type: 'string',
+      description:
+        'Optional footnote or caveat beneath the features list; the runtime API also accepts a template-only snippet (e.g. a terms link).',
+    },
+    selected: {
+      type: 'boolean',
+      description: 'Whether this card is the currently selected plan.',
+      default: false,
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class merged with `.cinder-pricing-card`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['callToActionLabel', 'features', 'name', 'price'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'onPlanSelect',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the CTA is activated. Required when `href` is not set — the\nbutton is the only way to activate the CTA. Optional when `href` is set,\nbut not mutually exclusive with it — pass both to navigate and also run\na side effect such as analytics tracking (mirrors the cinder Button\nanchor branch).',
+      },
+      {
+        name: 'target',
+        reason: 'unknown-shape',
+        description: '`target` for the CTA anchor. Only applied when `href` is set.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

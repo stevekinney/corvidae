@@ -1,0 +1,181 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+
+@layer cinder.components {
+  .cinder-virtual-list {
+    display: block;
+    block-size: var(--cinder-virtual-list-height, 20rem);
+    inline-size: 100%;
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    contain: layout paint;
+  }
+
+  /*
+   * Dynamic sizing anchors the viewport itself: when a measured row above the
+   * fold turns out to differ from its estimate, the component adds that delta to
+   * the scroll offset before paint.
+   *
+   * A browser with native scroll anchoring would ALSO adjust scrollTop to hold
+   * its own anchor when that row resizes, and the manual correction then applies
+   * the same delta on top of the browser's — over-scrolling by the row's size
+   * difference every time an image loads or a line wraps. Only one of the two can
+   * own the anchor, and this component owns it.
+   *
+   * Scoped to dynamic mode: fixed-height rows never resize, so native anchoring
+   * has nothing to act on there and the default is left alone.
+   */
+  .cinder-virtual-list[data-cinder-dynamic-size='true'] {
+    overflow-anchor: none;
+
+    /*
+     * Reserve the scrollbar gutter so the width available to rows does not depend
+     * on whether a scrollbar is currently showing.
+     *
+     * Without this, dynamic sizing oscillates on platforms with non-overlay
+     * scrollbars: measured rows overflow the estimated total, a scrollbar appears,
+     * the narrower content width invalidates every measurement, the estimated
+     * spacer shrinks below the viewport, the scrollbar disappears, the width grows
+     * back, and the cycle repeats — burning layout work and tripping
+     * ResizeObserver loop errors. A stable gutter removes the input to that loop
+     * instead of damping its output.
+     */
+    scrollbar-gutter: stable;
+  }
+
+  /*
+   * Horizontal mode swaps the scroll axis. `--cinder-virtual-list-height` keeps its
+   * name and drives inline-size here rather than block-size, so a consumer's
+   * existing theme override survives turning `horizontal` on — see the prop's
+   * JSDoc for why the name is reused instead of a second token being introduced.
+   */
+  .cinder-virtual-list[data-cinder-orientation='horizontal'] {
+    block-size: auto;
+    inline-size: var(--cinder-virtual-list-height, 20rem);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  /*
+   * The spacer carries the scroll extent on the inline axis instead of the block
+   * axis, so the base rule's `min-block-size: 100%` / `inline-size: 100%` pair is
+   * transposed. The inline size itself comes from the element's style attribute,
+   * which the component writes as a logical property.
+   */
+  .cinder-virtual-list[data-cinder-orientation='horizontal'] .cinder-virtual-list__spacer {
+    min-block-size: 0;
+    min-inline-size: 100%;
+  }
+
+  /*
+   * In flow, unlike the vertical case. A vertical list takes its block-size from
+   * the `height` prop, so an out-of-flow window costs nothing; horizontal
+   * reinterprets that prop as the inline size and leaves block-size `auto`, so an
+   * absolutely positioned window would leave the container with no content of any
+   * height and collapse it to zero. Relative positioning keeps the rows
+   * contributing their height while still shifting the window to the scroll offset.
+   *
+   * `inset-inline-end: auto` is load-bearing: the base rule pins both inline edges
+   * to stretch the window across a vertical list. Left in place, an over-constrained
+   * relative box drops whichever edge is the end one for the writing direction —
+   * which silently means the START edge under RTL, and the window would not move.
+   */
+  .cinder-virtual-list[data-cinder-orientation='horizontal'] .cinder-virtual-list__window {
+    position: relative;
+    display: flex;
+    inset-inline-end: auto;
+  }
+
+  /* Rows are sized along the inline axis; flex must not shrink them to fit. */
+  .cinder-virtual-list[data-cinder-orientation='horizontal'] .cinder-virtual-list__row {
+    flex: 0 0 auto;
+  }
+
+  .cinder-virtual-list__spacer {
+    position: relative;
+    min-block-size: 100%;
+    inline-size: 100%;
+  }
+
+  .cinder-virtual-list__window {
+    position: absolute;
+    inset-inline: 0;
+  }
+
+  .cinder-virtual-list__row {
+    overflow: hidden;
+  }
+
+  /*
+   * The active sticky row once its own index has left the window.
+   *
+   * Absolute, so it does not displace the rows the window is laying out in flow —
+   * that displacement is why it cannot simply stay in place — and offset inline to
+   * track the viewport's leading edge, which is what `position: sticky` would have
+   * done for it had it still had a flow box nearby.
+   *
+   * It stays in the keyed `{#each}` rather than moving to an element of its own:
+   * Svelte cannot carry identity across that boundary, so a row with local state or
+   * a focused control would be destroyed and rebuilt every time it crossed.
+   *
+   * Both attributes are in the selector on purpose. A pinned row is always also the
+   * active one, so the sticky rule below matches it too — and carrying two attributes
+   * to that rule's one settles the cascade on specificity rather than on which is
+   * written first, which is how `position: sticky` quietly took this back once.
+   *
+   * It stays above the rows sliding under it by the `z-index: 1` the active rule
+   * supplies — a pinned row is always also the active one — rather than by DOM order.
+   * That combination is what the primitive-composition record describes.
+   */
+  .cinder-virtual-list__row[data-cinder-sticky='true'][data-cinder-sticky-pinned='true'] {
+    position: absolute;
+    inset-inline: 0;
+  }
+
+  /*
+   * Only the start edge, deliberately not `inset-block: 0`. Pinning both edges sizes
+   * the row to the window's block-size — which, now that the row is out of flow, is
+   * computed from the OTHER rows. A sticky row taller than its neighbours was squashed
+   * to their height and its content clipped, at the moment it crossed the window
+   * boundary and became pinned. Anchoring one edge leaves its own height alone.
+   */
+  .cinder-virtual-list[data-cinder-orientation='horizontal']
+    .cinder-virtual-list__row[data-cinder-sticky='true'][data-cinder-sticky-pinned='true'] {
+    inset-inline: auto;
+    inset-block-start: 0;
+  }
+
+  /*
+   * Only the ACTIVE row is held at the leading edge, and only it is raised.
+   *
+   * `z-index` was on every sticky row, on the reasoning that it is inert unless the
+   * element is positioned. That is true in block layout and false here: under
+   * `horizontal` the window is a flex container, and `z-index` applies to flex items
+   * whether or not they are positioned. An inactive header approaching the edge
+   * therefore entered the same stacking level as the held one and, being later in DOM
+   * order, painted straight over it — before it had become active.
+   *
+   * The pinned row is covered by this rule too, since it is always also the active
+   * one, and it is the `z-index` here that keeps it above the rows sliding under it
+   * rather than DOM order — which is what leaves the element free to sit in index
+   * order for assistive technology. Sticking every sticky row in
+   * the window put each header the reader had already passed at the same inset,
+   * stacked on top of one another — and a taller earlier header protruded below the
+   * current one, with anything focusable inside it still reachable while obscured.
+   * The overscanned window can hold several headers at once, so this is not rare.
+   *
+   * Offsets are relative to the scroll container, which is the element that scrolls,
+   * so the inset is 0 on the axis being scrolled.
+   */
+  .cinder-virtual-list__row[data-cinder-sticky-active='true'] {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+  }
+
+  .cinder-virtual-list[data-cinder-orientation='horizontal']
+    .cinder-virtual-list__row[data-cinder-sticky-active='true'] {
+    inset-block-start: auto;
+    inset-inline-start: 0;
+  }
+}

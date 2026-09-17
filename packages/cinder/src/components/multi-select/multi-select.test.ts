@@ -1,0 +1,921 @@
+/// <reference lib="dom" />
+import * as matchers from '@testing-library/jest-dom/matchers';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+
+import { setupHappyDom } from '@repo/testing';
+
+expect.extend(matchers as Parameters<typeof expect.extend>[0]);
+setupHappyDom();
+
+const {
+  cleanup,
+  fireEvent,
+  render: renderIntoContainer,
+  waitFor,
+} = await import('@testing-library/svelte');
+const { default: MultiSelect } = await import('./multi-select.svelte');
+const { default: FormFieldMultiSelectFixture } =
+  await import('../../test/fixtures/form-field-multi-select-fixture.svelte');
+const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+
+// The panel now portals to `document.body` (see multi-select.svelte) so an
+// ancestor with `overflow: hidden` cannot clip it. Render into the shared
+// `document.body` — matching the Combobox/DropdownMenu test convention — so
+// `container.querySelector` still finds portaled listbox/option/filter nodes.
+function render(...args: Parameters<typeof renderIntoContainer>) {
+  const result = renderIntoContainer(...args);
+  return { ...result, container: document.body };
+}
+
+const items = [
+  { id: 'apple', label: 'Apple' },
+  { id: 'apricot', label: 'Apricot' },
+  { id: 'banana', label: 'Banana' },
+  { id: 'dragonfruit', label: 'Dragonfruit', disabled: true },
+] as const;
+
+beforeEach(() => {
+  document.body.replaceChildren();
+});
+
+afterEach(() => {
+  cleanup();
+  resetEscapeStack();
+});
+
+async function openMenu(container: HTMLElement): Promise<void> {
+  const trigger = container.querySelector<HTMLButtonElement>('#fruits');
+  if (!trigger) throw new Error('trigger not found');
+  await fireEvent.click(trigger);
+  // The listbox panel is portaled to `document.body` (not a descendant of
+  // `container` when a caller passes a narrower scope, e.g. a wrapping <form>),
+  // so it must always be located from `document.body` regardless of where the
+  // trigger itself lives.
+  await waitFor(() => {
+    expect(document.body.querySelector('[role="listbox"]')).not.toBeNull();
+  });
+}
+
+describe('MultiSelect', () => {
+  test('owns indicator styles without importing private or Checkbox CSS', async () => {
+    const css = await Bun.file(new URL('./multi-select.css', import.meta.url)).text();
+
+    expect(css).toContain('.cinder-checkbox-field__indicator');
+    expect(css).not.toContain("@import '../_internal/checkbox-indicator-shell.css';");
+    expect(css).not.toContain("@import '../checkbox/checkbox.css';");
+  });
+
+  test('owns checkbox box styles so a standalone import stays visible', async () => {
+    const css = await Bun.file(new URL('./multi-select.css', import.meta.url)).text();
+
+    // A consumer importing only `@repo/cinder` never loads
+    // checkbox.css, so the box shape and checked/disabled backgrounds must live
+    // on MultiSelect's own `__checkbox-box` class here too -- not just the
+    // floating checkmark indicator, and not by redefining Checkbox's own
+    // `.cinder-checkbox` class (that would reintroduce the coupling this file's
+    // other test guards against).
+    expect(css).not.toMatch(/(?<![\w-])\.cinder-checkbox\s*\{/);
+    expect(css).not.toMatch(/(?<![\w-])\.cinder-checkbox--indicator\[data-cinder-checked\]\s*\{/);
+
+    const boxRuleStart = css.indexOf('.cinder-multi-select__checkbox-box {');
+    const boxRuleEnd = css.indexOf('}', boxRuleStart);
+    expect(boxRuleStart).toBeGreaterThan(-1);
+    const checkboxBoxRule = css.slice(boxRuleStart, boxRuleEnd);
+    expect(checkboxBoxRule).toContain('border: 1px solid var(--cinder-border)');
+    expect(checkboxBoxRule).toContain('background: var(--cinder-surface-raised)');
+
+    expect(css).toContain('.cinder-multi-select__checkbox-box[data-cinder-checked] {');
+    expect(css).toContain('.cinder-multi-select__checkbox-box[data-cinder-disabled] {');
+    expect(css).toContain(
+      '.cinder-multi-select__checkbox-box[data-cinder-disabled][data-cinder-checked] {',
+    );
+  });
+
+  test('the error live region is mounted before any error is set (CIN-315: FormFieldFrame defaults to errorMountedOnDemand=false)', () => {
+    const { container } = render(MultiSelect, { id: 'no-error-yet-multi', items });
+    expect(container.querySelector('.cinder-multi-select__error')).not.toBeNull();
+  });
+
+  test('renders trigger, placeholder, and listbox semantics', async () => {
+    const { container } = render(MultiSelect, { id: 'fruits', items });
+    expect(container.querySelector('#fruits')?.textContent).toContain('Select options');
+    const chevron = container.querySelector('.cinder-multi-select__chevron');
+    expect(chevron?.querySelector('svg')).not.toBeNull();
+    expect(chevron?.textContent?.trim()).toBe('');
+    await openMenu(container);
+    const listbox = container.querySelector('[role="listbox"]');
+    expect(listbox?.getAttribute('aria-multiselectable')).toBe('true');
+    expect(container.querySelectorAll('[role="option"]').length).toBe(4);
+    expect(
+      container.querySelectorAll(
+        '[role="option"] :is(button, input, select, textarea, a[href], [contenteditable="true"])',
+      ),
+    ).toHaveLength(0);
+    expect(
+      container.querySelectorAll('[role="option"] [data-cinder-checkbox-indicator-shell]'),
+    ).toHaveLength(4);
+    expect(container.querySelectorAll('[role="option"] .cinder-checkbox')).toHaveLength(4);
+    expect(container.querySelector('[role="option"] input[type="checkbox"]')).toBeNull();
+    expect(container.querySelector('.cinder-multi-select__checkbox')).toBeNull();
+    const appleIndicator = container.querySelector(
+      '#fruits-option-0 .cinder-multi-select__checkbox-box',
+    );
+    expect(appleIndicator?.hasAttribute('data-cinder-checked')).toBe(false);
+    expect(appleIndicator?.hasAttribute('data-cinder-disabled')).toBe(false);
+  });
+
+  test('clicking an option toggles selection and updates count summary', async () => {
+    const { container } = render(MultiSelect, { id: 'fruits', items });
+    await openMenu(container);
+
+    const apple = container.querySelector('#fruits-option-0');
+    if (!apple) throw new Error('apple option not found');
+    await fireEvent.mouseDown(apple);
+
+    const trigger = container.querySelector('#fruits');
+    expect(trigger?.textContent).toContain('1 selected');
+    expect(container.querySelector('.cinder-multi-select__count')?.textContent?.trim()).toBe('1');
+    expect(apple.getAttribute('aria-selected')).toBe('true');
+    expect(
+      apple
+        .querySelector('.cinder-multi-select__checkbox-box')
+        ?.getAttribute('data-cinder-checked'),
+    ).toBe('true');
+  });
+
+  test('clear button removes all selected items', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      selectedIds: ['apple', 'banana'],
+    });
+
+    const clearButton = container.querySelector<HTMLButtonElement>('.cinder-multi-select__clear');
+    expect(clearButton).not.toBeNull();
+    await fireEvent.click(clearButton!);
+    expect(container.querySelector('#fruits')?.textContent).toContain('Select options');
+    expect(container.querySelector('.cinder-multi-select__count')).toBeNull();
+  });
+
+  test('clear button returns focus to trigger when selections are removed', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      selectedIds: ['apple'],
+    });
+
+    const clearButton = container.querySelector<HTMLButtonElement>('.cinder-multi-select__clear');
+    const trigger = container.querySelector<HTMLButtonElement>('#fruits');
+    if (!clearButton || !trigger) throw new Error('clear controls not found');
+
+    clearButton.focus();
+    await fireEvent.click(clearButton);
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test('clear button does not close an open menu', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      selectedIds: ['apple', 'banana'],
+    });
+    await openMenu(container);
+
+    const clearButton = container.querySelector<HTMLButtonElement>('.cinder-multi-select__clear');
+    if (!clearButton) throw new Error('clear button not found');
+    await fireEvent.click(clearButton);
+
+    expect(container.querySelector('#fruits-popover')).not.toBeNull();
+    expect(container.querySelector('#fruits')?.textContent).toContain('Select options');
+  });
+
+  test('renders one hidden input per selected id when name is set', () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      name: 'fruits',
+      items,
+      selectedIds: ['apple', 'banana'],
+    });
+
+    const hidden = Array.from(
+      container.querySelectorAll<HTMLInputElement>('input[type="hidden"][name="fruits"]'),
+    ).map((input) => input.value);
+
+    expect(hidden).toEqual(['apple', 'banana']);
+  });
+
+  test('deduplicates selected ids for hidden inputs and count summary', () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      name: 'fruits',
+      items,
+      selectedIds: ['apple', 'apple', 'banana'],
+    });
+
+    const hidden = Array.from(
+      container.querySelectorAll<HTMLInputElement>('input[type="hidden"][name="fruits"]'),
+    ).map((input) => input.value);
+
+    expect(hidden).toEqual(['apple', 'banana']);
+    expect(container.querySelector('#fruits')?.textContent).toContain('2 selected');
+  });
+
+  test('ignores orphan selected ids for summary and form serialization', () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      name: 'fruits',
+      items,
+      selectedIds: ['apple', 'missing', 'banana'],
+    });
+
+    const hidden = Array.from(
+      container.querySelectorAll<HTMLInputElement>('input[type="hidden"][name="fruits"]'),
+    ).map((input) => input.value);
+
+    expect(hidden).toEqual(['apple', 'banana']);
+    expect(container.querySelector('#fruits')?.textContent).toContain('2 selected');
+  });
+
+  test('required validation remains invalid when selected ids are all orphaned', () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      name: 'fruits',
+      required: true,
+      items,
+      selectedIds: ['missing'],
+    });
+    const proxy = container.querySelector<HTMLInputElement>(
+      '.cinder-multi-select__validation-proxy',
+    );
+    if (!proxy) throw new Error('validation proxy not found');
+
+    expect(proxy.checkValidity()).toBe(false);
+  });
+
+  test('required validation proxy is invalid when empty and valid when selected', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      name: 'fruits',
+      required: true,
+      items,
+    });
+    const proxy = container.querySelector<HTMLInputElement>(
+      '.cinder-multi-select__validation-proxy',
+    );
+    if (!proxy) throw new Error('validation proxy not found');
+
+    expect(proxy.checkValidity()).toBe(false);
+    await openMenu(container);
+    const apple = container.querySelector('#fruits-option-0');
+    if (!apple) throw new Error('apple option not found');
+    await fireEvent.mouseDown(apple);
+    expect(proxy.checkValidity()).toBe(true);
+  });
+
+  test('required validation focuses the trigger instead of the hidden proxy', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      required: true,
+      items,
+    });
+
+    const proxy = container.querySelector<HTMLInputElement>(
+      '.cinder-multi-select__validation-proxy',
+    );
+    const trigger = container.querySelector<HTMLButtonElement>('#fruits');
+    if (!proxy || !trigger) throw new Error('required controls not found');
+
+    expect(proxy.reportValidity()).toBe(false);
+    expect(document.activeElement).toBe(trigger);
+    await waitFor(() => {
+      expect(trigger.getAttribute('aria-invalid')).toBe('true');
+      expect(trigger.getAttribute('data-cinder-invalid')).toBe('true');
+    });
+  });
+
+  test('error marks the focusable trigger invalid and describes the error', () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      error: 'Choose at least one fruit.',
+      items,
+    });
+
+    const trigger = container.querySelector<HTMLButtonElement>('#fruits');
+    if (!trigger) throw new Error('trigger not found');
+
+    expect(trigger.getAttribute('aria-invalid')).toBe('true');
+    expect(trigger.getAttribute('data-cinder-invalid')).toBe('true');
+    expect(trigger.getAttribute('aria-describedby')).toContain('fruits-error');
+    expect(container.querySelector('#fruits-error')?.textContent).toContain('Choose');
+  });
+
+  test('filterable mode filters options by label', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+
+    await openMenu(container);
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    await fireEvent.input(filter, { target: { value: 'ap' } });
+
+    await waitFor(() => {
+      const labels = Array.from(
+        container.querySelectorAll('.cinder-multi-select__option-label'),
+      ).map((node) => node.textContent?.trim());
+      expect(labels).toEqual(['Apple', 'Apricot']);
+    });
+  });
+
+  test('empty list row is exposed as a disabled option', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+
+    await openMenu(container);
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    await fireEvent.input(filter, { target: { value: 'zzz' } });
+
+    const empty = container.querySelector('.cinder-multi-select__empty');
+    expect(empty?.getAttribute('role')).toBe('option');
+    expect(empty?.getAttribute('aria-disabled')).toBe('true');
+    expect(empty?.getAttribute('aria-selected')).toBe('false');
+  });
+
+  test('filter input has an accessible name and space does not toggle selection', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+
+    await openMenu(container);
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+
+    expect(filter.getAttribute('aria-label')).toBeNull();
+    expect(filter.getAttribute('aria-labelledby')).toBe('fruits-filter-label-hint');
+    expect(container.querySelector('#fruits-filter-label-hint')?.textContent).toBe(
+      'Filter options',
+    );
+    expect(filter.getAttribute('role')).toBe('combobox');
+    expect(filter.getAttribute('aria-autocomplete')).toBe('list');
+    expect(filter.getAttribute('aria-haspopup')).toBe('listbox');
+    await fireEvent.keyDown(filter, { key: ' ' });
+    expect(container.querySelector('#fruits-option-0')?.getAttribute('aria-selected')).toBe(
+      'false',
+    );
+  });
+
+  test('selectionFeedback="top" keeps selected options first', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      selectedIds: ['banana'],
+      selectionFeedback: 'top',
+    });
+
+    await openMenu(container);
+    const firstLabel = container
+      .querySelector('.cinder-multi-select__option-label')
+      ?.textContent?.trim();
+    expect(firstLabel).toBe('Banana');
+  });
+
+  test('selectionFeedback="top-after-reopen" applies ordering from second open onward', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      selectedIds: ['banana'],
+      selectionFeedback: 'top-after-reopen',
+    });
+
+    await openMenu(container);
+    const firstOpenFirstLabel = container
+      .querySelector('.cinder-multi-select__option-label')
+      ?.textContent?.trim();
+    expect(firstOpenFirstLabel).toBe('Apple');
+
+    const trigger = container.querySelector<HTMLButtonElement>('#fruits');
+    if (!trigger) throw new Error('trigger not found');
+    await fireEvent.click(trigger);
+    await fireEvent.click(trigger);
+    await waitFor(() => {
+      const firstLabel = container
+        .querySelector('.cinder-multi-select__option-label')
+        ?.textContent?.trim();
+      expect(firstLabel).toBe('Banana');
+    });
+  });
+
+  test('readonly prevents selection changes', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      selectedIds: ['apple'],
+      readonly: true,
+    });
+
+    await openMenu(container);
+    const banana = container.querySelector('#fruits-option-2');
+    if (!banana) throw new Error('banana option not found');
+    await fireEvent.mouseDown(banana);
+
+    expect(container.querySelector('#fruits')?.textContent).toContain('1 selected');
+    expect(banana.getAttribute('aria-selected')).toBe('false');
+  });
+
+  test('keyboard navigation toggles active option with Space', async () => {
+    const { container } = render(MultiSelect, { id: 'fruits', items });
+    const trigger = container.querySelector<HTMLButtonElement>('#fruits');
+    if (!trigger) throw new Error('trigger not found');
+
+    expect(trigger.getAttribute('role')).toBeNull();
+    expect(trigger.getAttribute('aria-haspopup')).toBe('listbox');
+
+    trigger.focus();
+    await fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    await waitFor(() => expect(container.querySelector('[role="listbox"]')).not.toBeNull());
+
+    const listbox = container.querySelector('[role="listbox"]');
+    if (!listbox) throw new Error('listbox not found');
+    await fireEvent.keyDown(listbox, { key: ' ' });
+    expect(container.querySelector('#fruits-option-0')?.getAttribute('aria-selected')).toBe('true');
+    expect(listbox.getAttribute('aria-activedescendant')).toBe('fruits-option-0');
+    expect(trigger.getAttribute('aria-activedescendant')).toBeNull();
+  });
+
+  test('keyboard navigation scrolls the active option into view', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items: Array.from({ length: 30 }, (_, index) => ({
+        id: `item-${index}`,
+        label: `Item ${index}`,
+      })),
+    });
+
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    let called = false;
+    Element.prototype.scrollIntoView = function () {
+      called = true;
+    };
+
+    try {
+      const trigger = container.querySelector<HTMLButtonElement>('#fruits');
+      if (!trigger) throw new Error('trigger not found');
+      trigger.focus();
+      await fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+      const listbox = container.querySelector('[role="listbox"]');
+      if (!listbox) throw new Error('listbox not found');
+      await fireEvent.keyDown(listbox, { key: 'ArrowDown' });
+      expect(called).toBe(true);
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  test('Escape closes the open menu and returns focus to the trigger', async () => {
+    const { container } = render(MultiSelect, { id: 'fruits', items });
+    await openMenu(container);
+    const trigger = container.querySelector<HTMLButtonElement>('#fruits')!;
+    const listbox = container.querySelector('[role="listbox"]')!;
+
+    await fireEvent.keyDown(listbox, { key: 'Escape' });
+
+    await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test('holds a pushEscapeHandler registration (via commandList.bindDismissal) while open and releases it on close', async () => {
+    // MultiSelect already registers on the shared escape stack through
+    // `commandList.bindDismissal` (multi-select.svelte ~line 386). This
+    // proves the registration itself, not just the visible close.
+    let parentEscapeCount = 0;
+    const releaseParent = pushEscapeHandler(() => {
+      parentEscapeCount += 1;
+    });
+
+    try {
+      const { container } = render(MultiSelect, { id: 'fruits', items });
+      await openMenu(container);
+
+      const escapeEvent = new window.KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      container.querySelector('[role="listbox"]')!.dispatchEvent(escapeEvent);
+
+      expect(escapeEvent.defaultPrevented).toBe(true);
+      expect(parentEscapeCount).toBe(0);
+      await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+
+      // Released when close begins: the parent handler (now top-most) sees
+      // the very next Escape.
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(parentEscapeCount).toBe(1);
+    } finally {
+      releaseParent();
+    }
+  });
+
+  test('with the menu open above another stack registration, Escape dismisses only the menu (canonical harness)', async () => {
+    let parentEscapeCount = 0;
+    const releaseParent = pushEscapeHandler(() => {
+      parentEscapeCount += 1;
+    });
+
+    try {
+      const { container } = render(MultiSelect, { id: 'fruits', items });
+      await openMenu(container);
+
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      expect(parentEscapeCount).toBe(0);
+      await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+    } finally {
+      releaseParent();
+    }
+  });
+
+  test('Escape closes the menu with focus outside the control and panel', async () => {
+    const { container } = render(MultiSelect, { id: 'fruits', items });
+    await openMenu(container);
+
+    const outside = document.createElement('button');
+    outside.textContent = 'Outside';
+    document.body.append(outside);
+    outside.focus();
+    expect(document.activeElement).toBe(outside);
+
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+    outside.remove();
+  });
+
+  test('disabled option cannot be selected', async () => {
+    const { container } = render(MultiSelect, { id: 'fruits', items });
+    await openMenu(container);
+    const disabledOption = container.querySelector('#fruits-option-3');
+    if (!disabledOption) throw new Error('disabled option not found');
+    await fireEvent.mouseDown(disabledOption);
+    expect(disabledOption.getAttribute('aria-selected')).toBe('false');
+  });
+
+  test('disabled option does not become active on hover', async () => {
+    const { container } = render(MultiSelect, { id: 'fruits', items });
+    await openMenu(container);
+
+    const disabledOption = container.querySelector('#fruits-option-3');
+    if (!disabledOption) throw new Error('disabled option not found');
+    await fireEvent.mouseEnter(disabledOption);
+
+    expect(disabledOption.getAttribute('data-cinder-active')).toBeNull();
+  });
+
+  test('warning text participates in aria-describedby', () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      warning: 'Choose at least one seasonal item.',
+    });
+    const trigger = container.querySelector('#fruits');
+    expect(trigger?.getAttribute('aria-describedby')).toContain('fruits-warning');
+    expect(container.querySelector('#fruits-warning')?.textContent).toContain('seasonal');
+  });
+
+  test('warning text is removed once the warning prop is cleared', async () => {
+    const { container, rerender } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      warning: 'Choose at least one seasonal item.',
+    });
+    expect(container.querySelector('#fruits-warning')).not.toBeNull();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await rerender({ id: 'fruits', items, warning: undefined } as any);
+    expect(container.querySelector('#fruits-warning')).toBeNull();
+  });
+
+  test('listbox and filter are labelled by the component label', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      label: 'Fruits',
+      items,
+      filterable: true,
+    });
+
+    await openMenu(container);
+    const listbox = container.querySelector('[role="listbox"]');
+    expect(listbox?.getAttribute('aria-labelledby')).toBe('fruits-label');
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    expect(filter.getAttribute('aria-label')).toBeNull();
+    expect(filter.getAttribute('aria-labelledby')).toBe('fruits-label fruits-filter-label-hint');
+    expect(container.querySelector('#fruits-label')?.textContent).toContain('Fruits');
+    expect(container.querySelector('#fruits-filter-label-hint')?.textContent).toBe(
+      'Filter options',
+    );
+  });
+
+  test('listbox uses FormField label id when component label is omitted', async () => {
+    const { container } = render(FormFieldMultiSelectFixture, {
+      fieldId: 'fruits-field',
+      fieldLabel: 'Fruits',
+      items,
+      selectedIds: [],
+    });
+
+    const trigger = container.querySelector<HTMLButtonElement>('#fruits-field');
+    if (!trigger) throw new Error('form-field trigger not found');
+    await fireEvent.click(trigger);
+    await waitFor(() => {
+      expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+    });
+    const listbox = container.querySelector('[role="listbox"]');
+    expect(listbox?.getAttribute('aria-labelledby')).toBe('fruits-field-label');
+  });
+
+  test('local and FormField warnings have unique ids and preserve rendered order', () => {
+    const { container } = render(FormFieldMultiSelectFixture, {
+      fieldId: 'fruits-field',
+      fieldLabel: 'Fruits',
+      fieldWarning: 'Organization policy applies.',
+      warning: 'Keep at least one selection.',
+      items,
+      selectedIds: [],
+    });
+    const trigger = container.querySelector<HTMLButtonElement>('#fruits-field');
+
+    expect(container.querySelectorAll('#fruits-field-warning')).toHaveLength(1);
+    expect(container.querySelectorAll('#fruits-field-multi-select-warning')).toHaveLength(1);
+    expect(trigger?.getAttribute('aria-describedby')).toBe(
+      'fruits-field-multi-select-warning fruits-field-warning',
+    );
+  });
+
+  // Regression test for the clipped-listbox defect: the panel used to be
+  // `position: absolute` inside `.cinder-multi-select__control`, so any
+  // ancestor with `overflow: hidden` (or a new containing block) clipped it
+  // regardless of z-index. It now portals directly to `document.body` — the
+  // same single-element portal shape HoverCard and DropdownMenu use — so
+  // `position: fixed` positioning escapes that containment.
+  test('open panel portals to document.body instead of nesting inside the control wrapper', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      warning: 'Keep at least one selection.',
+      items,
+    });
+
+    await openMenu(container);
+    const panel = document.body.querySelector('#fruits-popover');
+    expect(panel).not.toBeNull();
+    expect(panel?.parentElement).toBe(document.body);
+    expect(panel?.closest('.cinder-multi-select__control')).toBeNull();
+  });
+
+  test('open panel portals into an enclosing open top-layer owner instead of past it to document.body', async () => {
+    // Regression test: escaping straight to `document.body` would render the
+    // panel BEHIND a native <dialog>/[popover] ancestor's top layer, since
+    // regular DOM content can never out-stack the top layer regardless of
+    // z-index (e.g. a MultiSelect field inside a Modal). `findNearestOpenTopLayer`
+    // resolves the top-layer owner via the same `data-cinder-portal-owner`
+    // marker mechanism Popover/SpeedDial/NavigationBar already use — `:modal`
+    // itself isn't reliably testable under happy-dom, but this marker path
+    // exercises the real production wiring end to end.
+    const owner = document.createElement('div');
+    owner.id = 'fake-top-layer-owner';
+    document.body.append(owner);
+
+    const { container } = renderIntoContainer(MultiSelect, { id: 'fruits', items });
+    container.dataset['cinderPortalOwner'] = 'fake-top-layer-owner';
+    document.body.append(container);
+
+    await openMenu(container);
+    const panel = document.body.querySelector('#fruits-popover');
+    expect(panel).not.toBeNull();
+    expect(panel?.parentElement).toBe(owner);
+  });
+
+  test('menu closes when focus moves away with keyboard navigation', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+    await openMenu(container);
+    await waitFor(() => {
+      expect(document.activeElement).toBe(container.querySelector('.cinder-multi-select__filter'));
+    });
+
+    const outside = document.createElement('button');
+    outside.type = 'button';
+    document.body.append(outside);
+    outside.focus();
+    await fireEvent.focusIn(outside);
+
+    await waitFor(() => {
+      expect(container.querySelector('#fruits-popover')).toBeNull();
+    });
+
+    const trigger = container.querySelector<HTMLButtonElement>('#fruits');
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(outside);
+  });
+
+  test('filterable mode keeps active descendant on filter input only', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+    await openMenu(container);
+
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]');
+    if (!filter || !listbox) throw new Error('filterable controls not found');
+
+    await fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    expect(filter.getAttribute('aria-activedescendant')).toBe('fruits-option-1');
+    expect(listbox.getAttribute('aria-activedescendant')).toBeNull();
+  });
+
+  test('filtering resets the active option before filtered items are synchronized', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+    await openMenu(container);
+
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    await fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    await fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    expect(filter.getAttribute('aria-activedescendant')).toBe('fruits-option-2');
+
+    await fireEvent.input(filter, { target: { value: 'ba' } });
+    await waitFor(() => {
+      expect(filter.getAttribute('aria-activedescendant')).toBe('fruits-option-0');
+    });
+    expect(container.querySelector('#fruits-option-0')?.textContent).toContain('Banana');
+  });
+
+  test('filtering does not leave the active index pointing at an unrelated item', async () => {
+    const reorderedItems = [
+      { id: 'apple', label: 'Apple' },
+      { id: 'cherry', label: 'Cherry' },
+      { id: 'banana', label: 'Banana' },
+      { id: 'apricot', label: 'Apricot' },
+    ] as const;
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items: reorderedItems,
+      filterable: true,
+    });
+    await openMenu(container);
+
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    await fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    expect(filter.getAttribute('aria-activedescendant')).toBe('fruits-option-1');
+    expect(container.querySelector('#fruits-option-1')?.textContent).toContain('Cherry');
+
+    // Filtering to "a" drops Cherry (no "a") and leaves Apple, Banana, Apricot,
+    // so index 1 is now occupied by Banana instead of the previously active Cherry.
+    await fireEvent.input(filter, { target: { value: 'a' } });
+    await waitFor(() => {
+      expect(filter.getAttribute('aria-activedescendant')).toBe('fruits-option-0');
+    });
+    expect(container.querySelector('#fruits-option-0')?.textContent).toContain('Apple');
+  });
+
+  test('readonly exposes aria-readonly on picker roles', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+      readonly: true,
+    });
+    await openMenu(container);
+
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]');
+    if (!filter || !listbox) throw new Error('readonly controls not found');
+
+    expect(filter.getAttribute('aria-readonly')).toBe('true');
+    expect(filter.readOnly).toBe(true);
+    expect(listbox.getAttribute('aria-readonly')).toBe('true');
+    expect(container.querySelector('#fruits-option-0')?.getAttribute('aria-disabled')).toBeNull();
+    expect(
+      container
+        .querySelector('#fruits-option-0 .cinder-multi-select__checkbox-box')
+        ?.getAttribute('data-cinder-disabled'),
+    ).toBe('true');
+  });
+
+  test('filterable Home and End keep native input editing behavior', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+    await openMenu(container);
+
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    const home = new KeyboardEvent('keydown', { key: 'Home', cancelable: true, bubbles: true });
+    const end = new KeyboardEvent('keydown', { key: 'End', cancelable: true, bubbles: true });
+
+    filter.dispatchEvent(home);
+    filter.dispatchEvent(end);
+
+    expect(home.defaultPrevented).toBe(false);
+    expect(end.defaultPrevented).toBe(false);
+  });
+
+  test('empty filtered state announces a status message', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+    await openMenu(container);
+
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    await fireEvent.input(filter, { target: { value: 'zzz' } });
+
+    const status = container.querySelector('.cinder-multi-select__sr-status');
+    expect(status?.getAttribute('role')).toBe('status');
+    expect(status?.textContent).toContain('No matching options');
+  });
+
+  test('filterable Enter with no active option does not submit parent form', async () => {
+    // Uses the raw testing-library container (not the `document.body`-scoped
+    // `render` wrapper) because this test moves the container itself into a
+    // fresh <form> — the listbox panel still portals to `document.body`
+    // regardless, so it's located there rather than under `form`.
+    const { container } = renderIntoContainer(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+    const form = document.createElement('form');
+    document.body.append(form);
+    form.append(container);
+
+    let submitCount = 0;
+    form.addEventListener('submit', (event) => {
+      submitCount += 1;
+      event.preventDefault();
+    });
+
+    await openMenu(form);
+    const filter = document.body.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    await fireEvent.input(filter, { target: { value: 'zzz' } });
+    await fireEvent.keyDown(filter, { key: 'Enter' });
+
+    expect(submitCount).toBe(0);
+  });
+
+  test('scans the listbox once per sync, not once per option (#1186 row 7)', async () => {
+    const { container } = render(MultiSelect, { id: 'fruits', items, filterable: true });
+
+    await openMenu(container);
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]');
+    if (!listbox) throw new Error('listbox not found');
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+
+    const querySelectorAllSpy = spyOn(listbox, 'querySelectorAll');
+
+    // Narrows visibleItems from 4 to 2, re-running the sync effect once.
+    await fireEvent.input(filter, { target: { value: 'ap' } });
+    await waitFor(() => {
+      const labels = Array.from(
+        container.querySelectorAll('.cinder-multi-select__option-label'),
+      ).map((node) => node.textContent?.trim());
+      expect(labels).toEqual(['Apple', 'Apricot']);
+    });
+
+    // Correctness: both filtered options are registered with the expected,
+    // predictable ids (proves the sync still wired every option correctly).
+    expect(container.querySelector('#fruits-option-0')?.textContent).toContain('Apple');
+    expect(container.querySelector('#fruits-option-1')?.textContent).toContain('Apricot');
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(2);
+
+    // The effect run above scanned the listbox exactly once for the whole
+    // sync — not once per visible option.
+    expect(querySelectorAllSpy).toHaveBeenCalledTimes(1);
+
+    querySelectorAllSpy.mockRestore();
+  });
+});

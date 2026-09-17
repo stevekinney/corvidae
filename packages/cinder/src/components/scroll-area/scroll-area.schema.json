@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "direction": {
+      "enum": ["vertical", "horizontal", "both"],
+      "description": "Axis to allow scrolling on. Defaults to `'vertical'`."
+    },
+    "maxHeight": {
+      "type": "string",
+      "description": "Maximum block size of the scroll viewport (any valid CSS length)."
+    },
+    "maxWidth": {
+      "type": "string",
+      "description": "Maximum inline size of the scroll viewport (any valid CSS length)."
+    },
+    "label": {
+      "type": "string",
+      "description": "Accessible name for the scroll region. When provided on neutral\ncontainers, the container also gets `role=\"region\"` so assistive\ntechnology treats it as a landmark. Semantic tags keep their native\nroles. Provide this when the scroll area represents a meaningful section\n(a chat transcript, a code panel) — omit it for purely decorative\nscrolling chrome. This is the single source of truth for the accessible\nname; pass it through this prop rather than the raw `aria-label` HTML\nattribute so the landmark role and label stay coupled."
+    },
+    "tabindex": {
+      "type": "number",
+      "description": "Override the default focus behavior. The component sets `tabindex=\"0\"`\nby default so keyboard users can reach the viewport for arrow-key\nscrolling. Pass `tabindex={-1}` when the viewport should be programmatically\nfocusable without entering the tab order."
+    },
+    "as": {
+      "enum": ["article", "aside", "div", "li", "main", "nav", "ol", "pre", "section", "ul"],
+      "description": "Element tag to render. Defaults to `'div'`."
+    },
+    "scrollFadeVisible": {
+      "type": "boolean",
+      "description": "Show a scroll-driven edge fade on the trailing edge of `direction`\n(`'vertical'` fades the bottom; `'horizontal'` fades the inline-end\nedge). Opt-in and presentation-only — never the sole signal that content\nscrolls; the native scrollbar this component always renders remains the\nauthoritative affordance. Has no effect when `direction` is `'both'`\n(there is no single trailing edge to fade on two independent axes at\nonce). Defaults to `false`."
+    },
+    "dragToScroll": {
+      "type": "boolean",
+      "description": "Enables fine-pointer (mouse) click-and-drag scrolling, with momentum.\nDefault `false` — drag-to-scroll on a text-bearing pane is a preference,\nnot a default; keyboard scrolling (arrow keys, Page Up/Down, Home/End)\nis unaffected either way. Not supported when `direction` is `'both'`."
+    },
+    "class": {
+      "type": "string",
+      "description": "Additional classes merged onto the scroll viewport."
+    }
+  },
+  "additionalProperties": false,
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "children",
+        "reason": "function-or-snippet",
+        "required": true,
+        "description": "Scrollable content."
+      }
+    ]
+  }
+}

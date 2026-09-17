@@ -1,0 +1,35 @@
+# TabList
+
+Keyboard-navigable row of tab triggers that control which tab panel is visible.
+
+## Usage
+
+`TabList` is a compose-only leaf of [`Tabs`](../tabs/README.md). The idiomatic API is `Tabs.List`, reached through the parent namespace — see the [tabs README](../tabs/README.md#usage) for the composed snippet. The flat `@repo/cinder` subpath remains exported for à-la-carte builds that import the leaf directly.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `ariaLabelledby` | `string` | no | — | Reference to a heading or label element that names the tablist. |
+| `class` | `string` | no | — | Additional class names merged with `.cinder-tab-list`. |
+| `label` | `string` | no | — | Optional accessible name for the tablist. Sets `aria-label`. |
+| `children` | `(opaque)` | yes | — | Tab children. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

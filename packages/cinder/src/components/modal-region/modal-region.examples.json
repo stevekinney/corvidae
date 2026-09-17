@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "modal-region",
+  "import": "@repo/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Basic modal region",
+      "description": "Mount application content inside the modal coordination region.",
+      "code": "<script lang=\"ts\">\n  import { Button } from '@repo/cinder';\n  import { ModalRegion, useModal } from '@repo/cinder';\n</script>\n\n<ModalRegion>\n  {#snippet children()}\n    {@const modal = useModal()}\n    <Button onclick={() => modal.confirm({ title: 'Confirm action' })}>Open confirmation</Button>\n  {/snippet}\n</ModalRegion>\n"
+    }
+  ]
+}

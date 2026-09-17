@@ -1,0 +1,566 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category form
+   * @status alpha
+   * @purpose Keyboard-navigable month grid for choosing a calendar date with full styling control and min/max constraints.
+   * @tag form
+   * @tag date
+   * @tag calendar
+   * @useWhen Rendering a custom date-grid picker inside an input popover.
+   * @useWhen Requiring consistent cross-browser calendar behavior that native date controls cannot provide.
+   * @avoidWhen A plain browser-managed date input is sufficient and custom keyboard semantics are not required.
+   * @related date-picker, date-range-field
+   */
+  export type { CalendarProps } from './calendar.types.ts';
+</script>
+
+<script lang="ts">
+  import { tick, untrack } from 'svelte';
+  import type { CalendarProps } from './calendar.types.ts';
+  import { classNames } from '../../utilities/class-names.ts';
+
+  type CalendarRangeValue = {
+    start: string | undefined;
+    end: string | undefined;
+  };
+
+  type CalendarCell = {
+    iso: string;
+    day: number;
+    inMonth: boolean;
+    disabled: boolean;
+    focused: boolean;
+    selected: boolean;
+    rangeStart: boolean;
+    rangeEnd: boolean;
+    inRange: boolean;
+    rangePreview: boolean;
+    ariaLabel: string;
+  };
+
+  const WEEKDAY_INDEXES = [0, 1, 2, 3, 4, 5, 6] as const;
+  const MINIMUM_CALENDAR_YEAR = 0;
+  const MAXIMUM_CALENDAR_YEAR = 9999;
+
+  function createCalendarDate(year: number, monthValue: number, day: number): Date {
+    const date = new Date(0);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCFullYear(year, monthValue, day);
+    return date;
+  }
+
+  let {
+    id,
+    selectionMode = 'single',
+    rangeStart,
+    rangeEnd,
+    onRangeChange,
+    rangeHover,
+    value = $bindable<string | undefined>(undefined),
+    month,
+    min,
+    max,
+    firstDayOfWeek = 0,
+    locale = 'en-US',
+    label = 'Calendar',
+    disabled = false,
+    class: className,
+    onValueChange,
+    disabledDate,
+    ...rest
+  }: CalendarProps = $props();
+
+  const generatedId = $props.id();
+  const rootId = $derived(id ?? generatedId);
+  const titleId = $derived(`${rootId}-title`);
+  const monthGridId = $derived(`${rootId}-grid`);
+
+  function parseISODate(iso: string | undefined): Date | null {
+    if (!iso) return null;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const monthValue = Number(match[2]);
+    const day = Number(match[3]);
+    if (monthValue < 1 || monthValue > 12) return null;
+    const date = createCalendarDate(year, monthValue - 1, day);
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== monthValue - 1 ||
+      date.getUTCDate() !== day
+    ) {
+      return null;
+    }
+    return date;
+  }
+
+  function toISODate(date: Date): string {
+    const year = String(date.getUTCFullYear()).padStart(4, '0');
+    const monthValue = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${monthValue}-${day}`;
+  }
+
+  function isSupportedCalendarDate(date: Date): boolean {
+    const year = date.getUTCFullYear();
+    return year >= MINIMUM_CALENDAR_YEAR && year <= MAXIMUM_CALENDAR_YEAR;
+  }
+
+  function localTodayIso(): string {
+    const today = new Date();
+    return `${String(today.getFullYear()).padStart(4, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  }
+
+  function startOfMonth(date: Date): Date {
+    return createCalendarDate(date.getUTCFullYear(), date.getUTCMonth(), 1);
+  }
+
+  function addDays(date: Date, days: number): Date {
+    const next = new Date(date);
+    next.setUTCDate(next.getUTCDate() + days);
+    return next;
+  }
+
+  function addMonths(date: Date, months: number): Date {
+    return createCalendarDate(date.getUTCFullYear(), date.getUTCMonth() + months, 1);
+  }
+
+  function startOfWeek(date: Date, weekStart: number): Date {
+    const offset = (date.getUTCDay() - weekStart + 7) % 7;
+    return addDays(date, -offset);
+  }
+
+  function isISOWithinBounds(iso: string): boolean {
+    if (min && iso < min) return false;
+    if (max && iso > max) return false;
+    return true;
+  }
+
+  function isDateDisabled(iso: string): boolean {
+    if (!isISOWithinBounds(iso)) return true;
+    return disabledDate?.(iso) ?? false;
+  }
+
+  function resolveAnchorIso(
+    valueProp: string | undefined,
+    monthProp: string | undefined,
+    rangeStartProp: string | undefined,
+    rangeEndProp: string | undefined,
+    fallbackIso: string,
+  ): string {
+    const selectedValue =
+      valueProp ?? (selectionMode === 'range' ? (rangeEndProp ?? rangeStartProp) : undefined);
+    if (selectedValue && parseISODate(selectedValue)) {
+      if (min && selectedValue < min) return min;
+      if (max && selectedValue > max) return max;
+      return selectedValue;
+    }
+    if (monthProp && parseISODate(monthProp)) return monthProp;
+    if (min && parseISODate(min) && fallbackIso < min) return min;
+    if (max && parseISODate(max) && fallbackIso > max) return max;
+    return fallbackIso;
+  }
+
+  const initialTodayIso = localTodayIso();
+  const initialAnchorIso = untrack(() =>
+    resolveAnchorIso(value, month, rangeStart, rangeEnd, initialTodayIso),
+  );
+  const initialFocusedIso = untrack(() => initialAnchorIso);
+  let todayIso = $state(localTodayIso());
+
+  // Keeps `todayIso` live across a midnight rollover in a long-lived session —
+  // both while the tab stays open (interval) and, far more commonly, while it
+  // sits backgrounded overnight (visibilitychange). Never runs during SSR, so
+  // `document`/`setInterval` are safe to reference unguarded here.
+  $effect(() => {
+    const refresh = () => (todayIso = localTodayIso());
+    const timer = setInterval(refresh, 60_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  });
+
+  // `todayIso` is read untracked here: it only ever matters to this anchor as a
+  // *fallback* for an uncontrolled calendar (no `value`/`month`). Tracking it
+  // would make the sync effect below re-anchor on every midnight/visibility
+  // refresh, snapping an already-navigated, uncontrolled view back to today's
+  // month. `todayIso` still drives the `aria-current="date"` marker directly
+  // in the template, which is the only thing a live refresh should move.
+  const anchorIso = $derived(
+    resolveAnchorIso(
+      value,
+      month,
+      rangeStart,
+      rangeEnd,
+      untrack(() => todayIso),
+    ),
+  );
+  const anchorDate = $derived(parseISODate(anchorIso) ?? parseISODate(todayIso)!);
+  let visibleMonthDate = $state(
+    startOfMonth(parseISODate(initialAnchorIso) ?? parseISODate(initialTodayIso)!),
+  );
+  let focusedIso = $state(initialFocusedIso);
+  let hoverIso = $state<string | undefined>(undefined);
+  let uncontrolledRange = $state<CalendarRangeValue>({
+    start: undefined,
+    end: undefined,
+  });
+  let wasRangeControlled = $state(false);
+  let lastSyncedAnchorIso = $state<string | null>(initialAnchorIso);
+  const focusedDayId = $derived(`${monthGridId}-day-${focusedIso}`);
+  const selectedRangeStart = $derived(rangeStart ?? uncontrolledRange.start);
+  const selectedRangeEnd = $derived(rangeEnd ?? uncontrolledRange.end);
+
+  // Keep the internal range mirror in step with controlled callers, including
+  // the transition from an endpoint to `undefined`. Without the remembered
+  // controlled mode, clearing both props would reveal the last clicked range.
+  $effect(() => {
+    if (!wasRangeControlled && rangeStart === undefined && rangeEnd === undefined) return;
+    uncontrolledRange = { start: rangeStart, end: rangeEnd };
+    wasRangeControlled = true;
+  });
+
+  $effect(() => {
+    if (anchorIso === lastSyncedAnchorIso) return;
+    visibleMonthDate = startOfMonth(anchorDate);
+    focusedIso = anchorIso;
+    lastSyncedAnchorIso = anchorIso;
+  });
+
+  const monthLabel = $derived(
+    new Intl.DateTimeFormat(locale, {
+      month: 'long',
+      year: 'numeric',
+      era: visibleMonthDate.getUTCFullYear() <= 0 ? 'short' : undefined,
+      timeZone: 'UTC',
+    }).format(visibleMonthDate),
+  );
+
+  const weekdayLabels = $derived(
+    WEEKDAY_INDEXES.map((index) => {
+      const dayIndex = (index + firstDayOfWeek) % 7;
+      const base = createCalendarDate(2024, 0, 7 + dayIndex);
+      return new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' }).format(base);
+    }),
+  );
+
+  const cells = $derived.by(() => {
+    const first = startOfMonth(visibleMonthDate);
+    const gridStart = startOfWeek(first, firstDayOfWeek);
+    const selectedIso = value;
+    const start =
+      selectedRangeStart && parseISODate(selectedRangeStart) ? selectedRangeStart : undefined;
+    const end = selectedRangeEnd && parseISODate(selectedRangeEnd) ? selectedRangeEnd : undefined;
+    const preview = hoverIso ?? rangeHover;
+    const previewEnd = preview && parseISODate(preview) ? preview : undefined;
+    const rangeLow =
+      start && (end ?? previewEnd)
+        ? start < (end ?? previewEnd!)
+          ? start
+          : (end ?? previewEnd!)
+        : undefined;
+    const rangeHigh =
+      start && (end ?? previewEnd)
+        ? start > (end ?? previewEnd!)
+          ? start
+          : (end ?? previewEnd!)
+        : undefined;
+    const focused = focusedIso;
+    const dayLabelFmt = new Intl.DateTimeFormat(locale, {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'UTC',
+    });
+    const dayLabelWithEraFmt = new Intl.DateTimeFormat(locale, {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      era: 'short',
+      timeZone: 'UTC',
+    });
+    const next: CalendarCell[] = [];
+    for (let index = 0; index < 42; index += 1) {
+      const date = addDays(gridStart, index);
+      const supported = isSupportedCalendarDate(date);
+      const iso = supported ? toISODate(date) : '';
+      next.push({
+        iso,
+        day: date.getUTCDate(),
+        inMonth: date.getUTCMonth() === visibleMonthDate.getUTCMonth(),
+        disabled: disabled || !supported || isDateDisabled(iso),
+        focused: iso === focused,
+        selected: iso === selectedIso,
+        rangeStart: selectionMode === 'range' && iso === start,
+        rangeEnd: selectionMode === 'range' && iso === end,
+        inRange:
+          selectionMode === 'range' &&
+          !!end &&
+          !!rangeLow &&
+          !!rangeHigh &&
+          iso > rangeLow &&
+          iso < rangeHigh,
+        rangePreview:
+          selectionMode === 'range' &&
+          !end &&
+          !!previewEnd &&
+          !!rangeLow &&
+          !!rangeHigh &&
+          iso !== start &&
+          iso >= rangeLow &&
+          iso <= rangeHigh,
+        ariaLabel:
+          date.getUTCFullYear() <= 0 ? dayLabelWithEraFmt.format(date) : dayLabelFmt.format(date),
+      });
+    }
+    return next;
+  });
+
+  const rows = $derived.by(() => {
+    const next: CalendarCell[][] = [];
+    for (let index = 0; index < cells.length; index += 7) {
+      next.push(cells.slice(index, index + 7));
+    }
+    return next;
+  });
+
+  async function focusDate(iso: string, moveDomFocus = false) {
+    const parsed = parseISODate(iso);
+    if (!parsed) return;
+    if (min && iso < min) iso = min;
+    if (max && iso > max) iso = max;
+    const clamped = parseISODate(iso);
+    if (!clamped) return;
+    focusedIso = iso;
+    visibleMonthDate = startOfMonth(clamped);
+    if (!moveDomFocus) return;
+    await tick();
+    const target = document.getElementById(focusedDayId) as HTMLButtonElement | null;
+    target?.focus();
+  }
+
+  function commitDate(iso: string) {
+    if (disabled || !parseISODate(iso) || isDateDisabled(iso)) return;
+    if (selectionMode === 'range') {
+      const start = selectedRangeStart;
+      const end = selectedRangeEnd;
+      const next =
+        !start || end
+          ? { start: iso, end: undefined }
+          : iso < start
+            ? { start: iso, end: start }
+            : { start, end: iso };
+      if (next.end && rangeContainsDisabledDate(next.start, next.end)) return;
+      uncontrolledRange = next;
+      onRangeChange?.(next);
+      value = next.end ?? next.start;
+      focusedIso = iso;
+      return;
+    }
+    value = iso;
+    focusedIso = iso;
+    onValueChange?.(iso);
+  }
+
+  function rangeContainsDisabledDate(start: string, end: string): boolean {
+    if (!disabledDate) return false;
+    const first = parseISODate(start);
+    const last = parseISODate(end);
+    if (!first || !last) return true;
+    for (let date = addDays(first, 1); toISODate(date) < end; date = addDays(date, 1)) {
+      if (isDateDisabled(toISODate(date))) return true;
+    }
+    return false;
+  }
+
+  async function moveFocusedByDays(delta: number) {
+    const base = parseISODate(focusedIso) ?? visibleMonthDate;
+    const next = addDays(base, delta);
+    await focusDate(toISODate(next), true);
+  }
+
+  function clampDayToMonth(year: number, monthValue: number, day: number): Date {
+    const lastDay = createCalendarDate(year, monthValue + 1, 0).getUTCDate();
+    return createCalendarDate(year, monthValue, Math.min(day, lastDay));
+  }
+
+  async function moveFocusedByMonths(delta: number, moveDomFocus = true) {
+    const base = parseISODate(focusedIso) ?? visibleMonthDate;
+    const monthStart = addMonths(startOfMonth(base), delta);
+    const candidate = clampDayToMonth(
+      monthStart.getUTCFullYear(),
+      monthStart.getUTCMonth(),
+      base.getUTCDate(),
+    );
+    await focusDate(toISODate(candidate), moveDomFocus);
+  }
+
+  async function handleKeydown(event: KeyboardEvent) {
+    if (disabled) return;
+
+    switch (event.key) {
+      case 'ArrowLeft':
+        event.preventDefault();
+        await moveFocusedByDays(-1);
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        await moveFocusedByDays(1);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        await moveFocusedByDays(-7);
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        await moveFocusedByDays(7);
+        break;
+      case 'Home': {
+        event.preventDefault();
+        const focused = parseISODate(focusedIso) ?? visibleMonthDate;
+        const weekStart = startOfWeek(focused, firstDayOfWeek);
+        await focusDate(toISODate(weekStart), true);
+        break;
+      }
+      case 'End': {
+        event.preventDefault();
+        const focused = parseISODate(focusedIso) ?? visibleMonthDate;
+        const weekEnd = addDays(startOfWeek(focused, firstDayOfWeek), 6);
+        await focusDate(toISODate(weekEnd), true);
+        break;
+      }
+      case 'PageUp':
+        event.preventDefault();
+        await moveFocusedByMonths(-1);
+        break;
+      case 'PageDown':
+        event.preventDefault();
+        await moveFocusedByMonths(1);
+        break;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        commitDate(focusedIso);
+        break;
+      default:
+        break;
+    }
+  }
+
+  function canGoPrevMonth(): boolean {
+    const prev = addMonths(visibleMonthDate, -1);
+    if (!isSupportedCalendarDate(prev)) return false;
+    if (!min) return true;
+    const monthEnd = createCalendarDate(prev.getUTCFullYear(), prev.getUTCMonth() + 1, 0);
+    return toISODate(monthEnd) >= min;
+  }
+
+  function canGoNextMonth(): boolean {
+    const next = addMonths(visibleMonthDate, 1);
+    if (!isSupportedCalendarDate(next)) return false;
+    if (!max) return true;
+    const monthStart = createCalendarDate(next.getUTCFullYear(), next.getUTCMonth(), 1);
+    return toISODate(monthStart) <= max;
+  }
+</script>
+
+<div {...rest} aria-label={label} class={classNames('cinder-calendar', className)}>
+  <div class="cinder-calendar__header">
+    <button
+      type="button"
+      class="cinder-calendar__nav"
+      aria-label="Previous month"
+      onclick={() => {
+        void moveFocusedByMonths(-1, false);
+      }}
+      disabled={disabled || !canGoPrevMonth()}
+    >
+      ‹
+    </button>
+    <p id={titleId} class="cinder-calendar__title">{monthLabel}</p>
+    <button
+      type="button"
+      class="cinder-calendar__nav"
+      aria-label="Next month"
+      onclick={() => {
+        void moveFocusedByMonths(1, false);
+      }}
+      disabled={disabled || !canGoNextMonth()}
+    >
+      ›
+    </button>
+  </div>
+
+  <div class="cinder-calendar__weekdays" aria-hidden="true">
+    {#each weekdayLabels as weekday (weekday)}
+      <span class="cinder-calendar__weekday">{weekday}</span>
+    {/each}
+  </div>
+
+  <div
+    id={monthGridId}
+    class="cinder-calendar__grid"
+    role="grid"
+    aria-labelledby={titleId}
+    aria-multiselectable={selectionMode === 'range' ? 'true' : undefined}
+    tabindex="-1"
+    onkeydown={handleKeydown}
+    onmouseleave={() => {
+      hoverIso = undefined;
+    }}
+  >
+    {#each rows as row, rowIndex (row[0]?.iso || rowIndex)}
+      <div role="row" class="cinder-calendar__grid-row">
+        {#each row as cell, cellIndex (cell.iso || cellIndex)}
+          <div
+            role="gridcell"
+            aria-selected={cell.selected ||
+              cell.rangeStart ||
+              cell.rangeEnd ||
+              cell.inRange ||
+              undefined}
+            class="cinder-calendar__gridcell"
+          >
+            <button
+              type="button"
+              id={cell.iso ? `${monthGridId}-day-${cell.iso}` : undefined}
+              class="cinder-calendar__day"
+              data-outside={cell.inMonth ? undefined : ''}
+              data-selected={cell.selected ? '' : undefined}
+              data-range-start={cell.rangeStart ? '' : undefined}
+              data-range-end={cell.rangeEnd ? '' : undefined}
+              data-in-range={cell.inRange ? '' : undefined}
+              data-range-preview={cell.rangePreview ? '' : undefined}
+              data-focused={cell.focused ? '' : undefined}
+              aria-current={cell.iso === todayIso ? 'date' : undefined}
+              aria-label={cell.ariaLabel}
+              aria-disabled={cell.disabled ? 'true' : undefined}
+              tabindex={cell.focused ? 0 : -1}
+              onclick={() => {
+                commitDate(cell.iso);
+              }}
+              onfocus={() => {
+                if (cell.iso) focusedIso = cell.iso;
+              }}
+              onmouseenter={() => {
+                if (selectionMode === 'range' && selectedRangeStart && !selectedRangeEnd) {
+                  hoverIso = cell.iso;
+                }
+              }}
+              onmouseleave={() => {
+                hoverIso = undefined;
+              }}
+            >
+              {cell.day}
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/each}
+  </div>
+</div>

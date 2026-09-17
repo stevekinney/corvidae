@@ -1,0 +1,74 @@
+# KeyboardShortcuts
+
+Grouped keyboard-shortcut reference that renders key combos via Kbd with accessible labels not reliant only on visual keycaps.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { KeyboardShortcuts } from '@repo/cinder';
+</script>
+
+<div style="max-width: 28rem;">
+  <KeyboardShortcuts
+    heading="Keyboard Shortcuts"
+    groups={[
+      {
+        label: 'General',
+        shortcuts: [
+          { action: 'Open command palette', keys: ['Ctrl', 'K'], keysLabel: 'Control plus K' },
+          { action: 'Search', keys: ['Ctrl', 'F'], keysLabel: 'Control plus F' },
+          { action: 'Go back', keys: ['Alt', '←'], keysLabel: 'Alt plus Left arrow' },
+        ],
+      },
+      {
+        label: 'Editing',
+        shortcuts: [
+          { action: 'Save', keys: ['Ctrl', 'S'], keysLabel: 'Control plus S' },
+          { action: 'Undo', keys: ['Ctrl', 'Z'], keysLabel: 'Control plus Z' },
+          { action: 'Redo', keys: ['Ctrl', 'Shift', 'Z'], keysLabel: 'Control plus Shift plus Z' },
+        ],
+      },
+    ]}
+  />
+</div>
+```
+
+## Guidance
+
+### Use When
+
+- Displaying a reference panel of keyboard shortcuts grouped by feature area.
+- Embedding a shortcut table inside a modal, drawer, popover, or help page.
+
+### Avoid When
+
+- Showing a single inline shortcut hint — use shortcut-hint instead.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `class` | `string` | no | — | Additional class names merged with `.cinder-keyboard-shortcuts`. |
+| `heading` | `string` | no | — | Optional heading for the entire shortcuts panel. |
+| `children` | `(opaque)` | no | — | Intro content rendered above the groups. Not expressible in JSON Schema; see the component types for the signature. |
+| `groups` | `(opaque)` | yes | — | Groups of shortcuts to display. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

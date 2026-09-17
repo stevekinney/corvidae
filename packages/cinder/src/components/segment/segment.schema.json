@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "class": {
+      "type": "string",
+      "description": "Custom class merged with `.cinder-segmented-control-option`."
+    },
+    "disabled": {
+      "type": "boolean",
+      "description": "Disable just this segment (independent of the control-level `disabled`)."
+    },
+    "href": {
+      "type": "string",
+      "description": "Render this segment as a real link inside `SegmentedControl variant=\"navigation\"`."
+    },
+    "current": {
+      "type": "boolean",
+      "description": "Marks this linked segment as the current route/filter."
+    },
+    "currentToken": {
+      "enum": ["page", "step", "location", "date", "time", "true"],
+      "description": "`aria-current` token emitted while `current` is true. Defaults to `\"page\"`."
+    },
+    "value": {
+      "type": "string",
+      "description": "Value this segment represents. Required when `href` is not provided."
+    },
+    "controls": {
+      "type": "string",
+      "description": "ID of the panel this segment controls — only meaningful when the parent\n`SegmentedControl` uses `variant=\"tablist\"`."
+    }
+  },
+  "additionalProperties": false,
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "children",
+        "reason": "function-or-snippet",
+        "required": true,
+        "description": "The segment's label content."
+      },
+      {
+        "name": "leading",
+        "reason": "function-or-snippet",
+        "description": "Optional decorative content rendered before the label, inside `aria-hidden`."
+      },
+      {
+        "name": "onclick",
+        "reason": "function-or-snippet",
+        "description": "Optional click handler for the rendered link. Disabled navigation segments\nprevent default and do not call this handler."
+      },
+      {
+        "name": "trailing",
+        "reason": "function-or-snippet",
+        "description": "Optional decorative content rendered after the label, inside `aria-hidden`."
+      }
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "not": {
+          "required": ["href"]
+        }
+      },
+      "then": {
+        "required": ["value"]
+      }
+    }
+  ]
+}

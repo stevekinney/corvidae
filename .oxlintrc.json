@@ -8,8 +8,6 @@
   "rules": {
     "no-with": "error",
     "no-labels": "error",
-    "max-lines": ["error", { "max": 300, "skipBlankLines": true, "skipComments": true }],
-    "complexity": ["error", { "max": 10 }],
     "no-console": "warn",
     "no-unused-vars": [
       "warn",
@@ -19,32 +17,148 @@
         "ignoreRestSiblings": true
       }
     ],
-
     "promise/no-return-wrap": "error",
     "promise/param-names": "error",
-    "promise/catch-or-return": "error",
+    "promise/catch-or-return": [
+      "error",
+      {
+        "allowThen": true
+      }
+    ],
     "promise/no-nesting": "warn",
     "promise/no-promise-in-callback": "warn",
     "promise/no-callback-in-promise": "warn",
     "promise/no-new-statics": "error",
     "promise/no-return-in-finally": "warn",
     "promise/valid-params": "warn",
-
     "unicorn/no-null": "off",
     "unicorn/no-await-expression-member": "error",
-
     "import/first": "error",
     "import/no-duplicates": "error",
     "import/no-cycle": "error",
-
+    "import/no-unassigned-import": [
+      "error",
+      {
+        "allow": ["**/*.css"]
+      }
+    ],
     "typescript/no-unused-vars": "off",
     "typescript/no-floating-promises": "error",
-    "typescript/await-thenable": "error"
+    "typescript/await-thenable": "error",
+    "typescript/no-unsafe-type-assertion": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "typescript/no-unnecessary-type-parameters": "off",
+    "no-underscore-dangle": [
+      "warn",
+      {
+        "allow": ["_meta", "_didMount", "_willUpdate"]
+      }
+    ],
+    "typescript/no-unnecessary-type-arguments": "off",
+    "typescript/consistent-return": "off"
   },
-  "ignorePatterns": ["dist/**", "build/**", "coverage/**", ".bun/**", "node_modules/**", "*.lock"],
+  "ignorePatterns": [
+    "**/build/**",
+    "**/.svelte-kit/**",
+    "**/coverage/**",
+    "**/.turbo/**",
+    "**/.bun/**",
+    "**/node_modules/**",
+    "**/*.generated.d.ts",
+    "*.lock"
+  ],
   "overrides": [
     {
-      "files": ["**/*.test.ts", "**/*.spec.ts", "**/test/**/*.ts", "**/__tests__/**/*.ts"],
+      "files": ["**/packages/**/src/**", "**/applications/**/src/**"],
+      "rules": {
+        "no-console": [
+          "warn",
+          {
+            "allow": ["warn", "error", "info"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["**/*test-utilities.ts"],
+      "rules": {
+        "no-console": [
+          "warn",
+          {
+            "allow": ["log", "warn", "error", "info"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["**/packages/weft/**"],
+      "rules": {
+        "unicorn/require-post-message-target-origin": "off",
+        "unicorn/prefer-add-event-listener": "off"
+      }
+    },
+    {
+      "files": ["**/packages/weft/src/core/context/**", "**/packages/weft/src/benchmarks/**"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": [
+        "**/packages/cinder/src/**",
+        "**/packages/chat/src/**",
+        "**/packages/editor/src/**",
+        "**/packages/markdown/src/**",
+        "**/packages/weft-ui/src/**"
+      ],
+      "rules": {
+        "typescript/no-unsafe-type-assertion": "error"
+      }
+    },
+    {
+      "files": [
+        "**/packages/cinder/src/**",
+        "**/packages/chat/src/**",
+        "**/packages/editor/src/**",
+        "**/packages/markdown/src/**",
+        "**/packages/weft-ui/src/**"
+      ],
+      "rules": {
+        "unicorn/no-array-sort": "off",
+        "unicorn/no-array-reverse": "off"
+      }
+    },
+    {
+      "files": ["**/packages/chat/src/index.ts"],
+      "rules": {
+        "import/no-unassigned-import": [
+          "error",
+          {
+            "allow": ["**/*.css", "@repo/cinder"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["applications/server/**/*.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.spec.ts",
+        "**/test/**/*.ts",
+        "**/__tests__/**/*.ts",
+        "**/*.test-d.ts",
+        "**/*.type-test.ts",
+        "**/*.playwright.ts",
+        "**/*.test-support.ts",
+        "**/*test-fixtures.ts",
+        "**/*test-helpers.ts",
+        "**/tests/**/*.ts"
+      ],
       "rules": {
         "typescript/no-explicit-any": "off",
         "typescript/no-unsafe-argument": "off",
@@ -61,13 +175,39 @@
         "typescript/no-unused-expressions": "off",
         "typescript/no-unused-vars": "off",
         "no-unused-vars": "off",
-        "no-console": "off"
+        "no-console": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/await-thenable": "off",
+        "require-yield": "off",
+        "no-underscore-dangle": "off",
+        "no-shadow": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "promise/always-return": "off",
+        "import/no-unassigned-import": [
+          "error",
+          {
+            "allow": ["**/*.css", "fake-indexeddb/auto"]
+          }
+        ],
+        "unicorn/no-thenable": "off",
+        "no-unmodified-loop-condition": "off"
       }
     },
     {
       "files": ["scripts/**/*.ts", "**/scripts/**/*.ts"],
       "rules": {
         "no-console": "off"
+      }
+    },
+    {
+      "files": [
+        "**/packages/cinder/src/components/json-viewer/_json-viewer-node.svelte",
+        "**/packages/cinder/src/components/json-schema-editor/property-editor.svelte",
+        "**/packages/cinder/src/components/json-schema-editor/property-list.svelte"
+      ],
+      "rules": {
+        "import/no-cycle": "off",
+        "import/no-self-import": "off"
       }
     }
   ]

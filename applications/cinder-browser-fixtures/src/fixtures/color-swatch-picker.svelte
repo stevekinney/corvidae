@@ -1,0 +1,22 @@
+<script lang="ts">
+  import { ColorSwatchPicker } from '@repo/cinder';
+
+  const palette = [
+    { color: '#ef4444', name: 'Red' },
+    { color: '#f97316', name: 'Orange' },
+    { color: '#eab308', name: 'Yellow' },
+    { color: '#22c55e', name: 'Green' },
+    { color: '#3b82f6', name: 'Blue' },
+    { color: '#8b5cf6', name: 'Violet' },
+  ];
+
+  let selected = $state('#3b82f6');
+</script>
+
+<ColorSwatchPicker
+  colors={palette}
+  value={selected}
+  label="Accent color"
+  onValueChange={(color) => (selected = color)}
+/>
+<p style="margin-top: 0.5rem; color: var(--cinder-text-muted);">Selected: {selected}</p>

@@ -1,0 +1,156 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-capability-gate {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-3);
+    border-radius: var(--cinder-radius-md);
+    border: 1px solid var(--cinder-border);
+    background-color: var(--cinder-surface);
+    color: var(--cinder-text-default);
+  }
+
+  /* Variant-based color theming */
+  .cinder-capability-gate[data-cinder-variant='error'] {
+    border-color: var(--cinder-status-danger-border);
+    background-color: var(--cinder-status-danger-background);
+  }
+
+  .cinder-capability-gate[data-cinder-variant='warning'] {
+    border-color: var(--cinder-status-warning-border);
+    background-color: var(--cinder-status-warning-background);
+  }
+
+  .cinder-capability-gate[data-cinder-variant='success'] {
+    border-color: var(--cinder-status-success-border);
+    background-color: var(--cinder-status-success-background);
+  }
+
+  /* Banner presentation — full width, less rounding */
+  .cinder-capability-gate[data-cinder-presentation='banner'] {
+    border-radius: var(--cinder-radius-sm);
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  /* Callout presentation — indented, inline */
+  .cinder-capability-gate[data-cinder-presentation='callout'] {
+    border-inline-start-width: 4px;
+    border-radius: 0 var(--cinder-radius-md) var(--cinder-radius-md) 0;
+  }
+
+  .cinder-capability-gate__status {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+    flex: 1;
+  }
+
+  /*
+   * CIN-109: the three text tiers are feature (label), status text (annotation),
+   * and this content block (body copy). They are differentiated as:
+   *
+   *   feature      base / semibold / --cinder-text-default   via .cinder-_label-text
+   *   status text  sm   / normal   / --cinder-text-muted     via .cinder-_value-text
+   *   content      sm   / normal   / --cinder-text-default   here
+   *
+   * Status text and content differ by colour alone, which is deliberate: they sit in
+   * structurally separate regions (the __status row versus this block), so type is not
+   * the only thing telling them apart.
+   *
+   * Do not "fix" that by adding font-weight: var(--cinder-font-medium) here. That was
+   * tried and reverted — system-ui has no distinct 500 face in the canonical Ubuntu
+   * Jammy Playwright environment, so 500 renders identically to the inherited 400 and
+   * the regenerated baselines came back byte-for-byte unchanged. It looks like a
+   * hierarchy fix in the diff and is a no-op on screen.
+   */
+  .cinder-capability-gate__content {
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-capability-gate__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1);
+    align-items: center;
+  }
+
+  .cinder-capability-gate__primary,
+  .cinder-capability-gate__fallback,
+  .cinder-capability-gate__dismiss {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    border-radius: var(--cinder-radius-sm);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+    cursor: pointer;
+    border: 1px solid transparent;
+    text-decoration: none;
+  }
+
+  .cinder-capability-gate__primary {
+    background-color: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    border-color: var(--cinder-accent-solid);
+  }
+
+  @media (hover: hover) {
+    .cinder-capability-gate__primary:hover {
+      background-color: var(--cinder-accent-solid-hover);
+      border-color: var(--cinder-accent-solid-hover);
+    }
+  }
+
+  .cinder-capability-gate__primary:focus-visible,
+  .cinder-capability-gate__fallback:focus-visible,
+  .cinder-capability-gate__dismiss:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-capability-gate__primary:focus-visible,
+    .cinder-capability-gate__fallback:focus-visible,
+    .cinder-capability-gate__dismiss:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      /* 3px separates the outline from ButtonBorder (which renders in forced-colors
+         on all button-like controls and shares the ButtonText color family in HCM);
+         at 2px the ring and border can visually merge. */
+      outline-offset: 3px;
+      box-shadow: none;
+    }
+  }
+
+  .cinder-capability-gate__fallback {
+    background-color: transparent;
+    color: var(--cinder-text-default);
+    border-color: var(--cinder-border);
+  }
+
+  @media (hover: hover) {
+    .cinder-capability-gate__fallback:hover {
+      background-color: var(--cinder-surface-raised);
+    }
+  }
+
+  .cinder-capability-gate__dismiss {
+    background-color: transparent;
+    color: var(--cinder-text-muted);
+    margin-inline-start: auto;
+  }
+
+  @media (hover: hover) {
+    .cinder-capability-gate__dismiss:hover {
+      background-color: var(--cinder-surface-hover);
+      color: var(--cinder-text-default);
+    }
+  }
+}

@@ -1,0 +1,13 @@
+import type { ConversationHistory as Conversation, ToMarkdownOptions } from '../types';
+import { normalizeLineEndings } from '../utilities/line-endings';
+import { toMarkdown } from '../utilities/markdown';
+
+/**
+ * Exports a conversation to Markdown with normalized line endings.
+ */
+export function exportMarkdown(
+  conversation: Conversation,
+  options: ToMarkdownOptions = {},
+): string {
+  return normalizeLineEndings(toMarkdown(conversation, options));
+}

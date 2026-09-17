@@ -1,46 +1,15 @@
-# Build artifacts
-dist/
-build/
-coverage/
-
-# Package management
 node_modules/
-.npm/
-.yarn/
-.pnp.*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-package-lock.json
-yarn.lock
 bun.lock
-
-# Cache and temp files
+build/
+.svelte-kit/
+coverage/
+.turbo/
 .cache/
-.parcel-cache/
-.bun/
-tmp/
-.temp/
-
-# Environment and config
+playwright-report/
+test-results/
+.playwright/
+*.tsbuildinfo
+# Generated declaration fixtures are checked against exact generator output and typechecked.
+**/*.generated.d.ts
 .env
 .env.*
-!.env.example
-.vercel
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-
-# Miscellaneous
-.DS_Store
-*.pem
-Thumbs.db
-.idea/
-*.log
-.turbo
-.lefthook/
-*.d.ts.map
-*.tsbuildinfo
-.dccache

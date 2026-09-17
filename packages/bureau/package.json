@@ -1,0 +1,32 @@
+{
+  "name": "@repo/bureau",
+  "private": true,
+  "description": "The agent fleet brain: createBureau, runtime composition, durability, recovery, and agent assembly",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "zod": "catalog:",
+    "@repo/weft": "workspace:*",
+    "@repo/armorer": "workspace:*",
+    "@repo/conversationalist": "workspace:*",
+    "@repo/interoperability": "workspace:*",
+    "@repo/lifecycle": "workspace:*",
+    "@repo/memory": "workspace:*",
+    "@repo/operative": "workspace:*",
+    "@repo/skills": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:",
+    "@repo/typescript-configuration": "workspace:*",
+    "oxlint": "catalog:"
+  }
+}

@@ -1,0 +1,84 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    class: {
+      type: 'string',
+      description: 'Custom class merged with `.cinder-card`.',
+    },
+    variant: {
+      enum: ['card', 'well'],
+      description: 'Visual container style. `card` is raised; `well` is flatter and inset.',
+    },
+    elevation: {
+      enum: ['none', 'sm', 'md', 'lg'],
+      description: 'Elevation shadow applied to the card surface.',
+    },
+    tone: {
+      enum: ['default', 'danger'],
+      description:
+        'Container risk treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions.',
+    },
+    bodyTone: {
+      enum: ['default', 'muted'],
+      description: 'Body surface treatment. `muted` renders a grey/inset body region.',
+    },
+    footerTone: {
+      enum: ['default', 'muted'],
+      description: 'Footer surface treatment. `muted` renders a grey/inset footer region.',
+    },
+    edgeToEdgeOnMobile: {
+      type: 'boolean',
+      description: 'Remove side borders/radius and bleed to the viewport edge on narrow screens.',
+    },
+    padding: {
+      enum: ['none', 'default'],
+      description:
+        'Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges.',
+    },
+    title: {
+      type: 'string',
+      description: "Primary heading text rendered inside the card's header region.",
+    },
+    href: {
+      type: 'string',
+      description: 'Destination URL that makes the entire card an anchor.',
+    },
+    headingLevel: {
+      enum: [2, 3, 4, 5, 6],
+      description:
+        'Heading level for the generated title. Defaults to `3`. Set this so the\ncard title nests correctly within the surrounding document outline.',
+    },
+    description: {
+      type: 'string',
+      description: 'Optional subheading rendered as a paragraph below the title inside the header.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+      },
+      {
+        name: 'footer',
+        reason: 'function-or-snippet',
+      },
+      {
+        name: 'header',
+        reason: 'function-or-snippet',
+      },
+      {
+        name: 'onclick',
+        reason: 'function-or-snippet',
+        description: 'Click handler that makes the entire card a button.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

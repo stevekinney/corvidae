@@ -1,0 +1,328 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-file-upload {
+    display: grid;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-file-upload__dropzone {
+    position: relative;
+    display: grid;
+    gap: var(--cinder-space-3);
+    justify-items: center;
+    border: 2px dashed var(--cinder-file-upload-border-color);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-file-upload-background);
+    min-block-size: 12rem;
+    inline-size: 100%;
+    padding: var(--cinder-space-6);
+    text-align: center;
+    transition:
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+    cursor: pointer;
+  }
+
+  .cinder-file-upload__dropzone[data-drag-active] {
+    border-style: solid;
+    border-color: var(--cinder-accent-solid);
+    background: color-mix(
+      in srgb,
+      var(--cinder-accent-solid) 8%,
+      var(--cinder-file-upload-background)
+    );
+  }
+
+  .cinder-file-upload__dropzone[data-disabled] {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  @supports not selector(:has(*)) {
+    .cinder-file-upload__dropzone:focus-within {
+      outline: var(--cinder-ring-width) solid transparent;
+      box-shadow: var(--_cinder-focus-ring-shadow);
+    }
+  }
+
+  @supports selector(:has(*)) {
+    .cinder-file-upload__dropzone:has(.cinder-file-upload__input:focus-visible),
+    .cinder-file-upload__dropzone--border-beam[data-drag-active],
+    .cinder-file-upload__dropzone--border-beam:has(.cinder-file-upload__input:focus-visible),
+    .cinder-file-upload__dropzone--border-beam:has(.cinder-file-upload__button:focus-visible) {
+      outline: var(--cinder-ring-width) solid transparent;
+      box-shadow: var(--_cinder-focus-ring-shadow);
+    }
+  }
+
+  .cinder-file-upload__input {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    border: 0;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .cinder-file-upload__body {
+    display: grid;
+    gap: var(--cinder-space-2);
+    justify-items: center;
+  }
+
+  .cinder-file-upload__upload-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface);
+    color: var(--cinder-accent-text);
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+  }
+
+  .cinder-file-upload__upload-icon-svg {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-file-upload__title,
+  .cinder-file-upload__description {
+    margin: 0;
+  }
+
+  .cinder-file-upload__title {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .cinder-file-upload__description {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-relaxed);
+  }
+
+  .cinder-file-upload__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    min-block-size: 2.75rem;
+    padding-inline: var(--cinder-space-4);
+    padding-block: var(--cinder-space-2);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-file-upload__button:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-file-upload__hint {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-relaxed);
+  }
+
+  .cinder-file-upload__list {
+    display: grid;
+    gap: var(--cinder-space-2);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .cinder-file-upload__row {
+    display: grid;
+    gap: var(--cinder-space-2);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface);
+    padding: var(--cinder-space-3);
+  }
+
+  .cinder-file-upload__row-main {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    flex-wrap: wrap;
+  }
+
+  .cinder-file-upload__file-meta {
+    display: grid;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+  }
+
+  .cinder-file-upload__file-details {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    min-inline-size: 0;
+  }
+
+  .cinder-file-upload__file-icon {
+    flex: none;
+    color: var(--cinder-text-muted);
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+  }
+
+  .cinder-file-upload__file-name {
+    overflow-wrap: anywhere;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .cinder-file-upload__file-size {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-file-upload__status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    white-space: nowrap;
+  }
+
+  .cinder-file-upload__status[data-status='ready'] {
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-file-upload__status[data-status='error'] {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-file-upload__status-icon {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    flex: none;
+  }
+
+  .cinder-file-upload__row-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-file-upload__remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-muted);
+    padding: var(--cinder-space-1);
+  }
+
+  .cinder-file-upload__remove svg {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-file-upload__progress {
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--cinder-file-upload-progress-background);
+    block-size: 0.5rem;
+  }
+
+  .cinder-file-upload__progress-fill {
+    block-size: 100%;
+    background: var(--cinder-file-upload-progress-fill);
+    inline-size: calc(clamp(0, var(--cinder-file-upload-progress, 0), 100) * 1%);
+    transition: inline-size var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-file-upload__error {
+    margin: 0;
+    color: var(--cinder-status-danger-text);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-file-upload__error-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+    flex-wrap: wrap;
+  }
+
+  .cinder-file-upload__retry {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  @media (hover: hover) {
+    .cinder-file-upload__retry:hover:not(:disabled),
+    .cinder-file-upload__remove:hover:not(:disabled) {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-file-upload__retry:focus-visible,
+  .cinder-file-upload__remove:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-file-upload__retry-icon {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-file-upload__dropzone--border-beam[data-drag-active],
+    .cinder-file-upload__button:focus-visible,
+    .cinder-file-upload__retry:focus-visible,
+    .cinder-file-upload__remove:focus-visible {
+      outline-color: Highlight;
+    }
+
+    @supports not selector(:has(*)) {
+      .cinder-file-upload__dropzone:focus-within {
+        outline-color: Highlight;
+      }
+    }
+
+    @supports selector(:has(*)) {
+      .cinder-file-upload__dropzone:has(.cinder-file-upload__input:focus-visible),
+      .cinder-file-upload__dropzone--border-beam:has(.cinder-file-upload__input:focus-visible),
+      .cinder-file-upload__dropzone--border-beam:has(.cinder-file-upload__button:focus-visible) {
+        outline-color: Highlight;
+      }
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-file-upload__dropzone,
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-file-upload__progress-fill {
+      transition: none;
+    }
+  }
+}

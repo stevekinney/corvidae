@@ -1,0 +1,87 @@
+[
+  {
+    "filePath": "src/components/alert/alert.css",
+    "colorClass": "light-dark",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/alert/alert.css",
+    "colorClass": "oklch",
+    "allowedCount": 2
+  },
+  {
+    "filePath": "src/components/code-block/code-block.css",
+    "colorClass": "light-dark",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/command-menu/command-menu.css",
+    "colorClass": "rgb",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/input/input.css",
+    "colorClass": "oklch",
+    "allowedCount": 2
+  },
+  {
+    "filePath": "src/components/markdown-editor/markdown-editor.svelte",
+    "colorClass": "hex",
+    "allowedCount": 7
+  },
+  {
+    "filePath": "src/components/markdown-editor/markdown-editor.svelte",
+    "colorClass": "rgb",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/rating/rating.css",
+    "colorClass": "oklch",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/select/select.css",
+    "colorClass": "oklch",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/skeleton/skeleton.css",
+    "colorClass": "oklch",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/spinner/spinner.css",
+    "colorClass": "hex",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/toast-region/toast-region.css",
+    "colorClass": "light-dark",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/toast-region/toast-region.css",
+    "colorClass": "oklch",
+    "allowedCount": 3
+  },
+  {
+    "filePath": "src/components/toggle/toggle.css",
+    "colorClass": "hex",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/styles/components/_status-surface.css",
+    "colorClass": "light-dark",
+    "allowedCount": 4
+  },
+  {
+    "filePath": "src/styles/components/_status-surface.css",
+    "colorClass": "oklch",
+    "allowedCount": 8
+  },
+  {
+    "filePath": "src/styles/components/experimental/popover.css",
+    "colorClass": "oklch",
+    "allowedCount": 2
+  }
+]

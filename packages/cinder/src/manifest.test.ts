@@ -1,0 +1,335 @@
+/**
+ * Taxonomy gate for the cinder AI-agent legibility work (Phase 1).
+ *
+ * This test gates merge to `main`. It enforces the metadata taxonomy defined
+ * in `manifest.meta.ts` and the parts of the binary acceptance criteria that
+ * can be checked from component metadata alone (criteria 1–4 in the plan).
+ *
+ * All extraction and taxonomy checks run against the complete source set.
+ */
+
+import { beforeAll, describe, expect, test } from 'bun:test';
+
+import type { ComponentMetadata, ExtractError } from '../scripts/generate-component-metadata.ts';
+import { extractAllComponentMetadata } from '../scripts/generate-component-metadata.ts';
+import { discoverComponents } from '../scripts/lib/discover-components.ts';
+import { categories, overlapFamilies, requiredConstraints, statusLevels } from './manifest.meta.ts';
+
+// State populated in beforeAll — shared across all describe blocks.
+let allMetadata: ComponentMetadata[] = [];
+let allErrors: ExtractError[] = [];
+let discoveredIds: Set<string> = new Set();
+
+beforeAll(async () => {
+  const [{ metadata, errors }, discovered] = await Promise.all([
+    extractAllComponentMetadata(),
+    discoverComponents(),
+  ]);
+  allMetadata = metadata;
+  allErrors = errors;
+  discoveredIds = new Set(discovered.map((c) => c.name));
+});
+
+/** Format the first N extraction errors into a human-readable string. */
+function formatErrors(errors: ExtractError[], limit: number): string {
+  const lines = errors
+    .slice(0, limit)
+    .map((e) => `  [${e.componentId}] ${e.file}\n    reason: ${e.reason}`);
+  if (errors.length > limit) lines.push(`  … and ${errors.length - limit} more errors`);
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// 1. No extraction errors
+// ---------------------------------------------------------------------------
+
+describe('extraction', () => {
+  test('all components extract without errors', () => {
+    if (allErrors.length === 0) {
+      expect(allErrors).toHaveLength(0);
+      return;
+    }
+    const detail = formatErrors(allErrors, 10);
+    throw new Error(`${allErrors.length} component(s) failed metadata extraction:\n${detail}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2. All components enumerated
+// ---------------------------------------------------------------------------
+
+describe('enumeration', () => {
+  test('no extras — extracted ids are all known to the enumerator', () => {
+    const extractedIds = new Set(allMetadata.map((m) => m.id));
+    const extras = [...extractedIds].filter((id) => !discoveredIds.has(id));
+    expect(extras).toEqual([]);
+  });
+
+  test('no missing — every discovered id was extracted', () => {
+    const extractedIds = new Set(allMetadata.map((m) => m.id));
+    const missing = [...discoveredIds].filter((id) => !extractedIds.has(id));
+    expect(missing).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. Category membership
+// ---------------------------------------------------------------------------
+
+describe('category membership', () => {
+  test('every component category is in the closed set', () => {
+    const valid = new Set<string>(Object.keys(categories));
+    const violations = allMetadata
+      .filter((m) => !valid.has(m.category))
+      .map((m) => `${m.id}: '${m.category}'`);
+    expect(violations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Status membership
+// ---------------------------------------------------------------------------
+
+describe('status membership', () => {
+  test('every component status is in the closed set', () => {
+    const valid = new Set<string>(Object.keys(statusLevels));
+    const violations = allMetadata
+      .filter((m) => !valid.has(m.status))
+      .map((m) => `${m.id}: '${m.status}'`);
+    expect(violations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5 & 6. Related ids — resolve and no PascalCase
+// ---------------------------------------------------------------------------
+
+describe('related ids', () => {
+  test('every related id resolves to a known component', () => {
+    const violations: string[] = [];
+    for (const meta of allMetadata) {
+      for (const relatedId of meta.related) {
+        if (!discoveredIds.has(relatedId)) {
+          violations.push(`${meta.id} → '${relatedId}' (not a known component id)`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('no PascalCase ids appear in related arrays', () => {
+    const violations: string[] = [];
+    for (const meta of allMetadata) {
+      for (const relatedId of meta.related) {
+        if (/[A-Z]/.test(relatedId)) {
+          violations.push(`${meta.id} → '${relatedId}' (must be kebab-case)`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. No duplicate purpose strings
+// ---------------------------------------------------------------------------
+
+describe('purpose uniqueness', () => {
+  test('no two components share the same purpose string', () => {
+    const seen = new Map<string, string>(); // normalised purpose → first component id
+    const violations: string[] = [];
+    for (const meta of allMetadata) {
+      const normalised = meta.purpose.trim();
+      const prior = seen.get(normalised);
+      if (prior !== undefined) {
+        violations.push(`'${meta.id}' and '${prior}' share the same purpose string`);
+      } else {
+        seen.set(normalised, meta.id);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Overlap families well-formed
+// ---------------------------------------------------------------------------
+
+describe('overlap families', () => {
+  test('every family has at least two members', () => {
+    const violations = Object.entries(overlapFamilies)
+      .filter(([, members]) => members.length < 2)
+      .map(([name]) => `family '${name}' has fewer than 2 members`);
+    expect(violations).toEqual([]);
+  });
+
+  test('every family member id is a known component', () => {
+    const violations: string[] = [];
+    for (const [familyName, members] of Object.entries(overlapFamilies)) {
+      for (const memberId of members) {
+        if (!discoveredIds.has(memberId)) {
+          violations.push(`family '${familyName}': member '${memberId}' is not a known component`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('every family member mentions at least one sibling in useWhen or avoidWhen', () => {
+    const metadataById = new Map(allMetadata.map((m) => [m.id, m]));
+    const violations: string[] = [];
+    for (const [familyName, members] of Object.entries(overlapFamilies)) {
+      for (const memberId of members) {
+        const meta = metadataById.get(memberId);
+        if (!meta) continue; // caught by the "known component" test above
+        const siblings = members.filter((id) => id !== memberId);
+        const guidance = [
+          ...meta.useWhen.map((s) => s.toLowerCase()),
+          ...meta.avoidWhen.map((e) => `${e.reason} ${e.alternative ?? ''}`.toLowerCase()),
+        ].join(' ');
+        const mentionsASibling = siblings.some((sibling) => guidance.includes(sibling));
+        if (!mentionsASibling) {
+          violations.push(
+            `family '${familyName}': '${memberId}' does not mention any sibling ` +
+              `(${siblings.join(', ')}) in useWhen or avoidWhen`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. Length budgets
+// ---------------------------------------------------------------------------
+
+describe('length budgets', () => {
+  test('purpose does not exceed 200 characters', () => {
+    const violations = allMetadata
+      .filter((m) => m.purpose.length > 200)
+      .map((m) => `${m.id}: purpose is ${m.purpose.length} chars`);
+    expect(violations).toEqual([]);
+  });
+
+  test('each useWhen entry does not exceed 140 characters', () => {
+    const violations: string[] = [];
+    for (const meta of allMetadata) {
+      for (const entry of meta.useWhen) {
+        if (entry.length > 140) {
+          violations.push(
+            `${meta.id}: useWhen entry is ${entry.length} chars: "${entry.slice(0, 40)}…"`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('each avoidWhen reason does not exceed 140 characters', () => {
+    const violations: string[] = [];
+    for (const meta of allMetadata) {
+      for (const entry of meta.avoidWhen) {
+        if (entry.reason.length > 140) {
+          violations.push(
+            `${meta.id}: avoidWhen reason is ${entry.reason.length} chars: "${entry.reason.slice(0, 40)}…"`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('each avoidWhen alternative is a known kebab-case component id', () => {
+    const knownIds = new Set(allMetadata.map((m) => m.id));
+    const violations: string[] = [];
+    for (const meta of allMetadata) {
+      for (const entry of meta.avoidWhen) {
+        if (entry.alternative !== undefined && !knownIds.has(entry.alternative)) {
+          violations.push(
+            `${meta.id}: avoidWhen alternative '${entry.alternative}' is not a known component`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. Per-entry manifest size budget (≤ 1024 bytes serialized)
+// ---------------------------------------------------------------------------
+
+describe('manifest size budget', () => {
+  // The guidance/classification fields carry the original 1024-byte budget. The
+  // a11y block (a keyboard table + prose notes) is a heavier, different kind of
+  // payload, so it gets its own looser budget rather than inflating this one —
+  // otherwise guidance prose could quietly grow to fill a combined limit.
+  test('each component serializes its guidance fields to at most 1024 bytes', () => {
+    const violations: string[] = [];
+    for (const meta of allMetadata) {
+      const entry = {
+        id: meta.id,
+        category: meta.category,
+        status: meta.status,
+        purpose: meta.purpose,
+        tags: meta.tags,
+        useWhen: meta.useWhen,
+        avoidWhen: meta.avoidWhen,
+        related: meta.related,
+        hasConstraints: false,
+        hasExamples: false,
+        artifacts: {},
+      };
+      const bytes = Buffer.byteLength(JSON.stringify(entry), 'utf8');
+      if (bytes > 1024) {
+        violations.push(`${meta.id}: serialized guidance entry is ${bytes} bytes (limit 1024)`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('each component a11y block serializes to at most 2048 bytes', () => {
+    const violations: string[] = [];
+    for (const meta of allMetadata) {
+      if (meta.a11y === undefined) continue;
+      const bytes = Buffer.byteLength(JSON.stringify(meta.a11y), 'utf8');
+      if (bytes > 2048) {
+        violations.push(`${meta.id}: serialized a11y block is ${bytes} bytes (limit 2048)`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 11. Required-constraints components actually ship a sidecar
+// ---------------------------------------------------------------------------
+
+describe('required constraints', () => {
+  test('every id in requiredConstraints is a known component', () => {
+    const violations = requiredConstraints.filter((id) => !discoveredIds.has(id));
+    expect(violations).toEqual([]);
+  });
+
+  test('every id in requiredConstraints ships a {name}.constraints.ts sidecar', async () => {
+    const { existsSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const componentsRoot = join(import.meta.dir, 'components');
+    // discoverComponents tracks which ids are experimental — we need
+    // that flag to resolve the path correctly for experimental components.
+    const components = await discoverComponents();
+    const byId = new Map(components.map((c) => [c.name, c]));
+
+    const missing: string[] = [];
+    for (const id of requiredConstraints) {
+      const component = byId.get(id);
+      if (!component) continue; // Already reported by the previous test.
+      const sidecarPath = component.isExperimental
+        ? join(componentsRoot, 'experimental', id, `${id}.constraints.ts`)
+        : join(componentsRoot, id, `${id}.constraints.ts`);
+      if (!existsSync(sidecarPath)) missing.push(id);
+    }
+    expect(missing).toEqual([]);
+  });
+});

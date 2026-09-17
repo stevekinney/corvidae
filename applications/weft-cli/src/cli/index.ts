@@ -1,0 +1,38 @@
+#!/usr/bin/env bun
+
+export { createWeftClient, removeRunLockfile, writeRunLockfile } from '@repo/weft';
+export type { CatalogOperationName, WeftClient } from '@repo/weft';
+export { executeApi } from './api.ts';
+export { executeCodegen } from './codegen.ts';
+export { executeCompletions } from './completions.ts';
+export { executeConformance } from './conformance.ts';
+export { loadConsoleMount } from './console.ts';
+export { executeDoctor } from './doctor.ts';
+export {
+  API_HELP_TEXT,
+  CODEGEN_HELP_TEXT,
+  COMPLETIONS_HELP_TEXT,
+  CONFORMANCE_HELP_TEXT,
+  DOCTOR_HELP_TEXT,
+  HELP_TEXT,
+  SCHEDULE_HELP_TEXT,
+  SERVER_HELP_TEXT,
+  TAIL_HELP_TEXT,
+  TIMELINE_HELP_TEXT,
+  VALIDATE_HELP_TEXT,
+  VERSION_CHECK_HELP_TEXT,
+  WORKFLOW_HELP_TEXT,
+} from './help-text.ts';
+export { parseCliArguments } from './parse-arguments.ts';
+export { executeSchedule } from './schedule.ts';
+export { executeServer } from './server-commands.ts';
+export { createStorage } from './storage-factory.ts';
+export { findCliSubcommandName } from './subcommand-detection.ts';
+export { executeTail } from './tail.ts';
+export { executeTimeline } from './timeline.ts';
+export type { CliCommand, CommandOutput, StorageBackend } from './types.ts';
+export { collectDiffLines, splitGlobPattern } from './utilities.ts';
+export { executeValidate } from './validate.ts';
+export { executeVersionCheck } from './version-check.ts';
+export { executeVersion } from './version.ts';
+export { executeWorkflow } from './workflow-commands.ts';

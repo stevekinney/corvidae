@@ -1,0 +1,12 @@
+{
+  "extends": "@repo/typescript-configuration/library.json",
+  "//": "tsc --noEmit pass for files that don't import .svelte. Those are handled by svelte-check.",
+  "exclude": [
+    "node_modules",
+    "coverage",
+    "fixtures",
+    "src/index.ts",
+    "src/components.test.ts",
+    "src/**/*.type-test.ts"
+  ]
+}

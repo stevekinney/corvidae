@@ -1,0 +1,29 @@
+{
+  "name": "@repo/skills",
+  "private": true,
+  "description": "Skills platform for agent-bureau: discover, load, and use AgentSkills-compatible SKILL.md content with a self-improvement engine.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "gray-matter": "catalog:",
+    "zod": "catalog:",
+    "@repo/weft": "workspace:*",
+    "@repo/armorer": "workspace:*",
+    "@repo/interoperability": "workspace:*",
+    "@repo/lifecycle": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@repo/typescript-configuration": "workspace:*",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

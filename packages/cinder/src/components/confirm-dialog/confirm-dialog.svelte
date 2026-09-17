@@ -1,0 +1,106 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category overlay
+   * @status stable
+   * @purpose Modal-backed confirmation prompt with cancel and confirm actions, including a destructive variant for irreversible operations.
+   * @tag overlay
+   * @tag dialog
+   * @useWhen Requiring an explicit yes/no acknowledgement before performing a destructive or irreversible action.
+   * @useWhen Asking the user to confirm a discrete decision with two clear outcomes.
+   * @avoidWhen Collecting structured input or multiple fields — compose a modal with form controls instead.
+   * @avoidWhen Announcing a non-blocking result — use toast-region or banner.
+   * @related modal, alert-dialog, drawer
+   */
+  export type { ConfirmDialogProps } from './confirm-dialog.types.ts';
+</script>
+
+<script lang="ts">
+  import type { ConfirmDialogProps } from './confirm-dialog.types.ts';
+  import Button from '../button/button.svelte';
+  import Input from '../input/input.svelte';
+  import Modal from '../modal/modal.svelte';
+  import { classNames } from '../../utilities/class-names.ts';
+
+  const descriptionId = $props.id();
+  const typedConfirmationId = `${descriptionId}-typed-confirmation`;
+
+  let {
+    open = $bindable(false),
+    title,
+    description,
+    cancelLabel = 'Cancel',
+    confirmLabel,
+    destructive = false,
+    typeToConfirm,
+    typeToConfirmLabel,
+    onConfirm,
+    onCancel,
+    triggerRef = null,
+    onExitComplete,
+    class: className,
+  }: ConfirmDialogProps = $props();
+  const describedById = $derived(description ? descriptionId : undefined);
+  const normalizedTypeToConfirm = $derived(typeToConfirm?.trim() || undefined);
+  const normalizedTypeToConfirmLabel = $derived(typeToConfirmLabel?.trim() || undefined);
+  let typedConfirmation = $state('');
+  let previousOpen = open;
+  const typedConfirmationMatches = $derived(
+    normalizedTypeToConfirm === undefined ||
+      typedConfirmation.trim().toLowerCase() === normalizedTypeToConfirm.toLowerCase(),
+  );
+
+  $effect(() => {
+    if (open === previousOpen) return;
+    previousOpen = open;
+    typedConfirmation = '';
+  });
+
+  function handleCancel() {
+    // Mirror Modal's dismiss() ordering: state first, then callback. No try/catch —
+    // consumer errors must propagate so tests, error boundaries, and observability see them.
+    open = false;
+    onCancel?.();
+  }
+
+  function handleConfirm() {
+    // Same ordering and error policy: close first, fire callback, let errors propagate.
+    open = false;
+    onConfirm();
+  }
+</script>
+
+<Modal
+  bind:open
+  {title}
+  {triggerRef}
+  class={classNames('cinder-confirm-dialog', className)}
+  {...describedById ? { describedById } : {}}
+  {...onCancel ? { onDismiss: onCancel } : {}}
+  {...onExitComplete ? { onExitComplete } : {}}
+>
+  {#if description}
+    <p id={descriptionId} class="cinder-confirm-dialog__description">{description}</p>
+  {/if}
+
+  {#if normalizedTypeToConfirm !== undefined}
+    <Input
+      id={typedConfirmationId}
+      class="cinder-confirm-dialog__typed-confirmation"
+      bind:value={typedConfirmation}
+      label={normalizedTypeToConfirmLabel ?? `Type "${normalizedTypeToConfirm}" to confirm`}
+      autocomplete="off"
+    />
+  {/if}
+
+  {#snippet footer()}
+    <Button variant="secondary" autofocus onclick={handleCancel}>{cancelLabel}</Button>
+    <Button
+      variant={destructive ? 'danger' : 'primary'}
+      disabled={!typedConfirmationMatches}
+      onclick={handleConfirm}
+    >
+      {confirmLabel}
+    </Button>
+  {/snippet}
+</Modal>

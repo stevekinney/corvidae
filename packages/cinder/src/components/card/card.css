@@ -1,0 +1,264 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * CARD
+ * ======================================== */
+
+  .cinder-card {
+    position: relative;
+    inline-size: 100%;
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface-raised);
+    border: 1px solid var(--cinder-border);
+    color: var(--cinder-text-default);
+    box-shadow: var(--cinder-shadow-sm);
+    overflow: hidden;
+    transition:
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard),
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-card[data-cinder-elevation='none'] {
+    box-shadow: none;
+  }
+
+  .cinder-card[data-cinder-elevation='md'] {
+    box-shadow: var(--cinder-shadow-md);
+  }
+
+  .cinder-card[data-cinder-elevation='lg'] {
+    box-shadow: var(--cinder-shadow-lg);
+  }
+
+  .cinder-card[data-cinder-interactive] {
+    display: block;
+    cursor: pointer;
+    text-align: start;
+    text-decoration: none;
+  }
+
+  .cinder-card__action {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .cinder-card__action:disabled {
+    cursor: default;
+  }
+
+  .cinder-card__action:focus-visible {
+    /* cinder-focus-ring-owner: parent */
+    outline: none;
+  }
+
+  @media (hover: hover) {
+    .cinder-card[data-cinder-interactive]:hover {
+      border-color: var(--cinder-border-strong);
+      box-shadow: var(--cinder-shadow-md);
+    }
+  }
+
+  .cinder-card[data-cinder-interactive]:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow), var(--cinder-shadow-md);
+  }
+
+  .cinder-card[data-cinder-interactive]:has(.cinder-card__action:focus-visible) {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow), var(--cinder-shadow-md);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-card[data-cinder-interactive]:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+
+    .cinder-card[data-cinder-interactive]:has(.cinder-card__action:focus-visible) {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+  }
+
+  .cinder-card[data-cinder-variant='well'] {
+    background: transparent;
+  }
+
+  /*
+   * The flat well/danger baseline is scoped away from interactive cards.
+   *
+   * These rules sit after the :hover / :focus-visible rules above and carry the same
+   * specificity, so without the :not() they win the cascade and flatten an interactive
+   * card's hover and focus feedback back to none — the elevation range would be
+   * accepted and then silently discarded, which is the defect CIN-114 exists to fix,
+   * reintroduced one variant over.
+   *
+   * An interactive well or danger card therefore keeps the base resting shadow so its
+   * hover lift has something to lift from. Static wells and danger panels — the common
+   * case — are unchanged.
+   */
+  .cinder-card[data-cinder-variant='well'][data-cinder-elevation='sm']:not(
+      [data-cinder-interactive]
+    ) {
+    box-shadow: none;
+  }
+
+  .cinder-card[data-cinder-tone='danger'] {
+    background: var(--cinder-status-danger-background);
+    border-color: var(--cinder-status-danger-border);
+  }
+
+  .cinder-card[data-cinder-tone='danger'][data-cinder-elevation='sm']:not(
+      [data-cinder-interactive]
+    ) {
+    box-shadow: none;
+  }
+
+  .cinder-card[data-cinder-tone='danger'] > .cinder-card__header,
+  .cinder-card[data-cinder-tone='danger'] > .cinder-card__body:not([data-cinder-tone='muted']),
+  .cinder-card[data-cinder-tone='danger'] > .cinder-card__footer:not([data-cinder-tone='muted']) {
+    background: transparent;
+  }
+
+  .cinder-card[data-cinder-tone='danger'][data-cinder-variant='well'] {
+    background: var(--cinder-status-danger-background);
+  }
+
+  /* ----------------------------------------
+ * Header
+ * ---------------------------------------- */
+
+  .cinder-card__header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    padding: var(--cinder-space-3) var(--cinder-space-4);
+    border-bottom: 1px solid var(--cinder-border-muted);
+    background: var(--cinder-surface);
+  }
+
+  .cinder-card[data-cinder-tone='danger'] > .cinder-card__header {
+    border-bottom-color: var(--cinder-status-danger-border);
+  }
+
+  /* ----------------------------------------
+ * Title & description (title arm)
+ * ---------------------------------------- */
+
+  .cinder-card__title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .cinder-card__risk-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-card__title {
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-default);
+    margin: 0;
+  }
+
+  .cinder-card[data-cinder-tone='danger'] > .cinder-card__header .cinder-card__title {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-card__description {
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-subtle);
+    margin: 0;
+  }
+
+  /* ----------------------------------------
+ * Body
+ * ---------------------------------------- */
+
+  .cinder-card__body {
+    padding: var(--cinder-space-4);
+    background: var(--cinder-surface);
+  }
+
+  .cinder-card__body[data-cinder-tone='muted'] {
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-card__body[data-cinder-padding='none'] {
+    padding: 0;
+  }
+
+  .cinder-card[data-cinder-variant='well'] > .cinder-card__body {
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-card[data-cinder-tone='danger'][data-cinder-variant='well']
+    > .cinder-card__body:not([data-cinder-tone='muted']) {
+    background: transparent;
+  }
+
+  /* ----------------------------------------
+ * Footer
+ * ---------------------------------------- */
+
+  .cinder-card__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-3) var(--cinder-space-4);
+    border-top: 1px solid var(--cinder-border-muted);
+    background: transparent;
+  }
+
+  .cinder-card[data-cinder-tone='danger'] > .cinder-card__footer {
+    border-top-color: var(--cinder-status-danger-border);
+  }
+
+  .cinder-card__footer[data-cinder-tone='muted'] {
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-card[data-cinder-variant='well'] > .cinder-card__footer:not([data-cinder-tone='muted']) {
+    background: var(--cinder-surface);
+  }
+
+  .cinder-card[data-cinder-tone='danger'][data-cinder-variant='well']
+    > .cinder-card__footer:not([data-cinder-tone='muted']) {
+    background: transparent;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-card[data-cinder-tone='danger'] {
+      background: Canvas;
+      border-color: CanvasText;
+    }
+
+    .cinder-card[data-cinder-tone='danger'] .cinder-card__header,
+    .cinder-card[data-cinder-tone='danger'] .cinder-card__footer {
+      border-color: CanvasText;
+    }
+
+    .cinder-card[data-cinder-tone='danger'] .cinder-card__title,
+    .cinder-card__risk-icon {
+      color: CanvasText;
+    }
+  }
+
+  @media (width < 640px) {
+    .cinder-card[data-cinder-edge-to-edge-mobile] {
+      inline-size: calc(100% + (var(--cinder-card-mobile-bleed) * 2));
+      margin-inline: calc(var(--cinder-card-mobile-bleed) * -1);
+      border-inline: 0;
+      border-radius: 0;
+    }
+  }
+}

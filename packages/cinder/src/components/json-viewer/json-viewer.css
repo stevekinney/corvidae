@@ -1,0 +1,140 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * JSON VIEWER
+ * Collapsible tree visualization. Hard caps live in the component itself.
+ * ======================================== */
+
+  .cinder-json-viewer {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+    background: var(--cinder-surface-inset);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-3);
+    overflow: auto;
+  }
+
+  .cinder-json-viewer__fallback {
+    color: var(--cinder-text-muted);
+    font-family: var(--cinder-font-sans);
+    text-align: center;
+    padding: var(--cinder-space-4);
+  }
+
+  .cinder-json-viewer__fallback p {
+    margin: 0 0 var(--cinder-space-1) 0;
+  }
+
+  .cinder-json-viewer__node {
+    display: inline;
+  }
+
+  .cinder-json-viewer__key {
+    color: var(--cinder-accent-text);
+    margin-inline-end: var(--cinder-space-1);
+  }
+
+  .cinder-json-viewer__toggle {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  @media (hover: hover) {
+    .cinder-json-viewer__toggle:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-json-viewer__toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-json-viewer__node[role='treeitem']:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    border-radius: var(--cinder-radius-sm);
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-json-viewer__toggle:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+
+    .cinder-json-viewer__node[role='treeitem']:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+  }
+
+  .cinder-json-viewer__caret {
+    flex: 0 0 auto;
+    width: 0.75rem;
+    height: 0.75rem;
+    color: var(--cinder-text-muted);
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-json-viewer__caret[data-cinder-collapsed] {
+    transform: rotate(-90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-json-viewer__caret {
+      transition: none;
+    }
+  }
+
+  .cinder-json-viewer__brace {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-json-viewer__summary {
+    color: var(--cinder-text-muted);
+    font-style: italic;
+  }
+
+  .cinder-json-viewer__children {
+    list-style: none;
+    margin: 0;
+    padding-inline-start: var(--cinder-space-4);
+    border-inline-start: 1px dashed var(--cinder-border-muted);
+  }
+
+  .cinder-json-viewer__too-deep {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-json-viewer__value[data-cinder-type='string'] {
+    /* The -fg token, not the fill. --cinder-status-success-solid is a FILL tuned to carry a white
+       label; as ink on --cinder-surface-inset it measured 3.98:1, below AA. The
+       number row below already used --cinder-status-warning-text correctly. */
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-json-viewer__value[data-cinder-type='number'] {
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-json-viewer__value[data-cinder-type='boolean'] {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-json-viewer__value[data-cinder-type='null'] {
+    color: var(--cinder-text-muted);
+    font-style: italic;
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "extends": "@repo/typescript-configuration/library.json",
+  "exclude": ["node_modules", "coverage", "**/*.test.ts", "**/*.spec.ts", "**/*.perf.test.ts"]
+}

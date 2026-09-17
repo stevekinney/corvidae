@@ -1,0 +1,107 @@
+# NavigationBar Accessibility
+
+## Landmark Labeling
+
+`NavigationBar` renders a `<nav>` landmark. The accessible name is set via the `label` prop, which defaults to `"Main navigation"`. Pages with more than one `<nav>` landmark must pass distinct values so screen reader users can distinguish them when jumping between landmarks.
+
+The `label` prop always wins over any `aria-label` passed via rest props. The rest `aria-label` is stripped before spreading to prevent silent collisions.
+
+## Mobile Toggle Contract
+
+When a `menuToggle` snippet is provided, the component injects a `NavigationBarToggleAttributes` object into the snippet as its parameter:
+
+```ts
+type NavigationBarToggleAttributes = {
+  'aria-expanded': 'true' | 'false';
+  'aria-controls': string; // the id of the collapsible items region
+  onclick?: (event: MouseEvent) => void; // omitted during SSR
+  onkeydown?: (event: KeyboardEvent) => void;
+};
+```
+
+The consumer is responsible for:
+
+1. Spreading these attributes onto a native `<button>` element.
+2. Giving the button a meaningful accessible name via `aria-label` (e.g., `"Open menu"` / `"Close menu"`) or visible text.
+
+`aria-expanded` reflects `mobileMenuOpen`. `aria-controls` points at the items region's `id` so assistive technologies can identify the controlled region. The component manages both values internally.
+
+## Keyboard Interactions
+
+| Key | Behavior |
+| --- | --- |
+| Tab | Moves focus through sequentially focusable items and actions in DOM order; enabled controls with `tabindex="-1"` are excluded. |
+| Escape | Closes the mobile menu when open, regardless of where focus is on the page. |
+
+### Escape ownership (CIN-428)
+
+Escape is owned by the shared overlay escape stack (see `OVERLAY-POLICY.md`), not a listener scoped to the `<nav>` element. While the mobile panel is open, `NavigationBar` is the top-most entry on that stack, and a window-level Escape dismisses the panel regardless of where focus currently is — including outside the navbar entirely. This matches every other escape-stack overlay in Cinder (Dropdown, Popover, Combobox, etc.) and lets a top-layer overlay elsewhere on the page take priority: if another overlay opened after the mobile panel, it sits above the panel on the stack and Escape dismisses it first.
+
+### Cooperative Escape semantics
+
+If a component inside the navbar (a search field, combobox, or nested disclosure) calls `event.preventDefault()` on a keydown event, the menu's Escape handler is skipped. This lets nested interactive widgets own their own Escape behavior without fighting the navbar's dismiss logic.
+
+Consumer `onkeydown` handlers passed via rest props are also respected: the consumer handler runs _first_, and if it calls `preventDefault()`, the internal close is cancelled.
+
+## Focus Return
+
+When the user presses Escape to close the menu, focus is returned to the toggle button that opened it. When the mobile menu closes after item activation, focus also moves back to the toggle before the items region is hidden. Controlled menus that start open use the rendered toggle button as the fallback focus target.
+
+This focus-return guarantee requires that, on the client, the consumer's `menuToggle` snippet spreads `toggleAttributes.onclick` onto a native `<button>` element so `event.currentTarget` is a real focusable DOM element.
+
+If a consumer wraps the toggle in a custom component without ensuring the native button receives `onclick` directly, Escape still closes the menu but focus does not move. This is a documented degradation, not a bug.
+
+## Disclosure, Not Modal
+
+`NavigationBar` implements the ARIA disclosure pattern. The mobile items panel is not a modal:
+
+- There is no focus trap. Tab order continues naturally from the toggle, through the items, to the actions, and off the navbar.
+- Clicking outside the navbar does not close the menu. This is intentional: top-of-page navigation bars are not menus, and outside-click close can swallow scroll-region clicks and surprise users. Consumers who need outside-click close should attach a document-level click listener themselves and set `mobileMenuOpen = false`.
+
+## Route-Change Auto-Close
+
+When a top navigation bar is in its collapsed mobile layout, activating an enabled navigation item closes the menu automatically unless the click event has been cancelled with `event.preventDefault()`. This includes click, Enter, and Space activation because keyboard activation dispatches a click on the focused item.
+
+Use `preventDefault()` from an item click handler or a bar-level `onclick` handler when navigation is guarded, delayed, or handled by local state and the menu should remain open.
+
+The component has no router dependency. Consumers using a client-side router ([SvelteKit](https://kit.svelte.dev), etc.) can still subscribe to route-change events and set `bind:mobileMenuOpen` to `false` when the route changes. Example:
+
+```svelte
+<script>
+  import { page } from '$app/state';
+  let mobileMenuOpen = $state(false);
+
+  $effect(() => {
+    // Close the menu on every navigation.
+    page.url;
+    mobileMenuOpen = false;
+  });
+</script>
+
+<NavigationBar bind:mobileMenuOpen>
+  {#snippet menuToggle(attrs)}
+    <button {...attrs} aria-label="Open menu">Menu</button>
+  {/snippet}
+  ...
+</NavigationBar>
+```
+
+## Visibility and Focus Tree
+
+The items panel uses `visibility: hidden` (not `display: none` or `inert`) when closed. `visibility: hidden` removes the panel and its children from the accessibility tree immediately when the menu closes, without waiting for the CSS transition to complete. This means:
+
+- Hidden items cannot receive focus.
+- Screen readers do not announce hidden items.
+- The transition affects only the opening animation; closing is visually instant (which is intentional—accessibility wins over the close animation).
+
+## Reduced Motion
+
+When `prefers-reduced-motion: reduce` is active, all panel transitions are disabled. The panel still opens and closes; it simply does not animate.
+
+## Forced Colors (High Contrast Mode)
+
+The mobile items panel retains a visible `border-bottom` using the `CanvasText` system color in Forced Colors Mode, ensuring the panel boundary remains visible without relying on `box-shadow` or `background-color` (both of which are overridden by the forced color palette).
+
+## Actions Outside the Panel
+
+The `actions` snippet renders _outside_ the collapsible panel by design. Primary action buttons (sign-in, CTAs) remain visible even when the menu is closed. Sites whose actions are numerous or large can place them inside the `items` snippet instead—the component does not enforce a single layout.

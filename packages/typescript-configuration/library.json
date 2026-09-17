@@ -1,11 +1,7 @@
 {
   "extends": "./base.json",
   "compilerOptions": {
-    "lib": ["ESNext"],
-    "types": ["bun"],
-    "incremental": true,
-    "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo",
-    "assumeChangesOnlyAffectDirectDependencies": true,
-    "diagnostics": true
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["bun"]
   }
 }

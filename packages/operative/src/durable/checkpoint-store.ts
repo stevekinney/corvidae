@@ -1,0 +1,140 @@
+import type { ConversationSnapshot } from '@repo/conversationalist';
+import type { TextValueStore } from '@repo/weft';
+
+import type { RunCheckpoint, RunCursor, StepRecord } from './types';
+
+/**
+ * Key layout for durable run checkpoints. All keys are namespaced under
+ * `durable-run:{runId}:` so a single backing store can hold many runs alongside
+ * sessions, cache, and identity data without collision.
+ */
+const keys = {
+  cursor: (runId: string) => `durable-run:${runId}:cursor`,
+  transcript: (runId: string) => `durable-run:${runId}:transcript`,
+  stepPrefix: (runId: string) => `durable-run:${runId}:step:`,
+  /** Steps are zero-padded so lexicographic `list()` order matches step order. */
+  step: (runId: string, step: number) =>
+    `durable-run:${runId}:step:${String(step).padStart(10, '0')}`,
+} as const;
+
+/**
+ * A durable store for agent-run checkpoints, backed by a Weft
+ * {@link TextValueStore}. Persists three independent pieces per run:
+ *
+ * - the {@link RunCursor} (`{ step }`) — the minimal resume position,
+ * - a {@link ConversationSnapshot} of the run transcript (plain, cloneable),
+ * - one {@link StepRecord} per completed step (no `Conversation` instance).
+ *
+ * Splitting them lets the durable workflow commit the cheap cursor at every
+ * yield while writing the heavier transcript only at step boundaries.
+ */
+export interface CheckpointStore {
+  saveCursor(runId: string, cursor: RunCursor): Promise<void>;
+  loadCursor(runId: string): Promise<RunCursor | null>;
+  saveConversation(runId: string, snapshot: ConversationSnapshot): Promise<void>;
+  loadConversation(runId: string): Promise<ConversationSnapshot | null>;
+  saveStep(runId: string, record: StepRecord): Promise<void>;
+  loadSteps(runId: string): Promise<StepRecord[]>;
+  /** Assemble the full checkpoint from its persisted pieces. */
+  loadCheckpoint(runId: string): Promise<RunCheckpoint>;
+  /** Remove every key for a run. Returns the number of keys deleted. */
+  clear(runId: string): Promise<number>;
+}
+
+/** Parse JSON, returning `null` on malformed data rather than throwing. */
+function parseJson(raw: string | null): unknown {
+  if (raw === null) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Creates a {@link CheckpointStore} backed by the given {@link TextValueStore}.
+ *
+ * Values are JSON-serialized strings; the store treats them as opaque, matching
+ * how every other agent-bureau persistence layer (sessions, identity, skills)
+ * uses the text-value surface.
+ */
+export function createCheckpointStore(store: TextValueStore): CheckpointStore {
+  const checkpointStore: CheckpointStore = {
+    async saveCursor(runId, cursor) {
+      await store.set(keys.cursor(runId), JSON.stringify(cursor));
+    },
+
+    async loadCursor(runId) {
+      const cursor = parseJson(await store.get(keys.cursor(runId))) as RunCursor | null;
+      // A cursor persisted before AB-221 added `lastAppliedConfigVersion` to
+      // `RunCursor` deserializes with every OTHER field present but that one
+      // `undefined` — `parseJson` casts the stored JSON to `RunCursor`
+      // without validating it, so nothing else catches this. Left as-is,
+      // `undefined` would leak into the durable driver's `RunState` and
+      // `run-step.ts`'s `state.configVersion !== runState.lastAppliedConfigVersion`
+      // dedupe check, treating every `configVersion` (including 0, the
+      // un-steered default) as novel and misfiring `steering.applied`.
+      // Normalized here, in the one place a persisted cursor is deserialized
+      // (both this method's direct callers and `loadCheckpoint`, which calls
+      // this), rather than pushing the same `?? 0` into every reader.
+      return cursor
+        ? { ...cursor, lastAppliedConfigVersion: cursor.lastAppliedConfigVersion ?? 0 }
+        : null;
+    },
+
+    async saveConversation(runId, snapshot) {
+      await store.set(keys.transcript(runId), JSON.stringify(snapshot));
+    },
+
+    async loadConversation(runId) {
+      return parseJson(await store.get(keys.transcript(runId))) as ConversationSnapshot | null;
+    },
+
+    async saveStep(runId, record) {
+      await store.set(keys.step(runId, record.step), JSON.stringify(record));
+    },
+
+    async loadSteps(runId) {
+      const stepKeys = await store.list(keys.stepPrefix(runId));
+      // `list()` returns keys in lexicographic order; zero-padded step indices
+      // make that match numeric step order, so no re-sort is required.
+      const records: StepRecord[] = [];
+      for (const key of stepKeys) {
+        const record = parseJson(await store.get(key)) as StepRecord | null;
+        if (record) records.push(record);
+      }
+      return records;
+    },
+
+    async loadCheckpoint(runId) {
+      const [cursor, conversation, steps] = await Promise.all([
+        checkpointStore.loadCursor(runId),
+        checkpointStore.loadConversation(runId),
+        checkpointStore.loadSteps(runId),
+      ]);
+      return {
+        runId,
+        // `loadCursor` already normalizes a persisted-but-incomplete cursor
+        // (a pre-AB-221 `RunCursor` missing `lastAppliedConfigVersion`); a
+        // missing cursor (no run persisted yet) gets the full zeroed default.
+        cursor: cursor ?? {
+          step: 0,
+          totalUsage: { prompt: 0, completion: 0, total: 0 },
+          lastContent: '',
+          schemaAttempts: 0,
+          lastAppliedConfigVersion: 0,
+        },
+        conversation,
+        steps,
+      };
+    },
+
+    async clear(runId) {
+      // `deletePrefix` is a required member of Weft's TextValueStore (0.2.1), so
+      // a prefix wipe needs no optional-method fallback.
+      return store.deletePrefix(`durable-run:${runId}:`);
+    },
+  };
+
+  return checkpointStore;
+}

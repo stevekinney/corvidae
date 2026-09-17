@@ -1,0 +1,11 @@
+[loader]
+".md" = "text"
+
+[run]
+bun = true
+
+[test]
+preload = ["./scripts/preload.ts"]
+
+# The package test command retains serial execution for the shared DOM harness.
+# Browser tests run through their application-owned Playwright configuration.

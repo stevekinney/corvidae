@@ -1,0 +1,372 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * TREE
+ * ======================================== */
+
+  .cinder-tree-root,
+  .cinder-tree {
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+  }
+
+  .cinder-tree {
+    outline: none;
+  }
+
+  .cinder-tree[data-cinder-virtualized] {
+    display: block;
+    overflow: auto;
+  }
+
+  .cinder-tree__virtual-spacer {
+    position: relative;
+    inline-size: 100%;
+  }
+
+  .cinder-tree-item--virtual {
+    position: absolute;
+    inset-inline: 0;
+    overflow: hidden;
+  }
+
+  .cinder-tree__filter {
+    margin-block-end: var(--cinder-space-2, 0.5rem);
+  }
+
+  .cinder-tree__filter-input {
+    inline-size: 100%;
+    min-block-size: 2.25rem;
+    padding-block: var(--cinder-space-1, 0.25rem);
+    padding-inline: var(--cinder-space-2, 0.5rem);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    font: inherit;
+  }
+
+  .cinder-tree__filter-input:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-tree__filter-input:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+      box-shadow: none;
+    }
+  }
+
+  .cinder-tree__selection-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2, 0.5rem);
+    margin-block-end: var(--cinder-space-2, 0.5rem);
+  }
+
+  .cinder-tree-expand-all,
+  .cinder-tree-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2, 0.5rem);
+  }
+
+  .cinder-tree-expand-all__label,
+  .cinder-tree-select-all__label {
+    color: var(--cinder-text-muted, inherit);
+    font-size: var(--cinder-text-sm, 0.875rem);
+  }
+
+  .cinder-tree-expand-all__button,
+  .cinder-tree-select-all__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 2rem;
+    padding-block: var(--cinder-space-1, 0.25rem);
+    padding-inline: var(--cinder-space-2, 0.5rem);
+    border: 1px solid var(--cinder-border, currentColor);
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface, transparent);
+    color: var(--cinder-text-default, currentColor);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .cinder-tree-expand-all__button:disabled,
+  .cinder-tree-select-all__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  @media (hover: hover) {
+    .cinder-tree-expand-all__button:not(:disabled):hover,
+    .cinder-tree-select-all__button:not(:disabled):hover {
+      background: var(--cinder-surface-raised, transparent);
+    }
+  }
+
+  .cinder-tree-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    outline: none;
+    cursor: default;
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  /* Tree items are full-bleed rows whose first/last siblings sit flush against
+   the tree's clipping bounds; an outset ring would be trimmed there. Paint the
+   ring INSET (Strategy B-inset) so it stays inside each row's own border box.
+   The ring is scoped to .cinder-tree-item__row (the direct child row) so that
+   when a branch item is expanded the ring surrounds only the label row, not
+   the entire subtree that the outer .cinder-tree-item div also wraps. The
+   tabindex/role attributes stay on the outer .cinder-tree-item. */
+  .cinder-tree-item:focus-visible > .cinder-tree-item__row,
+  .cinder-tree-item[data-cinder-focused] > .cinder-tree-item__row {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width)
+      var(--_cinder-tree-item-ring, var(--cinder-ring-color));
+  }
+
+  @media (forced-colors: active) {
+    .cinder-tree-item:focus-visible > .cinder-tree-item__row,
+    .cinder-tree-item[data-cinder-focused] > .cinder-tree-item__row {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+      box-shadow: none;
+    }
+  }
+
+  .cinder-tree-item__row {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2, 0.5rem);
+    /* The row is the click target for selection/expansion (see tree-item.svelte
+     * row handlers), so it — not the small checkbox — must satisfy the minimum
+     * touch target. 2.25rem (36px) clears the WCAG 2.2 2.5.8 floor (24px) with
+     * comfortable margin while staying compact in dense trees. */
+    min-block-size: 2.25rem;
+    padding-block: var(--cinder-space-1, 0.25rem);
+    padding-inline: var(--cinder-space-2, 0.5rem);
+    border-radius: var(--cinder-radius-sm);
+    user-select: none;
+  }
+
+  .cinder-tree-item__disclosure,
+  .cinder-tree-item__disclosure-spacer {
+    flex: 0 0 auto;
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-tree-item__disclosure {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: currentcolor;
+    cursor: pointer;
+  }
+
+  .cinder-tree-item__disclosure > span {
+    inline-size: 0.45rem;
+    block-size: 0.45rem;
+    border-inline-end: 1.5px solid currentcolor;
+    border-block-end: 1.5px solid currentcolor;
+    transform: rotate(-45deg);
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-tree-item__disclosure[aria-expanded='true'] > span {
+    transform: rotate(45deg);
+  }
+
+  .cinder-tree-item__disclosure:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-tree-item__disclosure:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
+  .cinder-tree-item__checkbox {
+    flex: 0 0 auto;
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--cinder-accent-solid, currentColor);
+    pointer-events: auto;
+  }
+
+  .cinder-tree-item__drag-handle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-muted);
+    cursor: grab;
+    font: inherit;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .cinder-tree-item__drag-handle:active,
+  .cinder-tree-item[data-cinder-dragging] .cinder-tree-item__drag-handle {
+    cursor: grabbing;
+  }
+
+  .cinder-tree-item__drag-handle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-tree-item__drag-handle:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
+  /* Long labels must not force the tree wider than its container or overlap the
+   * checkbox at narrow (mobile) widths. The element also carries `cinder-_truncate`
+   * (the shared utility), which supplies overflow:hidden / text-overflow:ellipsis /
+   * white-space:nowrap. Only the flex-grow behaviour is tree-specific. */
+  .cinder-tree-item__label {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  .cinder-tree-item[data-cinder-selected] > .cinder-tree-item__row {
+    background-color: color-mix(in srgb, var(--cinder-accent-solid) 15%, transparent);
+    color: var(--cinder-accent-text);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-tree-item[data-cinder-selected] > .cinder-tree-item__row {
+      background-color: Highlight;
+      color: HighlightText;
+      forced-color-adjust: none;
+    }
+  }
+
+  .cinder-tree-item[data-cinder-disabled] {
+    opacity: 0.5;
+    /* Use default cursor: disabled items can still be expanded/collapsed;
+     only selection is blocked. not-allowed would mislead mouse users. */
+    cursor: default;
+  }
+
+  .cinder-tree-item[data-cinder-hidden] {
+    display: none;
+  }
+
+  .cinder-tree-item[data-cinder-dragging] > .cinder-tree-item__row {
+    opacity: var(--cinder-tree-item-dragging-opacity);
+  }
+
+  .cinder-tree-item[data-cinder-drop-target]::before,
+  .cinder-tree-item[data-cinder-drop-target]::after {
+    content: '';
+    position: absolute;
+    inset-inline: var(--cinder-space-2, 0.5rem);
+    block-size: var(--cinder-tree-drop-line-thickness);
+    border-radius: var(--cinder-tree-drop-line-thickness);
+    background: var(--cinder-tree-drop-line-color);
+    pointer-events: none;
+  }
+
+  .cinder-tree-item[data-cinder-drop-target='before']::before {
+    inset-block-start: 0;
+  }
+
+  .cinder-tree-item[data-cinder-drop-target='after']::after {
+    inset-block-end: 0;
+  }
+
+  .cinder-tree-item[data-cinder-drop-into] > .cinder-tree-item__row {
+    box-shadow: inset 0 0 0 var(--cinder-tree-drop-line-thickness)
+      var(--cinder-tree-drop-line-color);
+  }
+
+  .cinder-tree-item__highlight {
+    padding: 0;
+    border-radius: 0.125rem;
+    background-color: color-mix(in srgb, var(--cinder-accent-solid) 20%, transparent);
+    color: inherit;
+  }
+
+  .cinder-tree-item__rename-input {
+    flex: 1 1 auto;
+    min-inline-size: 8rem;
+    max-inline-size: 100%;
+    min-block-size: 2rem;
+    padding-block: var(--cinder-space-1, 0.25rem);
+    padding-inline: var(--cinder-space-2, 0.5rem);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    font: inherit;
+  }
+
+  .cinder-tree-item__rename-input:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-tree-item__rename-input:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+      box-shadow: none;
+    }
+  }
+
+  .cinder-tree-item__rename-input[aria-invalid='true'] {
+    border-color: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-tree-item__children {
+    display: flex;
+    flex-direction: column;
+    padding-inline-start: var(--cinder-space-4, 1rem);
+  }
+
+  .cinder-tree__empty {
+    padding-block: var(--cinder-space-2, 0.5rem);
+    padding-inline: var(--cinder-space-2, 0.5rem);
+    color: var(--cinder-text-muted);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-tree-item__highlight {
+      background-color: Highlight;
+      color: HighlightText;
+      forced-color-adjust: none;
+    }
+
+    .cinder-tree-item[data-cinder-drop-target]::before,
+    .cinder-tree-item[data-cinder-drop-target]::after,
+    .cinder-tree-item[data-cinder-drop-into] > .cinder-tree-item__row {
+      --cinder-tree-drop-line-color: Highlight;
+      forced-color-adjust: none;
+    }
+  }
+}

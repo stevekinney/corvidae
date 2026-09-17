@@ -1,0 +1,264 @@
+/// <reference lib="dom" />
+import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { createRawSnippet } from 'svelte';
+
+import { setupHappyDom } from '@repo/testing';
+
+// setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
+// reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),
+// so we register happy-dom's globals first and then dynamic-import testing-library below.
+setupHappyDom();
+
+const { render } = await import('@testing-library/svelte');
+const { default: StackedListItem } = await import('./stacked-list-item.svelte');
+
+/** Build a minimal Svelte snippet that renders a single text node. */
+function textSnippet(text: string) {
+  return createRawSnippet(() => ({
+    render: () => `<span>${text}</span>`,
+    setup: () => {},
+  }));
+}
+
+describe('StackedListItem', () => {
+  test('aligns leading and body to the first line while centering trailing content', () => {
+    const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
+    expect(stylesheet).toContain(
+      '.cinder-stacked-list-item--has-leading .cinder-stacked-list-item__body {\n    align-self: start;',
+    );
+    expect(stylesheet).toContain(
+      '.cinder-stacked-list-item__trailing {\n    grid-area: trailing;\n    display: flex;\n    gap: var(--cinder-space-2);\n    align-self: center;',
+    );
+  });
+
+  test('condensed density produces a measurably denser stylesheet than the default', () => {
+    const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
+
+    // The base body-stack gap and the condensed override must resolve to different token values —
+    // otherwise the condensed variant is a no-op that only changes padding.
+    const baseBodyGap = stylesheet.match(
+      /\.cinder-stacked-list-item__body \{[^}]*gap:\s*(var\(--cinder-[\w-]+\))/,
+    )?.[1];
+    const condensedBodyGap = stylesheet.match(
+      /\[data-cinder-density='condensed'\] \.cinder-stacked-list-item__body \{[^}]*gap:\s*(var\(--cinder-[\w-]+\))/,
+    )?.[1];
+
+    expect(baseBodyGap).toBe('var(--cinder-space-1)');
+    expect(condensedBodyGap).toBe('var(--cinder-space-0-5)');
+    expect(condensedBodyGap).not.toBe(baseBodyGap);
+
+    // The gap is declared directly rather than routed through a component custom
+    // property: a non-empty variables manifest obliges the DTCG corpus to model the
+    // token (check:component-variable-registry enforces it), and widening the public
+    // theming surface is a separate decision from fixing a no-op variant.
+    expect(stylesheet).not.toContain('--cinder-stacked-list-item-body-gap');
+
+    // The condensed description/meta line-height must differ from the base --cinder-leading-snug
+    // value the element already inherits — matching it would be a silent no-op.
+    const baseDescriptionLineHeight = stylesheet.match(
+      /__description\s*\{[^}]*line-height:\s*(var\(--cinder-[\w-]+\))/,
+    )?.[1];
+    // Whitespace-tolerant rather than pinning newlines and indentation: a reformat
+    // must not fail a test about line-height values.
+    const condensedLineHeightMatch = stylesheet.match(
+      /\[data-cinder-density='condensed'\] \.cinder-stacked-list-item__description,[\s\S]*?__meta \{[\s\S]*?line-height:\s*(var\(--cinder-[\w-]+\))/,
+    )?.[1];
+
+    expect(baseDescriptionLineHeight).toBe('var(--cinder-leading-snug)');
+    expect(condensedLineHeightMatch).toBe('var(--cinder-leading-tight)');
+    expect(condensedLineHeightMatch).not.toBe(baseDescriptionLineHeight);
+  });
+
+  test('renders all snippets under their respective class names', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        leading: textSnippet('leading-content'),
+        title: textSnippet('title-content'),
+        description: textSnippet('description-content'),
+        meta: textSnippet('meta-content'),
+        trailing: textSnippet('trailing-content'),
+      },
+    });
+
+    const root = container.querySelector('.cinder-stacked-list-item');
+    expect(root).not.toBeNull();
+    expect(root?.querySelector('.cinder-stacked-list-item__leading')?.textContent).toContain(
+      'leading-content',
+    );
+    expect(root?.querySelector('.cinder-stacked-list-item__title')?.textContent).toContain(
+      'title-content',
+    );
+    expect(root?.querySelector('.cinder-stacked-list-item__description')?.textContent).toContain(
+      'description-content',
+    );
+    expect(root?.querySelector('.cinder-stacked-list-item__meta')?.textContent).toContain(
+      'meta-content',
+    );
+    expect(root?.querySelector('.cinder-stacked-list-item__trailing')?.textContent).toContain(
+      'trailing-content',
+    );
+    // Modifier classes are set when snippets are present
+    expect(root?.classList.contains('cinder-stacked-list-item--has-leading')).toBe(true);
+    expect(root?.classList.contains('cinder-stacked-list-item--has-trailing')).toBe(true);
+  });
+
+  test('title-only minimal case omits optional sub-elements', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('only-title'),
+      },
+    });
+
+    const root = container.querySelector('.cinder-stacked-list-item');
+    expect(root).not.toBeNull();
+    expect(root?.querySelector('.cinder-stacked-list-item__leading')).toBeNull();
+    expect(root?.querySelector('.cinder-stacked-list-item__description')).toBeNull();
+    expect(root?.querySelector('.cinder-stacked-list-item__meta')).toBeNull();
+    expect(root?.querySelector('.cinder-stacked-list-item__trailing')).toBeNull();
+    expect(root?.querySelector('.cinder-stacked-list-item__title')?.textContent).toContain(
+      'only-title',
+    );
+    // Modifier classes are absent when snippets are omitted
+    expect(root?.classList.contains('cinder-stacked-list-item--has-leading')).toBe(false);
+    expect(root?.classList.contains('cinder-stacked-list-item--has-trailing')).toBe(false);
+  });
+
+  test('href renders title as <a>', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('linked-title'),
+        href: '/some/path',
+      },
+    });
+
+    const root = container.querySelector('.cinder-stacked-list-item');
+    expect(root?.tagName).toBe('LI');
+
+    const anchor = root?.querySelector('.cinder-stacked-list-item__title-link');
+    expect(anchor).not.toBeNull();
+    expect(anchor?.getAttribute('href')).toBe('/some/path');
+    expect(anchor?.textContent).toContain('linked-title');
+  });
+
+  test('no href renders title without anchor', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('static-title'),
+      },
+    });
+
+    const titleEl = container.querySelector('.cinder-stacked-list-item__title');
+    expect(titleEl?.querySelector('.cinder-stacked-list-item__title-link')).toBeNull();
+    expect(titleEl?.textContent).toContain('static-title');
+  });
+
+  test('target, rel, and hreflang are forwarded onto the anchor', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('external'),
+        href: 'https://example.com',
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        hreflang: 'en',
+      },
+    });
+
+    const anchor = container.querySelector('.cinder-stacked-list-item__title-link');
+    expect(anchor?.getAttribute('target')).toBe('_blank');
+    expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(anchor?.getAttribute('hreflang')).toBe('en');
+
+    // Anchor attributes must not leak onto the <li>
+    const li = container.querySelector('.cinder-stacked-list-item');
+    expect(li?.getAttribute('target')).toBeNull();
+    expect(li?.getAttribute('rel')).toBeNull();
+    expect(li?.getAttribute('hreflang')).toBeNull();
+  });
+
+  test('target="_blank" without rel auto-applies rel="noopener noreferrer"', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('external'),
+        href: 'https://example.com',
+        target: '_blank',
+      },
+    });
+
+    const anchor = container.querySelector('.cinder-stacked-list-item__title-link');
+    expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(anchor?.getAttribute('target')).toBe('_blank');
+  });
+
+  test('defaults to comfortable density', () => {
+    const { container } = render(StackedListItem, {
+      props: { title: textSnippet('t') },
+    });
+
+    expect(
+      container.querySelector('.cinder-stacked-list-item')?.getAttribute('data-cinder-density'),
+    ).toBe('comfortable');
+  });
+
+  test('condensed density sets data-cinder-density="condensed"', () => {
+    const { container } = render(StackedListItem, {
+      props: { title: textSnippet('t'), density: 'condensed' },
+    });
+
+    expect(
+      container.querySelector('.cinder-stacked-list-item')?.getAttribute('data-cinder-density'),
+    ).toBe('condensed');
+  });
+
+  test('<li> has no role or tabindex — not interactive', () => {
+    const { container } = render(StackedListItem, {
+      props: { title: textSnippet('no-handlers') },
+    });
+
+    const li = container.querySelector('.cinder-stacked-list-item');
+    expect(li?.getAttribute('role')).toBeNull();
+    expect(li?.getAttribute('tabindex')).toBeNull();
+  });
+
+  test('role and tabindex are stripped at runtime even when passed dynamically', () => {
+    const { container } = render(StackedListItem, {
+      props: { title: textSnippet('dynamic-spread'), role: 'button', tabindex: '0' } as any,
+    });
+
+    const li = container.querySelector('.cinder-stacked-list-item');
+    expect(li?.getAttribute('role')).toBeNull();
+    expect(li?.getAttribute('tabindex')).toBeNull();
+  });
+
+  test('data-*, id, and aria-* attrs land on the <li>, not an anchor', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('spread-test'),
+        'data-row-id': '42',
+        'aria-labelledby': 'x',
+        id: 'row-42',
+      } as any,
+    });
+
+    const li = container.querySelector('.cinder-stacked-list-item');
+    expect(li?.getAttribute('data-row-id')).toBe('42');
+    expect(li?.getAttribute('aria-labelledby')).toBe('x');
+    expect(li?.getAttribute('id')).toBe('row-42');
+
+    // Confirm href/target/rel/hreflang are not on the <li>
+    expect(li?.getAttribute('href')).toBeNull();
+    expect(li?.getAttribute('target')).toBeNull();
+    expect(li?.getAttribute('rel')).toBeNull();
+    expect(li?.getAttribute('hreflang')).toBeNull();
+  });
+
+  test('custom class is merged with cinder-stacked-list-item', () => {
+    const { container } = render(StackedListItem, {
+      props: { title: textSnippet('t'), class: 'my-row' },
+    });
+
+    const li = container.querySelector('.cinder-stacked-list-item');
+    expect(li?.classList.contains('cinder-stacked-list-item')).toBe(true);
+    expect(li?.classList.contains('my-row')).toBe(true);
+  });
+});

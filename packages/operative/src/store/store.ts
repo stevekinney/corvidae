@@ -1,0 +1,299 @@
+import {
+  CompletableEventTarget,
+  createDefaultRuntimeServices,
+  type Observer,
+  type Subscription,
+} from '@repo/lifecycle';
+
+import type { ActiveRun } from '../create-run';
+import type { RunResult, StepResult, TokenUsage } from '../types';
+import {
+  RunRegisteredEvent,
+  RunRemovedEvent,
+  StoreActionEvent,
+  type StoreEventMap,
+} from './events';
+import type {
+  Action,
+  RunState,
+  Store,
+  StoreEventType,
+  StoreListener,
+  StoreOptions,
+  StoreState,
+  Unsubscribe,
+} from './types';
+
+/**
+ * Accumulates `TokenUsage`, including AB-92's cache-token fields. `absent`
+ * and `zero` are distinct (see {@link TokenUsage}): the summed cache field is
+ * only present when at least one side reports it, so a provider/run that
+ * never reports cache activity keeps the accumulator's cache fields
+ * `undefined` rather than fabricating `0`.
+ */
+function addUsage(accumulated: TokenUsage, incoming: TokenUsage | undefined): TokenUsage {
+  if (!incoming) return accumulated;
+
+  const cacheCreationTokens =
+    accumulated.cacheCreationTokens !== undefined || incoming.cacheCreationTokens !== undefined
+      ? (accumulated.cacheCreationTokens ?? 0) + (incoming.cacheCreationTokens ?? 0)
+      : undefined;
+  const cacheReadTokens =
+    accumulated.cacheReadTokens !== undefined || incoming.cacheReadTokens !== undefined
+      ? (accumulated.cacheReadTokens ?? 0) + (incoming.cacheReadTokens ?? 0)
+      : undefined;
+
+  return {
+    prompt: accumulated.prompt + incoming.prompt,
+    completion: accumulated.completion + incoming.completion,
+    total: accumulated.total + incoming.total,
+    ...(cacheCreationTokens !== undefined ? { cacheCreationTokens } : {}),
+    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+  };
+}
+
+export function createStore(options: StoreOptions = {}): Store {
+  const { maxActions, maxSnapshots, runtime = createDefaultRuntimeServices() } = options;
+  const runs = new Map<string, RunState>();
+  const actions: Action[] = [];
+  const emitter = new CompletableEventTarget<StoreEventMap>();
+  const runSubscriptions = new Map<string, { unsubscribe: () => void }>();
+  let sequenceCounter = 0;
+
+  function getState(): StoreState {
+    return { runs, actions };
+  }
+
+  function getRun(id: string): RunState | undefined {
+    return runs.get(id);
+  }
+
+  function appendAction(runId: string, type: string, detail: unknown, timestamp: number): Action {
+    const action: Action = {
+      sequence: sequenceCounter++,
+      runId,
+      type,
+      detail,
+      timestamp,
+    };
+    actions.push(action);
+    if (maxActions !== undefined && actions.length > maxActions) {
+      actions.splice(0, actions.length - maxActions);
+    }
+
+    const runState = runs.get(runId);
+    if (runState) {
+      const updatedActions = [...runState.actions, action];
+      runs.set(runId, { ...runState, actions: updatedActions });
+    }
+
+    return action;
+  }
+
+  function recordAction(runId: string, type: string, detail: unknown): void {
+    if (!runs.has(runId)) return;
+    const action = appendAction(runId, type, detail, runtime.clock.now());
+    emitter.dispatch(new StoreActionEvent(action));
+  }
+
+  function register(activeRun: ActiveRun, id?: string): string {
+    const runId = id ?? runtime.identifiers.next('run');
+
+    const initialState: RunState = {
+      id: runId,
+      status: 'running',
+      steps: [],
+      usage: { prompt: 0, completion: 0, total: 0 },
+      finishReason: undefined,
+      error: undefined,
+      snapshots: [],
+      actions: [],
+      activeRun,
+    };
+
+    runs.set(runId, initialState);
+
+    const observable = activeRun.toObservable();
+    const subscription = observable.subscribe({
+      next(event) {
+        const eventType = event.type;
+        const timestamp = runtime.clock.now();
+        // Extract custom properties from native Event subclasses (skip inherited Event props)
+        const eventProps: Record<string, unknown> = {};
+        for (const key of Object.keys(event)) {
+          const value = (event as unknown as Record<string, unknown>)[key];
+          if (key === 'originalEvent') {
+            // Avoid retaining large/non-serializable originalEvent graphs in the action log.
+            // Flatten to a shallow, serializable summary instead.
+            if (value && typeof value === 'object') {
+              const original = value as { type?: unknown; [prop: string]: unknown };
+              const flattened: Record<string, unknown> = {};
+              if (original['type'] !== undefined) {
+                flattened['type'] = original['type'];
+              }
+              for (const prop of Object.keys(original)) {
+                if (prop === 'type') continue;
+                const propValue = original[prop];
+                if (
+                  propValue === null ||
+                  typeof propValue === 'string' ||
+                  typeof propValue === 'number' ||
+                  typeof propValue === 'boolean'
+                ) {
+                  flattened[prop] = propValue;
+                }
+              }
+              eventProps[key] = flattened;
+            } else {
+              eventProps[key] = value;
+            }
+          } else {
+            eventProps[key] = value;
+          }
+        }
+
+        const action = appendAction(runId, eventType, eventProps, timestamp);
+        // Re-read after appendAction updated the run's actions list
+        let updated = runs.get(runId);
+        if (!updated) return;
+
+        switch (eventType) {
+          case 'step.generated': {
+            const stepEvent = event as Event & { usage?: TokenUsage | undefined };
+            updated = {
+              ...updated,
+              usage: addUsage(updated.usage, stepEvent.usage),
+            };
+            break;
+          }
+          case 'step.completed': {
+            const stepEvent = event as Event & StepResult;
+            const snapshot = stepEvent.conversation.snapshot();
+            updated = {
+              ...updated,
+              steps: [...updated.steps, stepEvent],
+              snapshots: [...updated.snapshots, snapshot],
+            };
+            break;
+          }
+          case 'run.completed': {
+            const runEvent = event as Event & RunResult;
+            const snapshot = runEvent.conversation.snapshot();
+            updated = {
+              ...updated,
+              status: updated.status === 'error' ? 'error' : 'completed',
+              finishReason: runEvent.finishReason,
+              error: updated.error ?? runEvent.error,
+              snapshots: [...updated.snapshots, snapshot],
+            };
+            break;
+          }
+          case 'run.error': {
+            const errorEvent = event as Event & { error: unknown };
+            updated = {
+              ...updated,
+              status: 'error',
+              error: errorEvent.error,
+            };
+            break;
+          }
+          case 'run.aborted': {
+            const abortEvent = event as Event & { error: unknown };
+            updated = {
+              ...updated,
+              status: 'aborted',
+              error: abortEvent.error,
+            };
+            break;
+          }
+        }
+
+        if (maxSnapshots !== undefined && updated.snapshots.length > maxSnapshots) {
+          updated = {
+            ...updated,
+            snapshots: updated.snapshots.slice(-maxSnapshots),
+          };
+        }
+
+        runs.set(runId, updated);
+        emitter.dispatch(new StoreActionEvent(action));
+      },
+    });
+
+    runSubscriptions.set(runId, subscription);
+    emitter.dispatch(new RunRegisteredEvent(runId));
+    return runId;
+  }
+
+  type StoreEventObserverOrNext<K extends StoreEventType> =
+    Observer<StoreEventMap[K]> | ((value: StoreEventMap[K]) => void);
+
+  function subscribe(listener: StoreListener): Unsubscribe;
+  function subscribe<K extends StoreEventType>(
+    type: K,
+    observerOrNext?: StoreEventObserverOrNext<K>,
+    error?: (err: unknown) => void,
+    complete?: () => void,
+  ): Subscription;
+  function subscribe(
+    listenerOrType: StoreListener | StoreEventType,
+    observerOrNext?: StoreEventObserverOrNext<StoreEventType>,
+    error?: (err: unknown) => void,
+    complete?: () => void,
+  ): Unsubscribe | Subscription {
+    if (typeof listenerOrType === 'function') {
+      const listener = listenerOrType;
+      const handler = (event: StoreActionEvent) => {
+        listener(getState(), event.action);
+      };
+      emitter.addEventListener('action', handler, { signal: emitter.signal });
+      return () => {
+        emitter.removeEventListener('action', handler);
+      };
+    }
+    return emitter.subscribe(listenerOrType, observerOrNext, error, complete);
+  }
+
+  function removeRun(id: string): void {
+    if (!runs.has(id)) return;
+    emitter.dispatch(new RunRemovedEvent(id));
+    deregister(id);
+    runs.delete(id);
+  }
+
+  function deregister(id: string): void {
+    const subscription = runSubscriptions.get(id);
+    if (subscription) {
+      subscription.unsubscribe();
+      runSubscriptions.delete(id);
+    }
+  }
+
+  function dispose(): void {
+    for (const [id] of runSubscriptions) {
+      deregister(id);
+    }
+    emitter.complete();
+  }
+
+  return {
+    register,
+    getState,
+    getRun,
+    recordAction,
+    subscribe,
+    addEventListener: emitter.addEventListener.bind(emitter),
+    removeEventListener: emitter.removeEventListener.bind(emitter),
+    on: emitter.on.bind(emitter),
+    once: emitter.once.bind(emitter),
+    toObservable: emitter.toObservable.bind(emitter),
+    events: emitter.events.bind(emitter),
+    complete: emitter.complete.bind(emitter),
+    get completed() {
+      return emitter.completed;
+    },
+    removeRun,
+    deregister,
+    dispose,
+  };
+}

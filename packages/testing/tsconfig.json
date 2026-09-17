@@ -1,0 +1,9 @@
+{
+  "extends": "@repo/typescript-configuration/library.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": ["node", "bun"],
+    "noEmit": true
+  },
+  "include": ["src/**/*"]
+}

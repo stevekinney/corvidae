@@ -1,0 +1,37 @@
+{
+  "name": "@repo/weft",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit && bun ../../scripts/typecheck-contracts.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "catalog:",
+    "@libsql/client": "catalog:",
+    "@msgpack/msgpack": "catalog:",
+    "@neondatabase/serverless": "catalog:",
+    "@valibot/to-json-schema": "catalog:",
+    "better-sqlite3": "catalog:",
+    "lmdb": "catalog:",
+    "pg": "catalog:",
+    "valibot": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/typescript-configuration": "workspace:*",
+    "@types/bun": "catalog:",
+    "@types/pg": "catalog:",
+    "fake-indexeddb": "catalog:",
+    "oxlint": "catalog:",
+    "playwright": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": false
+}

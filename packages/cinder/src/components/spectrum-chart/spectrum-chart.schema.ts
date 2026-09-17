@@ -1,0 +1,99 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    label: {
+      type: 'string',
+      description: 'Accessible label for the chart. Required for screen readers.',
+    },
+    description: {
+      type: 'string',
+      description: 'Optional description rendered below the label.',
+    },
+    bins: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          label: {
+            type: 'string',
+            description: "Frequency label, e.g. '440 Hz' or '1 kHz'.",
+          },
+          value: {
+            type: 'number',
+            description: 'Magnitude or power for this bin. Non-negative.',
+          },
+        },
+        additionalProperties: false,
+        required: ['label', 'value'],
+      },
+      description: 'Frequency bins with label + magnitude value.',
+    },
+    height: {
+      type: 'number',
+      description: 'Pixel height of the chart. Default `160`.',
+    },
+    loading: {
+      type: 'boolean',
+      description: 'Whether the chart is in a loading state. Default `false`.',
+    },
+    dataTableVisibility: {
+      enum: ['screen-reader-only', 'visible', 'hidden'],
+      description: 'Controls data table visibility. Default `screen-reader-only`.',
+    },
+    dataTableCaption: {
+      type: 'string',
+      description: 'Custom data table caption; falls back to `label`.',
+    },
+    theme: {
+      type: 'object',
+      properties: {
+        foreground: {
+          type: 'string',
+        },
+        muted: {
+          type: 'string',
+        },
+        grid: {
+          type: 'string',
+        },
+        background: {
+          type: 'string',
+        },
+        palette: {
+          type: 'array',
+          items: {
+            type: 'string',
+          },
+        },
+      },
+      additionalProperties: false,
+      description:
+        'Partial visual theme override. Omitted fields inherit the surrounding application.',
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class applied to the root element.',
+    },
+  },
+  additionalProperties: false,
+  required: ['bins', 'label'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'empty',
+        reason: 'function-or-snippet',
+        description: 'Snippet rendered when there are no bins.',
+      },
+      {
+        name: 'loadingContent',
+        reason: 'function-or-snippet',
+        description: 'Snippet rendered while loading.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

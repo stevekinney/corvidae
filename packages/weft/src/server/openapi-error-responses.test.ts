@@ -1,0 +1,125 @@
+import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
+
+import type { FaultCode } from '../core/fault-code.ts';
+import { buildErrorResponses } from './openapi-error-responses.ts';
+import { generateOpenApiDocument } from './openapi.ts';
+import type { ErasedOperation } from './operation-catalog.ts';
+import { defineOperation } from './operation-registry.ts';
+import { isRecord } from './protocol-test-support.ts';
+
+function operation(producibleFaults?: readonly FaultCode[]): ErasedOperation {
+  const base = defineOperation({
+    name: 'weft.test.errors',
+    mcpExposable: false,
+    destructive: false,
+    summary: 'test operation',
+    tags: [],
+    inputSchema: z.object({}),
+    outputSchema: z.object({}),
+    access: { kind: 'public' as const },
+    transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
+    unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+    invoke: async () => ({}),
+  });
+  return producibleFaults === undefined ? base : { ...base, producibleFaults };
+}
+
+function responseSchema(response: unknown): unknown {
+  if (!isRecord(response)) return undefined;
+  const content = response['content'];
+  if (!isRecord(content)) return undefined;
+  const applicationJson = content['application/json'];
+  if (!isRecord(applicationJson)) return undefined;
+  return applicationJson['schema'];
+}
+
+describe('OpenAPI error responses', () => {
+  it('documents the generated canonical REST fault component and audited data fields (#720, #763, #771)', () => {
+    const document = generateOpenApiDocument();
+    const components = isRecord(document['components']) ? document['components'] : undefined;
+    const schemas =
+      components && isRecord(components['schemas']) ? components['schemas'] : undefined;
+
+    expect(schemas?.['Error']).toEqual({
+      type: 'object',
+      required: ['error'],
+      additionalProperties: false,
+      properties: {
+        error: { type: 'string', description: 'Human-readable error description' },
+        weftCode: {
+          type: 'string',
+          description: 'Fine-grained public Weft error code when one is available',
+        },
+        data: {
+          type: 'object',
+          description: 'Audited fault-specific context; omitted when no fields are safe to expose',
+          additionalProperties: false,
+          properties: {
+            resource: { type: 'string' },
+            identifier: { type: 'string' },
+            missingTypes: { type: 'array', items: { type: 'string' } },
+            missingWorkflowCount: { type: 'integer', minimum: 0 },
+            samplesTruncated: { type: 'boolean' },
+            maxBytes: { type: 'integer', minimum: 0 },
+            operationName: { type: 'string' },
+            transport: { type: 'string' },
+            supported: { type: 'array', items: { type: 'string' } },
+            droppedCount: { type: 'integer', minimum: 0 },
+            issues: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['path', 'message', 'code'],
+                additionalProperties: false,
+                properties: {
+                  path: {
+                    type: 'array',
+                    items: { oneOf: [{ type: 'string' }, { type: 'number' }] },
+                  },
+                  message: { type: 'string' },
+                  code: { type: 'string' },
+                },
+              },
+            },
+            method: { type: 'string' },
+          },
+        },
+      },
+    });
+  });
+
+  it('includes only universal-default statuses when an operation has no producibleFaults', () => {
+    expect(Object.keys(buildErrorResponses(operation())).toSorted()).toEqual([
+      '400',
+      '401',
+      '403',
+      '500',
+    ]);
+  });
+
+  it('includes operation-specific statuses in addition to universal defaults', () => {
+    expect(Object.keys(buildErrorResponses(operation(['Conflict', 'Timeout']))).toSorted()).toEqual(
+      ['400', '401', '403', '408', '409', '500'],
+    );
+  });
+
+  it('references the shared Error component for every response schema', () => {
+    const responses = buildErrorResponses(operation(['Conflict', 'Timeout']));
+
+    for (const response of Object.values(responses)) {
+      expect(responseSchema(response)).toEqual({ $ref: '#/components/schemas/Error' });
+    }
+  });
+
+  it('merges multiple fault codes that share one HTTP status into a single response entry', () => {
+    const responses = buildErrorResponses(operation(['NotImplemented', 'UnsupportedTransport']));
+
+    expect(Object.keys(responses).toSorted()).toEqual(['400', '401', '403', '500', '501']);
+    expect(responses['501']).toEqual(
+      expect.objectContaining({
+        description: 'NotImplemented, UnsupportedTransport',
+      }),
+    );
+  });
+});

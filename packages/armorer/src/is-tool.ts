@@ -1,0 +1,548 @@
+import type { EventIteratorOptions, ObservableLike, Observer, Subscription } from '@repo/lifecycle';
+import { z } from 'zod';
+
+import type { CoreToolContext } from './core/context';
+import type { ToolErrorCategory } from './core/errors';
+import type { SerializedToolDefinition } from './core/serialization';
+import type { JsonObject } from './core/serialization/json';
+import type { ToolAvailabilityHook, ToolDefinition } from './core/tool-definition';
+import type { ToolEventMap, ToolExecutionIdentity } from './event-types';
+import type { EffectiveToolExecutionContext, ToolRequestContext } from './execution-context';
+import type { ExecutionHandle, ExecutionLifecycle, ExecutionSnapshot } from './execution-lifecycle';
+import { policyPauseDecisionsSymbol, policyPauseTierSymbol } from './internal/approval-resume';
+import type { PolicyPauseTier, ToolCall, ToolCallReturn, ToolExecutionResult } from './types';
+
+export type ToolParametersSchema = z.ZodType;
+export type { EventIteratorOptions, ObservableLike, Observer, Subscription } from '@repo/lifecycle';
+
+export type MinimalAbortSignal = AbortSignal;
+export type TimeoutHandle = unknown;
+export type ScheduleTimeout = (callback: () => void, milliseconds?: number) => TimeoutHandle;
+export type ClearScheduledTimeout = (handle: TimeoutHandle) => void;
+
+/**
+ * Unified tool configuration type.
+ *
+ * Uses `unknown` for execute params and context to prevent type explosion
+ * from z.infer<T> while remaining compatible with all tool signatures.
+ * Runtime schema validation provides actual type safety.
+ */
+export type ToolConfiguration = {
+  identity: import('./core/identity').ToolIdentity;
+  id: import('./core/identity').ToolId;
+  display: import('./core/tool-definition').ToolDisplay;
+  name: string;
+  description: string;
+  tags?: readonly string[] | undefined;
+  metadata?: ToolMetadata | undefined;
+  risk?: import('./core/risk').ToolRisk | undefined;
+  lifecycle?: import('./core/tool-definition').ToolLifecycle | undefined;
+  availability?: ToolAvailabilityHook | undefined;
+  input: ToolParametersSchema;
+  inputJsonSchema?: JsonObject | undefined;
+  execute:
+    | ((params: unknown, context?: unknown) => Promise<unknown>)
+    | Promise<(params: unknown, context?: unknown) => Promise<unknown>>;
+  rawExecute?: unknown;
+  idempotencyKey?: (input: unknown) => string;
+  policy?: ToolPolicyHooks | undefined;
+  policyContext?: ToolPolicyContextProvider | undefined;
+  digests?: ToolDigestOptions | undefined;
+  concurrency?: number | undefined;
+  diagnostics?: ToolDiagnostics | undefined;
+};
+
+/**
+ * The friendly configuration shorthand `createToolbox()`, `.extend()`, and
+ * toolbox registration accept alongside a full `ToolConfiguration`: every
+ * field a `ToolConfiguration` requires except `id`/`identity`/`display`,
+ * which `normalizeConfiguration` (`src/create-toolbox.ts`) derives from the
+ * flat `name`/`description` that `ToolDefinition` already requires, via
+ * `defineTool`, at registration time.
+ */
+export type ToolConfigurationShorthand = Omit<ToolConfiguration, 'id' | 'identity' | 'display'> & {
+  id?: ToolConfiguration['id'];
+  identity?: ToolConfiguration['identity'];
+  display?: ToolConfiguration['display'];
+};
+
+/**
+ * Anything `createToolbox()`, `.extend()`, or toolbox registration accepts
+ * as a tool entry's configuration: a fully-formed `ToolConfiguration`, or
+ * the friendly shorthand above.
+ */
+export type ToolConfigurationInput = ToolConfiguration | ToolConfigurationShorthand;
+export type ToolConfigurationInputWithoutExecute =
+  Omit<ToolConfiguration, 'execute'> | Omit<ToolConfigurationShorthand, 'execute'>;
+
+export type ToolEventsMap = Record<string, unknown>;
+
+export type ToolValidationWarning = {
+  path: Array<string | number>;
+  code: string;
+  from: unknown;
+  to: unknown;
+  via: string;
+};
+
+export type ToolValidationReport = {
+  warnings: ToolValidationWarning[];
+  cost: number;
+};
+
+export type ToolRepairHint = {
+  path: string;
+  message: string;
+  suggestion: string;
+};
+
+export type ToolDiagnosticsAdapter = {
+  safeParseWithReport: (
+    schema: unknown,
+    value: unknown,
+  ) =>
+    | { success: true; data: unknown; report: ToolValidationReport }
+    | { success: false; error: unknown; report: ToolValidationReport };
+  createRepairHints: (error: unknown, options?: { rootLabel?: string }) => ToolRepairHint[];
+};
+
+export type ToolDiagnostics = Partial<ToolDiagnosticsAdapter>;
+
+/**
+ * Tool call with parsed arguments.
+ * Uses unknown to prevent type explosion from z.infer<T> in generic positions.
+ * Runtime schema validation provides actual type safety.
+ */
+export type ToolCallWithArguments = ToolCall & {
+  arguments: unknown;
+};
+
+export type ToolEventDetailContext = {
+  toolCall: ToolCall;
+  configuration: ToolConfiguration;
+};
+
+export type ToolMetadata = JsonObject & {
+  mutates?: boolean;
+  readOnly?: boolean;
+  dangerous?: boolean;
+  concurrency?: number;
+};
+
+export type ToolPolicyDecision = {
+  /** A policy may only reduce the caller's capabilities. */
+  capabilities?: readonly string[];
+  [policyPauseDecisionsSymbol]?: readonly ToolPolicyDecision[];
+  [policyPauseTierSymbol]?: PolicyPauseTier;
+  /**
+   * Whether the call may proceed. Optional: when omitted, it is derived from
+   * `status` (`'allow'` or no status → `true`; `'deny'`, `'needs_approval'`,
+   * `'needs_input'` → `false`). An explicit `allow` is used as-is — no
+   * agreement with `status` is validated. The two answer different
+   * questions: `status: 'needs_approval'`/`'needs_input'` pauses the call
+   * regardless of `allow`, while `allow: false` denies outright when no
+   * pause is requested.
+   */
+  allow?: boolean;
+  reason?: string;
+  status?: 'allow' | 'deny' | 'needs_approval' | 'needs_input';
+  action?: {
+    message?: string;
+    schema?: unknown;
+  };
+};
+
+/**
+ * A `ToolPolicyDecision` whose `allow` has been resolved — what the policy
+ * pipeline consumes after `resolveToolPolicyAllow` fills in an omitted
+ * `allow` from `status`.
+ */
+export type ResolvedToolPolicyDecision = ToolPolicyDecision & {
+  allow: boolean;
+};
+
+/**
+ * Fill in an omitted `allow` from `status`: `'deny'`, `'needs_approval'`,
+ * and `'needs_input'` resolve to `allow: false`; `'allow'` (or no status —
+ * a decision carrying only, say, a `reason`) resolves to `allow: true`.
+ * A decision that already sets `allow` is returned unchanged.
+ */
+export function resolveToolPolicyAllow(decision: ToolPolicyDecision): ResolvedToolPolicyDecision {
+  if (decision.allow !== undefined) {
+    return decision as ResolvedToolPolicyDecision;
+  }
+  const allow = decision.status === undefined || decision.status === 'allow';
+  return { ...decision, allow };
+}
+
+export type ToolPolicyContext = {
+  toolName: string;
+  toolCall: ToolCall;
+  params: unknown;
+  inputDigest?: string;
+  policyContext?: Record<string, unknown>;
+  tags?: readonly string[];
+  metadata?: ToolMetadata;
+  configuration: ToolConfiguration;
+};
+
+export type ToolPolicyAfterContext = ToolPolicyContext & {
+  outcome: 'success' | 'error' | 'denied' | 'action_required';
+  result?: unknown;
+  outputDigest?: string;
+  errorCategory?: ToolErrorCategory;
+  error?: unknown;
+  reason?: string;
+};
+
+export type ToolPolicyHooks = {
+  /**
+   * `resolvePolicyDecision` (`src/create-tool.ts` and `src/create-toolbox.ts`)
+   * tolerates a bare `boolean` return at runtime — `typeof decision ===
+   * 'boolean'` is treated as an `allow` shorthand equivalent to `{ allow:
+   * decision }` — in addition to a full `ToolPolicyDecision`.
+   */
+  beforeExecute?: (
+    context: ToolPolicyContext,
+  ) => ToolPolicyDecision | boolean | void | Promise<ToolPolicyDecision | boolean | void>;
+  afterExecute?: (context: ToolPolicyAfterContext) => void | Promise<void>;
+};
+
+export type ToolPolicyContextProvider = (
+  context: ToolPolicyContext,
+) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>;
+
+export type ToolDigestOptions =
+  | boolean
+  | {
+      input?: boolean;
+      output?: boolean;
+      algorithm?: 'sha256';
+    };
+
+export type DefaultToolEvents = {
+  'status-update': { status: string };
+  'execute-start': { params: unknown } & ToolEventDetailContext & ToolExecutionIdentity;
+  'validate-success': { params: unknown; parsed: unknown } & ToolEventDetailContext;
+  'validate-error': {
+    params: unknown;
+    error: unknown;
+    report?: ToolValidationReport;
+    repairHints?: ToolRepairHint[];
+  } & ToolEventDetailContext;
+  'execute-success': { result: unknown } & ToolEventDetailContext;
+  'execute-error': { error: unknown } & ToolEventDetailContext;
+  settled: {
+    result?: unknown;
+    error?: unknown;
+    /**
+     * Settles only once the callback's own returned promise has settled (or
+     * thrown), distinct from this event's own cancellation-race settlement
+     * (AB-289). See {@link ExecutionHandle.whenSettled}.
+     */
+    callbackCompletion?: Promise<ExecutionSnapshot>;
+  } & ToolEventDetailContext &
+    ToolExecutionIdentity;
+  'policy-denied': { params: unknown; reason?: string } & ToolEventDetailContext;
+  'policy-action-required': { params: unknown; reason?: string } & ToolEventDetailContext;
+  'tool.started': {
+    params: unknown;
+    startedAt: number;
+    inputDigest?: string;
+  } & ToolEventDetailContext;
+  'tool.finished': {
+    status: 'success' | 'error' | 'denied' | 'cancelled' | 'paused';
+    durationMs: number;
+    startedAt: number;
+    finishedAt: number;
+    result?: unknown;
+    error?: unknown;
+    reason?: string;
+    errorCategory?: ToolErrorCategory;
+    inputDigest?: string;
+    outputDigest?: string;
+  } & ToolEventDetailContext;
+  progress: { percent?: number; message?: string; checkpoint?: unknown } & ToolExecutionIdentity;
+  'stream-start': { mode: 'stream' | 'collect' };
+  'stream-chunk': { chunk: unknown; index: number };
+  'stream-end': { chunks: number; completed: boolean };
+  'stream-error': { error: unknown; index: number };
+  'output-chunk': { chunk: unknown };
+  log: { level: 'debug' | 'info' | 'warn' | 'error'; message: string; data?: unknown };
+  cancelled: { reason?: string };
+};
+
+export type MergeEvents<Custom extends ToolEventsMap> = DefaultToolEvents & Custom;
+
+/**
+ * Event type used by tool event listeners.
+ * With lifecycle, events are native Event subclasses with named properties.
+ * The Detail type parameter is kept for backward compatibility but maps to Event.
+ */
+export type ToolCustomEvent<Detail = unknown> = Event & Detail;
+
+/**
+ * A form-mode elicitation request: asks for structured data matching a JSON
+ * Schema object.
+ */
+export interface ToolElicitationFormRequest {
+  message: string;
+  mode?: 'form';
+  /** JSON Schema object describing the requested form data. */
+  schema?: Record<string, unknown>;
+}
+
+/**
+ * A URL-mode elicitation request: asks the caller to open a link out-of-band.
+ */
+export interface ToolElicitationUrlRequest {
+  message: string;
+  mode: 'url';
+  /** The URL the caller should open. */
+  url: string;
+}
+
+/**
+ * A request to elicit input (approval, form data, or a URL-mode
+ * out-of-band flow) from whoever is on the other end of a tool's
+ * execution — typically an MCP client, but the shape is transport-agnostic.
+ *
+ * Mirrors the MCP spec's form/URL elicitation split without depending on
+ * `@modelcontextprotocol/sdk` types. This is a discriminated union on `mode`
+ * so a URL-mode request can never be constructed without its `url`, and a
+ * form-mode request can never carry a stray `url` that would silently be
+ * dropped by a `mode`-unaware caller.
+ */
+export type ToolElicitationRequest = ToolElicitationFormRequest | ToolElicitationUrlRequest;
+
+/** The response to a {@link ToolElicitationRequest}. */
+export type ToolElicitationResult =
+  | { action: 'accept'; content?: Record<string, unknown> }
+  | { action: 'decline' }
+  | { action: 'cancel' };
+
+/** Requests elicitation from whoever is driving the current tool execution. */
+export type ToolElicitationRequester = (
+  request: ToolElicitationRequest,
+) => Promise<ToolElicitationResult>;
+
+/**
+ * Context passed to tool execute functions.
+ */
+export interface RuntimeToolContext extends CoreToolContext {
+  requestContext?: Readonly<ToolRequestContext>;
+  effectiveContext?: Readonly<EffectiveToolExecutionContext>;
+  dispatch: (event: Event) => boolean;
+  /**
+   * Reports progress or liveness for the current tool call. A typed wrapper
+   * over `dispatch` that constructs and dispatches the existing
+   * `ToolProgressEvent`/`DefaultToolEvents['progress']` event, so tool
+   * authors no longer hand-construct an `Event` themselves.
+   *
+   * `checkpoint` carries an arbitrary, verbatim value an activity-backed
+   * execution can forward to Weft as a heartbeat detail; it is never
+   * re-serialized or reconstructed from `percent`/`message`.
+   *
+   * A no-op once the tool call has completed or been aborted — calling it
+   * outside of an active tool execution never throws, matching the
+   * tolerant-context pattern of this interface's other methods. It never
+   * resets or extends an explicit `timeout`.
+   */
+  progress: <TDetail = unknown>(update: {
+    readonly percent?: number;
+    readonly message?: string;
+    readonly checkpoint?: TDetail;
+  }) => void;
+  meta?: { toolName: string; callId?: string };
+  toolCall: ToolCallWithArguments;
+  configuration: ToolConfiguration;
+  durableOperationKey?: string;
+  signal?: MinimalAbortSignal;
+  /** Execution timeout in milliseconds. */
+  timeout?: number;
+  stream?: boolean;
+  /** Requests elicitation (approval/human input) from the calling MCP client, when available. */
+  elicit?: ToolElicitationRequester;
+  /** Stable locator for this execution and its revisioned state. */
+  execution?: ExecutionHandle;
+  /**
+   * Opaque, per-execution data supplied on this call's {@link ToolExecuteOptions.executionContext}.
+   * Reflects the call-time value, falling back to the toolbox's own base
+   * context's `executionContext` (if any) when the call did not supply one.
+   * See {@link ToolExecuteOptions.executionContext} for why this exists.
+   */
+  executionContext?: Readonly<Record<string, unknown>>;
+}
+
+export type ToolContext<_E extends ToolEventsMap = DefaultToolEvents> = RuntimeToolContext;
+
+export interface ToolExecuteOptions {
+  requestContext?: ToolRequestContext;
+  effectiveContext?: EffectiveToolExecutionContext;
+  clearTimeoutFunction?: ClearScheduledTimeout;
+  durableOperationKey?: string;
+  now?: () => number;
+  signal?: MinimalAbortSignal;
+  setTimeoutFunction?: ScheduleTimeout;
+  /** Execution timeout in milliseconds. */
+  timeout?: number;
+  /**
+   * When true, preserve async-iterable results as live streams.
+   * When false/omitted, async-iterables are collected into arrays.
+   */
+  stream?: boolean;
+  /** Requests elicitation (approval/human input) from the calling MCP client, when available. */
+  elicit?: ToolElicitationRequester;
+  /** Stable identity supplied by an owning runtime or durable projection. */
+  executionId?: string;
+  /** Identity of the runtime that owns this execution. */
+  ownerId?: string;
+  /** Parent execution used to correlate nested toolbox and tool calls. */
+  parentExecutionId?: string;
+  /**
+   * Call-time trace context (e.g. an OpenTelemetry `Context`), threaded into
+   * the per-call {@link RuntimeToolContext.traceContext} for this execution
+   * only. When omitted, `createToolbox` falls back to the toolbox's own
+   * base context (`options.context.traceContext`, if the toolbox was built
+   * with one) rather than leaving `context.traceContext` unset.
+   */
+  traceContext?: unknown;
+  /**
+   * Opaque, per-execution data threaded into {@link RuntimeToolContext.executionContext}
+   * for this call only — never persisted, exported, or interpreted by
+   * armorer itself. Exists so a runtime layered on top (e.g. operative's
+   * agent loop) can hand a tool call-time state that must NOT be captured
+   * once at tool construction and reused across calls — for example a
+   * per-run child registry or the current run's own id, which a tool
+   * reused across two concurrent runs must read fresh on every call rather
+   * than share from whichever run happened to be active when the tool was
+   * built.
+   */
+  executionContext?: Record<string, unknown>;
+}
+
+/**
+ * Options for tool execution with parsed parameters.
+ */
+export type ToolExecuteWithOptions = ToolExecuteOptions & {
+  params: unknown;
+  callId?: string;
+};
+
+/**
+ * Type guard to check if a value is a Toolbox tool.
+ *
+ * @param obj - The value to check
+ * @returns True if the value is an Tool (has required properties: id, identity, name, description, input, execute, configuration)
+ *
+ * @example
+ * ```typescript
+ * import { isTool, createTool } from '@repo/armorer';
+ *
+ * const tool = createTool({ ... });
+ * if (isTool(tool)) {
+ *   // TypeScript knows tool is an Tool
+ *   await tool.execute({ ... });
+ * }
+ * ```
+ */
+export function isTool(obj: unknown): obj is Tool {
+  return (
+    typeof obj === 'function' &&
+    'id' in obj &&
+    'identity' in obj &&
+    'name' in obj &&
+    'description' in obj &&
+    'input' in obj &&
+    'execute' in obj &&
+    'configuration' in obj
+  );
+}
+
+/**
+ * A tool that can be included in a Toolbox and executed.
+ *
+ * Use with type parameters for compile-time safety on a specific tool:
+ * ```ts
+ * const myTool: Tool<typeof mySchema> = createTool({...});
+ * ```
+ *
+ * Use without type parameters for collections:
+ * ```ts
+ * const tools: Tool[] = [tool1, tool2, tool3];
+ * ```
+ */
+export type Tool<
+  T extends ToolParametersSchema = ToolParametersSchema,
+  E extends ToolEventsMap = DefaultToolEvents,
+  R = unknown,
+  M extends ToolMetadata | undefined = ToolMetadata | undefined,
+> = ToolDefinition & {
+  name: string;
+  description: string;
+  input: T;
+  configuration: ToolConfiguration;
+  /** @internal Schema marker for inference. */
+  __schema?: T;
+  tags?: readonly string[];
+  metadata: M;
+  (params: unknown): Promise<ToolCallReturn<R>>;
+  run(params: z.infer<T>, context: ToolContext<E>): Promise<R>;
+
+  // Event listener methods
+  addEventListener: <K extends keyof ToolEventMap & string>(
+    type: K,
+    listener: (event: ToolEventMap[K]) => void | Promise<void>,
+    options?: AddEventListenerOptions,
+  ) => () => void;
+  dispatchEvent: (event: Event) => boolean;
+  emit: <K extends keyof E & string>(type: K, detail: E[K]) => boolean;
+
+  // Observable-based event methods
+  on: <K extends keyof ToolEventMap & string>(
+    type: K,
+    options?: { signal?: AbortSignal },
+  ) => ObservableLike<ToolEventMap[K]>;
+  once: <K extends keyof ToolEventMap & string>(
+    type: K,
+    listener: (event: ToolEventMap[K]) => void,
+  ) => void;
+  subscribe: <K extends keyof ToolEventMap & string>(
+    type: K,
+    observerOrNext?: Observer<ToolEventMap[K]> | ((value: ToolEventMap[K]) => void),
+    error?: (err: unknown) => void,
+    complete?: () => void,
+  ) => Subscription;
+  toObservable: () => ObservableLike<Event>;
+
+  // Async iteration
+  events: <K extends keyof ToolEventMap & string>(
+    type: K,
+    options?: EventIteratorOptions,
+  ) => AsyncIterableIterator<ToolEventMap[K]>;
+
+  // Lifecycle methods
+  complete: () => Promise<void>;
+  readonly completed: boolean;
+  readonly activeExecutions: number;
+  readonly executionSignal: AbortSignal;
+  readonly executions: ExecutionLifecycle;
+  whenIdle: () => Promise<void>;
+
+  // Tool execution methods
+  execute: {
+    (call: ToolCallWithArguments, options?: ToolExecuteOptions): Promise<ToolExecutionResult>;
+    (params: unknown, options?: ToolExecuteOptions): Promise<ToolCallReturn<R>>;
+  };
+  executeWith: (options: ToolExecuteWithOptions) => Promise<ToolExecutionResult>;
+  rawExecute(params: z.infer<T>, context: ToolContext<E>): Promise<R>;
+  /** Serializes the tool's configuration (see `toJSON` in `src/create-tool.ts`). */
+  toJSON: () => SerializedToolDefinition;
+};
+
+export type RunnableTool<
+  T extends ToolParametersSchema = ToolParametersSchema,
+  E extends ToolEventsMap = DefaultToolEvents,
+  R = unknown,
+  M extends ToolMetadata | undefined = ToolMetadata | undefined,
+> = Tool<T, E, R, M>;

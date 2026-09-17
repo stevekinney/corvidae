@@ -1,0 +1,273 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category data-display
+   * @status alpha
+   * @purpose Responsive SVG frequency-bin bar chart for visualizing audio spectrum magnitude data.
+   * @tag chart
+   * @tag spectrum
+   * @tag signal
+   * @tag audio
+   * @useWhen Displaying pre-computed frequency-domain magnitude data from an FFT or spectrum analyzer.
+   * @useWhen Showing a static frequency response or spectrum snapshot with labelled frequency bins.
+   * @avoidWhen Real-time live audio spectrum is needed — feed live AnalyserNode data as props yourself.
+   * @avoidWhen A full time × frequency heatmap is needed — use spectrogram instead.
+   * @avoidWhen General categorical bar comparison — use bar-chart instead.
+   * @related waveform, spectrogram, bar-chart
+   */
+  export type { SpectrumChartProps, SpectrumChartSchemaProps } from './spectrum-chart.types.ts';
+</script>
+
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import {
+    chartPaletteColor,
+    createChartGeometry,
+    dataTableClass,
+    formatNumericValue,
+    observeChartFontLoading,
+    resolveChartTheme,
+  } from '../../_internal/chart/chart-utilities.ts';
+  import { classNames } from '../../utilities/class-names.ts';
+  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import type { SpectrumChartProps } from './spectrum-chart.types.ts';
+
+  let {
+    label,
+    description,
+    bins,
+    height = 160,
+    loading = false,
+    dataTableVisibility = 'screen-reader-only',
+    dataTableCaption,
+    theme,
+    class: customClassName,
+    empty,
+    loadingContent,
+    id,
+    ...rest
+  }: SpectrumChartProps = $props();
+
+  const generatedId = $props.id();
+  const rootId = $derived(id ?? generatedId);
+  const descriptionId = $derived(description ? `${rootId}-description` : undefined);
+
+  let measuredWidth = $state(400);
+
+  const observeResize = useResizeObserver((entries) => {
+    const entry = entries[0];
+    // Ignore zero-width measurements (hidden / display:none) so the last good
+    // width is kept rather than collapsing the geometry.
+    if (entry && entry.contentRect.width > 0) measuredWidth = entry.contentRect.width;
+  });
+
+  const isEmpty = $derived(bins.length === 0);
+  const resolvedTheme = $derived(resolveChartTheme(theme));
+  let rootElement = $state<HTMLElement>();
+  let measureText = $state(false);
+  let measurementVersion = $state(0);
+  onMount(() => {
+    measureText = true;
+    return observeChartFontLoading(() => {
+      measurementVersion += 1;
+    });
+  });
+
+  // Spectrum magnitudes are linear non-negative. Coerce each bin's value to a
+  // finite, non-negative number so a stray NaN/Infinity/negative can't break the
+  // axis domain or invert bar geometry.
+  function sanitizeMagnitude(value: number): number {
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }
+
+  // Single-pass max over the sanitized magnitudes — NOT Math.max(...spread),
+  // which can overflow the argument limit on a very large bin array.
+  const maxValue = $derived.by(() => {
+    let max = 0;
+    for (const bin of bins) {
+      const magnitude = sanitizeMagnitude(bin.value);
+      if (magnitude > max) max = magnitude;
+    }
+    return max;
+  });
+
+  // Y-axis ticks (5 ticks from 0 to maxValue)
+  const tickCount = 5;
+  const yTicks = $derived.by(() => {
+    if (maxValue <= 0) return [0];
+    return Array.from({ length: tickCount }, (_, index) => (maxValue * index) / (tickCount - 1));
+  });
+
+  // Feed the actual guide labels into the shared geometry calculator so long
+  // numeric/frequency labels receive enough room without fixed margins.
+  const maxXLabels = 8;
+  const xLabelStep = $derived(Math.max(1, Math.ceil(bins.length / maxXLabels)));
+  const xTickLabels = $derived(
+    bins.filter((_, index) => index % xLabelStep === 0).map((bin) => bin.label),
+  );
+  const yTickLabels = $derived(
+    yTicks.map((tick, index) => formatNumericValue(tick, undefined, undefined, { index })),
+  );
+  const geometry = $derived(
+    createChartGeometry(measuredWidth, height, {
+      xTickLabels,
+      yTickLabels,
+      measureText,
+      measurementElement: rootElement,
+      measurementVersion,
+    }),
+  );
+  const plotWidth = $derived(geometry.plotWidth);
+  const plotHeight = $derived(geometry.plotHeight);
+
+  function scaleY(value: number): number {
+    if (maxValue <= 0) return plotHeight;
+    return plotHeight - (value / maxValue) * plotHeight;
+  }
+
+  const barWidth = $derived(bins.length > 0 ? plotWidth / bins.length : 0);
+
+  type SpectrumBar = {
+    x: number;
+    y: number;
+    barHeight: number;
+    barWidth: number;
+    label: string;
+    value: number;
+  };
+  const spectrumBars = $derived.by((): SpectrumBar[] => {
+    return bins.map((bin, index) => {
+      const magnitude = sanitizeMagnitude(bin.value);
+      // Scale against the real maxValue (with a zero guard) — NOT Math.max(maxValue, 1),
+      // which would prevent data whose max is < 1 from ever reaching the top tick.
+      const barHeight = maxValue > 0 ? (magnitude / maxValue) * plotHeight : 0;
+      return {
+        x: index * barWidth + 1,
+        y: plotHeight - barHeight,
+        barHeight,
+        barWidth: Math.max(1, barWidth - 2),
+        label: bin.label,
+        value: magnitude,
+      };
+    });
+  });
+
+  const hasDataTable = $derived(dataTableVisibility !== 'hidden');
+</script>
+
+<figure
+  {...rest}
+  {@attach observeResize}
+  bind:this={rootElement}
+  id={rootId}
+  class={classNames('cinder-spectrum-chart', customClassName)}
+  aria-label={label}
+  aria-describedby={descriptionId}
+  style:--_cinder-chart-foreground={resolvedTheme.foreground}
+  style:--_cinder-chart-muted={resolvedTheme.muted}
+  style:--_cinder-chart-grid={resolvedTheme.grid}
+  style:--_cinder-chart-background={resolvedTheme.background}
+  style:--_cinder-chart-series-color={chartPaletteColor(0, resolvedTheme.palette)}
+>
+  {#if description}
+    <p id={descriptionId} class="cinder-spectrum-chart__description">{description}</p>
+  {/if}
+  <div
+    class="cinder-spectrum-chart__viewport"
+    style:height="{height}px"
+    data-cinder-loading={loading || undefined}
+  >
+    {#if loading}
+      <div class="cinder-spectrum-chart__state">
+        {#if loadingContent}{@render loadingContent()}{:else}Loading…{/if}
+      </div>
+    {:else if isEmpty}
+      <div class="cinder-spectrum-chart__state">
+        {#if empty}{@render empty()}{:else}No spectrum data{/if}
+      </div>
+    {/if}
+    <svg
+      role="img"
+      viewBox={`0 0 ${measuredWidth} ${height}`}
+      aria-hidden={loading || isEmpty ? 'true' : undefined}
+      aria-labelledby={!loading && !isEmpty ? `${rootId}-svg-title` : undefined}
+    >
+      {#if !loading && !isEmpty}
+        <title id="{rootId}-svg-title">{label}</title>
+      {/if}
+      <!-- Plot geometry only renders with data — otherwise the loading/empty
+           overlay would have a stray baseline grid line and ticks drawn under it
+           (yTicks falls back to [0] when there is no data). -->
+      {#if !loading && !isEmpty}
+        <g transform={`translate(${geometry.marginLeft}, ${geometry.marginTop})`}>
+          <!-- Y-axis ticks -->
+          {#each yTicks as tick, index (index)}
+            <text
+              class="cinder-spectrum-chart__tick-label"
+              x={-6}
+              y={scaleY(tick)}
+              text-anchor="end"
+              dominant-baseline="middle"
+              fill={resolvedTheme.muted}
+              >{formatNumericValue(tick, undefined, undefined, { index })}</text
+            >
+            <line
+              class="cinder-spectrum-chart__grid-line"
+              x1="0"
+              x2={plotWidth}
+              y1={scaleY(tick)}
+              y2={scaleY(tick)}
+              aria-hidden="true"
+              stroke={resolvedTheme.grid}
+            />
+          {/each}
+          <!-- Frequency bars -->
+          {#each spectrumBars as bar, index (index)}
+            <rect
+              class="cinder-spectrum-chart__bar"
+              x={bar.x}
+              y={bar.y}
+              width={bar.barWidth}
+              height={bar.barHeight}
+              aria-hidden="true"
+              data-cinder-bin={bar.label}
+              fill={chartPaletteColor(0, resolvedTheme.palette)}
+            />
+          {/each}
+          <!-- X-axis frequency labels (sampled to avoid overlap) -->
+          {#each spectrumBars as bar, index (index)}
+            {#if index % xLabelStep === 0}
+              <text
+                class="cinder-spectrum-chart__tick-label"
+                x={bar.x + bar.barWidth / 2}
+                y={plotHeight + 16}
+                text-anchor="middle"
+                dominant-baseline="auto">{bar.label}</text
+              >
+            {/if}
+          {/each}
+        </g>
+      {/if}
+    </svg>
+  </div>
+  {#if hasDataTable}
+    <table class={dataTableClass(dataTableVisibility)}>
+      <caption>{dataTableCaption ?? label}</caption>
+      <thead>
+        <tr>
+          <th scope="col">Frequency</th>
+          <th scope="col">Magnitude</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Keyed by index, not label: frequency-bin labels are not guaranteed unique. -->
+        {#each spectrumBars as bar, index (index)}
+          <tr>
+            <td>{bar.label}</td>
+            <td>{formatNumericValue(bar.value, undefined, undefined, { index })}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {/if}
+</figure>

@@ -7,12 +7,19 @@
   "bracketSpacing": true,
   "arrowParens": "always",
   "endOfLine": "lf",
-  "plugins": ["prettier-plugin-organize-imports"],
+  "plugins": ["prettier-plugin-organize-imports", "prettier-plugin-svelte"],
   "overrides": [
     {
       "files": "*.md",
       "options": {
-        "tabWidth": 2
+        "tabWidth": 2,
+        "proseWrap": "never"
+      }
+    },
+    {
+      "files": "*.svelte",
+      "options": {
+        "parser": "svelte"
       }
     }
   ]

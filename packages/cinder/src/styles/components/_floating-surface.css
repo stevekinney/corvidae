@@ -1,0 +1,34 @@
+@layer cinder.components {
+  .cinder-_floating-surface {
+    position: fixed;
+    z-index: var(--cinder-z-popover);
+    box-sizing: border-box;
+    max-block-size: min(28rem, calc(100vh - var(--cinder-space-4)));
+    margin: 0;
+    padding: var(--cinder-space-1);
+    overflow: visible;
+    overscroll-behavior: contain;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    box-shadow: var(--cinder-shadow-lg);
+  }
+
+  .cinder-_floating-surface:where([role='listbox'], [role='menu']) {
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .cinder-_floating-surface[data-cinder-position-ready='false'] {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-_floating-surface {
+      border-color: CanvasText;
+      box-shadow: none;
+    }
+  }
+}

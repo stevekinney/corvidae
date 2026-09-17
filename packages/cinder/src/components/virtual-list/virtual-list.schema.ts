@@ -1,0 +1,122 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    itemHeight: {
+      type: 'number',
+      description:
+        "Each item's extent in pixels along the axis being scrolled: its height by\ndefault, or its width under `horizontal`. By default every row is assumed to\nbe exactly this size. When `dynamicSize` is true this becomes the initial\nestimate for rows that have not been measured yet.",
+    },
+    dynamicSize: {
+      type: 'boolean',
+      description:
+        'Measure each rendered row with `ResizeObserver` and cache the result,\ninstead of assuming every row is exactly `itemHeight` along the scrolled\naxis. Use this when rows wrap, contain images, or otherwise vary in size.\nComposes with `horizontal`, where each row is measured by its width.\n\nDefaults to `false`. While false, no row is measured, no size is cached,\nand no scroll correction runs — the fixed-height path stays the fast path.\nThe component still observes its own scroll container to track viewport\nsize, as it always has; that is independent of this prop.',
+    },
+    horizontal: {
+      type: 'boolean',
+      description:
+        "Scrolls and lays rows out along the inline axis instead of the block axis.\n\n`itemHeight` and `height` are REINTERPRETED rather than renamed: `itemHeight`\nbecomes each item's width in pixels along the main axis, and `height` becomes\nthe container's inline-size. The `--cinder-virtual-list-height` custom property\nkeeps its name too and switches to driving `inline-size`, so an existing theme\noverride keeps working when this is turned on.\n\nRight-to-left is handled: the writing direction is resolved from the container's\ncomputed style at mount, and the scroll offset is read from the start (right)\nedge in that case.\n\nDefaults to false.",
+    },
+    overscan: {
+      type: 'number',
+      description: 'Extra rows rendered before and after the visible window.\nDefaults to 5.',
+    },
+    height: {
+      type: 'string',
+      description:
+        'CSS extent of the native scroll container across the axis it scrolls: its\nblock-size by default, or its inline-size under `horizontal`.\nDefaults to `"20rem"`.',
+    },
+    stickToBottom: {
+      type: 'boolean',
+      description:
+        'When true, appending items while the viewport is already at the bottom\nkeeps the newest item pinned in view. Appending while scrolled up leaves the\nscroll position unchanged.',
+    },
+    reverse: {
+      type: 'boolean',
+      description:
+        'Chat-transcript behaviour: the list starts at its end and returns there on\nevery append.\n\nItems stay in their natural order — oldest at index 0, newest last. `reverse`\nnames the anchoring, not the ordering, and the array is never flipped.\n\nDeliberately distinct from `stickToBottom`, which pins only when the reader is\nalready at the bottom. `reverse` pins on every append regardless of where the\nreader is. When both are set, `reverse` wins.\n\nPrepending — loading a page of older history — never moves the reader: the row\nthey were looking at stays put while the list grows above it.\n\nThat last guarantee REQUIRES `getKey`. Telling a prepend from an append means\ncomparing key sequences, and without `getKey` the keys are array indexes: a\nprepend turns `[0, 1, 2]` into `[0, 1, 2, 3, 4]`, which is indistinguishable\nfrom an append and pins the reader to the end instead of holding their place.\nPass `getKey` whenever the list can grow at the front.\n\nDefaults to false.',
+    },
+    scrollRestoration: {
+      type: 'boolean',
+      description:
+        'Remember the scroll position across navigation, keyed by\n`scrollRestorationId`.\n\nThe position is written to `sessionStorage` when the list tears down, and read\nback when it mounts. Deliberately not on every scroll: that would mean a\nstorage write per frame during a fling, and teardown is the last moment the\nposition is knowable anyway. The consequence is that a tab closed by a crash,\nrather than by navigating away, will not have saved.\n\nStorage failures are swallowed: a browser in private mode or at its quota throws\non write — and on read — and losing a remembered offset must not break the list.\n\nHas no effect without a `scrollRestorationId` — see that prop for why.\n\nExplicitly `| undefined`, like the other conditionally-supplied props: this\npackage compiles with `exactOptionalPropertyTypes`, under which optional and\nundefined-valued differ, and `scrollRestoration={enabled ? true : undefined}`\nwould otherwise fail to typecheck.\n\nDefaults to false.',
+    },
+    stickyItems: {
+      type: 'array',
+      items: {
+        type: 'number',
+      },
+      description:
+        'Item indexes that stay visible at the leading edge while the reader scrolls\npast them — section headers in a grouped list, most often.\n\nA sticky row is kept mounted even after its own index leaves the rendered\nwindow, which is the part virtualization would otherwise break: unmounting it\nwould make the heading vanish exactly when it is meant to be pinned.\n\nIndexes outside the list, duplicates, and non-integers are dropped rather than\nthrowing — a bad sticky index is a cosmetic problem, not a correctness one.',
+    },
+    smoothScroll: {
+      type: 'boolean',
+      description:
+        "Animate `scrollToIndex` by default instead of jumping.\n\nEquivalent to passing `behavior: 'smooth'` on every call; an explicit\n`behavior` in the call's options still wins. Scroll corrections under\n`dynamicSize` are never animated whatever this is set to — a smooth\ncorrection would visibly perform the jump it exists to hide.\n\nDefaults to false.",
+    },
+    adaptiveOverscan: {
+      type: 'boolean',
+      description:
+        'Grow `overscan` while the reader is scrolling fast, and shrink it back when\nthey slow down.\n\n`overscan` becomes a floor rather than a fixed value: a fast fling renders\nfurther ahead to cut pop-in, and a stationary list falls back to exactly what\nwas configured so the DOM stays small. The growth is bounded, because an\nunbounded overscan during a fling would mount thousands of rows and defeat the\npoint of virtualizing at all.\n\nDefaults to false.',
+    },
+    scrollRestorationId: {
+      type: 'string',
+      description:
+        "Stable id under which `scrollRestoration` saves this list's position.\n\nRequired for restoration to do anything. There is deliberately no default:\nan implicit key derived from position or order would silently hand one\nlist's remembered offset to a different list after a refactor, and two lists\non one page would overwrite each other. Choose something tied to what the\nlist shows, such as a route or collection name.",
+    },
+    tabindex: {
+      type: 'number',
+      description:
+        'Override the default focus behavior. The component sets `tabindex="0"`\nby default so keyboard users can reach the native scroll container for\narrow-key scrolling. Pass `tabindex={-1}` when the viewport should be\nprogrammatically focusable without entering the tab order.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-virtual-list`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['itemHeight'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'getKey',
+        reason: 'function-or-snippet',
+        description:
+          'Stable key extractor. Omit only when items are append-only and never\nreordered; the component will fall back to full-array indexes.\n\nRequired in practice under `dynamicSize`: measured sizes are cached by key,\nso index-derived keys will mis-attribute cached sizes if items ever reorder.',
+      },
+      {
+        name: 'items',
+        reason: 'generic-type-parameter',
+        required: true,
+        description: 'Items in full logical order. Only the visible window is mounted.',
+      },
+      {
+        name: 'onEndReached',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the reader scrolls within `overscan` items of the end of the list.\n\nExplicitly `| undefined` rather than merely optional: this package compiles with\n`exactOptionalPropertyTypes`, under which the two differ, and a consumer writing\n`onEndReached={enabled ? load : undefined}` would otherwise fail to typecheck.\n\nFires once per approach, not once per scroll event, and re-arms when the item\ncount changes — so appending in response to it allows the next approach to fire\nwhile a source that returns nothing does not spin.',
+      },
+      {
+        name: 'onStartReached',
+        reason: 'function-or-snippet',
+        description:
+          "Called when the reader scrolls within `overscan` items of the start of the\nlist. Pair with `onEndReached` for bi-directional infinite scroll.\n\nLatched the same way as `onEndReached`. Prepending in response preserves the\nreader's position rather than jumping to the new start — but only with `getKey`,\nsince index-derived keys make a prepend look exactly like an append.",
+      },
+      {
+        name: 'ref',
+        reason: 'unknown-shape',
+        description: 'Typed programmatic handle. Use `bind:ref` to receive it.',
+      },
+      {
+        name: 'row',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Rendered row snippet. Receives the item and its virtual row context.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

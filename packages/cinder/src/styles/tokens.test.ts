@@ -1,0 +1,116 @@
+/**
+ * Validates token naming conventions across all per-component token CSS files.
+ *
+ * Every custom property in src/styles/tokens/<name>.css must use the prefix
+ * --cinder-<name>-* (public) or --_cinder-<name>-* (private).
+ */
+
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import { describe, expect, test } from 'bun:test';
+
+import { extractRootBlock } from '../test/token-introspection.ts';
+
+const TOKENS_DIR = join(import.meta.dir, 'tokens');
+const TOKENS_BASE_PATH = join(import.meta.dir, 'tokens-base.css');
+
+function extractReducedMotionRootBlock(css: string): string {
+  const reducedMotionMatch = css.match(
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*:root:not\(\[data-cinder-reduced-motion='false'\]\):not\(\[data-reduced-motion='off'\]\):not\(\s*\[data-reduced-motion='on'\]\s*\)\s*\{([\s\S]*?)\n\s*\}\s*\}/m,
+  );
+
+  if (!reducedMotionMatch?.[1]) {
+    throw new Error('Could not find reduced-motion :root block in tokens-base.css');
+  }
+
+  return reducedMotionMatch[1];
+}
+
+describe('token naming conventions', () => {
+  test('per-component token files follow --cinder-<name>-* naming', async () => {
+    let files: string[];
+    try {
+      files = await readdir(TOKENS_DIR);
+    } catch {
+      // No token files yet — that's fine.
+      return;
+    }
+
+    const cssFiles = files.filter((f) => f.endsWith('.css') && f !== '.gitkeep');
+    if (cssFiles.length === 0) return;
+
+    const errors: string[] = [];
+
+    for (const file of cssFiles) {
+      const componentName = file.replace(/\.css$/, '');
+      const source = await readFile(join(TOKENS_DIR, file), 'utf-8');
+
+      // Find all custom property declarations.
+      const declarations = [...source.matchAll(/--([a-zA-Z0-9_-]+)\s*:/g)];
+
+      for (const match of declarations) {
+        const fullName = `--${match[1]}`;
+
+        const isPublic = fullName.startsWith(`--cinder-${componentName}-`);
+        const isPrivate = fullName.startsWith(`--_cinder-${componentName}-`);
+
+        if (!isPublic && !isPrivate) {
+          errors.push(
+            `${file}: "${fullName}" must be prefixed --cinder-${componentName}-* or --_cinder-${componentName}-*`,
+          );
+        }
+      }
+    }
+
+    expect(errors).toEqual([]);
+  });
+});
+
+describe('global motion tokens', () => {
+  test('tokens-base.css declares dedicated repeating animation duration tokens', async () => {
+    const css = await readFile(TOKENS_BASE_PATH, 'utf-8');
+    const rootBlock = extractRootBlock(css);
+
+    expect(rootBlock).toContain('--cinder-duration-spin: 750ms;');
+    expect(rootBlock).toContain('--cinder-duration-pulse: 1.4s;');
+    expect(rootBlock).toContain('--cinder-duration-progress-bar-indeterminate: 1.6s;');
+    expect(rootBlock).toContain('--cinder-duration-progress-ring-spin: 1.4s;');
+  });
+
+  test('repeating animation duration tokens collapse to 0ms under prefers-reduced-motion', async () => {
+    const css = await readFile(TOKENS_BASE_PATH, 'utf-8');
+    const reducedMotionRootBlock = extractReducedMotionRootBlock(css);
+
+    expect(reducedMotionRootBlock).toContain('--cinder-duration-spin: 0ms;');
+    expect(reducedMotionRootBlock).toContain('--cinder-duration-pulse: 0ms;');
+    expect(reducedMotionRootBlock).toContain('--cinder-duration-progress-bar-indeterminate: 0ms;');
+    expect(reducedMotionRootBlock).toContain('--cinder-duration-progress-ring-spin: 0ms;');
+  });
+
+  // Named per token rather than asserted as a set, because the failure this
+  // guards against is one token being left out of the reduced-motion documents
+  // -- which is exactly what happened when `--cinder-duration-pulse` was added.
+  // A set-shaped assertion would have passed while a single token stayed live.
+  test('every repeating duration token appears in BOTH reduced-motion blocks', async () => {
+    const css = await readFile(TOKENS_BASE_PATH, 'utf-8');
+    const repeating = [
+      '--cinder-duration-spin',
+      '--cinder-duration-pulse',
+      '--cinder-duration-progress-bar-indeterminate',
+      '--cinder-duration-progress-ring-spin',
+    ];
+
+    const mediaQueryBlock = extractReducedMotionRootBlock(css);
+    for (const property of repeating) {
+      expect(mediaQueryBlock).toContain(`${property}: 0ms;`);
+    }
+
+    // The forced context is a separate selector from the media query, and a
+    // token can be missing from one while present in the other.
+    const forcedBlock = css.slice(css.indexOf("[data-reduced-motion='on']"));
+    for (const property of repeating) {
+      expect(forcedBlock).toContain(`${property}: 0ms;`);
+    }
+  });
+});

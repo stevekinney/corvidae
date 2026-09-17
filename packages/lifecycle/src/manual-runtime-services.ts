@@ -1,0 +1,337 @@
+import {
+  deriveIdentifierPrefix,
+  generateProcessUniqueIdentifierSeed,
+  hashSeed,
+} from './identifier-seed';
+import type {
+  DeferredDrainReport,
+  RuntimeServices,
+  RuntimeTimeoutHandle,
+} from './runtime-services';
+
+/**
+ * The deterministic {@link RuntimeServices} implementation (AB-92 AC5/AC6).
+ * Time only moves when {@link ManualRuntimeServices.advance} or
+ * {@link ManualRuntimeServices.setTime} is called; timers, identifiers, and
+ * randomness are all driven from explicit, seedable state rather than any
+ * real global. No member of this module — including {@link
+ * createManualRuntimeServices} itself — reaches a real timer, a real clock,
+ * or `Math.random`. The one narrow exception is the process-unique
+ * `identifierSeed` this instance falls back to when a caller omits one
+ * (Coordinator ruling on AB-337): that fallback's own `crypto.randomUUID()`
+ * call lives in `./identifier-seed.ts`, not here, and is used only to seed
+ * this instance's minted identifiers — never its clock, timers, or
+ * `random.next()` sequence, all of which stay exactly as deterministic as
+ * before.
+ */
+export interface ManualRuntimeServices extends RuntimeServices {
+  /**
+   * The virtual wall clock's starting value, as an ISO-8601 string — the
+   * exact `origin` this instance was constructed with (or the default when
+   * omitted). Read by AB-263's Bureau reproduction-artifact assembler,
+   * which needs the seed that produced this instance's clock, not merely
+   * its current reading.
+   */
+  readonly clockOrigin: string;
+  /**
+   * The identifier seed this instance was constructed with, or a generated,
+   * process-unique value when {@link CreateManualRuntimeServicesOptions.identifierSeed}
+   * was omitted (Coordinator ruling on AB-337). Exposed so a reproduction
+   * artifact always records the exact seed in effect (AB-263) — replaying
+   * that artifact re-supplies this value explicitly, so an unpinned
+   * default's non-reproducibility across processes never affects replay.
+   */
+  readonly identifierSeed: string;
+  /**
+   * The short, stable prefix {@link deriveIdentifierPrefix} derived from
+   * {@link identifierSeed} and embedded on every identifier this
+   * instance's `identifiers.next(kind)` mints. Exposed so a test can
+   * derive an expected identifier
+   * (`` `${runtime.identifierPrefix}-${kind}-${n}` ``) instead of pinning a
+   * literal string that would drift with the seed.
+   */
+  readonly identifierPrefix: string;
+  /**
+   * The random seed this instance was constructed with (or the default when
+   * omitted) — the exact seed `random.next()`'s sequence is deterministic
+   * from.
+   */
+  readonly randomSeed: string;
+  /**
+   * Advances the virtual monotonic clock (and, in lockstep, the virtual
+   * wall clock) by `milliseconds`, firing every timer whose deadline falls
+   * within the advanced window, in deadline order. Awaits the microtask
+   * queue between each fired callback, so a callback that schedules another
+   * timer inside the advanced window still fires within this same call. An
+   * interval re-arms at its own period inside the window rather than firing
+   * once. Never touches a real timer and never resolves on a wall-clock
+   * deadline — the returned promise settles once every due timer (including
+   * ones scheduled during this call, within the window) has fired.
+   */
+  advance(milliseconds: number): Promise<void>;
+  /**
+   * Sets the virtual wall clock to an absolute epoch-millisecond value
+   * without firing timers or moving the monotonic clock — the two clocks
+   * are independent seams, matching a real system where the wall clock can
+   * be adjusted (e.g. NTP) without the monotonic clock jumping.
+   */
+  setTime(epochMilliseconds: number): void;
+  /** Every timer currently armed (not yet fired, not cleared), by deadline. */
+  pendingTimers(): readonly { readonly handle: RuntimeTimeoutHandle; readonly dueAt: number }[];
+  /** Labels of every `deferred.track()`ed promise that has not yet settled. */
+  outstandingDeferred(): readonly string[];
+}
+
+export interface CreateManualRuntimeServicesOptions {
+  /** The virtual wall clock's starting value, as an ISO-8601 string. Defaults to a fixed epoch. */
+  origin?: string;
+  /**
+   * Disambiguates the identifiers this instance mints (Coordinator ruling
+   * on AB-337, amending AB-252). `identifiers.next(kind)` returns
+   * `` `${prefix}-${kind}-${n}` ``, where `prefix` is
+   * {@link deriveIdentifierPrefix}`(identifierSeed)` and `n` is a per-`kind`
+   * counter starting at 1 — so two instances constructed with different
+   * seeds are, barring a hash collision, extremely unlikely to mint the
+   * same identifier, while two instances constructed with the same seed
+   * still mint byte-identical sequences
+   * (AB-92). Omit it to get a generated, process-unique seed instead (see
+   * {@link ManualRuntimeServices.identifierSeed}); pass an explicit value
+   * for a reproducible sequence.
+   */
+  identifierSeed?: string;
+  /** Seeds the deterministic pseudo-random generator backing `random.next()`. */
+  randomSeed?: string;
+}
+
+const DEFAULT_ORIGIN = '2020-01-01T00:00:00.000Z';
+const DEFAULT_RANDOM_SEED = 'manual-runtime-services';
+
+/**
+ * mulberry32 — a small, dependency-free deterministic PRNG. Two generators
+ * built from the same seed produce the same sequence; different seeds
+ * diverge. Never calls `Math.random`.
+ */
+function createSeededRandom(seed: string): () => number {
+  let state = hashSeed(seed);
+  return () => {
+    state |= 0;
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+interface TimerEntry {
+  readonly handle: number;
+  dueAt: number;
+  readonly callback: () => void;
+  readonly periodMilliseconds?: number;
+  cleared: boolean;
+  fired: boolean;
+}
+
+function findNextDueTimer(
+  entries: Map<number, TimerEntry>,
+  targetMilliseconds: number,
+): TimerEntry | undefined {
+  let next: TimerEntry | undefined;
+  for (const entry of entries.values()) {
+    if (entry.cleared || entry.fired || entry.dueAt > targetMilliseconds) continue;
+    if (
+      !next ||
+      entry.dueAt < next.dueAt ||
+      (entry.dueAt === next.dueAt && entry.handle < next.handle)
+    ) {
+      next = entry;
+    }
+  }
+  return next;
+}
+
+function rearmOrFinishTimer(entry: TimerEntry, dueAt: number): void {
+  if (entry.periodMilliseconds === undefined) {
+    entry.fired = true;
+    return;
+  }
+  entry.dueAt = dueAt + Math.max(0, entry.periodMilliseconds);
+}
+
+interface TrackedDeferred {
+  readonly label: string;
+  outcome: 'resolved' | 'rejected' | undefined;
+}
+
+/**
+ * The quiescence window `deferred.drain()`/`outstandingDeferred()` waits
+ * for progress within, purely on the microtask queue (never a real timer) —
+ * see {@link createDefaultRuntimeServices}'s identical rationale.
+ */
+const DRAIN_QUIESCENCE_MICROTASK_TICKS = 25;
+
+/**
+ * Creates a fresh, fully independent {@link ManualRuntimeServices} instance.
+ * Two instances constructed in the same process share no state: advancing
+ * one never fires the other's timers, and their identifier counters and
+ * timer/deferred bookkeeping are entirely separate.
+ */
+export function createManualRuntimeServices(
+  options: CreateManualRuntimeServicesOptions = {},
+): ManualRuntimeServices {
+  // `clockOrigin` is derived once here and `originEpochMilliseconds` parsed
+  // from that SAME string, so the recorded seed (exposed on the returned
+  // `ManualRuntimeServices` as `clockOrigin`) and the epoch the wall clock
+  // actually starts at can never drift apart.
+  const clockOrigin = options.origin ?? DEFAULT_ORIGIN;
+  const originEpochMilliseconds = Date.parse(clockOrigin);
+
+  let monotonicMilliseconds = 0;
+  // wallClockNow = wallClockOffsetMilliseconds + monotonicMilliseconds. `setTime` rewrites the
+  // offset directly, so the wall clock and monotonic clock stay independently adjustable.
+  let wallClockOffsetMilliseconds = originEpochMilliseconds;
+
+  const randomSeed = options.randomSeed ?? DEFAULT_RANDOM_SEED;
+  const identifierSeed = options.identifierSeed ?? generateProcessUniqueIdentifierSeed();
+  const identifierPrefix = deriveIdentifierPrefix(identifierSeed);
+  const random = createSeededRandom(randomSeed);
+
+  const identifierCounters = new Map<string, number>();
+
+  let nextTimerHandle = 0;
+  const timerEntries = new Map<number, TimerEntry>();
+
+  const tracked = new Map<string, TrackedDeferred>();
+  let trackedSequence = 0;
+
+  function scheduleTimer(
+    callback: () => void,
+    milliseconds: number | undefined,
+    periodMilliseconds?: number,
+  ): RuntimeTimeoutHandle {
+    const handle = nextTimerHandle++;
+    timerEntries.set(handle, {
+      handle,
+      dueAt: monotonicMilliseconds + Math.max(0, milliseconds ?? 0),
+      callback,
+      ...(periodMilliseconds === undefined ? {} : { periodMilliseconds }),
+      cleared: false,
+      fired: false,
+    });
+    return handle;
+  }
+
+  function clearTimer(handle: RuntimeTimeoutHandle): void {
+    if (typeof handle !== 'number') return;
+    const entry = timerEntries.get(handle);
+    if (entry) entry.cleared = true;
+  }
+
+  async function drainQuiescently(): Promise<DeferredDrainReport> {
+    const keys = [...tracked.keys()];
+    const settled: { label: string; outcome: 'resolved' | 'rejected' }[] = [];
+    const outstanding: string[] = [];
+
+    let pending = keys.filter((key) => tracked.get(key)?.outcome === undefined);
+    while (pending.length > 0) {
+      for (let tick = 0; tick < DRAIN_QUIESCENCE_MICROTASK_TICKS; tick++) {
+        await Promise.resolve();
+      }
+      const stillPending = pending.filter((key) => tracked.get(key)?.outcome === undefined);
+      if (stillPending.length === pending.length) break;
+      pending = stillPending;
+    }
+
+    for (const key of keys) {
+      const entry = tracked.get(key);
+      if (!entry) continue;
+      if (entry.outcome === undefined) {
+        outstanding.push(entry.label);
+      } else {
+        settled.push({ label: entry.label, outcome: entry.outcome });
+        tracked.delete(key);
+      }
+    }
+
+    return { settled, outstanding };
+  }
+
+  const services: ManualRuntimeServices = {
+    clockOrigin,
+    identifierSeed,
+    identifierPrefix,
+    randomSeed,
+    clock: {
+      now: () => wallClockOffsetMilliseconds + monotonicMilliseconds,
+      nowISO: () => new Date(wallClockOffsetMilliseconds + monotonicMilliseconds).toISOString(),
+    },
+    monotonic: {
+      now: () => monotonicMilliseconds,
+    },
+    timers: {
+      setTimeout: (callback, milliseconds) => scheduleTimer(callback, milliseconds),
+      clearTimeout: (handle) => clearTimer(handle),
+      setInterval: (callback, milliseconds) =>
+        scheduleTimer(callback, milliseconds, Math.max(0, milliseconds ?? 0)),
+      clearInterval: (handle) => clearTimer(handle),
+    },
+    identifiers: {
+      next: (kind) => {
+        const next = (identifierCounters.get(kind) ?? 0) + 1;
+        identifierCounters.set(kind, next);
+        return `${identifierPrefix}-${kind}-${next}`;
+      },
+    },
+    random: {
+      next: random,
+    },
+    deferred: {
+      track: (promise, label) => {
+        const key = `${label}#${trackedSequence++}`;
+        const entry: TrackedDeferred = { label, outcome: undefined };
+        tracked.set(key, entry);
+        void promise.then(
+          () => {
+            entry.outcome = 'resolved';
+            return undefined;
+          },
+          () => {
+            entry.outcome = 'rejected';
+            return undefined;
+          },
+        );
+      },
+      drain: drainQuiescently,
+    },
+    advance: async (milliseconds) => {
+      const targetMilliseconds = monotonicMilliseconds + Math.max(0, milliseconds);
+      for (;;) {
+        const next = findNextDueTimer(timerEntries, targetMilliseconds);
+        if (!next) break;
+
+        monotonicMilliseconds = next.dueAt;
+        rearmOrFinishTimer(next, monotonicMilliseconds);
+
+        next.callback();
+        // Awaits the microtask queue between each callback, so a timer
+        // scheduled from inside this callback (within the advanced window)
+        // is visible to the next iteration's search above.
+        await Promise.resolve();
+      }
+      monotonicMilliseconds = targetMilliseconds;
+    },
+    setTime: (epochMilliseconds) => {
+      wallClockOffsetMilliseconds = epochMilliseconds - monotonicMilliseconds;
+    },
+    pendingTimers: () =>
+      [...timerEntries.values()]
+        .filter((entry) => !entry.cleared && !entry.fired)
+        .toSorted((a, b) => a.dueAt - b.dueAt)
+        .map((entry) => ({ handle: entry.handle, dueAt: entry.dueAt })),
+    outstandingDeferred: () =>
+      [...tracked.values()]
+        .filter((entry) => entry.outcome === undefined)
+        .map((entry) => entry.label),
+  };
+
+  return services;
+}

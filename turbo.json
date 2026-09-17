@@ -2,27 +2,73 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["build/**", ".svelte-kit/**"],
+      "dependsOn": ["transit"]
     },
     "dev": {
       "persistent": true,
       "cache": false
     },
     "lint": {
-      "outputs": []
+      "outputs": [],
+      "dependsOn": ["transit"]
     },
     "lint:fix": {
       "cache": false
     },
     "typecheck": {
-      "outputs": []
+      "outputs": [],
+      "dependsOn": ["transit"]
     },
     "test": {
-      "outputs": []
+      "outputs": [],
+      "dependsOn": ["transit"],
+      "env": ["CODEX_CI"]
     },
     "clean": {
       "cache": false
+    },
+    "preview": {
+      "persistent": true,
+      "cache": false
+    },
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "@repo/chat-room#lint": {
+      "dependsOn": ["transit"],
+      "outputs": [
+        ".svelte-kit/*.json",
+        ".svelte-kit/*.d.ts",
+        ".svelte-kit/types/**",
+        ".svelte-kit/generated/**"
+      ]
+    },
+    "@repo/chat-room#typecheck": {
+      "dependsOn": ["transit"],
+      "outputs": [
+        ".svelte-kit/*.json",
+        ".svelte-kit/*.d.ts",
+        ".svelte-kit/types/**",
+        ".svelte-kit/generated/**"
+      ]
+    },
+    "@repo/cinder-browser-fixtures#test": {
+      "dependsOn": ["transit"],
+      "env": ["CODEX_CI"],
+      "outputs": [".playwright/manifest.json"]
+    },
+    "@repo/cinder-browser-fixtures#build": {
+      "dependsOn": ["transit"],
+      "outputs": ["build/**", ".playwright/manifest.json"]
     }
-  }
+  },
+  "globalDependencies": [
+    ".oxlintrc.json",
+    ".prettierrc.json",
+    ".prettierignore",
+    ".stylelintrc.json",
+    "tsconfig.json",
+    "scripts/**"
+  ]
 }

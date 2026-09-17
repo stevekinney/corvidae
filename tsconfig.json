@@ -5,5 +5,5 @@
     "types": ["bun"]
   },
   "include": ["scripts"],
-  "exclude": ["node_modules", "apps", "packages"]
+  "exclude": ["node_modules", "applications", "packages"]
 }

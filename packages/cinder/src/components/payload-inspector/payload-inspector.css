@@ -1,0 +1,126 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../badge/badge.css';
+@import '../copy-button/copy-button.css';
+@import '../json-viewer/json-viewer.css';
+
+@layer cinder.components {
+  .cinder-payload-inspector {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    overflow: hidden;
+    background: var(--cinder-surface);
+    font-size: var(--cinder-text-sm);
+    user-select: none;
+  }
+
+  /* ----------------------------------------
+   * Header bar
+   * ---------------------------------------- */
+
+  .cinder-payload-inspector__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-1) var(--cinder-space-2) var(--cinder-space-1) var(--cinder-space-3);
+    background: var(--cinder-surface-raised);
+    border-bottom: 1px solid var(--cinder-border-muted);
+    flex-wrap: wrap;
+  }
+
+  .cinder-payload-inspector__label {
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .cinder-payload-inspector__header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    flex-wrap: wrap;
+  }
+
+  .cinder-payload-inspector__size {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ----------------------------------------
+   * Panel content
+   * ---------------------------------------- */
+
+  .cinder-payload-inspector__panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-2);
+    overflow: auto;
+  }
+
+  /* JsonViewer carries its own border/background/padding for standalone use,
+     but nested here it would double the framing this component's own header
+     bar + outer border already provide — strip it back to flush content. */
+  .cinder-payload-inspector__panel .cinder-json-viewer {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .cinder-payload-inspector__primitive {
+    margin: 0;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+    background: var(--cinder-surface-raised);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border-radius: var(--cinder-radius-sm);
+    border: 1px solid var(--cinder-border);
+    white-space: pre-wrap;
+    word-break: break-all;
+    user-select: text;
+  }
+
+  .cinder-payload-inspector__panel .cinder-json-viewer {
+    user-select: text;
+  }
+
+  /* ----------------------------------------
+   * Notices and placeholders
+   * ---------------------------------------- */
+
+  .cinder-payload-inspector__notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-3);
+    background: var(--cinder-surface-raised);
+    border-radius: var(--cinder-radius-sm);
+    border: 1px solid var(--cinder-border);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    user-select: text;
+  }
+
+  .cinder-payload-inspector__notice--warning {
+    background: var(--cinder-status-warning-background);
+    border-color: var(--cinder-status-warning-border);
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-payload-inspector__empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--cinder-space-4);
+    color: var(--cinder-text-disabled);
+    font-size: var(--cinder-text-sm);
+    font-style: italic;
+  }
+}

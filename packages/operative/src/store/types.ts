@@ -1,0 +1,131 @@
+import type { ConversationSnapshot } from '@repo/conversationalist';
+import type { ObservableLike, RuntimeServices, Subscription } from '@repo/lifecycle';
+
+import type { ActiveRun } from '../create-run';
+import type { FinishReason, StepResult, TokenUsage } from '../types';
+import type { StoreEventMap } from './events';
+
+/**
+ * `'aborting'` (AB-205/AB-37) is a transitional status: `Bureau.abortRun`
+ * reports it the moment an abort is requested but before the underlying
+ * `ActiveRun.abort()` call's teardown has settled. `Store`'s own `RunState`
+ * (`store.ts`) never writes this value itself — it only ever transitions
+ * `'running'` directly to a terminal status when the run's own terminal
+ * event fires — so `'aborting'` is surfaced only by a caller (Bureau) layering
+ * its own in-flight-abort tracking on top of a still-`'running'` `RunState`.
+ */
+export type RunStatus = 'running' | 'aborting' | 'completed' | 'error' | 'aborted';
+
+export interface Action {
+  readonly sequence: number;
+  readonly runId: string;
+  readonly type: string;
+  readonly detail: unknown;
+  readonly timestamp: number;
+}
+
+export interface RunState {
+  readonly id: string;
+  readonly status: RunStatus;
+  readonly steps: readonly StepResult[];
+  readonly usage: TokenUsage;
+  readonly finishReason: FinishReason | undefined;
+  readonly error: unknown;
+  readonly snapshots: readonly ConversationSnapshot[];
+  readonly actions: readonly Action[];
+  readonly activeRun: ActiveRun;
+}
+
+export interface StoreState {
+  readonly runs: ReadonlyMap<string, RunState>;
+  readonly actions: readonly Action[];
+}
+
+export interface StoreOptions {
+  maxActions?: number | undefined;
+  maxSnapshots?: number | undefined;
+  /**
+   * The AB-92/AB-252/AB-253 injectable runtime-service seam. Resolved
+   * exactly once at construction — omitted, this store reads the real
+   * globals via `createDefaultRuntimeServices()`; a test composes its own
+   * deterministic instance with `createManualRuntimeServices()` so action
+   * timestamps and synthetic run ids are fully time-controlled.
+   */
+  runtime?: RuntimeServices | undefined;
+}
+
+export type StoreListener = (state: StoreState, action: Action) => void;
+export type Unsubscribe = () => void;
+
+export type StoreEventType = keyof StoreEventMap & string;
+
+export interface Store {
+  register(activeRun: ActiveRun, id?: string): string;
+  getState(): StoreState;
+  getRun(id: string): RunState | undefined;
+
+  /**
+   * Appends a synthetic {@link Action} to `runId`'s action log outside the
+   * normal `activeRun.toObservable()` flow (AB-12 run-inspector timeline).
+   *
+   * Some journal-worthy transitions never pass through a run's own event
+   * emitter — most notably durable-recovery reattachment, which fires
+   * before `register`'s subscription exists to observe it, and workflow
+   * version-mismatch detection, which is reported via a plain callback (see
+   * `WorkflowVersionMismatchEvent`'s JSDoc) rather than the per-run
+   * `CombinedOperativeEventMap`. `recordAction` gives callers a supported
+   * way to stamp those transitions into the same sequenced action log the
+   * observable-driven path uses, so timeline consumers see one ordered
+   * stream regardless of origin.
+   *
+   * A no-op when `runId` is not registered (there is no `RunState` to append
+   * to) — mirrors `getRun`'s "no throw on unknown id" convention.
+   */
+  recordAction(runId: string, type: string, detail: unknown): void;
+
+  /** Convenience subscribe overload: listener receives (state, action) on every action. */
+  subscribe(listener: StoreListener): Unsubscribe;
+  /** EventTarget-style subscribe for a single event type. */
+  subscribe<K extends keyof StoreEventMap & string>(
+    type: K,
+    observerOrNext?:
+      | {
+          next?: (value: StoreEventMap[K]) => void;
+          error?: (err: unknown) => void;
+          complete?: () => void;
+        }
+      | ((value: StoreEventMap[K]) => void),
+    error?: (err: unknown) => void,
+    complete?: () => void,
+  ): Subscription;
+
+  addEventListener<K extends keyof StoreEventMap & string>(
+    type: K,
+    listener: ((event: StoreEventMap[K]) => void) | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+
+  removeEventListener<K extends keyof StoreEventMap & string>(
+    type: K,
+    listener: ((event: StoreEventMap[K]) => void) | null,
+    options?: boolean | EventListenerOptions,
+  ): void;
+
+  on<K extends keyof StoreEventMap & string>(type: K): ObservableLike<StoreEventMap[K]>;
+
+  once<K extends keyof StoreEventMap & string>(
+    type: K,
+    listener: (event: StoreEventMap[K]) => void,
+  ): void;
+
+  toObservable(): ObservableLike<StoreEventMap[keyof StoreEventMap & string]>;
+
+  events<K extends keyof StoreEventMap & string>(type: K): AsyncIterableIterator<StoreEventMap[K]>;
+
+  complete(): void;
+  readonly completed: boolean;
+
+  removeRun(id: string): void;
+  deregister(id: string): void;
+  dispose(): void;
+}

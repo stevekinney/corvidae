@@ -1,0 +1,21 @@
+{
+  "name": "@repo/lifecycle",
+  "private": true,
+  "description": "Typed EventTarget, async iterators, observables, hooks, and lifecycle utilities for agent-bureau.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc --noEmit && bun ../../scripts/typecheck-contracts.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@repo/typescript-configuration": "workspace:*",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

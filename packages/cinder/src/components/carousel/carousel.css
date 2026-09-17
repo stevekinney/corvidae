@@ -1,0 +1,211 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-carousel {
+    display: grid;
+    gap: var(--cinder-carousel-gap, var(--cinder-space-3));
+  }
+
+  .cinder-carousel__viewport {
+    position: relative;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x pan-y pinch-zoom;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface-raised);
+  }
+
+  .cinder-carousel__viewport::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cinder-carousel__viewport[data-cinder-dragging],
+  .cinder-carousel__viewport[data-cinder-dragging] * {
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  /* The drag-to-scroll engine disables itself under prefers-reduced-motion
+     (matches useReducedMotion() in the Svelte module) — the grab/grabbing
+     affordance must not promise drag behavior it won't deliver. */
+  @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    .cinder-carousel__viewport {
+      cursor: grab;
+    }
+
+    .cinder-carousel__viewport[data-cinder-dragging] {
+      cursor: grabbing;
+    }
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    :root:is([data-cinder-reduced-motion='false'], [data-reduced-motion='off'])
+      .cinder-carousel__viewport {
+      cursor: grab;
+    }
+
+    :root:is([data-cinder-reduced-motion='false'], [data-reduced-motion='off'])
+      .cinder-carousel__viewport[data-cinder-dragging] {
+      cursor: grabbing;
+    }
+  }
+
+  .cinder-carousel__slide {
+    flex: 0 0 var(--cinder-carousel-slide-size, 100%);
+    min-inline-size: var(--cinder-carousel-slide-size, 100%);
+    scroll-snap-align: start;
+    display: grid;
+    gap: var(--cinder-space-3);
+    padding: var(--cinder-space-4);
+  }
+
+  .cinder-carousel[data-cinder-align='center'] .cinder-carousel__slide {
+    scroll-snap-align: center;
+  }
+
+  .cinder-carousel__slide[data-cinder-collapsed] {
+    block-size: 0;
+    min-block-size: 0;
+    padding-block: 0;
+    overflow: hidden;
+  }
+
+  .cinder-carousel__link {
+    display: grid;
+    gap: var(--cinder-space-3);
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .cinder-carousel__image {
+    width: 100%;
+    border-radius: var(--cinder-radius-md);
+    object-fit: cover;
+    aspect-ratio: var(--cinder-carousel-aspect-ratio, 16 / 9);
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-carousel__title {
+    margin: 0;
+    font: var(--cinder-font-semibold) var(--cinder-text-lg) / 1.3 var(--cinder-font-sans);
+  }
+
+  .cinder-carousel__description {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    line-height: 1.5;
+  }
+
+  .cinder-carousel__controls {
+    display: flex;
+    gap: var(--cinder-space-2);
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .cinder-carousel__nav {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-carousel__control,
+  .cinder-carousel__dot {
+    appearance: none;
+    border: 1px solid var(--cinder-border-muted);
+    background: var(--cinder-surface);
+    color: inherit;
+    border-radius: var(--cinder-radius-full);
+    cursor: pointer;
+  }
+
+  .cinder-carousel__control {
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border-radius: var(--cinder-radius-md);
+    font: inherit;
+  }
+
+  .cinder-carousel__dots {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    flex-wrap: wrap;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  .cinder-carousel__dot {
+    width: var(--cinder-carousel-dot-size, 2.75rem);
+    height: var(--cinder-carousel-dot-size, 2.75rem);
+    padding: 0;
+  }
+
+  .cinder-carousel__counter {
+    color: var(--cinder-text-muted);
+    font: var(--cinder-font-medium) var(--cinder-text-sm) / 1.4 var(--cinder-font-sans);
+    white-space: nowrap;
+  }
+
+  .cinder-carousel__dot::before {
+    content: '';
+    display: block;
+    width: 0.625rem;
+    height: 0.625rem;
+    margin: auto;
+    border-radius: var(--cinder-radius-full);
+    background: currentColor;
+    opacity: 0.55;
+  }
+
+  .cinder-carousel__dot[aria-current='true']::before {
+    background: var(--cinder-accent-solid);
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-carousel__viewport {
+      scroll-behavior: auto;
+    }
+  }
+
+  @media (hover: hover) {
+    .cinder-carousel__control:hover,
+    .cinder-carousel__dot:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-carousel__control:focus-visible,
+  .cinder-carousel__dot:focus-visible {
+    /* cinder-focus-ring-owner: parent */
+    outline: none;
+    box-shadow: 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-carousel__control:focus-visible,
+    .cinder-carousel__dot:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: var(--cinder-ring-width);
+      box-shadow: none;
+    }
+  }
+
+  .cinder-carousel__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}

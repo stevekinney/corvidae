@@ -1,0 +1,95 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    listboxId: {
+      type: 'string',
+      description: 'Stable listbox id. Defaults to a generated component id.',
+    },
+    open: {
+      type: 'boolean',
+      description: 'Open state. Bindable. Default `false`.',
+    },
+    caretIndex: {
+      type: 'number',
+      description:
+        "Caret offset within the anchor value. Optional — when omitted, it's\nderived from the anchor's live `selectionEnd`. Consumers that already\ntrack trigger-relative caret state (e.g. from `detectTrigger`) may keep\npassing it explicitly; the derivation exists for hosts that don't need\nanything more precise than \"where the caret currently is.\"",
+    },
+    query: {
+      type: 'string',
+      description: "Query text after the trigger character. Bindable. Default `''`.",
+    },
+    placement: {
+      enum: [
+        'top',
+        'bottom',
+        'left',
+        'right',
+        'top-start',
+        'top-end',
+        'bottom-start',
+        'bottom-end',
+      ],
+      description: "Caret-relative placement. Default `'bottom-start'`.",
+    },
+    offset: {
+      type: 'number',
+      description: 'Distance in px between the caret and menu. Default `6`.',
+    },
+    label: {
+      type: 'string',
+      description: "Accessible listbox label. Default `'Commands'`.",
+    },
+    class: {
+      type: 'string',
+      description: 'Class merged with `.cinder-command-menu`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'anchor',
+        reason: 'unknown-shape',
+        required: true,
+        description: 'Text field used as the caret-position anchor.',
+      },
+      {
+        name: 'empty',
+        reason: 'function-or-snippet',
+        description: 'Optional empty state rendered after item registration settles.',
+      },
+      {
+        name: 'items',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Render command items for the current query.',
+      },
+      {
+        name: 'onComplete',
+        reason: 'function-or-snippet',
+        description:
+          'Invoked when the user accepts inline ghost-text completion. Passing this\nprop is what enables the feature — omit it and no ghost text ever\nrenders. See `command-menu.a11y.md` for the full keyboard model.',
+      },
+      {
+        name: 'onDismiss',
+        reason: 'function-or-snippet',
+        description: 'Invoked when Escape or outside pointerdown dismisses the menu.',
+      },
+      {
+        name: 'onSelect',
+        reason: 'function-or-snippet',
+        description: 'Invoked when an enabled command is activated.',
+      },
+      {
+        name: 'onStateChange',
+        reason: 'function-or-snippet',
+        description: 'One-way state output for host-owned field ARIA.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

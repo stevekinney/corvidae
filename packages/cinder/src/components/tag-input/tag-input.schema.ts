@@ -1,0 +1,172 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    max: {
+      type: 'number',
+      description: 'Maximum number of tags allowed. Non-finite values disable the cap.',
+    },
+    id: {
+      type: 'string',
+      description:
+        'Stable id for the visible text input. Falls back to FormField context or a generated id.',
+    },
+    value: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description: 'Bindable tags.',
+    },
+    duplicateValuesAllowed: {
+      type: 'boolean',
+      description: 'Allow the same trimmed tag value to appear more than once.',
+      default: false,
+    },
+    commitOnSubmit: {
+      type: 'boolean',
+      description: 'Commit a non-empty pending draft before the parent form submits.',
+      default: false,
+    },
+    autocapitalize: {
+      enum: ['off', 'on', 'characters', 'none', 'sentences', 'words', null],
+      description: 'Autocapitalization hint forwarded to the visible text input.',
+    },
+    enterkeyhint: {
+      enum: ['enter', 'done', 'go', 'next', 'previous', 'search', 'send', null],
+      description: 'Virtual-keyboard Enter hint forwarded to the visible text input.',
+    },
+    inputmode: {
+      enum: ['email', 'tel', 'url', 'none', 'search', 'text', 'numeric', 'decimal', null],
+      description: 'Virtual-keyboard input mode forwarded to the visible text input.',
+    },
+    maxlength: {
+      anyOf: [
+        {
+          type: 'number',
+        },
+        {
+          type: 'null',
+        },
+      ],
+      description: 'Maximum pending-text length forwarded to the visible text input.',
+    },
+    placeholder: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+      description: 'Placeholder text shown while the pending tag input is empty.',
+    },
+    readonly: {
+      type: 'boolean',
+      description:
+        'Render the pending-tag input as read-only and make committed tags non-removable.',
+      default: false,
+    },
+    spellcheck: {
+      enum: [false, true, 'true', 'false', null],
+      description: 'Spellcheck setting forwarded to the visible text input.',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Disable the input and chip removal affordances.',
+    },
+    name: {
+      type: 'string',
+      description:
+        'Hidden input name used for native form submission; one hidden field is rendered per tag.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class merged onto the root element.',
+    },
+    'aria-label': {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+      description: 'Accessible label applied when no labelled-by chain is present.',
+    },
+    'aria-invalid': {
+      enum: [false, true, 'true', 'false', 'grammar', 'spelling', null],
+      description:
+        'Manual invalid-state override used when no inline validation message or FormField invalid state is active.',
+    },
+    'aria-labelledby': {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+      description: 'Element ids that label both the text input and the committed-tag listbox.',
+    },
+    'aria-describedby': {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+      description:
+        'Additional description ids composed into the visible input aria-describedby chain.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'autocomplete',
+        reason: 'unknown-shape',
+        description: 'Autocomplete hint forwarded to the visible text input.',
+      },
+      {
+        name: 'delimiter',
+        reason: 'unknown-shape',
+        description:
+          'Key that commits the current input into a tag. Enter always commits separately.',
+      },
+      {
+        name: 'onblur',
+        reason: 'function-or-snippet',
+      },
+      {
+        name: 'onfocus',
+        reason: 'function-or-snippet',
+      },
+      {
+        name: 'oninput',
+        reason: 'function-or-snippet',
+      },
+      {
+        name: 'onkeydown',
+        reason: 'function-or-snippet',
+      },
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+      },
+      {
+        name: 'validate',
+        reason: 'function-or-snippet',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

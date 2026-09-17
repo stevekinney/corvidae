@@ -1,0 +1,99 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../button/button.css';
+@import '../color-picker/color-picker.css';
+@import '../popover/popover.css';
+
+@layer cinder.components {
+  /* ========================================
+ * COLOR FIELD
+ * ======================================== */
+
+  .cinder-color-field {
+    display: contents;
+  }
+
+  .cinder-color-field__swatch {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: var(--cinder-radius-sm);
+    background-color: var(--cinder-color-field-swatch, transparent);
+    border: 1px solid var(--cinder-border);
+    vertical-align: middle;
+    pointer-events: none;
+    cursor: default;
+  }
+
+  .cinder-color-field__swatch-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-color-field__swatch[data-cinder-empty] {
+    /* "No color" affordance: a diagonal hatch reads as "nothing selected"
+     without being mistaken for an intentionally transparent color. */
+    background-color: transparent;
+    background-image: linear-gradient(
+      135deg,
+      transparent 0%,
+      transparent 45%,
+      var(--cinder-border) 45%,
+      var(--cinder-border) 55%,
+      transparent 55%,
+      transparent 100%
+    );
+    background-size: 6px 6px;
+  }
+
+  .cinder-color-field__swatch[data-cinder-alpha]:not([data-cinder-empty]) {
+    /* structural-pattern: transparency checkerboard so partially-transparent
+     * swatches stay visible while following the shared checker tokens. */
+    background-color: var(--cinder-checker-base);
+    background-image:
+      linear-gradient(
+        var(--cinder-color-field-swatch, transparent),
+        var(--cinder-color-field-swatch, transparent)
+      ),
+      linear-gradient(45deg, var(--cinder-checker-tile) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--cinder-checker-tile) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--cinder-checker-tile) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--cinder-checker-tile) 75%);
+    background-size:
+      auto,
+      6px 6px,
+      6px 6px,
+      6px 6px,
+      6px 6px;
+    background-position:
+      0 0,
+      0 0,
+      0 3px,
+      3px -3px,
+      -3px 0;
+  }
+
+  /*
+ * Forced-colors mode strips background gradients to system tokens, which
+ * flattens the swatch's checker pattern and makes empty / partial-alpha
+ * states indistinguishable from opaque ones. Fall back to border styles so
+ * the state remains visible.
+ */
+  @media (forced-colors: active) {
+    .cinder-color-field__swatch {
+      forced-color-adjust: none;
+      border-color: CanvasText;
+      background-color: ButtonFace;
+    }
+
+    .cinder-color-field__swatch[data-cinder-empty] {
+      background-image: none;
+      border-style: dashed;
+    }
+
+    .cinder-color-field__swatch[data-cinder-alpha]:not([data-cinder-empty]) {
+      background-image: none;
+      border-style: dotted;
+    }
+  }
+}

@@ -1,0 +1,26 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * LABEL
+ * Standalone label — matches the inline labels rendered by Input, Textarea,
+ * Select, Checkbox, and Radio so hand-rolled forms read consistently.
+ * ======================================== */
+
+  .cinder-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    line-height: 1;
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-label[data-disabled] {
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+  }
+
+  /* The required marker is the shared `.cinder-_required-marker` partial
+     (styles/components/_field-label.css). */
+}

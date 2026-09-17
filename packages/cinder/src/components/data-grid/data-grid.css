@@ -1,0 +1,320 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+
+@layer cinder.components {
+  .cinder-data-grid {
+    --_cinder-data-grid-template-columns: none;
+    --_cinder-data-grid-content-width: max-content;
+
+    display: block;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    overflow: auto;
+    scrollbar-gutter: stable;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .cinder-data-grid[data-cinder-column-overflow] {
+    --_cinder-data-grid-overflow-shadow:
+      inset 1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 14%, transparent),
+      inset -1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 14%, transparent);
+  }
+
+  .cinder-data-grid:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    /* Ring replaces the border while focused rather than stacking on it — the two
+       together read as one heavier shape than either was designed to be. */
+    border-color: transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-data-grid:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(-1 * var(--cinder-ring-width));
+      box-shadow: none;
+    }
+  }
+
+  .cinder-data-grid__header-row,
+  .cinder-data-grid__row {
+    display: grid;
+    grid-template-columns: var(--_cinder-data-grid-template-columns);
+    inline-size: var(--_cinder-data-grid-content-width);
+    min-inline-size: 100%;
+  }
+
+  .cinder-data-grid__header-row {
+    /* Round the 13px type's 1.5 line-height plus padding and border to a whole
+       pixel so sticky and pinned layers share a stable raster boundary. */
+    min-block-size: 2.3125rem;
+    background: var(--cinder-surface-inset);
+    box-shadow: var(--_cinder-data-grid-overflow-shadow, none);
+  }
+
+  .cinder-data-grid[data-cinder-sticky-header] .cinder-data-grid__header-row {
+    position: sticky;
+    inset-block-start: 0;
+    /* cinder-z-index-local: sticky header stays above scrolling grid rows. */
+    z-index: 3;
+  }
+
+  .cinder-data-grid__row {
+    background: var(--cinder-surface);
+    box-shadow: var(--_cinder-data-grid-overflow-shadow, none);
+    transition: background var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-data-grid__body[data-cinder-virtualized] {
+    position: relative;
+    inline-size: var(--_cinder-data-grid-content-width);
+    min-inline-size: 100%;
+  }
+
+  .cinder-data-grid__body[data-cinder-virtualized] .cinder-data-grid__row {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    block-size: var(--_cinder-data-grid-row-height);
+    transform: translateY(var(--_cinder-data-grid-row-translate-y));
+  }
+
+  @media (hover: hover) {
+    .cinder-data-grid__row:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-data-grid__header-cell,
+  .cinder-data-grid__cell {
+    --_cinder-data-grid-pin-shadow: 0 0 0 0 transparent;
+
+    box-sizing: border-box;
+    min-inline-size: 0;
+    inline-size: var(--_cinder-data-grid-column-width);
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-block-end: 1px solid var(--cinder-border-muted);
+    border-inline-end: 1px solid var(--cinder-border-muted);
+    background: inherit;
+    box-shadow: var(--_cinder-data-grid-pin-shadow);
+  }
+
+  .cinder-data-grid__header-cell {
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-muted);
+    text-wrap: balance;
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-sortable] {
+    padding: 0;
+  }
+
+  .cinder-data-grid__sort-button {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: 100%;
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-data-grid__sort-button:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    outline-offset: 2px;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-data-grid__sort-button:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
+  .cinder-data-grid__header-content {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cinder-data-grid__sort-indicator,
+  .cinder-data-grid__sort-priority {
+    flex: 0 0 auto;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-xs);
+    line-height: 1;
+  }
+
+  .cinder-data-grid__sort-priority {
+    display: inline-grid;
+    place-items: center;
+    min-inline-size: 1.25em;
+    block-size: 1.25em;
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-raised);
+  }
+
+  .cinder-data-grid__cell[data-cinder-active] {
+    outline: var(--cinder-ring-width) solid transparent;
+    outline-offset: calc(-1 * var(--cinder-ring-width));
+    box-shadow:
+      var(--_cinder-data-grid-pin-shadow),
+      inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  .cinder-data-grid__cell[data-cinder-selected] {
+    background: color-mix(in srgb, var(--cinder-accent-solid) 14%, var(--cinder-surface));
+  }
+
+  .cinder-data-grid__cell[data-cinder-selected][data-cinder-active] {
+    box-shadow:
+      var(--_cinder-data-grid-pin-shadow),
+      inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  .cinder-data-grid__cell[data-cinder-anchor] {
+    box-shadow:
+      var(--_cinder-data-grid-pin-shadow),
+      inset 0 0 0 max(2px, var(--cinder-ring-width)) var(--cinder-accent-solid);
+  }
+
+  .cinder-data-grid__cell[data-cinder-anchor][data-cinder-active] {
+    box-shadow:
+      var(--_cinder-data-grid-pin-shadow),
+      inset 0 0 0 max(2px, var(--cinder-ring-width)) var(--cinder-accent-solid),
+      inset 0 0 0 calc(max(2px, var(--cinder-ring-width)) + 2px) var(--cinder-ring-color);
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-pin],
+  .cinder-data-grid__cell[data-cinder-pin] {
+    position: sticky;
+    /* cinder-z-index-local: pinned cells stay above unpinned cells in this grid. */
+    z-index: 2;
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-pin] {
+    /* cinder-z-index-local: pinned header is the intersection of two local sticky axes. */
+    z-index: 4;
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-pin='left'],
+  .cinder-data-grid__cell[data-cinder-pin='left'] {
+    --_cinder-data-grid-pin-shadow:
+      inset -1px 0 0 var(--cinder-border),
+      2px 0 6px color-mix(in srgb, var(--cinder-text-default) 8%, transparent);
+
+    inset-inline-start: var(--_cinder-data-grid-pin-left-offset, 0px);
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-pin='right'],
+  .cinder-data-grid__cell[data-cinder-pin='right'] {
+    --_cinder-data-grid-pin-shadow:
+      inset 1px 0 0 var(--cinder-border),
+      -2px 0 6px color-mix(in srgb, var(--cinder-text-default) 8%, transparent);
+
+    inset-inline-end: var(--_cinder-data-grid-pin-right-offset, 0px);
+  }
+
+  .cinder-data-grid[data-cinder-density='compact'] .cinder-data-grid__header-cell,
+  .cinder-data-grid[data-cinder-density='compact'] .cinder-data-grid__cell {
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-3);
+  }
+
+  .cinder-data-grid[data-cinder-density='compact'] .cinder-data-grid__header-row {
+    min-block-size: 1.8125rem;
+  }
+
+  .cinder-data-grid[data-cinder-density='compact']
+    .cinder-data-grid__header-cell[data-cinder-sortable] {
+    padding: 0;
+  }
+
+  .cinder-data-grid[data-cinder-density='compact'] .cinder-data-grid__sort-button {
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-3);
+  }
+
+  .cinder-data-grid[data-cinder-density='spacious'] .cinder-data-grid__header-cell,
+  .cinder-data-grid[data-cinder-density='spacious'] .cinder-data-grid__cell {
+    padding-block: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-4);
+  }
+
+  .cinder-data-grid[data-cinder-density='spacious'] .cinder-data-grid__header-row {
+    min-block-size: 2.8125rem;
+  }
+
+  .cinder-data-grid[data-cinder-density='spacious']
+    .cinder-data-grid__header-cell[data-cinder-sortable] {
+    padding: 0;
+  }
+
+  .cinder-data-grid[data-cinder-density='spacious'] .cinder-data-grid__sort-button {
+    padding-block: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-4);
+  }
+
+  .cinder-data-grid__live-region {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-data-grid__cell[data-cinder-selected] {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+      box-shadow: inset 0 0 0 1px HighlightText;
+    }
+
+    .cinder-data-grid__cell[data-cinder-active],
+    .cinder-data-grid__cell[data-cinder-anchor],
+    .cinder-data-grid__cell[data-cinder-selected][data-cinder-active],
+    .cinder-data-grid__cell[data-cinder-anchor][data-cinder-active] {
+      outline: 2px solid ButtonText;
+      outline-offset: -2px;
+      box-shadow: none;
+    }
+
+    .cinder-data-grid__header-cell[data-cinder-pin],
+    .cinder-data-grid__cell[data-cinder-pin] {
+      --_cinder-data-grid-pin-shadow: 0 0 0 0 transparent;
+
+      box-shadow: none;
+    }
+
+    .cinder-data-grid__header-cell[data-cinder-pin='left'],
+    .cinder-data-grid__cell[data-cinder-pin='left'] {
+      border-inline-end: 1px solid ButtonText;
+    }
+
+    .cinder-data-grid__header-cell[data-cinder-pin='right'],
+    .cinder-data-grid__cell[data-cinder-pin='right'] {
+      border-inline-start: 1px solid ButtonText;
+    }
+  }
+}

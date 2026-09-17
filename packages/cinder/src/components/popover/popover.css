@@ -1,0 +1,272 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-popover {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: var(--cinder-z-popover);
+    min-width: 10rem;
+    max-width: min(90vw, 28rem);
+    padding: var(--cinder-space-3);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    box-shadow: var(--cinder-shadow-lg);
+    opacity: 1;
+    transition: opacity var(--cinder-duration-fast, 120ms) var(--cinder-ease-standard, ease-out);
+  }
+
+  .cinder-popover:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow), var(--cinder-shadow-lg);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-popover:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+  }
+
+  .cinder-popover[data-cinder-position-ready='false'] {
+    visibility: hidden;
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  /* Exit transition (OVERLAY-POLICY.md § "Transition lifecycle"): the
+   component keeps the panel mounted for the duration of this transition
+   instead of removing it the instant `open` goes false. Declared after the
+   position-ready rule above so it wins at equal specificity.
+
+   `opacity`/`pointer-events` alone already handled the ordinary "live
+   `open` flag changes" class of this bug (round 10-12). */
+  .cinder-popover[data-cinder-closing] {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* `visibility: visible` explicitly overrides the position-ready rule's
+   `visibility: hidden` above (CIN-376 round 16 review, refined round 18) —
+   but ONLY when a valid retained position actually exists
+   (`data-cinder-has-position`, set whenever popover.svelte's
+   `resolvedPositionStyle` is non-empty). A consumer changing a positioning
+   INPUT (`placement`, `offset`, `widthMode`, ...) in the same update that
+   closes the Popover invalidates `createAnchoredOverlay`'s effect — its
+   cleanup briefly resets `positionReady` AND `positionStyle` to their empty
+   values before the asynchronous Floating UI recomputation restores them,
+   and gating on `data-cinder-closing` alone here would keep the panel
+   forced visible in that gap even though it has nothing but its
+   unpositioned `left: 0; top: 0` fixed-origin fallback to show — which is
+   exactly what an EARLY close (closed before its first-ever
+   `computePosition` finished, so `positionReady` is still false and
+   `lastPositionStyle` has never been populated) looks like: no positioning
+   input changed anything, there's just no valid position snapshot to fall
+   back to yet, and the panel would flash into view at the viewport origin
+   while fading instead of staying hidden. Requiring a real retained
+   position closes that gap without reintroducing the "disappears entirely"
+   bug this override originally fixed. */
+  .cinder-popover[data-cinder-closing][data-cinder-has-position] {
+    visibility: visible;
+  }
+
+  .cinder-popover__trigger {
+    display: contents;
+  }
+
+  .cinder-popover__arrow {
+    position: absolute;
+    pointer-events: none;
+    width: 0;
+    height: 0;
+  }
+
+  /*
+   * CIN-606: `background-clip` defaults to `border-box`, so the PANEL's own
+   * `background: var(--cinder-surface-raised)` paints under its translucent
+   * `border.control` edge — the panel border always composites over
+   * `surface-raised`. The arrow, being a zero-size border-triangle with no
+   * background of its own, used to paint its outer (`--cinder-border`)
+   * triangle straight onto whatever the popover floats over instead — the
+   * same translucent ink composited over a different backdrop than the
+   * panel edge, which was invisible while both tokens were opaque and is
+   * not now.
+   *
+   * The fix gives the outer triangle a backdrop rather than changing what
+   * the panel does. An element's own background/border always paints
+   * before its own `::before`/`::after`, so the three layers are built in
+   * that fixed order: this rule (the arrow's OWN border) is now the OPAQUE
+   * `surface-raised` backdrop, painted first; `::before` repeats the exact
+   * same triangle in the translucent `--cinder-border` ink, composited over
+   * that backdrop; `::after` is unchanged, the existing opaque 7px triangle
+   * that covers the inner two-thirds and leaves only the outer ~2px rim
+   * showing the (now correctly backed) translucent color. The net result:
+   * the visible rim composites over `surface-raised` in every placement,
+   * matching the panel edge on every backdrop instead of only on
+   * `surface-raised` itself.
+   */
+
+  /* Panel is BELOW trigger - arrow tip points UP.
+   Floating UI's arrow middleware writes `left` directly to center the
+   border-box (offsetWidth=16 because of the 8px L+R borders) on the
+   reference. Do not add a negative margin — that would double-shift it. */
+  .cinder-popover[data-cinder-placement^='bottom'] .cinder-popover__arrow {
+    top: -8px;
+    /* stylelint-disable csstools/use-logical */
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 8px solid var(--cinder-surface-raised);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  .cinder-popover[data-cinder-placement^='bottom'] .cinder-popover__arrow::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    /* The containing block for an absolutely positioned pseudo-element of a
+     zero-size (width:0/height:0) parent is a POINT at that parent's padding
+     edge, not its border-box origin -- and that point is inset from the
+     parent's own top-left by the parent's own border widths. This parent's
+     border-left is 8px, so `left: 0` here would start 8px right of the
+     outer triangle's actual left edge; -8px cancels that inset back to 0. */
+    left: -8px;
+    /* stylelint-disable csstools/use-logical */
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 8px solid var(--cinder-border);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  .cinder-popover[data-cinder-placement^='bottom'] .cinder-popover__arrow::after {
+    content: '';
+    position: absolute;
+    /* stylelint-disable csstools/use-logical */
+    left: -7px;
+    top: 1px;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-bottom: 7px solid var(--cinder-surface-raised);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  /* Panel is ABOVE trigger - arrow tip points DOWN. See bottom-placement
+   note above re: Floating UI offsetWidth centering. */
+  .cinder-popover[data-cinder-placement^='top'] .cinder-popover__arrow {
+    bottom: -8px;
+    /* stylelint-disable csstools/use-logical */
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 8px solid var(--cinder-surface-raised);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  .cinder-popover[data-cinder-placement^='top'] .cinder-popover__arrow::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    /* See the bottom-placement `::before` comment above -- the containing
+     block's left inset equals this parent's own border-left (8px). */
+    left: -8px;
+    /* stylelint-disable csstools/use-logical */
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 8px solid var(--cinder-border);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  .cinder-popover[data-cinder-placement^='top'] .cinder-popover__arrow::after {
+    content: '';
+    position: absolute;
+    /* stylelint-disable csstools/use-logical */
+    left: -7px;
+    bottom: 1px;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 7px solid var(--cinder-surface-raised);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  /* Panel is to the RIGHT of trigger - arrow tip points LEFT.
+   Floating UI writes `top` directly to center the border-box on the
+   reference vertically (offsetHeight=16); no negative margin needed. */
+  .cinder-popover[data-cinder-placement^='right'] .cinder-popover__arrow {
+    left: -8px;
+    /* stylelint-disable csstools/use-logical */
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-right: 8px solid var(--cinder-surface-raised);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  .cinder-popover[data-cinder-placement^='right'] .cinder-popover__arrow::before {
+    content: '';
+    position: absolute;
+    /* Same containing-block inset as the bottom/top `::before` rules above,
+     but on the perpendicular axis: this parent's border-top is 8px, so the
+     padding-edge point sits 8px below its own border-box top. -8px cancels
+     that back to 0. */
+    top: -8px;
+    left: 0;
+    /* stylelint-disable csstools/use-logical */
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-right: 8px solid var(--cinder-border);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  .cinder-popover[data-cinder-placement^='right'] .cinder-popover__arrow::after {
+    content: '';
+    position: absolute;
+    /* stylelint-disable csstools/use-logical */
+    left: 1px;
+    top: -7px;
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    border-right: 7px solid var(--cinder-surface-raised);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  /* Panel is to the LEFT of trigger - arrow tip points RIGHT. See
+   right-placement note above re: Floating UI offsetHeight centering. */
+  .cinder-popover[data-cinder-placement^='left'] .cinder-popover__arrow {
+    right: -8px;
+    /* stylelint-disable csstools/use-logical */
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-left: 8px solid var(--cinder-surface-raised);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  .cinder-popover[data-cinder-placement^='left'] .cinder-popover__arrow::before {
+    content: '';
+    position: absolute;
+    /* See the right-placement `::before` comment above. */
+    top: -8px;
+    right: 0;
+    /* stylelint-disable csstools/use-logical */
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-left: 8px solid var(--cinder-border);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  .cinder-popover[data-cinder-placement^='left'] .cinder-popover__arrow::after {
+    content: '';
+    position: absolute;
+    /* stylelint-disable csstools/use-logical */
+    right: 1px;
+    top: -7px;
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    border-left: 7px solid var(--cinder-surface-raised);
+    /* stylelint-enable csstools/use-logical */
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-popover {
+      transition: none;
+    }
+  }
+}

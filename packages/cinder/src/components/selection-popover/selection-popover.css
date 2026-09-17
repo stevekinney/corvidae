@@ -1,0 +1,225 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * SELECTION POPOVER
+ * ======================================== */
+
+  .cinder-selection-popover {
+    position: fixed;
+    z-index: var(--cinder-z-tooltip);
+    display: flex;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    opacity: 0;
+    scale: 0.95;
+    pointer-events: none;
+    transition:
+      opacity var(--cinder-duration-fast) var(--cinder-ease-standard),
+      scale var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* Hidden from the tab order/AT whenever the panel isn't ACTUALLY
+   positioned and visible: before Floating UI has set
+   `data-cinder-position-ready='true'` (an open/initial-mount window —
+   `data-cinder-visible` alone turns on as soon as `exitState.renderPanel`
+   does, which is BEFORE positioning resolves, so gating on it alone briefly
+   exposed the un-positioned, opacity:0 toolbar as focusable/AT-visible), and
+   once the exit transition has genuinely finished (driven by
+   `createAnchoredOverlayExitState` / `waitForTransitionCompletion`), not the
+   instant `open` goes false — see OVERLAY-POLICY.md § "Transition
+   lifecycle". `[data-cinder-closing]` is exempted from the position-ready
+   requirement so the retained exit stays visible even if positioning
+   happens to lag behind. No transition on `visibility` itself; it flips
+   only after opacity/scale have already settled at 0. */
+  .cinder-selection-popover:not([data-cinder-position-ready='true']):not([data-cinder-closing]) {
+    visibility: hidden;
+  }
+
+  .cinder-selection-popover[data-cinder-position-ready='true'] {
+    opacity: 1;
+    scale: 1;
+    pointer-events: auto;
+  }
+
+  /* Exit transition: mirrors the entry state above so the popover fades back
+   out exactly the way it faded in, while `data-cinder-visible` (see above)
+   keeps it focusable/visible for the duration of the transition. */
+  .cinder-selection-popover[data-cinder-closing] {
+    opacity: 0;
+    scale: 0.95;
+    pointer-events: none;
+  }
+
+  .cinder-selection-popover__button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    padding: var(--cinder-space-1-5) var(--cinder-space-2);
+    border: 0;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    cursor: pointer;
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    box-shadow: var(--cinder-shadow-md);
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (hover: hover) {
+    .cinder-selection-popover__button:hover {
+      background: var(--cinder-accent-solid-hover);
+    }
+  }
+
+  .cinder-selection-popover__button:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    outline-offset: var(--cinder-ring-offset);
+    box-shadow: var(--_cinder-focus-ring-shadow), var(--cinder-shadow-md);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-selection-popover__button:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+    }
+  }
+
+  .cinder-selection-popover__button:active {
+    transform: scale(0.95);
+  }
+
+  .cinder-selection-popover__form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    width: 17.5rem;
+    padding: var(--cinder-space-2);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+    box-shadow: var(--cinder-shadow-lg);
+  }
+
+  .cinder-selection-popover__textarea {
+    width: 100%;
+    min-height: 3.75rem;
+    padding: var(--cinder-space-2);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    resize: vertical;
+  }
+
+  .cinder-selection-popover__textarea:focus {
+    border-color: var(--cinder-accent-solid);
+  }
+
+  .cinder-selection-popover__textarea:focus,
+  .cinder-selection-popover__textarea:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    outline-offset: var(--cinder-ring-offset);
+    /* Ring replaces the border while focused rather than stacking on it — the two
+       together read as one heavier shape than either was designed to be. */
+    border-color: transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-selection-popover__textarea:focus,
+    .cinder-selection-popover__textarea:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 1px;
+    }
+  }
+
+  .cinder-selection-popover__textarea::placeholder {
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-selection-popover__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-selection-popover__cancel,
+  .cinder-selection-popover__submit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--cinder-space-1-5);
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    cursor: pointer;
+    transition: background-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-selection-popover__cancel {
+    background: transparent;
+    color: var(--cinder-text-muted);
+  }
+
+  @media (hover: hover) {
+    .cinder-selection-popover__cancel:hover {
+      background: var(--cinder-surface-hover);
+      color: var(--cinder-text-default);
+    }
+  }
+
+  .cinder-selection-popover__submit {
+    background: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+  }
+
+  @media (hover: hover) {
+    .cinder-selection-popover__submit:hover:not(:disabled) {
+      background: var(--cinder-accent-solid-hover);
+    }
+  }
+
+  .cinder-selection-popover__submit:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .cinder-selection-popover__cancel:focus-visible,
+  .cinder-selection-popover__submit:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    outline-offset: var(--cinder-ring-offset);
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-selection-popover__cancel:focus-visible,
+    .cinder-selection-popover__submit:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+    }
+  }
+
+  .cinder-selection-popover__icon {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-selection-popover {
+      transition: none;
+    }
+  }
+}

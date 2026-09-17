@@ -1,0 +1,142 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * SPINNER
+ * ======================================== */
+
+  .cinder-spinner {
+    display: inline-block;
+    width: var(--cinder-spinner-size, 1.5rem);
+    height: var(--cinder-spinner-size, 1.5rem);
+    border: 2px solid var(--cinder-spinner-track, color-mix(in srgb, currentColor 25%, transparent));
+    border-top-color: var(--cinder-spinner-indicator, currentColor);
+    border-radius: 50%;
+    vertical-align: -0.125em;
+    animation: cinder-spinner-spin var(--cinder-duration-spin) linear infinite;
+    flex-shrink: 0;
+  }
+
+  .cinder-spinner[data-cinder-variant='arc'] {
+    border: 0;
+    animation: none;
+  }
+
+  .cinder-spinner__arc {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    transform-origin: center;
+    animation: cinder-spinner-spin var(--cinder-duration-spin) linear infinite;
+  }
+
+  .cinder-spinner__arc-track,
+  .cinder-spinner__arc-indicator {
+    fill: none;
+    stroke-width: 2.5;
+  }
+
+  .cinder-spinner__arc-track {
+    stroke: var(--cinder-spinner-track, color-mix(in srgb, currentColor 25%, transparent));
+  }
+
+  .cinder-spinner__arc-indicator {
+    stroke: var(--cinder-spinner-indicator, currentColor);
+    stroke-linecap: round;
+    stroke-dasharray: 56.55;
+    stroke-dashoffset: 32;
+    transform: rotate(-90deg);
+    transform-origin: center;
+    animation: cinder-spinner-arc var(--cinder-duration-spin) ease-in-out infinite alternate;
+  }
+
+  /* Screen-reader-only label — visually hidden but announced by assistive tech */
+  .cinder-spinner__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  @keyframes cinder-spinner-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes cinder-spinner-arc {
+    from {
+      stroke-dashoffset: 50;
+    }
+    to {
+      stroke-dashoffset: 14;
+    }
+  }
+
+  /* Respect the user's reduced-motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-spinner {
+      animation: none;
+      --cinder-spinner-indicator: var(
+        --cinder-spinner-track,
+        color-mix(in srgb, currentColor 25%, transparent)
+      );
+      opacity: 0.5;
+    }
+
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-spinner__arc,
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-spinner__arc-indicator {
+      animation: none;
+    }
+
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-spinner[data-cinder-variant='arc'] {
+      --cinder-spinner-indicator: currentColor;
+    }
+  }
+
+  :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on']) .cinder-spinner {
+    animation: none;
+    --cinder-spinner-indicator: var(
+      --cinder-spinner-track,
+      color-mix(in srgb, currentColor 25%, transparent)
+    );
+    opacity: 0.5;
+  }
+
+  :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on'])
+    :is(.cinder-spinner__arc, .cinder-spinner__arc-indicator) {
+    animation: none;
+  }
+
+  :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on'])
+    .cinder-spinner[data-cinder-variant='arc'] {
+    --cinder-spinner-indicator: currentColor;
+  }
+
+  /* ----------------------------------------
+ * Size variants
+ * ---------------------------------------- */
+
+  .cinder-spinner[data-cinder-size='sm'] {
+    --cinder-spinner-size: var(--cinder-spinner-size-sm, 1rem);
+    border-width: 1.5px;
+  }
+
+  .cinder-spinner[data-cinder-size='md'] {
+    --cinder-spinner-size: var(--cinder-spinner-size-md, 1.5rem);
+    border-width: 2px;
+  }
+
+  .cinder-spinner[data-cinder-size='lg'] {
+    --cinder-spinner-size: var(--cinder-spinner-size-lg, 2rem);
+    border-width: 2.5px;
+  }
+}

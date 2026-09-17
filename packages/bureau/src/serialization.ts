@@ -1,0 +1,257 @@
+import type { RunState } from '@repo/operative';
+import { AgentRunError } from '@repo/operative';
+import { safeStringify, serializeAgentRunErrorForBureau, toJsonSafe } from './serialization-json';
+import { serializeLivenessSnapshot } from './serialization-liveness';
+
+import type { BureauDiagnostic, DiagnosticSink, RunDetail, RunSummary } from './types';
+
+export function serializeUnknownError(error: unknown): string {
+  if (error instanceof AgentRunError) {
+    return serializeAgentRunErrorForBureau(error);
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  if (error === null || error === undefined) {
+    return 'null';
+  }
+
+  return safeStringify(toJsonSafe(error));
+}
+
+// ── Diagnostics ──────────────────────────────────────────────────────
+
+/**
+ * Default diagnostic sink: writes to `console.error`/`console.warn`, exactly
+ * matching bureau's pre-`onDiagnostic` console output — a two-argument call
+ * (`message`, `cause`) when `cause` is present, a single-argument call
+ * otherwise.
+ */
+function writeDiagnosticToConsole(diagnostic: BureauDiagnostic): void {
+  const { level, message, cause } = diagnostic;
+  if (cause !== undefined) {
+    console[level](message, cause);
+  } else {
+    console[level](message);
+  }
+}
+
+/**
+ * Resolves a host-supplied {@link DiagnosticSink} into one that is always
+ * safe to call: a throwing sink, or no sink at all, falls back to
+ * {@link writeDiagnosticToConsole} so a diagnostic is never lost and a
+ * misbehaving sink can never crash the runtime.
+ */
+export function resolveDiagnosticSink(onDiagnostic: DiagnosticSink | undefined): DiagnosticSink {
+  if (!onDiagnostic) return writeDiagnosticToConsole;
+
+  return (diagnostic) => {
+    try {
+      onDiagnostic(diagnostic);
+    } catch {
+      writeDiagnosticToConsole(diagnostic);
+    }
+  };
+}
+
+/**
+ * Removes the `conversation` property from a record, returning a shallow copy
+ * without it. Returns the original record when no `conversation` key is present.
+ */
+function stripConversation(record: object): object {
+  if (!('conversation' in record)) return record;
+  const { conversation: _, ...rest } = record;
+  return rest;
+}
+
+function stripStepConversation(step: unknown): object {
+  if (step === null || (typeof step !== 'object' && typeof step !== 'function')) {
+    throw new TypeError('A run completion step must be an object');
+  }
+  return stripConversation(step);
+}
+
+function projectRunCompletionRecord(record: object): Record<string, unknown> {
+  const stripped = stripConversation(record);
+  const projected: Record<string, unknown> = { ...stripped };
+
+  if (Array.isArray(projected['steps'])) {
+    projected['steps'] = projected['steps'].map(stripStepConversation);
+  }
+
+  if (projected['result'] && typeof projected['result'] === 'object') {
+    projected['result'] = projectRunCompletionRecord(projected['result']);
+  }
+
+  return projected;
+}
+
+/**
+ * Converts an `error` property inside a record to a JSON-safe string.
+ * `Error` instances are replaced with their `message`; other non-string
+ * values are passed through `safeStringify`. Returns the original record
+ * unchanged when no `error` key is present.
+ */
+function serializeError(record: object): object {
+  if (!('error' in record)) return record;
+
+  const { error, ...rest } = record;
+
+  const serialized = error !== undefined ? serializeUnknownError(error) : undefined;
+
+  return { ...rest, error: serialized };
+}
+
+/**
+ * Strips non-serializable properties (e.g. Conversation instances, Error
+ * objects) from action detail objects before they are sent over WebSocket.
+ *
+ * For `step.completed` and `run.aborted`, this strips the top-level
+ * `conversation` field.
+ *
+ * For `run.completed`, this strips the top-level `conversation` as well as
+ * the nested `conversation` inside each element of the `steps` array
+ * (each step is a `StepResult` which also holds a `Conversation` instance).
+ *
+ * For error events (`run.error`, `generate.error`, `generate.retry`), the
+ * `error` property is serialized to a string so `Error` instances don't
+ * collapse to `{}` under `JSON.stringify`.
+ */
+export function serializeActionDetail(eventType: string, detail: unknown): unknown {
+  if (!detail || typeof detail !== 'object') return detail;
+
+  const record = detail;
+
+  if (eventType === 'step.completed' || eventType === 'run.aborted') {
+    return toJsonSafe(stripConversation(record));
+  }
+
+  if (eventType === 'run.completed') {
+    return toJsonSafe(projectRunCompletionRecord(record));
+  }
+
+  if (
+    eventType === 'run.error' ||
+    eventType === 'generate.error' ||
+    eventType === 'generate.retry'
+  ) {
+    return toJsonSafe(serializeError(record));
+  }
+
+  return toJsonSafe(detail);
+}
+
+/**
+ * Best-effort agentName lookup for a run from its action log: the curated
+ * `tool.*` bubble events (`ToolStartedBubbleEvent` et al.) stamp every action
+ * with `{agentName, runId, step}`, so the first action carrying it tells us
+ * the run's agent. `undefined` for a run with no tool activity yet.
+ *
+ * This is a fallback for runs whose deterministic `agentName` (resolved at
+ * creation time from `CreateRunRequest.agentName`) is unavailable — namely a
+ * run reattached after durable recovery, whose in-memory resolution was lost
+ * to the process restart.
+ */
+export function findRunAgentName(runState: {
+  actions: readonly { detail: unknown }[];
+}): string | undefined {
+  for (const action of runState.actions) {
+    const detail = action.detail;
+    if (
+      detail !== null &&
+      typeof detail === 'object' &&
+      'agentName' in detail &&
+      typeof detail.agentName === 'string'
+    ) {
+      return detail.agentName;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Run attribution resolved outside the operative store (AB-54 usage
+ * analytics grouping): the agent and authenticated principal captured at
+ * `createRun` time. Both are `undefined` when unresolved. `agentName` stays
+ * unresolved for a durably recovered run whose in-memory attribution was
+ * lost to a process restart (`findRunAgentName`'s action-log heuristic is
+ * the fallback). `principal` is rehydrated on recovery from the session's
+ * persisted `lastRunOwningPrincipals` map when the run was dispatched with
+ * one (AB-359); it stays `undefined` only when the run was never dispatched
+ * with a principal in the first place, matching AB-313's fail-closed rule.
+ */
+export interface RunAttribution {
+  agentName?: string;
+  principal?: string;
+}
+
+/**
+ * Maps a live RunState (which may contain non-serializable objects like
+ * ActiveRun and Conversation) to a JSON-safe RunSummary DTO.
+ *
+ * `attribution` carries the agentName/principal resolved deterministically at
+ * `createRun` time (see {@link RunAttribution}); when omitted (or its
+ * `agentName` is unset), `agentName` falls back to the {@link findRunAgentName}
+ * heuristic scan of the run's own action log.
+ */
+export function serializeRunState(
+  runState: RunState,
+  sessionId?: string,
+  attribution?: RunAttribution,
+): RunSummary {
+  return {
+    id: runState.id,
+    sessionId: sessionId ?? '',
+    status: runState.status,
+    steps: runState.steps.length,
+    usage: { ...runState.usage },
+    finishReason: runState.finishReason,
+    error: runState.error !== undefined ? serializeUnknownError(runState.error) : undefined,
+    actionCount: runState.actions.length,
+    agentName: attribution?.agentName ?? findRunAgentName(runState),
+    principal: attribution?.principal,
+    startedAt: runState.actions[0]?.timestamp,
+  };
+}
+
+export function serializeRunDetail(
+  runState: RunState,
+  sessionId?: string,
+  attribution?: RunAttribution,
+): RunDetail {
+  return {
+    ...serializeRunState(runState, sessionId, attribution),
+    liveness: serializeLivenessSnapshot(runState.activeRun.snapshot()),
+    events: runState.actions.map((action) => ({
+      sequence: action.sequence,
+      runId: action.runId,
+      event: action.type,
+      detail: serializeActionDetail(action.type, action.detail),
+      timestamp: action.timestamp,
+    })),
+    stepDetails: runState.steps.map((step) => ({
+      step: step.step,
+      content: step.content,
+      final: step.final,
+      usage: step.usage,
+      toolCalls: step.toolCalls.map((toolCall) => ({
+        id: toolCall.id,
+        name: toolCall.name,
+        arguments: toJsonSafe(toolCall.arguments),
+      })),
+      results: step.results.map((result) => ({
+        toolName: result.toolName,
+        result: toJsonSafe(result.result),
+        error:
+          result.error?.message ?? (typeof result.error === 'string' ? result.error : undefined),
+      })),
+    })),
+    latestSnapshot: runState.snapshots.at(-1),
+  };
+}

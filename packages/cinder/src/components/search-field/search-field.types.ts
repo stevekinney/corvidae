@@ -1,0 +1,43 @@
+import type { HTMLInputAttributes } from 'svelte/elements';
+/**
+ * Props for the SearchField component.
+ *
+ * Renders an `<input type="search">` with a leading search icon, a clear
+ * button that appears only when the field has a value, and an optional
+ * `<kbd>` hint badge for a keyboard shortcut. The shortcut itself is not
+ * wired by this component — the consumer is responsible for binding it
+ * globally.
+ *
+ * `value` is bindable; use `onValueChange` to observe edits.
+ */
+export type SearchFieldProps = Omit<
+  HTMLInputAttributes,
+  'type' | 'value' | 'defaultValue' | 'oninput' | 'class'
+> & {
+  /** Stable id for the input element. Required when composing with `FormField`. */
+  id?: string;
+  /** Bindable search value. */
+  value?: string;
+  /** Placeholder text. */
+  placeholder?: string;
+  /**
+   * Optional keyboard shortcut hint (e.g. `'⌘K'`). Rendered as a trailing
+   * `<kbd aria-hidden="true">` badge. The shortcut itself is not wired by
+   * this component.
+   */
+  shortcut?: string;
+  /** Disables the input and the clear button. */
+  disabled?: boolean;
+  /** Marks the input as read-only; the clear button becomes inert. */
+  readonly?: boolean;
+  /** `name` attribute for form submission. */
+  name?: string;
+  /** Additional class merged with `.cinder-search-field`. */
+  class?: string;
+  /** Fires on every keystroke with the current value. */
+  onValueChange?: (value: string) => void;
+  /** Fires when the native `search` event triggers (Enter or programmatic dispatch). */
+  onSearch?: (value: string) => void;
+  /** Fires when the clear button is clicked. */
+  onClear?: () => void;
+};

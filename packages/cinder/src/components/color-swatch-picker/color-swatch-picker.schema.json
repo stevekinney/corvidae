@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "value": {
+      "type": "string",
+      "description": "Bindable selected color."
+    },
+    "shape": {
+      "enum": ["circle", "square"],
+      "description": "Visual shape of each swatch. Default `'circle'`."
+    },
+    "size": {
+      "enum": ["xs", "sm", "md", "lg", "xl"],
+      "description": "Swatch dimension token. Default `'md'`."
+    },
+    "layout": {
+      "enum": ["grid", "stack"],
+      "description": "Layout direction. Default `'grid'`.\n\nNote: grid layout uses one-dimensional DOM-order navigation for both\nArrowLeft/Right and ArrowUp/Down. True column-aware navigation is not\nimplemented in v1 — see a11y memo."
+    },
+    "disabled": {
+      "type": "boolean",
+      "description": "Disables the entire listbox. Keyboard activation and clicks are ignored."
+    },
+    "label": {
+      "type": "string",
+      "description": "Accessible name for the listbox. Required — `role=\"listbox\"` needs a label\nso screen readers can announce the control's purpose."
+    },
+    "class": {
+      "type": "string",
+      "description": "Additional classes merged into the listbox `<ul>`."
+    }
+  },
+  "additionalProperties": false,
+  "required": ["label"],
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "colors",
+        "reason": "unknown-shape",
+        "required": true,
+        "description": "Palette to render."
+      },
+      {
+        "name": "indicator",
+        "reason": "function-or-snippet",
+        "description": "Snippet that replaces the default check-icon indicator on the selected swatch.\nReceives the active swatch and the computed contrast color for the icon."
+      },
+      {
+        "name": "onValueChange",
+        "reason": "function-or-snippet",
+        "description": "Fired when the selected swatch changes."
+      }
+    ]
+  }
+}

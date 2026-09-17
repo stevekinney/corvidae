@@ -1,0 +1,30 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    width: {
+      type: 'string',
+      description:
+        "CSS width value applied as an inline style on the skeleton block (e.g. `'200px'`, `'100%'`).",
+    },
+    height: {
+      type: 'string',
+      description:
+        "CSS height value applied as an inline style on the skeleton block (e.g. `'1rem'`, `'48px'`).",
+    },
+    radius: {
+      type: 'string',
+      description:
+        "CSS border-radius value applied as an inline style, overriding the default pill shape (e.g. `'4px'`, `'50%'`).",
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class merged onto the `.cinder-skeleton` root element.',
+    },
+  },
+  additionalProperties: false,
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

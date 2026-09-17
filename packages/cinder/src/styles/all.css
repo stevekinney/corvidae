@@ -1,0 +1,10 @@
+/* Full stylesheet inventory used by local CSS analysis. Applications import
+ * the root TypeScript entry and receive the base plus used component styles.
+ */
+
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+
+@import './tokens.css' layer(cinder.tokens);
+@import './foundation.css' layer(cinder.foundation);
+@import './components.css';
+@import './utilities.css' layer(cinder.utilities);

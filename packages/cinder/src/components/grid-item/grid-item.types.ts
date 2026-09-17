@@ -1,0 +1,25 @@
+import type { Snippet } from 'svelte';
+import type { HTMLAttributes } from 'svelte/elements';
+import type { NonMetadataHTMLElementTagName } from '../../utilities/html-element-types.ts';
+
+/** Props for the GridItem component. */
+export type GridItemProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
+  /** Number of columns this item spans. */
+  span?: number | string;
+  /** Explicit `grid-column-start` value. */
+  columnStart?: number | string;
+  /** Explicit `grid-column-end` value. */
+  columnEnd?: number | string;
+  /** Number of rows this item spans. */
+  rowSpan?: number | string;
+  /** Explicit `grid-row-start` value. */
+  rowStart?: number | string;
+  /** Explicit `grid-row-end` value. Takes precedence over `rowSpan` when both are set. */
+  rowEnd?: number | string;
+  /** Rendered HTML tag. */
+  as?: NonMetadataHTMLElementTagName;
+  /** Custom class merged with `.cinder-grid-item`. */
+  class?: string;
+  /** Grid item contents. */
+  children: Snippet;
+};

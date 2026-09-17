@@ -1,0 +1,80 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+    },
+    value: {
+      anyOf: [
+        {
+          type: 'number',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    min: {
+      type: 'number',
+    },
+    max: {
+      type: 'number',
+    },
+    step: {
+      type: 'number',
+    },
+    locale: {
+      type: 'string',
+    },
+    disabled: {
+      type: 'boolean',
+    },
+    required: {
+      type: 'boolean',
+    },
+    name: {
+      type: 'string',
+    },
+    label: {
+      type: 'string',
+    },
+    description: {
+      type: 'string',
+    },
+    error: {
+      type: 'string',
+    },
+    class: {
+      type: 'string',
+    },
+    adornment: {
+      type: 'string',
+      description: 'Optional non-interactive text rendered before the stepper controls.',
+    },
+  },
+  additionalProperties: false,
+  required: ['id'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'format',
+        reason: 'unknown-shape',
+        description: 'Locale-aware formatting options passed to `Intl.NumberFormat`.',
+      },
+      {
+        name: 'inputAttachment',
+        reason: 'function-or-snippet',
+        description: 'Attachment for native input access and lifecycle-scoped listeners.',
+      },
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

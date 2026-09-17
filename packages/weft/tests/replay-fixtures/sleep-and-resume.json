@@ -1,0 +1,60 @@
+{
+  "scenario": "sleep-and-resume",
+  "description": "A workflow persists a durable sleep and resumes after virtual time advances.",
+  "events": [
+    {
+      "type": "workflow:checkpoint",
+      "timestamp": 0,
+      "data": {
+        "step": 1
+      }
+    }
+  ],
+  "timeline": [
+    {
+      "step": 1,
+      "operationType": "sleep",
+      "operationLabel": "sleep",
+      "inputSummary": "{\"duration\":100}",
+      "timestamp": 100,
+      "status": "completed",
+      "versionTuple": {
+        "workflowVersion": "1"
+      },
+      "outputSummary": "undefined",
+      "duration": 0
+    }
+  ],
+  "finalState": {
+    "id": "wf-sleep-and-resume",
+    "type": "sleep-and-resume",
+    "status": "completed",
+    "input": null,
+    "versionTuple": {
+      "workflowVersion": "1"
+    },
+    "revision": "sha256:a28d8341f767bc71dc41397ebb0b181421e419bc4f2cf4adb3e3a6674d0a1fbf",
+    "workflowExecutionToken": "00000000-0000-4000-8000-000000000001",
+    "executionStateOwnerId": "wf-sleep-and-resume",
+    "createdAt": 0,
+    "startedAt": 0,
+    "updatedAt": 100,
+    "result": "awake"
+  },
+  "storage": {
+    "catalog-active:sleep-and-resume": "g6hyZXZpc2lvbtlHc2hhMjU2OmEyOGQ4MzQxZjc2N2JjNzFkYzQxMzk3ZWJiMGIxODE0MjFlNDE5YmM0ZjJjZjRhZGIzZTNhNjY3NGQwYTFmYmaqZ2VuZXJhdGlvbgGrYWN0aXZhdGVkQXQA",
+    "catalog-entry:sleep-and-resume:sha256%3Aa28d8341f767bc71dc41397ebb0b181421e419bc4f2cf4adb3e3a6674d0a1fbf": "eyJtYW5pZmVzdCI6eyJtYW5pZmVzdFZlcnNpb24iOjEsIm5hbWUiOiJzbGVlcC1hbmQtcmVzdW1lIiwid29ya2Zsb3dWZXJzaW9uIjoiMSIsInJldmlzaW9uIjoic2hhMjU2OmEyOGQ4MzQxZjc2N2JjNzFkYzQxMzk3ZWJiMGIxODE0MjFlNDE5YmM0ZjJjZjRhZGIzZTNhNjY3NGQwYTFmYmYiLCJjb250cmFjdEhhc2giOiJzaGEyNTY6YWZjZWMwNzY2ZWZjMzU0OTI5ZGFjZWYyNDQwOTZhNjQwZjg2YzFmMGJmNThmMmYxZDQwNzJhZmNlNzRmZWFkOSIsImNvbnRyYWN0Ijp7Im5hbWUiOiJzbGVlcC1hbmQtcmVzdW1lIiwid29ya2Zsb3dWZXJzaW9uIjoiMSJ9fSwiaW5zdGFsbGVkQXQiOjB9",
+    "ev:wf-sleep-and-resume:0000000000": "h6R0eXBls3dvcmtmbG93OmNoZWNrcG9pbnSqd29ya2Zsb3dJZLN3Zi1zbGVlcC1hbmQtcmVzdW1lqHNlcXVlbmNlAKhwcmV2SGFzaLAwMDAwMDAwMDAwMDAwMDAwp3BheWxvYWSBpHN0ZXABqXRpbWVzdGFtcACsdmVyc2lvblR1cGxlga93b3JrZmxvd1ZlcnNpb26hMQ==",
+    "ev:wf-sleep-and-resume:head": "gqhzZXF1ZW5jZQCobGFzdEhhc2iwMzAwYjM5ZTk1MjlmMDllZA==",
+    "wf-idx-created:0000000000000000:wf-sleep-and-resume": "",
+    "wf-idx-manifest:wf-sleep-and-resume": "gqd2ZXJzaW9uAaRrZXlzlNkzd2YtaWR4LWNyZWF0ZWQ6MDAwMDAwMDAwMDAwMDAwMDp3Zi1zbGVlcC1hbmQtcmVzdW1l2St3Zi1pZHgtc3RhdHVzOmNvbXBsZXRlZDp3Zi1zbGVlcC1hbmQtcmVzdW1l2TB3Zi1pZHgtdHlwZTpzbGVlcC1hbmQtcmVzdW1lOndmLXNsZWVwLWFuZC1yZXN1bWXZM3dmLWlkeC11cGRhdGVkOjAwMDAwMDAwMDAwMDAxMDA6d2Ytc2xlZXAtYW5kLXJlc3VtZQ==",
+    "wf-idx-status:completed:wf-sleep-and-resume": "",
+    "wf-idx-type:sleep-and-resume:wf-sleep-and-resume": "",
+    "wf-idx-updated:0000000000000100:wf-sleep-and-resume": "",
+    "wf-terminal:0000000000000100:wf-sleep-and-resume": "",
+    "wf:wf-sleep-and-resume": "jKJpZLN3Zi1zbGVlcC1hbmQtcmVzdW1lpHR5cGWwc2xlZXAtYW5kLXJlc3VtZaZzdGF0dXOpY29tcGxldGVkpWlucHV0wKx2ZXJzaW9uVHVwbGWBr3dvcmtmbG93VmVyc2lvbqExqHJldmlzaW9u2UdzaGEyNTY6YTI4ZDgzNDFmNzY3YmM3MWRjNDEzOTdlYmIwYjE4MTQyMWU0MTliYzRmMmNmNGFkYjNlM2E2Njc0ZDBhMWZiZrZ3b3JrZmxvd0V4ZWN1dGlvblRva2Vu2SQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDG1ZXhlY3V0aW9uU3RhdGVPd25lcklks3dmLXNsZWVwLWFuZC1yZXN1bWWpY3JlYXRlZEF0AKlzdGFydGVkQXQAqXVwZGF0ZWRBdGSmcmVzdWx0pWF3YWtl",
+    "wf:wf-sleep-and-resume:ckpt": "iap3b3JrZmxvd0lks3dmLXNsZWVwLWFuZC1yZXN1bWWkc3RlcAGmbG9jYWxzgLZ3b3JrZmxvd0V4ZWN1dGlvblRva2Vu2SQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDGyYWNjdW11bGF0ZWRSZXN1bHRzkLBzZWFyY2hBdHRyaWJ1dGVzgKd2ZXJzaW9uoTGtc2NoZW1hVmVyc2lvbgKpY3JlYXRlZEF0ZA==",
+    "wf:wf-sleep-and-resume:ckpt:0000000001": "iap3b3JrZmxvd0lks3dmLXNsZWVwLWFuZC1yZXN1bWWkc3RlcAGmbG9jYWxzgLZ3b3JrZmxvd0V4ZWN1dGlvblRva2Vu2SQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDGyYWNjdW11bGF0ZWRSZXN1bHRzkLBzZWFyY2hBdHRyaWJ1dGVzgKd2ZXJzaW9uoTGtc2NoZW1hVmVyc2lvbgKpY3JlYXRlZEF0ZA==",
+    "wf:wf-sleep-and-resume:timeline:0000000001": "iaRzdGVwAa1vcGVyYXRpb25UeXBlpXNsZWVwrm9wZXJhdGlvbkxhYmVspXNsZWVwrGlucHV0U3VtbWFyebB7ImR1cmF0aW9uIjoxMDB9qXRpbWVzdGFtcGSmc3RhdHVzqWNvbXBsZXRlZKx2ZXJzaW9uVHVwbGWBr3dvcmtmbG93VmVyc2lvbqExrW91dHB1dFN1bW1hcnmpdW5kZWZpbmVkqGR1cmF0aW9uAA=="
+  }
+}

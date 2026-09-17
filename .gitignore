@@ -1,61 +1,35 @@
-# Node modules
+# Workspace source is governed here, not by personal filename exclusions.
+!applications/*/src/
+!applications/*/src/**
+!packages/*/src/
+!packages/*/src/**
+
+# Dependencies and tool caches
 node_modules/
 .bun/
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-pnpm-debug.log*
-
-# Runtime data
-pids/
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage
-coverage/
-*.lcov
-.nyc_output/
-
-# TypeScript cache
-*.tsbuildinfo
-
-# Optional caches
-.npm/
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Build output
-dist/
-build/
-
-# Bun cache
-.bun-install-cache/
-
-# Turbo
 .turbo/
+.cache/
+*.tsbuildinfo
+.dccache
 
-# Mac system files
-.DS_Store
-
-# JetBrains IDEs
-.idea/
-
-# Test output
+# Application and test output
+build/
+.svelte-kit/
+coverage/
+playwright-report/
+test-results/
+/packages/testing/screenshots/
+.playwright/
 test-output/
+*.lcov
+*.log
 
-# Repomix summary
-repomix-output.xml
-
-# Local scratch
-tmp/
-local.env
-
-# Environment variables
+# Private local state
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.pem
+local.env
+tmp/
+.DS_Store
+.idea/

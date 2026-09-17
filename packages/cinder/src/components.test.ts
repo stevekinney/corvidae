@@ -1,0 +1,149 @@
+import { sveltePlugin } from '@repo/testing';
+import { describe, expect, test } from 'bun:test';
+
+import Button from './components/button/button.svelte';
+
+describe('svelte plugin', () => {
+  test('compiles Button to a callable', () => {
+    expect(typeof Button).toBe('function');
+  });
+
+  test('rejects components containing a <style> block', async () => {
+    const plugin = sveltePlugin({ generate: 'client', allowStyleBlock: () => false });
+    type LoadArguments = { path: string };
+    type LoadResult = { contents: string; loader: string };
+    type LoadHandler = (input: LoadArguments) => Promise<LoadResult>;
+    type MinimalSetupBuilder = {
+      config: { target: 'bun' };
+      onLoad(filter: { filter: RegExp }, handler: LoadHandler): void;
+    };
+
+    // Plugin registers multiple onLoad handlers (`.svelte` for components, `.svelte.(js|ts)`
+    // for rune modules). Capture the one whose filter matches our `.svelte` fixture path.
+    let registeredLoadHandler: LoadHandler | undefined;
+    const builderStub: MinimalSetupBuilder = {
+      config: { target: 'bun' },
+      onLoad(filter, handler) {
+        if (filter.filter.test('fixture.svelte') && !filter.filter.test('fixture.svelte.ts')) {
+          registeredLoadHandler = handler;
+        }
+      },
+    };
+    // The real builder has more surface; the Bun target does not register the
+    // non-Bun relative-Svelte resolver, so this focused stub only needs onLoad.
+    plugin.setup(builderStub as Parameters<typeof plugin.setup>[0]);
+
+    if (!registeredLoadHandler) {
+      throw new Error('plugin did not register the .svelte onLoad handler');
+    }
+
+    const fixturePath = `${import.meta.dir}/.forbidden-style-fixture.svelte`;
+    await Bun.write(
+      fixturePath,
+      `<p class="sample">hi</p>\n<style>\n.sample { color: tomato; }\n</style>\n`,
+    );
+
+    try {
+      expect(registeredLoadHandler({ path: fixturePath })).rejects.toThrow(/<style> block/);
+    } finally {
+      await Bun.file(fixturePath).delete();
+    }
+  });
+
+  test('allows style blocks for domain-suite implementation files', async () => {
+    const plugin = sveltePlugin({
+      generate: 'client',
+      allowStyleBlock: (path) => path.includes('/components/diff-viewer/'),
+    });
+    type LoadArguments = { path: string };
+    type LoadResult = { contents: string; loader: string };
+    type LoadHandler = (input: LoadArguments) => Promise<LoadResult>;
+    type MinimalSetupBuilder = {
+      config: { target: 'bun' };
+      onLoad(filter: { filter: RegExp }, handler: LoadHandler): void;
+    };
+
+    let registeredLoadHandler: LoadHandler | undefined;
+    const builderStub: MinimalSetupBuilder = {
+      config: { target: 'bun' },
+      onLoad(filter, handler) {
+        if (
+          filter.filter.test('diff-viewer.svelte') &&
+          !filter.filter.test('diff-viewer.svelte.ts')
+        ) {
+          registeredLoadHandler = handler;
+        }
+      },
+    };
+    plugin.setup(builderStub as Parameters<typeof plugin.setup>[0]);
+
+    if (!registeredLoadHandler) {
+      throw new Error('plugin did not register the .svelte onLoad handler');
+    }
+
+    const fixtureDirectory = `${import.meta.dir}/components/diff-viewer`;
+    const fixturePath = `${fixtureDirectory}/style-allowed-fixture.svelte`;
+    await Bun.$`mkdir -p ${fixtureDirectory}`;
+    await Bun.write(
+      fixturePath,
+      `<p class="sample">hi</p>\n<style>\n.sample { color: tomato; }\n</style>\n`,
+    );
+
+    try {
+      const result = await registeredLoadHandler({ path: fixturePath });
+      expect(result.loader).toBe('js');
+      expect(result.contents).toContain('hi');
+    } finally {
+      await Bun.file(fixturePath).delete();
+    }
+  });
+
+  test('compiles .svelte.ts rune modules via compileModule', async () => {
+    const plugin = sveltePlugin({ generate: 'client' });
+    type LoadArguments = { path: string };
+    type LoadResult = { contents: string; loader: string };
+    type LoadHandler = (input: LoadArguments) => Promise<LoadResult>;
+    type MinimalSetupBuilder = {
+      config: { target: 'bun' };
+      onLoad(filter: { filter: RegExp }, handler: LoadHandler): void;
+    };
+
+    // Capture the `.svelte.(js|ts)` handler specifically (not the `.svelte` one).
+    let registeredLoadHandler: LoadHandler | undefined;
+    const builderStub: MinimalSetupBuilder = {
+      config: { target: 'bun' },
+      onLoad(filter, handler) {
+        if (filter.filter.test('fixture.svelte.ts')) {
+          registeredLoadHandler = handler;
+        }
+      },
+    };
+    plugin.setup(builderStub as Parameters<typeof plugin.setup>[0]);
+
+    if (!registeredLoadHandler) {
+      throw new Error('plugin did not register the .svelte.(js|ts) onLoad handler');
+    }
+
+    const fixturePath = `${import.meta.dir}/.rune-module-fixture.svelte.ts`;
+    await Bun.write(
+      fixturePath,
+      `import type { Snippet } from 'svelte';\nexport interface CounterOptions { label?: string; children?: Snippet; }\nexport class Counter {\n  count = $state(0);\n  increment() { this.count += 1; }\n}\n`,
+    );
+
+    try {
+      const result = await registeredLoadHandler({ path: fixturePath });
+      expect(result.loader).toBe('js');
+      // Prove the rune was actually compiled, not that the source was returned unchanged.
+      // compileModule replaces `$state(0)` with Svelte's runtime helpers (`$.state(...)`, etc.)
+      // and drops the rune keyword from the emitted code.
+      expect(result.contents).toContain('$.state');
+      expect(result.contents).not.toContain('$state(');
+    } finally {
+      await Bun.file(fixturePath).delete();
+    }
+  });
+});
+
+// The per-component ast.css === null assertion and structural convention checks
+// moved to src/convention.test.ts in Phase 2 (Wave 2). This file retains only
+// the svelte plugin unit tests.

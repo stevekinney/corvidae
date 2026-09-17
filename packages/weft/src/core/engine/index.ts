@@ -1,0 +1,2971 @@
+/* oxlint-disable max-lines -- Engine's public overload signatures (~191 lines: register/start/signal/update/query, the five bulk dry-run-vs-commit methods, schedule, and static create) plus member JSDoc (~130 lines) ARE the published declaration surface, gated byte-for-byte by verify:jsdoc:declarations and the scoped Engine class-block .d.ts oracle; the irreducible declaration floor alone (>=531 lines, counted with skipBlankLines:false skipComments:false) exceeds the 500 ceiling before any method body is counted. The aggressive class split was attempted (task 3765ffa6, documentation/engine-split-log/PR-33.md): a class-expression mixin regresses the emitted .d.ts (Engine extends a synthetic any-typed Engine_base intersection; schedule methods leave the Engine block), and a verbatim class move only relocates this suppression because max-lines is repo-wide; rejected. All extractable bodies live in ~90 sibling modules under src/core/engine/. */
+import { AlertManager } from '../../alerting/alert-manager.ts';
+import type { AlertStateSnapshot } from '../../alerting/types.ts';
+import {
+  KEYS,
+  requireStorageCapability,
+  type Storage as WeftStorage,
+} from '../../storage/interface.ts';
+import {
+  ActivityRegistry,
+  type ActivityMetadata,
+  type ActivityRegistrationOptions,
+  type RegisteredActivityFunction,
+} from '../activity-registry.ts';
+import { AtomicState, type AtomicStateOptions } from '../atomic-state.ts';
+import type { WorkflowRevisionRecord } from '../catalog/index.ts';
+import { deserializeCheckpoint } from '../checkpoint.ts';
+import type { StoredStreamChunk } from '../context.ts';
+import { createHandleCacheFinalizer } from '../engine-helpers.ts';
+import type { TypedEventTarget, WeftEventMap } from '../events.ts';
+import type { Interceptor } from '../interceptor.ts';
+import { ReviewCoordinator, type ReviewRequest } from '../review/index.ts';
+import { Scheduler } from '../scheduler.ts';
+import type { WorkflowSourceHandle } from '../source/index.ts';
+import {
+  messageName,
+  type AnyActivityDefinition,
+  type AnyWorkflowDefinition,
+  type AttributeFilterKey,
+  type BulkCancelResult,
+  type BulkDeleteResult,
+  type BulkOperationCommitOptions,
+  type BulkOperationDryRunOptions,
+  type BulkOperationDryRunResult,
+  type BulkRetryFailedResult,
+  type BulkSignalAllCommitOptions,
+  type BulkSignalAllDryRunOptions,
+  type BulkSignalResult,
+  type BulkTagResult,
+  type CheckpointState,
+  type CheckpointSummary,
+  type CoordinatedUpdateResult,
+  type DefaultActivityTypes,
+  type DefaultWorkflowRegistry,
+  type ForkOptions,
+  type InferActivityEntries,
+  type InferActivityEntry,
+  type InferWorkflowEntries,
+  type InferWorkflowEntry,
+  type ListFilter,
+  type ListOptions,
+  type MessageName,
+  type PaginatedResult,
+  type PendingAsyncActivityListOptions,
+  type PendingAsyncActivityPage,
+  type PruneCheckpointsOptions,
+  type PruneCheckpointsResult,
+  type PurgeResult,
+  type QueryDefinition,
+  type RegisteredWorkflowDefinition,
+  type RetentionOverview,
+  type ReviewListEntry,
+  type ReviewListFilter,
+  type ScheduleDefinition,
+  type ScheduleFilter,
+  type ScheduleOptions,
+  type ScheduleSpec,
+  type ScheduleSummary,
+  type ScheduleUpdateOptions,
+  type SearchAttributeValue,
+  type SignalDefinition,
+  type SignalDeliveryOptions,
+  type StartOrSignalOptions,
+  type StartOrSignalSignal,
+  type StartWorkflowOptions,
+  type SubmitReviewOptions,
+  type TypedListFilter,
+  type UpdateDefinition,
+  type WorkerOutboundMessage,
+  type WorkflowEvent,
+  type WorkflowFinalizerStatus,
+  type WorkflowInput,
+  type WorkflowOutput,
+  type WorkflowReplay,
+  type WorkflowScheduleProvenance,
+  type WorkflowServices,
+  type WorkflowServicesUnion,
+  type WorkflowState,
+  type WorkflowSummary,
+  type WorkflowTimelineEntry,
+} from '../types.ts';
+import type { TimerEntry } from '../types/checkpoint.ts';
+import type { WorkflowAlreadyRegistered } from '../types/workflow-builder.ts';
+import { UpdateCoordinator } from '../updates.ts';
+import {
+  aggregate as aggregateWorkflows,
+  type AggregateOptions,
+  type AggregateResult,
+} from './aggregate.ts';
+import {
+  completeAsyncActivity as completeAsyncActivityFromInternals,
+  failAsyncActivity as failAsyncActivityFromInternals,
+} from './async-activity-completion.ts';
+import {
+  listPendingAsyncActivities as listPendingAsyncActivitiesFromInternals,
+  recoverPendingAsyncActivities,
+} from './async-activity-records.ts';
+import { broadcast as broadcastFromInternals, type BroadcastCallbacks } from './broadcast.ts';
+import {
+  cancelAll as cancelAllWorkflows,
+  deleteAll as deleteAllWorkflows,
+  purge as purgeWorkflows,
+  retryFailedAll as retryFailedAllWorkflows,
+  signalAll as signalAllWorkflows,
+  tagAll as tagAllWorkflows,
+  untagAll as untagAllWorkflows,
+} from './bulk-operations.ts';
+import { createTimeOperationCallbacks as createTimeOperationCallbacksForEngine } from './callback-creators-bundles.ts';
+import { createPendingUpdateCallbacks as createPendingUpdateCallbacksForEngine } from './callback-creators-core.ts';
+import {
+  createBroadcastCallbacks as createBroadcastCallbacksForEngine,
+  createInlineParkingCallbacks as createInlineParkingCallbacksForEngine,
+  createLifecycleCallbacks as createLifecycleCallbacksForEngine,
+  createRegistrationCallbacks as createRegistrationCallbacksForEngine,
+  createTerminationCallbacks as createTerminationCallbacksForEngine,
+  createUpdateCallbacks as createUpdateCallbacksForEngine,
+} from './callback-creators.ts';
+import { registerCancelHandler } from './cancel-handlers.ts';
+import { ensureWorkflowCatalogReady, isWorkflowCatalogReady } from './catalog-readiness.ts';
+import { pruneCheckpoints as pruneCheckpointsFromInternals } from './checkpoint-prune.ts';
+import {
+  getCheckpointAt as getCheckpointStateAt,
+  getEvents as getWorkflowEvents,
+  getTimeline as getWorkflowTimeline,
+  listCheckpoints as listCheckpointHistory,
+  replayTo as replayWorkflowToCheckpoint,
+} from './checkpoint-reads.ts';
+import {
+  copyWorkflowDefinition,
+  createActivityWorkerDispatcher,
+  createExecutionStrategyBundle,
+  definitionEntries,
+  resolveEngineInterceptors,
+  resolveEngineOptions,
+  resolveEngineStorage,
+  typedEngineView,
+  type EmptyActivityDefinitions,
+  type EmptyWorkflowDefinitions,
+  type EngineCreateRuntimeOptions,
+  type KnownWorkflowNames,
+} from './construction.ts';
+import { disposeEngine } from './disposal.ts';
+import {
+  canResolveRevisionLocally,
+  getResolvedDynamicRegistration,
+} from './dynamic-source-execution.ts';
+import {
+  type ActivityDefinitionName,
+  type EngineCreateOptions,
+  type EngineCreateWorkflowRegistry,
+  type RegisteredActivityDefinitionExecute,
+  type UnknownWorkflowNameWhenDefaultRegistryIsEmpty,
+} from './engine-create-types.ts';
+import type { EngineConstructorOptions } from './engine-internal-types.ts';
+import {
+  consumeNextEngineLeakWarningTokenForTesting,
+  engineCleanupIntervalFinalizer,
+  type EngineCleanupIntervalDisposalTracker,
+} from './engine-leak-warnings.ts';
+import {
+  createCleanupIntervalTick,
+  createQueuedInlineWorkflowStartHandler,
+  createSecondInstanceDetectorResolver,
+  drainQueuedInlineWorkflowStartsForEngine,
+  isActivityDefinition,
+  shouldStartEngineScheduler,
+  validateEngineCreateBackgroundTaskOptions,
+} from './engine-runtime-helpers.ts';
+import type { EngineStateNamespace } from './engine-state-namespace.ts';
+import {
+  createEngineWorkflowsNamespace,
+  type EngineWorkflowsNamespace,
+} from './engine-workflows-namespace.ts';
+import {
+  EngineCreateNameMismatchError,
+  EngineDisposalError,
+  EngineDisposedError,
+  StartOrSignalConflictError,
+} from './errors.ts';
+import { assertLeaseHeldForEngineWork, commitFencedEngineWrite } from './fenced-write.ts';
+import { recordFinalizerState } from './finalizer-state.ts';
+import { getFinalizerStatus as getFinalizerStatusFromInternals } from './finalizer-status.ts';
+import {
+  createWorkflowHandleWithResultPromise as createWorkflowHandleWithResultPromiseFromInternals,
+  getWorkflowResultPromise as getWorkflowResultPromiseFromInternals,
+  pollPendingCrossEngineResultWaiters,
+} from './handle-result.ts';
+import { HANDLE_RESULT_PROMISE, WorkflowHandle } from './handles.ts';
+import { hasQueuedInlineWorkflowStart } from './inline-launch-queue.ts';
+import {
+  handleStrategyMessage as handleStrategyMessageFromInternals,
+  resumeParkedInlineWorkflow as resumeParkedInlineWorkflowFromInternals,
+  type InlineParkingCallbacks,
+} from './inline-parking.ts';
+import { getInternals, initializeInternals, type EngineInternals } from './internals.ts';
+import { ENGINE_LEASE_LOST_WARNING_NAME, handleDeposition } from './lease-deposition.ts';
+import type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
+import { createLeaseManager } from './lease-manager.ts';
+import {
+  fork as forkFromLifecycle,
+  recoverAll as recoverAllFromLifecycle,
+  resume as resumeFromLifecycle,
+  startOrSignal as startOrSignalFromLifecycle,
+  startWithIdempotency as startWithIdempotencyFromLifecycle,
+  startWorkflow as startWorkflowFromLifecycle,
+  type LifecycleCallbacks,
+  type RecoverAllOptions,
+  type StartOrSignalCallbacks,
+  type StartOrSignalResult,
+} from './lifecycle.ts';
+import {
+  addTags as addWorkflowTags,
+  getAttributes as getWorkflowAttributes,
+  list as listWorkflows,
+  removeTags as removeWorkflowTags,
+  setAttributes as setWorkflowAttributes,
+} from './listing.ts';
+import { getOffloadFromInternals } from './operations-data.ts';
+import { getStreamChunksFromInternals } from './operations-stream.ts';
+import {
+  handleTimerFired as handleTimerFiredFromInternals,
+  type TimeOperationCallbacks,
+} from './operations-time.ts';
+import type { OwnerSideSignalPollTarget } from './owner-side-signal-poll.ts';
+import type { OwnerSideUpdatePollTarget } from './owner-side-update-poll.ts';
+import {
+  bootstrapWorkflowLeaseOwnership,
+  buildOwnerSideSignalPollTarget,
+  type OwnerSideSignalPollSources,
+} from './ownership-bootstrap.ts';
+import { bootstrapOwnershipGates } from './ownership-mode-marker.ts';
+import { processPendingUpdatesForHandlers as processPendingUpdatesForHandlersFromInternals } from './pending-updates.ts';
+import { assertCompatiblePersistedDataVersion } from './persisted-data-version.ts';
+import { query as queryWorkflow } from './queries.ts';
+import {
+  register as registerWorkflow,
+  resolveWorkflowTypeTarget as resolveWorkflowTypeTargetFromRegistration,
+  type RegistrationCallbacks,
+} from './registration.ts';
+import {
+  ensureRetentionSweepInterval,
+  getRetentionOverview as getRetentionOverviewSnapshot,
+  hasConfiguredRetention,
+  resolveWorkflowTypeRetention,
+  runRetentionSweep,
+  setNextRetentionSweepAt,
+} from './retention.ts';
+import {
+  getReview as getReviewFromInternals,
+  listReviews as listReviewsFromInternals,
+  submitReview as submitReviewFromInternals,
+} from './reviews.ts';
+import { ScheduleHandle } from './schedule-handle.ts';
+import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
+import {
+  cancelSchedule as cancelScheduleFromInternals,
+  listSchedules as listSchedulesFromInternals,
+  pauseSchedule as pauseScheduleFromInternals,
+  recoverOrphanedScheduleTimers,
+  resumeSchedule as resumeScheduleFromInternals,
+  schedule as scheduleFromInternals,
+  toScheduleSummary,
+  updateSchedule as updateScheduleFromInternals,
+} from './schedules.ts';
+import {
+  createSecondInstanceDetectionTick,
+  createSecondInstanceDetector,
+} from './second-instance-detector.ts';
+import {
+  hasBufferedSignal as hasBufferedSignalFromInternals,
+  releaseSignalWaiter,
+  signal as signalWorkflow,
+} from './signals.ts';
+import { registerSource as registerWorkflowSource } from './source-registration.ts';
+import {
+  resolveWorkflowSource as resolveWorkflowSourceImpl,
+  type ResolveWorkflowSourceOptions,
+} from './source-resolution.ts';
+import { createWorkflowSourceRuntimeState } from './source-runtime-state.ts';
+import {
+  loadScheduleState,
+  loadWorkflowState,
+  runSerializedWorkflowStateWrite,
+} from './storage-io.ts';
+import {
+  feedOperationResult,
+  getComposedWorkflowInterceptor,
+  swallowPromiseRejection,
+} from './strategy-helpers.ts';
+import {
+  cancelWorkflow as cancelWorkflowFromTermination,
+  cleanupWaiters as cleanupWaitersFromTermination,
+  finalizePendingTimelineEntry,
+  suspendWorkflow as suspendWorkflowFromTermination,
+  timeoutWorkflow as timeoutWorkflowFromTermination,
+  type TerminationCallbacks,
+} from './termination.ts';
+import {
+  deliverCoordinatedUpdateToWaiterIfAvailable as deliverCoordinatedUpdateToWaiterIfAvailableFromInternals,
+  getUpdateResult as getUpdateResultFromInternals,
+  submitCoordinatedUpdate as submitCoordinatedUpdateFromInternals,
+  update as updateFromInternals,
+  type UpdateCallbacks,
+} from './updates.ts';
+import { isTerminalWorkflowStatus } from './validation.ts';
+import { coerceScheduleId } from './validation/schedule.ts';
+import { confirmWakeOwnership } from './wake-ownership-guard.ts';
+import type { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
+import {
+  replayWorkflowFeed,
+  snapshotWorkflowFeedTail,
+  subscribeWorkflowFeedCommits,
+  type WorkflowFeedListener,
+  type WorkflowFeedRecord,
+  type WorkflowFeedSelector,
+} from './workflow-feed.ts';
+
+export type { WorkflowRevisionReferenceCounts } from '../catalog/index.ts';
+export {
+  ActivityReconciliationCapabilityError,
+  ActivityReconciliationConflictError,
+  ActivityReconciliationIndeterminateError,
+} from './activity-reconciliation.ts';
+export { AsyncActivityTokenNotFoundError } from './async-activity-completion.ts';
+export type { PendingAsyncActivity } from './async-activity-records.ts';
+export {
+  getWorkflowRevisionDiagnostics,
+  removeWorkflowRevision,
+  type WorkflowCatalogRemovalResult,
+  type WorkflowRevisionDiagnostics,
+} from './catalog-removal.ts';
+export {
+  DynamicWorkflowSourceUnavailableError,
+  WorkflowSourceNotRegisteredError,
+} from './dynamic-source-errors.ts';
+export type {
+  PendingTimelineEntry,
+  RegistrationEntry,
+  ResolvedOptions,
+  TrackedWaiterKeys,
+  WorkflowResultWaiter,
+} from './engine-internal-types.ts';
+export {
+  ActivityResolutionError,
+  BulkDeleteRequiresTerminalWorkflowsError,
+  BulkOperationConfirmationError,
+  EngineCreateNameMismatchError,
+  EngineDisposalError,
+  EngineDisposedError,
+  ForkSourceReplacedError,
+  IdempotencyKeyPurgedError,
+  PersistedDataCorruptError,
+  PersistedDataIncompatibleError,
+  StartOrSignalConflictError,
+  WorkflowAlreadyExistsError,
+  WorkflowConcurrencyLimitExceededError,
+  WorkflowNotFoundError,
+  WorkflowNotRegisteredError,
+  WorkflowSuspendNotSupportedError,
+  WorkflowTeardownPendingError,
+  WorkflowTypeNotRegisteredForRecoveryError,
+} from './errors.ts';
+export { HANDLE_RESULT_PROMISE, WorkflowHandle } from './handles.ts';
+export { getWorkflowCatalog } from './internals.ts';
+export {
+  WeftWorkflowClaimLostWarning,
+  WeftWorkflowWakeDiscardedWarning,
+  WORKFLOW_CLAIM_LOST_WARNING_NAME,
+  WORKFLOW_WAKE_DISCARDED_WARNING_NAME,
+} from './lease-deposition.ts';
+export type { WorkflowWakeKind } from './lease-deposition.ts';
+export {
+  EngineLeaseAcquisitionTimeoutError,
+  EngineLeaseCorruptedError,
+  EngineLeaseNotHeldError,
+  OwnershipModeMismatchError,
+  WorkflowClaimUnavailableError,
+} from './lease-errors.ts';
+export type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
+export type { RecoverAllOptions, RecoveredWorkflowInfo } from './lifecycle.ts';
+export { WorkflowRevisionUnavailableError } from './revision-errors.ts';
+export { ScheduleHandle } from './schedule-handle.ts';
+export type { ResolveWorkflowSourceOptions } from './source-resolution.ts';
+export type {
+  WorkflowFeedListener,
+  WorkflowFeedRecord,
+  WorkflowFeedSelector,
+} from './workflow-feed.ts';
+
+// Public type definitions and runtime helpers used by the Engine class were
+// extracted to sibling modules to keep this file under the lint threshold.
+// They are re-exported here to preserve the public API surface.
+export type { EngineCreateOptions } from './engine-create-types.ts';
+export {
+  clearEngineLeakWarningTokenForTesting,
+  getEngineLeakCollectionCountForTesting,
+  hasEngineLeakWarningTokenForTesting,
+  setEngineLeakWarningOverrideForTesting,
+  setNextEngineLeakWarningTokenForTesting,
+  shouldEmitEngineLeakWarningForTesting,
+} from './engine-leak-warnings.ts';
+export type { EngineStateNamespace } from './engine-state-namespace.ts';
+export type {
+  ActivateWorkflowRevisionOptions,
+  EngineWorkflowsNamespace,
+} from './engine-workflows-namespace.ts';
+export { assertCompatiblePersistedDataVersion };
+
+export const ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING = Symbol(
+  'engineParkedWorkflowCountForTesting',
+);
+export const ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING = Symbol('engineSignalWaiterCountForTesting');
+export const ENGINE_SLEEP_RESOLVER_COUNT_FOR_TESTING = Symbol('engineSleepResolverCountForTesting');
+export const ENGINE_WAIT_FOR_SLEEP_RESOLVER_FOR_TESTING = Symbol(
+  'engineWaitForSleepResolverForTesting',
+);
+export const ENGINE_SET_WORKER_TURN_TIMEOUT_RESOLVER_FOR_TESTING = Symbol(
+  'engineSetWorkerTurnTimeoutResolverForTesting',
+);
+
+/**
+ * Bound for `ENGINE_WAIT_FOR_SLEEP_RESOLVER_FOR_TESTING`.
+ *
+ * The only production-adjacent consumer awaits that hook inside the
+ * `weft:test:periodic-sync` Service Worker message handler in
+ * service-worker-browser.test.ts, and that file bounds each message round trip
+ * at 5s (`sendWorkerMessage`), each phase at 15s or whatever remains of the
+ * test budget, and each test at 30s. This bound has to be strictly tighter than
+ * the innermost of those — at 5s it would tie with the message bound and the
+ * generic "Service Worker message timed out" could win the race, hiding the
+ * diagnostic this bound exists to produce. 3s expires first, and the handler
+ * posts the rejection back over the port so the workflow-naming error is what
+ * reaches CI.
+ *
+ * The ordering holds whenever the phase bound is the 15s ceiling. It cannot
+ * hold once a test has burned all but a few seconds of its 30s budget, because
+ * no inner window survives an outer bound shorter than itself. That case is
+ * reported rather than papered over: the phase error says the bound was
+ * shortened by the remaining budget and that a nested timeout may have been
+ * preempted, which points at the earlier phases that actually consumed it.
+ */
+export const SLEEP_RESOLVER_READY_WAIT_TIMEOUT_MS_FOR_TESTING = 3_000;
+
+/**
+ * The `name` of the `process` warning emitted when a lease-owning engine is
+ * disposed through the synchronous `[Symbol.dispose]()` path. Sync disposal can
+ * only fire the lease release in the background; use `await engine.shutdown()`,
+ * `await using`, or `await engine[Symbol.asyncDispose]()` when prompt rolling
+ * deploy handoff matters.
+ *
+ * @example
+ * ```ts
+ * import { ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME } from '@repo/weft';
+ *
+ * process.on('warning', (warning) => {
+ *   if (warning.name === ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME) {
+ *     // Alert on shutdown paths that can make lease handoff wait for leaseTtl.
+ *   }
+ * });
+ * ```
+ */
+export const ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME =
+  'WeftEngineLeaseSynchronousDisposeWarning';
+
+export { ENGINE_LEASE_LOST_WARNING_NAME };
+
+function scheduleDefinitionFromInternals(
+  internals: EngineInternals,
+  definition: ScheduleDefinition,
+): Promise<ScheduleHandle> {
+  const workflowType =
+    typeof definition.workflow === 'string' ? definition.workflow : definition.workflow.name;
+  const definitionSpec: ScheduleSpec =
+    definition.every !== undefined ? { every: definition.every } : { cron: definition.cron ?? '' };
+  return scheduleFromInternals(internals, workflowType, definition.input, definitionSpec, {
+    ...(definition.id !== undefined && { id: definition.id }),
+    ...(definition.description !== undefined && { description: definition.description }),
+    ...(definition.overlapPolicy !== undefined && { overlap: definition.overlapPolicy }),
+    ...(definition.backfill !== undefined && { backfill: definition.backfill }),
+    ...(definition.jitter !== undefined && { jitter: definition.jitter }),
+    ...(definition.revisionPolicy !== undefined && { revisionPolicy: definition.revisionPolicy }),
+  });
+}
+
+/**
+ * Durable execution engine.
+ *
+ * Register workflow and activity definitions with {@link Engine.register},
+ * start workflows with {@link Engine.start},
+ * and observe or cancel them via the returned {@link WorkflowHandle}. Each
+ * workflow is a generator that yields to a {@link Context}; the engine
+ * persists a checkpoint at every yield so the workflow survives crashes,
+ * restarts, and worker reassignment without losing progress.
+ *
+ * The default type parameters preserve the module-augmentation registry
+ * model. Use `new Engine<{}, {}>()` when you want an engine-local registry
+ * that only accepts definitions added through `register`.
+ *
+ * @example Run a workflow with an activity
+ * ```ts
+ * import { workflow, activity, Engine, type Context, type WorkflowContext } from '@repo/weft';
+ * const fetchUser = activity({
+ *   name: 'fetchUser',
+ *   execute: async (input: unknown) => ({ name: 'Alice' }),
+ * });
+ * const engine = new Engine();
+ * engine.register(
+ *   workflow({ name: 'greet' }).execute(async function* (ctx: WorkflowContext, input: unknown) {
+ *     const user = yield* ctx.run(fetchUser, input);
+ *     return `Hello, ${user.name}`;
+ *   }),
+ * );
+ * const handle = await engine.start('greet', 'user-1');
+ * void handle;
+ * ```
+ *
+ * @example With a SQLite backend
+ * ```ts
+ * import { Engine } from '@repo/weft';
+ * import { BunSQLiteStorage } from '@repo/weft';
+ * await using storage = new BunSQLiteStorage('./weft.db');
+ * await using engine = new Engine({ storage });
+ * await engine.recoverAll();
+ * void engine;
+ * ```
+ */
+export class Engine<
+  TWorkflows extends object = DefaultWorkflowRegistry,
+  TActivities extends object = DefaultActivityTypes,
+>
+  extends EventTarget
+  implements Disposable, AsyncDisposable, TypedEventTarget<WeftEventMap>
+{
+  #asyncDisposeResult: Promise<boolean> | null = null;
+  #shutdownResult: Promise<boolean> | null = null;
+  #synchronousDisposeResult: Promise<boolean> | null = null;
+
+  /**
+   * Construct and register an engine in one step. Activities are registered
+   * before workflows. Recovery runs by default after all definitions are
+   * installed; pass `recover: false` to opt out.
+   *
+   * @example
+   * ```ts
+   * import { activity, Engine, workflow } from '@repo/weft';
+   *
+   * const greet = activity({ name: 'greet', execute: async (name: string) => `Hi ${name}` });
+   * const welcome = workflow({ name: 'welcome' }).execute(async function* (ctx, input: string) {
+   *   return yield* ctx.run(greet, input);
+   * });
+   *
+   * const engine = await Engine.create({
+   *   activities: { greet },
+   *   workflows: { welcome },
+   * });
+   * void engine;
+   * ```
+   */
+  static create(
+    options: EngineCreateOptions<EmptyWorkflowDefinitions, EmptyActivityDefinitions> & {
+      activities?: undefined;
+      workflows?: undefined;
+    },
+  ): Promise<Engine>;
+  static create<TWorkflowDefinitions extends Record<string, AnyWorkflowDefinition>>(
+    options: EngineCreateOptions<TWorkflowDefinitions, EmptyActivityDefinitions> & {
+      activities?: undefined;
+      workflows: TWorkflowDefinitions;
+    },
+  ): Promise<Engine<EngineCreateWorkflowRegistry<TWorkflowDefinitions>>>;
+  static create<TActivityDefinitions extends Record<string, AnyActivityDefinition>>(
+    options: EngineCreateOptions<EmptyWorkflowDefinitions, TActivityDefinitions> & {
+      activities: TActivityDefinitions;
+      workflows?: undefined;
+    },
+  ): Promise<Engine<DefaultWorkflowRegistry, InferActivityEntries<TActivityDefinitions>>>;
+  static create<
+    TWorkflowDefinitions extends Record<string, AnyWorkflowDefinition>,
+    TActivityDefinitions extends Record<string, AnyActivityDefinition>,
+  >(
+    options: EngineCreateOptions<TWorkflowDefinitions, TActivityDefinitions> & {
+      activities: TActivityDefinitions;
+      workflows: TWorkflowDefinitions;
+    },
+  ): Promise<
+    Engine<
+      EngineCreateWorkflowRegistry<TWorkflowDefinitions>,
+      InferActivityEntries<TActivityDefinitions>
+    >
+  >;
+  static async create(options: EngineCreateRuntimeOptions): Promise<unknown> {
+    validateEngineCreateBackgroundTaskOptions(options);
+    const engine = new Engine<object, object>(options);
+
+    try {
+      await assertCompatiblePersistedDataVersion(getInternals(engine).storage);
+      for (const [name, definition] of definitionEntries(options.activities)) {
+        if (name !== definition.name) {
+          throw new EngineCreateNameMismatchError('activity', name, definition.name);
+        }
+        engine.#registerActivityDefinition(definition);
+      }
+
+      for (const [name, definition] of definitionEntries(options.workflows)) {
+        if (name !== definition.name) {
+          throw new EngineCreateNameMismatchError('workflow', name, definition.name);
+        }
+        engine.register(definition);
+      }
+
+      // Run the `ownership: 'workflow-lease'` construction-time gates (Gate 1
+      // storage capability, Gate 2 ownership-mode marker) and construct this
+      // engine's claim registry/renewal task BEFORE recovery, the scheduler,
+      // or any claim acquisition — ADR 0002's boot-gate ordering. A no-op for
+      // every other `ownership` posture.
+      await engine.#bootstrapOwnershipIfConfigured();
+
+      // Acquire single-writer ownership BEFORE recovery so a rolling deploy is a
+      // clean handoff: the incoming instance parks here until the outgoing one
+      // releases (or its lease expires), and only then recovers. On the try's
+      // failure path the asyncDispose below releases the lease. Throws
+      // EngineLeaseAcquisitionTimeoutError if the lease cannot be acquired in time.
+      await engine.#acquireLeaseIfConfigured();
+
+      // Restore the durable workflow catalog and drain every registration
+      // above into it BEFORE recovery or any new start — but only after the
+      // ownership gates and lease acquisition above, so a Gate 1/Gate 2
+      // failure (or a lost lease-acquisition race) still rejects construction
+      // before ANY storage scan, catalog included — see
+      // `workflow-lease-ownership.test.ts`'s "recovery never scans storage"
+      // invariant, which this ordering preserves.
+      if (!isWorkflowCatalogReady(engine as Engine)) {
+        await ensureWorkflowCatalogReady(engine as Engine);
+      }
+
+      if (options.recover !== false) {
+        await engine.recoverAll(
+          options.acknowledgeUnknownWorkflowTypes !== undefined
+            ? { acknowledgeUnknownWorkflowTypes: options.acknowledgeUnknownWorkflowTypes }
+            : {},
+        );
+      }
+      // Start polling so durable timers fire for long-lived in-process engines
+      // (#586, #590). This is independent of `recover`: the flag controls who
+      // drives `recoverAll`, not whether timers should fire. Defaults to
+      // `recover !== false`, so the existing behavior is preserved — but a
+      // `recover: false` host that owns its own recovery can arm the poller with
+      // `startScheduler: true`, and tests / `ScopedStorage` engines that tick the
+      // scheduler deterministically can keep it stopped with `startScheduler: false`.
+      const shouldStartScheduler = shouldStartEngineScheduler(
+        options,
+        getInternals(engine).options.backgroundTaskMode,
+      );
+      if (shouldStartScheduler) {
+        getInternals(engine).scheduler.start();
+      }
+    } catch (error) {
+      // Constructor side effects (broadcast channel, scheduler, dispatchers,
+      // alert manager) are alive even when registration or recovery fails.
+      // Dispose before propagating so callers don't have to recover from a
+      // half-booted engine they never received a reference to.
+      await engine[Symbol.asyncDispose]();
+      throw error;
+    }
+
+    return engine;
+  }
+
+  constructor(options?: EngineConstructorOptions<WorkflowServicesUnion<TWorkflows>>) {
+    super();
+    initializeInternals(this);
+    getInternals(this).registrations = new Map();
+    getInternals(this).workflowTypesByHandler = new WeakMap();
+    const storage = resolveEngineStorage(options);
+    const getNow = options?.getNow ?? Date.now;
+    const resolvedOptions = resolveEngineOptions(storage, options, getNow);
+    const strategyBundle = createExecutionStrategyBundle({
+      options,
+      getNow,
+      maxNestingDepth: resolvedOptions.maxNestingDepth,
+      development: resolvedOptions.development,
+      broadcastEvents: resolvedOptions.broadcastEvents,
+      // Falls back to the EXACT `(type, revision)` this workflowId's own
+      // instance is pinned to (WFT-19, via `workflowTypeByWorkflowId` —
+      // already populated by `startWorkflowExecution()` before the inline
+      // strategy's `startWorkflow()` ever calls this) when `type` has no
+      // eager registration — the execution strategy's own launch path,
+      // separate from `startWorkflow()`'s own (already-awaited)
+      // `resolveExecutableRegistration()` call, which does not itself write
+      // to `internals.registrations`. By the time this runs the source has
+      // already resolved (`startWorkflow()` awaited it before ever reaching
+      // the strategy), so this stays a synchronous, no-resolve lookup —
+      // never a fresh loader invocation.
+      getRegistration: (workflowType, workflowId) =>
+        getResolvedDynamicRegistration(
+          getInternals(this),
+          workflowType,
+          getInternals(this).workflowTypeByWorkflowId.get(workflowId)?.revision,
+        ),
+      listRegisteredWorkflowTypes: () =>
+        new Set([
+          ...getInternals(this).registrations.keys(),
+          ...getInternals(this).sources.lastResolvedRevisionByName.keys(),
+        ]).values(),
+      getComposedWorkflowInterceptor: () => getComposedWorkflowInterceptor(getInternals(this)),
+      resolveWorkflowType: this.#resolveWorkflowTypeTarget.bind(this),
+      registerCancelHandler: (workflowId, handler) =>
+        registerCancelHandler(getInternals(this), workflowId, handler),
+      recordFinalizerState: (workflowId, value) =>
+        recordFinalizerState(getInternals(this), workflowId, value),
+      getWorkflowServices: (workflowId) => getInternals(this).workflowServices.get(workflowId),
+      // Capture the resolved-options local, not `getInternals(this).options` (assigned
+      // later in this constructor): the worker path resolves the sink eagerly during
+      // bundle construction, before that field is set. `onLog` has no setter, so the
+      // captured value never goes stale; it is the same object stored on internals. (#529)
+      getLogSink: () => resolvedOptions.onLog ?? undefined,
+    });
+    getInternals(this).storage = storage;
+    getInternals(this).abortController = new AbortController();
+    getInternals(this).disposed = false;
+    getInternals(this).handleCache = new Map();
+    getInternals(this).resultResolvers = new Map();
+    getInternals(this).signalWaiters = new Map();
+    getInternals(this).signalWaitersByWorkflow = new Map();
+    getInternals(this).conditionWaiters = new Map();
+    getInternals(this).updateWaiters = new Map();
+    getInternals(this).updateWaitersByWorkflow = new Map();
+    getInternals(this).sleepResolvers = new Map();
+    getInternals(this).sleepResolversByWorkflow = new Map();
+    getInternals(this).sleepResolverReadyWaitersForTesting = new Map();
+    getInternals(this).sleepTimerAcknowledgementWaiters = new Map();
+    getInternals(this).durableInlineOperations = new Map();
+    getInternals(this).sleepTimersFiredWithoutResolver = new Map();
+    getInternals(this).interceptors = resolveEngineInterceptors(options);
+    getInternals(this).composedWorkflowInterceptor = undefined;
+    getInternals(this).composedActivityInterceptor = undefined;
+    getInternals(this).updateCoordinator = new UpdateCoordinator(storage);
+    getInternals(this).activityRegistry = new ActivityRegistry();
+    getInternals(this).activityRegistriesByWorkflow = new Map();
+    getInternals(this).workflowDefinitionsByName = new Map();
+    getInternals(this).workflowTypeByWorkflowId = new Map();
+    getInternals(this).activityWorkerDispatcher = null;
+    getInternals(this).checkpoints = new Map();
+    getInternals(this).broadcastChannel = null;
+    getInternals(this).pendingNestingDepth = undefined;
+    getInternals(this).pendingParentHeaders = undefined;
+    getInternals(this).pendingExecutionStateOwnerId = undefined;
+    getInternals(this).pendingParentWorkflowId = undefined;
+    getInternals(this).pendingParentWorkflowExecutionToken = undefined;
+    getInternals(this).workflowNestingDepths = new Map();
+    getInternals(this).workflowHeaders = new Map();
+    getInternals(this).workflowStateWriteChains = new Map();
+    getInternals(this).scheduleStateOperationChains = new Map();
+    getInternals(this).finalizationRegistry = new FinalizationRegistry<string>(
+      createHandleCacheFinalizer(getInternals(this).handleCache),
+    );
+    getInternals(this).options = resolvedOptions;
+    getInternals(this).scheduler = new Scheduler({
+      storage,
+      onTimerFired: (entry) =>
+        handleTimerFiredFromInternals(
+          getInternals(this),
+          entry,
+          this.#createTimeOperationCallbacks(),
+        ),
+      pollIntervalMs: resolvedOptions.schedulerPollIntervalMs,
+      getNow,
+      // Fence the fired-timer delete on the lease epoch (#563) so a deposed
+      // engine cannot drop a timer while its callback's fenced reschedule/clear
+      // was rejected. Empty base conditions: the only guard is the epoch fence,
+      // so under single-engine ownership this commits like the unfenced default.
+      // Engine-scoped: one tick's cleanup batch can span fired timers from
+      // MANY distinct workflows (deadline, delayed-start, schedule, terminal
+      // cleanup, teardown), so there is no single workflowId to fence against.
+      commitTimerCleanup: (operations) =>
+        commitFencedEngineWrite(
+          getInternals(this),
+          null,
+          operations,
+          [],
+          () => new Error('Timer cleanup lost its fenced CAS race'),
+        ),
+    });
+    getInternals(this).strategy = strategyBundle.strategy;
+    getInternals(this).inlineStrategy = strategyBundle.inlineStrategy;
+    getInternals(this).queuedInlineWorkflowStarts = [];
+    getInternals(this).queuedInlineWorkflowStartIds = new Set();
+    getInternals(this).queuedOrLaunchingInlineWorkflowStartIds = new Set();
+    getInternals(this).queuedInlineWorkflowStartFlushScheduled = false;
+    const weakEngine = new WeakRef(this);
+    const queuedInlineWorkflowStartChannel =
+      strategyBundle.inlineStrategy !== null ? new MessageChannel() : null;
+    getInternals(this).queuedInlineWorkflowStartChannel = queuedInlineWorkflowStartChannel;
+    if (queuedInlineWorkflowStartChannel !== null) {
+      queuedInlineWorkflowStartChannel.port1.onmessage = createQueuedInlineWorkflowStartHandler(
+        weakEngine,
+        queuedInlineWorkflowStartChannel,
+      );
+    }
+    getInternals(this).heartbeatDetails = new Map();
+    getInternals(this).lastHeartbeatDetailsByStep = new Map();
+    getInternals(this).workflowServices = new Map();
+    getInternals(this).pendingAsyncActivities = new Map();
+    getInternals(this).pendingAsyncActivityResolutions = new Map();
+    getInternals(this).pendingStarts = new Set();
+    getInternals(this).pendingScheduleCreations = new Set();
+    getInternals(this).workflowsNeedingTerminalCleanup = new Set();
+    getInternals(this).reviewCoordinator = new ReviewCoordinator(storage, getNow);
+    getInternals(this).reviewWaiters = new Map();
+    getInternals(this).reviewWaitersByWorkflow = new Map();
+    getInternals(this).reviewEscalationHandlers = new Map();
+    getInternals(this).workflowReviewIds = new Map();
+    getInternals(this).parkedInlineWorkflows = new Set();
+    getInternals(this).terminalizingWorkflows = new Set();
+    getInternals(this).deliveredPendingUpdateIds = new Map();
+    getInternals(this).onRecoveredWorkflowHook = undefined;
+    getInternals(this).cancelHandlersByWorkflow = new Map();
+    getInternals(this).reviewTimerIds = new Map();
+    getInternals(this).pendingWebhooks = new Set();
+    getInternals(this).pendingResultPollTimers = new Set();
+    getInternals(this).pendingTimelineEntries = new Map();
+    getInternals(this).pendingAtomicWorkflowCommitSideEffects = new Map();
+    getInternals(this).cleanupIntervalDisposalTracker = null;
+    const cleanupIntervalDisposalTracker: EngineCleanupIntervalDisposalTracker = {
+      disposed: false,
+      cleanupInterval: null,
+      secondInstanceDetectionInterval: null,
+      testToken: consumeNextEngineLeakWarningTokenForTesting(),
+    };
+    const cleanupInterval =
+      resolvedOptions.backgroundTaskMode === 'automatic'
+        ? setInterval(createCleanupIntervalTick(weakEngine, cleanupIntervalDisposalTracker), 60_000)
+        : null;
+    cleanupIntervalDisposalTracker.cleanupInterval = cleanupInterval;
+    getInternals(this).cleanupInterval = cleanupInterval;
+    getInternals(this).cleanupIntervalDisposalTracker = cleanupIntervalDisposalTracker;
+    engineCleanupIntervalFinalizer.register(
+      this,
+      cleanupIntervalDisposalTracker,
+      cleanupIntervalDisposalTracker,
+    );
+    getInternals(this).retentionSweepInterval = null;
+    getInternals(this).retentionSweepInFlight = null;
+    getInternals(this).nextRetentionSweepAt = null;
+    getInternals(this).secondInstanceDetectionInterval = null;
+    getInternals(this).secondInstanceDetector = null;
+    getInternals(this).leaseManager = null;
+    // Populated by `#bootstrapOwnershipIfConfigured` for `ownership:
+    // 'workflow-lease'` (Gate 1/Gate 2, then the claim registry and its renewal
+    // task). Folding `acquire()` into start/resume/delayed-start-fire is a
+    // later, separate stage — `commitFencedEngineWrite` already reads this
+    // field for every workflow-scoped write regardless.
+    getInternals(this).workflowClaimRegistry = null;
+    getInternals(this).workflowClaimRenewalTask = null;
+    getInternals(this).workflowClaimMetrics = null;
+    getInternals(this).inFlightLeaseAcquire = null;
+    getInternals(this).inFlightOwnershipBootstrap = null;
+    getInternals(this).deposed = false;
+    getInternals(this).tearDownAfterDeposition = (): void => {
+      this.#disposeAfterDeposition();
+    };
+    getInternals(this).eventLogHeads = new Map();
+    getInternals(this).workflowFeedListeners = new Map();
+    getInternals(this).workflowVersionTuples = new Map();
+    getInternals(this).workflowVisibilityWatermark = undefined;
+    getInternals(this).workflowVisibilityWatermarkExpiresAt = undefined;
+    getInternals(this).activityWorkerDispatcher = createActivityWorkerDispatcher(
+      options?.activityExecution,
+    );
+    getInternals(this).strategy.onMessage(this.#handleStrategyMessage.bind(this));
+    getInternals(this).alertManager = options?.alerts
+      ? new AlertManager(
+          this,
+          options.alerts,
+          getNow,
+          resolvedOptions.backgroundTaskMode === 'automatic',
+        )
+      : null;
+    getInternals(this).workflowCatalog = null;
+    getInternals(this).pendingCatalogInstalls = [];
+    getInternals(this).catalogRestored = false;
+    getInternals(this).catalogDrainPromise = null;
+    getInternals(this).registeredCatalogRevisions = new Map();
+    getInternals(this).inFlightStartsByRevision = new Map();
+    getInternals(this).sources = createWorkflowSourceRuntimeState();
+    this.#ensureRetentionSweepInterval();
+    this.#startSecondInstanceDetection();
+  }
+
+  override addEventListener<K extends Extract<keyof WeftEventMap, string>>(
+    type: K,
+    listener: (event: WeftEventMap[K]) => void,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    super.addEventListener(type, listener, options);
+  }
+
+  override removeEventListener<K extends Extract<keyof WeftEventMap, string>>(
+    type: K,
+    listener: (event: WeftEventMap[K]) => void,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    super.removeEventListener(type, listener, options);
+  }
+
+  /**
+   * Start the best-effort second-instance liveness detector when enabled. The
+   * engine owns the interval so disposal clears it through the same path as the
+   * other engine intervals (no leak warning). A `WeakRef` keeps the interval from
+   * pinning the engine alive past garbage collection. On a GC-without-dispose the
+   * interval is cleared two ways: the tick self-clears on its first post-GC fire
+   * (prompt, via the tracker handle) and the shared finalizer clears it on
+   * collection (backstop). Mirrors the cleanup-interval lifecycle exactly.
+   */
+  /**
+   * Acquire the ownership lease when `ownership: 'lease'` is configured, then start
+   * renewing it. No-op for the default `'none'` posture. Requires the storage
+   * `conditionalBatch` capability (every durable recovery backend provides it);
+   * fails fast with a clear diagnostic otherwise. Called by {@link Engine.create}
+   * before recovery; the lease is released on dispose.
+   *
+   * In Step 1, losing the lease while running emits a process warning — the lease
+   * is deploy ergonomics, not yet a correctness backstop (epoch fencing of durable
+   * writes is the follow-on that makes loss enforceable).
+   */
+  async #acquireLeaseIfConfigured(): Promise<void> {
+    const internals = getInternals(this);
+    if (internals.options.ownershipMode !== 'lease') return;
+    // Never start (or report success for) an acquire on a disposed engine: that is
+    // the contract `recoverAll` relies on — `await` resolves ONLY when the lease is
+    // actually held right now, otherwise it throws.
+    if (internals.disposed) throw new EngineDisposedError();
+    // Idempotent across the concurrent `Engine.create` + `recoverAll` (and repeated
+    // `recoverAll`) callers. The genuine "lease held" signal is the in-flight
+    // acquisition promise, NOT `leaseManager` (which is published before `acquire()`
+    // resolves so disposal can reach `stop()`). A second caller that observes only
+    // `leaseManager` set could proceed into recovery before the lease is truly held —
+    // so when an acquire is in flight, await IT, then return. Once it has settled and
+    // the manager is live, the lease is held and we can short-circuit.
+    if (internals.inFlightLeaseAcquire !== null) {
+      await internals.inFlightLeaseAcquire;
+      return;
+    }
+    if (internals.leaseManager !== null) return;
+    requireStorageCapability(internals.storage, 'conditionalBatch', "ownership: 'lease'");
+    const manager = createLeaseManager({
+      storage: internals.storage,
+      holderId: crypto.randomUUID(),
+      getNow: internals.options.getNow,
+      ttlMs: internals.options.leaseTtlMs,
+      renewIntervalMs: internals.options.leaseRenewIntervalMs,
+      waitTimeoutMs: internals.options.leaseWaitTimeoutMs,
+      onLeaseLost: (reason: LeaseLostReason) => {
+        if (reason === 'deposed') {
+          // A successor stole the lease out from under an otherwise-idle engine.
+          // Step 2 halts: set the deposed flag, warn, and tear down so the engine
+          // stops promptly instead of lingering until its next fenced write fails.
+          handleDeposition(internals);
+          return;
+        }
+        // 'renewal-unconfirmable': a transient storage error left the holder
+        // unable to prove it still holds. This is NOT a confirmed deposition —
+        // halting on a momentary storage blip would be a self-inflicted outage —
+        // so warn only. If the holder really was deposed, the next fenced write
+        // (or a later renewal) detects it and halts then.
+        process.emitWarning(
+          'engine ownership lease renewal could not be confirmed (transient storage error); ' +
+            'another instance may take over if this persists. Weft supports one engine process ' +
+            'per store — keep infrastructure-level single-instance enforcement in place.',
+          ENGINE_LEASE_LOST_WARNING_NAME,
+        );
+      },
+    });
+    // Assign the manager BEFORE awaiting acquire(), so a concurrent disposal that
+    // races a parked acquire can still see it: disposeEngine() stops the manager,
+    // and the parked acquire's wait loop exits on its `stopped` check. The lease
+    // lifecycle is a small state machine; each transition is handled explicitly:
+    //
+    //   uninitialized → acquiring : assign manager, set inFlightLeaseAcquire
+    //   acquiring (acquire throws) : null the manager → a later recoverAll() retries
+    //                               (not stuck on the idempotency guard)
+    //   acquiring → disposed       : release the holder we may have just taken and
+    //                               do NOT startRenewal on a dead engine
+    //   acquiring → acquired       : startRenewal
+    //
+    // Disposal awaits `inFlightLeaseAcquire` so an acquire that commits a holder in
+    // the same tick disposal runs is released before asyncDispose resolves (clean
+    // handoff), rather than leaking a holder + heartbeat until TTL.
+    internals.leaseManager = manager;
+    const acquisition = (async () => {
+      try {
+        await manager.acquire();
+      } catch (error) {
+        // Nothing durable was taken (acquire is commit-or-throw). Detach so the
+        // idempotency guard does not skip a later retry.
+        if (internals.leaseManager === manager) internals.leaseManager = null;
+        throw error;
+      }
+      if (internals.disposed) {
+        // Disposal raced this parked acquire. We may have just committed a holder;
+        // release it, stay detached, and THROW — never renew on a disposed engine,
+        // and never let the caller (recoverAll / Engine.create) treat this as a
+        // held lease and proceed into recovery. The throw is the contract: `await`
+        // resolves only when the lease is genuinely held.
+        const releaseResult = manager.release();
+        this.#synchronousDisposeResult = releaseResult;
+        await releaseResult;
+        if (internals.leaseManager === manager) internals.leaseManager = null;
+        throw new EngineDisposedError();
+      }
+      manager.startRenewal();
+    })();
+    internals.inFlightLeaseAcquire = acquisition;
+    try {
+      await acquisition;
+    } finally {
+      if (internals.inFlightLeaseAcquire === acquisition) {
+        internals.inFlightLeaseAcquire = null;
+      }
+    }
+  }
+
+  /**
+   * Run the `ownership: 'workflow-lease'` construction-time bootstrap (ADR
+   * 0002 § Construction-time capability gates): Gate 1 (storage capability),
+   * Gate 2 (the store-wide ownership-mode marker), then construct this
+   * engine's `WorkflowClaimRegistry` and claim-renewal task. No-op for
+   * `'none'`/`'lease'` — `'lease'` keeps its own, separate, unchanged
+   * `#acquireLeaseIfConfigured` gate. Called before `recoverAll()`, before the
+   * scheduler starts, and at the top of `runMaintenance()` — no claim
+   * acquisition, recovery scan, or scheduler/renewal poll may proceed until
+   * this has completed successfully.
+   *
+   * Idempotent across concurrent `Engine.create` + `recoverAll` (and repeated
+   * `recoverAll`/`runMaintenance`) callers, mirroring
+   * `#acquireLeaseIfConfigured`'s shape: the in-flight bootstrap promise (not
+   * `workflowClaimRegistry`, which is only assigned on success) is the genuine
+   * "bootstrap in progress" signal a second concurrent caller awaits. Unlike
+   * the lease path, nothing here needs an "assign before await" trick — Gate
+   * 2's marker CAS is a store-wide stamp with no per-engine handle to release
+   * on a disposal race, so there is nothing durable to leak by waiting until
+   * the gates fully resolve before touching `internals` at all.
+   */
+  async #bootstrapOwnershipIfConfigured(): Promise<void> {
+    const internals = getInternals(this);
+    const ownershipMode = internals.options.ownershipMode;
+    if (ownershipMode === 'none') return;
+    if (internals.disposed) throw new EngineDisposedError();
+    if (ownershipMode === 'lease') {
+      // A global-lease engine runs the same two gates and stamps the same
+      // store-wide marker. Without this, the marker would only ever be written
+      // by `workflow-lease` engines, so Gate 2's cross-MODE exclusivity — the
+      // whole reason the marker exists — would not hold against a `'lease'`
+      // engine sharing the store, which is exactly the mixed-mode hazard the
+      // ADR names. It runs before lease acquisition, so a capability or mode
+      // mismatch fails construction before any lease is taken.
+      await bootstrapOwnershipGates({
+        storage: internals.storage,
+        ownershipMode,
+        getNow: internals.options.getNow,
+      });
+      return;
+    }
+    if (internals.inFlightOwnershipBootstrap !== null) {
+      await internals.inFlightOwnershipBootstrap;
+      return;
+    }
+    if (internals.workflowClaimRegistry !== null) return;
+    const bootstrap = (async () => {
+      const result = await bootstrapWorkflowLeaseOwnership({
+        storage: internals.storage,
+        getNow: internals.options.getNow,
+        claimTtlMs: internals.options.workflowClaimTtlMs,
+        claimRenewIntervalMs: internals.options.workflowClaimRenewIntervalMs,
+        // In a fleet whose engines register different workflow subsets, an
+        // engine that cannot execute a candidate's type must never win its
+        // claim — `onReclaimed` below would deterministically throw on every
+        // redrive attempt, and a failed drive is retried in place rather than
+        // released, permanently stranding the workflow away from a capable
+        // engine. Source+revision-aware (WFT-19, via `canResolveRevisionLocally`
+        // — shared with `resolveExecutableRegistrationForRevision()`'s own
+        // classification so the two decisions cannot drift): a
+        // `registerSource()`-registered-but-unresolved type, or one resolved
+        // under a DIFFERENT revision than the stranded run's own pin, used to
+        // read as ineligible here even though this engine genuinely can run it.
+        isWorkflowTypeRegistered: (workflowType: string, revision: string | undefined) =>
+          canResolveRevisionLocally(internals, workflowType, revision),
+        // Reclaiming a stranded claim only moves ownership keys; without
+        // driving the workflow it sits idle while this engine's renewal keeps
+        // the claim alive, shielding it from any engine that would resume it.
+        onWorkflowClaimReclaimed: async (workflowId: string) => {
+          // Same-engine reclaim (this engine held the claim, was deposed, and
+          // later reclaimed it): deposition drops only the registry's claim
+          // entry, so this engine's OLD in-memory context/generator/abort
+          // controller for `workflowId` survive untouched. Evict them
+          // SYNCHRONOUSLY, before any await below, so `query()` and
+          // `tryInlineUpdateHandler()`'s engine-id-only staleness check
+          // cannot see the same engine as both old and new holder and serve
+          // reads/handler invocations from the pre-reclaim closure during this
+          // async-activity-reload-and-replay window. Also drop this
+          // workflow's delivered-pending-update-id claims: a claim recorded
+          // by the deposed generation before losing its claim (added
+          // synchronously, but its fenced response commit can still be
+          // in-flight or have failed) would otherwise make every post-replay
+          // drain treat that update as already delivered, and its caller
+          // would never receive a response.
+          internals.inlineStrategy?.evictContextForReclaim(workflowId);
+          internals.deliveredPendingUpdateIds.delete(workflowId);
+          // `forceReplayFromStorage` is mandatory here. Deposition drops only
+          // the registry's claim entry; contexts, generators, parked markers
+          // and local checkpoints all survive. Without it, `resume()`'s
+          // local-ownership fast path would hand back the pre-deposition
+          // handle, and this reclaim would renew a workflow that never
+          // actually restarted from durable state.
+          // Reload this workflow's async-activity records BEFORE replay. A
+          // resolution acknowledged by the expired owner was discarded by that
+          // engine's wake-ownership check, leaving only the durable record;
+          // this engine's startup scan already ran, so without this bounded
+          // per-workflow reload the replayed run would re-park on the same
+          // deterministic token and wait forever for a delivery the completion
+          // caller was already told had succeeded.
+          await recoverPendingAsyncActivities(internals, workflowId);
+          // Disposal can land while the reload above was in flight — recheck
+          // rather than replay against a torn-down host. `markDisposing()` on
+          // the reclaim target (see `ownership-bootstrap.ts`) closes the
+          // takeover-CAS side of this race; this closes the drive side for a
+          // takeover that had already landed before disposal was signaled.
+          if (internals.disposed) return;
+          await resumeFromLifecycle(
+            internals,
+            workflowId,
+            this.#createLifecycleCallbacks(),
+            internals.onRecoveredWorkflowHook,
+            { forceReplayFromStorage: true },
+          );
+        },
+        // Owner-side signal polling (ADR 0002): without this, a signal
+        // delivered to a non-owning engine is durably buffered but nobody
+        // wakes this engine's parked workflow — see
+        // `#buildOwnerSideSignalPollTarget`'s doc comment.
+        signalPollTarget: this.#buildOwnerSideSignalPollTarget(),
+        // Owner-side coordinated-update polling (WFT-79): without this, a
+        // coordinated update delivered to a non-owning engine (or one that
+        // arrives with no live handler/waiter yet) is durably buffered but
+        // nothing drives the true owner to look again — see
+        // `#buildOwnerSideUpdatePollTarget`'s doc comment.
+        updatePollTarget: this.#buildOwnerSideUpdatePollTarget(),
+      });
+      if (internals.disposed) {
+        // Disposal raced the gates. Nothing durable-and-per-engine was taken
+        // (the marker stamp is store-wide and permanent either way), so there
+        // is nothing to release — just discard the freshly built registry/task
+        // and throw, matching `#acquireLeaseIfConfigured`'s "await resolves
+        // only when genuinely bootstrapped" contract.
+        throw new EngineDisposedError();
+      }
+      internals.workflowClaimRegistry = result.registry;
+      internals.workflowClaimRenewalTask = result.renewalTask;
+      internals.workflowClaimMetrics = result.metrics;
+      // Independent of the durable-timer scheduler and of `startScheduler`:
+      // renewal must keep running even when `startScheduler: false` stops
+      // timers. Only 'automatic' mode starts the interval — 'manual' mode
+      // renews solely via `runMaintenance()`'s explicit `runOnce()` call.
+      if (internals.options.backgroundTaskMode === 'automatic') {
+        result.renewalTask.start();
+      }
+    })();
+    internals.inFlightOwnershipBootstrap = bootstrap;
+    try {
+      await bootstrap;
+    } finally {
+      if (internals.inFlightOwnershipBootstrap === bootstrap) {
+        internals.inFlightOwnershipBootstrap = null;
+      }
+    }
+  }
+
+  /**
+   * Stop this engine's per-workflow claim-renewal task (idempotent, synchronous
+   * — `WorkflowClaimRenewalTask.stop()` only clears an interval) and detach the
+   * claim registry, renewal task, and metrics recorder from `internals`,
+   * mirroring `disposeLeaseManager`'s "stop, don't release" split for the
+   * global lease. Releasing the claims the registry held is a separate,
+   * best-effort step (`WorkflowClaimRegistry.releaseAll()`, which never
+   * rejects) that each `disposeEngine` call site drives on its own schedule —
+   * fire-and-forget for synchronous teardown, awaited for the async path — so
+   * this helper hands the captured registry back rather than releasing it
+   * itself. A no-op under `ownership: 'none'`/`'lease'`, where every field it
+   * touches is always `null`.
+   */
+  #detachWorkflowClaimOwnership(): { registry: WorkflowClaimRegistry | null } {
+    const internals = getInternals(this);
+    const registry = internals.workflowClaimRegistry;
+    internals.workflowClaimRenewalTask?.stop();
+    internals.workflowClaimRenewalTask = null;
+    internals.workflowClaimRegistry = null;
+    internals.workflowClaimMetrics = null;
+    return { registry };
+  }
+
+  /**
+   * Best-effort release of every claim `registry` (the value
+   * {@link Engine#detachWorkflowClaimOwnership} returned) held, for a
+   * disposal call site to fire-and-forget or await as it sees fit.
+   * `WorkflowClaimRegistry.releaseAll()` already swallows every per-workflow
+   * failure internally and never rejects; the `.catch` here is defense in
+   * depth against that contract ever changing, not a load-bearing guard. A
+   * no-op when `registry` is `null` (every mode except `'workflow-lease'`, or
+   * `'workflow-lease'` before the ownership bootstrap ever assigned one).
+   * Extracted to its own method (rather than an inline `registry?.releaseAll()`
+   * at each call site) purely to keep every dispose call site's own cyclomatic
+   * complexity under the repository's ceiling.
+   */
+  async #releaseWorkflowClaimsBestEffort(registry: WorkflowClaimRegistry | null): Promise<void> {
+    await registry?.releaseAll().catch(() => {});
+  }
+
+  /**
+   * Tear down this engine after it has been deposed (a fenced durable write lost
+   * its CAS to a newer lease epoch, or the lease manager reported a confirmed
+   * `'deposed'` loss). Wired onto `internals.tearDownAfterDeposition` at
+   * construction and invoked deferred (a tick after detection) by
+   * {@link handleDeposition}, never inline — inline teardown would clear maps a
+   * mid-advance generator still reads. Captures the lease manager before
+   * `disposeEngine` detaches it, then best-effort releases the holder; the release
+   * CAS-fails (the successor owns the holder now) and is a no-op that cannot
+   * clobber the new owner. Skipped if the engine is already disposed, so a
+   * deposition that races a normal dispose does not double-tear-down. The release
+   * rejection is swallowed — best-effort teardown must not leak an unhandled
+   * rejection while the engine is already unwinding.
+   */
+  #disposeAfterDeposition(): void {
+    const internals = getInternals(this);
+    if (internals.disposed) return;
+    const leaseManager = internals.leaseManager;
+    // Global `ownership: 'lease'`-only path (see this method's doc) — always a
+    // no-op under `'workflow-lease'`/`'none'`, where both fields stay `null`.
+    // Included defensively so this teardown stays correct if that ever changes.
+    const { registry: workflowClaimRegistry } = this.#detachWorkflowClaimOwnership();
+    disposeEngine(internals);
+    if (this.#synchronousDisposeResult === null) {
+      this.#synchronousDisposeResult = (leaseManager?.release() ?? Promise.resolve(true)).catch(
+        () => false,
+      );
+    }
+    void this.#synchronousDisposeResult;
+    void this.#releaseWorkflowClaimsBestEffort(workflowClaimRegistry);
+  }
+
+  #startSecondInstanceDetection(): void {
+    const internals = getInternals(this);
+    if (!internals.options.secondInstanceDetectionEnabled) return;
+    const detector = createSecondInstanceDetector({
+      storage: internals.storage,
+      instanceId: crypto.randomUUID(),
+      getNow: internals.options.getNow,
+      intervalMs: internals.options.secondInstanceHeartbeatIntervalMs,
+    });
+    internals.secondInstanceDetector = detector;
+    const tracker = internals.cleanupIntervalDisposalTracker;
+    // The tracker is constructed unconditionally just before this method runs, so
+    // it is always present here; guard defensively rather than assert.
+    if (tracker === null) return;
+    const weakEngine = new WeakRef(this);
+    const detectionInterval = setInterval(
+      createSecondInstanceDetectionTick(createSecondInstanceDetectorResolver(weakEngine), tracker),
+      internals.options.secondInstanceHeartbeatIntervalMs,
+    );
+    internals.secondInstanceDetectionInterval = detectionInterval;
+    // Track the interval on the cleanup disposal tracker so BOTH cleanup paths
+    // clear it: the tick self-clears via this handle on the first post-GC fire
+    // (prompt), and the shared engine finalizer clears it on collection (backstop,
+    // since FinalizationRegistry callbacks are not guaranteed to run promptly).
+    tracker.secondInstanceDetectionInterval = detectionInterval;
+  }
+
+  #hasConfiguredRetention(): boolean {
+    return hasConfiguredRetention(getInternals(this));
+  }
+  #setNextRetentionSweepAt(): void {
+    setNextRetentionSweepAt(getInternals(this));
+  }
+  #ensureRetentionSweepInterval(): void {
+    ensureRetentionSweepInterval(getInternals(this), {
+      hasConfiguredRetention: () => this.#hasConfiguredRetention(),
+      runRetentionSweep: () => this.#runRetentionSweep(),
+      setNextRetentionSweepAt: () => this.#setNextRetentionSweepAt(),
+    });
+  }
+  async #runRetentionSweep(): Promise<void> {
+    return runRetentionSweep(
+      getInternals(this),
+      (source, error) => this.#createTerminationCallbacks().handleCleanupError(source, error),
+      (workflowId) =>
+        cleanupWaitersFromTermination(
+          getInternals(this),
+          workflowId,
+          this.#createTerminationCallbacks(),
+        ),
+    );
+  }
+  #createLifecycleCallbacks(): LifecycleCallbacks {
+    return createLifecycleCallbacksForEngine(this);
+  }
+  #createTerminationCallbacks(): TerminationCallbacks {
+    return createTerminationCallbacksForEngine(this);
+  }
+  #createRegistrationCallbacks(): RegistrationCallbacks {
+    return createRegistrationCallbacksForEngine(this);
+  }
+  #createBroadcastCallbacks(): BroadcastCallbacks {
+    return createBroadcastCallbacksForEngine(this);
+  }
+  #createInlineParkingCallbacks(): InlineParkingCallbacks {
+    return createInlineParkingCallbacksForEngine(this);
+  }
+  /**
+   * Build the real owner-side signal-poll target (ADR 0002 § "Signal
+   * delivery needs more than a classification") for `ownership:
+   * 'workflow-lease'`. `ownership-bootstrap.ts`'s
+   * `buildOwnerSideSignalPollTarget` stays independent of `EngineInternals`;
+   * this is the one place that supplies its `OwnerSideSignalPollSources` as
+   * closures over `getInternals(this)`, covering both in-memory populations
+   * a parked `waitForSignal()` can land in — checkpoint-parked workflows
+   * (`internals.parkedInlineWorkflows`/`pendingTimelineEntries`) and live
+   * signal waiters (`internals.signalWaiters`/`signalWaitersByWorkflow`, the
+   * `ctx.race`/`ctx.all` and query/update-handler population). Without this
+   * wiring `bootstrapWorkflowLeaseOwnership` never receives a
+   * `signalPollTarget`, and a signal delivered to a non-owning engine hangs
+   * the parked workflow until an unrelated wake happens to occur.
+   */
+  #buildOwnerSideSignalPollTarget(): OwnerSideSignalPollTarget {
+    const internals = getInternals(this);
+    const sources: OwnerSideSignalPollSources = {
+      listParkedInlineWorkflowIds: () => internals.parkedInlineWorkflows,
+      isParkedInlineWorkflow: (workflowId) => internals.parkedInlineWorkflows.has(workflowId),
+      parkedSignalName: (workflowId) => {
+        const pending = internals.pendingTimelineEntries.get(workflowId);
+        return pending?.entry.operationType === 'wait-signal'
+          ? pending.entry.operationLabel
+          : undefined;
+      },
+      listSignalWaiterEntries: function* signalWaiterEntries() {
+        for (const [workflowId, waiterKeys] of internals.signalWaitersByWorkflow) {
+          if (typeof waiterKeys === 'string') {
+            yield [workflowId, waiterKeys] as const;
+            continue;
+          }
+          for (const waiterKey of waiterKeys) {
+            yield [workflowId, waiterKey] as const;
+          }
+        }
+      },
+      hasBufferedSignal: (workflowId, signalName) =>
+        hasBufferedSignalFromInternals(internals, workflowId, signalName),
+      resumeParkedInlineWorkflow: (workflowId) =>
+        resumeParkedInlineWorkflowFromInternals(
+          internals,
+          workflowId,
+          this.#createInlineParkingCallbacks(),
+        ),
+      // Waking a signal waiter advances the workflow's generator, so it is a
+      // claim-requiring wake path. `runOnce()` continues into signal polling
+      // even after a failed renewal has dropped this engine's claim entry, so
+      // without this a buffered signal would wake a deposed generator while the
+      // successor advances its replayed one. `ownership-bootstrap.ts` cannot
+      // call `confirmWakeOwnership` itself — it deliberately does not depend on
+      // `EngineInternals` — so the engine supplies it here.
+      confirmSignalWakeOwnership: (workflowId) =>
+        confirmWakeOwnership(internals, workflowId, 'signal'),
+      wakeSignalWaiter: (workflowId, waiterKey) => {
+        const waiter = internals.signalWaiters.get(waiterKey);
+        if (waiter === undefined) return;
+        // Only invoke the waiter this call actually removed — see
+        // `releaseSignalWaiter`. The poll's ownership confirmation above is an
+        // await, so the waiter can be replaced meanwhile.
+        if (releaseSignalWaiter(internals, workflowId, waiterKey, waiter)) {
+          waiter();
+        }
+      },
+    };
+    return buildOwnerSideSignalPollTarget(sources);
+  }
+  #createUpdateCallbacks(): UpdateCallbacks {
+    return createUpdateCallbacksForEngine(this);
+  }
+  /**
+   * Build the real owner-side update-poll target (WFT-79) for `ownership:
+   * 'workflow-lease'`. `deliverCoordinatedUpdateToWaiterIfAvailable` and
+   * `processPendingUpdatesForHandlers` already discard/refuse to act when
+   * this engine no longer owns the workflow (`confirmWakeOwnership`/
+   * `isLiveContextStale`), and are otherwise idempotent — safe to call
+   * against a workflow with no pending updates or no matching handler/waiter
+   * at all — so this poll drains unconditionally rather than needing its own
+   * ownership pre-check. Without this wiring, a coordinated update or a
+   * parked `ctx.waitForUpdate()` on the true owner is never re-checked once
+   * the original `setTimeout(0)` drain (fired only on the engine that
+   * RECEIVED the update call) has run its course, leaving the request
+   * durable but undelivered until something unrelated drives that workflow.
+   */
+  #buildOwnerSideUpdatePollTarget(): OwnerSideUpdatePollTarget {
+    const internals = getInternals(this);
+    return {
+      listHeldWorkflowIds: () => internals.workflowClaimRegistry?.listHeldWorkflowIds() ?? [],
+      hasPendingUpdates: async (workflowId) => {
+        const pending = await internals.updateCoordinator.getPendingUpdates(workflowId);
+        return pending.length > 0;
+      },
+      drainPendingUpdates: async (workflowId) => {
+        await processPendingUpdatesForHandlersFromInternals(
+          internals,
+          workflowId,
+          createPendingUpdateCallbacksForEngine(this),
+        );
+        // `processPendingUpdatesForHandlers` only drains updates matching a
+        // currently-registered `ctx.onUpdate()` handler. Remaining pending
+        // updates may instead have a parked `ctx.waitForUpdate()` waiter —
+        // `deliverCoordinatedUpdateToWaiterIfAvailable` is itself a no-op
+        // when no waiter is registered for a given update's name, so calling
+        // it for every still-pending record is safe.
+        const stillPending = await internals.updateCoordinator.getPendingUpdates(workflowId);
+        const updateCallbacks = this.#createUpdateCallbacks();
+        for (const updateRequest of stillPending) {
+          await deliverCoordinatedUpdateToWaiterIfAvailableFromInternals(
+            internals,
+            workflowId,
+            updateRequest,
+            false,
+            updateCallbacks,
+          );
+        }
+      },
+    };
+  }
+  #createTimeOperationCallbacks(): TimeOperationCallbacks {
+    return createTimeOperationCallbacksForEngine(this);
+  }
+  #resolveWorkflowTypeTarget(target: string | Function): string {
+    return resolveWorkflowTypeTargetFromRegistration(
+      getInternals(this),
+      target,
+      this.#createRegistrationCallbacks(),
+    );
+  }
+  get state(): EngineStateNamespace {
+    const storage = getInternals(this).storage;
+    return {
+      execution: <T>(
+        ownerWorkflowId: string,
+        key: string,
+        options?: AtomicStateOptions<T>,
+      ): AtomicState<T> =>
+        new AtomicState<T>(storage, KEYS.stateExecution(ownerWorkflowId, key), options),
+      workflow: <T>(
+        workflowType: string,
+        key: string,
+        options?: AtomicStateOptions<T>,
+      ): AtomicState<T> =>
+        new AtomicState<T>(storage, KEYS.stateWorkflow(workflowType, key), options),
+    };
+  }
+  get workflows(): EngineWorkflowsNamespace {
+    return createEngineWorkflowsNamespace(this as unknown as Engine);
+  }
+
+  /** Return detached snapshots of the alert rules that are currently firing. */
+  getActiveAlerts(): readonly AlertStateSnapshot[] {
+    return getInternals(this).alertManager?.activeStates ?? [];
+  }
+
+  async #handleStrategyMessage(message: WorkerOutboundMessage): Promise<void> {
+    return handleStrategyMessageFromInternals(
+      getInternals(this),
+      message,
+      this.#createInlineParkingCallbacks(),
+    );
+  }
+  #broadcast(message: Record<string, unknown>): void {
+    return broadcastFromInternals(getInternals(this), message, this.#createBroadcastCallbacks());
+  }
+
+  /**
+   * Register a workflow by name or definition, or register an activity
+   * definition. Definition overloads return this same engine with the
+   * definition added to its phantom type registry. This is additive over the
+   * module-augmented default registry; construct `new Engine<{}, {}>()` for a
+   * strict local registry.
+   *
+   * @example
+   * ```ts
+   * import { Engine, workflow, type WorkflowContext } from '@repo/weft';
+   *
+   * const engine = new Engine();
+   * engine.register(
+   *   workflow({ name: 'hello' }).execute(async function* (_ctx: WorkflowContext, name: string) {
+   *     return `Hello, ${name}`;
+   *   }),
+   * );
+   * ```
+   */
+  /**
+   * Builder-workflow registration with a parameter-position name-conflict
+   * guard. New names widen the engine's typed workflow registry; re-registering
+   * a name already present intersects the parameter type with
+   * {@link WorkflowAlreadyRegistered} — a branded marker no real
+   * `WorkflowDefinition` satisfies — so the call line itself fails to compile.
+   *
+   * Runtime is more lenient: registering the same `WorkflowDefinition` object
+   * reference again is idempotent (no-op); same-name-different-object throws.
+   * TypeScript cannot distinguish the two at the type level. Callers needing
+   * the runtime-idempotent path from TypeScript must use a documented escape
+   * hatch (e.g. `engine.register(welcome as never)`).
+   */
+  // Workflow-definition overload — single overload combining the
+  // name-conflict guard and the additive case. Splitting the guard onto a
+  // separate overload would let the unguarded fallback absorb conflict calls
+  // (TS overload resolution picks the next overload when an earlier one's
+  // parameter is unsatisfiable). The conditional intersection on the
+  // parameter keeps the call line itself failing to compile when the name is
+  // already registered.
+  register<TDefinition extends AnyWorkflowDefinition>(
+    workflow: TDefinition &
+      (TDefinition['name'] extends keyof TWorkflows
+        ? WorkflowAlreadyRegistered<TDefinition['name']>
+        : unknown),
+  ): Engine<TWorkflows & InferWorkflowEntry<TDefinition>, TActivities>;
+  register<
+    TDefinition extends AnyActivityDefinition,
+    TName extends Extract<keyof TActivities, string> & ActivityDefinitionName<TDefinition>,
+  >(
+    definition: TDefinition & {
+      readonly name: TName;
+      readonly execute: RegisteredActivityDefinitionExecute<TActivities, TName>;
+    },
+  ): Engine<TWorkflows, TActivities & InferActivityEntry<TDefinition>>;
+  register<TDefinition extends AnyActivityDefinition>(
+    definition: ActivityDefinitionName<TDefinition> extends Extract<keyof TActivities, string>
+      ? never
+      : TDefinition,
+  ): Engine<TWorkflows, TActivities & InferActivityEntry<TDefinition>>;
+  register(definition: unknown): unknown {
+    if (isActivityDefinition(definition)) {
+      this.#registerActivityDefinition(definition);
+      return typedEngineView(this);
+    }
+
+    registerWorkflow(getInternals(this), definition, this.#createRegistrationCallbacks());
+    return typedEngineView(this);
+  }
+  /**
+   * Record `source` as a lazily-resolvable dynamic workflow source
+   * (WFT-13/14): synchronous, and it never invokes `source.load` — it only
+   * records a catalog candidate keyed `(source.descriptor.name,
+   * source.descriptor.revision)`. Call `resolveWorkflowSource()` to
+   * actually load, validate, and install it. A workflow name may not be
+   * both eagerly registered (`engine.register()`) and a dynamic source;
+   * registering the identical `source` reference twice for the same
+   * `(name, revision)` is idempotent.
+   *
+   * @example
+   * ```ts
+   * import { Engine, workflowSource } from '@repo/weft';
+   *
+   * declare const loadCheckout: () => Promise<{
+   *   checkout: import('@repo/weft').WorkflowDefinition<unknown, unknown, 'checkout'>;
+   * }>;
+   * const engine = new Engine();
+   * engine.registerSource(
+   *   workflowSource(
+   *     { name: 'checkout', location: './checkout.ts', exportName: 'checkout', revision: 'r1' },
+   *     loadCheckout,
+   *   ),
+   * );
+   * ```
+   */
+  registerSource(source: WorkflowSourceHandle): void {
+    registerWorkflowSource(getInternals(this), source);
+  }
+  /**
+   * Load, validate, and install one dynamic workflow source revision
+   * previously recorded via {@link Engine.registerSource}. Single-flight
+   * per `(name, revision)`: concurrent callers for the same key share one
+   * loader invocation. Does not wire `engine.start()` or recovery to await
+   * resolution — that is a later batch's job (WFT-15).
+   *
+   * @example
+   * ```ts
+   * import { Engine } from '@repo/weft';
+   *
+   * declare const engine: Engine;
+   * const record = await engine.resolveWorkflowSource('checkout', 'r1');
+   * console.log(record.manifest.revision);
+   * ```
+   */
+  async resolveWorkflowSource(
+    name: string,
+    revision: string,
+    options?: ResolveWorkflowSourceOptions,
+  ): Promise<WorkflowRevisionRecord> {
+    return resolveWorkflowSourceImpl(this as unknown as Engine, name, revision, options);
+  }
+  /**
+   * Register every workflow from an object map at once and return a typed
+   * engine view that exposes the newly added workflow names.
+   *
+   * Mirrors `Engine.create({ workflows })` for post-construction use. The map
+   * key is canonical: if a value's runtime `name` disagrees with its key, the
+   * call throws {@link EngineCreateNameMismatchError} before any partial
+   * registration completes (insertion order — earlier entries persist).
+   *
+   * @example
+   * ```ts
+   * import { Engine, workflow } from '@repo/weft';
+   *
+   * const welcome = workflow({ name: 'welcome' })
+   *   .execute(async function* (_ctx, name: string) {
+   *     return `Hello, ${name}`;
+   *   });
+   *
+   * const engine = new Engine();
+   * const typedEngine = engine.registerWorkflows({ welcome });
+   * await typedEngine.start('welcome', 'Ada');
+   * ```
+   */
+  registerWorkflows<TWorkflowDefinitions extends Record<string, AnyWorkflowDefinition>>(
+    workflows: TWorkflowDefinitions,
+  ): Engine<TWorkflows & InferWorkflowEntries<TWorkflowDefinitions>, TActivities> {
+    for (const [name, definition] of Object.entries(workflows)) {
+      if (name !== definition.name) {
+        throw new EngineCreateNameMismatchError('workflow', name, definition.name);
+      }
+      // Cast through `never` to bypass the parameter-position collision guard.
+      // `registerWorkflows` is the documented opt-in for batch registration
+      // and validates key=name above; the runtime collision rule still
+      // applies and throws same-name-different-ref. The brand only protects
+      // call-site typos in user code, not the engine's own batch helper.
+      (this.register as (workflow: AnyWorkflowDefinition) => unknown)(definition);
+    }
+    return typedEngineView(this);
+  }
+
+  addInterceptor(interceptor: Interceptor): void {
+    getInternals(this).interceptors.push(interceptor);
+    // Adding ANY interceptor invalidates BOTH composed caches because the
+    // unified list feeds both pipelines. Use `undefined` to mean
+    // "uncomputed" so the next call recomputes; `null` would be
+    // indistinguishable from a legitimate computed-empty result.
+    getInternals(this).composedWorkflowInterceptor = undefined;
+    getInternals(this).composedActivityInterceptor = undefined;
+  }
+  #registerActivityDefinition(definition: AnyActivityDefinition): void {
+    getInternals(this).activityRegistry.register(definition.name, definition);
+  }
+
+  protected resolveRegisteredActivity(name: string): RegisteredActivityFunction | undefined {
+    return getInternals(this).activityRegistry.resolve(name);
+  }
+
+  protected registerActivityFunction(
+    name: string,
+    fn: Function,
+    options?: ActivityRegistrationOptions,
+  ): void {
+    getInternals(this).activityRegistry.register(name, fn, options);
+  }
+
+  protected unregisterRegisteredActivity(name: string): void {
+    getInternals(this).activityRegistry.unregister(name);
+  }
+
+  getWorkflowDefinition(type: string): RegisteredWorkflowDefinition | undefined {
+    const registration = getInternals(this).registrations.get(type);
+    return registration === undefined ? undefined : copyWorkflowDefinition(type, registration);
+  }
+  listWorkflowDefinitions(): RegisteredWorkflowDefinition[] {
+    return [...getInternals(this).registrations.entries()].map(([type, registration]) =>
+      copyWorkflowDefinition(type, registration),
+    );
+  }
+  getActivityDefinition(name: string): ActivityMetadata | undefined {
+    return getInternals(this).activityRegistry.getDefinition(name);
+  }
+  listActivityDefinitions(): ActivityMetadata[] {
+    return getInternals(this).activityRegistry.listDefinitions();
+  }
+  /**
+   * Resolve one activity's catalog metadata against the EAGER per-workflow
+   * `.activities({...})` registry only, falling back to the global registry
+   * — never a `registerSource()`-registered type's dynamic-source revision,
+   * resolved or not (WFT-19: `internals.activityRegistriesByWorkflow` is
+   * eager-only as of this batch; a dynamic-source workflow's own activity
+   * dispatch resolves via the running instance's exact `(type, revision)`
+   * pin instead, in `activity-resolution.ts`, which this synchronous,
+   * type-only accessor has no instance to pin against). Build tooling
+   * (`buildWorkerManifestFromRegistry`) uses this so a workflow-scoped
+   * activity's schema, not a same-named global activity's, feeds its
+   * `contractHash` when both are registered.
+   */
+  getWorkflowActivityDefinition(
+    workflowType: string,
+    activityName: string,
+  ): ActivityMetadata | undefined {
+    const internals = getInternals(this);
+    const perWorkflow = internals.activityRegistriesByWorkflow
+      .get(workflowType)
+      ?.getDefinition(activityName);
+    return perWorkflow ?? internals.activityRegistry.getDefinition(activityName);
+  }
+  /**
+   * List every activity definition registered on this workflow's own
+   * per-workflow `.activities({...})` registry — name, schema, description,
+   * tags, retry/timeout metadata, never a handler function. Returns an
+   * empty array for a workflow with no `.activities({...})` step (including
+   * an unknown `workflowType`), never `undefined`, so a caller can fold the
+   * result straight into a contract without an existence check first.
+   *
+   * Companion to {@link getWorkflowActivityDefinition}: that resolves one
+   * activity by name with the per-workflow-first, global-fallback dispatch
+   * order; this enumerates only the names the EAGER per-workflow registry
+   * itself declares — activities a workflow reaches solely through the
+   * global registry are deliberately excluded, and so (as of WFT-19) is
+   * every `registerSource()`-registered type regardless of whether a
+   * revision has been resolved (see {@link getWorkflowActivityDefinition}'s
+   * doc). Build tooling that needs a workflow's full scoped-activity
+   * contract set (`buildRegistrySnapshot`,
+   * `worker/manifest/registry-contract-builder.ts`) uses this instead of
+   * reaching into engine internals directly.
+   */
+  listWorkflowActivityDefinitions(workflowType: string): ActivityMetadata[] {
+    const internals = getInternals(this);
+    return internals.activityRegistriesByWorkflow.get(workflowType)?.listDefinitions() ?? [];
+  }
+  async start<TName extends KnownWorkflowNames<TWorkflows>>(
+    type: TName,
+    input: WorkflowInput<TWorkflows, TName>,
+    options?: StartWorkflowOptions<WorkflowServices<TWorkflows, TName>>,
+  ): Promise<WorkflowHandle<WorkflowOutput<TWorkflows, TName>>>;
+  async start<TName extends string>(
+    type: UnknownWorkflowNameWhenDefaultRegistryIsEmpty<TWorkflows, TName>,
+    input: unknown,
+    options?: StartWorkflowOptions,
+  ): Promise<WorkflowHandle>;
+  async start(
+    type: string,
+    input: unknown,
+    options?: StartWorkflowOptions,
+  ): Promise<WorkflowHandle> {
+    // Lease-ownership precondition: a new-workflow start must hold the lease (and
+    // have recovered) first. This rejects on the awaited entry — unlike the
+    // fenced-write throw, which the inline strategy swallows. No-op when
+    // ownership is 'none'.
+    assertLeaseHeldForEngineWork(getInternals(this));
+    // `this` is `Engine<TWorkflows, TActivities>`, a proper generic
+    // instantiation TypeScript refuses to narrow directly to the bare
+    // `Engine` type `ensureWorkflowCatalogReady` is typed against — the same
+    // generic-registry variance every `server/**` `engine as Engine` call
+    // site already works around, but `this` specifically needs the
+    // `unknown` bridge TS's own diagnostic suggests. Repeated at every other
+    // `ensureWorkflowCatalogReady(this as unknown as Engine)` call site below.
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    if (options?.idempotencyKey !== undefined) {
+      return startWithIdempotencyFromLifecycle(
+        getInternals(this),
+        type,
+        input,
+        options,
+        this.#createLifecycleCallbacks(),
+      );
+    }
+    return startWorkflowFromLifecycle(
+      getInternals(this),
+      type,
+      input,
+      options,
+      undefined,
+      this.#createLifecycleCallbacks(),
+    );
+  }
+  /**
+   * Atomically start a workflow or signal it if it already exists
+   * (signal-with-start). With an absent target, the workflow record and the
+   * first signal commit in one batch and the freshly-launched run consumes the
+   * signal on its first drive. A non-terminal target (running, pending, or
+   * suspended) is signalled through a workflow-serialized signal path. If
+   * terminal completion wins that handoff, the target is treated as terminal:
+   * the default path throws {@link StartOrSignalConflictError}, while
+   * `options.onTerminalConflict: 'start-new'` transfers the signal to the
+   * replacement run. A terminal target throws {@link StartOrSignalConflictError}
+   * unless `options.onTerminalConflict: 'start-new'` is supplied with an explicit
+   * workflow id and deterministic `signal.signalId`.
+   *
+   * Concurrent callers converge on one workflow and one delivered signal. Pass
+   * `options.idempotencyKey` to dedup independent callers (e.g. retried
+   * webhooks); the signal id derives from the key when `signal.signalId` is
+   * omitted, so callers that share only the key still converge. `signal.signalId`
+   * and `options.idempotencyKey` are mutually exclusive (provide exactly one), as
+   * are `options.id` and `options.idempotencyKey`. Requires a storage backend
+   * with `conditionalBatch`.
+   */
+  async startOrSignal<TName extends KnownWorkflowNames<TWorkflows>>(
+    type: TName,
+    input: WorkflowInput<TWorkflows, TName>,
+    signal: StartOrSignalSignal,
+    options?: StartOrSignalOptions<WorkflowServices<TWorkflows, TName>>,
+  ): Promise<StartOrSignalResult<WorkflowOutput<TWorkflows, TName>>>;
+  async startOrSignal<TName extends string>(
+    type: UnknownWorkflowNameWhenDefaultRegistryIsEmpty<TWorkflows, TName>,
+    input: unknown,
+    signal: StartOrSignalSignal,
+    options?: StartOrSignalOptions,
+  ): Promise<StartOrSignalResult>;
+  async startOrSignal(
+    type: string,
+    input: unknown,
+    signal: StartOrSignalSignal,
+    options?: StartOrSignalOptions,
+  ): Promise<StartOrSignalResult> {
+    // Lease-ownership precondition (same as `start`): startOrSignal may durably
+    // create a fresh run, so it must hold the lease first. No-op for 'none'.
+    assertLeaseHeldForEngineWork(getInternals(this));
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return startOrSignalFromLifecycle(
+      getInternals(this),
+      type,
+      input,
+      signal,
+      options,
+      this.#createStartOrSignalCallbacks(),
+    );
+  }
+  #createStartOrSignalCallbacks(): StartOrSignalCallbacks {
+    return {
+      ...this.#createLifecycleCallbacks(),
+      signalExistingWorkflow: (workflowId, signalName, payload, signalId) =>
+        runSerializedWorkflowStateWrite(getInternals(this), workflowId, async () => {
+          const state = await loadWorkflowState(getInternals(this), workflowId);
+          if (state && isTerminalWorkflowStatus(state.status)) {
+            throw new StartOrSignalConflictError(workflowId, state.status);
+          }
+          await this.signal(workflowId, signalName, payload, { signalId });
+        }),
+    };
+  }
+  getHandle(workflowId: string): WorkflowHandle {
+    const entry = getInternals(this).handleCache.get(workflowId);
+    if (entry) {
+      const existing = entry.ref.deref();
+      if (existing) return existing;
+    }
+    return createWorkflowHandleWithResultPromiseFromInternals(getInternals(this), workflowId);
+  }
+  async list<
+    const TAttributeKeys extends readonly AttributeFilterKey[] = readonly AttributeFilterKey[],
+  >(
+    filter?: TypedListFilter<TAttributeKeys>,
+    options?: ListOptions,
+  ): Promise<PaginatedResult<WorkflowSummary>> {
+    return listWorkflows(getInternals(this), filter, options);
+  }
+  async aggregate(
+    filter: ListFilter | undefined,
+    options: AggregateOptions,
+  ): Promise<AggregateResult> {
+    return aggregateWorkflows(getInternals(this), filter, options);
+  }
+  getRetentionOverview(): RetentionOverview {
+    return getRetentionOverviewSnapshot(getInternals(this), (type) =>
+      resolveWorkflowTypeRetention(getInternals(this), type),
+    );
+  }
+  /**
+   * Run one host-driven maintenance cycle. This runs the `ownership:
+   * 'workflow-lease'` construction gates (idempotent — a no-op once already
+   * bootstrapped) and one per-workflow claim-renewal pass, fires due durable
+   * timers, deletes expired update responses, applies configured retention,
+   * and re-evaluates alert rules without relying on process-local intervals.
+   *
+   * Use with `backgroundTasks: 'manual'` from a serverless alarm, Cron trigger,
+   * or another externally scheduled wake-up. Concurrent calls are safe, but a
+   * host should await each cycle before scheduling another. Under `ownership:
+   * 'workflow-lease'`, this is also the ONLY thing that renews this engine's
+   * per-workflow claims in manual mode — no interval is ever started for
+   * `backgroundTasks: 'manual'`, so a host that calls this less often than
+   * `workflowClaimRenewInterval` will see its own live claims lapse.
+   */
+  async runMaintenance(now = getInternals(this).options.getNow()): Promise<void> {
+    const internals = getInternals(this);
+    await this.#bootstrapOwnershipIfConfigured();
+    // Renew claims before firing timers so a workflow woken by this same tick's
+    // scheduler.tick() resumes under a freshly confirmed claim rather than one
+    // that is about to lapse.
+    await internals.workflowClaimRenewalTask?.runOnce();
+    // No timer runs in this mode, so the cross-engine result poll that
+    // `getWorkflowResultPromise` would otherwise schedule is driven here.
+    // Without it a manual-mode engine awaiting a child claimed by another
+    // engine would never observe that child terminate.
+    await pollPendingCrossEngineResultWaiters(internals);
+    await internals.scheduler.tick(now);
+    try {
+      await internals.updateCoordinator.cleanupExpiredResponses();
+    } catch (error) {
+      this.#createTerminationCallbacks().handleCleanupError('cleanupExpiredResponses', error);
+    }
+    if (this.#hasConfiguredRetention()) {
+      await this.#runRetentionSweep();
+    }
+    internals.alertManager?.tick();
+  }
+  async purge(filter?: ListFilter): Promise<PurgeResult> {
+    return purgeWorkflows(getInternals(this), filter, (workflowId) =>
+      cleanupWaitersFromTermination(
+        getInternals(this),
+        workflowId,
+        this.#createTerminationCallbacks(),
+      ),
+    );
+  }
+  async cancelAll(
+    filter: ListFilter,
+    options: BulkOperationDryRunOptions,
+  ): Promise<BulkOperationDryRunResult>;
+  async cancelAll(
+    filter: ListFilter,
+    options?: BulkOperationCommitOptions,
+  ): Promise<BulkCancelResult>;
+  async cancelAll(
+    filter: ListFilter,
+    options?: BulkOperationDryRunOptions | BulkOperationCommitOptions,
+  ): Promise<BulkCancelResult | BulkOperationDryRunResult> {
+    return cancelAllWorkflows(getInternals(this), filter, options);
+  }
+  async retryFailedAll(
+    filter: ListFilter,
+    options: BulkOperationDryRunOptions,
+  ): Promise<BulkOperationDryRunResult>;
+  async retryFailedAll(
+    filter: ListFilter,
+    options?: BulkOperationCommitOptions,
+  ): Promise<BulkRetryFailedResult>;
+  async retryFailedAll(
+    filter: ListFilter,
+    options?: BulkOperationDryRunOptions | BulkOperationCommitOptions,
+  ): Promise<BulkRetryFailedResult | BulkOperationDryRunResult> {
+    // `LifecycleCallbacks` threaded through so `retryFailedWorkflow()`'s
+    // checkpoint-absent fallback can replay a legacy `.`/`..` id via the
+    // internal `startWorkflow()` entry point (WFT-95 issue 2 follow-up) —
+    // see `runBulkFailedWorkflowRetry`'s doc comment (`bulk-operations-retry.ts`)
+    // for why this is constructed here rather than imported by that module.
+    return retryFailedAllWorkflows(
+      getInternals(this),
+      filter,
+      options,
+      this.#createLifecycleCallbacks(),
+    );
+  }
+  async signalAll(
+    filter: ListFilter,
+    name: string,
+    payload: unknown,
+    options: BulkSignalAllDryRunOptions,
+  ): Promise<BulkOperationDryRunResult>;
+  async signalAll(
+    filter: ListFilter,
+    name: string,
+    payload: unknown,
+    options: BulkSignalAllCommitOptions,
+  ): Promise<BulkSignalResult>;
+  async signalAll(
+    filter: ListFilter,
+    name: string,
+    payload?: unknown,
+    options?: BulkOperationCommitOptions,
+  ): Promise<BulkSignalResult>;
+  async signalAll(
+    filter: ListFilter,
+    name: string,
+    payloadOrOptions?: unknown,
+    options?: BulkOperationDryRunOptions | BulkOperationCommitOptions,
+  ): Promise<BulkSignalResult | BulkOperationDryRunResult> {
+    if (options === undefined) {
+      return signalAllWorkflows(getInternals(this), filter, name, payloadOrOptions);
+    }
+    return signalAllWorkflows(getInternals(this), filter, name, payloadOrOptions, options);
+  }
+  async deleteAll(
+    filter: ListFilter,
+    options: BulkOperationDryRunOptions,
+  ): Promise<BulkOperationDryRunResult>;
+  async deleteAll(
+    filter: ListFilter,
+    options?: BulkOperationCommitOptions,
+  ): Promise<BulkDeleteResult>;
+  async deleteAll(
+    filter: ListFilter,
+    options?: BulkOperationDryRunOptions | BulkOperationCommitOptions,
+  ): Promise<BulkDeleteResult | BulkOperationDryRunResult> {
+    return deleteAllWorkflows(
+      getInternals(this),
+      filter,
+      (workflowId) =>
+        cleanupWaitersFromTermination(
+          getInternals(this),
+          workflowId,
+          this.#createTerminationCallbacks(),
+        ),
+      options,
+    );
+  }
+  async tagAll(
+    filter: ListFilter,
+    tags: string[],
+    options: BulkOperationDryRunOptions,
+  ): Promise<BulkOperationDryRunResult>;
+  async tagAll(
+    filter: ListFilter,
+    tags: string[],
+    options?: BulkOperationCommitOptions,
+  ): Promise<BulkTagResult>;
+  async tagAll(
+    filter: ListFilter,
+    tags: string[],
+    options?: BulkOperationDryRunOptions | BulkOperationCommitOptions,
+  ): Promise<BulkTagResult | BulkOperationDryRunResult> {
+    return tagAllWorkflows(getInternals(this), filter, tags, options);
+  }
+  async untagAll(
+    filter: ListFilter,
+    tags: string[],
+    options: BulkOperationDryRunOptions,
+  ): Promise<BulkOperationDryRunResult>;
+  async untagAll(
+    filter: ListFilter,
+    tags: string[],
+    options?: BulkOperationCommitOptions,
+  ): Promise<BulkTagResult>;
+  async untagAll(
+    filter: ListFilter,
+    tags: string[],
+    options?: BulkOperationDryRunOptions | BulkOperationCommitOptions,
+  ): Promise<BulkTagResult | BulkOperationDryRunResult> {
+    return untagAllWorkflows(getInternals(this), filter, tags, options);
+  }
+  /**
+   * Register a recurring schedule that starts a workflow on a cron expression or
+   * fixed interval. Returns a {@link ScheduleHandle} for pausing, resuming,
+   * updating, or cancelling the schedule.
+   *
+   * Two call forms:
+   * - A {@link ScheduleDefinition} object: `engine.schedule({ workflow, cron, input })`.
+   *   Carries the workflow (definition or type name), the `cron`/`every` spec,
+   *   optional `input`, `id`, `overlapPolicy`, `backfill`, and `jitter`.
+   * - Positional: `engine.schedule(type, input, spec, options?)` where `spec` is
+   *   a cron string or a {@link ScheduleSpec} (`{ cron }` or `{ every }`).
+   *
+   * The {@link ScheduleOptions.overlap} policy governs what happens when a tick
+   * fires while the previous run is still in flight.
+   *
+   * @example
+   * ```ts
+   * import { workflow, Engine } from '@repo/weft';
+   *
+   * const engine = new Engine();
+   * engine.register(workflow({ name: 'sweep' }).execute(async function* () { return 'ok'; }));
+   *
+   * // Definition form: every day at 09:00, skip a tick if the prior run is still running.
+   * const handle = await engine.schedule({
+   *   workflow: 'sweep',
+   *   cron: '0 9 * * *',
+   *   overlapPolicy: 'skip',
+   * });
+   * await handle.pause();
+   * ```
+   */
+  async schedule<TInput>(definition: ScheduleDefinition<TInput>): Promise<ScheduleHandle>;
+  async schedule(
+    type: string,
+    input: unknown,
+    spec: string | ScheduleSpec,
+    options?: ScheduleOptions,
+  ): Promise<ScheduleHandle>;
+  async schedule(
+    typeOrDefinition: string | ScheduleDefinition,
+    input?: unknown,
+    spec?: string | ScheduleSpec,
+    options?: ScheduleOptions,
+  ): Promise<ScheduleHandle> {
+    const internals = getInternals(this);
+    assertLeaseHeldForEngineWork(internals);
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    if (typeof typeOrDefinition === 'object') {
+      return scheduleDefinitionFromInternals(internals, typeOrDefinition);
+    }
+    if (spec === undefined) {
+      throw new Error(
+        'A cron string or schedule spec must be provided when scheduling by workflow type.',
+      );
+    }
+    return scheduleFromInternals(internals, typeOrDefinition, input, spec, options);
+  }
+  async getSchedule(scheduleId: string): Promise<ScheduleSummary | null> {
+    const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
+    const state = await loadScheduleState(getInternals(this), normalizedScheduleId);
+    return state ? toScheduleSummary(state) : null;
+  }
+  async listSchedules(filter?: ScheduleFilter): Promise<PaginatedResult<ScheduleSummary>> {
+    return listSchedulesFromInternals(getInternals(this), filter);
+  }
+  async pauseSchedule(scheduleId: string): Promise<void> {
+    const internals = getInternals(this);
+    assertLeaseHeldForEngineWork(internals);
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return pauseScheduleFromInternals(internals, scheduleId);
+  }
+  async resumeSchedule(scheduleId: string): Promise<void> {
+    const internals = getInternals(this);
+    assertLeaseHeldForEngineWork(internals);
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return resumeScheduleFromInternals(internals, scheduleId);
+  }
+  async cancelSchedule(scheduleId: string): Promise<void> {
+    const internals = getInternals(this);
+    assertLeaseHeldForEngineWork(internals);
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return cancelScheduleFromInternals(internals, scheduleId);
+  }
+  async updateSchedule(
+    scheduleId: string,
+    newSpec: string | ScheduleSpec,
+    options?: ScheduleUpdateOptions,
+  ): Promise<void> {
+    const internals = getInternals(this);
+    assertLeaseHeldForEngineWork(internals);
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return updateScheduleFromInternals(internals, scheduleId, newSpec, options);
+  }
+  [HANDLE_RESULT_PROMISE](workflowId: string): Promise<unknown> {
+    return getWorkflowResultPromiseFromInternals(getInternals(this), workflowId);
+  }
+  [ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING](): number {
+    return getInternals(this).parkedInlineWorkflows.size;
+  }
+  [ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING](): number {
+    return getInternals(this).signalWaiters.size;
+  }
+  [ENGINE_SLEEP_RESOLVER_COUNT_FOR_TESTING](): number {
+    return getInternals(this).sleepResolvers.size;
+  }
+  async [ENGINE_WAIT_FOR_SLEEP_RESOLVER_FOR_TESTING](workflowId: string): Promise<void> {
+    const internals = getInternals(this);
+    if (internals.sleepResolversByWorkflow.has(workflowId)) return;
+
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    let waiters = internals.sleepResolverReadyWaitersForTesting?.get(workflowId);
+    if (waiters === undefined) {
+      waiters = new Set();
+      internals.sleepResolverReadyWaitersForTesting?.set(workflowId, waiters);
+    }
+    waiters.add(resolve);
+
+    // Only two things ever settle a waiter: registerSleepResolver() when the
+    // generator reaches ctx.sleep() (operations-time.ts), and engine disposal
+    // (disposal.ts). A workflow that goes terminal without ever sleeping, or
+    // parks on a signal instead, settles neither — so this await has to be
+    // bounded or it hangs silently for the life of the engine.
+    const expiry = setTimeout(() => {
+      const pendingWaiters = internals.sleepResolverReadyWaitersForTesting?.get(workflowId);
+      if (pendingWaiters !== undefined) {
+        pendingWaiters.delete(resolve);
+        if (pendingWaiters.size === 0) {
+          internals.sleepResolverReadyWaitersForTesting?.delete(workflowId);
+        }
+      }
+
+      reject(
+        new Error(
+          `Timed out after ${SLEEP_RESOLVER_READY_WAIT_TIMEOUT_MS_FOR_TESTING}ms waiting for workflow "${workflowId}" to register a sleep resolver`,
+        ),
+      );
+    }, SLEEP_RESOLVER_READY_WAIT_TIMEOUT_MS_FOR_TESTING);
+
+    return await promise.finally(() => clearTimeout(expiry));
+  }
+  [ENGINE_SET_WORKER_TURN_TIMEOUT_RESOLVER_FOR_TESTING](
+    resolver: (turn: { workflowId: string; kind: 'run' | 'resume' }) => number,
+  ): void {
+    const strategy = getInternals(this).strategy;
+    if (strategy.setWorkflowTurnTimeoutResolverForTesting === undefined) {
+      throw new Error('Worker turn timeout resolver is only available in Worker execution mode');
+    }
+    strategy.setWorkflowTurnTimeoutResolverForTesting(resolver);
+  }
+  async signal(workflowId: string, name: SignalDefinition): Promise<void>;
+  async signal<TInput>(
+    workflowId: string,
+    name: SignalDefinition<TInput>,
+    payload: TInput,
+    options?: SignalDeliveryOptions,
+  ): Promise<void>;
+  async signal(
+    workflowId: string,
+    name: string,
+    payload?: unknown,
+    options?: SignalDeliveryOptions,
+  ): Promise<void>;
+  async signal(
+    workflowId: string,
+    nameOrDefinition: MessageName,
+    payload?: unknown,
+    options?: SignalDeliveryOptions,
+  ): Promise<void> {
+    return signalWorkflow(
+      getInternals(this),
+      workflowId,
+      messageName(nameOrDefinition),
+      payload,
+      {
+        loadWorkflowState: (id) => loadWorkflowState(getInternals(this), id),
+        dispatchEvent: (event) => this.dispatchEvent(event),
+        broadcast: (message) => this.#broadcast(message),
+        getComposedInterceptor: () => getComposedWorkflowInterceptor(getInternals(this)),
+        resumeParkedInlineWorkflow: (id) =>
+          swallowPromiseRejection(
+            resumeParkedInlineWorkflowFromInternals(
+              getInternals(this),
+              id,
+              this.#createInlineParkingCallbacks(),
+            ),
+          ),
+      },
+      options,
+    );
+  }
+  async update(
+    workflowId: string,
+    name: UpdateDefinition,
+    payload?: void,
+    options?: { timeout?: number },
+  ): Promise<unknown>;
+  async update<TInput, TOutput>(
+    workflowId: string,
+    name: UpdateDefinition<TInput, TOutput>,
+    payload: TInput,
+    options?: { timeout?: number },
+  ): Promise<TOutput>;
+  async update(
+    workflowId: string,
+    name: string,
+    payload?: unknown,
+    options?: { timeout?: number },
+  ): Promise<unknown>;
+  async update(
+    workflowId: string,
+    name: MessageName,
+    payload?: unknown,
+    options?: { timeout?: number },
+  ): Promise<unknown> {
+    return updateFromInternals(
+      getInternals(this),
+      workflowId,
+      messageName(name),
+      payload,
+      options,
+      this.#createUpdateCallbacks(),
+    );
+  }
+  async query<TOutput>(workflowId: string, name: QueryDefinition<void, TOutput>): Promise<TOutput>;
+  async query<TInput, TOutput>(
+    workflowId: string,
+    name: QueryDefinition<TInput, TOutput>,
+    input: TInput,
+  ): Promise<TOutput>;
+  async query(workflowId: string, name: string, input?: unknown): Promise<unknown>;
+  async query(
+    workflowId: string,
+    nameOrDefinition: MessageName,
+    input?: unknown,
+  ): Promise<unknown> {
+    return queryWorkflow(getInternals(this), workflowId, messageName(nameOrDefinition), input);
+  }
+  async getStreamChunks(
+    workflowId: string,
+    key: string,
+    options?: { after?: number },
+  ): Promise<StoredStreamChunk[]> {
+    return getStreamChunksFromInternals(getInternals(this), workflowId, key, options);
+  }
+  /**
+   * Read a value a workflow offloaded with `ctx.offload(key, ...)` back out of
+   * storage by `workflowId` + `key`.
+   *
+   * This is the external, post-completion reader for offloaded artifacts — the
+   * missing sibling of {@link getStreamChunks} and {@link getEvents}. Offloaded
+   * values survive normal completion (`completeWorkflow`/`failWorkflow` preserve
+   * them) so a consumer can read a finished workflow's offloaded output after
+   * `handle.result()` resolves. They are swept only when a workflow is
+   * terminated, cancelled, or times out.
+   *
+   * @returns The decoded offload value, or `null` when no value is stored under
+   *   that key (key was never written, workflow ID unknown, or artifact swept).
+   *
+   * @example
+   * ```ts
+   * import { Engine } from '@repo/weft';
+   *
+   * async function readReport(engine: Engine, workflowId: string): Promise<unknown> {
+   *   // `null` when the workflow offloaded nothing under this key, or after a
+   *   // terminated workflow swept its output artifacts.
+   *   return engine.getOffload(workflowId, 'report');
+   * }
+   * ```
+   */
+  async getOffload(workflowId: string, key: string): Promise<unknown> {
+    return getOffloadFromInternals(getInternals(this), workflowId, key);
+  }
+  async fork(sourceWorkflowId: string, options?: ForkOptions): Promise<WorkflowHandle> {
+    // Fork plants a new run (engine-owned work) — require the lease first so a
+    // pre-recovery fork surfaces EngineLeaseNotHeldError rather than being
+    // misreported as a deposition by the fenced commit. No-op for 'none'.
+    assertLeaseHeldForEngineWork(getInternals(this));
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return forkFromLifecycle(
+      getInternals(this),
+      sourceWorkflowId,
+      options,
+      this.#createLifecycleCallbacks(),
+    );
+  }
+  /**
+   * Re-drive a workflow from its persisted checkpoint and return a live handle.
+   * Accepts a workflow left `'running'` (e.g. recovered after a process restart)
+   * or one explicitly `'suspended'` via {@link Engine.suspend} — a suspended
+   * workflow is durably flipped back to `'running'` as part of resuming. Throws
+   * if the workflow is in any other status (terminal, pending) or not found.
+   */
+  async resume(workflowId: string): Promise<WorkflowHandle> {
+    // Resume reactivates a workflow (engine-owned advance) — require the lease
+    // first so a pre-recovery resume surfaces EngineLeaseNotHeldError rather than
+    // a deposition misreport from the fenced commit. No-op for 'none'.
+    assertLeaseHeldForEngineWork(getInternals(this));
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    return resumeFromLifecycle(getInternals(this), workflowId, this.#createLifecycleCallbacks());
+  }
+  /**
+   * Recover every running workflow found in storage. By default, recovery
+   * fails before doing any resume work if a stored running workflow has no
+   * registered workflow type on this engine.
+   *
+   * `acknowledgeUnknownWorkflowTypes` is a dangerous escape hatch for rolling
+   * deploys or explicit operator storage repair.
+   * When set, unknown workflow types are skipped and reported through
+   * {@link WorkflowRecoverySkippedEvent}.
+   *
+   * A recovered workflow whose persisted version metadata no longer matches
+   * its registered `WorkflowDefinition.version` is isolated per
+   * {@link RecoverAllOptions.versionMismatchPolicy} (default `'fail-run'`):
+   * only that workflow fails, and `recoverAll()` continues recovering its
+   * siblings in the same call.
+   */
+  async recoverAll(options?: RecoverAllOptions): Promise<WorkflowHandle[]> {
+    // Run the `ownership: 'workflow-lease'` boot gates on the `new Engine()` +
+    // `recoverAll()` construction path too, not just via `Engine.create` — ADR
+    // 0002 is explicit that attaching them to `Engine.create` alone leaves a
+    // direct-construction hole. Idempotent — a no-op when `Engine.create`
+    // already ran the bootstrap.
+    await this.#bootstrapOwnershipIfConfigured();
+    // Acquire the ownership lease before recovery on the `new Engine()` +
+    // `recoverAll()` boot path too, not just via `Engine.create`. Idempotent —
+    // a no-op when `Engine.create` already acquired it. NOTE: a caller that
+    // does `new Engine({ ownership: 'lease' })` then `engine.start(...)` WITHOUT
+    // ever calling `recoverAll` still writes without holding the lease; the
+    // lease is acquired only on the create/recover paths in Step 1. Use
+    // `Engine.create` (or call `recoverAll` before accepting traffic) to be safe.
+    await this.#acquireLeaseIfConfigured();
+    // Recovery must never run on a torn-down engine. This is the single closing
+    // guard for every disposal interleaving: a direct recoverAll() after dispose, a
+    // concurrent waiter that resumes after `#acquireLeaseIfConfigured` resolved, and
+    // the window where disposal + lease release land between the lease being acquired
+    // and recovery starting. (The lease itself is Step-1 deploy ergonomics, not a
+    // correctness backstop — but running recovery against disposed engine machinery
+    // is a real defect regardless of the lease, so it is gated here at the entry.)
+    if (getInternals(this).disposed) throw new EngineDisposedError();
+    // Restore the durable workflow catalog (and drain any registrations
+    // queued since the last drain) before recovery reads any workflow's
+    // active revision.
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    // Reload durable async-activity tokens first so a callback that arrives
+    // before (or during) workflow replay still resolves a parked activity.
+    await recoverPendingAsyncActivities(getInternals(this));
+    await recoverOrphanedScheduleTimers(getInternals(this));
+    // Retained for a LATER same-engine reclaim (ADR 0002's recurring scan) to
+    // reuse — see `onRecoveredWorkflowHook`'s doc on `EngineInternals` for why
+    // a reclaim-driven resume must not silently skip this hook just because it
+    // was installed here rather than passed to that reclaim's own call.
+    getInternals(this).onRecoveredWorkflowHook = options?.onRecoveredWorkflow;
+    return recoverAllFromLifecycle(getInternals(this), this.#createLifecycleCallbacks(), options);
+  }
+
+  /**
+   * Complete a deferred activity out-of-band with `result`. The activity must
+   * have parked itself via `ActivityContext.completeAsync()`; pass the durable
+   * task token announced through the `activity:async-pending` event (or
+   * persisted by your callback dispatcher). The parked workflow resumes as
+   * though the activity had returned `result` inline. During recovery, a
+   * completion that arrives after token recovery but before replay adopts the
+   * workflow generator is buffered and delivered when replay reaches the same
+   * async-activity token. Await `recoverAll()` before accepting callback traffic
+   * when your application needs startup ordering to be fully deterministic.
+   *
+   * @throws {AsyncActivityTokenNotFoundError} when no pending activity matches
+   * the token (unknown, or already completed/failed — tokens are single-use).
+   */
+  async completeAsyncActivity(token: string, result: unknown): Promise<void> {
+    await completeAsyncActivityFromInternals(getInternals(this), token, result, {
+      feedOperationResult: (workflowId, outcome) =>
+        feedOperationResult(getInternals(this), workflowId, outcome),
+      finalizeTimeline: (workflowId, status, output) =>
+        finalizePendingTimelineEntry(getInternals(this), workflowId, status, output),
+    });
+  }
+
+  /**
+   * List a bounded page of durable async activities awaiting out-of-band
+   * completion for one workflow. This reads storage directly, so callers can
+   * recover tokens after a process restart before `recoverAll()` repopulates
+   * the in-memory completion map.
+   */
+  async listPendingAsyncActivities(
+    workflowId: string,
+    options?: PendingAsyncActivityListOptions,
+  ): Promise<PendingAsyncActivityPage> {
+    return listPendingAsyncActivitiesFromInternals(getInternals(this), workflowId, options);
+  }
+
+  /**
+   * Fail a deferred activity out-of-band with `error`. The error is thrown into
+   * the workflow generator at the parked step — identical to an inline activity
+   * that threw — so the workflow's own try/catch and any configured retry
+   * policy apply unchanged. During recovery, a failure that arrives after token
+   * recovery but before replay adopts the workflow generator is buffered and
+   * delivered when replay reaches the same async-activity token. Await
+   * `recoverAll()` before accepting callback traffic when your application needs
+   * startup ordering to be fully deterministic.
+   *
+   * @throws {AsyncActivityTokenNotFoundError} when no pending activity matches
+   * the token (unknown, or already completed/failed — tokens are single-use).
+   */
+  async failAsyncActivity(token: string, error: unknown): Promise<void> {
+    await failAsyncActivityFromInternals(getInternals(this), token, error, {
+      feedOperationResult: (workflowId, outcome, originalReason) =>
+        feedOperationResult(getInternals(this), workflowId, outcome, originalReason),
+      finalizeTimeline: (workflowId, status, output) =>
+        finalizePendingTimelineEntry(getInternals(this), workflowId, status, output),
+    });
+  }
+  async cancel(workflowId: string): Promise<void> {
+    await cancelWorkflowFromTermination(
+      getInternals(this),
+      workflowId,
+      this.#createTerminationCallbacks(),
+    );
+  }
+  /**
+   * Suspend a running workflow without terminating it. The workflow transitions
+   * to the non-terminal `'suspended'` status, keeps its durable checkpoint, and
+   * is later resumable via {@link Engine.resume} (or `handle.resume()`). Unlike
+   * {@link Engine.cancel}, this does not run cancel handlers and does not settle
+   * the result promise — `handle.result()` stays pending until a later `resume()`
+   * drives the run to completion.
+   *
+   * Suspension is client-driven preemption, so a suspended workflow is NOT
+   * auto-recovered by {@link Engine.recoverAll}; resume it explicitly. Calling
+   * `suspend` on a workflow that is not running (already terminal, or never
+   * started) is a no-op.
+   */
+  async suspend(workflowId: string): Promise<void> {
+    await suspendWorkflowFromTermination(
+      getInternals(this),
+      workflowId,
+      this.#createTerminationCallbacks(),
+    );
+  }
+  async timeout(workflowId: string): Promise<void> {
+    await timeoutWorkflowFromTermination(
+      getInternals(this),
+      workflowId,
+      this.#createTerminationCallbacks(),
+    );
+  }
+  async get(workflowId: string): Promise<WorkflowState | null> {
+    const state = await loadWorkflowState(getInternals(this), workflowId);
+    if (
+      state?.status === 'running' &&
+      hasQueuedInlineWorkflowStart(getInternals(this), workflowId)
+    ) {
+      return { ...state, status: 'pending' };
+    }
+    return state;
+  }
+  /** Return the schedule occurrence that launched a workflow, when applicable. */
+  async getScheduleProvenance(workflowId: string): Promise<WorkflowScheduleProvenance | null> {
+    const bytes = await getInternals(this).storage.get(KEYS.scheduleRunLink(workflowId));
+    if (bytes === null) return null;
+    const metadata = decodeScheduleRunMetadata(bytes);
+    if (metadata === null) return null;
+    return {
+      scheduleId: metadata.id,
+      ...(metadata.occurrence === undefined ? {} : { occurrence: metadata.occurrence }),
+    };
+  }
+  /** Return durable post-terminal finalizer progress or outcome, when applicable. */
+  async getFinalizerStatus(workflowId: string): Promise<WorkflowFinalizerStatus | null> {
+    const internals = getInternals(this);
+    const state = await loadWorkflowState(internals, workflowId);
+    return getFinalizerStatusFromInternals(internals, workflowId, state);
+  }
+  /**
+   * Return this process's last-known ownership-lease health.
+   *
+   * This is a synchronous diagnostic snapshot: it never performs a storage read
+   * and therefore remains available to operator transports after a confirmed
+   * deposition has detached the lease manager. Holder identifiers and timestamps
+   * are present only while the manager still has its own last-written holder
+   * record; a detached deposed engine reports the confirmed loss without
+   * inventing successor details.
+   */
+  getLeaseHealth(): EngineLeaseHealth {
+    const internals = getInternals(this);
+    if (internals.options.ownershipMode === 'none') {
+      return { mode: 'none', status: 'disabled', holdsLease: false };
+    }
+    if (internals.deposed) {
+      const lastKnownLease = internals.leaseManager?.health();
+      if (lastKnownLease !== undefined && lastKnownLease.status !== 'no-lease') {
+        return {
+          mode: 'lease',
+          ...lastKnownLease,
+          status: 'contested',
+          holdsLease: false,
+          lossReason: 'deposed',
+        };
+      }
+      return {
+        mode: 'lease',
+        status: 'contested',
+        holdsLease: false,
+        lossReason: 'deposed',
+      };
+    }
+    return {
+      mode: 'lease',
+      ...(internals.leaseManager?.health() ?? { status: 'no-lease', holdsLease: false }),
+    };
+  }
+  async getCurrentCheckpointStep(workflowId: string): Promise<number | null> {
+    // Prefer the in-memory checkpoint: for a run live in this engine it is the
+    // freshest cursor, ahead of the last durable commit. Fall back to the
+    // persisted checkpoint so a recovered or cross-process-inspected run still
+    // reports its durable step.
+    const inMemory = getInternals(this).checkpoints.get(workflowId);
+    if (inMemory !== undefined) {
+      return inMemory.step;
+    }
+    const bytes = await getInternals(this).storage.get(KEYS.checkpoint(workflowId));
+    if (bytes === null) {
+      return null;
+    }
+    return deserializeCheckpoint(bytes).step;
+  }
+  async getAttributes(workflowId: string): Promise<Record<string, SearchAttributeValue> | null> {
+    return getWorkflowAttributes(getInternals(this), workflowId);
+  }
+  async setAttributes(
+    workflowId: string,
+    attributes: Record<string, SearchAttributeValue>,
+  ): Promise<void> {
+    return setWorkflowAttributes(getInternals(this), workflowId, attributes);
+  }
+  async addTags(workflowId: string, ...tags: string[]): Promise<void> {
+    return addWorkflowTags(getInternals(this), workflowId, ...tags);
+  }
+  async removeTags(workflowId: string, ...tags: string[]): Promise<void> {
+    return removeWorkflowTags(getInternals(this), workflowId, ...tags);
+  }
+  async getEvents(workflowId: string): Promise<WorkflowEvent[]> {
+    return getWorkflowEvents(getInternals(this), workflowId);
+  }
+  async *replayWorkflowFeed(
+    workflowId: string,
+    selector: WorkflowFeedSelector,
+    afterSequence: number,
+  ): AsyncIterable<WorkflowFeedRecord> {
+    yield* replayWorkflowFeed(getInternals(this), workflowId, selector, afterSequence);
+  }
+  async snapshotWorkflowFeedTail(
+    workflowId: string,
+    selector: WorkflowFeedSelector,
+  ): Promise<number> {
+    return snapshotWorkflowFeedTail(getInternals(this), workflowId, selector);
+  }
+  subscribeWorkflowFeedCommits(
+    workflowId: string,
+    selector: WorkflowFeedSelector,
+    listener: WorkflowFeedListener,
+  ): () => void {
+    return subscribeWorkflowFeedCommits(getInternals(this), workflowId, selector, listener);
+  }
+  async listCheckpoints(workflowId: string): Promise<CheckpointSummary[]> {
+    return listCheckpointHistory(getInternals(this), workflowId);
+  }
+  async getCheckpointAt(workflowId: string, step: number): Promise<CheckpointState | null> {
+    return getCheckpointStateAt(getInternals(this), workflowId, step);
+  }
+  /**
+   * Delete all but the newest `options.keepLast` checkpoint history entries
+   * for `workflowId`, through the storage adapter directly.
+   *
+   * Safe to call on a terminal workflow. A no-op — `{ removed: 0, retained: 0
+   * }`, never a throw — on a workflow with no checkpoint history entries,
+   * including an unknown workflow id. Rejects with the storage adapter's own
+   * error when a delete batch fails, and honors `options.signal`. The returned
+   * `removed` count is the number of entries selected by this call for
+   * deletion, not an independently confirmed count of keys deleted from
+   * storage; concurrent overlapping prune calls can each count the same entry.
+   * `retained` count is based on the history entries observed by this call and
+   * excluded from its deletion plan; concurrent checkpoint writes or prunes can
+   * change the actual number of entries in storage afterward.
+   * Deleting history requires storage support for `conditionalBatch`. Each
+   * batch rejects a concurrent workflow-generation change; earlier batches may
+   * already have committed when a later batch rejects.
+   */
+  async pruneCheckpoints(
+    workflowId: string,
+    options: PruneCheckpointsOptions,
+  ): Promise<PruneCheckpointsResult> {
+    return pruneCheckpointsFromInternals(getInternals(this), workflowId, options);
+  }
+  async getTimeline(workflowId: string): Promise<WorkflowTimelineEntry[]> {
+    return getWorkflowTimeline(getInternals(this), workflowId);
+  }
+  async replayTo(workflowId: string, step: number): Promise<WorkflowReplay | null> {
+    return replayWorkflowToCheckpoint(getInternals(this), workflowId, step);
+  }
+  async listReviews(filter?: ReviewListFilter): Promise<ReviewListEntry[]> {
+    return listReviewsFromInternals(getInternals(this), filter);
+  }
+  async getReview(workflowId: string, reviewId: string): Promise<ReviewRequest | null> {
+    return getReviewFromInternals(getInternals(this), workflowId, reviewId);
+  }
+  async submitReview(reviewId: string, options: SubmitReviewOptions): Promise<void> {
+    return submitReviewFromInternals(getInternals(this), reviewId, options, {
+      dispatchEvent: this.dispatchEvent.bind(this),
+    });
+  }
+  async getUpdateResult(updateId: string): Promise<import('../updates.ts').UpdateResponse | null> {
+    return getUpdateResultFromInternals(getInternals(this), updateId);
+  }
+  async submitCoordinatedUpdate(
+    workflowId: string,
+    name: string,
+    payload?: unknown,
+    options?: { timeout?: number; idempotencyKey?: string },
+  ): Promise<CoordinatedUpdateResult> {
+    return submitCoordinatedUpdateFromInternals(
+      getInternals(this),
+      workflowId,
+      name,
+      payload,
+      options,
+      this.#createUpdateCallbacks(),
+    );
+  }
+  /**
+   * Awaited engine shutdown. Equivalent to
+   * `await engine[Symbol.asyncDispose]()` and useful in explicit signal handlers
+   * where `await using` syntax cannot own the process lifetime directly.
+   *
+   * Under `ownership: 'lease'`, this is the explicit prompt-handoff primitive:
+   * it drains queued inline starts, tears down in-memory write paths, and awaits
+   * lease release before resolving. The returned boolean is `true` when no lease
+   * needed release or the holder delete committed, and `false` when the delete
+   * did not commit. Synchronous disposal remains immediate and can make the next
+   * engine wait for `leaseTtl` if the process exits before its background release
+   * completes.
+   */
+  async shutdown(): Promise<boolean> {
+    if (this.#shutdownResult === null) {
+      this.#shutdownResult = (async () => {
+        await this[Symbol.asyncDispose]();
+        const baseResult = this.#asyncDisposeResult;
+        if (baseResult === null) {
+          await getInternals(this).inFlightLeaseAcquire?.catch(() => {});
+          return (await this.#synchronousDisposeResult) ?? true;
+        }
+        try {
+          return await baseResult;
+        } catch (error) {
+          return error instanceof EngineDisposalError ? error.leaseReleased : true;
+        }
+      })();
+    }
+    return this.#shutdownResult;
+  }
+
+  /**
+   * Synchronous teardown (`using engine = ...`). Pending inline launches that
+   * have not yet run are **discarded**, not executed. When you need queued
+   * starts to complete before teardown — or want a clean event loop with no
+   * dangling deferred-launch macrotask — prefer {@link Engine[Symbol.asyncDispose]}
+   * via `await using`.
+   */
+  [Symbol.dispose](): void {
+    // Async disposal owns the complete drain → teardown → lease-release
+    // sequence once it starts. A concurrent synchronous disposal must not abort
+    // that drain or release its holder early.
+    if (this.#asyncDisposeResult !== null) {
+      void this.#asyncDisposeResult;
+      return;
+    }
+
+    // Capture the lease manager before disposeEngine() detaches it (disposeEngine
+    // only stops renewals — it does NOT release the holder, so each disposal path
+    // releases exactly once). Fire the holder release best-effort: synchronous
+    // disposal cannot await a storage round-trip.
+    const leaseManager = getInternals(this).leaseManager;
+    if (leaseManager !== null && leaseManager.currentEpochBytes() !== null) {
+      process.emitWarning(
+        'engine ownership lease disposed synchronously; lease release is fire-and-forget, ' +
+          'so exiting before the release completes can make the next instance wait for leaseTtl. ' +
+          'Use await engine.shutdown(), await using, or await engine[Symbol.asyncDispose]() for ' +
+          'prompt rolling-deploy handoff.',
+        ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME,
+      );
+    }
+    // Stop and detach this engine's per-workflow claim renewal task the same
+    // way: synchronous disposal cannot await the storage round-trips
+    // `WorkflowClaimRegistry.releaseAll()` needs, so its release is
+    // fire-and-forget too. `releaseAll()` never rejects (every per-workflow
+    // failure is swallowed internally), so the `.catch` here is defense in
+    // depth, not a load-bearing guard.
+    const { registry: workflowClaimRegistry } = this.#detachWorkflowClaimOwnership();
+    disposeEngine(getInternals(this), (event) => this.dispatchEvent(event));
+    if (this.#synchronousDisposeResult === null) {
+      this.#synchronousDisposeResult = leaseManager?.release() ?? Promise.resolve(true);
+    }
+    void this.#synchronousDisposeResult;
+    void this.#releaseWorkflowClaimsBestEffort(workflowClaimRegistry);
+  }
+  /**
+   * Async teardown (`await using engine = ...`). Drains pending inline launches
+   * so each queued workflow completes its first turn before disposal, leaving no
+   * deferred-launch macrotask to fire against torn-down state. The drain is
+   * bounded (a pass cap and the abort signal); in the pathological case where it
+   * cannot converge, anything still queued is discarded by the synchronous
+   * teardown that always follows. Prefer this over the synchronous
+   * {@link Engine[Symbol.dispose]} in async contexts and tests.
+   */
+  async #disposeAsyncWithLeaseResult(): Promise<boolean> {
+    // Drain pending inline launches BEFORE synchronous disposal aborts the
+    // signal (which would discard them). This makes a disposed engine leave no
+    // dangling deferred-launch macrotask — the clean async teardown that lets
+    // callers (and test runners) avoid manual macrotask draining.
+    //
+    // The drain runs in try/finally so synchronous disposal ALWAYS completes,
+    // even if the drain rejects: a half-disposed engine (abort un-fired,
+    // awaiters hung, channels open) is worse than the footgun this fixes.
+    if (!getInternals(this).disposed) {
+      // Capture the lease manager before in-memory teardown detaches it; release it
+      // LAST (see below).
+      const leaseManager = getInternals(this).leaseManager;
+      let leaseReleased = true;
+      let drainFailure: { error: unknown } | null = null;
+      try {
+        await drainQueuedInlineWorkflowStartsForEngine(this, {
+          abortStartedWorkflows: true,
+        });
+      } catch (error) {
+        drainFailure = { error };
+      } finally {
+        // Call disposeEngine DIRECTLY rather than this[Symbol.dispose](): the sync
+        // path fires a best-effort release, which would double-release and race the
+        // authoritative awaited release below. disposeEngine only aborts the engine
+        // and tears down every workflow/activity/storage-writing path in memory
+        // (and stops lease renewals) — it issues no storage writes itself. The
+        // caller owns the storage lifecycle (`await using storage`), so storage
+        // stays open and the awaited release below can still delete the holder.
+        // Stop and detach this engine's per-workflow claim renewal task the same
+        // way disposeEngine stops the global lease's renewals: synchronously,
+        // before any awaited release.
+        const { registry: workflowClaimRegistry } = this.#detachWorkflowClaimOwnership();
+        disposeEngine(getInternals(this), (event) => this.dispatchEvent(event));
+        // A lease acquire may still be parked (waiting for handoff) when disposal
+        // runs. disposeEngine() set `disposed` and stopped the manager, so the
+        // parked acquire's wait loop exits (or, if it already committed a holder
+        // this tick, its post-acquire `disposed` check releases it). Await it so
+        // cleanup completes before we resolve — otherwise a holder it takes could
+        // outlive dispose until TTL. A disposal-cancelled acquire now REJECTS
+        // (EngineDisposedError) — that rejection is the intended outcome, not a
+        // failure to surface, so swallow it here.
+        await getInternals(this).inFlightLeaseAcquire?.catch(() => {});
+        // Clean deploy handoff: release the ownership lease as the LAST durable
+        // action, AFTER queued starts have drained and all write paths are down, so
+        // the incoming instance cannot acquire and recover while this one is still
+        // writing. Awaiting makes `await using engine` a zero-overlap handoff, and
+        // this is the single release on the async path. Idempotent if the parked
+        // acquire's own `disposed`-branch already released.
+        const releaseResult =
+          this.#synchronousDisposeResult ?? leaseManager?.release() ?? Promise.resolve(true);
+        leaseReleased = await releaseResult;
+        // Best-effort per-workflow claim release: never let this block or fail
+        // engine shutdown. `releaseAll()` never rejects (every per-workflow
+        // failure is swallowed internally); the `.catch` here is defense in
+        // depth against that contract ever changing, not a load-bearing guard.
+        await this.#releaseWorkflowClaimsBestEffort(workflowClaimRegistry);
+      }
+      if (drainFailure !== null) {
+        throw new EngineDisposalError(drainFailure.error, leaseReleased);
+      }
+      return leaseReleased;
+    }
+    this[Symbol.dispose]();
+    await getInternals(this).inFlightLeaseAcquire?.catch(() => {});
+    return (await this.#synchronousDisposeResult) ?? true;
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    if (this.#asyncDisposeResult === null) {
+      this.#asyncDisposeResult = this.#disposeAsyncWithLeaseResult();
+    }
+    await this.#asyncDisposeResult;
+  }
+  get storage(): WeftStorage {
+    return getInternals(this).storage;
+  }
+  get scheduler(): Scheduler {
+    return getInternals(this).scheduler;
+  }
+
+  /**
+   * Fire a single timer entry directly. Intended for external schedulers
+   * (Service Worker, custom transports) that own timer dispatch but want
+   * the engine to actually resume the workflow associated with the entry.
+   *
+   * Most users do not call this directly. The internal `Scheduler` invokes
+   * the same code path automatically when its tick observes a due entry.
+   *
+   * @example
+   * ```ts
+   * import { Engine } from '@repo/weft';
+   * declare const externalEntry: import('@repo/weft').TimerEntry;
+   * const engine = new Engine();
+   * await engine.fireTimer(externalEntry);
+   * ```
+   */
+  async fireTimer(entry: TimerEntry): Promise<void> {
+    await handleTimerFiredFromInternals(
+      getInternals(this),
+      entry,
+      this.#createTimeOperationCallbacks(),
+    );
+  }
+}
+
+/**
+ * `Engine` with its two chained-builder registration methods removed —
+ * `register` and `registerWorkflows`, whose return type is itself
+ * `Engine<NarrowedRegistry>` (see `register()`'s JSDoc: registering returns
+ * "this same engine with the definition added to its phantom type
+ * registry"). That self-reference is what makes `Engine` invariant in its
+ * registry generics: a concretely narrowed `Engine<Concrete>` (e.g. from
+ * `Engine.create({ workflows })`) is not structurally assignable to the
+ * plain default `Engine<DefaultWorkflowRegistry>`, even though every other
+ * member — including `start` and `startOrSignal`, whose *parameter* types
+ * (not return types) reference `TWorkflows` but never produce another
+ * `Engine<T>` — is not part of that recursive comparison.
+ *
+ * `start` and `startOrSignal` are deliberately KEPT (not omitted): hosted
+ * transports genuinely call them at runtime (REST/JSON-RPC workflow starts,
+ * MCP tool invocations) via `runtimeWorkflowEngine()`'s registry-erased
+ * dynamic-name overload, so a value satisfying this type must still provide
+ * them — a duck-typed engine substitute lacking `start` correctly fails to
+ * satisfy `RegistryAgnosticEngine` (see this type's `.test-d.ts` coverage).
+ *
+ * Host-facing options that accept an already-constructed `Engine` without
+ * needing the two chained-builder registration methods — `serve({ engine })`,
+ * the Service Worker helpers, the MCP session/HTTP/stdio surfaces — use this
+ * type instead of the bare default `Engine`, so both `new Engine({ storage })`
+ * and `Engine.create({ workflows })` are accepted without a call-site cast.
+ * See #708.
+ *
+ * (`Engine<object, object>` looks like the obvious fix — the widest legal
+ * instantiation of the registry generics — but TypeScript's structural check
+ * on `register()`'s self-referential return type does not reliably resolve
+ * that relationship: it can pass or fail for the identical `Engine<A>` /
+ * `Engine<B>` pair depending on unrelated compilation context, such as other
+ * files in the same program. Removing the registry-typed members entirely,
+ * rather than widening their generic arguments, avoids the recursive
+ * comparison altogether.)
+ *
+ * @example Retain an engine with a concrete workflow registry behind a host-facing type
+ * ```ts
+ * import {
+ *   Engine,
+ *   MemoryStorage,
+ *   workflow,
+ *   type RegistryAgnosticEngine,
+ * } from '@repo/weft';
+ *
+ * const greeting = workflow({ name: 'greeting' }).execute(async function* () {
+ *   return 'hello';
+ * });
+ *
+ * const engine: RegistryAgnosticEngine = await Engine.create({
+ *   storage: new MemoryStorage(),
+ *   workflows: { greeting },
+ * });
+ *
+ * void engine.start;
+ * void engine.startOrSignal;
+ * ```
+ */
+export type RegistryAgnosticEngine = Omit<Engine, 'register' | 'registerWorkflows'>;

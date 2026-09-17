@@ -1,0 +1,49 @@
+{
+  "name": "@repo/chat-room",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --bun vite dev",
+    "build": "bun --bun vite build",
+    "preview": "bun --bun vite preview",
+    "lint": "bun --bun svelte-kit sync && oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "bun --bun svelte-kit sync && oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "bun --bun svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --threshold warning --fail-on-warnings",
+    "test": "bun test",
+    "test:browser": "bun --bun playwright test",
+    "check:client-styles": "bun scripts/check-client-styles.ts"
+  },
+  "dependencies": {
+    "@lasercat/homogenaize": "catalog:",
+    "@repo/chat": "workspace:*",
+    "@repo/cinder": "workspace:*",
+    "@repo/editor": "workspace:*",
+    "@repo/markdown": "workspace:*",
+    "@repo/operative": "workspace:*",
+    "@repo/weft": "workspace:*",
+    "@repo/armorer": "workspace:*",
+    "@repo/conversationalist": "workspace:*",
+    "lucide-svelte": "catalog:",
+    "zod": "catalog:",
+    "@milkdown/ctx": "catalog:",
+    "@milkdown/kit": "catalog:",
+    "prosemirror-state": "catalog:",
+    "prosemirror-view": "catalog:",
+    "svelte": "catalog:",
+    "@sveltejs/kit": "catalog:"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-auto": "catalog:",
+    "@sveltejs/vite-plugin-svelte": "catalog:",
+    "@types/node": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "@repo/typescript-configuration": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "@repo/testing": "workspace:*",
+    "@playwright/test": "catalog:",
+    "shiki": "catalog:"
+  }
+}

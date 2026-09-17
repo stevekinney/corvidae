@@ -1,0 +1,20 @@
+/* The root package entry imports these shared layers once. Component entries
+ * import their own styles, so application bundlers retain only used components.
+ * Declaring the layer order before either set keeps the cascade deterministic.
+ */
+
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+
+@import './tokens.css' layer(cinder.tokens);
+@import './foundation.css' layer(cinder.foundation);
+@import './components/_dismiss-button.css';
+@import './components/_field-label.css';
+@import './components/_floating-surface.css';
+@import './components/_form-field-error.css';
+@import './components/_label-value.css';
+@import './components/_row-item.css';
+@import './components/_control-item.css';
+@import './components/_input-frame.css';
+@import './components/_status-surface.css';
+@import './components/_scroll-fade.css';
+@import './utilities.css' layer(cinder.utilities);

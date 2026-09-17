@@ -1,0 +1,151 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* Compound with `.cinder-form-field` so `gap` out-specificities the shared
+     base rule (`var(--cinder-space-1-5)`) regardless of stylesheet load
+     order — json-editor's own gap is intentionally larger. */
+  .cinder-json-editor,
+  .cinder-json-editor.cinder-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+  }
+
+  /* FormFieldFrame's fixed render order is label, control, description,
+     message, error; these `order` overrides restore the original
+     label → description → input → feedback visual order. */
+  .cinder-json-editor > .cinder-form-field__label {
+    order: 1;
+  }
+
+  .cinder-json-editor > .cinder-form-field__description {
+    order: 2;
+  }
+
+  .cinder-json-editor > .cinder-json-editor__input {
+    order: 3;
+  }
+
+  .cinder-json-editor > .cinder-json-editor__feedback {
+    order: 4;
+  }
+
+  /* `__label` and `__description` also carry FormFieldFrame's generic
+     `.cinder-form-field__label` / `__description` classes (`__feedback` does
+     not — it is fully custom-rendered via the `message` slot, never paired
+     with a generic class) — compound with them so json-editor's typography
+     out-specificities the shared base rule regardless of consumer import
+     order (component sidecars carry layer membership, not ordering). */
+  .cinder-json-editor__label,
+  .cinder-json-editor__label.cinder-form-field__label {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-json-editor__description,
+  .cinder-json-editor__description.cinder-form-field__description,
+  .cinder-json-editor__feedback {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-json-editor__textarea {
+    display: block;
+    inline-size: 100%;
+    min-block-size: 10rem;
+    resize: vertical;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-2);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-json-editor__input {
+    position: relative;
+  }
+
+  .cinder-json-editor__highlight {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-2);
+    background: var(--cinder-surface-raised);
+    pointer-events: none;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    line-height: normal;
+    scrollbar-width: none;
+  }
+
+  .cinder-json-editor__input--nowrap .cinder-json-editor__highlight {
+    white-space: pre;
+    overflow-wrap: normal;
+    width: 100%;
+  }
+
+  .cinder-json-editor__highlight::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cinder-json-editor__input--highlighted .cinder-json-editor__textarea {
+    position: relative;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--cinder-text-default);
+  }
+
+  .cinder-json-editor .cinder-json-token-key {
+    color: var(--cinder-accent-text);
+  }
+
+  .cinder-json-editor .cinder-json-token-string {
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-json-editor .cinder-json-token-number {
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-json-editor .cinder-json-token-boolean,
+  .cinder-json-editor .cinder-json-token-null {
+    color: var(--cinder-status-info-text);
+  }
+
+  .cinder-json-editor .cinder-json-token-punctuation {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-json-editor .cinder-json-lint {
+    text-decoration: underline wavy var(--cinder-status-danger-solid);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+
+  .cinder-json-editor__textarea:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    /* Ring replaces the border while focused rather than stacking on it — the two
+       together read as one heavier shape than either was designed to be. */
+    border-color: transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-json-editor__feedback--error {
+    color: var(--cinder-status-danger-text);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-json-editor__textarea:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      box-shadow: none;
+    }
+  }
+}

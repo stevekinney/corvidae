@@ -1,0 +1,96 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      description: 'Unique identifier — required for label association and ARIA wiring.',
+    },
+    name: {
+      type: 'string',
+      description: 'Native form field name. Renders a hidden input carrying the selected value.',
+    },
+    textInputValue: {
+      type: 'string',
+      description: 'Free-text input value (the text the user has typed). Bindable.',
+    },
+    label: {
+      type: 'string',
+      description: 'Visible label rendered in a `<label>` associated via `for`.',
+    },
+    'aria-label': {
+      type: 'string',
+      description: 'Accessible name for the input when no visible label is rendered.',
+    },
+    placeholder: {
+      type: 'string',
+      description: 'Placeholder when no value is selected.',
+    },
+    description: {
+      type: 'string',
+      description: 'Helper text displayed below the input; wired via aria-describedby.',
+    },
+    error: {
+      type: 'string',
+      description: 'Validation error message; sets aria-invalid="true".',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Disables the combobox. Inherited from a wrapping FormField when unset.',
+    },
+    required: {
+      type: 'boolean',
+      description:
+        'Marks the field required: renders the required marker on the label and\nsets `aria-required` on the input. Inherited from a wrapping FormField\nwhen unset.',
+    },
+    maxVisibleOptions: {
+      type: 'number',
+      description: 'Hard cap on visible filtered options. Default 200.',
+    },
+    customValueAllowed: {
+      type: 'boolean',
+      description: 'Allow committing typed text that is not present in `options`.',
+    },
+    'aria-describedby': {
+      type: 'string',
+      description:
+        'External element id(s) to compose into `aria-describedby`. Composed\nafter the component-generated description and error ids, matching the\nfield-control contract in Select. Useful for tooltip ids, counter ids,\nor any external hint.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-combobox`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['id'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'filter',
+        reason: 'function-or-snippet',
+        description:
+          'Custom synchronous filter. Receives an option and the current input\nvalue; returns true to keep. Defaults to case-insensitive substring\nmatch on label.',
+      },
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+        description: 'Called when an option, or an arbitrary value when enabled, is committed.',
+      },
+      {
+        name: 'options',
+        reason: 'unknown-shape',
+        required: true,
+        description: 'Full set of options to filter. The sole inference source for T.',
+      },
+      {
+        name: 'value',
+        reason: 'generic-type-parameter',
+        description: "Currently selected value. Bindable. `''` when nothing is selected.",
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

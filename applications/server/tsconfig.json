@@ -1,0 +1,5 @@
+{
+  "extends": "@repo/typescript-configuration/server.json",
+  "include": ["src", "scripts"],
+  "exclude": ["node_modules", "coverage", "build"]
+}

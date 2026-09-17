@@ -1,0 +1,113 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../input/input.css';
+@layer cinder.components {
+  /* ========================================
+ * SEARCH FIELD
+ * ======================================== */
+
+  .cinder-search-field {
+    inline-size: 100%;
+  }
+
+  /* ----------------------------------------
+ * Leading icon
+ * ---------------------------------------- */
+
+  .cinder-search-field__leading {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+  }
+
+  .cinder-search-field__icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  /* Suppress the WebKit native clear button — we render our own. */
+  .cinder-search-field .cinder-input::-webkit-search-cancel-button,
+  .cinder-search-field .cinder-input::-webkit-search-decoration {
+    display: none;
+  }
+
+  /* ----------------------------------------
+ * Clear button
+ * ---------------------------------------- */
+
+  .cinder-search-field__clear {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--cinder-radius-sm);
+    color: var(--cinder-text-muted);
+    cursor: pointer;
+  }
+
+  /* Expand the interactive hit area to 44×44 px (WCAG 2.5.5) without affecting layout.
+ * Mirrors the pattern used by .cinder-alert__dismiss and .cinder-chip__remove. */
+  .cinder-search-field__clear::after {
+    content: '';
+    position: absolute;
+    inset: 50% auto auto 50%;
+    inline-size: 44px;
+    block-size: 44px;
+    transform: translate(-50%, -50%);
+  }
+
+  .cinder-search-field__clear[hidden] {
+    display: none;
+  }
+
+  @media (hover: hover) {
+    .cinder-search-field__clear:hover:not(:disabled) {
+      color: var(--cinder-text-default);
+      background: var(--cinder-surface-inset);
+    }
+  }
+
+  /* The clear button is absolutely positioned inside the field's padding box;
+   an outset ring overhangs the field border. Paint an INSET ring
+   (Strategy B-inset) so the indicator stays within the button's own bounds. */
+  .cinder-search-field__clear:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width)
+      var(--_cinder-search-field-clear-ring, var(--cinder-ring-color));
+  }
+
+  @media (forced-colors: active) {
+    .cinder-search-field__clear:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
+  .cinder-search-field__clear:disabled {
+    cursor: not-allowed;
+  }
+
+  /* ----------------------------------------
+ * Shortcut hint
+ * ---------------------------------------- */
+
+  .cinder-search-field__shortcut {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding-inline: var(--cinder-space-1-5);
+    padding-block: var(--cinder-space-0-5);
+    font-family: inherit;
+    font-size: var(--cinder-text-xs);
+    line-height: 1;
+    color: var(--cinder-text-muted);
+    background: var(--cinder-surface-inset);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-sm);
+  }
+}

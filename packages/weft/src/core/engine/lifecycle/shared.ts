@@ -1,0 +1,313 @@
+import { KEYS, storageHas } from '../../../storage/interface.ts';
+import { EventLog } from '../../event-log.ts';
+import type { ComposedWorkflowInterceptor } from '../../interceptor.ts';
+import { coerceStartWorkflowTags } from '../../start-workflow-validation.ts';
+import type {
+  WorkflowServicesResolverLaunchOptions,
+  WorkflowServicesResolverScheduleInfo,
+} from '../../types.ts';
+import { normalizeWorkflowTags } from '../../workflow-tags.ts';
+import type { ExecutableRegistration } from '../dynamic-source-execution.ts';
+import type { QueuedInlineWorkflowExecutionStart } from '../engine-internal-types.ts';
+import { type WorkflowHandle } from '../handles.ts';
+import type { EngineInternals } from '../internals.ts';
+import { loadWorkflowStartHeaders as loadWorkflowStartHeadersFromStorage } from '../storage-io.ts';
+
+export type RegistrationEntry =
+  EngineInternals['registrations'] extends Map<string, infer Entry> ? Entry : never;
+
+export const FORK_LINEAGE_ATTRIBUTE = 'weft:forkedFrom';
+
+export const EMPTY_STORAGE_VALUE = new Uint8Array(0);
+
+/**
+ * Durable run context passed to {@link RecoverAllOptions.onRecoveredWorkflow}
+ * before recovered user code advances.
+ *
+ * @example
+ * ```ts
+ * import type { RecoveredWorkflowInfo } from '@repo/weft';
+ *
+ * function registerSurface(info: RecoveredWorkflowInfo): void {
+ *   console.log(`Recovered ${info.workflowType}/${info.workflowId}`);
+ * }
+ * ```
+ */
+export interface RecoveredWorkflowInfo {
+  /** Handle for the recovered run. */
+  handle: WorkflowHandle;
+  workflowId: string;
+  workflowType: string;
+  input: unknown;
+  launchOptions: WorkflowServicesResolverLaunchOptions;
+  schedule?: WorkflowServicesResolverScheduleInfo;
+  /** Re-provided host services, or `undefined` when the run did not use services. */
+  services: unknown;
+}
+
+/**
+ * Options for {@link Engine.recoverAll}. The acknowledgement flag is an
+ * explicit escape hatch for deployments that intentionally skip stored
+ * workflows whose type is not registered on this engine.
+ *
+ * @example
+ * ```ts
+ * import { Engine, type RecoverAllOptions } from '@repo/weft';
+ *
+ * const engine = new Engine();
+ * const options: RecoverAllOptions = { acknowledgeUnknownWorkflowTypes: true };
+ * await engine.recoverAll(options);
+ * ```
+ */
+export type RecoverAllOptions = {
+  /**
+   * Skip stored running workflows whose type is not registered. Use only for
+   * rolling deploys or explicit operator storage repair.
+   */
+  acknowledgeUnknownWorkflowTypes?: boolean;
+  /**
+   * Register consumer-owned live state for each recovered run after services
+   * are re-provided but before the workflow generator advances. The callback is
+   * awaited. If it throws, only that run fails with a `system` failure and
+   * recovery continues with its siblings.
+   */
+  onRecoveredWorkflow?: (info: RecoveredWorkflowInfo) => void | Promise<void>;
+  /**
+   * Policy for a recovered workflow whose persisted
+   * {@link WorkflowVersionTuple} or checkpoint `version` no longer matches the
+   * registered {@link WorkflowDefinition.version}. Recovery checks both
+   * persisted records against the registered version so current workflow-state
+   * metadata cannot mask a stale checkpoint version. The mismatch is detected
+   * before `resolveWorkflowServices` and `onRecoveredWorkflow` run for that
+   * workflow, so a mismatched run never re-provides services or invokes the
+   * hook.
+   *
+   * - `'fail-run'` (default): fail only the mismatched run to a terminal
+   *   `failed` state with a `system` failure category carrying the
+   *   {@link VersionMismatchError} message, then continue recovering its
+   *   siblings. The run never advances user workflow code.
+   * - `'throw'`: use fail-fast recovery — rethrow the
+   *   {@link VersionMismatchError} out of `recoverAll()` immediately, leaving
+   *   every workflow not yet processed in this batch unresumed.
+   */
+  versionMismatchPolicy?: 'fail-run' | 'throw';
+};
+
+export type LifecycleCallbacks = {
+  dispatchEvent: (event: Event) => void;
+  getHandle: (workflowId: string) => WorkflowHandle;
+  createWorkflowHandleWithResultPromise: (workflowId: string) => WorkflowHandle;
+  runSerializedWorkflowStateWrite: (workflowId: string, fn: () => Promise<void>) => Promise<void>;
+  getComposedWorkflowInterceptor: () => ComposedWorkflowInterceptor | null;
+  resolveWorkflowTypeTarget: (target: string | Function) => string;
+  processPendingUpdatesAfterReplay: (workflowId: string) => void;
+  processPendingUpdatesAfterInlineAdvance: (workflowId: string) => Promise<void>;
+  processPendingUpdatesForHandlers: (workflowId: string) => Promise<void>;
+  queueInlineWorkflowExecutionStart: (start: QueuedInlineWorkflowExecutionStart) => void;
+  isInlineWorkflowLocallyOwned: (workflowId: string, workflowStatus: string) => boolean;
+  hasLocalCheckpointOwnership: (workflowId: string, workflowStatus: string) => boolean;
+  handleCleanupError: (source: string, error: unknown, workflowId?: string) => void;
+  swallowPromiseRejection: (promise: Promise<unknown> | undefined) => Promise<void>;
+  /**
+   * Force the workflow to a terminal `timed-out` state because its persisted
+   * event-log record count breached the history circuit-breaker threshold.
+   * Invoked by {@link enforceHistoryPolicyBeforeReplay} so an already-oversized
+   * history is terminated without being replayed.
+   */
+  enforceHistoryCircuitBreaker: (workflowId: string) => Promise<void>;
+  /**
+   * Force a recovered workflow to a terminal `failed` state because its
+   * non-serialized `services` could not be re-provided (the engine's
+   * `resolveWorkflowServices` reported `unavailable`). Fails just this run with
+   * a `system` failure category; the engine and other recovered runs continue.
+   * `error` is the canonical {@link unavailableServicesError}.
+   */
+  failWorkflowForUnavailableServices: (workflowId: string, error: Error) => Promise<void>;
+  /** Fail one recovered workflow whose pre-resume consumer hook threw. */
+  failWorkflowForRecoveryHook: (workflowId: string, error: Error) => Promise<void>;
+  /**
+   * Force a recovered workflow to a terminal `failed` state because its
+   * persisted checkpoint cannot be decoded on this runtime. The failure is
+   * isolated to the affected run so `recoverAll()` can continue recovering
+   * other workflows from the same storage backend.
+   */
+  failWorkflowForCheckpointDecodeError: (workflowId: string, error: Error) => Promise<void>;
+  /**
+   * Force a recovered workflow to a terminal `failed` state because its
+   * persisted version metadata no longer matches the registered
+   * `WorkflowDefinition.version` (a {@link VersionMismatchError}). Fails just
+   * this run with a `system` failure category so `recoverAll()` can continue
+   * recovering other workflows under the default `'fail-run'`
+   * {@link RecoverAllOptions.versionMismatchPolicy}.
+   */
+  failWorkflowForVersionMismatch: (workflowId: string, error: Error) => Promise<void>;
+  /**
+   * Turn a workflow `type` into an executable registration, awaiting
+   * dynamic-source resolution when `type` is not eagerly registered
+   * (WFT-15/16). See `dynamic-source-execution.ts`'s own doc for the full
+   * contract.
+   *
+   * `onRevisionChosen`, when given, fires synchronously the moment a lazy
+   * `type`'s target revision is picked — BEFORE the (potentially slow)
+   * loader is awaited — so a caller like `startWorkflow` can reserve an
+   * `inFlightStarts` slot for that exact revision immediately, closing the
+   * window where a concurrent `removeWorkflowRevision()` could observe zero
+   * references against a revision this call's own source load is about to
+   * durably (re)install. Never fires for an eager type (no revision to
+   * choose) or when resolution fails before a revision is picked (the
+   * ambiguous-revision case).
+   */
+  resolveExecutableRegistration: (
+    type: string,
+    onRevisionChosen?: (revision: string) => void,
+  ) => Promise<ExecutableRegistration>;
+  /**
+   * Force a recovered workflow to a terminal `failed` state because its
+   * dynamic workflow source could not be resolved during the recovery
+   * preload barrier — only this run fails; `recoverAll()` continues
+   * recovering sibling types.
+   */
+  failWorkflowForUnavailableDynamicSource: (workflowId: string, error: Error) => Promise<void>;
+  /**
+   * Resolve workflow `type` against its EXACT pinned revision (WFT-17's
+   * `WorkflowState.revision`, `undefined` for a legacy pre-pinning record)
+   * instead of whichever revision the catalog currently considers active.
+   * Used by every resume path (`resumeWorkflowFromStorage`) so a pinned run
+   * never falls back to the active pointer. See
+   * `dynamic-source-execution.ts`'s `resolveExecutableRegistrationForRevision()`
+   * for the full classification contract.
+   *
+   * `onRevisionChosen` (WFT-21, Codex review round 5, P1) is optional and
+   * fires synchronously, before any await, the instant a legacy
+   * (`revision === undefined`) dynamic-source resolution picks its sole
+   * candidate's revision — `fork()` uses it to reserve an
+   * `inFlightStartsByRevision` slot at that exact moment rather than after
+   * this whole call resolves, closing a concurrent-removal window. See
+   * `dynamic-source-execution.ts`'s own doc for the full rationale.
+   */
+  resolveExecutableRegistrationForRevision: (
+    type: string,
+    revision: string | undefined,
+    onRevisionChosen?: (revision: string) => void,
+  ) => Promise<ExecutableRegistration>;
+  /**
+   * Force a recovered workflow to a terminal `failed` state because its
+   * pinned revision could not be resolved during the recovery preload
+   * barrier (WFT-18) — a {@link import('../revision-errors.ts').WorkflowRevisionUnavailableError}.
+   * Only this run fails; `recoverAll()` continues recovering sibling
+   * `(type, revision)` groups, including other revisions of the same type.
+   */
+  failWorkflowForRevisionUnavailable: (workflowId: string, error: Error) => Promise<void>;
+};
+
+/**
+ * Pre-replay history circuit breaker. Called at every restore-from-checkpoint
+ * entry point immediately after the persisted event-log head is loaded and
+ * before replay. When `maxEvents` is configured and the workflow's durable
+ * event-log record count (`head.sequence + 1`) exceeds it, force the workflow
+ * to a terminal `timed-out` state and return `true` so the caller skips replay.
+ * Returns `false` (and does nothing) when the circuit breaker is disabled or
+ * the limit is not breached.
+ */
+export async function enforceHistoryPolicyBeforeReplay(
+  internals: EngineInternals,
+  workflowId: string,
+  head: { sequence: number },
+  callbacks: Pick<LifecycleCallbacks, 'enforceHistoryCircuitBreaker'>,
+): Promise<boolean> {
+  const maxEvents = internals.options.historyPolicy.maxEvents;
+  if (maxEvents === null || head.sequence + 1 <= maxEvents) {
+    return false;
+  }
+  await callbacks.enforceHistoryCircuitBreaker(workflowId);
+  return true;
+}
+
+/**
+ * {@link enforceHistoryPolicyBeforeReplay} for callers that have not already
+ * loaded the event-log head. Resolves the head from the engine's in-memory map
+ * (present for workflows this instance already tracks, e.g. locally-owned ones)
+ * and falls back to storage. Used by `resume` on its local-ownership paths,
+ * which return before reaching `resumeWorkflowFromStorage` (where the head is
+ * otherwise loaded for the guard) — without this the circuit breaker would be
+ * skipped for a locally-owned workflow left `running` with an oversized history.
+ */
+export async function enforceHistoryPolicyBeforeReplayById(
+  internals: EngineInternals,
+  workflowId: string,
+  callbacks: Pick<LifecycleCallbacks, 'enforceHistoryCircuitBreaker'>,
+): Promise<boolean> {
+  if (internals.options.historyPolicy.maxEvents === null) {
+    return false;
+  }
+  const head =
+    internals.eventLogHeads.get(workflowId) ??
+    (await new EventLog(internals.storage, workflowId).loadHead());
+  return enforceHistoryPolicyBeforeReplay(internals, workflowId, head, callbacks);
+}
+
+export function createWorkflowHandle(
+  _internals: EngineInternals,
+  workflowId: string,
+  callbacks: Pick<LifecycleCallbacks, 'createWorkflowHandleWithResultPromise'>,
+): WorkflowHandle {
+  return callbacks.createWorkflowHandleWithResultPromise(workflowId);
+}
+
+export function setWorkflowStartHeaders(
+  internals: EngineInternals,
+  workflowId: string,
+  headers: Map<string, string> | undefined,
+  _callbacks: LifecycleCallbacks,
+): void {
+  if (!headers || headers.size === 0) {
+    internals.workflowHeaders.delete(workflowId);
+    return;
+  }
+
+  internals.workflowHeaders.set(workflowId, new Map(headers));
+  internals.workflowsNeedingTerminalCleanup.add(workflowId);
+}
+
+export async function loadWorkflowStartHeaders(
+  internals: EngineInternals,
+  workflowId: string,
+  _callbacks: LifecycleCallbacks,
+): Promise<Map<string, string> | undefined> {
+  return loadWorkflowStartHeadersFromStorage(internals, workflowId);
+}
+
+export async function loadTerminalCleanupTrackedState(
+  internals: EngineInternals,
+  workflowId: string,
+  _callbacks: LifecycleCallbacks,
+): Promise<void> {
+  if (await storageHas(internals.storage, KEYS.terminalCleanupNeeded(workflowId))) {
+    internals.workflowsNeedingTerminalCleanup.add(workflowId);
+  }
+}
+
+export function normalizeStartWorkflowTags(
+  _internals: EngineInternals,
+  tags: unknown,
+  fieldName: string | undefined,
+  _callbacks: LifecycleCallbacks,
+): string[] | undefined {
+  if (tags === undefined) {
+    return undefined;
+  }
+
+  return normalizeWorkflowTags(coerceStartWorkflowTags(tags, fieldName ?? 'options.tags'));
+}
+
+export async function processPendingUpdatesAfterReplay(
+  _internals: EngineInternals,
+  workflowId: string,
+  callbacks: Pick<LifecycleCallbacks, 'handleCleanupError' | 'processPendingUpdatesForHandlers'>,
+): Promise<void> {
+  try {
+    await callbacks.processPendingUpdatesForHandlers(workflowId);
+  } catch (error: unknown) {
+    callbacks.handleCleanupError('processPendingUpdates', error, workflowId);
+  }
+}

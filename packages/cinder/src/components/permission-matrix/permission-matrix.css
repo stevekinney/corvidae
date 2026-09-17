@@ -1,0 +1,193 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-permission-matrix {
+    display: grid;
+    gap: var(--cinder-space-3);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-permission-matrix__caption {
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-permission-matrix__description {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-permission-matrix__viewport {
+    position: relative;
+    min-block-size: 8rem;
+  }
+
+  .cinder-permission-matrix__scroll {
+    inline-size: 100%;
+    max-inline-size: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface);
+    /* Same inset-shadow affordance as data-grid's
+     * `--_cinder-data-grid-overflow-shadow` (data-grid.css), driven by
+     * `overflowShadow('inline')` (utilities/attachments.ts). The
+     * inline-start edge of this shadow sits directly behind the opaque
+     * sticky corner/row-header below (both paint above a scroll container's
+     * own box-shadow decoration), so in practice only the inline-end edge is
+     * ever visible — which is also the only edge that needs it, since the
+     * row header is always-visible chrome, not scrolling content. */
+    box-shadow: var(--_cinder-permission-matrix-scroll-shadow, none);
+  }
+
+  .cinder-permission-matrix__scroll[data-cinder-overflows-inline] {
+    --_cinder-permission-matrix-scroll-shadow:
+      inset 1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 28%, transparent),
+      inset -1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 28%, transparent);
+  }
+
+  .cinder-permission-matrix__table {
+    min-inline-size: max-content;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-permission-matrix__corner,
+  .cinder-permission-matrix__column-header,
+  .cinder-permission-matrix__row-header {
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-medium);
+    text-align: left;
+    border-block-end: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-permission-matrix__corner,
+  .cinder-permission-matrix__row-header {
+    position: sticky;
+    inset-inline-start: 0;
+    /* cinder-z-index-local: row header stays above scrolling matrix cells. */
+    z-index: 2;
+    inline-size: 12rem;
+    max-inline-size: 16rem;
+  }
+
+  .cinder-permission-matrix__corner {
+    /* cinder-z-index-local: corner is the intersection of both sticky header axes. */
+    z-index: 4;
+  }
+
+  .cinder-permission-matrix__column-header {
+    position: sticky;
+    top: 0;
+    /* cinder-z-index-local: column header stays above row headers while scrolling. */
+    z-index: 3;
+    min-inline-size: 7rem;
+    max-inline-size: 10rem;
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-2);
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .cinder-permission-matrix__row-header {
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    white-space: nowrap;
+    border-inline-end: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-permission-matrix__cell {
+    padding: 0;
+    border-block-end: 1px solid var(--cinder-border-muted);
+    border-inline-end: 1px solid var(--cinder-border-muted);
+    text-align: center;
+    background: var(--cinder-surface);
+  }
+
+  .cinder-permission-matrix__cell-control {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cinder-space-1);
+    min-inline-size: 7rem;
+    inline-size: 100%;
+    min-block-size: 2.5rem;
+    padding-block: var(--cinder-space-1-5);
+    padding-inline: var(--cinder-space-2);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--cinder-text-default);
+    font: inherit;
+  }
+
+  button.cinder-permission-matrix__cell-control {
+    cursor: pointer;
+  }
+
+  button.cinder-permission-matrix__cell-control:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+    position: relative;
+    z-index: 1;
+  }
+
+  @media (forced-colors: active) {
+    button.cinder-permission-matrix__cell-control:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      /* 2px is correct here: cell-control has border:0 so there is no
+         ButtonBorder to merge with at 2px. */
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
+  @media (hover: hover) {
+    button.cinder-permission-matrix__cell-control:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-permission-matrix__cell-token {
+    display: inline-grid;
+    place-items: center;
+    inline-size: 1rem;
+    block-size: 1rem;
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-permission-matrix__cell-label {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-permission-matrix__cell[data-cinder-state='granted']
+    .cinder-permission-matrix__cell-token {
+    color: var(--cinder-status-success-solid);
+  }
+
+  .cinder-permission-matrix__cell[data-cinder-state='denied']
+    .cinder-permission-matrix__cell-token {
+    color: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-permission-matrix__cell[data-cinder-state='not-applicable']
+    .cinder-permission-matrix__cell-token {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-permission-matrix__state {
+    display: grid;
+    min-block-size: 8rem;
+    place-items: center;
+    color: var(--cinder-text-muted);
+    background: var(--cinder-surface-inset);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "extends": "@repo/typescript-configuration/library.json",
+  "compilerOptions": {
+    "types": ["bun", "vite/client"]
+  },
+  "include": ["src", "scripts", "vite.config.ts"],
+  "exclude": []
+}

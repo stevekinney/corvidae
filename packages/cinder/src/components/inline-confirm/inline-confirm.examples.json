@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "inline-confirm",
+  "import": "@repo/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Basic inline confirmation",
+      "description": "Confirm a destructive action without leaving the current flow.",
+      "code": "<script lang=\"ts\">\n  import { InlineConfirm } from '@repo/cinder';\n</script>\n\n<InlineConfirm prompt=\"Remove this workspace?\" confirmLabel=\"Remove workspace\" open destructive />\n"
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * SLIDER
+ * Single-thumb and dual-thumb (range) slider following the WAI-ARIA
+ * `role="slider"` pattern. Thumbs are absolutely positioned along the
+ * track via the `--_cinder-slider-pos` custom property (a percentage).
+ * Reduced-motion: thumb position transitions are suppressed.
+ * ======================================== */
+
+  .cinder-slider {
+    --_cinder-slider-thumb-size: 1.125rem;
+    --_cinder-slider-track-thickness: 0.375rem;
+
+    position: relative;
+    display: block;
+    width: 100%;
+    padding-block: calc(var(--_cinder-slider-thumb-size) / 2);
+  }
+
+  .cinder-slider__header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+    margin-block-end: var(--cinder-space-2);
+  }
+
+  .cinder-slider__value {
+    color: var(--cinder-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-slider[data-cinder-disabled] {
+    cursor: not-allowed;
+  }
+
+  .cinder-slider[data-cinder-disabled] .cinder-slider__value {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-slider__track {
+    position: relative;
+    width: 100%;
+    height: var(--_cinder-slider-track-thickness);
+    background: var(--cinder-surface-inset);
+    border-radius: var(--cinder-radius-full);
+    touch-action: none;
+    cursor: pointer;
+  }
+
+  .cinder-slider[data-cinder-disabled] .cinder-slider__track {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .cinder-slider__range {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: var(--_cinder-slider-low);
+    inset-inline-end: calc(100% - var(--_cinder-slider-high));
+    background: var(--cinder-accent-solid);
+    border-radius: var(--cinder-radius-full);
+    transition:
+      inset-inline-start var(--cinder-duration-fast, 120ms) var(--cinder-ease-standard, ease),
+      inset-inline-end var(--cinder-duration-fast, 120ms) var(--cinder-ease-standard, ease);
+  }
+
+  .cinder-slider:not(.cinder-slider--range) .cinder-slider__range {
+    inset-inline-start: 0;
+    inset-inline-end: calc(100% - var(--_cinder-slider-low));
+  }
+
+  .cinder-slider__ticks {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /*
+   * CIN-603: decorative scale marking, but the `opacity: 0.6` compounding
+   * `border.control`'s own alpha down to ~29% was redundant now that
+   * `border.control` alone clears the tier's own decorative floor — removed
+   * rather than left needlessly fainter for no reason tied to this tick's
+   * (non-functional) role.
+   */
+  .cinder-slider__tick {
+    position: absolute;
+    top: 50%;
+    inset-inline-start: var(--_cinder-slider-tick);
+    width: 2px;
+    height: 0.5rem;
+    background: var(--cinder-border, currentColor);
+    transform: translate(-50%, -50%);
+    border-radius: var(--cinder-radius-full);
+  }
+
+  .cinder-slider__thumb {
+    position: absolute;
+    top: 50%;
+    inset-inline-start: var(--_cinder-slider-pos);
+    width: var(--_cinder-slider-thumb-size);
+    height: var(--_cinder-slider-thumb-size);
+    background: var(--cinder-surface-raised, white);
+    border: 2px solid var(--cinder-accent-solid);
+    border-radius: var(--cinder-radius-full);
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    box-shadow: var(--cinder-shadow-sm);
+    /* Touch-action is set on the track for the same reason; explicitly setting
+   * it on the thumb prevents older Chromium-on-Android from intercepting the
+   * gesture for scrolling when pointerdown lands directly on the thumb. */
+    touch-action: none;
+    transition:
+      inset-inline-start var(--cinder-duration-fast, 120ms) var(--cinder-ease-standard, ease),
+      box-shadow var(--cinder-duration-fast, 120ms) var(--cinder-ease-standard, ease);
+  }
+
+  .cinder-slider__tick:dir(rtl),
+  .cinder-slider__thumb:dir(rtl) {
+    transform: translate(50%, -50%);
+  }
+
+  /* The most recently moved thumb in range mode is raised above its sibling
+ * so that when the two values coincide, the active one remains the click
+ * target. */
+  .cinder-slider__thumb[data-cinder-active] {
+    /* cinder-z-index-local: active thumb remains the target when range thumbs overlap. */
+    z-index: 2;
+  }
+
+  .cinder-slider__thumb:active {
+    cursor: grabbing;
+    /* cinder-z-index-local: dragged thumb remains the target when range thumbs overlap. */
+    z-index: 2;
+  }
+
+  .cinder-slider__thumb:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-slider__thumb:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 1px;
+    }
+  }
+
+  .cinder-slider[data-cinder-disabled] .cinder-slider__thumb {
+    cursor: not-allowed;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-slider__range,
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-slider__thumb {
+      transition: none;
+    }
+  }
+}

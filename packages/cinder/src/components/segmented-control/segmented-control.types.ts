@@ -1,0 +1,91 @@
+import type { Snippet } from 'svelte';
+import type { HTMLAttributes } from 'svelte/elements';
+import type { SvelteSet } from 'svelte/reactivity';
+
+type ComponentOwnedAttributes =
+  | 'id'
+  | 'class'
+  | 'role'
+  | 'tabindex'
+  | 'aria-label'
+  | 'aria-labelledby'
+  | 'aria-disabled'
+  | 'aria-orientation'
+  | 'onchange'
+  | 'onkeydown';
+
+type CommonProps<T extends string> = Omit<HTMLAttributes<HTMLElement>, ComponentOwnedAttributes> & {
+  /** Unique identifier for the control. */
+  id: string;
+  /** Accessible label for the group. */
+  label: string;
+  /** Native form field name. Renders hidden input(s) carrying the selected value(s). */
+  name?: string | undefined;
+  /**
+   * Whether the label is visibly rendered. Set `false` to visually hide it
+   * while keeping it available to assistive technology.
+   * @default true
+   */
+  labelVisible?: boolean | undefined;
+  /** Disable the whole control. */
+  disabled?: boolean | undefined;
+  /**
+   * Requested visual size of the control. Defaults to `"md"`. The resolved
+   * size is reflected as `data-cinder-size` on the root; when
+   * `density="toolbar"` is set, the resolved size is forced to `"sm"` and any
+   * explicit `size` value is ignored. `size="md"` option text uses
+   * `--cinder-text-sm`; `size="sm"` and `density="toolbar"` use
+   * `--cinder-text-xs`; `size="lg"` uses `--cinder-text-sm`.
+   */
+  size?: 'sm' | 'md' | 'lg' | undefined;
+  /**
+   * Opt the control into compact toolbar sizing so it lines up cleanly with
+   * sibling `Button` (size="sm"), `Chip` (density="toolbar"), and other
+   * toolbar elements. Toolbar density resolves to the compact `"sm"` font and
+   * padding scale — when set, any explicit `size` value is ignored and the
+   * resolved size (`data-cinder-size`) is `"sm"` — while pinning the option
+   * `min-block-size` to `--cinder-control-height-sm` so the bounding height
+   * matches sibling toolbar controls.
+   */
+  density?: 'toolbar' | undefined;
+  /** Layout orientation. */
+  orientation?: 'horizontal' | 'vertical' | undefined;
+  /** Render segments as detached individual buttons instead of a unified strip. */
+  detached?: boolean | undefined;
+  /** Stretch the control to fill available width. */
+  fullWidth?: boolean | undefined;
+  /** ARIA interaction pattern. Use `navigation` for route-backed links. */
+  variant?: 'radiogroup' | 'tablist' | 'navigation' | undefined;
+  /** Additional class names merged with `.cinder-segmented-control`. */
+  class?: string | undefined;
+  /** Called when the selected value changes (single mode only). */
+  onValueChange?: ((value: T) => void) | undefined;
+  /** Child `<Segment>` elements. */
+  children: Snippet;
+};
+
+type SingleProps<T extends string> = CommonProps<T> & {
+  /** Selection mode. `"single"` allows exactly one segment to be selected at a time; `"multiple"` allows any number of segments to be selected simultaneously. Default `"single"`. */
+  selectionMode?: 'single' | undefined;
+  /** Currently selected value. */
+  value?: T | undefined;
+  /**
+   * When true, clicking the already-selected option is a no-op.
+   * When false, clicking the selected option clears value to undefined.
+   * @default true
+   */
+  selectionRequired?: boolean | undefined;
+};
+
+type MultipleProps<T extends string> = CommonProps<T> & {
+  /** Selection mode. `"single"` allows exactly one segment to be selected at a time; `"multiple"` allows any number of segments to be selected simultaneously. Default `"single"`. */
+  selectionMode: 'multiple';
+  /** Set of selected values. Must be a SvelteSet for reactivity. */
+  value?: SvelteSet<T> | undefined;
+  /** Not applicable in multiple mode — present for Svelte destructuring compatibility. */
+  selectionRequired?: undefined;
+  /** Tablist and navigation semantics are only valid for single selection. */
+  variant?: 'radiogroup' | undefined;
+};
+
+export type SegmentedControlProps<T extends string = string> = SingleProps<T> | MultipleProps<T>;

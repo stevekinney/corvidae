@@ -1,0 +1,53 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category navigation
+   * @status stable
+   * @purpose Vertical navigation column that hosts grouped side-navigation-item entries with a required accessible label for the landmark.
+   * @tag navigation
+   * @tag sidebar
+   * @useWhen Building a tall, dense application sidebar with many sections and nested groups.
+   * @useWhen Pairing with sidebar so the column collapses responsively on narrow viewports.
+   * @avoidWhen Anchoring primary navigation across the top of the page. | navigation-bar
+   * @avoidWhen Rendering a single flat horizontal nav row. | navigation-bar
+   * @avoidWhen Showing an in-page heading outline. | table-of-contents
+   * @avoidWhen Rendering expandable hierarchical non-navigation data. | tree
+   * @avoidWhen Needing the shell. | sidebar
+   * @related side-navigation-item, side-navigation-group, navigation-bar, table-of-contents, tree, sidebar
+   */
+  export type { SideNavigationProps } from './side-navigation.types.ts';
+</script>
+
+<script lang="ts">
+  import type { SideNavigationProps } from './side-navigation.types.ts';
+  import { classNames } from '../../utilities/class-names.ts';
+  import { devWarn } from '../../utilities/dev-warn.ts';
+
+  type SideNavigationRuntimeProps = SideNavigationProps & {
+    'aria-label'?: unknown;
+    'aria-labelledby'?: unknown;
+  };
+
+  let {
+    ariaLabel,
+    class: className,
+    children,
+    'aria-label': _ariaLabelAttribute,
+    'aria-labelledby': _ariaLabelledbyAttribute,
+    ...rest
+  }: SideNavigationRuntimeProps = $props();
+
+  const validatedLabel = $derived.by(() => {
+    if (ariaLabel.trim() === '') {
+      devWarn('[cinder/SideNavigation] ariaLabel is empty — pass a non-empty ariaLabel.');
+      return undefined;
+    }
+    return ariaLabel;
+  });
+</script>
+
+<nav class={classNames('cinder-side-navigation', className)} {...rest} aria-label={validatedLabel}>
+  <ul class="cinder-side-navigation__list">
+    {@render children()}
+  </ul>
+</nav>

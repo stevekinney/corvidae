@@ -1,0 +1,330 @@
+/**
+ * Foundation styles.
+ *
+ * Minimal reset using :where() for zero specificity.
+ * Every rule here is intentionally low-impact — consumers can override freely.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off']),
+  :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off']) *,
+  :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off']) *::before,
+  :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off']) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root[data-reduced-motion='on'] *,
+:root[data-reduced-motion='on'],
+:root[data-reduced-motion='on'] *::before,
+:root[data-reduced-motion='on'] *::after {
+  /* Explicit application opt-in must also reach component fallbacks that
+     otherwise only exist inside the system media query. */
+  animation: none !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+:where(html) {
+  font-family: var(--cinder-font-sans);
+  font-size: 16px;
+  line-height: var(--cinder-leading-normal);
+  font-weight: var(--cinder-font-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings:
+    'kern' 1,
+    'liga' 1,
+    'calt' 1;
+  hanging-punctuation: first last;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+:where(html):focus-within {
+  scroll-behavior: smooth;
+}
+
+:where(body) {
+  min-height: 100dvh;
+  background-color: var(--cinder-surface-canvas);
+  color: var(--cinder-text-default);
+  font-size: var(--cinder-text-base);
+}
+
+/* INTERNAL: shared box-shadow ring formula. Components that paint a focus
+   ring with the standard "transparent outline + two-stop box-shadow" pattern
+   reference this variable so the formula lives in exactly one place. Not part
+   of the public token surface — do not document, do not export. The leading
+   `_` after `--` marks it as private/internal per the Cinder convention. */
+:root {
+  --_cinder-focus-ring-shadow:
+    0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+    0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+}
+
+[data-theme='dark'],
+[data-theme='light'] {
+  --_cinder-focus-ring-shadow:
+    0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+    0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+}
+
+[data-theme='dark']
+  .cinder-code-block
+  :where(pre.shiki)
+  span[style*='--shiki-dark']:not(
+    [data-theme='dark']
+      [data-theme='light']
+      .cinder-code-block
+      :where(pre.shiki)
+      span[style*='--shiki-dark']
+  ),
+[data-theme='light']
+  [data-theme='dark']
+  .cinder-code-block
+  :where(pre.shiki)
+  span[style*='--shiki-dark']:not(
+    [data-theme='light']
+      [data-theme='dark']
+      [data-theme='light']
+      .cinder-code-block
+      :where(pre.shiki)
+      span[style*='--shiki-dark']
+  ),
+[data-theme='light']
+  [data-theme='dark']
+  [data-theme='light']
+  [data-theme='dark']
+  .cinder-code-block
+  :where(pre.shiki)
+  span[style*='--shiki-dark'] {
+  color: var(--shiki-dark, inherit) !important;
+}
+
+:focus-visible {
+  /* Strategy A is sanctioned ONLY here — the bare global default that paints a
+     baseline ring for any element a component CSS file does not own. See
+     documentation/focus-ring-policy.md § Strategy A. */
+  /* stylelint-disable-next-line cinder/no-focus-visible-colored-outline -- foundation-only Strategy A global default, see policy */
+  outline: var(--cinder-ring-width) solid var(--cinder-ring-color);
+  outline-offset: var(--cinder-ring-offset);
+}
+
+:focus:not(:focus-visible) {
+  /* This resets the legacy `:focus` ring when the element is NOT focus-visible;
+     it is not a focus-visible indicator, so the colored-outline rule does not
+     apply (the lint regex matches the nested `:focus-visible` token). */
+  /* stylelint-disable-next-line cinder/no-focus-visible-colored-outline -- :focus:not(:focus-visible) reset, not a focus-visible ring */
+  outline: none;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--cinder-accent-solid), transparent 70%);
+  color: var(--cinder-text-default);
+}
+
+:where(h1, h2, h3, h4, h5, h6) {
+  line-height: var(--cinder-leading-tight);
+  letter-spacing: var(--cinder-tracking-tight);
+  font-weight: var(--cinder-font-semibold);
+  color: var(--cinder-text-default);
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+:where(h1) {
+  font-size: var(--cinder-text-4xl);
+}
+:where(h2) {
+  font-size: var(--cinder-text-3xl);
+}
+:where(h3) {
+  font-size: var(--cinder-text-2xl);
+}
+:where(h4) {
+  font-size: var(--cinder-text-xl);
+}
+:where(h5) {
+  font-size: var(--cinder-text-lg);
+}
+:where(h6) {
+  font-size: var(--cinder-text-base);
+  font-weight: var(--cinder-font-medium);
+}
+
+:where(p) {
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+:where(small) {
+  letter-spacing: var(--cinder-tracking-wide);
+}
+
+:where(strong, b) {
+  font-weight: var(--cinder-font-semibold);
+}
+
+:where(a) {
+  color: inherit;
+  text-decoration-skip-ink: auto;
+}
+
+:where(a:not([class])) {
+  color: var(--cinder-accent-text);
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, 0.0625em);
+  text-underline-offset: 0.15em;
+  transition: color var(--cinder-duration-fast) var(--cinder-ease-standard);
+}
+
+:where(a:not([class])):hover {
+  color: var(--cinder-accent-text-hover);
+}
+
+:where(code, kbd, samp, pre) {
+  font-family: var(--cinder-font-mono);
+  font-size: 0.9em;
+}
+
+:where(ul, ol) {
+  padding-inline-start: var(--cinder-space-6);
+}
+
+:where(li) {
+  margin-bottom: var(--cinder-space-1);
+}
+
+:where(ul[role='list'], ol[role='list']) {
+  list-style: none;
+  padding: 0;
+}
+
+:where(hr) {
+  border: none;
+  border-top: 1px solid var(--cinder-border);
+  margin: var(--cinder-space-6) 0;
+}
+
+:where(table) {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+:where(th) {
+  text-align: left;
+  font-weight: var(--cinder-font-semibold);
+  padding: var(--cinder-space-2) var(--cinder-space-3);
+  border-bottom: 2px solid var(--cinder-border);
+}
+
+:where(td) {
+  padding: var(--cinder-space-2) var(--cinder-space-3);
+  border-bottom: 1px solid var(--cinder-border-muted);
+}
+
+:where(input, button, textarea, select) {
+  font: inherit;
+  color: inherit;
+}
+
+:where(button) {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+:where(textarea) {
+  resize: vertical;
+}
+
+:where(fieldset) {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+:where(label) {
+  font-size: var(--cinder-text-sm);
+  font-weight: var(--cinder-font-medium);
+  color: var(--cinder-text-default);
+}
+
+:where(img, picture, video, canvas, svg) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+:where(summary) {
+  cursor: pointer;
+}
+
+:where(dialog) {
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+}
+
+:where(dialog)::backdrop {
+  background: transparent;
+}
+
+/* ----------------------------------------------------------------------------
+ * Disabled visual treatment — VISUAL only, does NOT suppress interaction.
+ *
+ * Centralizes `opacity: 0.6` for the components listed below. Interaction
+ * suppression (`pointer-events`, `cursor`, `aria-disabled`) stays component-
+ * local because it's behavior, not appearance.
+ *
+ * `:where()` keeps specificity at 0 so consumers can override freely.
+ *
+ * Scope: only the selectors explicitly listed below. Other components with
+ * disabled `opacity` (navigation-item, side-navigation-group, slider,
+ * accordion-item, color-picker, and the button variant-
+ * specific rules in button.css) still declare their own `opacity` locally —
+ * they have higher-specificity selectors or distinct disabled shapes that
+ * don't yet collapse into this list. Future audits can extend coverage.
+ * ---------------------------------------------------------------------------- */
+:where(
+  .cinder-button:disabled:not([data-cinder-loading]),
+  .cinder-button[aria-disabled='true']:not([data-cinder-loading]),
+  .cinder-dropdown-item[data-disabled],
+  .cinder-toggle:disabled,
+  .cinder-segmented-control[aria-disabled='true'],
+  .cinder-segmented-control-option:disabled,
+  .cinder-segmented-control-option[aria-disabled='true']
+) {
+  opacity: 0.6;
+}
+
+/* Note: a previous attempt centralized `color: var(--cinder-text-disabled)` here
+ * via :where(), but it was overridden by the higher-specificity (and
+ * later-layer) base label rules in components.css. Field-component label and
+ * description disabled colors stay component-local for now. */

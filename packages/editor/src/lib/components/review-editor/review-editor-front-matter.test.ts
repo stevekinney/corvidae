@@ -1,0 +1,238 @@
+import { describe, expect, test } from 'bun:test';
+import type { CommentAnchor, PersistedAnchor } from '../../comments/index.ts';
+
+import {
+  bodyAnchorToDocumentAnchor,
+  bodyAnchorUpdateToDocumentAnchorUpdate,
+  combineFrontMatterAndBody,
+  documentAnchorToBodyAnchor,
+  documentPersistedAnchorToBodyAnchor,
+  documentPositionToBodyPosition,
+  parseReviewEditorFrontMatter,
+  parseYamlFieldValue,
+  remapDocumentAnchorBodyOffset,
+  replaceFrontMatterData,
+  reviewStateToMarkdown,
+  serializeYamlFieldValue,
+} from './review-editor-front-matter.ts';
+
+describe('review editor front matter helpers', () => {
+  test('parses body and recombines the original front matter', () => {
+    const markdown = '---\nowner: platform\nstatus: draft\n---\n\n# Architecture\n';
+    const frontMatter = parseReviewEditorFrontMatter(markdown);
+
+    expect(frontMatter.hasFrontMatter).toBe(true);
+    expect(frontMatter.data).toEqual({ owner: 'platform', status: 'draft' });
+    expect(frontMatter.body).toBe('\n# Architecture\n');
+    expect(frontMatter.bodyOffset).toBe(markdown.length - frontMatter.body.length);
+    expect(combineFrontMatterAndBody(frontMatter, frontMatter.body)).toBe(markdown);
+  });
+
+  test('replaces parsed front matter data while preserving the markdown body', () => {
+    const markdown = '---\nowner: platform\nstatus: draft\n---\n\n# Architecture\n';
+    const next = replaceFrontMatterData(markdown, { owner: 'platform', status: 'published' });
+
+    expect(next).toContain('owner: platform');
+    expect(next).toContain('status: published');
+    expect(next.endsWith('\n# Architecture\n')).toBe(true);
+  });
+
+  test('preserves comment-only raw text instead of collapsing it to an empty fence (cinder#1330 round-6 finding)', () => {
+    // `FrontMatterFields`' raw-YAML textarea commits comment-only content
+    // (`# TODO: fill this in`) as `data: null` -- the same shape genuinely
+    // blank content produces -- so without passing `raw` through,
+    // `replaceFrontMatterData` couldn't tell them apart and collapsed both
+    // to a bare `---\n---\n`, silently discarding the comment text with no
+    // error shown.
+    const markdown = '---\n# TODO: fill this in\n---\n\n# Architecture\n';
+    const next = replaceFrontMatterData(markdown, null, '# DONE');
+
+    expect(next).toBe('---\n# DONE\n---\n\n# Architecture\n');
+  });
+
+  test('still collapses genuinely empty front matter when raw is null (not a regression from the comment-only fix)', () => {
+    const markdown = '---\nowner: platform\n---\n\n# Architecture\n';
+    const next = replaceFrontMatterData(markdown, null, null);
+
+    expect(next).toBe('---\n---\n\n# Architecture\n');
+  });
+
+  test('still collapses genuinely empty front matter when raw is omitted (existing callers unaffected)', () => {
+    const markdown = '---\nowner: platform\n---\n\n# Architecture\n';
+    const next = replaceFrontMatterData(markdown, null);
+
+    expect(next).toBe('---\n---\n\n# Architecture\n');
+  });
+
+  test('a whitespace-only raw string is treated the same as no raw text to preserve', () => {
+    const markdown = '---\nowner: platform\n---\n\n# Architecture\n';
+    const next = replaceFrontMatterData(markdown, null, '   \n  ');
+
+    expect(next).toBe('---\n---\n\n# Architecture\n');
+  });
+
+  test('keeps empty front matter editable as raw YAML', () => {
+    const markdown = '---\n---\n\n# Architecture\n';
+    const frontMatter = parseReviewEditorFrontMatter(markdown);
+
+    expect(frontMatter.hasFrontMatter).toBe(true);
+    expect(frontMatter.data).toBeNull();
+    expect(frontMatter.raw).toBe('');
+    expect(combineFrontMatterAndBody(frontMatter, frontMatter.body)).toBe(markdown);
+  });
+
+  test('treats a `---`-delimited span that fails to parse as YAML as body, not front matter (cinder#1325)', () => {
+    // `owner: [` never closes its bracket, so this isn't valid YAML at all --
+    // as of cinder#1325, parseFrontMatter reports hasFrontMatter: false for
+    // that (previously it reported true with data: null, which meant this
+    // markdown-shaped content was silently swallowed as an opaque "front
+    // matter" span instead of being editable as ordinary document body).
+    // Round-trip fidelity is still preserved: the whole markdown, including
+    // the `---` lines, is now the body, so recombining reproduces it exactly.
+    const markdown = '---\nowner: [\n---\n\n# Architecture\n';
+    const frontMatter = parseReviewEditorFrontMatter(markdown);
+
+    expect(frontMatter.hasFrontMatter).toBe(false);
+    expect(frontMatter.data).toBeNull();
+    expect(frontMatter.body).toBe(markdown);
+    expect(combineFrontMatterAndBody(frontMatter, frontMatter.body)).toBe(markdown);
+  });
+
+  test('reconstructs older body-only review state with front matter', () => {
+    expect(
+      reviewStateToMarkdown({
+        content: '\n# Architecture\n',
+        frontMatter: { owner: 'platform' },
+        frontMatterRaw: 'owner: platform',
+      }),
+    ).toBe('---\nowner: platform\n---\n\n# Architecture\n');
+  });
+
+  test('does not prepend a second fence when content already starts with one that is not valid front matter (review finding)', () => {
+    // The realistic trigger: persisted v4 state saved before cinder#1325
+    // shipped, when a `---`-delimited YAML sequence still counted as front
+    // matter (`hasFrontMatter: true, data: null`) -- so `frontMatterRaw`
+    // was populated for content shaped exactly like this. After #1325, that
+    // same content parses as `hasFrontMatter: false` (correctly -- it's a
+    // Markdown list, not front matter), but it still has a `---`...`---`
+    // span at the start. Checking `hasFrontMatter` instead of
+    // `fencePresent` here used to treat that as "no fence, safe to
+    // prepend," producing a second `---`...`---` block ahead of the first.
+    const content = '---\n- one\n- two\n---\n\nBody.\n';
+
+    const result = reviewStateToMarkdown({
+      content,
+      frontMatter: null,
+      frontMatterRaw: 'owner: platform',
+    });
+
+    // Unchanged: fencePresent is true (there's already a `---`...`---` span,
+    // even though it's not valid front matter), so nothing gets prepended.
+    expect(result).toBe(content);
+    const fenceLineCount = result.split('\n').filter((line) => line === '---').length;
+    expect(fenceLineCount).toBe(2);
+  });
+
+  test('round-trips complex field values through YAML text', () => {
+    const raw = serializeYamlFieldValue({ labels: ['editor', 'review'], priority: 2 });
+    const parsed = parseYamlFieldValue(raw);
+
+    expect(parsed).toEqual({
+      valid: true,
+      value: { labels: ['editor', 'review'], priority: 2 },
+    });
+  });
+
+  test('serializes scalar YAML field values on one line', () => {
+    expect(serializeYamlFieldValue('platform')).toBe('platform');
+  });
+
+  test('reports invalid YAML field values without throwing', () => {
+    expect(parseYamlFieldValue('[')).toEqual({
+      valid: false,
+      error: expect.stringContaining('unexpected end of the stream'),
+    });
+  });
+
+  test('translates anchors between full-document and body-editor positions', () => {
+    const anchor: CommentAnchor = {
+      from: 42,
+      to: 55,
+      quote: 'Architecture',
+      prefix: '# ',
+      suffix: '\n',
+      status: 'anchored',
+      lastKnownOffset: 40,
+      originalPosition: { offset: 40, line: 3, column: 1 },
+    };
+
+    const bodyAnchor = documentAnchorToBodyAnchor(anchor, 30);
+    expect(bodyAnchor.from).toBe(12);
+    expect(bodyAnchor.to).toBe(25);
+    expect(bodyAnchor.lastKnownOffset).toBe(10);
+    expect(bodyAnchor.originalPosition?.offset).toBe(10);
+
+    const documentAnchor = bodyAnchorToDocumentAnchor(
+      bodyAnchor,
+      30,
+      '---\nowner: platform\n---\n\n# Architecture\n',
+    );
+    expect(documentAnchor.from).toBe(42);
+    expect(documentAnchor.originalPosition).toEqual({ offset: 40, line: 6, column: 1 });
+    expect(
+      bodyAnchorUpdateToDocumentAnchorUpdate(
+        {
+          threadId: 'thread-1',
+          from: 12,
+          to: 25,
+          quote: 'Architecture',
+          prefix: '# ',
+          suffix: '\n',
+          status: 'anchored',
+          lastKnownOffset: 10,
+        },
+        30,
+      ).lastKnownOffset,
+    ).toBe(40);
+  });
+
+  test('clamps document positions before the body offset to the start of the body', () => {
+    expect(documentPositionToBodyPosition(12, 30)).toBe(0);
+  });
+
+  test('translates persisted reanchor fallback offsets into body-editor positions', () => {
+    const anchor: PersistedAnchor = {
+      quote: 'Architecture',
+      prefix: '# ',
+      suffix: '\n',
+      status: 'anchored',
+      originalQuote: 'Architecture',
+      originalPosition: { offset: 40, line: 3, column: 1 },
+    };
+
+    const bodyAnchor = documentPersistedAnchorToBodyAnchor(anchor, 30);
+
+    expect(bodyAnchor.originalPosition?.offset).toBe(10);
+  });
+
+  test('remaps document anchors when front matter length changes', () => {
+    const anchor: CommentAnchor = {
+      from: 42,
+      to: 55,
+      quote: 'Architecture',
+      prefix: '# ',
+      suffix: '\n',
+      status: 'anchored',
+      lastKnownOffset: 40,
+      originalPosition: { offset: 40, line: 5, column: 1 },
+    };
+
+    const nextDocument = '---\nowner: platform\nstatus: published\n---\n\n# Architecture\n';
+    const nextAnchor = remapDocumentAnchorBodyOffset(anchor, 30, 45, nextDocument);
+
+    expect(nextAnchor.from).toBe(57);
+    expect(nextAnchor.to).toBe(70);
+    expect(nextAnchor.lastKnownOffset).toBe(55);
+    expect(nextAnchor.originalPosition).toEqual({ offset: 55, line: 6, column: 13 });
+  });
+});

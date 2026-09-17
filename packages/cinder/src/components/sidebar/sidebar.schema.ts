@@ -1,0 +1,45 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    collapsed: {
+      type: 'boolean',
+      description:
+        'Whether the sidebar is collapsed. Bindable via `bind:collapsed`. Default `false`.\n\nAbove `mobileBreakpoint`, `collapsed=true` switches the sidebar to\nicon-only mode. At or below `mobileBreakpoint`, the sidebar renders inside a\n`<Drawer>` and `collapsed=true` means the drawer is closed.',
+    },
+    label: {
+      type: 'string',
+      description:
+        "Accessible name for the outer landmark and the mobile drawer. Defaults to\n`'Sidebar'` for convenience but must be unique per page. Navigation content\nowns its own accessible name; for example, use `SideNavigation.ariaLabel`.",
+    },
+    mobileBreakpoint: {
+      type: 'string',
+      description:
+        "Viewport width below which the sidebar switches from the inline aside to\nthe mobile drawer. Accepts a simple CSS length such as `'47.99rem'` or\n`'1024px'`. Default `'47.99rem'`.",
+    },
+    class: {
+      type: 'string',
+      description: 'Additional CSS class merged with `.cinder-sidebar`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'footer',
+        reason: 'function-or-snippet',
+        description: 'Optional footer region (e.g. user account, sign-out).',
+      },
+      {
+        name: 'navigation',
+        reason: 'function-or-snippet',
+        description:
+          'Navigation content. Typically a `<SideNavigation>` subtree, which owns the\nnavigation landmark and its accessible name. Optional so the sidebar can\nserve as app chrome without a navigation list.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

@@ -1,0 +1,70 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      description:
+        'Native id placed on the `<button>`; the rendered label uses `aria-labelledby` to name it (label id is derived as `${id}-label`).',
+    },
+    checked: {
+      type: 'boolean',
+      description: 'Whether the toggle is currently checked. Bindable — defaults to false.',
+    },
+    label: {
+      type: 'string',
+      description:
+        'Visible label text. Always the accessible name, even when `labelVisible` is set. Required.',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Prevents interaction when true. Sets `disabled` attribute.',
+    },
+    labelVisible: {
+      type: 'boolean',
+      description:
+        'Whether the label is visibly rendered. Set `false` for icon-only or\ninline contexts — it stays the accessible name.',
+      default: true,
+    },
+    name: {
+      type: 'string',
+      description:
+        'Form field name. When set, a hidden checkbox mirrors `checked` so the toggle\nparticipates in native form submission. Omit for purely client-side toggles\n(no hidden input is rendered, so there is zero overhead).',
+    },
+    value: {
+      type: 'string',
+      description:
+        "Value submitted for the hidden checkbox when `checked` and `name` is set.\nMirrors native checkbox semantics: the pair `name=value` is sent only while\nchecked. Defaults to `'on'`. Ignored when `name` is unset.",
+    },
+    form: {
+      type: 'string',
+      description:
+        'Associates the hidden checkbox with a form by id, matching the native\n`form` attribute. Lets the toggle submit with a form it is not nested in.\nIgnored when `name` is unset.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-toggle` on the switch button.',
+    },
+  },
+  additionalProperties: false,
+  required: ['id', 'label'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+        description: 'Notify after the bindable value has been committed.',
+      },
+      {
+        name: 'onValueChangeRequest',
+        reason: 'function-or-snippet',
+        description:
+          'Intercept a proposed checked state before the bindable value is written. Return a replacement value to transform it.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

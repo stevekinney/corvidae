@@ -1,0 +1,420 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../collapsible/collapsible.css';
+@import '../code-block/code-block.css';
+@import '../input/input.css';
+@import '../textarea/textarea.css';
+@layer cinder.components {
+  /**
+ * Layout for the JsonSchemaEditor component.
+ *
+ * Visual hierarchy by indentation and dividers, not nested borders. Depth 0
+ * sits inside a card; deeper nodes drop the card chrome and rely on the
+ * surrounding details panel for visual depth.
+ */
+
+  .cinder-jse {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-4);
+  }
+
+  /* ===== Toolbar ===== */
+  .cinder-jse-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    flex-wrap: wrap;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+  }
+
+  .cinder-jse-toolbar__left,
+  .cinder-jse-toolbar__right {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    flex-wrap: wrap;
+  }
+
+  /* ===== Property editor ===== */
+  .cinder-jse-property-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* Depth 0: the only level that gets a bordered card. */
+  .cinder-jse-property-editor[data-cinder-jse-depth='0'] {
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+  }
+
+  /* Sections are divided by a top border. The first section drops it so the
+   card's own border is the only edge. */
+  .cinder-jse-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    padding: var(--cinder-space-4);
+    border-top: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-jse-property-editor > .cinder-jse-section:first-of-type {
+    border-top: 0;
+  }
+
+  .cinder-jse-section__title {
+    margin: 0;
+    font-size: var(--cinder-text-2xs);
+    font-weight: var(--cinder-font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--cinder-text-subtle);
+  }
+
+  /* Lead section (Common: title + description) — slightly more breathing room. */
+  .cinder-jse-section--lead {
+    gap: var(--cinder-space-2);
+  }
+
+  /* Collapsible sections use the shared disclosure trigger and panel. */
+  .cinder-jse-section--collapsible {
+    gap: 0;
+    padding: 0;
+  }
+
+  .cinder-jse-section__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    padding: 0 var(--cinder-space-4) var(--cinder-space-4);
+  }
+
+  /* Type checkbox row — compact, wraps on narrow widths. */
+  .cinder-jse-type-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2) var(--cinder-space-4);
+    align-items: center;
+  }
+
+  .cinder-jse-type-row .cinder-checkbox-field {
+    flex: 0 0 auto;
+  }
+
+  /* ===== Boolean schema short-circuit ===== */
+  .cinder-jse-boolean-schema {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    padding: var(--cinder-space-3) var(--cinder-space-4);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  /* ===== Collapsed deep-node placeholder ===== */
+  .cinder-jse-collapsed {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    background: transparent;
+    border: 1px dashed var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-sm);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+  }
+
+  @media (hover: hover) {
+    .cinder-jse-collapsed:hover {
+      background: var(--cinder-surface-raised-hover);
+    }
+  }
+
+  .cinder-jse-collapsed__hint {
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-jse-section-header {
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--cinder-space-2) var(--cinder-space-4) 0;
+  }
+
+  /* ===== Property list ===== */
+  .cinder-jse-property-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-jse-property-list__empty {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-jse-property-table {
+    inline-size: 100%;
+    border-collapse: collapse;
+  }
+
+  .cinder-jse-property-row > .cinder-table__cell {
+    border-top: 1px solid var(--cinder-border-muted);
+    background: transparent;
+  }
+
+  .cinder-jse-property-row:first-child > .cinder-table__cell {
+    border-top: 0;
+  }
+
+  .cinder-jse-property-list__add-property-reference {
+    display: contents;
+  }
+
+  .cinder-jse-enum-editor {
+    display: grid;
+    gap: var(--cinder-space-3);
+    margin-block-start: var(--cinder-space-3);
+  }
+
+  .cinder-jse-enum-editor__table {
+    border-collapse: collapse;
+    inline-size: 100%;
+  }
+
+  .cinder-jse-enum-editor__table th,
+  .cinder-jse-enum-editor__table td {
+    border-block-end: 1px solid var(--cinder-border-muted);
+    padding: var(--cinder-space-2);
+    text-align: start;
+    vertical-align: top;
+  }
+
+  .cinder-jse-enum-editor__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-jse-enum-editor__error {
+    color: var(--cinder-status-danger-text);
+    margin-block: var(--cinder-space-1) 0;
+  }
+
+  .cinder-jse-property-row[data-cinder-invalid] > .cinder-table__cell:first-child {
+    border-inline-start: 2px solid var(--cinder-status-danger-border);
+  }
+
+  .cinder-jse-property-row__key {
+    padding-inline-start: calc(
+      var(--cinder-space-3) + var(--cinder-jse-property-depth, 0) * var(--cinder-space-4)
+    );
+    white-space: nowrap;
+  }
+
+  .cinder-jse-property-row__type,
+  .cinder-jse-property-row__description {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-jse-property-row__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    text-align: end;
+  }
+
+  /* The chevron + name form a single clickable disclosure trigger. Action
+   buttons live in their own cell so they keep the single-baseline layout
+   without nesting interactive elements inside the trigger. */
+  .cinder-jse-property-row__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    font-family: inherit;
+    color: inherit;
+    text-align: left;
+  }
+
+  .cinder-jse-property-row__trigger:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-jse-property-row__trigger:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+  }
+
+  .cinder-jse-property-row__chevron {
+    display: block;
+    flex: 0 0 auto;
+    color: var(--cinder-text-subtle);
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-jse-property-row__trigger[aria-expanded='true'] > .cinder-jse-property-row__chevron {
+    transform: rotate(180deg);
+  }
+
+  .cinder-jse-property-row__name {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-jse-property-row__detail-cell {
+    display: table-cell;
+    padding: var(--cinder-space-3) var(--cinder-space-3) var(--cinder-space-4);
+    padding-inline-start: calc(
+      var(--cinder-space-3) + var(--cinder-jse-property-depth, 0) * var(--cinder-space-4)
+    );
+    background: transparent;
+  }
+
+  .cinder-jse-property-row__detail-cell > * + * {
+    margin-block-start: var(--cinder-space-3);
+  }
+
+  /* The nested PropertyEditor inside an open property panel doesn't get a card. */
+  .cinder-jse-property-row__detail-cell > .cinder-jse-property-editor[data-cinder-jse-depth] {
+    border: 0;
+    background: transparent;
+    border-radius: 0;
+  }
+
+  .cinder-jse-property-row__detail-cell > .cinder-jse-property-editor > .cinder-jse-section {
+    padding-inline: 0;
+  }
+
+  /* Required-only chip area */
+  .cinder-jse-required-only {
+    margin-top: var(--cinder-space-2);
+  }
+
+  .cinder-jse-required-only__panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+    align-items: center;
+    padding: var(--cinder-space-2);
+  }
+
+  /* (Required-without-schema pills now render via the shared Chip component in
+     mode="removable" — its styling lives in chip.css, so no local chip rule.) */
+
+  /* ===== Advanced row ($ref / preserved badges) ===== */
+  .cinder-jse-advanced-row {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-2) var(--cinder-space-4);
+    border-top: 1px solid var(--cinder-border-muted);
+  }
+
+  /* ===== JSON view ===== */
+  .cinder-jse-json-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-jse-json-view__toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    flex-wrap: wrap;
+  }
+
+  .cinder-jse-json-view__code-block .cinder-code-block__viewport {
+    min-block-size: 20rem;
+  }
+
+  .cinder-jse-json-view__textarea {
+    min-height: 16rem;
+    border-radius: var(--cinder-radius-lg);
+  }
+
+  .cinder-jse-json-view__errors {
+    margin: 0;
+    white-space: pre-wrap;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+  }
+
+  /* ===== Diff view ===== */
+  .cinder-jse-diff-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-jse-diff-lines {
+    margin: 0;
+    padding: var(--cinder-space-3);
+    overflow-x: auto;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-inset);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    white-space: pre-wrap;
+  }
+
+  .cinder-jse-diff-line {
+    display: block;
+  }
+
+  .cinder-jse-diff-line__marker {
+    display: inline-block;
+    inline-size: 1.25em;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-jse-diff-line--added {
+    background: var(--cinder-status-success-background);
+  }
+
+  .cinder-jse-diff-line--removed {
+    background: var(--cinder-status-danger-background);
+  }
+
+  .cinder-jse-diff-line--modified {
+    background: var(--cinder-status-warning-background);
+  }
+
+  /* ===== Form view ===== */
+  .cinder-jse-form-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-jse-dirty-actions {
+    display: flex;
+    gap: var(--cinder-space-2);
+    margin-top: var(--cinder-space-2);
+  }
+}

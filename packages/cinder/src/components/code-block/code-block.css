@@ -1,0 +1,309 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * CODE BLOCK
+ * Preformatted code with optional language label and copy button.
+ * Syntax highlighting lazy-loads on the client when a language is set.
+ * Highlighted and plain states share one scroll viewport and identical
+ * inner <pre> metrics so colorization does not move surrounding layout.
+ * ======================================== */
+
+  .cinder-code-block {
+    /* The light arm MUST stay pure white, and this is an accessibility constraint
+     * rather than a stylistic one — do not "simplify" it to a single token.
+     *
+     * Shiki's `github-light` theme picks its token colors against #ffffff and
+     * leaves almost no margin: `#d73a49` (keyword red) measures 4.58:1 on white
+     * against a 4.5:1 AA floor, and `#22863a` (diff green) is similar. Any darkening
+     * of the surface under them fails. Moving this to `--cinder-surface-inset`
+     * (L 0.960 → #eff2f5) drops the red to 4.07:1 and the green to 4.11:1, which the
+     * axe sweep catches on CodeBlock, ApprovalCard, and every component embedding a
+     * highlighted diff. Buying a tinted code field would mean overriding Shiki's
+     * light palette wholesale.
+     *
+     * The dark arm keeps the deep inset so `github-dark` tokens hold contrast on a
+     * very dark surface. The fork is load-bearing in both directions. */
+    --_cinder-code-block-code-surface: light-dark(
+      var(--cinder-surface-raised),
+      var(--cinder-surface-inset)
+    );
+
+    background: var(--cinder-code-block-background);
+    border: 1px solid var(--cinder-border);
+    /* A code block is a block-level PANEL, not a control: it takes the surface
+     * radius, the same step cards and dialogs use. At the control radius it read
+     * as a hard-cornered plate at panel width. */
+    border-radius: var(--cinder-radius-lg);
+    overflow: hidden;
+    user-select: none;
+  }
+
+  .cinder-code-block__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+    min-height: 2rem;
+    padding: var(--cinder-space-1-5) var(--cinder-space-3);
+    border-bottom: 1px solid var(--cinder-border-muted);
+    /* Transparent, not a fill of its own. The header used to paint
+     * `--cinder-surface-inset` while the body painted `surface-raised`, so in light
+     * mode a heavy grey title bar sat on a white code field — two plates stacked
+     * inside one rounded, clipped container, which is what read as broken corners.
+     * The hairline below is enough to separate chrome from content; the header now
+     * shares the block's single surface. */
+    background: transparent;
+  }
+
+  .cinder-code-block__language {
+    font-size: var(--cinder-text-xs);
+    font-family: var(--cinder-font-mono);
+    color: var(--cinder-text-muted);
+    text-transform: uppercase;
+    letter-spacing: var(--cinder-tracking-wide);
+  }
+
+  /* Stable scroll viewport shared by the first-paint plain fallback and the
+   * client-side highlighted state. It owns keyboard focus and overflow so the
+   * inner pre elements can stay metrically identical. */
+  .cinder-code-block__viewport {
+    /* Partial, not full, opacity: a half-covered glyph should still read as a
+     * glyph, not as a hard cutoff — the one edge case in `_scroll-fade.css`
+     * where the endpoint color is deliberately translucent rather than the
+     * viewport's own opaque background. */
+    --_cinder-scroll-fade-color: color-mix(
+      in srgb,
+      var(--cinder-code-block-background) 35%,
+      transparent
+    );
+
+    display: block;
+    block-size: var(--cinder-code-block-height);
+    overflow: auto;
+    background: var(--cinder-code-block-background);
+    user-select: text;
+  }
+
+  .cinder-code-block__pre,
+  .cinder-code-block :where(pre.shiki) {
+    margin: 0;
+    padding: var(--cinder-code-block-padding);
+    width: max-content;
+    min-width: 100%;
+    overflow-x: clip;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-code-block-font-size);
+    line-height: var(--cinder-code-block-line-height);
+    tab-size: var(--cinder-type-tab-size);
+    color: var(--cinder-text-default);
+    /* Use near-white in light mode so github-light token colors (e.g. #d73a49
+     * keyword red) clear 4.5:1 WCAG AA. In dark mode keep the deep inset so
+     * github-dark tokens maintain contrast on a very dark surface. */
+    background: var(--cinder-code-block-background);
+  }
+
+  /* Shiki writes inline background styles on its generated <pre>; keep the
+   * highlighted state visually and metrically identical to the plain fallback. */
+  .cinder-code-block :where(pre.shiki) {
+    margin: 0 !important;
+    padding: var(--cinder-code-block-padding) !important;
+    background: var(--cinder-code-block-background) !important;
+  }
+
+  .cinder-code-block__code,
+  .cinder-code-block :where(pre.shiki code) {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    /* Shiki paints a surface on the generated <code> (and can on line spans)
+     * that differs from the <pre> we force to the inset surface, so in dark mode
+     * each highlighted region reads as its own lighter band over the panel.
+     * Keep the code element and any line wrapper transparent so the single
+     * <pre> surface shows through as one uniform field. (Token foreground colors
+     * are handled separately by the dual-theme `color` swap below.) */
+    background: transparent !important;
+  }
+
+  .cinder-code-block :where(pre.shiki code .line, pre.shiki code span) {
+    background: transparent !important;
+  }
+
+  /* ── Dark-theme Shiki dual-theme fix ─────────────────────────────────────
+   * Shiki's dual-theme output emits inline styles on every token span with
+   * BOTH the light value (`color: #24292E`) and the dark value
+   * (`--shiki-dark: #E1E4E8`). Without a CSS rule that swaps `color` to
+   * `var(--shiki-dark)` in dark mode, token spans show their light color
+   * (#24292e near-black, #d73a49 keyword red) against a dark surface — ratios
+   * as low as 1.38 — failing axe color-contrast.
+   *
+   * Cover the two cases in which a cinder dark theme is active. Both anchor on
+   * `[data-cinder-theme=…]` — the authoritative signal cinder sets on the
+   * document element (render-shell.ts) and the only theme anchor the
+   * component-CSS-sidecar lint accepts (`:root`/`[data-theme]` are
+   * foundation-layer selectors it rejects):
+   *   1. An explicit dark choice: `[data-cinder-theme="dark"]`.
+   *   2. The system choice resolving to dark: `[data-cinder-theme="system"]`
+   *      under `@media (prefers-color-scheme: dark)`.
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  /* `!important` is required: Shiki writes the light color as an INLINE style
+   * (`style="color:#24292E"`) on every span, and an inline declaration beats a
+   * stylesheet rule on specificity. Without `!important` the light color wins in
+   * dark mode and the override is silently a no-op (contrast as low as 1.38).
+   * We override ONLY the foreground — the span background stays transparent so
+   * the dark `--cinder-surface-inset` forced on the <pre> shows through. (An
+   * earlier attempt set `background-color: var(--shiki-dark-bg)` here, which
+   * repainted each span with Shiki's own dark bg `#24292e` and re-broke contrast
+   * against the github-dark red — dropped.)
+   *
+   * The selectors anchor on `[data-cinder-theme=...]` — the authoritative theme
+   * signal cinder sets on the document element (see render-shell.ts). That
+   * `data-cinder-` namespace is also what the component-CSS-sidecar lint accepts
+   * as a scope anchor; a `:root`/`[data-theme]` prefix is a foundation-layer
+   * selector and is (correctly) rejected here. */
+
+  /* Explicit dark choice. */
+  [data-cinder-theme='dark']
+    .cinder-code-block
+    :where(pre.shiki)
+    span:not(
+      [data-cinder-theme='dark'] [data-theme='light'] .cinder-code-block :where(pre.shiki) span
+    ),
+  [data-cinder-theme='dark']
+    [data-theme='light']
+    [data-theme='dark']
+    .cinder-code-block
+    :where(pre.shiki)
+    span:not(
+      [data-cinder-theme='dark']
+        [data-theme='light']
+        [data-theme='dark']
+        [data-theme='light']
+        .cinder-code-block
+        :where(pre.shiki)
+        span
+    ),
+  [data-cinder-theme='dark']
+    [data-theme='light']
+    [data-theme='dark']
+    [data-theme='light']
+    [data-theme='dark']
+    .cinder-code-block
+    :where(pre.shiki)
+    span {
+    color: var(--shiki-dark, inherit) !important;
+  }
+
+  /* System choice that resolves to dark via the OS preference. cinder sets
+   * `data-cinder-theme="system"` and leaves `color-scheme: light dark` to follow
+   * `prefers-color-scheme`, so we mirror that here for the inline-style swap. */
+  @media (prefers-color-scheme: dark) {
+    [data-cinder-theme='system']
+      .cinder-code-block
+      :where(pre.shiki)
+      span:not(
+        [data-cinder-theme='system'] [data-theme='light'] .cinder-code-block :where(pre.shiki) span
+      ),
+    [data-cinder-theme='system']
+      [data-theme='light']
+      [data-theme='dark']
+      .cinder-code-block
+      :where(pre.shiki)
+      span:not(
+        [data-cinder-theme='system']
+          [data-theme='light']
+          [data-theme='dark']
+          [data-theme='light']
+          .cinder-code-block
+          :where(pre.shiki)
+          span
+      ),
+    [data-cinder-theme='system']
+      [data-theme='light']
+      [data-theme='dark']
+      [data-theme='light']
+      [data-theme='dark']
+      .cinder-code-block
+      :where(pre.shiki)
+      span {
+      color: var(--shiki-dark, inherit) !important;
+    }
+  }
+
+  /* Compact copy button when nested inside a code block header. It reads as a
+ * real button — a square hit target with a subtle resting chip background — not
+ * a bare floating glyph crammed against the panel edge. The chip is a faint
+ * raised surface so the button is discoverable at rest without competing with
+ * the code content; hover deepens it (rule below).
+ *
+ * Hit target: 1.75rem (28px) square clears the WCAG 2.5.8 AA 24px floor with
+ * margin. The icon stays centered via inline-flex.
+ *
+ * Specificity bump (`.cinder-code-block .cinder-code-block__header .cinder-copy-button`)
+ * is required because copy-button.css imports AFTER code-block.css in components.css;
+ * with equal specificity the later import would win and the bordered default would
+ * leak through. Scoped so the standalone CopyButton keeps its bordered default
+ * everywhere else in the app. */
+  .cinder-code-block .cinder-code-block__header .cinder-copy-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    min-block-size: 2rem;
+    border: 1px solid transparent;
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-raised);
+    padding: var(--cinder-space-1);
+    color: var(--cinder-text-muted);
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-code-block .cinder-code-block__header .cinder-copy-button:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-code-block .cinder-code-block__header .cinder-copy-button:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+      box-shadow: none;
+    }
+  }
+
+  /* Sticky-hover suppression on touch. */
+  @media (hover: hover) {
+    .cinder-code-block .cinder-code-block__header .cinder-copy-button:hover {
+      background: var(--cinder-surface-hover);
+      color: var(--cinder-text-default);
+      border-color: transparent;
+    }
+  }
+
+  /* Stable wrapper that anchors {@html highlighted} for Svelte 5 reconciliation —
+   Svelte appends new nodes alongside the old when an `{@html}` value changes
+   between two non-null strings unless it sits inside a stable parent element. */
+  .cinder-code-block__highlighted {
+    display: block;
+  }
+
+  /* .cinder-code-block has `overflow: hidden`, so an OUTSET ring from the
+   * foundation.css :focus-visible fallback is clipped to the top edge only.
+   * Use Strategy B-inset: single-band inset box-shadow contained within the
+   * element's own border box so the parent overflow can never clip it.
+   * tabindex="0" is set in code-block.svelte on the stable viewport. */
+  .cinder-code-block__viewport:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-code-block__viewport:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+      box-shadow: none;
+    }
+  }
+}

@@ -1,0 +1,64 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    value: {
+      type: 'string',
+      description:
+        "Bindable value. Reading the value yields a string in the configured\n`format` (`#rrggbb`/`#rrggbbaa` for the `'hex'` default, or modern\nspace-separated CSS Color 4 syntax with slash alpha for the others).\nSetting the value accepts hex, `rgb()`, `rgba()`, `hsl()`, `hsla()`,\n`hwb()`, or `oklch()` input, in either legacy comma syntax or modern\nspace-separated syntax — including whatever this component's own\n`format` emits, so an emitted value always parses back; invalid input\nis normalized to `''`. Mounting does NOT normalize this prop itself —\na non-canonical `value` you pass in (short hex, legacy comma syntax, a\nsyntax mismatched with `format`) is left exactly as you passed it until\nthe first user-driven commit, which writes the fully normalized string\nback. Only the rendered hidden form-mirror input is normalized at mount.",
+    },
+    alpha: {
+      type: 'boolean',
+      description:
+        "Show the alpha slider. Default `false`. Per the CIN-104 ruling this is a\nUI-affordance concern, not a value-mutation switch:\n\n- A translucent `value` passed in programmatically (the initial `value`,\n  a later controlled update, or a native form reset) keeps its alpha\n  exactly as parsed, whether or not `alpha` is true — disabling the\n  slider alone never strips it.\n- An *interactively* produced alpha (set by dragging the alpha slider\n  while it was visible) re-gates to fully opaque on the next\n  user-driven commit — any pointer drag, keyboard nudge, or swatch\n  selection — once `alpha` is false and the slider is gone. This is what\n  prevents a hidden, un-editable translucency from persisting forever\n  once the affordance to see or change it is removed.\n\nThis gate is uniform across every `format` — it is not a hex-only\nconcern. Independently of `alpha`, whether an alpha suffix appears at\nall is decided by the configured `format`'s own opacity-quantization\nthreshold, not literally \"alpha equals 1\": `'hex'` treats alpha as\nopaque once it rounds to the byte `0xff` (any alpha `>= ~0.998`, e.g.\n`0.999`), while every other format treats alpha as opaque once it\nrounds to `1` at 4 decimal places (any alpha `>= 0.99995`, e.g.\n`0.99999`).",
+    },
+    format: {
+      enum: ['hex', 'rgb', 'hsl', 'hwb', 'oklch'],
+      description:
+        "Output color format for the committed/emitted value. Default `'hex'`.\nPurely additive — existing consumers relying on the hex default are\nunaffected. `value` stays a plain string regardless of format.",
+    },
+    name: {
+      type: 'string',
+      description:
+        'Form field name. When set, a hidden input mirrors the current value for form submission.',
+    },
+    swatches: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description: 'Optional palette of preset colors rendered below the picker.',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Disable interaction across the picker.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional classes merged onto the root element.',
+    },
+    label: {
+      type: 'string',
+      description: "Accessible label for the picker. Default `'Color picker'`.",
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+        description: 'Fired on every intermediate update (drag, slider key, swatch click).',
+      },
+      {
+        name: 'onValueCommit',
+        reason: 'function-or-snippet',
+        description: 'Fired on commit (pointer up, swatch click, slider key).',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

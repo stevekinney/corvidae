@@ -1,0 +1,64 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    disabled: {
+      type: 'boolean',
+      description: 'Disables the input and the clear button.',
+    },
+    name: {
+      type: 'string',
+      description: '`name` attribute for form submission.',
+    },
+    placeholder: {
+      type: 'string',
+      description: 'Placeholder text.',
+    },
+    readonly: {
+      type: 'boolean',
+      description: 'Marks the input as read-only; the clear button becomes inert.',
+    },
+    id: {
+      type: 'string',
+      description: 'Stable id for the input element. Required when composing with `FormField`.',
+    },
+    value: {
+      type: 'string',
+      description: 'Bindable search value.',
+    },
+    shortcut: {
+      type: 'string',
+      description:
+        'Optional keyboard shortcut hint (e.g. `\'⌘K\'`). Rendered as a trailing\n`<kbd aria-hidden="true">` badge. The shortcut itself is not wired by\nthis component.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class merged with `.cinder-search-field`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'onClear',
+        reason: 'function-or-snippet',
+        description: 'Fires when the clear button is clicked.',
+      },
+      {
+        name: 'onSearch',
+        reason: 'function-or-snippet',
+        description:
+          'Fires when the native `search` event triggers (Enter or programmatic dispatch).',
+      },
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+        description: 'Fires on every keystroke with the current value.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

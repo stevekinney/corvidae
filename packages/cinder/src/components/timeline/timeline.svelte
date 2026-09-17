@@ -1,0 +1,105 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category data-display
+   * @status stable
+   * @purpose Timestamp-first event rail with grouping, tone markers, and connector continuity.
+   * @tag timeline
+   * @tag history
+   * @tag events
+   * @useWhen Showing dated workflow, audit, or run-history events on a temporal rail.
+   * @avoidWhen Surfacing a real-time social or activity stream — feed is the higher-affordance composition.
+   * @avoidWhen Guiding users through a numbered procedural flow. | steps
+   * @avoidWhen Showing async execution state with retries, branches, or progress. | run-step-timeline
+   * @avoidWhen Showing a live activity or dense operational stream — use feed (its log arm covers operational streams).
+   * @related feed, run-step-timeline
+   */
+  export type {
+    TimelineEntry,
+    TimelineGroupBy,
+    TimelineHeadingLevel,
+    TimelineOrientation,
+    TimelineProps,
+    TimelineTone,
+    TimelineWeekStartsOn,
+  } from './timeline.types.ts';
+
+  // See documentation/decisions/chronological-display-boundaries.md for this family's boundary.
+</script>
+
+<script lang="ts">
+  import { classNames } from '../../utilities/class-names.ts';
+  import TimelineItem from '../_timeline-item/timeline-item.svelte';
+  import { buildTimelineRenderPlan } from './timeline-groups.ts';
+  import type { TimelineProps } from './timeline.types.ts';
+
+  // The public TimelineProps omits `role`; this internal slot exists only so the
+  // `role: _role` destructure below can strip a role injected through an untyped
+  // spread, preserving the `<ol>`'s implicit `list` role for assistive technology.
+  type TimelineInternalProps = TimelineProps & { role?: never };
+
+  let {
+    entries,
+    orientation = 'vertical',
+    groupBy = 'none',
+    weekStartsOn = 'monday',
+    groupHeaderLevel = 3,
+    gapThresholdMinutes,
+    label,
+    class: className,
+    children,
+    marker: customMarker,
+    role: _role,
+    'aria-label': ariaLabel,
+    'aria-labelledby': ariaLabelledby,
+    ...rest
+  }: TimelineInternalProps = $props();
+
+  const renderGroups = $derived(
+    buildTimelineRenderPlan({
+      entries,
+      groupBy,
+      weekStartsOn,
+      gapThresholdMinutes,
+    }),
+  );
+
+  const resolvedAriaLabel = $derived(
+    ariaLabelledby === undefined && ariaLabel === undefined ? label : ariaLabel,
+  );
+</script>
+
+<!-- svelte-ignore a11y_no_noninteractive_tabindex (The horizontal overflow list needs keyboard access to scroll its content while retaining list semantics.) -->
+<ol
+  {...rest}
+  class={classNames('cinder-timeline', className)}
+  data-cinder-orientation={orientation}
+  tabindex={orientation === 'horizontal' ? 0 : undefined}
+  aria-label={resolvedAriaLabel}
+  aria-labelledby={ariaLabelledby}
+>
+  {#each renderGroups as group (group.key)}
+    {#each group.entries as renderEntry (renderEntry.entry.id)}
+      {@const entry = renderEntry.entry}
+      {#snippet markerContent()}
+        {#if customMarker}
+          {@render customMarker(entry)}
+        {/if}
+      {/snippet}
+      <TimelineItem
+        datetime={entry.datetime}
+        timestamp={entry.timestamp}
+        title={entry.title}
+        tone={entry.tone ?? 'info'}
+        connectorAfter={renderEntry.connectorAfter}
+        groupHeader={renderEntry.index === group.entries[0]?.index ? group.label : undefined}
+        {groupHeaderLevel}
+        marker={customMarker ? markerContent : undefined}
+      >
+        {#if children}
+          {@render children(entry)}
+        {/if}
+      </TimelineItem>
+    {/each}
+  {/each}
+</ol>

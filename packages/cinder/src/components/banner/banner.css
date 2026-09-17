@@ -1,0 +1,169 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * BANNER
+ * ----------------------------------------
+ * Full-width, page-level notification strip. Stretches the inline size of
+ * its parent container — to bleed edge-to-edge of the viewport, render
+ * outside any max-width content column.
+ *
+ * No motion is defined in v1; if entry/exit animation is added later, it
+ * must be gated on `prefers-reduced-motion: no-preference`.
+ * ======================================== */
+
+  .cinder-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    inline-size: 100%;
+    padding-block: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-4);
+    border-block: 1px solid var(--cinder-border);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .cinder-banner {
+      transition:
+        background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+        border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+    }
+  }
+
+  :root:is([data-cinder-reduced-motion='false'], [data-reduced-motion='off']) .cinder-banner {
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* ----------------------------------------
+ * Content area
+ * ---------------------------------------- */
+
+  .cinder-banner__content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ----------------------------------------
+ * Actions region
+ * ---------------------------------------- */
+
+  .cinder-banner__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    flex-shrink: 0;
+  }
+
+  /* ----------------------------------------
+ * Dismiss button
+ * Mirrors .cinder-alert__dismiss rule-for-rule.
+ * ---------------------------------------- */
+
+  /* Box-model reset, hit-area, and idle :hover live on .cinder-_dismiss-button
+ * (see src/styles/components.css). Only Banner-specific layout positioning,
+ * the motion-gated transition, and status-driven focus chrome live here. */
+  .cinder-banner__dismiss {
+    align-self: center;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .cinder-banner__dismiss {
+      transition:
+        background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+        box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+    }
+  }
+
+  :root:is([data-cinder-reduced-motion='false'], [data-reduced-motion='off'])
+    .cinder-banner__dismiss {
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-banner__dismiss:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-banner-ring, var(--cinder-ring-color));
+  }
+
+  .cinder-banner__dismiss-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  /* ----------------------------------------
+ * Status variants
+ *
+ * The soft-surface color algebra (background, border, foreground) lives in the
+ * shared `_status-surface.css` partial, consumed via `.cinder-_status-surface`
+ * + `.cinder-_status-surface-border` on the root (see banner.svelte). Banner
+ * draws no inline-start stripe, so it does not compose the stripe class. Each
+ * variant sets the partial's inputs (base color + per-variant foreground chroma)
+ * plus the banner-local focus-ring color.
+ *
+ * NOTE (CSS audit, Batch D): the soft surface is synthesized rather than read
+ * from the `--cinder-color-{status}-{bg,fg,border}` triples because the
+ * dark-theme triple background sits ~8 oklch-L points lighter (28% vs 20% L),
+ * exceeding the 0.02 ΔL threshold. See documentation/css-audit/status-triple-equivalence.md.
+ * ---------------------------------------- */
+
+  .cinder-banner[data-cinder-variant='info'] {
+    --_cinder-banner-ring: var(--cinder-status-info-solid);
+    --_cinder-status-base: var(--cinder-status-info-solid);
+    --_cinder-status-fg-chroma-light: 0.12;
+    --_cinder-status-fg-chroma-dark: 0.12;
+  }
+
+  .cinder-banner[data-cinder-variant='success'] {
+    --_cinder-banner-ring: var(--cinder-status-success-solid);
+    --_cinder-status-base: var(--cinder-status-success-solid);
+    --_cinder-status-fg-chroma-light: 0.14;
+    --_cinder-status-fg-chroma-dark: 0.12;
+  }
+
+  .cinder-banner[data-cinder-variant='warning'] {
+    --_cinder-banner-ring: var(--cinder-status-warning-solid);
+    --_cinder-status-base: var(--cinder-status-warning-solid);
+    --_cinder-status-fg-chroma-light: 0.16;
+    --_cinder-status-fg-chroma-dark: 0.14;
+  }
+
+  .cinder-banner[data-cinder-variant='danger'] {
+    --_cinder-banner-ring: var(--cinder-status-danger-solid);
+    --_cinder-status-base: var(--cinder-status-danger-solid);
+    --_cinder-status-fg-chroma-light: 0.18;
+    --_cinder-status-fg-chroma-dark: 0.16;
+  }
+
+  /* ----------------------------------------
+ * Forced-colors / high-contrast
+ * ---------------------------------------- */
+
+  @media (forced-colors: active) {
+    .cinder-banner {
+      border-block: 1px solid CanvasText;
+    }
+
+    /* `color-mix` against transparent is unreliable in forced-colors mode; pin to ButtonFace.
+   * Nested under @media (hover: hover) to suppress sticky-hover on touch. */
+    @media (hover: hover) {
+      .cinder-banner__dismiss:hover {
+        background: ButtonFace;
+      }
+    }
+
+    .cinder-banner__dismiss:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+      box-shadow: none;
+    }
+  }
+}

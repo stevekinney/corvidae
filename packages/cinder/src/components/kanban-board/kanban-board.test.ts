@@ -1,0 +1,1571 @@
+/// <reference lib="dom" />
+import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { createRawSnippet, tick } from 'svelte';
+
+import { requiredInstance, requiredValue, setupHappyDom } from '@repo/testing';
+import {
+  findNextVisibleColumn,
+  moveKanbanCard,
+  moveKanbanColumn,
+  validateKanbanBoardKeys,
+} from './kanban-board-helpers.ts';
+import type { KanbanBoardColumn } from './kanban-board.types.ts';
+
+setupHappyDom();
+
+const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
+const { default: KanbanBoard } = await import('./kanban-board.svelte');
+const kanbanBoardCss = await Bun.file(new URL('./kanban-board.css', import.meta.url)).text();
+const tokensBaseCss = await Bun.file(
+  new URL('../../styles/tokens-base.css', import.meta.url),
+).text();
+const sortableListCss = await Bun.file(
+  new URL('../sortable-list/sortable-list.css', import.meta.url),
+).text();
+
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+});
+
+type Card = { id: string; title: string };
+
+const alpha = Object.freeze({ id: 'a', title: 'Alpha' });
+const beta = Object.freeze({ id: 'b', title: 'Beta' });
+const gamma = Object.freeze({ id: 'c', title: 'Gamma' });
+
+function makeColumns(): KanbanBoardColumn<Card>[] {
+  return [
+    { id: 'todo', title: 'To do', cards: [alpha, beta] },
+    { id: 'doing', title: 'Doing', cards: [gamma] },
+    { id: 'done', title: 'Done', cards: [] },
+  ];
+}
+
+function getCardKey(card: Card) {
+  return card.id;
+}
+
+function getCardLabel(card: Card) {
+  return card.title;
+}
+
+function cardSnippet() {
+  return createRawSnippet<[Card]>((getCard) => ({
+    render: () => `<span>${getCard().title}</span>`,
+    setup: () => {},
+  }));
+}
+
+function renderBoard(overrides?: Record<string, unknown>) {
+  const onColumnsChange = mock();
+  const columns = makeColumns();
+  const result = render(KanbanBoard as any, {
+    props: {
+      columns,
+      getCardKey,
+      getCardLabel,
+      onColumnsChange,
+      label: 'Work board',
+      card: cardSnippet(),
+      ...overrides,
+    },
+  });
+  return { ...result, columns, onColumnsChange };
+}
+
+function makeRect(left: number, top: number, width: number, height: number): DOMRect {
+  return {
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+    x: left,
+    y: top,
+    toJSON: () => ({}),
+  };
+}
+
+function installPointerGeometry(container: HTMLElement): void {
+  const columns = Array.from(
+    container.querySelectorAll<HTMLElement>('.cinder-kanban-board__column'),
+  );
+  const columnsElement = container.querySelector<HTMLElement>('.cinder-kanban-board__columns');
+  if (columnsElement) columnsElement.getBoundingClientRect = () => makeRect(0, 0, 660, 400);
+
+  columns.forEach((column, index) => {
+    column.getBoundingClientRect = () => makeRect(index * 220, 0, 200, 400);
+  });
+
+  const nextRowIndexByColumn = new Map<HTMLElement, number>();
+  const cards = Array.from(container.querySelectorAll<HTMLElement>('[data-sortable-row]'));
+  cards.forEach((card) => {
+    const column = requiredInstance(card.closest('.cinder-kanban-board__column'), HTMLElement);
+    const columnIndex = columns.indexOf(column);
+    const rowIndex = nextRowIndexByColumn.get(column) ?? 0;
+    nextRowIndexByColumn.set(column, rowIndex + 1);
+    card.getBoundingClientRect = () => makeRect(columnIndex * 220, rowIndex * 56, 180, 48);
+  });
+
+  columns.forEach((column, columnIndex) => {
+    const rowCount = nextRowIndexByColumn.get(column) ?? 0;
+    const cardList = column.querySelector<HTMLElement>('.cinder-kanban-board__cards');
+    if (cardList) {
+      cardList.getBoundingClientRect = () =>
+        makeRect(columnIndex * 220, 0, 200, Math.max(48, rowCount * 56));
+    }
+  });
+}
+
+function installPointerCapture(handle: HTMLElement): void {
+  handle.setPointerCapture = mock(() => {});
+  handle.releasePointerCapture = mock(() => {});
+  handle.hasPointerCapture = mock(() => true);
+}
+
+async function waitForAnimationFrame(): Promise<void> {
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
+async function waitForAnnouncement(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+
+describe('kanban board helpers', () => {
+  test('validates duplicate column and card keys', () => {
+    const result = validateKanbanBoardKeys(
+      [
+        { id: 'x', title: 'One', cards: [alpha] },
+        { id: 'x', title: 'Two', cards: [alpha] },
+      ],
+      getCardKey,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.duplicateColumnKeys.has('x')).toBe(true);
+    expect(result.duplicateCardKeys.has('a')).toBe(true);
+  });
+
+  test('moves a card within one column without mutating input', () => {
+    const columns = makeColumns();
+    const result = moveKanbanCard(columns, getCardKey, 'a', { columnIndex: 0, cardIndex: 1 });
+    expect(requiredValue(result?.nextColumns[0]).cards.map(getCardKey)).toEqual(['b', 'a']);
+    expect(requiredValue(result?.nextColumns[1])).toBe(requiredValue(columns[1]));
+    expect(requiredValue(requiredValue(result?.nextColumns[0]).cards[1])).toBe(alpha);
+    expect(requiredValue(columns[0]).cards.map(getCardKey)).toEqual(['a', 'b']);
+    expect(result?.change).toMatchObject({
+      type: 'card',
+      fromColumnKey: 'todo',
+      toColumnKey: 'todo',
+      fromIndex: 0,
+      toIndex: 1,
+    });
+  });
+
+  test('moves a card across columns and into an empty column', () => {
+    const result = moveKanbanCard(makeColumns(), getCardKey, 'a', {
+      columnIndex: 2,
+      cardIndex: 0,
+    });
+    expect(requiredValue(result?.nextColumns[0]).cards.map(getCardKey)).toEqual(['b']);
+    expect(requiredValue(result?.nextColumns[2]).cards.map(getCardKey)).toEqual(['a']);
+    expect(result?.change).toMatchObject({
+      type: 'card',
+      fromColumnKey: 'todo',
+      toColumnKey: 'done',
+      fromIndex: 0,
+      toIndex: 0,
+    });
+  });
+
+  test('rejects moves into collapsed columns', () => {
+    const columns = makeColumns();
+    columns[1] = { ...requiredValue(columns[1]), collapsed: true };
+    expect(moveKanbanCard(columns, getCardKey, 'a', { columnIndex: 1, cardIndex: 0 })).toBeNull();
+  });
+
+  test('reorders columns', () => {
+    const result = moveKanbanColumn(makeColumns(), 'todo', 2);
+    expect(result?.nextColumns.map((column) => column.id)).toEqual(['doing', 'done', 'todo']);
+    expect(result?.change).toEqual({ type: 'column', columnKey: 'todo', fromIndex: 0, toIndex: 2 });
+  });
+
+  test('finds next visible non-collapsed column', () => {
+    const columns = makeColumns();
+    columns[1] = { ...requiredValue(columns[1]), collapsed: true };
+    expect(findNextVisibleColumn(columns, 0, 1)).toBe(2);
+    expect(findNextVisibleColumn(columns, 2, 1)).toBeNull();
+  });
+});
+
+describe('kanban board styles', () => {
+  test('column reorder handle icon inherits the button text color', () => {
+    expect(kanbanBoardCss).toMatch(
+      /\.cinder-kanban-board__column-handle\s+svg\s*\{[^}]*fill:\s*currentcolor;/,
+    );
+  });
+
+  test('shared drag preview uses the same medium elevation in both style entries', () => {
+    const dragPreviewShadow =
+      /\.cinder-sortable-drag-preview\s*\{[^}]*box-shadow:\s*var\(--cinder-shadow-md\);/;
+
+    expect(kanbanBoardCss).toMatch(dragPreviewShadow);
+    expect(sortableListCss).toMatch(dragPreviewShadow);
+  });
+
+  test('scroll edges use a translucent theme-aware foreground mix', () => {
+    expect(tokensBaseCss).toContain('--cinder-kanban-board-scroll-edge: color-mix(');
+    expect(kanbanBoardCss).toContain('var(--cinder-kanban-board-scroll-edge)');
+    expect(kanbanBoardCss).not.toMatch(
+      /linear-gradient\([^)]*var\(--cinder-surface-raised\), transparent\)/,
+    );
+  });
+});
+
+describe('KanbanBoard', () => {
+  test('renders zero columns without throwing', () => {
+    const { container } = renderBoard({ columns: [] });
+    expect(container.querySelector('.cinder-kanban-board')).not.toBeNull();
+  });
+
+  test('renders card and column handles', () => {
+    const { container } = renderBoard();
+    expect(container.querySelectorAll('.cinder-kanban-board__column').length).toBe(3);
+    expect(container.querySelector('[aria-label="Move Alpha"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Reorder To do column"]')).not.toBeNull();
+  });
+
+  test('keyboard moves a card within a column and emits card metadata', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await fireEvent.keyDown(handle, { key: 'ArrowDown' });
+    await fireEvent.keyDown(handle, { key: ' ' });
+
+    expect(onColumnsChange).toHaveBeenCalledTimes(1);
+    const [nextColumns, change] = requiredValue(onColumnsChange.mock.calls[0]);
+    expect(requiredValue(nextColumns[0]).cards.map(getCardKey)).toEqual(['b', 'a']);
+    expect(change).toMatchObject({ type: 'card', fromColumnKey: 'todo', toColumnKey: 'todo' });
+  });
+
+  test('keyboard moves a card across visible columns', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    await fireEvent.keyDown(handle, { key: ' ' });
+
+    expect(onColumnsChange).toHaveBeenCalledTimes(1);
+    const [nextColumns, change] = requiredValue(onColumnsChange.mock.calls[0]);
+    expect(requiredValue(nextColumns[0]).cards.map(getCardKey)).toEqual(['b']);
+    expect(requiredValue(nextColumns[1]).cards.map(getCardKey)).toEqual(['a', 'c']);
+    expect(change).toMatchObject({ type: 'card', fromColumnKey: 'todo', toColumnKey: 'doing' });
+  });
+
+  test('keyboard append across columns announces the prospective destination total', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    const movedHandle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    await fireEvent.keyDown(movedHandle, { key: 'ArrowDown' });
+    await waitForAnnouncement();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('position 2 of 2');
+    await fireEvent.keyDown(movedHandle, { key: ' ' });
+    await waitForAnnouncement();
+
+    const [nextColumns, change] = requiredValue(onColumnsChange.mock.calls[0]);
+    expect(requiredValue(nextColumns[1]).cards.map(getCardKey)).toEqual(['c', 'a']);
+    expect(change).toMatchObject({ toColumnKey: 'doing', toIndex: 1 });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'dropped at position 2 of 2',
+    );
+  });
+
+  test('pointer drag moves a card across columns', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await fireEvent.pointerMove(handle, {
+      clientX: 240,
+      clientY: 4,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnimationFrame();
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+
+    expect(onColumnsChange).toHaveBeenCalledTimes(1);
+    const [nextColumns, change] = requiredValue(onColumnsChange.mock.calls[0]);
+    expect(requiredValue(nextColumns[0]).cards.map(getCardKey)).toEqual(['b']);
+    expect(requiredValue(nextColumns[1]).cards.map(getCardKey)).toEqual(['a', 'c']);
+    expect(change).toMatchObject({
+      type: 'card',
+      fromColumnKey: 'todo',
+      toColumnKey: 'doing',
+      fromIndex: 0,
+      toIndex: 0,
+    });
+  });
+
+  test('pointer drag does not repeat move announcements when the target is unchanged', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnnouncement();
+    const liftedAnnouncement = container.querySelector('[role="alert"]')?.textContent;
+
+    await fireEvent.pointerMove(handle, {
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnimationFrame();
+    await waitForAnnouncement();
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(liftedAnnouncement);
+  });
+
+  test('window Escape cancels a lifted card after focus leaves the handle', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await tick();
+    expect(handle.getAttribute('aria-pressed')).toBe('true');
+
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    await waitForAnnouncement();
+
+    expect(handle.getAttribute('aria-pressed')).toBe('false');
+    expect(onColumnsChange).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('move cancelled');
+  });
+
+  test('column handles do not lift while a card is lifted', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    const cardHandle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    const columnHandle = requiredInstance(
+      container.querySelector('[aria-label="Reorder To do column"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(cardHandle, { key: ' ' });
+    await fireEvent.click(columnHandle);
+
+    expect(cardHandle.getAttribute('aria-pressed')).toBe('true');
+    expect(columnHandle.getAttribute('aria-pressed')).toBe('false');
+    expect(onColumnsChange).not.toHaveBeenCalled();
+  });
+
+  test('drop cancels when the target column collapses while a card is lifted', async () => {
+    const onColumnsChange = mock();
+    const columns = makeColumns();
+    const props = {
+      columns,
+      getCardKey,
+      getCardLabel,
+      onColumnsChange,
+      label: 'Work board',
+      card: cardSnippet(),
+    };
+    const { container, rerender } = render(KanbanBoard as any, { props });
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    await rerender({
+      ...props,
+      columns: columns.map((column) =>
+        column.id === 'doing' ? { ...column, collapsed: true } : column,
+      ),
+    });
+    const movedHandle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    await fireEvent.keyDown(movedHandle, { key: ' ' });
+    await waitForAnnouncement();
+
+    expect(onColumnsChange).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('move cancelled');
+  });
+
+  test('drop cancels when the lifted card is removed before commit', async () => {
+    const onColumnsChange = mock();
+    const columns = makeColumns();
+    const props = {
+      columns,
+      getCardKey,
+      getCardLabel,
+      onColumnsChange,
+      label: 'Work board',
+      card: cardSnippet(),
+    };
+    const { container, rerender } = render(KanbanBoard as any, { props });
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await rerender({
+      ...props,
+      columns: columns.map((column) =>
+        column.id === 'todo'
+          ? { ...column, cards: column.cards.filter((currentCard) => currentCard.id !== 'a') }
+          : column,
+      ),
+    });
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await waitForAnnouncement();
+
+    expect(onColumnsChange).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('move cancelled');
+  });
+
+  test('announces no destination when lateral movement is blocked', async () => {
+    const columns = makeColumns();
+    columns[1] = { ...requiredValue(columns[1]), collapsed: true };
+    columns[2] = { ...requiredValue(columns[2]), collapsed: true };
+    const { container, onColumnsChange } = renderBoard({ columns });
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(onColumnsChange).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('no available column');
+  });
+
+  test('collapse toggle emits collapse metadata and hides cards', async () => {
+    const { container, onColumnsChange } = renderBoard({ collapsible: true });
+    const button = requiredInstance(
+      container.querySelector('[aria-label="Collapse To do (2 cards)"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.click(button);
+
+    expect(onColumnsChange).toHaveBeenCalledTimes(1);
+    expect(requiredValue(requiredValue(onColumnsChange.mock.calls[0])[1])).toEqual({
+      type: 'collapse',
+      columnKey: 'todo',
+      collapsed: true,
+    });
+  });
+
+  test('collapse disclosure uses the shared chevron state convention', async () => {
+    const { container } = renderBoard({ collapsible: true });
+    const column = container.querySelector('.cinder-kanban-board__column')!;
+    const button = requiredInstance(
+      container.querySelector('[aria-label="Collapse To do (2 cards)"]'),
+      HTMLButtonElement,
+    );
+    const chevron = button.querySelector('.cinder-kanban-board__collapse-chevron');
+
+    expect(column.hasAttribute('data-cinder-expanded')).toBe(true);
+    expect(chevron).not.toBeNull();
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+
+    cleanup();
+    const columns = makeColumns();
+    columns[0] = { ...requiredValue(columns[0]), collapsed: true };
+    const collapsed = renderBoard({ collapsible: true, columns });
+    const collapsedColumn = collapsed.container.querySelector('.cinder-kanban-board__column')!;
+    const collapsedButton = requiredInstance(
+      collapsed.container.querySelector('[aria-label="Expand To do (2 cards)"]'),
+      HTMLButtonElement,
+    );
+
+    expect(collapsedColumn.hasAttribute('data-cinder-expanded')).toBe(false);
+    expect(collapsedButton.getAttribute('aria-expanded')).toBe('false');
+    expect(collapsedButton.textContent).not.toMatch(/[+−-]/);
+  });
+
+  test('column keyboard reorder emits column metadata', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Reorder To do column"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.click(handle);
+    await fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await waitForAnnouncement();
+
+    expect(onColumnsChange).toHaveBeenCalledTimes(1);
+    expect(
+      requiredValue(requiredValue(onColumnsChange.mock.calls[0])[0]).map(
+        (column: KanbanBoardColumn<Card>) => column.id,
+      ),
+    ).toEqual(['doing', 'todo', 'done']);
+    expect(requiredValue(requiredValue(onColumnsChange.mock.calls[0])[1])).toEqual({
+      type: 'column',
+      columnKey: 'todo',
+      fromIndex: 0,
+      toIndex: 1,
+    });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'To do column dropped at position 2 of 3',
+    );
+  });
+
+  test('column handle click lifts and drops the active column', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Reorder To do column"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.click(handle);
+    expect(handle.getAttribute('aria-pressed')).toBe('true');
+    await fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    await fireEvent.click(handle);
+
+    expect(onColumnsChange).toHaveBeenCalledTimes(1);
+    expect(requiredValue(requiredValue(onColumnsChange.mock.calls[0])[1])).toEqual({
+      type: 'column',
+      columnKey: 'todo',
+      fromIndex: 0,
+      toIndex: 1,
+    });
+  });
+
+  test('Space keydown + synthesized click leaves the column lifted, not immediately dropped', async () => {
+    // Regression: before the fix, handleColumnKeydown lifted on Space keydown
+    // (idle branch) AND handleColumnClick dropped on the subsequent browser-
+    // synthesized click, so one Space press performed lift-then-drop in a single
+    // interaction, making keyboard column reordering non-functional.
+    //
+    // The fix removes Space/Enter from the idle keydown path and lets the native
+    // synthesized click drive handleColumnClick → liftColumn. We simulate the
+    // real chain that a browser produces: keydown(Space) followed immediately by
+    // a click on the same element.
+    const { container } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Reorder To do column"]'),
+      HTMLElement,
+    );
+
+    // Simulate the browser sequence: keydown fires first, then on keyup the
+    // browser synthesizes a click. We fire both in order.
+    await fireEvent.keyDown(handle, { key: ' ' });
+    await fireEvent.click(handle);
+    await tick();
+
+    // After a single Space press the column must be LIFTED (aria-pressed=true),
+    // not lifted-then-dropped back to idle (aria-pressed=false).
+    expect(handle.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('window Escape cancels a lifted column after focus leaves the handle', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Reorder To do column"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.click(handle);
+    await tick();
+    expect(handle.getAttribute('aria-pressed')).toBe('true');
+
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    await waitForAnnouncement();
+
+    expect(handle.getAttribute('aria-pressed')).toBe('false');
+    expect(onColumnsChange).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'To do column move cancelled',
+    );
+  });
+
+  test('column keyboard reorder cancels on Tab without moving focus prevention', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Reorder To do column"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.click(handle);
+    await tick();
+    const tabEvent = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    handle.dispatchEvent(tabEvent);
+    await waitForAnnouncement();
+
+    expect(tabEvent.defaultPrevented).toBe(false);
+    expect(handle.getAttribute('aria-pressed')).toBe('false');
+    expect(onColumnsChange).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('move cancelled');
+  });
+
+  test('reorderColumns=false removes column handles', () => {
+    const { container } = renderBoard({ reorderColumns: false });
+    expect(container.querySelector('[aria-label="Reorder To do column"]')).toBeNull();
+  });
+
+  test('duplicate keys warn, mark the root, and prevent lifts', async () => {
+    const warn = mock(() => {});
+    const originalWarn = console.warn;
+    console.warn = warn;
+    try {
+      const columns = [
+        { id: 'todo', title: 'To do', cards: [alpha, alpha] },
+        { id: 'todo', title: 'Again', cards: [] },
+      ];
+      const { container, onColumnsChange } = renderBoard({ columns });
+      const handle = requiredInstance(
+        container.querySelector('[aria-label="Move Alpha"]'),
+        HTMLElement,
+      );
+
+      await fireEvent.keyDown(handle, { key: ' ' });
+      await fireEvent.keyDown(handle, { key: 'ArrowDown' });
+      await fireEvent.keyDown(handle, { key: ' ' });
+
+      expect(warn).toHaveBeenCalled();
+      expect(
+        container.querySelector('.cinder-kanban-board')?.hasAttribute('data-cinder-invalid-keys'),
+      ).toBe(true);
+      expect(onColumnsChange).not.toHaveBeenCalled();
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  test('duplicate keys cancel an active card lift when they appear after lift', async () => {
+    const warn = mock(() => {});
+    const originalWarn = console.warn;
+    console.warn = warn;
+    try {
+      const columns = makeColumns();
+      const props = {
+        columns,
+        getCardKey,
+        getCardLabel,
+        onColumnsChange: mock(),
+        label: 'Work board',
+        card: cardSnippet(),
+      };
+      const { container, rerender } = render(KanbanBoard as any, { props });
+      const handle = requiredInstance(
+        container.querySelector('[aria-label="Move Alpha"]'),
+        HTMLElement,
+      );
+
+      await fireEvent.keyDown(handle, { key: ' ' });
+      expect(handle.getAttribute('aria-pressed')).toBe('true');
+
+      await rerender({
+        ...props,
+        columns: [
+          { id: 'todo', title: 'To do', cards: [alpha, alpha] },
+          { id: 'todo', title: 'Again', cards: [] },
+        ],
+      });
+      await waitForAnnouncement();
+
+      const duplicateHandle = requiredInstance(
+        container.querySelector('[aria-label="Move Alpha"]'),
+        HTMLElement,
+      );
+      expect(duplicateHandle.getAttribute('aria-pressed')).toBe('false');
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('move cancelled');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  test('duplicate keys cancel an active column lift when they appear after lift', async () => {
+    const warn = mock(() => {});
+    const originalWarn = console.warn;
+    console.warn = warn;
+    try {
+      const columns = makeColumns();
+      const props = {
+        columns,
+        getCardKey,
+        getCardLabel,
+        onColumnsChange: mock(),
+        label: 'Work board',
+        card: cardSnippet(),
+      };
+      const { container, rerender } = render(KanbanBoard as any, { props });
+      const handle = requiredInstance(
+        container.querySelector('[aria-label="Reorder To do column"]'),
+        HTMLElement,
+      );
+
+      await fireEvent.click(handle);
+      expect(handle.getAttribute('aria-pressed')).toBe('true');
+
+      await rerender({
+        ...props,
+        columns: [
+          { id: 'todo', title: 'To do', cards: [alpha, alpha] },
+          { id: 'todo', title: 'Again', cards: [] },
+        ],
+      });
+
+      const duplicateHandle = requiredInstance(
+        container.querySelector('[aria-label="Reorder To do column"]'),
+        HTMLElement,
+      );
+      expect(duplicateHandle.getAttribute('aria-pressed')).toBe('false');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// KanbanBoard pointer drag preview state contract tests
+// ---------------------------------------------------------------------------
+//
+// Verifies the drag preview lifecycle for KanbanBoard card drags:
+//   - Pointer drag creates a [data-cinder-drag-preview] portal on body.
+//   - Card row becomes placeholder during pointer drag.
+//   - Drop removes the portal.
+//   - Cancel / Escape removes the portal.
+//   - Keyboard lift does not create a portal.
+//   - Cross-column drag keeps a preview and placeholder visible.
+
+describe('KanbanBoard pointer drag preview', () => {
+  afterEach(() => {
+    document.querySelectorAll('[data-cinder-drag-preview]').forEach((element) => element.remove());
+  });
+
+  test('pointer drag creates a preview portal on document.body', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    const preview = document.querySelector('[data-cinder-drag-preview]');
+    expect(preview).not.toBeNull();
+    expect(document.body.contains(preview)).toBe(true);
+    expect(container.contains(preview)).toBe(false);
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+  });
+
+  test('preview portal has aria-hidden=true', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    const preview = document.querySelector('[data-cinder-drag-preview]');
+    expect(preview?.getAttribute('aria-hidden')).toBe('true');
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+  });
+
+  test('lifted card row has --placeholder class during pointer drag', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    const cardRow = requiredInstance(container.querySelector('[data-key="a"]'), HTMLElement);
+    expect(cardRow?.classList.contains('cinder-sortable-item--placeholder')).toBe(true);
+    expect(cardRow?.classList.contains('cinder-sortable-item--lifted')).toBe(false);
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+  });
+
+  test('card row exposes data-preview-x/y during pointer drag', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 30,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    const cardRow = requiredInstance(container.querySelector('[data-key="a"]'), HTMLElement);
+    expect(cardRow?.getAttribute('data-preview-x')).toBe('20');
+    expect(cardRow?.getAttribute('data-preview-y')).toBe('30');
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+  });
+
+  test('preview position updates on pointer move', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    await fireEvent.pointerMove(handle, {
+      clientX: 100,
+      clientY: 50,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnimationFrame();
+
+    const cardRow = requiredInstance(container.querySelector('[data-key="a"]'), HTMLElement);
+    expect(cardRow?.getAttribute('data-preview-x')).toBe('100');
+    expect(cardRow?.getAttribute('data-preview-y')).toBe('50');
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+  });
+
+  test('drop removes the preview portal', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).not.toBeNull();
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).toBeNull();
+  });
+
+  test('drop clears placeholder class and preview attributes', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+
+    // After drop, the card row is at its new logical position. Query by key.
+    const cardRow = requiredInstance(container.querySelector('[data-key="a"]'), HTMLElement);
+    expect(cardRow).not.toBeNull();
+    expect(cardRow.classList.contains('cinder-sortable-item--placeholder')).toBe(false);
+    expect(cardRow.hasAttribute('data-preview-x')).toBe(false);
+    expect(cardRow.hasAttribute('data-preview-y')).toBe(false);
+  });
+
+  test('pointercancel removes the preview portal', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).not.toBeNull();
+
+    await fireEvent.pointerCancel(handle, { pointerId: 1, pointerType: 'mouse' });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).toBeNull();
+  });
+
+  test('Escape during pointer drag removes the preview portal', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).not.toBeNull();
+
+    await fireEvent.keyDown(handle, { key: 'Escape' });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).toBeNull();
+  });
+
+  test('window Escape during pointer drag removes the preview portal', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).not.toBeNull();
+
+    await fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).toBeNull();
+  });
+
+  test('keyboard lift does NOT create a preview portal', async () => {
+    const { container } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(handle, { key: ' ' });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).toBeNull();
+    const cardRow = requiredInstance(container.querySelector('[data-key="a"]'), HTMLElement);
+    expect(cardRow?.classList.contains('cinder-sortable-item--lifted')).toBe(true);
+    expect(cardRow?.classList.contains('cinder-sortable-item--placeholder')).toBe(false);
+
+    await fireEvent.keyDown(handle, { key: 'Escape' });
+  });
+
+  test('rejected lift (another card already lifted) does NOT create an orphaned preview portal', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const alphaHandle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    const betaHandle = requiredInstance(
+      container.querySelector('[aria-label="Move Beta"]'),
+      HTMLElement,
+    );
+    installPointerCapture(alphaHandle);
+    installPointerCapture(betaHandle);
+
+    // Lift Alpha.
+    await fireEvent.pointerDown(alphaHandle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    expect(document.querySelectorAll('[data-cinder-drag-preview]').length).toBe(1);
+
+    // Attempt a concurrent lift on Beta while Alpha is already lifted.
+    // The controller rejects the second lift; no second portal must be created.
+    await fireEvent.pointerDown(betaHandle, {
+      button: 0,
+      clientX: 20,
+      clientY: 60,
+      pointerId: 2,
+      pointerType: 'mouse',
+    });
+
+    expect(document.querySelectorAll('[data-cinder-drag-preview]').length).toBe(1);
+
+    // Clean up.
+    await fireEvent.pointerUp(alphaHandle, { pointerId: 1, pointerType: 'mouse' });
+    expect(document.querySelectorAll('[data-cinder-drag-preview]').length).toBe(0);
+  });
+
+  test('cross-column pointer drag reserves space in the target column', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    // Move pointer into the second column.
+    await fireEvent.pointerMove(handle, {
+      clientX: 240,
+      clientY: 4,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnimationFrame();
+
+    // Preview must still be on body.
+    const preview = document.querySelector('[data-cinder-drag-preview]');
+    expect(preview).not.toBeNull();
+    expect(document.body.contains(preview)).toBe(true);
+
+    const columns = Array.from(
+      container.querySelectorAll<HTMLElement>('.cinder-kanban-board__column'),
+    );
+    const targetColumn = requiredInstance(requiredValue(columns[1]), HTMLElement);
+    const placeholder = targetColumn.querySelector<HTMLElement>(
+      '.cinder-kanban-board__drop-placeholder',
+    );
+    const targetList = targetColumn.querySelector<HTMLElement>('.cinder-kanban-board__cards');
+
+    expect(container.querySelectorAll('.cinder-kanban-board__drop-placeholder').length).toBe(1);
+    expect(placeholder).not.toBeNull();
+    expect(placeholder?.hasAttribute('data-sortable-row')).toBe(false);
+    expect(
+      placeholder?.style.getPropertyValue('--cinder-kanban-board-drop-placeholder-block-size'),
+    ).toBe('48px');
+    expect(Array.from(targetList?.children ?? []).indexOf(placeholder as Element)).toBe(0);
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+    expect(document.querySelector('[data-cinder-drag-preview]')).toBeNull();
+    expect(container.querySelector('.cinder-kanban-board__drop-placeholder')).toBeNull();
+  });
+
+  test('cross-column pointer drag can reserve append space below existing target cards', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    await fireEvent.pointerMove(handle, {
+      clientX: 240,
+      clientY: 80,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnimationFrame();
+
+    const columns = Array.from(
+      container.querySelectorAll<HTMLElement>('.cinder-kanban-board__column'),
+    );
+    const targetColumn = requiredInstance(requiredValue(columns[1]), HTMLElement);
+    const placeholder = targetColumn.querySelector<HTMLElement>(
+      '.cinder-kanban-board__drop-placeholder',
+    );
+    const targetList = targetColumn.querySelector<HTMLElement>('.cinder-kanban-board__cards');
+
+    expect(placeholder).not.toBeNull();
+    expect(Array.from(targetList?.children ?? []).indexOf(placeholder as Element)).toBe(1);
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+
+    expect(container.querySelector('.cinder-kanban-board__drop-placeholder')).toBeNull();
+    const [nextColumns, change] = requiredValue(onColumnsChange.mock.calls[0]);
+    expect(requiredValue(nextColumns[1]).cards.map(getCardKey)).toEqual(['c', 'a']);
+    expect(change).toMatchObject({ toColumnKey: 'doing', toIndex: 1 });
+  });
+
+  test('cross-column pointer drag ignores a horizontal lane below the target drop zone', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    installPointerGeometry(container);
+    const columns = Array.from(
+      container.querySelectorAll<HTMLElement>('.cinder-kanban-board__column'),
+    );
+    const targetColumn = requiredInstance(requiredValue(columns[1]), HTMLElement);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    await fireEvent.pointerMove(handle, {
+      clientX: 240,
+      clientY: 220,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnimationFrame();
+
+    expect(targetColumn.querySelector('.cinder-kanban-board__drop-placeholder')).toBeNull();
+
+    await fireEvent.pointerUp(window, { pointerId: 1, pointerType: 'mouse' });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).toBeNull();
+    expect(container.querySelector('.cinder-kanban-board__drop-placeholder')).toBeNull();
+    expect(handle.getAttribute('aria-pressed')).toBe('false');
+    expect(onColumnsChange).not.toHaveBeenCalled();
+  });
+
+  test('cross-column pointer drag commits when pointerup lands outside the handle', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    await fireEvent.pointerMove(handle, {
+      clientX: 240,
+      clientY: 80,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnimationFrame();
+
+    expect(container.querySelector('.cinder-kanban-board__drop-placeholder')).not.toBeNull();
+
+    await fireEvent.pointerUp(window, { pointerId: 1, pointerType: 'mouse' });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).toBeNull();
+    expect(container.querySelector('.cinder-kanban-board__drop-placeholder')).toBeNull();
+    expect(handle.getAttribute('aria-pressed')).toBe('false');
+    const [nextColumns, change] = requiredValue(onColumnsChange.mock.calls[0]);
+    expect(requiredValue(nextColumns[1]).cards.map(getCardKey)).toEqual(['c', 'a']);
+    expect(change).toMatchObject({ toColumnKey: 'doing', toIndex: 1 });
+  });
+
+  test('cross-column pointer drag commits the latest target when released before the move frame', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    await fireEvent.pointerMove(handle, {
+      clientX: 240,
+      clientY: 80,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await fireEvent.pointerUp(window, { pointerId: 1, pointerType: 'mouse' });
+
+    expect(document.querySelector('[data-cinder-drag-preview]')).toBeNull();
+    expect(container.querySelector('.cinder-kanban-board__drop-placeholder')).toBeNull();
+    expect(handle.getAttribute('aria-pressed')).toBe('false');
+    const [nextColumns, change] = requiredValue(onColumnsChange.mock.calls[0]);
+    expect(requiredValue(nextColumns[1]).cards.map(getCardKey)).toEqual(['c', 'a']);
+    expect(change).toMatchObject({ toColumnKey: 'doing', toIndex: 1 });
+  });
+
+  test('cross-column pointer drag reserves space in an empty target column', async () => {
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    await fireEvent.pointerMove(handle, {
+      clientX: 460,
+      clientY: 4,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnimationFrame();
+
+    const columns = Array.from(
+      container.querySelectorAll<HTMLElement>('.cinder-kanban-board__column'),
+    );
+    const targetColumn = requiredInstance(requiredValue(columns[2]), HTMLElement);
+
+    expect(targetColumn.querySelector('.cinder-kanban-board__drop-placeholder')).not.toBeNull();
+    expect(targetColumn.querySelector('.cinder-kanban-board__empty')).toBeNull();
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+  });
+
+  test('pointercancel clears cross-column target placeholder without committing', async () => {
+    const { container, onColumnsChange } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    await fireEvent.pointerMove(handle, {
+      clientX: 240,
+      clientY: 80,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await waitForAnimationFrame();
+
+    expect(container.querySelector('.cinder-kanban-board__drop-placeholder')).not.toBeNull();
+
+    await fireEvent.pointerCancel(handle, { pointerId: 1, pointerType: 'mouse' });
+
+    expect(container.querySelector('.cinder-kanban-board__drop-placeholder')).toBeNull();
+    expect(onColumnsChange).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Regression: drop-target filter must exclude the dragged card in both
+  // keyboard-drag state (--lifted) and pointer-drag state (--placeholder).
+  //
+  // Before the fix, locatePointerTarget filtered rows by
+  // !row.classList.contains('cinder-sortable-item--lifted'). During a pointer
+  // drag the lifted card carries cinder-sortable-item--placeholder instead, so
+  // the dragged card was NOT excluded — skewing midpoint calculations. The fix
+  // filters by data-key, which is present and stable in both drag states.
+  //
+  // The tests below verify the class-state invariant that the old filter would
+  // have broken: data-key is the stable exclusion marker across pointer and
+  // keyboard drag states.
+  // ---------------------------------------------------------------------------
+
+  test('pointer drag: dragged row gets --placeholder (not --lifted) — old class filter would miss it', async () => {
+    // This test documents the core of the regression. During a pointer drag the
+    // dragged row carries cinder-sortable-item--placeholder, NOT --lifted. The
+    // old locatePointerTarget filter excluded only --lifted rows, so the dragged
+    // card would be included in midpoint calculations during pointer drags.
+    const { container } = renderBoard();
+    installPointerGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    const alphaRow = requiredInstance(container.querySelector('[data-key="a"]'), HTMLElement);
+    // The class the old filter keyed on is NOT present during a pointer drag.
+    expect(alphaRow?.classList.contains('cinder-sortable-item--lifted')).toBe(false);
+    // The actual class during a pointer drag IS present — and carries the data-key
+    // that the fixed filter now uses to identify and exclude the dragged row.
+    expect(alphaRow?.classList.contains('cinder-sortable-item--placeholder')).toBe(true);
+    // data-key is present and stable regardless of drag state.
+    expect(alphaRow?.getAttribute('data-key')).toBe('a');
+
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+  });
+
+  test('keyboard drag: dragged row gets --lifted (not --placeholder) — data-key filter still excludes it', async () => {
+    // Mirror of the previous test for keyboard drags. data-key is present in
+    // both states, making it the correct stable exclusion marker.
+    const { container } = renderBoard();
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+
+    await fireEvent.keyDown(handle, { key: ' ' });
+
+    const alphaRow = requiredInstance(container.querySelector('[data-key="a"]'), HTMLElement);
+    expect(alphaRow?.classList.contains('cinder-sortable-item--lifted')).toBe(true);
+    expect(alphaRow?.classList.contains('cinder-sortable-item--placeholder')).toBe(false);
+    expect(alphaRow?.getAttribute('data-key')).toBe('a');
+
+    await fireEvent.keyDown(handle, { key: 'Escape' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Coverage gap: multi-position pointer drag within a single column
+// ---------------------------------------------------------------------------
+//
+// Companion to the SortableList test of the same name — but NOT a bug-fix
+// test. KanbanBoard supplies its own `getPointerTarget` (locatePointerTarget
+// in kanban-board-helpers.ts), which already resolved rows via
+// `cardList.children` rather than a `:scope > selector` querySelectorAll
+// call, so it was never affected by happy-dom's missing `:scope` combinator
+// support — there is no equivalent fix in kanban-board.svelte or
+// kanban-board-helpers.ts, and none was needed. What was missing was
+// coverage: the existing `installPointerGeometry` above assigns each card's
+// getBoundingClientRect override once, closing over a rowIndex computed at
+// setup time, so it goes stale the moment a card actually moves — no
+// existing test could exercise a multi-step reflow. installOrderedCardGeometry
+// recomputes each card's rect from its current DOM position on every call,
+// closing that gap.
+function installOrderedCardGeometry(container: HTMLElement): void {
+  const columnsElement = container.querySelector<HTMLElement>('.cinder-kanban-board__columns');
+  if (columnsElement) columnsElement.getBoundingClientRect = () => makeRect(0, 0, 220, 400);
+
+  const columns = Array.from(
+    container.querySelectorAll<HTMLElement>('.cinder-kanban-board__column'),
+  );
+  columns.forEach((column) => {
+    column.getBoundingClientRect = () => makeRect(0, 0, 200, 400);
+    const cardList = column.querySelector<HTMLElement>('.cinder-kanban-board__cards');
+    if (cardList) cardList.getBoundingClientRect = () => makeRect(0, 0, 200, 400);
+  });
+
+  const cards = Array.from(container.querySelectorAll<HTMLElement>('[data-sortable-row]'));
+  cards.forEach((card) => {
+    card.getBoundingClientRect = () => {
+      const parent = card.parentElement;
+      const siblingRows = parent
+        ? Array.from(parent.children).filter((child) => child.hasAttribute('data-sortable-row'))
+        : [];
+      const index = siblingRows.indexOf(card);
+      const top = Math.max(0, index) * 40;
+      return makeRect(0, top, 180, 40);
+    };
+  });
+}
+
+describe('KanbanBoard multi-position pointer drag', () => {
+  function makeSingleColumnBoard(): KanbanBoardColumn<Card>[] {
+    return [
+      {
+        id: 'todo',
+        title: 'To do',
+        cards: [
+          { id: 'a', title: 'Alpha' },
+          { id: 'b', title: 'Beta' },
+          { id: 'c', title: 'Gamma' },
+          { id: 'd', title: 'Delta' },
+          { id: 'e', title: 'Epsilon' },
+        ],
+      },
+    ];
+  }
+
+  test('a drag spanning several cards in one column advances past more than one position', async () => {
+    const onColumnsChange = mock();
+    const { container } = render(KanbanBoard as any, {
+      props: {
+        columns: makeSingleColumnBoard(),
+        getCardKey,
+        getCardLabel,
+        onColumnsChange,
+        label: 'Work board',
+        card: cardSnippet(),
+      },
+    });
+    installOrderedCardGeometry(container);
+    const handle = requiredInstance(
+      container.querySelector('[aria-label="Move Alpha"]'),
+      HTMLElement,
+    );
+    installPointerCapture(handle);
+
+    await fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 10,
+      clientY: 20,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+
+    // Drag down in small increments, letting a rAF frame settle after each
+    // one — the scenario the bug report described as "freezing after one
+    // position". Cards are 40px tall; this crosses all five.
+    for (let y = 30; y <= 190; y += 10) {
+      await fireEvent.pointerMove(handle, {
+        clientX: 10,
+        clientY: y,
+        pointerId: 1,
+        pointerType: 'mouse',
+      });
+      await waitForAnimationFrame();
+    }
+    await fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+
+    expect(onColumnsChange).toHaveBeenCalledTimes(1);
+    const [nextColumns, change] = requiredValue(onColumnsChange.mock.calls[0]);
+    expect(requiredValue(nextColumns[0]).cards.map(getCardKey)).toEqual(['b', 'c', 'd', 'e', 'a']);
+    expect(change).toMatchObject({
+      type: 'card',
+      fromColumnKey: 'todo',
+      toColumnKey: 'todo',
+      fromIndex: 0,
+      toIndex: 4,
+    });
+  });
+});
+
+describe('KanbanBoard icon sourcing', () => {
+  // The existing render-output tests above pass unchanged regardless of which
+  // import path ChevronDown comes from, so a bad-faith implementation could
+  // leave the non-tree-shaken public barrel import in place and still pass
+  // every rendering assertion. This is a source-level guard against that.
+  test('imports ChevronDown via the lucide-svelte deep-import path, not the public icons barrel', async () => {
+    const source = await Bun.file(new URL('./kanban-board.svelte', import.meta.url)).text();
+    expect(source).toContain("import ChevronDown from 'lucide-svelte/icons/chevron-down';");
+    expect(source).not.toContain('@repo/cinder');
+  });
+});

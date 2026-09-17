@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "description": "Accessible label for the chart. Required for screen readers."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional description rendered below the label."
+    },
+    "height": {
+      "type": "number",
+      "description": "Pixel height of the chart viewport. Default `280`."
+    },
+    "xAxis": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "tickCount": {
+          "type": "number"
+        },
+        "tickLabelRotation": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Configuration for the x-axis label and tick count."
+    },
+    "yAxis": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "tickCount": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Configuration for the y-axis label and tick count."
+    },
+    "legendPosition": {
+      "enum": ["top", "bottom", "none"],
+      "description": "Where to render the series legend relative to the chart. Default `top`."
+    },
+    "hiddenSeriesIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of series currently hidden from the chart. Can be two-way bound with `bind:hiddenSeriesIds`."
+    },
+    "loading": {
+      "type": "boolean",
+      "description": "Whether the chart is in a loading state. Default `false`."
+    },
+    "dataTableCaption": {
+      "type": "string",
+      "description": "Custom data table caption; falls back to `label`."
+    },
+    "dataTableVisibility": {
+      "enum": ["screen-reader-only", "visible", "hidden"],
+      "description": "Controls data table visibility. Default `screen-reader-only`."
+    },
+    "maximumInteractivePoints": {
+      "type": "number",
+      "description": "Maximum number of interactive focus targets before keyboard navigation is disabled. Default `500`."
+    },
+    "theme": {
+      "type": "object",
+      "properties": {
+        "foreground": {
+          "type": "string"
+        },
+        "muted": {
+          "type": "string"
+        },
+        "grid": {
+          "type": "string"
+        },
+        "background": {
+          "type": "string"
+        },
+        "palette": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Partial visual theme override. Omitted fields inherit the surrounding application."
+    },
+    "tooltip": {
+      "type": "boolean",
+      "description": "Enable the default visual tooltip. Custom snippet tooltips are available in the TypeScript API."
+    },
+    "class": {
+      "type": "string",
+      "description": "Custom class applied to the root element."
+    },
+    "series": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "y": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": ["x"]
+            }
+          },
+          "color": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": ["data", "id", "label"]
+      },
+      "description": "Series to render as one or more connected line paths."
+    }
+  },
+  "additionalProperties": false,
+  "required": ["label", "series"],
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "empty",
+        "reason": "function-or-snippet"
+      },
+      {
+        "name": "loadingContent",
+        "reason": "function-or-snippet"
+      },
+      {
+        "name": "mark",
+        "reason": "function-or-snippet",
+        "description": "Per-series renderer override. The chart retains scales, guides, focus, and data-table semantics."
+      }
+    ]
+  }
+}

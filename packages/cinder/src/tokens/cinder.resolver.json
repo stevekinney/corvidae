@@ -1,0 +1,70 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/resolver.json",
+  "version": "2025.10",
+  "sets": {
+    "foundation": {
+      "sources": [
+        {
+          "$ref": "sets/foundation.tokens.json"
+        },
+        {
+          "$ref": "sets/semantic.tokens.json"
+        },
+        {
+          "$ref": "sets/colors.tokens.json"
+        },
+        {
+          "$ref": "sets/components.tokens.json"
+        }
+      ]
+    }
+  },
+  "modifiers": {
+    "theme": {
+      "contexts": {
+        "light": [
+          {
+            "$ref": "themes/light.tokens.json"
+          }
+        ],
+        "dark": [
+          {
+            "$ref": "themes/dark.tokens.json"
+          }
+        ]
+      },
+      "default": "light"
+    },
+    "motion": {
+      "contexts": {
+        "default": [
+          {
+            "$ref": "modes/motion-default.tokens.json"
+          }
+        ],
+        "reduced": [
+          {
+            "$ref": "modes/motion-reduced.tokens.json"
+          }
+        ],
+        "forced-reduced-motion": [
+          {
+            "$ref": "modes/motion-forced-reduced.tokens.json"
+          }
+        ]
+      },
+      "default": "default"
+    }
+  },
+  "resolutionOrder": [
+    {
+      "$ref": "#/sets/foundation"
+    },
+    {
+      "$ref": "#/modifiers/theme"
+    },
+    {
+      "$ref": "#/modifiers/motion"
+    }
+  ]
+}

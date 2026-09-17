@@ -1,0 +1,79 @@
+import type { Snippet } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
+import type { HTMLInputAttributes } from 'svelte/elements';
+
+export type InputType =
+  'text' | 'email' | 'password' | 'search' | 'tel' | 'time' | 'url' | 'date' | 'number';
+
+/** Visual style of the input. `"code"` applies the shared monospace metric set (font-family, font-size, line-height, tab-size) used for source-like values such as regular expressions, URIs, and identifiers. */
+export type InputVariant = 'default' | 'code';
+
+type InputAddonProps = (
+  | { leading?: never; leadingInteractive?: never; trailing?: never; trailingInteractive?: never }
+  | {
+      leading: Snippet;
+      /** When true, the leading adornment is interactive and included in the accessibility tree. Default `false`. */
+      leadingInteractive?: boolean;
+      trailing?: never;
+      trailingInteractive?: never;
+    }
+  | {
+      leading?: never;
+      leadingInteractive?: never;
+      trailing: Snippet;
+      /** When true, the trailing adornment is interactive and included in the accessibility tree. Default `false`. */
+      trailingInteractive?: boolean;
+    }
+  | {
+      leading: Snippet;
+      /** When true, the leading adornment is interactive and included in the accessibility tree. Default `false`. */
+      leadingInteractive?: boolean;
+      trailing: Snippet;
+      /** When true, the trailing adornment is interactive and included in the accessibility tree. Default `false`. */
+      trailingInteractive?: boolean;
+    }
+) & {
+  /** Additional class names applied to the grouped control frame when leading or trailing content is present. */
+  groupClassName?: string;
+};
+
+export type InputProps = Omit<HTMLInputAttributes, 'class'> &
+  InputAddonProps & {
+    /** HTML `id` for the underlying input, used to associate the `<label>` and ARIA attributes. Required. */
+    id: string;
+    /** Bindable current text value of the input. */
+    value: string;
+    /** Intercept a proposed value before the bindable value is written. Return a replacement value to transform it. */
+    onValueChangeRequest?: (next: string) => string | void;
+    /** Notify after the bindable value has been committed. */
+    onValueChange?: (next: string) => void;
+    /** Visible label text rendered above the input and linked via `for`/`id`. */
+    label?: string;
+    /**
+     * Whether the `label` is visibly rendered. Set `false` to visually hide
+     * it while keeping it programmatically associated.
+     * @default true
+     */
+    labelVisible?: boolean;
+    /** Helper text rendered below the input and associated via `aria-describedby`. */
+    description?: string;
+    /** Error message rendered below the input; also sets `aria-invalid` on the input. */
+    error?: string;
+    /** When true, disables the input, matching the native `disabled` attribute. */
+    disabled?: boolean;
+    /** Marks the input as required for form validation, matching the native `required` attribute. */
+    required?: boolean;
+    /** Input type controlling the browser's built-in validation and keyboard. Default `"text"`. */
+    type?: InputType;
+    /**
+     * Visual style. `"code"` applies a shared monospace metric set (font-family, font-size,
+     * line-height, tab-size) for source-like values such as regular expressions, URIs, or
+     * identifiers.
+     * @default "default"
+     */
+    variant?: InputVariant;
+    /** Attachment for native input access and lifecycle-scoped listeners. */
+    inputAttachment?: Attachment<HTMLInputElement>;
+    /** Custom class merged with `.cinder-input`. */
+    class?: string;
+  };

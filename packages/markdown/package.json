@@ -1,0 +1,49 @@
+{
+  "name": "@repo/markdown",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",
+    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun test src",
+    "lint:fix": "oxlint --fix --deny-warnings --type-aware --tsconfig ./tsconfig.json src"
+  },
+  "dependencies": {
+    "@shikijs/engine-oniguruma": "catalog:",
+    "@shikijs/langs": "catalog:",
+    "@shikijs/types": "catalog:",
+    "@types/mdast": "catalog:",
+    "@types/unist": "catalog:",
+    "comlink": "catalog:",
+    "diff-match-patch": "catalog:",
+    "hast-util-sanitize": "catalog:",
+    "js-yaml": "catalog:",
+    "rehype-katex": "catalog:",
+    "rehype-sanitize": "catalog:",
+    "rehype-stringify": "catalog:",
+    "remark-gfm": "catalog:",
+    "remark-math": "catalog:",
+    "remark-parse": "catalog:",
+    "remark-rehype": "catalog:",
+    "remark-stringify": "catalog:",
+    "shiki": "catalog:",
+    "unified": "catalog:",
+    "unist-util-visit": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/typescript-configuration": "workspace:*",
+    "@types/bun": "catalog:",
+    "@types/diff-match-patch": "catalog:",
+    "@types/hast": "catalog:",
+    "@types/js-yaml": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": [
+    "**/render-worker.ts"
+  ]
+}

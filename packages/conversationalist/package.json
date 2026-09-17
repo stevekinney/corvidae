@@ -1,0 +1,31 @@
+{
+  "name": "@repo/conversationalist",
+  "description": "A TypeScript library for managing AI conversation state",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@repo/interoperability": "workspace:*",
+    "@repo/lifecycle": "workspace:*",
+    "zod": "catalog:",
+    "js-yaml": "catalog:",
+    "@anthropic-ai/sdk": "catalog:"
+  },
+  "devDependencies": {
+    "@google/genai": "catalog:",
+    "@types/bun": "catalog:",
+    "openai": "catalog:",
+    "@repo/typescript-configuration": "workspace:*",
+    "oxlint": "catalog:",
+    "typescript": "catalog:",
+    "@types/js-yaml": "catalog:"
+  },
+  "private": true
+}

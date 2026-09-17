@@ -1,0 +1,96 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      description: 'Unique identifier for the control.',
+    },
+    label: {
+      type: 'string',
+      description: 'Accessible label for the group.',
+    },
+    name: {
+      type: 'string',
+      description:
+        'Native form field name. Renders hidden input(s) carrying the selected value(s).',
+    },
+    labelVisible: {
+      type: 'boolean',
+      description:
+        'Whether the label is visibly rendered. Set `false` to visually hide it\nwhile keeping it available to assistive technology.',
+      default: true,
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Disable the whole control.',
+    },
+    size: {
+      enum: ['sm', 'md', 'lg'],
+      description:
+        'Requested visual size of the control. Defaults to `"md"`. The resolved\nsize is reflected as `data-cinder-size` on the root; when\n`density="toolbar"` is set, the resolved size is forced to `"sm"` and any\nexplicit `size` value is ignored. `size="md"` option text uses\n`--cinder-text-sm`; `size="sm"` and `density="toolbar"` use\n`--cinder-text-xs`; `size="lg"` uses `--cinder-text-sm`.',
+    },
+    density: {
+      const: 'toolbar',
+      description:
+        'Opt the control into compact toolbar sizing so it lines up cleanly with\nsibling `Button` (size="sm"), `Chip` (density="toolbar"), and other\ntoolbar elements. Toolbar density resolves to the compact `"sm"` font and\npadding scale — when set, any explicit `size` value is ignored and the\nresolved size (`data-cinder-size`) is `"sm"` — while pinning the option\n`min-block-size` to `--cinder-control-height-sm` so the bounding height\nmatches sibling toolbar controls.',
+    },
+    orientation: {
+      enum: ['horizontal', 'vertical'],
+      description: 'Layout orientation.',
+    },
+    detached: {
+      type: 'boolean',
+      description: 'Render segments as detached individual buttons instead of a unified strip.',
+    },
+    fullWidth: {
+      type: 'boolean',
+      description: 'Stretch the control to fill available width.',
+    },
+    variant: {
+      enum: ['radiogroup', 'tablist', 'navigation'],
+      description: 'ARIA interaction pattern. Use `navigation` for route-backed links.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-segmented-control`.',
+    },
+    selectionMode: {
+      enum: ['single', 'multiple'],
+      description:
+        'Selection mode. `"single"` allows exactly one segment to be selected at a time; `"multiple"` allows any number of segments to be selected simultaneously. Default `"single"`.',
+    },
+    selectionRequired: {
+      type: 'boolean',
+      description:
+        'When true, clicking the already-selected option is a no-op.\nWhen false, clicking the selected option clears value to undefined.',
+      default: true,
+    },
+  },
+  additionalProperties: false,
+  required: ['id', 'label'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Child `<Segment>` elements.',
+      },
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+        description: 'Called when the selected value changes (single mode only).',
+      },
+      {
+        name: 'value',
+        reason: 'generic-type-parameter',
+        description: 'Currently selected value.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

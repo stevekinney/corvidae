@@ -1,0 +1,894 @@
+/**
+ * `dispatchChildRun` — the lower-level child dispatch primitive (AB-50).
+ *
+ * `createSubagentTool` is built on top of this: it wraps a
+ * `RunnableAgent.run()` call with parent-child correlation (`childRunId`,
+ * `parentRunId`, `agentName`), a composed abort signal so a parent abort
+ * and a child-targeted abort both stop the child without either reaching
+ * the child's siblings, and the four `multiagent.child-workflow.*`
+ * lifecycle events (started/completed/failed/aborted). Code that dispatches
+ * a subagent directly — not only through `createSubagentTool` — can retain
+ * the returned `ChildRunHandle` to iterate the child's own event stream,
+ * await its result, or abort it independently of any other concurrently
+ * retained child handle.
+ *
+ * `createChildRunRegistry()` is the opt-in mechanism behind `AgentRun`'s
+ * `children()`/`abortChild()` (documented in
+ * `documentation/operative-type-safe-api.md`'s Required capabilities
+ * table). A registry is not created or consulted automatically — a caller
+ * that wants a running `AgentRun` to discover children dispatched from
+ * inside its own tool calls constructs one registry and supplies it via
+ * `AgentRunContext.childRegistry` (through `RunnableAgent.run()`) or
+ * `createAgentRun`'s equivalent `childRegistry` option.
+ *
+ * AB-233: for a `createSubagentTool` reached through the ordinary
+ * `createAgent`-driven agent loop, that one registry is now enough —
+ * `run-step.ts`'s toolbox execute call site threads THIS run's own
+ * `RunOptions.childRegistry` (derived from `AgentRunContext.childRegistry`)
+ * into every tool call's per-execution `ToolContext.executionContext`, and
+ * `createSubagentTool` reads it from there at execute time, in preference
+ * to `parentContext.registry`. A tool instance built once and reused by
+ * two different `agent.run()` calls therefore registers each call's
+ * children into THAT call's own registry — never a registry captured once
+ * at tool-construction time, and never the other call's registry.
+ * `parentContext.registry` remains supported as a construction-time
+ * default: a direct `dispatchChildRun` caller (bypassing `createSubagentTool`
+ * entirely, or a tool built outside the ordinary loop, where no
+ * per-execution `executionContext` reaches it) still supplies it exactly
+ * as before. `createSubagentTool` call sites that don't need discovery stay
+ * exactly as simple as before: neither `AgentRunContext.childRegistry` nor
+ * `parentContext`/`registry` is required.
+ *
+ * `listChildRuns(registry, parentRunId)` (AB-90 child ab90-02, AB-222) is a
+ * relationship-query function over the same registry: it enumerates a
+ * parent's children and each one's current terminal status (or `undefined`
+ * while still running) without polling each child's own `ChildRunHandle`.
+ * Deliberately not `bureau.*`-namespaced — see the function's own docstring.
+ */
+
+import type { RuntimeServices, Subscription } from '@repo/lifecycle';
+import { createDefaultRuntimeServices } from '@repo/lifecycle';
+
+import type { RunEvent } from './agent-run';
+import {
+  ChildWorkflowAbortedEvent,
+  ChildWorkflowCompletedEvent,
+  ChildWorkflowFailedEvent,
+  ChildWorkflowStartedEvent,
+} from './events';
+import type { LivenessAssessment, LivenessObservable, LivenessSnapshot } from './liveness';
+import type { DelegatedAuthority } from './providers/policy.ts';
+import type { Effort, ProviderName } from './providers/types.ts';
+import type { AgentInput, RunnableAgent } from './runnable-agent';
+import type { CleanupAcknowledgement, RunResult } from './types';
+
+// ---------------------------------------------------------------------------
+// ChildRunHandle — the primitive's own return value
+// ---------------------------------------------------------------------------
+
+/**
+ * The handle `dispatchChildRun` returns: a child run's own identity
+ * (`childRunId`, `parentRunId`, `agentName`) alongside the same
+ * iterate/await/abort/dispose surface `AgentRun` exposes for the run it
+ * wraps. Two concurrently retained handles never share identity, an
+ * abort signal, or an event stream — aborting one, or iterating one's
+ * events, never touches the other.
+ */
+export interface ChildRunHandle<
+  O = never,
+  H extends boolean = false,
+> extends AsyncIterable<RunEvent> {
+  /** This child's own run identifier — distinct from `parentRunId`. */
+  readonly childRunId: string;
+  /** The parent run's identifier, as supplied to `dispatchChildRun`. */
+  readonly parentRunId: string;
+  /** The child's agent name, as supplied to `dispatchChildRun`. */
+  readonly agentName: string;
+  /** Resolves to the child's terminal `RunResult`. Cached, like `AgentRun.result()`. */
+  result(): Promise<RunResult<O, H>>;
+  /**
+   * Aborts only this child. A parent-composed abort (the `signal` passed to
+   * `dispatchChildRun`) reaches the same underlying run; this method reaches
+   * it independently, so a sibling dispatched from the same parent is
+   * unaffected either way.
+   */
+  abort(reason?: string): void;
+  /** Releases this handle's resources. Equivalent to `abort()` if still in flight. */
+  [Symbol.dispose](): void;
+}
+
+// ---------------------------------------------------------------------------
+// ChildRunRegistry — the opt-in discovery/cancellation backing store
+// ---------------------------------------------------------------------------
+
+/** A child's status as tracked by a `ChildRunRegistry`. */
+export type ChildRunStatus = 'running' | 'completed' | 'failed' | 'aborted';
+
+/**
+ * A parent-owned, read-only description of one child — "enough edge
+ * information to reassemble the tree without promoting any child to an
+ * independently owned resource" (the Child discovery capability in
+ * `documentation/operative-type-safe-api.md`).
+ */
+export interface ChildRunDescriptor {
+  readonly id: string;
+  readonly parentId: string;
+  readonly agentName: string;
+  readonly durable: boolean;
+  readonly status: ChildRunStatus;
+  /**
+   * Present once `status` is terminal AND the child actually produced a
+   * `RunResult` — absent while still `running`, and also absent for a
+   * `'failed'` descriptor settled before one existed: `agent.run()`
+   * throwing synchronously, or `agentRun.result()` rejecting (or itself
+   * throwing) before resolving one. Those two paths have no `RunResult` to
+   * report — the alternative would be fabricating one — so `'failed'`
+   * genuinely can carry `result === undefined`; only `'completed'` and
+   * `'aborted'` are guaranteed to carry one.
+   */
+  readonly result?: RunResult | undefined;
+  /**
+   * This child's own most recently observed `LivenessAssessment` (AB-88's
+   * `LivenessSnapshot.assessment`), populated once `attachLiveness` has
+   * received the child's first `subscribeSnapshot` delivery — which, per
+   * AB-88's AC10, happens synchronously, so this is set before
+   * `dispatchChildRun` returns the handle whenever a registry is supplied.
+   * Absent when no registry-attached liveness observable exists yet for
+   * this child (a synchronous `agent.run()` throw settles the child before
+   * any liveness was ever attached) — AB-216's rollup treats an absent
+   * `assessment` the same as a `'terminal'` one: excluded from the
+   * worst-child fold, never a stale value standing in for real evidence.
+   */
+  readonly assessment?: LivenessAssessment | undefined;
+}
+
+/**
+ * The read surface `AgentRun.children()`/`.abortChild()` delegate to.
+ * `dispatchChildRun` populates a registry passed to it via `register`;
+ * nothing here starts, or is required for, dispatching a child — a caller
+ * that never constructs a registry gets an always-empty `children()` and a
+ * no-op `abortChild()`, never a throw.
+ */
+export interface ChildRunRegistry {
+  /** A snapshot of every child registered so far, in registration order. */
+  children(): readonly ChildRunDescriptor[];
+  /**
+   * Aborts the child named `childId`. Idempotent: an unknown id, or one
+   * already terminal, is not an error — matching `abort()`'s own rule.
+   * Never propagates to any other registered child.
+   */
+  abortChild(childId: string, reason?: string): void;
+  /**
+   * Subscribes to "some child's `ChildRunDescriptor.assessment` may have
+   * changed" (AB-216) — fired after `attachLiveness` records a new
+   * assessment from a child's own `subscribeSnapshot` delivery. Carries no
+   * payload; a subscriber re-reads `children()` to fold the current set.
+   * A parent's own liveness rollup (`packages/operative/src/liveness/`)
+   * subscribes to this to recompute `LivenessSnapshot.worstChildAssessment`
+   * without polling.
+   */
+  subscribeLiveness(observer: () => void): Subscription;
+  /**
+   * Resolves once every child registered so far has its own `closed()`
+   * (AB-37/AB-204's cleanup acknowledgement, reached through whichever
+   * child accessor attached it — see `attachClosed`) genuinely settled.
+   * Never rejects: each child's own `closed()` contract already never
+   * rejects, and a child with no `closed` attached (a synchronous
+   * `agent.run()` throw settled it before any handle existed to attach —
+   * see `attachClosed`'s doc comment) is treated as having nothing left to
+   * await, the same declared-gap treatment `ChildRunDescriptor.assessment`
+   * gets for that identical case.
+   *
+   * A child registered by another caller WHILE this call is pending is
+   * folded in too — this re-reads the registry until the set of attached
+   * `closed` functions stops growing, so `AgentRun.closed()` (AB-211)
+   * never reports `completed` while a child dispatched mid-await is still
+   * outstanding.
+   */
+  awaitChildrenClosed(): Promise<void>;
+}
+
+interface RegisteredChild {
+  descriptor: ChildRunDescriptor;
+  abort: (reason?: string) => void;
+  /** Set by `attachLiveness`; released once the child settles or is re-attached. */
+  livenessSubscription?: Subscription | undefined;
+  /** Set by `attachClosed` (AB-211); see that method's doc comment. */
+  closed?: (() => Promise<CleanupAcknowledgement>) | undefined;
+}
+
+/** Internal registration surface `dispatchChildRun` uses; not part of the public read contract. */
+interface ChildRunRegistrar {
+  register(entry: {
+    id: string;
+    parentId: string;
+    agentName: string;
+    durable: boolean;
+    abort: (reason?: string) => void;
+  }): void;
+  settle(id: string, status: Exclude<ChildRunStatus, 'running'>, result?: RunResult): void;
+  /**
+   * Wires a child's own `LivenessObservable` (its `AgentRun`, once
+   * `agent.run()` has returned one — AB-50's `ChildRunHandle` wraps the
+   * same object) into this registry so `ChildRunDescriptor.assessment`
+   * tracks the child's own `LivenessSnapshot.assessment` going forward.
+   * A no-op for an unknown `id` (never registered, or already settled and
+   * removed — this registry never removes entries, so in practice only
+   * "never registered" applies). `dispatchChildRun` calls this once, right
+   * after `agent.run()` returns successfully, never before — the delegated
+   * `RunnableAgent`'s own liveness authority (AB-216's AC5) is read, never
+   * recomputed or overridden here.
+   */
+  attachLiveness(id: string, observable: LivenessObservable<LivenessSnapshot>): void;
+  /**
+   * Wires a child's own `closed()` (AB-37/AB-204's cleanup acknowledgement)
+   * into this registry so `awaitChildrenClosed` (AB-211's parent-`closed()`
+   * integration point) can gate on the child's genuine settlement rather
+   * than its liveness alone — a child whose `result()` has resolved can
+   * still have a `closed()` pending (an in-flight tool-drain wait or
+   * run-owned hook, AB-204's own AC7/AC8). A no-op for an unknown `id`,
+   * mirroring `attachLiveness`. `dispatchChildRun` calls this once, right
+   * after `agent.run()` returns successfully, guarded by a runtime check
+   * that the returned handle actually implements `closed()` — a
+   * third-party or test-double `RunnableAgent` is not required to (see
+   * `hasLivenessObservable`'s identical rationale for the same defensive
+   * posture). Never called eagerly on the child's behalf otherwise: calling
+   * a child's `closed()` before the caller does would itself count as
+   * "the caller called it", which is exactly what
+   * `createClosedAcknowledgement`'s own fast-path memoization assumes never
+   * happens on its behalf.
+   */
+  attachClosed(id: string, closed: () => Promise<CleanupAcknowledgement>): void;
+}
+
+/** A `ChildRunRegistry` a `dispatchChildRun` caller can also register children into. */
+export type MutableChildRunRegistry = ChildRunRegistry & ChildRunRegistrar;
+
+/**
+ * Structural guard for {@link MutableChildRunRegistry}. Exists so a
+ * per-execution value read off an opaque bag (e.g.
+ * `ToolContext.executionContext['childRegistry']`, AB-233) can be narrowed
+ * from `unknown` at the point of use without a cast — the value's static
+ * type at the point it was stored is often the read-only
+ * {@link ChildRunRegistry} (e.g. `RunOptions.childRegistry`), even though
+ * the concrete object `createChildRunRegistry()` produces always satisfies
+ * the full mutable surface.
+ */
+export function isMutableChildRunRegistry(value: unknown): value is MutableChildRunRegistry {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Partial<MutableChildRunRegistry>).register === 'function' &&
+    typeof (value as Partial<MutableChildRunRegistry>).settle === 'function' &&
+    typeof (value as Partial<MutableChildRunRegistry>).attachLiveness === 'function' &&
+    typeof (value as Partial<MutableChildRunRegistry>).attachClosed === 'function' &&
+    typeof (value as Partial<MutableChildRunRegistry>).children === 'function' &&
+    typeof (value as Partial<MutableChildRunRegistry>).abortChild === 'function' &&
+    typeof (value as Partial<MutableChildRunRegistry>).subscribeLiveness === 'function' &&
+    typeof (value as Partial<MutableChildRunRegistry>).awaitChildrenClosed === 'function'
+  );
+}
+
+/**
+ * The complete, closed value sets for {@link DelegatedAuthority}'s two
+ * literal-typed narrowing fields — kept local to this guard (not imported
+ * from `providers/types.ts`, which declares no such runtime array for
+ * either union) so {@link isDelegatedAuthority} can reject a value outside
+ * either union rather than merely checking its JS type.
+ */
+const VALID_EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+const VALID_PROVIDER_NAMES: readonly ProviderName[] = [
+  'anthropic',
+  'openai',
+  'gemini',
+  'voyage',
+  'ollama',
+];
+
+/** Type predicate over `unknown`, not a narrowed-but-unverified static type
+ *  — see {@link isDelegatedAuthority}'s own doc comment for why checking
+ *  against the closed value set (not just `typeof`) matters here. */
+function isEffort(value: unknown): value is Effort {
+  return typeof value === 'string' && (VALID_EFFORTS as readonly string[]).includes(value);
+}
+
+/** Type predicate over `unknown` — see {@link isEffort}. */
+function isProviderName(value: unknown): value is ProviderName {
+  return typeof value === 'string' && (VALID_PROVIDER_NAMES as readonly string[]).includes(value);
+}
+
+/**
+ * Structural guard for {@link DelegatedAuthority}. Exists so a
+ * per-execution value read off an opaque bag (e.g.
+ * `ToolContext.executionContext['delegatedAuthority']`, AB-300) can be
+ * narrowed from `unknown` at the point of use without a cast — mirroring
+ * {@link isMutableChildRunRegistry}'s identical rationale for
+ * `childRegistry`. `policyVersion` is `DelegatedAuthority`'s only required
+ * field; the three narrowing fields are each optional, so this only checks
+ * their type when present rather than requiring all three.
+ *
+ * Every check is against the CLOSED value set each field actually declares,
+ * not merely `typeof`: an out-of-union `maximumEffort` string (e.g.
+ * `'supermax'`) would otherwise pass a bare `typeof === 'string'` check and
+ * reach `attenuateDelegatedAuthority`'s `narrowerEffort`, whose
+ * `EFFORT_ORDER.indexOf` returns `-1` for an unknown tier — silently
+ * WIDENING the effective authority (an unknown tier compares as "lower"
+ * than every real one) rather than narrowing it, exactly the failure mode
+ * this guard exists to prevent forwarding as an apparently-valid grant.
+ * The same reasoning applies to a non-`ProviderName`/non-`string` element
+ * inside `grantedProviders`/`grantedModels`.
+ */
+export function isDelegatedAuthority(value: unknown): value is DelegatedAuthority {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate['policyVersion'] !== 'string') return false;
+
+  const grantedProviders = candidate['grantedProviders'];
+  if (
+    grantedProviders !== undefined &&
+    (!Array.isArray(grantedProviders) || !grantedProviders.every(isProviderName))
+  ) {
+    return false;
+  }
+
+  const grantedModels = candidate['grantedModels'];
+  if (
+    grantedModels !== undefined &&
+    (!Array.isArray(grantedModels) || !grantedModels.every((model) => typeof model === 'string'))
+  ) {
+    return false;
+  }
+
+  const maximumEffort = candidate['maximumEffort'];
+  if (maximumEffort !== undefined && !isEffort(maximumEffort)) return false;
+
+  return true;
+}
+
+/**
+ * Structural guard for a "child lifecycle handle" (AB-50's `ChildRunHandle`
+ * wraps one; `dispatchChildRun` also has direct access to it) that actually
+ * implements AB-88's `LivenessObservable` — checked with `typeof`, not
+ * assumed from `RunnableAgent<O, H>.run()`'s declared return type, because
+ * a third-party or test-double `RunnableAgent` implementation can return an
+ * object that satisfies the type only structurally-on-paper (a common
+ * pattern in this repository's own test doubles, which cast `as unknown as
+ * ReturnType<RunnableAgent['run']>` past members they never implement).
+ * Calling `subscribeSnapshot` on such an object would throw at runtime;
+ * this guard keeps `dispatchChildRun` from ever doing that, matching this
+ * module's existing defensive posture toward a misbehaving `RunnableAgent`
+ * (the `agent.run()` / `agentRun.result()` try/catches above).
+ */
+export function hasLivenessObservable(
+  value: unknown,
+): value is LivenessObservable<LivenessSnapshot> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Partial<LivenessObservable<LivenessSnapshot>>).snapshot === 'function' &&
+    typeof (value as Partial<LivenessObservable<LivenessSnapshot>>).subscribeSnapshot === 'function'
+  );
+}
+
+/**
+ * Structural guard mirroring {@link hasLivenessObservable}, for the child's
+ * own `closed()` (AB-37/AB-204's cleanup acknowledgement) that AB-211's
+ * `awaitChildrenClosed` gates a parent's `closed()` on. Checked with
+ * `typeof` rather than assumed from `RunnableAgent<O, H>.run()`'s declared
+ * return type for the identical reason `hasLivenessObservable` is: a
+ * third-party or test-double `RunnableAgent` can return an object that
+ * satisfies `AgentRun` only structurally-on-paper.
+ */
+export function hasClosedAcknowledgement(
+  value: unknown,
+): value is { closed: () => Promise<CleanupAcknowledgement> } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { closed?: unknown }).closed === 'function'
+  );
+}
+
+/**
+ * Creates an empty, in-memory child registry. Construct one per run and
+ * supply it to both `createAgentRun`'s `childRegistry` option and every
+ * `createSubagentTool` this run may dispatch through (via
+ * `parentContext.registry`) to make that run's children discoverable
+ * through `AgentRun.children()`/`.abortChild()`.
+ */
+export function createChildRunRegistry(): MutableChildRunRegistry {
+  const entries = new Map<string, RegisteredChild>();
+  const livenessListeners = new Set<() => void>();
+
+  function notifyLivenessChange(): void {
+    // Isolate each listener the same way `ActiveRunLiveness.notify()` does
+    // (`active-run-liveness.ts`): a throwing listener must not prevent a
+    // later-registered one from being notified, and must not propagate out
+    // of this function — which is reached from inside a child's own
+    // `subscribeSnapshot` delivery (`attachLiveness` below), where an
+    // uncaught throw here would otherwise surface as this registry
+    // breaking that child's own liveness propagation to its OTHER
+    // subscribers, not just this one's bug.
+    const listenerSnapshot = [...livenessListeners];
+    for (const listener of listenerSnapshot) {
+      try {
+        listener();
+      } catch {
+        // The listener's own bug is the listener's problem, not this
+        // registry's or the child's.
+      }
+    }
+  }
+
+  return {
+    register(entry): void {
+      entries.set(entry.id, {
+        descriptor: {
+          id: entry.id,
+          parentId: entry.parentId,
+          agentName: entry.agentName,
+          durable: entry.durable,
+          status: 'running',
+        },
+        abort: entry.abort,
+      });
+    },
+    settle(id, status, result): void {
+      const existing = entries.get(id);
+      if (!existing) return;
+      existing.descriptor = { ...existing.descriptor, status, ...(result ? { result } : {}) };
+      // Release the subscription now — the child's own `subscribeSnapshot`
+      // will already have delivered its one terminal snapshot (AB-88's
+      // AC10) by the time `dispatchChildRun`'s `settle()` runs, so
+      // `descriptor.assessment` is already `'terminal'`; this only stops
+      // holding a `Subscription` object this registry no longer needs.
+      existing.livenessSubscription?.unsubscribe();
+      existing.livenessSubscription = undefined;
+    },
+    attachLiveness(id, observable): void {
+      const existing = entries.get(id);
+      if (!existing) return;
+      existing.livenessSubscription = observable.subscribeSnapshot((snapshot) => {
+        const current = entries.get(id);
+        if (!current) return;
+        current.descriptor = { ...current.descriptor, assessment: snapshot.assessment };
+        notifyLivenessChange();
+      });
+    },
+    attachClosed(id, closed): void {
+      const existing = entries.get(id);
+      if (!existing) return;
+      existing.closed = closed;
+    },
+    async awaitChildrenClosed(): Promise<void> {
+      // Fixed point over the entries map: a child dispatched from inside
+      // another child's own tool call (or any other caller of this same
+      // registry) while this call is already awaiting must still be
+      // folded in — see the interface doc comment on `awaitChildrenClosed`.
+      let awaited = -1;
+      for (;;) {
+        const pending = [...entries.values()]
+          .map((entry) => entry.closed)
+          .filter(
+            (closed): closed is () => Promise<CleanupAcknowledgement> => closed !== undefined,
+          );
+        if (pending.length === awaited) return;
+        awaited = pending.length;
+        await Promise.all(pending.map((closed) => closed()));
+      }
+    },
+    subscribeLiveness(observer): Subscription {
+      livenessListeners.add(observer);
+      let closed = false;
+      return {
+        unsubscribe(): void {
+          if (closed) return;
+          closed = true;
+          livenessListeners.delete(observer);
+        },
+        get closed() {
+          return closed;
+        },
+      };
+    },
+    children(): readonly ChildRunDescriptor[] {
+      // A frozen clone per call, not the registry's own stored object: every
+      // field is already `readonly` at the type level, but that boundary is
+      // compile-time-only — a JavaScript consumer, or any TypeScript code
+      // that crosses it with a cast, could otherwise mutate a returned
+      // descriptor's `status` in place and corrupt this registry's actual
+      // control state (e.g. forcing it to `'completed'` would make a later
+      // `abortChild(id)` treat a still-running child as already terminal and
+      // silently no-op instead of aborting it).
+      return [...entries.values()].map((entry) => Object.freeze({ ...entry.descriptor }));
+    },
+    abortChild(childId, reason): void {
+      const entry = entries.get(childId);
+      if (!entry) return; // unknown id: no-op, never an error
+      if (entry.descriptor.status !== 'running') return; // already terminal: no-op
+      entry.abort(reason);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// listChildRuns — relationship-query function (AB-90 child ab90-02, AB-222)
+// ---------------------------------------------------------------------------
+
+/** A `ChildRunStatus` narrowed to only its terminal members — never `'running'`. */
+export type ChildRunTerminalStatus = Exclude<ChildRunStatus, 'running'>;
+
+/**
+ * One child's summary as returned by {@link listChildRuns}: its identity
+ * plus current terminal status, or `undefined` while still running — never
+ * the `'running'` string a `ChildRunDescriptor.status` carries internally.
+ */
+export interface ChildRunSummary {
+  readonly id: string;
+  readonly parentId: string;
+  readonly agentName: string;
+  readonly durable: boolean;
+  readonly status: ChildRunTerminalStatus | undefined;
+}
+
+/**
+ * Enumerates every child of `parentRunId` known to `registry`, with each
+ * child's current terminal status (`'completed' | 'failed' | 'aborted'`)
+ * or `undefined` while still running — letting a caller inspect a run's
+ * children and their outcomes without polling each child's own
+ * `ChildRunHandle`. Deliberately operative-level, not `bureau.*` (AB-222):
+ * a Bureau-namespaced relationship-query API, if wanted later, wraps this
+ * function rather than being built here.
+ *
+ * Never throws for a `parentRunId` with zero registered children — it
+ * returns an empty array, same as `registry.children()` does for an empty
+ * registry. One registry can (though need not) track children dispatched
+ * from more than one parent run, since `ChildRunDescriptor.parentId` is
+ * per-entry, not per-registry — this function filters to just the
+ * requested parent.
+ */
+export function listChildRuns(
+  registry: ChildRunRegistry,
+  parentRunId: string,
+): readonly ChildRunSummary[] {
+  return registry
+    .children()
+    .filter((child) => child.parentId === parentRunId)
+    .map((child) => ({
+      id: child.id,
+      parentId: child.parentId,
+      agentName: child.agentName,
+      durable: child.durable,
+      status: child.status === 'running' ? undefined : child.status,
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// dispatchChildRun — the primitive itself
+// ---------------------------------------------------------------------------
+
+/** Minimal event-dispatch surface `dispatchChildRun` emits lifecycle events onto. */
+export interface ChildEventEmitter {
+  dispatchEvent(event: Event): boolean;
+}
+
+export interface DispatchChildRunOptions {
+  /** The child's own agent name — distinct from the parent's. */
+  agentName: string;
+  /** The parent run's identifier, stamped on every emitted event and on `parentRunId`. */
+  parentRunId: string;
+  /** The parent's agent name, stamped on every emitted event. Defaults to `''` when omitted. */
+  parentAgentName?: string | undefined;
+  /**
+   * Composed with a private per-child `AbortController`: aborting `signal`
+   * (a parent abort) and calling the returned handle's own `abort()` (a
+   * child-targeted abort) both stop the child; neither reaches a sibling
+   * dispatched from the same parent.
+   */
+  signal?: AbortSignal | undefined;
+  traceContext?: unknown;
+  withTraceContext?: (<T>(parentContext: unknown, fn: () => Promise<T>) => Promise<T>) | undefined;
+  /** When supplied, the four `multiagent.child-workflow.*` events are dispatched onto it. */
+  emitter?: ChildEventEmitter | undefined;
+  /**
+   * True when this child runs as a durable Weft child workflow; false for
+   * an in-process one. `dispatchChildRun` dispatches through
+   * `RunnableAgent.run()` — the in-process route — so this is caller
+   * metadata describing the child's actual route, not derived from it; a
+   * caller dispatching a durable child through a durable-aware
+   * `RunnableAgent` is responsible for passing `durable: true` here to
+   * match.
+   */
+  durable?: boolean | undefined;
+  /** Overrides the generated `childRunId`. Exists for deterministic tests. */
+  childRunId?: string | undefined;
+  /** When supplied, this dispatch registers into it — see `createChildRunRegistry`. */
+  registry?: MutableChildRunRegistry | undefined;
+  /**
+   * AB-64/AB-250 — the child's delegated-authority grant, ALREADY attenuated
+   * (never widened) from whatever grant governs the dispatching parent —
+   * see {@link attenuateDelegatedAuthority}. Threaded to the child through
+   * this dispatch path, not `BureauRunOptions`, per AB-64's decision
+   * record: a per-run `BureauRunOptions` field would let a caller widen a
+   * child's authority by simply constructing a fresh options bag, whereas
+   * this field only ever narrows what `agent.run()` resolves for the
+   * child's own selection. Forwarded to `agent.run()` as
+   * `AgentRunContext.delegatedAuthority`; absent means the child inherits
+   * no additional narrowing beyond whatever its own `RunOptions.selection`
+   * gate already enforces.
+   */
+  delegatedAuthority?: DelegatedAuthority | undefined;
+  /**
+   * The AB-92/AB-252/AB-253 injectable runtime-service seam. Resolved
+   * exactly once at dispatch — omitted, this dispatch mints `childRunId`
+   * (when not overridden) via the real globals through
+   * `createDefaultRuntimeServices()`; a test composes its own deterministic
+   * instance with `createManualRuntimeServices()` for a fully
+   * time-controlled, deterministic child id.
+   */
+  runtime?: RuntimeServices | undefined;
+}
+
+/**
+ * Portable effort tiers, low to high — mirrors `providers/model-catalog.ts`'s
+ * internal (unexported) `EFFORT_ORDER` array; kept local here rather than
+ * imported so this module (a dispatch primitive, not a selection module)
+ * doesn't reach into the catalog module for one five-element constant.
+ */
+const EFFORT_ORDER: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/** The lower (more restrictive) of two optional effort tiers; either side
+ *  absent narrows nothing, matching `DelegatedAuthority.maximumEffort`'s own
+ *  "absent narrows nothing" rule. */
+function narrowerEffort(a: Effort | undefined, b: Effort | undefined): Effort | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return EFFORT_ORDER.indexOf(a) <= EFFORT_ORDER.indexOf(b) ? a : b;
+}
+
+/** The intersection of two optional named lists; either side absent narrows
+ *  nothing (returns the other side unchanged), matching
+ *  `DelegatedAuthority.grantedProviders`/`grantedModels`'s own
+ *  "absent-means-no-op" rule (AB-64's decision record). */
+function intersectGranted<T>(
+  a: readonly T[] | undefined,
+  b: readonly T[] | undefined,
+): readonly T[] | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return a.filter((value) => b.includes(value));
+}
+
+/**
+ * Composes a parent's `DelegatedAuthority` grant with the authority a
+ * dispatch site wants to hand one specific child, producing the child's own
+ * ATTENUATED grant — never wider than either input (AB-64's decision
+ * record: "a child can never select a provider, model, route, effort, cost,
+ * region, or data policy forbidden by any ancestor"). `parent === undefined`
+ * (the dispatching run itself carries no delegated authority, e.g. it is
+ * the top-level run) returns `child` unchanged — nothing above it to narrow
+ * against.
+ *
+ * `grantedProviders`/`grantedModels` intersect (present-and-present narrows
+ * to the overlap; either side absent narrows nothing); `maximumEffort`
+ * takes the lower of the two tiers. The result's `policyVersion` is the
+ * CHILD grant's own version — the version that performed this narrowing —
+ * so a child's attenuation is traceable to the grant that caused it
+ * (`composePolicy`'s own rule for `DelegatedAuthority`-layer exclusions).
+ */
+export function attenuateDelegatedAuthority(
+  parent: DelegatedAuthority | undefined,
+  child: DelegatedAuthority,
+): DelegatedAuthority {
+  if (parent === undefined) return child;
+  return {
+    grantedProviders: intersectGranted(parent.grantedProviders, child.grantedProviders),
+    grantedModels: intersectGranted(parent.grantedModels, child.grantedModels),
+    maximumEffort: narrowerEffort(parent.maximumEffort, child.maximumEffort),
+    policyVersion: child.policyVersion,
+  };
+}
+
+/** True when `result.finishReason` reflects a signal-driven abort. */
+function isAbortedResult(result: RunResult): boolean {
+  return result.finishReason === 'aborted';
+}
+
+/**
+ * Dispatches a child run from `agent`, returning a `ChildRunHandle` that
+ * carries the child's own identity alongside `AgentRun`'s iterate / await /
+ * abort / dispose surface. `createSubagentTool` is implemented on top of
+ * this; a caller may also call it directly to retain a typed handle instead
+ * of going through a tool at all.
+ */
+export function dispatchChildRun<O = never, H extends boolean = false>(
+  agent: RunnableAgent<O, H>,
+  input: AgentInput,
+  options: DispatchChildRunOptions,
+): ChildRunHandle<O, H> {
+  const runtime = options.runtime ?? createDefaultRuntimeServices();
+  const childRunId = options.childRunId ?? runtime.identifiers.next('child');
+  const parentAgentName = options.parentAgentName ?? '';
+  const durable = options.durable ?? false;
+
+  // A private controller so a child-targeted abort() never reaches a
+  // sibling, composed with the parent's signal (when supplied) so a parent
+  // abort stops this child too. `AbortSignal.any` degrades gracefully when
+  // `options.signal` is omitted — the child then only reacts to its own
+  // controller.
+  const childController = new AbortController();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, childController.signal])
+    : childController.signal;
+
+  // Set once `agent.run()` returns a handle (below). Some `RunnableAgent`
+  // implementations cancel only through their own `AgentRun.abort()` and
+  // never observe the `signal` this dispatch composed and passed to
+  // `agent.run()` — the optional `AgentRunContext.signal` parameter, not a
+  // required one. Without also forwarding to the live handle, a
+  // child-targeted `abort()` on such an agent would abort only this
+  // private controller and leave the child itself running, its `result()`
+  // pending forever.
+  const liveAgentRun: { current?: ReturnType<typeof agent.run> | undefined } = {};
+
+  const abort = (reason?: string): void => {
+    childController.abort(reason);
+    liveAgentRun.current?.abort(reason);
+  };
+
+  const correlation = {
+    parentAgentName,
+    parentRunId: options.parentRunId,
+    childAgentName: options.agentName,
+    childRunId,
+  };
+
+  options.registry?.register({
+    id: childRunId,
+    parentId: options.parentRunId,
+    agentName: options.agentName,
+    durable,
+    abort,
+  });
+
+  options.emitter?.dispatchEvent(
+    new ChildWorkflowStartedEvent({
+      ...correlation,
+      input: typeof input === 'string' ? input : '[conversation history]',
+      durable,
+    }),
+  );
+
+  // `RunnableAgent.run()` is documented to start synchronously and can
+  // throw before ever producing a handle (a misbehaving or third-party
+  // implementation). Without this try/catch, that throw would leave the
+  // registry entry `register()` just added permanently stuck at 'running'
+  // — nothing would ever call `settle()` for it, since there is no
+  // `agentRun.result()` promise to attach to.
+  let agentRun: ReturnType<typeof agent.run>;
+  try {
+    agentRun = agent.run(input, {
+      agentName: options.agentName,
+      signal,
+      traceContext: options.traceContext,
+      withTraceContext: options.withTraceContext,
+      ...(options.delegatedAuthority === undefined
+        ? {}
+        : { delegatedAuthority: options.delegatedAuthority }),
+    });
+  } catch (error) {
+    options.registry?.settle(childRunId, 'failed');
+    options.emitter?.dispatchEvent(
+      new ChildWorkflowFailedEvent({
+        ...correlation,
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    throw error;
+  }
+  liveAgentRun.current = agentRun;
+
+  // AB-216 — wire this child's own liveness (its `AgentRun`'s
+  // `snapshot()`/`subscribeSnapshot()`, AB-88/AB-214) into the registry so
+  // a parent's rollup can read `ChildRunDescriptor.assessment`. Guarded by
+  // `hasLivenessObservable` rather than assumed from the declared
+  // `RunnableAgent<O, H>.run()` return type — see that guard's own doc
+  // comment for why an unguarded call here would be unsafe against a
+  // misbehaving or test-double `RunnableAgent`. Reads the child's own
+  // already-computed assessment only; never selects, overrides, or
+  // re-evaluates the child's own `StallPolicy` (AB-216's delegated-policy
+  // acceptance criterion) — this registry has no watchdog of its own.
+  if (options.registry && hasLivenessObservable(agentRun)) {
+    options.registry.attachLiveness(childRunId, agentRun);
+  }
+
+  // AB-211 — wire this child's own `closed()` into the registry so a
+  // parent's `closed()` (`create-run.ts`) can await genuine child cleanup
+  // settlement, not just the child's terminal result. Guarded by
+  // `hasClosedAcknowledgement` for the same reason `hasLivenessObservable`
+  // is guarded above. Never invoked here — only wired for
+  // `awaitChildrenClosed` to call later.
+  if (options.registry && hasClosedAcknowledgement(agentRun)) {
+    options.registry.attachClosed(childRunId, () => agentRun.closed());
+  }
+
+  const settle = (result: RunResult<O, H>): RunResult<O, H> => {
+    const asBaseResult = result as unknown as RunResult;
+    const status = isAbortedResult(asBaseResult)
+      ? 'aborted'
+      : asBaseResult.finishReason === 'stop-condition'
+        ? 'completed'
+        : 'failed';
+    options.registry?.settle(childRunId, status, asBaseResult);
+
+    if (status === 'aborted') {
+      // `signal` (the composed one), not `childController.signal`: a
+      // parent-propagated abort only fires the PARENT half of the
+      // composition, leaving the private controller's own `.reason`
+      // `undefined` even though the child genuinely aborted with a
+      // reason. The composed signal reflects whichever source fired.
+      options.emitter?.dispatchEvent(
+        new ChildWorkflowAbortedEvent({
+          ...correlation,
+          reason: typeof signal.reason === 'string' ? signal.reason : undefined,
+        }),
+      );
+    } else if (status === 'completed') {
+      options.emitter?.dispatchEvent(new ChildWorkflowCompletedEvent(correlation));
+    } else {
+      options.emitter?.dispatchEvent(
+        new ChildWorkflowFailedEvent({ ...correlation, reason: asBaseResult.finishReason }),
+      );
+    }
+    return result;
+  };
+
+  const settleRejection = (error: unknown): never => {
+    options.registry?.settle(childRunId, 'failed');
+    options.emitter?.dispatchEvent(
+      new ChildWorkflowFailedEvent({
+        ...correlation,
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    throw error;
+  };
+
+  // `agentRun.result()` is documented to return a `Promise`, but a
+  // misbehaving or third-party `AgentRun` implementation can throw
+  // synchronously from the method itself rather than rejecting the promise
+  // it returns. That throw would otherwise escape before `.then()` is ever
+  // reached, leaving the registry entry stuck at 'running' forever and
+  // emitting no failed lifecycle event — the same gap the `agent.run()`
+  // try/catch above closes for dispatch itself. Routing it through
+  // `settleRejection` gives it the identical failure-settlement path a
+  // rejected `result()` promise already gets.
+  const settledResult = ((): Promise<RunResult<O, H>> => {
+    try {
+      return agentRun.result();
+    } catch (error) {
+      // `settleRejection` below narrows via `error instanceof Error`
+      // regardless, so wrapping a non-`Error` throw here (matching
+      // `create-lazy-agent.ts`'s identical pattern) costs nothing and
+      // satisfies `prefer-promise-reject-errors`.
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  })().then(settle, settleRejection);
+
+  return {
+    childRunId,
+    parentRunId: options.parentRunId,
+    agentName: options.agentName,
+    result(): Promise<RunResult<O, H>> {
+      return settledResult;
+    },
+    abort,
+    [Symbol.dispose](): void {
+      abort();
+      agentRun[Symbol.dispose]();
+    },
+    [Symbol.asyncIterator](): AsyncIterator<RunEvent> {
+      return agentRun[Symbol.asyncIterator]();
+    },
+  };
+}

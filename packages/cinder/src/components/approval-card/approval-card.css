@@ -1,0 +1,451 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* Compound composition aggregation: ApprovalCard renders these primitives
+ * internally, so `cinder/approval-card/styles` must include their styling when
+ * consumers import the component-specific style sidecar. Sibling paths mirror
+ * between `src/` and generated `dist/`. */
+@import '../badge/badge.css';
+@import '../button/button.css';
+@import '../card/card.css';
+@import '../code-block/code-block.css';
+@import '../collapsible/collapsible.css';
+@import '../copy-button/copy-button.css';
+@import '../json-editor/json-editor.css';
+@import '../json-viewer/json-viewer.css';
+@import '../payload-inspector/payload-inspector.css';
+@import '../status-dot/status-dot.css';
+@import '../tooltip/tooltip.css';
+
+@layer cinder.components {
+  .cinder-approval-card {
+    display: block;
+  }
+
+  .cinder-approval-card__surface {
+    overflow: hidden;
+  }
+
+  .cinder-approval-card__surface > .cinder-card__header {
+    padding: 0;
+  }
+
+  /* ----------------------------------------
+   * Header
+   * ---------------------------------------- */
+
+  .cinder-approval-card__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--cinder-space-2) var(--cinder-space-4);
+    padding: var(--cinder-space-4);
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-approval-card[data-cinder-risk='high'] .cinder-approval-card__header {
+    background: var(--cinder-status-danger-background);
+  }
+
+  /* Title and badges stay on one row whenever they both fit — `flex-wrap`
+     reacts to the actual rendered width of this title (which varies with the
+     tool name) instead of guessing a fixed container breakpoint. Below
+     `min-inline-size`, the title wraps its own text first; badges only drop
+     to their own row once nothing more can give. On that solo-item row,
+     `justify-content: space-between` on the header collapses to flex-start,
+     so no separate narrow-container override is needed. */
+  .cinder-approval-card__title-group {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 14rem;
+    gap: var(--cinder-space-1);
+    min-inline-size: 10rem;
+  }
+
+  .cinder-approval-card__title {
+    margin: 0;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-lg);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-tight);
+  }
+
+  .cinder-approval-card__title-tool {
+    font-family: var(--cinder-font-mono);
+  }
+
+  .cinder-approval-card__badges {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--cinder-space-2);
+  }
+
+  /* StatusDot and Badge each define their own type scale per size step, and
+     those scales don't line up 1:1 (StatusDot's "sm" label text is larger
+     than Badge's "sm" text). Force every status/risk/expiry indicator in this
+     row to the same font-size so the row reads as one cohesive unit. */
+  .cinder-approval-card__badges .cinder-status-dot[data-cinder-size='sm'],
+  .cinder-approval-card__badges .cinder-badge[data-cinder-size='sm'] {
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-approval-card__risk-icon {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+  }
+
+  .cinder-approval-card__risk-icon[data-cinder-risk='low'] {
+    color: var(--cinder-status-success-solid);
+  }
+
+  .cinder-approval-card__risk-icon[data-cinder-risk='medium'] {
+    color: var(--cinder-status-warning-solid);
+  }
+
+  .cinder-approval-card__risk-icon[data-cinder-risk='high'] {
+    color: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-approval-card__risk-icon:focus-visible {
+    /* cinder-focus-ring-owner: parent — the trigger self-owns its box-shadow
+       ring; the outline is intentionally suppressed. */
+    outline: none;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset, 1px) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset, 1px) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  /* ----------------------------------------
+   * Body sections
+   * ---------------------------------------- */
+
+  .cinder-approval-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    padding: var(--cinder-space-4);
+  }
+
+  .cinder-approval-card__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__section-heading {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__section-title {
+    margin: 0;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-approval-card__muted {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  /* ----------------------------------------
+   * Files touched
+   * ---------------------------------------- */
+
+  .cinder-approval-card__file-list {
+    display: flex;
+    flex-direction: column;
+    max-block-size: 14rem;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-approval-card__file {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__file-path {
+    overflow-wrap: anywhere;
+    color: var(--cinder-text-default);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-approval-card__file .cinder-approval-card__file-copy {
+    flex: 0 0 auto;
+    padding: var(--cinder-space-1);
+    border: none;
+  }
+
+  /* ----------------------------------------
+   * Environment names
+   * ---------------------------------------- */
+
+  .cinder-approval-card__environment-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* ----------------------------------------
+   * Resolution controls and actions
+   * ---------------------------------------- */
+
+  .cinder-approval-card__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-approval-card__resolution-controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__control-label {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-approval-card__action-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-approval-card__action-buttons {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+    margin-inline-start: auto;
+  }
+
+  .cinder-approval-card__textarea {
+    min-block-size: 10rem;
+    resize: vertical;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-2);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card__textarea--reason {
+    min-block-size: 3.5rem;
+  }
+
+  .cinder-approval-card__textarea:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    /* Ring replaces the border while focused rather than stacking on it — the two
+       together read as one heavier shape than either was designed to be. */
+    border-color: transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-approval-card__remember-control {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card__remember-control input {
+    margin: 0;
+    accent-color: var(--cinder-accent-solid);
+  }
+
+  .cinder-approval-card__remember-control input:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-approval-card__editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-3);
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-approval-card__editor-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  /* ----------------------------------------
+   * Read-only summary for terminal states
+   * ---------------------------------------- */
+
+  .cinder-approval-card__readonly-summary {
+    margin: 0;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-3);
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card__readonly-summary[data-cinder-state='approved'],
+  .cinder-approval-card__readonly-summary[data-cinder-state='approved_with_edits'] {
+    border-color: var(--cinder-status-success-border);
+    background: var(--cinder-status-success-background);
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-approval-card__readonly-summary[data-cinder-state='denied'] {
+    border-color: var(--cinder-status-danger-border);
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+  }
+
+  /* ----------------------------------------
+   * Details disclosure (sandbox, environment, request metadata)
+   * ---------------------------------------- */
+
+  .cinder-approval-card__details {
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface);
+    overflow: hidden;
+  }
+
+  .cinder-approval-card__details .cinder-collapsible__trigger {
+    border-radius: 0;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    background: var(--cinder-surface-raised);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-approval-card__details[data-cinder-expanded] .cinder-collapsible__trigger {
+    border-block-end: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-approval-card__details .cinder-collapsible__panel-inner {
+    padding: var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card__details-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-approval-card__details-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-approval-card__details-label {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .cinder-approval-card__details-label .cinder-approval-card__muted {
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-normal);
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  .cinder-approval-card__metadata {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: var(--cinder-space-3);
+    margin: 0;
+  }
+
+  .cinder-approval-card__metadata--compact {
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__metadata-item {
+    min-inline-size: 0;
+  }
+
+  .cinder-approval-card__metadata-item dt {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .cinder-approval-card__metadata-item dd {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--cinder-text-default);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-approval-card__metadata-help {
+    color: var(--cinder-text-muted);
+    font-family: var(--cinder-font-sans);
+    font-size: var(--cinder-text-xs);
+  }
+
+  /* ----------------------------------------
+   * Forced colors
+   * ---------------------------------------- */
+
+  @media (forced-colors: active) {
+    .cinder-approval-card__risk-icon {
+      color: CanvasText;
+    }
+
+    .cinder-approval-card__risk-icon:focus-visible {
+      outline: 2px solid CanvasText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+
+    .cinder-approval-card__textarea:focus-visible,
+    .cinder-approval-card__remember-control input:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      box-shadow: none;
+    }
+  }
+}

@@ -1,0 +1,111 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    label: {
+      type: 'string',
+      description: 'Accessible label for the chart. Required for screen readers.',
+    },
+    description: {
+      type: 'string',
+      description: 'Optional description rendered below the label.',
+    },
+    frames: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          label: {
+            type: 'string',
+            description: "Time-axis label for this frame, e.g. '0 ms' or 't=0'.",
+          },
+          bins: {
+            type: 'array',
+            items: {
+              type: 'number',
+            },
+            description:
+              'Magnitude values per frequency bin. A consistent length across frames is\npreferred, but ragged frames are supported: the grid uses the maximum bin\ncount across all frames and renders any missing bins in shorter frames as\n"missing" cells. Non-finite values (NaN/Infinity) also render as missing.',
+          },
+        },
+        additionalProperties: false,
+        required: ['bins', 'label'],
+      },
+      description:
+        'Ordered sequence of time-indexed frames. Each frame contains a label and an array of per-frequency-bin magnitudes.',
+    },
+    frequencyLabels: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description:
+        "Optional frequency-bin labels for the y-axis (e.g. ['100 Hz', '200 Hz', …]). When omitted, bins are labelled by index.",
+    },
+    height: {
+      type: 'number',
+      description: 'Pixel height of the chart. Default `200`.',
+    },
+    loading: {
+      type: 'boolean',
+      description: 'Whether the chart is in a loading state. Default `false`.',
+    },
+    dataTableVisibility: {
+      enum: ['screen-reader-only', 'visible', 'hidden'],
+      description: 'Controls data table visibility. Default `screen-reader-only`.',
+    },
+    theme: {
+      type: 'object',
+      properties: {
+        foreground: {
+          type: 'string',
+        },
+        muted: {
+          type: 'string',
+        },
+        grid: {
+          type: 'string',
+        },
+        background: {
+          type: 'string',
+        },
+        palette: {
+          type: 'array',
+          items: {
+            type: 'string',
+          },
+        },
+      },
+      additionalProperties: false,
+      description: 'Partial visual theme override.',
+    },
+    dataTableCaption: {
+      type: 'string',
+      description: 'Custom data table caption; falls back to `label`.',
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class applied to the root element.',
+    },
+  },
+  additionalProperties: false,
+  required: ['frames', 'label'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'empty',
+        reason: 'function-or-snippet',
+        description: 'Snippet rendered when there are no frames.',
+      },
+      {
+        name: 'loadingContent',
+        reason: 'function-or-snippet',
+        description: 'Snippet rendered while loading.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

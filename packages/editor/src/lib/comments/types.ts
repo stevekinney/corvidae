@@ -1,0 +1,512 @@
+/**
+ * Comment and thread types for the Markdown Review Editor.
+ *
+ * These types support:
+ * - TextQuoteSelector-style anchoring (survives edits via quote + context)
+ * - Runtime position tracking (ProseMirror positions)
+ * - Serialization for persistence
+ *
+ * Threads have no lifecycle status of their own - they exist until a consumer
+ * deletes them. Their ANCHOR has one: see {@link AnchorStatus}. When the quoted
+ * text leaves the document the anchor is marked `orphaned` and the thread is
+ * KEPT, because a deletion and the first half of a cut-and-paste are
+ * indistinguishable at that moment (cinder#1284). It re-anchors if the text
+ * comes back.
+ *
+ * @module
+ */
+
+import type { PersistedReviewSession } from '../session/types.js';
+import type {
+  AnchorStatus,
+  CommentAnchor,
+  PersistedAnchor,
+  TextQuoteAnchor,
+} from '../shared/anchor-types.js';
+
+// Re-export anchor types from shared module (breaks circular dependency)
+export type {
+  AnchorStatus,
+  AnchorType,
+  CommentAnchor,
+  PersistedAnchor,
+  RuntimeAnchor,
+  TextQuoteAnchor,
+} from '../shared/anchor-types.js';
+
+// ============================================================================
+// Comment Types
+// ============================================================================
+
+/**
+ * A single comment within a thread.
+ */
+export interface Comment {
+  /** Unique identifier */
+  id: string;
+
+  /** Parent thread ID */
+  threadId: string;
+
+  /** Author user ID */
+  authorId: string;
+
+  /** Comment content (Markdown) */
+  body: string;
+
+  /** Creation timestamp (ISO 8601) */
+  createdAt: string;
+
+  /** Last edit timestamp (ISO 8601), if edited */
+  editedAt?: string | undefined;
+
+  /** User IDs mentioned in the comment */
+  mentions?: string[] | undefined;
+
+  /** Soft delete timestamp (ISO 8601), if deleted */
+  deletedAt?: string | undefined;
+}
+
+/**
+ * Input for creating a new comment.
+ */
+export type CreateCommentInput = Pick<Comment, 'body' | 'authorId'> & {
+  mentions?: string[];
+};
+
+/**
+ * Input for updating an existing comment.
+ */
+export type UpdateCommentInput = Pick<Comment, 'body'> & {
+  mentions?: string[];
+};
+
+// ============================================================================
+// Thread Types
+// ============================================================================
+
+/**
+ * A comment thread anchored to a document location.
+ *
+ * Threads have no status - they exist until deleted.
+ * There is no "resolved" state; to dismiss a thread, delete it.
+ */
+export interface Thread {
+  /** Unique identifier */
+  id: string;
+
+  /** Anchor to document location */
+  anchor: CommentAnchor;
+
+  /** Comments in chronological order */
+  comments: Comment[];
+
+  /** Creation timestamp (ISO 8601) */
+  createdAt: string;
+}
+
+/**
+ * Thread data for persistence (uses persisted anchor).
+ */
+export interface PersistedThread extends Omit<Thread, 'anchor'> {
+  anchor: PersistedAnchor;
+}
+
+/**
+ * Input for creating a new thread.
+ */
+export interface CreateThreadInput {
+  /** Anchor location */
+  anchor: CommentAnchor;
+
+  /** Initial comment */
+  initialComment: CreateCommentInput;
+}
+
+// ============================================================================
+// Review State Types
+// ============================================================================
+
+/**
+ * Complete review state for serialization.
+ *
+ * This is the top-level type for persisting and hydrating review sessions.
+ *
+ * Schema versions:
+ * - v1: Original schema (DEP-39)
+ * - v2: Added soft-delete support (DEP-40)
+ * - v3: Reserved (previously suggestions)
+ * - v4: Added reviewSession for batch review submission (DEP-44), front matter support (DEP-61)
+ */
+export interface ReviewState {
+  /** Schema version for migrations (all versions are additive, no breaking changes) */
+  schemaVersion: 1 | 2 | 3 | 4;
+
+  /** Current document content as full Markdown, including front matter when present */
+  content: string;
+
+  /** Original/baseline content for diff comparison */
+  original?: string | undefined;
+
+  /** All threads in the review (includes soft-deleted comments for audit trail) */
+  threads: PersistedThread[];
+
+  /**
+   * Review session for batch submission mode (v4+).
+   * Contains draft comments that are submitted as a batch
+   * with a review outcome (approve / request changes / comment-only).
+   * When undefined or missing, treated as no active session for backwards compatibility.
+   */
+  reviewSession?: PersistedReviewSession | undefined;
+
+  /**
+   * Parsed front matter data (v4+).
+   * When undefined or null, document has no front matter.
+   */
+  frontMatter?: Record<string, unknown> | null | undefined;
+
+  /**
+   * Raw front matter YAML string without delimiters (v4+).
+   * Preserved for round-trip fidelity when data is unchanged.
+   */
+  frontMatterRaw?: string | null | undefined;
+
+  /** Last modified timestamp (ISO 8601) */
+  updatedAt: string;
+}
+
+// Re-export review session types for convenience
+export type { PersistedReviewSession } from '../session/types.js';
+
+// ============================================================================
+// Event Types
+// ============================================================================
+
+/**
+ * Event payload when a new thread is created.
+ * Parent uses requestId to correlate optimistic updates with backend responses.
+ */
+export interface ThreadCreateEvent {
+  /** Unique request ID for correlating optimistic updates */
+  requestId: string;
+
+  /** The anchor where the thread was created */
+  anchor: CommentAnchor;
+
+  /** The initial comment body */
+  body: string;
+
+  /** The author ID */
+  authorId: string;
+
+  /** User IDs mentioned in the initial comment */
+  mentions?: string[] | undefined;
+}
+
+/**
+ * Event payload when a thread is deleted.
+ */
+export interface ThreadDeleteEvent {
+  /** The thread ID being deleted */
+  threadId: string;
+}
+
+/**
+ * Event payload when a comment is added to an existing thread.
+ * Parent uses requestId to correlate optimistic updates with backend responses.
+ */
+export interface CommentCreateEvent {
+  /** Unique request ID for correlating optimistic updates */
+  requestId: string;
+
+  /** The thread ID receiving the comment */
+  threadId: string;
+
+  /** The comment body */
+  body: string;
+
+  /** The author ID */
+  authorId: string;
+
+  /** User IDs mentioned in the comment */
+  mentions?: string[] | undefined;
+}
+
+/**
+ * Event payload when a comment is updated.
+ */
+export interface CommentUpdateEvent {
+  /** The thread ID containing the comment */
+  threadId: string;
+
+  /** The comment ID being updated */
+  commentId: string;
+
+  /** The new comment body */
+  body: string;
+
+  /** User IDs mentioned in the updated comment */
+  mentions?: string[] | undefined;
+}
+
+/**
+ * Event payload when a comment is deleted.
+ */
+export interface CommentDeleteEvent {
+  /** The thread ID containing the comment */
+  threadId: string;
+
+  /** The comment ID being deleted */
+  commentId: string;
+
+  /** True for soft delete (sets deletedAt), false for hard delete */
+  soft: boolean;
+}
+
+// ============================================================================
+// Plugin Communication Types
+// ============================================================================
+
+/**
+ * Update payload from anchor plugin to ReviewEditor.
+ * Sent when anchor positions or status change due to document edits.
+ */
+export interface AnchorUpdate {
+  /** Thread ID this update is for */
+  threadId: string;
+
+  /** New ProseMirror start position */
+  from: number;
+
+  /** New ProseMirror end position */
+  to: number;
+
+  /** Updated quote text (follows edits inside the anchor) */
+  quote: string;
+
+  /** Updated prefix context */
+  prefix: string;
+
+  /** Updated suffix context */
+  suffix: string;
+
+  /** Current anchor status */
+  status: AnchorStatus;
+
+  /** Updated text offset for disambiguation */
+  lastKnownOffset?: number;
+}
+
+/**
+ * Result of re-anchoring a quote in a document.
+ * Returned by the reanchorQuote algorithm.
+ *
+ * When `found` is false, the quote could not be located in the document
+ * and the thread should be deleted.
+ */
+export interface ReanchorResult {
+  /** Whether the quote was found in the document */
+  found: boolean;
+
+  /** Text offset of anchor start (in doc.textBetween() coordinates). Only valid when found=true. */
+  from: number;
+
+  /** Text offset of anchor end (in doc.textBetween() coordinates). Only valid when found=true. */
+  to: number;
+
+  /** Confidence score (0-1) of the match. 0 when not found. */
+  confidence: number;
+}
+
+// ============================================================================
+// Utility Types
+// ============================================================================
+
+/**
+ * Generate a unique ID for threads and comments.
+ * Uses crypto.randomUUID() when available, falls back to timestamp + random.
+ */
+export function generateId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for environments without crypto.randomUUID
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/**
+ * Get current ISO timestamp.
+ */
+export function timestamp(): string {
+  return new Date().toISOString();
+}
+
+/**
+ * Context length for TextQuoteSelector prefix/suffix.
+ */
+export const ANCHOR_CONTEXT_LENGTH = 50;
+
+/**
+ * Create a TextQuoteAnchor from a selection.
+ *
+ * @param quote - The selected text
+ * @param documentText - The full document text
+ * @param startOffset - Character offset of selection start
+ * @param endOffset - Character offset of selection end
+ */
+export function createTextQuoteAnchor(
+  quote: string,
+  documentText: string,
+  startOffset: number,
+  endOffset: number,
+): TextQuoteAnchor {
+  const prefixStart = Math.max(0, startOffset - ANCHOR_CONTEXT_LENGTH);
+  const suffixEnd = Math.min(documentText.length, endOffset + ANCHOR_CONTEXT_LENGTH);
+
+  return {
+    quote,
+    prefix: documentText.slice(prefixStart, startOffset),
+    suffix: documentText.slice(endOffset, suffixEnd),
+  };
+}
+
+/**
+ * Create a document-level anchor (not anchored to specific text).
+ *
+ * Document-level comments are for general feedback about the entire document,
+ * not tied to a specific text selection.
+ */
+export function createDocumentAnchor(): CommentAnchor {
+  return {
+    type: 'document',
+    quote: '',
+    prefix: '',
+    suffix: '',
+    from: 0,
+    to: 0,
+    status: 'anchored',
+  };
+}
+
+/**
+ * Check if an anchor is a document-level anchor.
+ *
+ * A quote-less anchor with no explicit `type` is treated as document-level.
+ * `getState()` used to omit `type` entirely, so every review persisted before
+ * that was fixed carries document anchors identified only by the absence of a
+ * quote. Reading them as text anchors sends them through `reanchorQuote`, which
+ * cannot find an empty quote, reports "not found", and deletes the thread — so
+ * opening an older saved review would silently lose its document-level
+ * comments. There is nothing else a text anchor with no quote could mean: it
+ * can neither be highlighted nor re-anchored.
+ */
+export function isDocumentAnchor(anchor: CommentAnchor | PersistedAnchor): boolean {
+  if (anchor.type === 'document') return true;
+  return anchor.type === undefined && !anchor.quote;
+}
+
+/**
+ * Check if an anchor is a text anchor (explicit 'text' type, or an untyped
+ * anchor that carries a quote — the legacy shape).
+ *
+ * The exact complement of {@link isDocumentAnchor}.
+ */
+export function isTextAnchor(anchor: CommentAnchor | PersistedAnchor): boolean {
+  return !isDocumentAnchor(anchor);
+}
+
+// ============================================================================
+// Persistence Converters
+// ============================================================================
+
+/**
+ * Convert threads to persisted format for serialization.
+ *
+ * Drops the runtime ProseMirror positions (`from`/`to`), which are only
+ * meaningful against a live document. Use {@link toRuntimeThreads} to convert
+ * back.
+ *
+ * @param threads - Live threads with position info
+ * @returns Persisted threads suitable for storage
+ */
+export function toPersistedThreads(threads: Thread[]): PersistedThread[] {
+  return threads.map((thread) => ({
+    ...thread,
+    anchor: {
+      type: thread.anchor.type,
+      quote: thread.anchor.quote,
+      prefix: thread.anchor.prefix,
+      suffix: thread.anchor.suffix,
+      status: thread.anchor.status,
+      blockId: thread.anchor.blockId,
+      originalPosition: thread.anchor.originalPosition,
+      originalQuote: thread.anchor.originalQuote,
+      lastKnownOffset: thread.anchor.lastKnownOffset,
+    },
+  }));
+}
+
+/**
+ * Convert persisted threads back to runtime format.
+ *
+ * The inverse of {@link toPersistedThreads}. `PersistedAnchor` deliberately
+ * omits the ProseMirror `from`/`to` positions, so a saved `ReviewState` cannot
+ * be bound to the ReviewEditor `threads` prop until they are put back.
+ *
+ * Both are seeded to `0`. That pair is a neutral "unplaced" sentinel, not a
+ * position: a collapsed range paints no decoration, so nothing is highlighted
+ * at the top of the document. The anchor plugin sees the mismatch, re-anchors
+ * each thread by its quote against the live document, and writes the real
+ * positions back through the two-way binding shortly after mount.
+ *
+ * Two consequences worth planning for:
+ * - Bind `value` from the same saved state. Because every restored thread goes
+ *   through re-anchoring, a thread whose quote is absent from that document
+ *   comes back `orphaned` rather than placed: kept, undecorated, and retried on
+ *   every later pass. `onthreaddelete` does NOT fire - removing it is the
+ *   consumer's decision. Binding a DIFFERENT document is therefore survivable;
+ *   it orphans the comments rather than destroying them.
+ * - Document-level anchors (`type: 'document'`) carry no quote, are never
+ *   re-anchored, and stay at `0`/`0`.
+ *
+ * @param threads - Persisted threads, typically `ReviewState.threads`
+ * @returns Runtime threads suitable for the `threads` prop
+ *
+ * `ReviewEditor` and `toRuntimeThreads` are both exported from the
+ * `review-editor` subpath. The import lines are left out of the example below
+ * on purpose: validate-consumer greps the packed `dist/**` text for import
+ * specifiers and cannot tell a documentation comment from real code, so an
+ * import-shaped reference to this package's own subpath in a doc block fails
+ * the packed-import closure check at release time. The README carries the full
+ * copy-paste version with its imports.
+ *
+ * Reading storage inside `onMount` also matters — the component script runs on
+ * the server under SSR, where `localStorage` does not exist.
+ *
+ * @example
+ * ```svelte
+ * <script lang="ts">
+ *   // The README's complete example imports onMount from Svelte.
+ *   let value = $state('');
+ *   let threads = $state<Thread[]>([]);
+ *
+ *   onMount(() => {
+ *     const stored = localStorage.getItem('review-state');
+ *     if (stored === null) return;
+ *     const saved: ReviewState = JSON.parse(stored);
+ *     value = saved.content;
+ *     threads = toRuntimeThreads(saved.threads);
+ *   });
+ * </script>
+ *
+ * <ReviewEditor id="review" bind:value bind:threads />
+ * ```
+ */
+export function toRuntimeThreads(threads: PersistedThread[]): Thread[] {
+  return threads.map((thread) => ({
+    ...thread,
+    // Spread first so any stray from/to on untyped JSON is overwritten by the
+    // sentinel rather than trusted as a real position.
+    anchor: { ...thread.anchor, from: 0, to: 0 },
+  }));
+}

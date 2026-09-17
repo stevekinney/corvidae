@@ -1,0 +1,261 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* Compound family aggregation: importing `cinder/table/styles` pulls the whole
+ * Table family. Sibling-leaf paths resolve identically in `src/` and the
+ * verbatim-copied `dist/` because the layout mirrors. */
+@import '../table-body/table-body.css';
+@import '../table-cell/table-cell.css';
+@import '../table-header/table-header.css';
+@import '../table-header-cell/table-header-cell.css';
+@import '../table-row/table-row.css';
+
+@layer cinder.components {
+  /* ========================================
+ * TABLE
+ * Semantic <table> styled to match the rest of the design system.
+ * Composition: Table > TableHeader > TableRow > TableHeaderCell
+ *              Table > TableBody   > TableRow > TableCell
+ * ======================================== */
+
+  .cinder-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+    background: var(--cinder-surface);
+  }
+
+  .cinder-table-scroll {
+    inline-size: 100%;
+    max-inline-size: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    /* Same inset-shadow horizontal-scroll affordance as data-grid's
+     * `--_cinder-data-grid-overflow-shadow` (data-grid.css) — proven,
+     * mask-free, and safe alongside the sticky header below (the shadow is
+     * decoration on the scroll container's own box, so it stays pinned at
+     * the true edges rather than scrolling with content). Driven by
+     * `overflowShadow('inline')` (utilities/attachments.ts), which is NOT
+     * scroll-position-aware: both edges show whenever content overflows at
+     * all, matching data-grid's own behavior exactly. */
+    box-shadow: var(--_cinder-table-scroll-shadow, none);
+  }
+
+  .cinder-table-scroll[data-cinder-overflows-inline] {
+    --_cinder-table-scroll-shadow:
+      inset 1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 28%, transparent),
+      inset -1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 28%, transparent);
+  }
+
+  .cinder-table-scroll .cinder-table {
+    min-inline-size: max-content;
+  }
+
+  .cinder-table-scroll:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-table__caption {
+    caption-side: top;
+    text-align: left;
+    padding-block: var(--cinder-space-3) var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-default);
+  }
+
+  /* ----------------------------------------
+ * Header
+ * ---------------------------------------- */
+
+  .cinder-table__header {
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-table[data-cinder-sticky-header] .cinder-table__header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  /* A native <caption> (caption-side: top) renders above the table's border box
+   * but inside the same scroll container, so a sticky <thead> pinned at top: 0
+   * would scroll up and overlap it. Offset the sticky threshold by the caption's
+   * MEASURED border-box height (set on the table by a ResizeObserver in
+   * table.svelte as --cinder-table-caption-height) so the header pins just below
+   * the real caption — including when the caption wraps to multiple lines, which
+   * a hard-coded `1lh` assumption could not handle. Scoped with :has(caption) so
+   * a caption-less sticky table keeps top: 0; the var falls back to 0px before
+   * the first measurement. */
+  .cinder-table[data-cinder-sticky-header]:has(caption) .cinder-table__header {
+    top: var(--cinder-table-caption-height, 0px);
+  }
+
+  .cinder-table__header-cell {
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    text-align: left;
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-muted);
+    border-bottom: 1px solid var(--cinder-border-muted);
+    text-wrap: balance;
+  }
+
+  .cinder-table__header-cell[aria-sort='ascending'],
+  .cinder-table__header-cell[aria-sort='descending'] {
+    color: var(--cinder-text-default);
+  }
+
+  /* ----------------------------------------
+ * Density — padding overrides for header and body cells.
+ * Comfortable is the baseline (set on .cinder-table__cell / .cinder-table__header-cell).
+ * Only condensed and spacious need explicit overrides; any unknown density value
+ * falls back gracefully to comfortable padding.
+ * ---------------------------------------- */
+
+  .cinder-table[data-cinder-density='condensed'] .cinder-table__cell,
+  .cinder-table[data-cinder-density='condensed'] .cinder-table__header-cell {
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-3);
+  }
+
+  .cinder-table[data-cinder-density='spacious'] .cinder-table__cell,
+  .cinder-table[data-cinder-density='spacious'] .cinder-table__header-cell {
+    padding-block: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-4);
+  }
+
+  /* ----------------------------------------
+ * Selection cells
+ * Specificity (0,3,0) — equal to density rules; source order places these
+ * after density so equal-specificity resolution favors selection.
+ * padding-block is set explicitly so the selection column does not vary with
+ * density (the checkbox is a fixed-height control).
+ * ---------------------------------------- */
+
+  .cinder-table[data-cinder-selectable] .cinder-table__cell--selection,
+  .cinder-table[data-cinder-selectable] .cinder-table__header-cell--selection {
+    width: 1px;
+    padding-inline: var(--cinder-space-3);
+    padding-block: var(--cinder-space-2);
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  /* ----------------------------------------
+ * Sort button (rendered inside sortable header cells)
+ * ---------------------------------------- */
+
+  .cinder-table__sort-button {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    width: 100%;
+    text-align: inherit;
+    border-radius: var(--cinder-radius-sm);
+    white-space: nowrap;
+    /* position: relative is required so z-index applies when :focus-visible fires */
+    position: relative;
+  }
+
+  .cinder-table__header-cell[data-cinder-align='center'] .cinder-table__sort-button {
+    justify-content: center;
+  }
+
+  .cinder-table__header-cell[data-cinder-align='right'] .cinder-table__sort-button {
+    justify-content: flex-end;
+  }
+
+  .cinder-table__sort-button:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+    /* Lift above sticky thead stacking context only while focused */
+    /* cinder-z-index-local: focused cell ring paints above the table's sticky header. */
+    z-index: 2;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-table-scroll:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+      box-shadow: none;
+    }
+
+    .cinder-table__sort-button:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      /* 2px is correct here: sort-button has border:none so there is no
+         ButtonBorder to merge with at 2px. */
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
+  @media (hover: hover) {
+    .cinder-table__sort-button:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-table__sort-indicator {
+    display: inline-flex;
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-table__sort-indicator[data-cinder-direction='ascending'],
+  .cinder-table__sort-indicator[data-cinder-direction='descending'] {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-table__sort-indicator[data-cinder-direction='ascending'] .cinder-table__sort-chevron-down,
+  .cinder-table__sort-indicator[data-cinder-direction='descending'] .cinder-table__sort-chevron-up {
+    opacity: 0.4;
+  }
+
+  /* ----------------------------------------
+ * Body / rows / cells
+ * ---------------------------------------- */
+
+  .cinder-table__row {
+    transition: background var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (hover: hover) {
+    .cinder-table__body .cinder-table__row:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-table__cell {
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    border-bottom: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-table__cell[data-cinder-align='center'] {
+    text-align: center;
+  }
+
+  .cinder-table__cell[data-cinder-align='right'] {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-table__header-cell[data-cinder-align='center'] {
+    text-align: center;
+  }
+
+  .cinder-table__header-cell[data-cinder-align='right'] {
+    text-align: right;
+  }
+}

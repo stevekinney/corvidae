@@ -1,0 +1,43 @@
+{
+  "name": "@repo/weft-ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "test": "bun test --conditions browser --conditions svelte",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test:coverage": "bun scripts/run-coverage.ts",
+    "check:coverage": "bun scripts/check-coverage-cli.ts"
+  },
+  "dependencies": {
+    "@repo/cinder": "workspace:*",
+    "@repo/markdown": "workspace:*",
+    "@repo/weft": "workspace:*",
+    "@shikijs/langs": "catalog:",
+    "@shikijs/themes": "catalog:",
+    "@tanstack/svelte-query": "catalog:",
+    "cron-parser": "catalog:",
+    "lucide-svelte": "catalog:",
+    "svelte": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/typescript-configuration": "workspace:*",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/svelte": "catalog:",
+    "@types/bun": "catalog:",
+    "fake-indexeddb": "catalog:",
+    "happy-dom": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "prettier-plugin-svelte": "catalog:",
+    "svelte-check": "catalog:",
+    "vite": "catalog:",
+    "typescript": "catalog:",
+    "@repo/testing": "workspace:*"
+  }
+}

@@ -1,0 +1,81 @@
+import type { Snippet } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
+import type { HTMLInputAttributes } from 'svelte/elements';
+export interface NumberInputSchemaProps {
+  id: string;
+  value?: number | null;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Locale-aware formatting options passed to `Intl.NumberFormat`. */
+  format?: Intl.NumberFormatOptions;
+  locale?: string;
+  disabled?: boolean;
+  required?: boolean;
+  name?: string;
+  label?: string;
+  description?: string;
+  error?: string;
+  class?: string;
+  /** Optional non-interactive text rendered before the stepper controls. */
+  adornment?: string;
+}
+export type NumberInputProps = Omit<
+  HTMLInputAttributes,
+  | 'value'
+  | 'defaultValue'
+  | 'min'
+  | 'max'
+  | 'step'
+  | 'name'
+  | 'type'
+  | 'oninput'
+  | 'onchange'
+  | 'onfocus'
+  | 'onkeydown'
+  | 'class'
+> & {
+  /** HTML `id` for the underlying input, used to associate the `<label>` and ARIA attributes. Required. */
+  id: string;
+  /** Bindable current numeric value, or `null` when the field is empty. */
+  value?: number | null;
+  /** Minimum permitted value; the stepper decrement button disables when this bound is reached. */
+  min?: number | undefined;
+  /** Maximum permitted value; the stepper increment button disables when this bound is reached. */
+  max?: number | undefined;
+  /** Amount added or subtracted per stepper click or arrow-key press. Default `1`. */
+  step?: number | undefined;
+  /**
+   * Locale-aware formatting options passed to `Intl.NumberFormat`.
+   * Supports all `Intl.NumberFormatOptions` properties such as `style`
+   * (`'decimal'`, `'currency'`, `'percent'`, `'unit'`), `currency`,
+   * `minimumFractionDigits`, `maximumFractionDigits`, and `notation`.
+   * Defaults to locale-standard decimal formatting when omitted.
+   */
+  format?: Intl.NumberFormatOptions;
+  /**
+   * BCP 47 locale tag used for number formatting and parsing. Defaults to the
+   * nearest LocaleProvider locale, then `navigator.language` after mount and
+   * `en-US` during server rendering.
+   */
+  locale?: string;
+  /** When true, disables the input and stepper buttons, matching the native `disabled` attribute. */
+  disabled?: boolean;
+  /** Marks the input as required for form validation, matching the native `required` attribute. */
+  required?: boolean;
+  /** Name used to identify this field's value in form data. */
+  name?: string;
+  /** Visible label text rendered above the input and linked via `for`/`id`. */
+  label?: string;
+  /** Helper text rendered below the input and associated via `aria-describedby`. */
+  description?: string;
+  /** Error message rendered below the input; also sets `aria-invalid` on the input. */
+  error?: string;
+  /** Attachment for native input access and lifecycle-scoped listeners. */
+  inputAttachment?: Attachment<HTMLInputElement>;
+  /** Custom class merged with `.cinder-input-field` on the root wrapper. */
+  class?: string;
+  /** Optional non-interactive adornment rendered before the stepper controls. */
+  adornment?: Snippet | string;
+  onValueChange?: (value: number | null) => void;
+};

@@ -1,0 +1,64 @@
+# ColorSwatchPicker
+
+Presents a fixed palette of color swatches for constrained color selection.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { ColorSwatchPicker } from '@repo/cinder';
+
+  const palette = [
+    { color: '#ef4444', name: 'Red' },
+    { color: '#f97316', name: 'Orange' },
+    { color: '#eab308', name: 'Yellow' },
+    { color: '#22c55e', name: 'Green' },
+    { color: '#3b82f6', name: 'Blue' },
+    { color: '#8b5cf6', name: 'Violet' },
+  ];
+
+  let selected = $state('#3b82f6');
+</script>
+
+<ColorSwatchPicker
+  colors={palette}
+  value={selected}
+  label="Accent color"
+  onValueChange={(color) => (selected = color)}
+/>
+<p style="margin-top: 0.5rem; color: var(--cinder-text-muted);">Selected: {selected}</p>
+```
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `class` | `string` | no | — | Additional classes merged into the listbox `<ul>`. |
+| `disabled` | `boolean` | no | — | Disables the entire listbox. Keyboard activation and clicks are ignored. |
+| `label` | `string` | yes | — | Accessible name for the listbox. Required — `role="listbox"` needs a label so screen readers can announce the control's purpose. |
+| `layout` | `"grid"` \| `"stack"` | no | — | Layout direction. Default `'grid'`. Note: grid layout uses one-dimensional DOM-order navigation for both ArrowLeft/Right and ArrowUp/Down. True column-aware navigation is not implemented in v1 — see a11y memo. |
+| `shape` | `"circle"` \| `"square"` | no | — | Visual shape of each swatch. Default `'circle'`. |
+| `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` \| `"xl"` | no | — | Swatch dimension token. Default `'md'`. |
+| `value` | `string` | no | — | Bindable selected color. |
+| `colors` | `(opaque)` | yes | — | Palette to render. Not expressible in JSON Schema; see the component types for the signature. |
+| `indicator` | `(opaque)` | no | — | Snippet that replaces the default check-icon indicator on the selected swatch. Receives the active swatch and the computed contrast color for the icon. Not expressible in JSON Schema; see the component types for the signature. |
+| `onValueChange` | `(opaque)` | no | — | Fired when the selected swatch changes. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

@@ -1,0 +1,81 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-waveform {
+    display: grid;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    color: var(--_cinder-chart-foreground, currentColor);
+    background: var(--_cinder-chart-background, transparent);
+  }
+
+  .cinder-waveform__description {
+    margin: 0;
+    color: var(--_cinder-chart-muted, currentColor);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-waveform__viewport {
+    position: relative;
+  }
+
+  .cinder-waveform__table-scroll {
+    inline-size: 100%;
+    max-inline-size: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .cinder-waveform__table-scroll > table {
+    min-inline-size: max-content;
+  }
+
+  .cinder-waveform__table-scroll:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-waveform__table-scroll:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
+  .cinder-waveform svg {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  .cinder-waveform__baseline {
+    stroke: var(--_cinder-chart-grid, currentColor);
+    stroke-width: 1;
+  }
+
+  .cinder-waveform__path {
+    fill: none;
+    stroke: var(--_cinder-chart-series-color, currentColor);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .cinder-waveform__bar {
+    fill: var(--_cinder-chart-series-color, currentColor);
+    rx: 1;
+  }
+
+  .cinder-waveform__state {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--_cinder-chart-muted, currentColor);
+    background: var(--_cinder-chart-background, transparent);
+    z-index: 1;
+  }
+}

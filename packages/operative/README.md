@@ -1,0 +1,2447 @@
+# Operative
+
+`@repo/operative` is the provider-agnostic agent runtime for Agent Bureau. It owns the loop that assembles context, calls a generate function, executes tools, records steps, handles stop conditions, emits events, manages sessions, and coordinates advanced runtime behavior.
+
+## Workspace usage
+
+Declare `"@repo/operative": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@repo/operative`; the consumer compiles it. Shared external versions come from the root Bun catalog.
+
+## What It Does
+
+- Defines agents with `createAgent()` and drives the loop directly with `createActiveRun()`.
+- Executes tools through `armorer` and conversation history through `conversationalist`.
+- Accepts caller-provided generate functions and includes Anthropic, OpenAI, and Gemini provider factories.
+- Provides sessions, session stores, durable run support, scheduler primitives, and heartbeat utilities.
+- Adds hooks for generation, tool execution, context assembly, validation, run lifecycle, and error handling.
+- Provides guardrails, retry mutators, cache middleware, context compaction, streaming, backpressure, budgets, handoffs, subagents, and supervisors.
+
+## How It Works
+
+The core loop starts with an agent definition, a conversation, tools, and a `GenerateFunction`. For each step, it prepares context, calls the generate function, validates the response, executes requested tools, appends tool results back to the conversation, emits typed events, and evaluates stop conditions.
+
+Provider factories such as `createAnthropicProvider`, `createOpenAIProvider`, and `createGeminiProvider` are exported from `@repo/operative`, alongside fallover, routing, and embedding helpers. Callers can also supply any function that satisfies `GenerateFunction`. Durable execution, scheduler tasks, and session persistence build on the same loop so product surfaces can recover or resume runs without changing agent code.
+
+## Project Role
+
+`@repo/bureau` composes Operative runs and scheduler tasks. `@repo/memory` and `@repo/skills` attach through hooks and tools, `@repo/armorer` supplies validated actions, and `@repo/conversationalist` supplies the conversation model. Applications own request handling and other runtime composition.
+
+## Quick Start
+
+Create an agent with a stub generate function and run it to completion:
+
+```typescript
+import { createAgent } from '@repo/operative';
+import type { GenerateFunction } from '@repo/operative';
+
+// Minimal inline generate function—swap for a real provider in production.
+const generate: GenerateFunction = async ({ conversation }) => {
+  const last = conversation.getMessages().at(-1);
+  // `Message.content` is `string | readonly MultiModalContent[]`—guard rather than
+  // interpolate it directly, which would print "[object Object],[object Object]" for
+  // multi-modal input.
+  const lastText = typeof last?.content === 'string' ? last.content : '(non-text content)';
+  return {
+    content: `Echo: ${lastText}`,
+    toolCalls: [],
+  };
+};
+
+const assistant = createAgent({
+  generate,
+  instructions: 'You are a helpful assistant.',
+});
+
+const run = assistant.run('Hello, agent!');
+const result = await run.result();
+console.log(result.content); // "Echo: Hello, agent!"
+console.log(result.finishReason); // "stop-condition"
+```
+
+> [!NOTE] `createAgent` defaults `stopWhen` to `stopWhen.noToolCalls()` when you don't supply one, so the loop above stops after the first step (the stub `generate` never returns tool calls) instead of running to `maximumSteps` (`DEFAULT_MAXIMUM_STEPS`, 25) and re-echoing its own output 25 times over. Pass an explicit `stopWhen`—for example `stopWhen.toolCalled('submit-form')`—to override it, most importantly for any agent that is expected to finish on a tool call rather than a plain reply (a handoff tool, for instance—see the Handoffs section under [Multi-Agent Patterns](#multi-agent-patterns)).
+
+### Event-Driven Style with `createActiveRun()`
+
+`createAgent().run()` returns a non-thenable `AgentRun` handle: iterate it directly for events, or call `.result()` for the terminal `RunResult`. For the full event-emitting surface (`addEventListener`, `on`, `subscribe`, …) reach for `createActiveRun()`—the lower-level factory `createAgent` builds on—which returns an `ActiveRun` instead. Attach listeners before awaiting `result`—the loop defers its first microtask so you never miss the opening events:
+
+`result()` resolves for an ordinary completed, errored, or cancelled run and carries the classification in `finishReason`; `abort()` is therefore observed as `finishReason: 'aborted'`. A persistence or infrastructure failure rejects `result()` so a caller cannot mistake an uncommitted terminal run for success. The promise remains cached, including after rejection. `abort()` is synchronous request signaling; await `result()` when the caller needs the terminal outcome.
+
+```typescript
+import { Conversation } from '@repo/conversationalist';
+import { createActiveRun, stopWhen } from '@repo/operative';
+
+const conversation = new Conversation();
+conversation.appendUserMessage('Summarize the docs.');
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox, // a Toolbox from armorer's createToolbox()—empty or populated
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+});
+
+activeRun.addEventListener('step.completed', (event) => {
+  console.log(`Step ${event.step} done—${event.content}`);
+});
+
+activeRun.addEventListener('run.completed', (event) => {
+  console.log('Finish reason:', event.finishReason);
+});
+
+// Abort any time before completion.
+// activeRun.abort('user cancelled');
+
+const result = await activeRun.result;
+```
+
+## Public API
+
+### Core Entry Point
+
+The main import surface for defining agents, running loops, managing sessions, backpressure, caching, context assembly, cost tracking, and multi-agent patterns.
+
+### `createAgent(options)`
+
+The documented public factory for a standalone, bureau-less agent. `generate` is required—there's no bureau to inherit a provider from. Runs are in-memory and ephemeral by default (no durability, no session, no shared memory) unless you inject your own `Toolbox` and `ConversationHistory`, as below.
+
+```typescript
+import { createAgent } from '@repo/operative';
+
+const agent = createAgent({
+  generate: myProvider, // GenerateFunction—required
+  instructions: 'You are a research assistant.',
+  tools: { search: searchTool }, // name-keyed map; the map key is canonical
+  stopWhen: (step) => step.toolCalls.length === 0,
+});
+
+const run = agent.run('Summarize the Q3 report.'); // fresh conversation
+for await (const event of run) {
+  /* iterate, OR */
+}
+const result = await run.result(); // await—same handle
+```
+
+`createAgent`'s return value satisfies `RunnableAgent<O, H>` (AB-21)—it carries a `readonly name` (`options.name`, defaulting to `'(agent)'` when omitted), a `readonly hasOutput: boolean` (AB-234—`output !== undefined`, the runtime witness for `H`), and `run` accepts an optional second `AgentRunContext` argument (`{ signal, agentName, traceContext, withTraceContext, principal }`), so it slots into `createLazyAgent` or a future `AgentDefinitions` map without a cast. `context.signal` drives per-run abort, `context.agentName` overrides the run's stamped agent name, `context.traceContext` becomes the same `parentContext` field `RunOptions` already uses for nested tracing, and `context.principal` (AB-241) forwards unchanged into `RunOptions.principal`—a bureau-owned `bureau.run()` catalog dispatch sets it from `BureauRunOptions.principal`.
+
+**`CreateAgentOptions`**—key fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `generate` | `GenerateFunction` | Required. The caller-supplied LLM call. |
+| `tools` | `Record<string, Tool>` | Name-keyed tool map. Mutually exclusive with `toolbox`. |
+| `toolbox` | `Toolbox` | A pre-built `Toolbox`, used as-is across every run. Mutually exclusive with `tools`. |
+| `instructions` | `string` | System prompt appended on fresh string-input runs only. |
+| `stopWhen` | `StopCondition \| StopCondition[]` | Loop exit predicates. |
+| `maximumSteps` | `number` | Hard step cap. |
+| `retry` | `RetryOptions` | Transient generate failure retry policy. |
+| `contextManagement` | `ContextManagementOptions` | Automatic context compaction. |
+| `permissions` | `HeadlessPermissionPolicyConfiguration` | Deny-by-default headless mode (AB-94). Mutually exclusive with `toolbox`. |
+
+`agent.run(input)` accepts either a plain `string` (starts a fresh conversation—`instructions`, if given, is appended as a system message, then `input` as a user message) or `{ conversation: ConversationHistory }` (resumes an existing history—see the next section).
+
+### Stateless chat host: resume a conversation, share a toolbox, park on approval
+
+A host with a browser- or client-owned conversation and an approval-gated toolbox—a stateless HTTP chat backend, for example—needs five things `createAgent` provides directly:
+
+1. **A conversation input**, not just a fresh string: `agent.run({ conversation })` starts the loop from an existing `ConversationHistory`—the shape a stateless backend POSTs and stores between turns.
+2. **Request-scoped authority**, not authority stored on the toolbox: pass the authenticated request's `requestContext` through `executeOptions`. On resume, construct a fresh context for the approval request while preserving every identity and revision field bound into the approval. Do not reuse ephemeral controls such as the original request's absolute `deadline`.
+3. **Versioned tools**, not anonymous mutable definitions: every tool that can produce a resumable approval needs a stable `version`. Armorer binds that version into the approval and rejects unversioned or changed definitions.
+4. **A pre-built `Toolbox`**, not a freshly composed one: pass `toolbox` instead of `tools`. Reuse the same instance across requests, or configure every instance with the same secret and durable approval state store, so a later request can validate and consume the issued approval.
+5. **Park-on-approval**, not headless denial: `stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()]` (from `@repo/operative`) stops the run cleanly after a step whose tool results include a pending approval—no further `generate` call happens, and the pending approval stays reachable on the final `RunResult`'s last step. `noToolCalls()` has to be combined in: `pendingApproval()` alone never fires on a normal, no-tool-call turn, so a plain text reply would otherwise run to `maximumSteps` instead of finishing.
+
+```typescript
+import { unlink } from 'node:fs/promises';
+import { createTool, createToolbox } from '@repo/armorer';
+import { createAgent, stopWhen } from '@repo/operative';
+import { z } from 'zod';
+
+const deleteFileTool = createTool({
+  name: 'delete-file',
+  version: '1',
+  description: 'Delete one file',
+  input: z.object({ path: z.string() }),
+  metadata: { mutates: true },
+  async execute({ path }) {
+    await unlink(path);
+    return { deleted: true };
+  },
+});
+
+// Built once per process—the stable approvalSecret is what makes
+// resumeApproval() work across separate HTTP requests.
+//
+// `approvalPolicy` is load-bearing, not decoration: armorer only installs its
+// approval hook when a policy (or a registry/tool policy, or a deny flag) is
+// present. Without one, `allowMutation` and `allowDangerous` both default to
+// true and `deleteFileTool` would simply EXECUTE—`approvalSecret` alone only
+// signs a pending approval once something has produced one.
+const toolbox = createToolbox([deleteFileTool], {
+  approvalPolicy: { mode: 'on-mutation' },
+  approvalSecret: Bun.env['APPROVAL_SECRET'],
+});
+
+// Build this from the authenticated request. Do not store tenant or principal
+// authority in the reusable toolbox.
+const requestContext = {
+  authority: {
+    principalId: currentUser.id,
+    tenantId: currentTenant.id,
+    ownerId: currentSession.id,
+    capabilities: currentAuthorization.capabilities,
+    authorizationRevision: currentAuthorization.revision,
+  },
+  audience: 'tenant',
+  agentId: agentId,
+  runId: runId,
+} as const;
+
+const agent = createAgent({
+  generate: myProvider,
+  toolbox,
+  executeOptions: { requestContext },
+  stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
+});
+
+// Turn 1: run from the client-POSTed history.
+const run = agent.run({ conversation: clientHistory });
+const result = await run.result();
+const pending = result.steps.at(-1)?.results.find((r) => r.pendingApproval)?.pendingApproval;
+// ...send `pending` to a human, store `result.conversation.current` server-side...
+
+// Later, on approval: authenticate the new HTTP request and construct a fresh
+// context. Preserve the bound identity fields, but derive controls such as a
+// deadline from this request instead of copying an expired deadline.
+const approvalRequestContext = {
+  authority: {
+    principalId: approvalUser.id,
+    tenantId: approvalTenant.id,
+    ownerId: approvalSession.id,
+    capabilities: approvalAuthorization.capabilities,
+    authorizationRevision: approvalAuthorization.revision,
+  },
+  audience: requestContext.audience,
+  agentId: requestContext.agentId,
+  runId: requestContext.runId,
+  deadline: Date.now() + 30_000,
+};
+const resumedResult = await toolbox.resumeApproval(signedApproval, {
+  requestContext: approvalRequestContext,
+});
+```
+
+> [!IMPORTANT] Reconcile the pending result—do not append on top of it `result.conversation` already carries an `action_required` tool-result for this call: the loop appends it before `stopWhen` ever runs. Appending `resumedResult` alongside it leaves two tool-results for one call, which most providers reject or mishandle on the next turn.
+>
+> Replace it in place with conversationalist's `resolveToolResult(conversation, callId, resumedResult)`, which addresses the message by `callId` (not by position or recency) and therefore works identically on a `Conversation` rehydrated from a persisted `ConversationHistory`—the case a stateless host hits on every resumed request. `Conversation.undo()` is NOT a substitute: it walks the in-process undo/redo graph, which a rehydrated conversation does not have in the same shape.
+>
+> Start the next turn from the resolved history. This README does not yet carry a full worked example of that round trip; see conversationalist's own documentation for `resolveToolResult` until one lands here.
+
+**Mutation ownership:** `agent.run({ conversation })` SNAPSHOTS the supplied `ConversationHistory`—it clones the value before wrapping it in a fresh internal `Conversation`, so the run's state and the object you passed in are independent from the moment `run()` is called: the run never mutates your object, and mutations you make to it afterward (a stateless host commonly keeps a mutable reference between turns) never leak into an in-flight run. This matches the durable path's existing snapshot semantics. `instructions` is not re-appended on this path; the supplied history is assumed to already carry whatever system context it needs, so resuming it repeatedly never duplicates system messages.
+
+### Process-local session timing
+
+`SessionHandle.sleep()` and `SessionHandle.monitor()` are host-process conveniences. Both use local timers, so process exit loses the outstanding delay or monitor loop even when the session has a durable engine. Individual monitor ticks can still be durable runs; the monitor controller itself is not persisted or recovered.
+
+For a process that only needs to reconnect to an existing durable run, construct the handle with the same session store, engine, and checkpoint store, then call `await session.recover()` without calling `run()` first. Recovery returns `null` when no run is available or when an engine resume fails, and emits `session.recover` failures for inspection, including a reconciliation persistence failure. `run()` requires configured `runOptions` and throws `MissingRunOptionsError` synchronously before reserving a run when they are absent.
+
+```typescript
+const session = createSessionHandle(sessionId, {
+  store,
+  agentName: 'assistant',
+  engine,
+  checkpointStore,
+  // No runOptions are needed for this recover-only path.
+});
+const recovered = await session.recover();
+if (recovered) await recovered.result();
+```
+
+An elicitation callback returns a response carrying the same immutable request identity and schema-validated data, or `null` to decline/cancel:
+
+```typescript
+const onElicitation: OnElicitation = async (request) => ({
+  requestId: request.requestId,
+  ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
+  data: request.schema.parse({ approved: true }),
+});
+```
+
+Each persisted `RunRef` carries the exact `userMessageId` when available and a safe terminal `outcome`. Both fields are optional for older records, so an absent `outcome` does not mean the run completed successfully. Engine-level cancellation is recorded as `{ finishReason: 'aborted' }`; engine failure and timeout are recorded as `{ finishReason: 'error' }`. Failed schema validation retains `finishReason: 'stop-condition'` and records the safe `output`/`INVALID_OUTPUT` classifier, so consumers must also inspect `outcome.error`.
+
+New `RunRef` records also retain `baseConversationMetadata`, captured when the run is reserved, so recovery can apply the checkpoint's metadata changes while preserving concurrent session edits. Older records without this snapshot use current-session precedence for conflicting metadata and apply only candidate-only additions; terminal records keep their current metadata during repeated reconciliation.
+
+`session.cancel()` requests cancellation immediately. An attached run owns the terminal transaction: await its `result()` to observe the persisted outcome and final transcript. Without an attached run, cancellation reconciles the engine’s actual terminal state and available checkpoint history; without a checkpoint store, it retains the session’s existing history. A matching terminal record keeps its classification and known rows while accepting missing transcript rows from the same run. Cancellation cannot clear a newer run’s handle or overwrite another terminal classification. For a recovered run, `closed()` and `session.closed()` wait for the terminal session commit; a failed commit yields a failed cleanup acknowledgement.
+
+Pass an `AbortSignal` to clear the active timer and stop the operation:
+
+```typescript
+const controller = new AbortController();
+
+const monitoring = session.monitor({
+  every: 'PT30S',
+  input: 'Check deployment health',
+  until: (result) => result.content.includes('healthy'),
+  signal: controller.signal,
+});
+
+controller.abort();
+await monitoring; // rejects with AbortError
+```
+
+Use a Weft-backed run wakeup or signal when a current run must survive restart, and use a Bureau recurring schedule when future runs must survive restart. Session timing does not switch to those durable capabilities implicitly.
+
+### Session liveness (AB-88, AB-214, AB-215)
+
+`SessionHandle` implements `LivenessObservable` (`@repo/operative`): `snapshot()` returns a `LivenessSnapshot` narrowed to `kind: 'session'`, and `subscribeSnapshot(observer, options?)` delivers it immediately, then again on every revision change. Unlike an `AgentRun`, a session never reaches a terminal liveness status—it can always accept another `run()`—so a `subscribeSnapshot` subscription stays open until `unsubscribe()` or `options.signal` aborts it. `durability` is always `'process-local'` (AB-39: session monitoring is not durable-ized by this record).
+
+```typescript
+const subscription = session.subscribeSnapshot((snapshot) => {
+  console.log(snapshot.status, snapshot.reachability, snapshot.missedPulseCount);
+});
+
+await session.monitor({ every: 'PT30S', input: 'Check deployment health', until: () => false });
+subscription.unsubscribe();
+```
+
+The `session.monitor` `StallPolicy` row (`policies.ts`) drives a watchdog for the lifetime of an active `monitor()` loop only—built via `createStallWatchdog` over the SAME `setTimeoutFunction`/`clearTimeoutFunction` pair `sleep()`/`monitor()` already use (no second timer seam), and disposed once the loop returns or throws, so a session not currently being polled accrues no missed pulses. Each `session.monitor.tick` records a `'host-reachability'` pulse—a caller's own poll tick proves the process is scheduling callbacks, not that the underlying watched work is progressing—which sets `lastActivityAt`/`lastHeartbeatAt`/`lastProgressAt` on the snapshot.
+
+A `HumanWaitParkedEvent` observed on a run this session started (typically from a `requestHumanInput`-style tool) moves the session to `status: 'waiting'` with a `DeclaredWait`: `reason: 'review'` when the event carries a `prompt`, `reason: 'signal'` otherwise, and `deadline` intentionally absent—both are legal unbounded waits per AB-88's unbounded-wait exception. The watchdog is paused (not merely ignored) for the wait's duration, so elapsed time never accrues toward stalled/unreachable, and resumes with a fresh instance once `session.signal()` delivers the matching signal.
+
+### `createLazyAgent(loader, options?)`
+
+Type-preserving lazy loading for a whole `RunnableAgent` (AB-21)—instructions, tools, and output schema together, not just the `generate` function (`createLazyGenerate` covers that narrower case: `createAgent({ generate: createLazyGenerate(loader) })`). It defers `import()`ing an agent's module until the first `run()` call, while still returning an `AgentRun` handle synchronously:
+
+```typescript
+import { createLazyAgent } from '@repo/operative';
+
+// A named export: select it inside the loader—there is no selector overload.
+const researcher = createLazyAgent(() =>
+  import('./agents/researcher').then((module) => module.researcher),
+);
+
+const run = researcher.run('Summarize the Q3 report.'); // synchronous—no await here
+const result = await run.result(); // the module loads on first run(), then is cached
+
+// A default export: `createLazyAgent` accepts the raw `import()` result
+// directly and unwraps `.default` itself (AB-15's `AgentModule<O, H>`).
+const plugin = createLazyAgent(() => import('./agents/plugin'));
+```
+
+`createLazyAgent`'s `options` also accepts `runtime?: RuntimeServices` (AB-92/AB-252/AB-325)—the clock the synthetic liveness snapshot reads through for the window before the underlying agent resolves (`startedAt`/`observedAt`), forwarded into `createDeferredAgentRun`. Defaults to the real implementation.
+
+`createLazyAgent`'s return value is an ordinary `RunnableAgent<O, H>`—the same shape `createAgent` produces—so it slots into an `AgentDefinitions` map without unwrapping. The first successful load is cached and shared across concurrent `run()` calls; a load failure clears only that pending load, so a later `run()` retries.
+
+Because this return value is synchronous—built before the loader has ever run—`hasOutput` is a live getter, not a value frozen at construction (AB-234). Before the loader resolves it falls back to `options.hasOutput` (typed as `H` itself, so it cannot disagree with the call's own type argument—pass `{ hasOutput: true }` for a schema-backed agent; defaults to `false`, matching `H`'s own default); once resolved, it switches to reading the _loaded_ agent's own `hasOutput` directly, regardless of what (or whether) `options.hasOutput` said—so an omitted or inaccurate provisional value can never leave a permanently wrong witness once loading completes.
+
+Each `run()` call owns its own `waiting → started → terminal` state, independent of every other call to the same lazy agent:
+
+- `input` and `context` are both snapshotted synchronously at `run()` call time (matching `createAgent`'s own snapshot semantics), so a caller mutating the object it passed in—after `run()` already returned—never leaks into this run.
+- Events emitted before the underlying agent resolves are buffered and replayed to the returned handle's async iterator once a consumer actually starts iterating; a caller who only ever calls `result()` never subscribes to the underlying event stream at all, so a long or tool-heavy run doesn't grow an unbounded buffer of events nobody reads.
+- `run.abort(reason)` called before resolution completes means the underlying agent's `run()` is never called at all—a fast abort, not a delayed one; an abort that raced synchronously inside `agent.run()` itself disposes the handle it just returned instead of leaving it running unobserved.
+- `run.abort(reason)` called after resolution forwards to the real handle exactly once. `context.signal` is passed straight through to the underlying agent's own `run()`, so once the underlying handle exists, the wrapper stops separately forwarding that same signal—a compliant agent is already responsible for honoring it directly, and forwarding twice would risk duplicating non-idempotent cleanup.
+- `result()`, `unwrap()`, and `output()` delegate to the real handle once it exists.
+
+A loader that throws or rejects surfaces `AsyncDefinitionLoadError` (the same error `createLazyGenerate` uses, kind `'load'`). A loader that resolves to something that isn't a valid `RunnableAgent`—or whose `run()` returns something that isn't a valid `AgentRun` (missing `result`, `abort`, iteration, or `[Symbol.dispose]`)—surfaces `AgentContractError` (kind `'contract'`, code `'INVALID_AGENT_HANDLE'`) instead: the load itself succeeded, so this isn't retried on the next `run()` call. Either failure is delivered both ways—the returned `AgentRun`'s `result()` resolves with `finishReason: 'error'` (or `'aborted'`) and the matching event, and its async iterator yields that one event before completing.
+
+### `createActiveRun(options)`
+
+The full-control factory behind `createAgent`, `createSessionHandle`, and bureau-owned agents alike—documented, public API, not an internal implementation detail. It accepts the complete `RunOptions` bag directly: an existing `Conversation` instance (not just a `ConversationHistory`), a pre-built `Toolbox`, hooks, and durable routing (engine + checkpoint store + run id). `bureau` and `evaluation` both depend on it as first-party consumers.
+
+Most callers should reach for `createAgent({...}).run(...)` instead—it wraps `createActiveRun` in the higher-level `AgentRun` handle and covers the common cases. Reach for `createActiveRun` directly when you need something `createAgent` doesn't expose: an already-live `Conversation` instance, durable routing, hooks (`prepareStep`, `onStep`, `validateResponse`, …), structured output via `output`, or a pre-built emitter to bind tool dispatches to.
+
+```typescript
+import { createActiveRun, stopWhen } from '@repo/operative';
+
+// `stopWhen` is required for the in-memory loop to finish on an ordinary turn:
+// without a stop condition, a text-only provider response keeps advancing until
+// `maximumSteps` (25) instead of returning after the first reply.
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: [stopWhen.noToolCalls()],
+});
+const result = await activeRun.result;
+console.log(result.content, result.usage.total);
+```
+
+Like `createAgent`, a plain `ConversationHistory` passed here is SNAPSHOTTED on the way in, so a host that keeps mutating its stored history between turns cannot corrupt an in-flight run. Pass an already-live `Conversation` instance instead when you deliberately want the run to share it.
+
+**`RunOptions`**—the complete options bag accepted by `createActiveRun`; key fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `generate` | `GenerateFunction` | Required. The caller-supplied LLM call. |
+| `toolbox` | `Toolbox` | Required. Tool registry. |
+| `conversation` | `Conversation \| ConversationHistory` | Required. Seed conversation. |
+| `stopWhen` | `StopCondition \| StopCondition[]` | Loop exit predicates. |
+| `maximumSteps` | `number` | Hard step cap (default: `25`). |
+| `prepareStep` | `PrepareStepHook \| PrepareStepHook[]` | Runs before each generate call. |
+| `beforeToolExecution` | `BeforeToolExecutionHook \| BeforeToolExecutionHook[]` | Modifies tool call list before execution. |
+| `afterToolExecution` | `AfterToolExecutionHook \| AfterToolExecutionHook[]` | Inspects/modifies tool results. |
+| `onStep` | `OnStepHook \| OnStepHook[]` | Called after each step completes. |
+| `retry` | `RetryOptions` | Transient generate failure retry policy. |
+| `backpressure` | `BackpressureStrategy` | Delay strategy applied before each step. |
+| `validateResponse` | `ValidateResponseHook \| ValidateResponseHook[]` | Post-generate response validation. |
+| `validateToolResult` | `ValidateToolResultHook \| ValidateToolResultHook[]` | Post-execute result validation. |
+| `selectTools` | `SelectToolsHook \| SelectToolsHook[]` | Per-step dynamic tool filtering. |
+| `onElicitation` | `OnElicitation` | Human-in-the-loop input handler. |
+| `contextManagement` | `ContextManagementOptions` | Automatic context compaction. |
+| `output` | `ZodType` | Structured output schema (AB-18) with retry. MUST NOT declare a field intended to carry binary or media content—a generated asset belongs in `RunResult.parts` as a managed-asset reference, never inlined as base64. |
+| `schemaRetries` | `number` | Retry attempts on schema validation failure. |
+| `onMaximumSteps` | `(context) => Promise<string \| void>` | Called when the loop exits on `maximumSteps`—a returned string replaces `content`. |
+| `hooks` | `HookRegistry<OperativeHookMap>` | Typed priority-ordered hook registry. |
+| `signal` | `AbortSignal` | External cancellation signal. |
+| `runId` | `string` | Stable run identity, used to stamp curated `tool.*` bubble events. Optional for a run with no `steering` (only supplied when the run has one, e.g. session-owned runs)—**required whenever `steering` is set** (AB-236): `RunOptions` is a discriminated pair on `runId`/`steering`, not two independently-optional fields, so a steering-enabled `RunOptions` literal with no `runId` is a compile error, not a silently-dropped `steering.applied` event. |
+| `steering` | `SteeringGate` | AB-67 runtime steering: `{ sessionId, getDesiredState(), awaitResume(), getAppliedFloor?() }`, consulted at the entry of every step. `paused: true` blocks the step until `awaitResume()` resolves or `signal` fires. `sessionId` (AB-221) stamps `steering.applied`'s `sessionId` field. `getAppliedFloor?()` (AB-199)—optional, the highest `configVersion` the gate has already observed applied by ANY run on the session—seeds a brand-new run's cross-run dedupe cursor (`executeLoop`/the durable driver call it once, at run start only) so a `configVersion` a prior run already applied is not re-fired as `steering.applied`; a gate that omits it seeds every fresh run at 0, unchanged from before AB-199. Optional—omit for unsteered runs; setting it requires `runId` (see above). |
+| `selection` | `SelectionGate` | AB-64/AB-250 selection-revalidation gate: `{ getPlan(), revalidate() }`, both synchronous and pure, consulted at the same boundary as `steering` (after the pause-wait loop, before backpressure). A revalidated plan that no longer reaches `outcome: 'selected'` fails the step with `SelectionRevalidationError`. No `runId` coupling. Optional—omit for a run with no selection dependency. |
+
+**`RunResult`:**
+
+```typescript
+interface RunResult {
+  conversation: Conversation;
+  steps: readonly StepResult[];
+  content: string;
+  usage: TokenUsage; // { prompt, completion, total }
+  finishReason: FinishReason; // 'stop-condition' | 'maximum-steps' | 'aborted' | 'error' | …
+  error?: unknown;
+  schemaValidation?: { success: boolean; error?: unknown }; // present when `output` is set
+}
+```
+
+**`ActiveRun` interface**—returned by `createActiveRun`, the event-emitting entry point. Attach listeners before awaiting `result`:
+
+| Member | Description |
+| --- | --- |
+| `result: Promise<RunResult>` | Resolves when the loop completes. |
+| `durablyStarted?: Promise<void>` | AB-361—durable branch only; see below. |
+| `abort(reason?)` | Cancels the loop immediately; `result` resolves with `finishReason: 'aborted'` when cancellation is observed. |
+| `closed(options?)` | Cleanup acknowledgement—see below. |
+| `complete()` | Completes the event stream without aborting the loop. |
+| `addEventListener(type, listener)` | Standard `EventTarget` listener. |
+| `removeEventListener(type, listener)` | Removes a listener. |
+| `on(type)` | Returns an `ObservableLike` stream for the event type. |
+| `once(type, listener)` | One-time listener. |
+| `subscribe(type, observer)` | RxJS-style subscription. |
+| `events(type, options?)` | `AsyncIterableIterator` of typed events. |
+| `toObservable()` | All events as a single `ObservableLike`. |
+| `snapshot()` | Current `LivenessSnapshot`—see below. |
+| `subscribeSnapshot(observer, opts?)` | Non-consuming liveness observer—see below. |
+| `[Symbol.dispose]()` | Aborts and completes—use with `using`. |
+
+**`durablyStarted` (AB-361).** On the durable branch (`createActiveRun(options, { engine, checkpointStore, runId })`), `durablyStarted` settles once this run's initial workflow record is durably committed—the write `context.engine.start(...)` performs—distinct from `result` (the run's own completion). A caller that needs the started-work control contract's durability guarantee (AB-34/AB-15: an acknowledged run is recoverable after any later crash) awaits it before treating a returned run identifier as durable; a caller that never reads it is unaffected, including when `engine.start` rejects. The in-memory branch leaves it `undefined`—there is no durable write to await.
+
+**Liveness (AB-88, AB-214).** `ActiveRun`, `AgentRun`, and `DiagnosticAgentRun` all implement `LivenessObservable`: `snapshot()` returns the current `LivenessSnapshot` synchronously (never starts work, never blocks, never mutates); `subscribeSnapshot(observer, options?)` delivers that snapshot immediately, then a new one on every revision change, and delivers a terminal snapshot exactly once for already-terminal work. See `@repo/operative` below for the full type contract and `createStallWatchdog`.
+
+**Event types** emitted on `ActiveRun` (all prefixed by their lifecycle stage):
+
+`run.started`, `run.completed`, `run.error`, `run.aborted`, `step.started`, `step.generated`, `step.completed`, `step.aborted`, `generate.started`, `generate.completed`, `generate.error`, `generate.retry`, `tools.executing`, `tools.executed`, `response.validated`, `tool-result.validated`, `context.compacted`, `context.budget-warning`, `elicitation.requested`, `elicitation.resolved`, `backpressure.applied`, `backpressure.released`, `usage.accumulated`, `session.saved`, `session.loaded`, `steering.applied` (AB-67/AB-221—dispatched at the `runStep` boundary; see the `SteeringGate`/steering command table above and `documentation/operative-type-safe-api.md`'s "Steering commands" section for `steering.accepted`/`rejected`/`superseded`/`failed`—exported here, documented as Bureau's `submitSteeringCommand` (AB-199) events to dispatch, but not yet actually dispatched by anything: `ActiveRun`'s in-memory driver exposes no external `dispatchEvent` surface for an owner outside the run to use, a named gap `documentation/operative-type-safe-api.md`'s "Steering commands" section tracks). `budget.threshold` and `budget.exceeded` are also exported members of `OperativeEventMap`, but neither has a production dispatch site: `createCostBudgetMonitor` (below) reports threshold and exhaustion through its own plain `onThreshold`/`onExceeded` callbacks, not by dispatching these events, so a subscriber never receives either one. `budget.exceeded` (`BudgetExceededEvent`) is additionally `@deprecated`—AB-231 settled budget-exceeded accounting through a `run.completed` event whose `finishReason` is `'budget-exceeded'` instead, reached only via a thrown `BudgetExceededError` (not `createCostBudgetMonitor`'s `stopCondition`, which resolves with `finishReason: 'stop-condition'`) (AB-365).
+
+Tool settlement is represented by the run's sealed `tool-result.validated` event and corresponding `StepResult` tool result. Filtering occurs before execution, so a filtered tool has no scripted settlement call; hook and validation failures preserve their final result payload and outcome in the emitted step result.
+
+```typescript
+// Iterate events as an async stream
+for await (const event of activeRun.events('step.completed')) {
+  console.log(event.step, event.content);
+}
+```
+
+### `GenerateFunction`
+
+The interface operative never provides for you. Wire in any provider:
+
+```typescript
+import type { GenerateFunction } from '@repo/operative';
+
+// Stub for tests or demos
+const generate: GenerateFunction = async ({ conversation, toolbox }) => ({
+  content: 'I can help with that.',
+  toolCalls: [],
+  usage: { prompt: 10, completion: 8, total: 18 },
+});
+```
+
+The root also exports ready-made generate functions for Anthropic, OpenAI, and Gemini.
+
+### Sessions
+
+The main entry point exposes session helpers for direct session management without a `SessionStore`:
+
+- **`createAgentSession(options)`**: Creates a new `AgentSession` object.
+- **`loadAgentSession(persistence, sessionId)`**: Loads an `AgentSession` from a conditional text-value store.
+- **`saveAgentSession(persistence, session)`**: Persists an `AgentSession` through conflict-aware session storage.
+
+```typescript
+import { createAgentSession, loadAgentSession, saveAgentSession } from '@repo/operative';
+
+// Direct persistence (use createSessionStore from session/index for the full API)
+const session = createAgentSession({
+  agentName: 'my-agent',
+  conversationHistory: conversation.current,
+  id: 'session-abc',
+});
+
+await saveAgentSession(store, session);
+const loaded = await loadAgentSession(store, 'session-abc');
+```
+
+For richer session management, `createSessionStore()` and `resumeSession()` are available at the same path and documented below under [`operative`—Core](#operativecreatesessionstore-and-resumesession).
+
+### `createSessionStore()` and `resumeSession()`
+
+```typescript
+import { createActiveRun, createSessionStore, resumeSession, stopWhen } from '@repo/operative';
+import { MemoryStorage, textValueStore } from '@repo/weft';
+
+// createSessionStore requires a real Weft `ConditionalTextValueStore`—it
+// checks for a `.conditionalBatch` method, so a hand-rolled `{ get, set,
+// delete }` stub throws `TypeError: createSessionStore requires a
+// ConditionalTextValueStore`. For tests and prototyping, wrap an in-memory
+// `MemoryStorage` with `textValueStore()` (from `@repo/weft`)
+//—this is the same pattern operative's own test suite uses. Swap in a
+// real Weft-backed store for production.
+const kvStore = textValueStore(new MemoryStorage());
+const sessions = createSessionStore(kvStore);
+
+await sessions.save(session);
+const summaries = await sessions.list({ agentName: 'my-agent', sortBy: 'updatedAt' });
+const loaded = await sessions.load('session-abc');
+await sessions.delete('session-abc');
+await sessions.cleanup({ olderThan: 7 * 24 * 60 * 60 * 1000 }); // 1 week
+
+// resumeSession loads an existing session (or creates a new one) and returns
+// the restored Conversation so you can pass it into a run.
+const { session, conversation, isNew } = await resumeSession(sessions, 'session-abc', {
+  agentName: 'my-agent',
+});
+
+// Then drive a run from the restored, already-live Conversation instance.
+// createAgent().run() only accepts a plain ConversationHistory (it snapshots
+// its own fresh Conversation internally); createActiveRun accepts a live
+// Conversation directly, which is what resumeSession returns.
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+});
+const result = await activeRun.result;
+```
+
+**`SessionStore` interface:**
+
+| Method | Description |
+| --- | --- |
+| `save(session)` | Persist a session with conflict-aware merging. |
+| `update(id, updater, options?)` | Read-modify-write a session through optimistic concurrency. `options.refreshActivity` (default `true`) controls whether a successful write stamps a fresh `updatedAt`; pass `false` for a background write (e.g. pruning stale metadata) that must not read as session activity. |
+| `load(id)` | Load by id; returns `undefined` if not found. |
+| `delete(id)` | Remove a session atomically. Resolves `true` only when this call itself removed a live record, `false` when there was nothing to remove—already gone, or never existed. A custom store must implement this as one delete-and-count operation, never a separate existence check followed by a delete, so a caller can tell which of two racing callers actually won (AB-371). |
+| `delete(id, { returnIncarnation: true })` | The same atomic delete, additionally reporting `{ removed, incarnation }`—the `AgentSession.incarnation` of the body actually removed (AB-384). Use this instead of reading `load(id)` beforehand when the deleted incarnation matters: a separate `load()` has a real race window a concurrent delete-and-recreate can fall into, where this overload has none. |
+| `exists(id)` | Check existence. |
+| `list(options?)` | Paginated list of `SessionSummary` objects. |
+| `updateMetadata(id, metadata)` | Merge metadata without rewriting the conversation. |
+| `cleanup(options)` | Delete sessions older than `options.olderThan` ms. |
+| `events` | `TypedEventTarget<OperativeEventMap>` (AB-384, re-scoped by AB-389) the store dispatches its commit-outbox drain trigger onto—see below. |
+| `outbox` | The commit outbox (AB-389/AB-390): `outbox.pending()` lists undrained `SessionOutboxEntry` records in ordinal order; `outbox.claim(ordinal, { owner, until })` takes exclusive replay rights on one entry until the lease expires; `outbox.acknowledge(ordinal, owner)` removes one once its replay has durably settled, only if `owner` still holds its claim—see below. |
+
+Sessions include a persisted `revision` number. New `AgentSession` objects start at revision `0`; successful `SessionStore` writes increment the stored revision. When concurrent writers save stale copies of the same session, the store retries with Weft's conditional batch primitive and merges conversation messages, run references, and metadata instead of silently dropping one writer's turns.
+
+**Incarnation identity (AB-384):** `AgentSession.incarnation` distinguishes live bodies of the same session id across a delete-then-recreate cycle (a supported flow). `SessionStore` mints it the first time an id's body is committed—a brand-new id, or one recreated after its previous body was deleted—and preserves it unchanged across every later `save()`/`update()` of that same live body. A freshly constructed, not-yet-persisted session (`createAgentSession()`) carries `''`, the same value a pre-AB-384 record loaded from storage defaults to.
+
+**Commit outbox (AB-389):** every successful `save()`, `update()`, or `delete()` commit appends a `SessionOutboxEntry` to the SAME atomic `conditionalBatch` as the body and summary-index write (or the removal)—a discriminated union on `kind`: `{ ordinal, kind: 'session.created' | 'session.saved', sessionId, agentName, incarnation, committedAtMs }` or `{ ordinal, kind: 'session.deleted', sessionId, incarnation, committedAtMs }`. `agentName` is a required `string` for `'session.created'`/`'session.saved'` (every live commit always names an agent) and present only there—a `'session.deleted'` entry has no live body left to describe. `committedAtMs` is the wall-clock time (`RuntimeServices.clock.now()`) THIS commit was appended, not the time a later drain happens to read it back—persisted so a delayed replay (a stalled maintenance pass, or a process restart) stamps durable history and the audit trail with the true commit time. `kind` is `'session.created'` the first time an id's body is committed, `'session.saved'` on every later commit of the same live body, or `'session.deleted'` for a `delete()` that actually removed a live record (a delete that removes nothing appends no entry and consumes no ordinal). `ordinal` is the store's own commit ordinal: a single monotonically increasing counter shared across every session id in this store, never a per-session `revision`—a caller draining entries in ordinal order sees every commit across the whole store in true commit order, even across two `SessionStore` instances sharing one persistent backend. `outbox.pending()` fails loudly (throws), rather than silently treating the entry as absent, when a stored entry is malformed—it is the sole record of a durable lifecycle fact until a drain replays it, so silently skipping a corrupt one would misorder or lose that fact instead of surfacing the corruption.
+
+The store does **not** dispatch `SessionCreatedEvent`/`SessionSavedEvent`/ `SessionDeletedEvent` directly anymore—that direct, fire-and-forget dispatch was a known limitation (AB-384, PR #592): a crash between a commit succeeding and its listener's write running lost the fact forever, with no recovery-time producer to reconstruct it, and two `SessionStore` instances over one shared backend could record events out of true commit order. `save()`/`update()`/ `delete()` now dispatch only `SessionOutboxAppendedEvent` on `SessionStore.events`—a best-effort drain trigger naming the appended entry's ordinal, never the event itself. A caller that needs the actual `session.created`/`session.saved`/ `session.deleted` facts must drain `outbox.pending()`, `claim()` each entry it intends to replay, replay it as the matching event, and acknowledge it only once that replay's own durable write has settled—Bureau's own drain loop (`drainOutbox` in `create-bureau.ts`, generalized as of AB-391 to also replay `session.attachment` entries) does exactly this, run on the runtime clock inside the durable maintenance pass, right after each commit, and during boot recovery before serving reads.
+
+**Caller-supplied attachments (AB-391):** `update(id, updater, { outbox })` accepts a fourth `SessionOutboxEntry` variant a caller couples its own durable write to this commit with: `{ ordinal, kind: 'session.attachment', sessionId, incarnation, namespace, payload, committedAtMs }`, where `namespace`/`payload` are opaque to this store—interpreted only by whichever consumer recognizes the namespace it appended. `options.outbox` is a list of `{ namespace, payload }` pairs appended in the SAME `conditionalBatch` as the update's own body/summary/ordinal writes, at consecutive ordinals immediately after the update's own `session.created`/ `session.saved` entry—never appended, and no ordinal consumed, when the updater declines to commit (returns `undefined`). Bureau uses this to couple a review-transition audit record to the session-store commit that resolves the review, under the `'audit-record'` namespace, so a crash between the two can no longer lose the audit record—see `packages/bureau/README.md`'s "Review-transition audit records ride the outbox" section.
+
+`update()` validates every `options.outbox` entry synchronously, before its `conditionalBatch` runs (Codex P2 review finding, PR #601, "Validate attachments before committing malformed outbox entries"): `namespace` must be a non-empty string and `payload` must be defined and JSON-serializable, or it throws `TypeError` immediately. This is the boundary that owns the contract—an untyped caller (or a value cast past `JSONValue`) passing `payload: undefined` would otherwise commit successfully (the session body and outbox ordinal both land), since `JSON.stringify` silently drops an `undefined`-valued key rather than erroring, but every LATER `outbox.pending()` call would then throw on that stored entry (`parseOutboxEntry` requires `payload`)—permanently blocking delivery of it and everything queued behind it, with no self-healing path short of manual storage repair. Validated attachments are then snapshotted (a JSON round-trip, which doubles as the serializability check) before `updater` runs (Codex P2 review finding, PR #601, "Snapshot attachments before invoking the updater")—`updater` is caller code, awaited across this method's own retry loop, and could otherwise mutate one of the SAME attachment objects (setting `payload` to `undefined`, say) after it passed validation but before `commit()` serializes it; the snapshot means only the validated values a caller actually gets back can ever be what commits.
+
+**Claim lease (AB-390):** `pending()` alone claims nothing—it is safe to call repeatedly and concurrently from multiple processes sharing one backend, but two processes both draining the SAME still-unacknowledged entry would both replay it without a claim. `outbox.claim(ordinal, { owner, until })` is a compare-and-swap on the entry's own `claim` field (never a separate lock record) that resolves a `SessionOutboxClaimAttempt`: `{ claimed: true }` when the entry was unclaimed, its prior claim's `until` has already passed by this store's own `RuntimeServices.clock.now()`, or `owner` already held it (claim renewal always succeeds—this is same-owner reentry, not the cross-owner exclusivity the lease protects, and a same-owner renewal can only ever EXTEND the stored `until`, never shorten it, so two overlapping renewal calls can never resurrect an already-expired deadline); `{ claimed: false, lease }` when a DIFFERENT owner holds an unexpired claim or a concurrent same-owner call already won (`lease` names the current winning claim either way, so a caller always has fresh evidence to schedule a retry against—never a stale `pending()` snapshot a peer's own `claim()` may have since invalidated); or `{ claimed: false }` with no `lease` when the entry no longer exists at all (already acknowledged). `outbox.acknowledge(ordinal, owner)` now additionally requires `owner` to still hold the entry's claim—verified by the same compare-and-swap discipline `claim()` uses, retrying against a fresh read when the CAS loses to this same owner's own concurrent renewal—so an owner whose lease lapsed and was reclaimed by a peer can never retire an entry it no longer owns. A drainer that crashes between winning a claim and acknowledging leaves the entry claimed but undelivered only until its own lease's `until` passes; a later drain (this same process's next tick, or a peer's) reclaims and completes it—**at least once, not exactly once**: a crash after `dispatch()` has already run a listener's side effect (or after a durable write has persisted) but before `acknowledge()` leaves the entry pending, and the next drain necessarily replays it again once the lease expires, because a lease prevents two owners from replaying an entry CONCURRENTLY but cannot tell whether a crashed owner's own replay completed first. Every consumer of these events (a durable event history producer, the audit trail, a direct `bureau.addEventListener` subscriber) must be idempotent on its own dedupe key (this outbox's `ordinal`) if redelivery after a crash would otherwise double an effect. This assumes every process draining one shared backend has a runtime clock within the lease's own tolerance of the others'—`claim()` compares `lease.until` against ITS OWN `RuntimeServices.clock.now()`, so a drainer whose clock runs meaningfully ahead of a peer's can treat that peer's live claim as already expired and reclaim it early; operate drainers sharing a backend with synchronized clocks (NTP or equivalent) within a small fraction of the lease duration.
+
+`save()`/`update()` reject with `StaleSessionIncarnationError` when a candidate names a specific, nonempty `incarnation` that no longer matches the live body's current one—writing back a prior incarnation's own object after that body was deleted and the id recreated. A candidate with `incarnation: ''` (the `createAgentSession()` default) is never rejected this way.
+
+```ts
+const sessions = createSessionStore(kvStore);
+const LEASE_MS = 30_000;
+// Unique across PROCESSES, not merely across calls in this one—two
+// processes minting `drainerId` the same deterministic way (a fixed
+// literal, a shared counter seed) would look like the SAME owner to
+// `claim()`, letting both replay concurrently. The production drainer adds
+// exactly this kind of real-randomness suffix to its own id for the
+// identical reason.
+const drainerId = `my-drainer-instance:${crypto.randomUUID()}`;
+
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleRetry(atMs: number): void {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = setTimeout(
+    () => {
+      retryTimer = undefined;
+      drain().catch((error: unknown) => console.error('outbox retry drain failed:', error));
+    },
+    Math.max(0, atMs - Date.now()),
+  );
+}
+
+// Single-flighted, the same way Bureau's own `drainSessionOutbox` is: two
+// `session.outbox-appended` events firing before the first callback below
+// finishes must join ONE drain rather than run two overlapping ones—two
+// concurrent callbacks sharing `drainerId` would each look like a valid
+// same-owner claim renewal to the OTHER, letting both replay the same
+// entry.
+let drainInFlight: Promise<void> | undefined;
+let rerunRequested = false;
+async function drain(): Promise<void> {
+  if (drainInFlight) {
+    rerunRequested = true;
+    return drainInFlight;
+  }
+  drainInFlight = (async () => {
+    try {
+      do {
+        rerunRequested = false;
+        // Ordinals define store-wide replay order—stop at the first
+        // entry this drainer cannot own, rather than skipping ahead to a
+        // later one, or a `session.saved`/`session.deleted` could replay
+        // before an earlier `session.created` a peer still holds.
+        for (const entry of await sessions.outbox.pending()) {
+          const attempt = await sessions.outbox.claim(entry.ordinal, {
+            owner: drainerId,
+            until: Date.now() + LEASE_MS,
+          });
+          if (!attempt.claimed) {
+            // A peer already holds this entry's lease—wake up and try
+            // again right when it expires, rather than depending on some
+            // unrelated future trigger to ever retry this store-wide
+            // choke point.
+            if (attempt.lease) scheduleRetry(attempt.lease.until);
+            return;
+          }
+          // Keeps the lease alive for as long as replaying this ONE entry
+          // takes—a slow durable write or a slow verification read could
+          // otherwise outlast the fixed lease above, letting a peer
+          // reclaim and replay the SAME entry while this callback is still
+          // working it.
+          const renewal = setInterval(
+            () => {
+              sessions.outbox
+                .claim(entry.ordinal, { owner: drainerId, until: Date.now() + LEASE_MS })
+                .catch((error: unknown) => console.error('outbox lease renewal failed:', error));
+            },
+            Math.floor(LEASE_MS / 3),
+          );
+          try {
+            console.log(`outbox entry ${entry.ordinal}: ${entry.kind} for ${entry.sessionId}`);
+            // Replay `entry` as the real event, await its own durable write, THEN:
+            const acknowledged = await sessions.outbox.acknowledge(entry.ordinal, drainerId);
+            if (!acknowledged) return; // lost the claim before acknowledging
+          } finally {
+            clearInterval(renewal);
+          }
+        }
+      } while (rerunRequested);
+    } finally {
+      drainInFlight = undefined;
+    }
+  })();
+  await drainInFlight;
+}
+
+sessions.events.addEventListener('session.outbox-appended', () => {
+  drain().catch((error: unknown) => console.error('outbox drain failed:', error));
+});
+```
+
+### Hooks
+
+Hooks plug into the loop lifecycle. Register them on `RunOptions.hooks` using a `HookRegistry`, or use the simpler array fields (`prepareStep`, `onStep`, etc.).
+
+```typescript
+import {
+  composeHooks,
+  createActiveRun,
+  onlyOnStep,
+  runOnce,
+  withTimeout,
+  everyNSteps,
+  stopWhen,
+} from '@repo/operative';
+
+// Compose two prepare-step hooks into one
+const combined = composeHooks(
+  onlyOnStep(0, async ({ conversation }) => {
+    conversation.appendSystemMessage('Extra context injected on step 0.');
+  }),
+  withTimeout(5000, async (ctx) => {
+    // Fetch something slow—times out and silently returns undefined after 5s
+  }),
+);
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  prepareStep: [
+    combined,
+    everyNSteps(3, async (ctx) => {
+      /* every 3rd step */
+    }),
+  ],
+  onStep: runOnce(async (step) => {
+    console.log('First step only:', step.content);
+  }),
+});
+```
+
+**Hook composition utilities:**
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `composeHooks` | `(...hooks: H[]) => H` | Sequential waterfall—a non-void return replaces the first arg for subsequent hooks. |
+| `onlyOnStep` | `(step: number, hook: H) => H` | Wraps a hook so it only fires on the given step number. |
+| `runOnce` | `(hook: H) => H & { reset() }` | Fires at most once; call `.reset()` to re-arm between runs. |
+| `everyNSteps` | `(n: number, hook: H) => H` | Fires on steps 0, N, 2N, … |
+| `withTimeout` | `(ms, hook, onTimeout?) => H` | Races the hook against a timeout; `'ignore'` (default) silently returns `undefined`, `'error'` throws. |
+
+### Guardrails
+
+See [`@repo/operative`](#operativeguardrails--guardrails) below for the tripwire model, the detector/validator catalog, provenance and the three retrieval surfaces, and the `bureau` default preset. This is a quick-start example; import from either `operative` or `@repo/operative`—they're the same implementation.
+
+```typescript
+import {
+  createActiveRun,
+  createGuardrails,
+  createPromptInjectionDetector,
+  createInputLengthDetector,
+  createTopicBoundaryDetector,
+  createOutputPIIValidator,
+  stopWhen,
+} from '@repo/operative';
+
+// Injection detection on inputs
+const injectionDetector = createPromptInjectionDetector();
+
+// Restrict topics
+const topicGuard = createTopicBoundaryDetector({
+  allowedTopics: ['cooking', 'recipes'],
+  blockedKeywords: ['finance', 'legal'],
+});
+
+// Block overlong inputs
+const lengthGuard = createInputLengthDetector({ maxLength: 2000 });
+
+// Compose into a guardrails hook set
+const guardrails = createGuardrails({
+  input: { detectors: [injectionDetector, topicGuard, lengthGuard] },
+  output: { validators: [createOutputPIIValidator()] },
+});
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  prepareStep: guardrails.prepareStep,
+  validateResponse: guardrails.validateResponse,
+});
+```
+
+### Context Assembly
+
+`createContextAssembler()` returns a function that, given a conversation and a budget, partitions messages into system / retrieved / history slices and trims each to fit:
+
+```typescript
+import { createContextAssembler, createTokenBudget } from '@repo/operative';
+
+const budget = createTokenBudget({
+  maxTokens: 100_000,
+  minimumResponseTokens: 4_000,
+});
+
+const assembler = createContextAssembler();
+const { messages, budgetReport } = assembler({ conversation, budget });
+```
+
+**Stable-prefix mode (`stablePrefix: true`)** trades the default priority-ranked/budget-fill behavior for a prompt-cache-friendly one: system messages and `pinnedMessages` are assembled into a prefix that stays byte-identical across steps as the conversation grows—never budget-truncated, never re-ranked—and the last message of that prefix comes back with `cacheBoundary: true`. History and `retrievedMessages` are unaffected: they're assembled exactly as in the default mode and appended AFTER the stable prefix, so their normal per-step re-ranking never touches the cached region.
+
+```typescript
+const { messages } = assembler({
+  conversation,
+  budget,
+  stablePrefix: true,
+  pinnedMessages: [toolUsageNotesMessage], // always included, in order, right after system
+});
+```
+
+The `cacheBoundary` mark is the same conversation-level primitive `conversationalist`'s Anthropic adapter already lowers to a `cache_control` breakpoint (`toAnthropicMessages`). `createAnthropicProvider` and `createAnthropicProviderStream` consume it directly—pass `assembler` and `contextBudget` and every request runs through stable-prefix assembly instead of sending the conversation verbatim:
+
+```typescript
+import {
+  createAnthropicProvider,
+  createContextAssembler,
+  createTokenBudget,
+} from '@repo/operative';
+
+const generate = createAnthropicProvider({
+  model: 'claude-sonnet-4-20250514',
+  assembler: createContextAssembler(),
+  contextBudget: createTokenBudget({ maxTokens: 100_000 }),
+  pinnedMessages: [toolUsageNotesMessage],
+});
+```
+
+**Cache economics.** Anthropic prices a cache write at 1.25x the base prompt rate and a cache read at 0.1x (`estimateCost` already applies this—see `cost-estimation.ts`). A run whose system prompt is a few thousand tokens pays that 1.25x premium once, on the first step, then reads the same prefix at 0.1x on every following step instead of paying full price for it again—a ~90% cost cut on that slice of the request for steps 2 onward. Prompt-cache hit rate is exposed per step and cumulatively on `usage.accumulated` (`UsageAccumulatedEvent.stepCacheHitRate` / `totalCacheHitRate`, computed by `estimateCacheHitRate`). `test/prompt-cache-economics.test.ts` walks through these numbers end to end against the mock Anthropic client (no live API calls)—see it for the worked example.
+
+**Extended (1-hour) cache TTL.** Anthropic's cache breakpoints default to a 5-minute TTL. Passing `extendedCacheTtl: true` to `createAnthropicProvider` / `createAnthropicProviderStream` opts every `cache_control` breakpoint lowered from a `cacheBoundary` mark into the extended one-hour TTL instead (`cache_control: { type: 'ephemeral', ttl: '1h' }`), which Anthropic bills at a higher cache-write rate in exchange for a longer-lived cache. It only takes effect on requests that actually have a cache boundary (i.e. `assembler` + `contextBudget`, or an already-marked conversation). OpenAI and Gemini use implicit, non-configurable prompt caching—there's no checkpoint metadata to interpret, so this option doesn't apply to `createOpenAIProvider` / `createGeminiProvider`.
+
+### Providers Behind a Proxy
+
+Every shipped provider (`createAnthropicProvider`, `createOpenAIProvider`, `createGeminiProvider`, and their streaming counterparts) accepts a `baseURL` override and an arbitrary `apiKey` string with no shape validation—both pass straight to the underlying SDK client, so a credential-injecting proxy can sit in front of the real provider and swap in the real key server-side:
+
+```typescript
+const generate = createAnthropicProvider({
+  model: 'claude-sonnet-4-20250514',
+  apiKey: 'placeholder-token', // never a real key—the proxy injects it
+  baseURL: 'https://llm-proxy.internal.example.com',
+});
+```
+
+**Per-provider endpoint allowlist.** Each provider issues requests to exactly one endpoint per generate call (a second, distinct endpoint for the streaming factories of OpenAI and Gemini)—the set below is pinned by `test/provider-proxy-contract.test.ts`, which runs each provider (and each streaming counterpart) through a real SDK client against a local `Bun.serve` mock and asserts the exact `(method, path)` set observed over a multi-step run. Use it to build a proxy allowlist:
+
+| Provider | Method | Path | Auth header |
+| --- | --- | --- | --- |
+| Anthropic | POST | `/v1/messages` (streaming uses the same path) | `x-api-key` |
+| OpenAI | POST | `/chat/completions` (streaming uses the same path) | `authorization: Bearer <token>` |
+| Gemini | POST | `/v1beta/models/{model}:generateContent` | `x-goog-api-key` |
+| Gemini (streaming) | POST | `/v1beta/models/{model}:streamGenerateContent` | `x-goog-api-key` |
+
+No provider issues a token-counting, models-list, or beta/experimental endpoint call as part of a normal generate step.
+
+**Per-run request metadata.** `requestMetadata` (a `Record<string, string>`) attaches to every generate request of a run:
+
+```typescript
+const generate = createAnthropicProvider({
+  model: 'claude-sonnet-4-20250514',
+  requestMetadata: { requestId: 'run-42', tenant: 'acme' },
+});
+```
+
+It's mapped to each provider's native field: Anthropic Messages `metadata`, OpenAI Chat Completions `metadata` (native string-keyed map, up to 16 keys). Gemini's `generateContent` API has no request-level metadata field, so `requestMetadata` is an explicit no-op for `createGeminiProvider` / `createGeminiProviderStream`.
+
+**Anthropic caveat—the whole object is forwarded, but the real API only accepts `user_id`.** Anthropic's `Metadata` type has exactly one documented field (`user_id`); calling `createAnthropicProvider` with `requestMetadata` containing OTHER keys and pointing `baseURL` at Anthropic's real endpoint directly (no proxy in front) gets the request rejected. This option exists for the credential-injecting-proxy case above: the proxy sees the whole object on the wire and can route/log on it, then either forward only `user_id` to the real Anthropic API or strip/translate the rest before forwarding. Don't pass arbitrary `requestMetadata` keys straight through to `api.anthropic.com`—only to a proxy that knows what to do with them.
+
+### Provider Errors
+
+Every shipped provider throws `ProviderError` (`@repo/operative`) for HTTP/SDK failures—it carries `provider`, `cause`, an optional `statusCode`, and `retryable` (true only for status codes in `{429, 500, 502, 503, 504}`).
+
+`createAnthropicProviderStream` and `createOpenAIProviderStream` throw the more specific `ToolCallParseError`—a `ProviderError` subclass—when the model finishes a turn but the accumulated tool-call argument JSON it streamed doesn't parse. This is a malformed-output problem, not an API failure: the request succeeded, the model just emitted bad JSON. It carries `toolName`, `toolCallId` (`string | undefined`—the provider didn't always assign one before the parse failed), and `rawArguments` (the unparsed fragment) alongside the inherited `ProviderError` fields, and `retryable` is always `false` since it never has a `statusCode`.
+
+```typescript
+import { ToolCallParseError } from '@repo/operative';
+
+try {
+  await generate(context);
+} catch (error) {
+  if (error instanceof ToolCallParseError) {
+    // The model streamed unparseable arguments for error.toolName —
+    // distinct from a provider outage.
+  }
+}
+```
+
+If the caller aborts `context.signal` mid-stream while a tool call's arguments are still accumulating, the truncated fragment is never parsed and never thrown as a `ToolCallParseError`—that's cancellation, not malformed model output, so the tool call is simply omitted from the response's `toolCalls`.
+
+`classifyError` (from `operative`) recognizes `ToolCallParseError` and reports it under the `'model-output'` category, so error-classification and routing code can tell "the provider is down" apart from "the model emitted bad JSON" without an `instanceof` check.
+
+Use `isToolCallParseError` to recognize the error structurally when it crosses a serialization or module boundary:
+
+```typescript
+import { isToolCallParseError } from '@repo/operative';
+
+if (isToolCallParseError(error)) {
+  // Matches structurally even if `error` came from a different
+  // operative entrypoint's bundle than this check.
+}
+```
+
+### Backpressure
+
+```typescript
+import {
+  createActiveRun,
+  createSlidingWindow,
+  createTokenBucket,
+  createAdaptiveBackoff,
+  stopWhen,
+} from '@repo/operative';
+
+// Smooth out burst traffic with a sliding window
+const backpressure = createSlidingWindow({ windowSize: 60_000, maximumRequests: 20 });
+
+// Token bucket for sustained rate control
+const bucket = createTokenBucket({ tokensPerInterval: 1, interval: 1000 }); // 1 token/sec
+
+// Exponential backoff that self-adjusts based on error rate
+const adaptive = createAdaptiveBackoff({ initialDelay: 500, maximumDelay: 30_000 });
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  backpressure,
+});
+const result = await activeRun.result;
+```
+
+### Caching
+
+```typescript
+import { createActiveRun, stopWhen, withCache, withCacheMetrics } from '@repo/operative';
+
+// withCache requires a TextValueStore backend (e.g. from Weft)
+const cachedGenerate = withCache(generate, {
+  store: kvStore, // TextValueStore
+  keyStrategy: 'last-message', // or 'conversation-hash' or a custom CacheKeyFunction
+  ttl: 3600, // seconds; 0 = no expiry
+});
+
+// withCacheMetrics wraps withCache and returns { generate, metrics }
+const { generate: metered, metrics } = withCacheMetrics(generate, {
+  store: kvStore,
+  keyStrategy: 'conversation-hash',
+  model: 'claude-sonnet-4-20250514', // optional, for cost-savings estimation
+});
+
+const activeRun = createActiveRun({
+  generate: metered,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+});
+const result = await activeRun.result;
+// metrics.hits, metrics.misses, metrics.hitRate, metrics.totalSavedTokens
+metrics.reset(); // clear counters between test runs
+```
+
+### Generate Middleware
+
+```typescript
+import { composeGenerate, createFallbackGenerate } from '@repo/operative';
+import type { GenerateMiddleware } from '@repo/operative';
+
+// composeGenerate(base, ...middleware) applies middleware right-to-left (outermost first)
+const loggingMiddleware: GenerateMiddleware = (next) => async (context) => {
+  const response = await next(context);
+  return response;
+};
+const stacked = composeGenerate(generate, loggingMiddleware);
+
+// Failover: try providers in order, fall back on error
+const withFallback = createFallbackGenerate({
+  providers: [primaryGenerate, fallbackGenerate],
+  shouldFallback: (error) => error instanceof Error && error.message.includes('rate limit'),
+});
+```
+
+### Multi-Agent Patterns
+
+`createSupervisor` and `createAgentDiscoveryTool` moved to the `bureau` package (AB-22)—they now operate directly on a `BureauAgentCatalog`/`AgentDescriptor` rather than the older registry types, which no longer exist in this package. See `bureau`'s README for both. `createHandoffTool` stays here; it now takes a `RunnableAgent` (from `createAgent` or `createLazyAgent`) directly instead of a registry adapter.
+
+**Subagents:**
+
+```typescript
+import { createAgent, createSubagentTool } from '@repo/operative';
+import { z } from 'zod';
+
+const researcherTool = createSubagentTool({
+  name: 'research',
+  description: 'Delegates a research task to a specialist agent.',
+  agentName: 'researcher',
+  // `agent` (AB-19) is a `RunnableAgent`—`researcherAgent` from
+  // `createAgent({...})` satisfies this directly, with no adapter.
+  agent: researcherAgent,
+  input: z.object({ query: z.string() }),
+  // toAgentInput (AB-19; renamed from mapInput) receives the tool's parsed,
+  // Zod-validated arguments—already typed to the schema above, no cast
+  // needed—and returns the child's `AgentInput` (a string, or
+  // `{ conversation }` to resume an existing history).
+  toAgentInput: (input) => input.query,
+});
+
+const orchestrator = createAgent({
+  generate,
+  tools: { research: researcherTool },
+});
+```
+
+`createSubagentTool` is built on `dispatchChildRun` (AB-50), the lower-level child dispatch primitive—see [Child dispatch and discovery (AB-50)](#child-dispatch-and-discovery-ab-50) below. It threads the parent tool call's `signal` and `traceContext`—plus this tool's own `agentName` and `withTraceContext` option—through to `agent.run(input, { agentName, signal, traceContext, withTraceContext })`, so a real `createAgent` child aborts when the parent's tool call does. `signal` always propagates, composed with a private per-child `AbortController` so a child-targeted abort (through `AgentRun.abortChild()`, or the `ChildRunHandle.abort()` a direct `dispatchChildRun` caller retains) never reaches a sibling. `traceContext` is read off the executing `ToolContext` (AB-233): the ordinary `createAgent`-driven agent loop populates it on every call, from the run's own `parentContext`, via `run-step.ts`'s toolbox execute call site—no special toolbox construction required. Pass `withTraceContext` directly on `createSubagentTool`'s own options when the child needs its `agent.run()` call wrapped in a trace context.
+
+Every non-success terminal (abort, execution error, tripwire, budget exceeded, elicitation denied, maximum steps, or a clean stop whose output failed schema validation) rejects with `SubagentRunError`, which carries the child's full `RunResult` as `.result`—there is no `treatMaximumStepsAsError` toggle to opt out of this. That guarantee holds for a caller that invokes the tool's own execute function directly; once the tool call is driven through armorer's toolbox (the ordinary agent-loop path), armorer normalizes every thrown tool error—including `SubagentRunError`—into a plain, structured `ToolError` on the resulting `ToolExecutionResult`, the same as it does for every other tool in this codebase. `instanceof SubagentRunError` and `.result` are reachable only above that normalization boundary.
+
+**Context isolation (AB-64):** by default, `createSubagentTool` keeps a sub-agent's full conversation, steps, and usage out of the parent's context window—only a capped summary of its `content` crosses back. `returnMode` controls this:
+
+- `'summary'`—the **documented default**. Only `result.content`, condensed by a `summarizer` and hard-capped at `summaryTokenCap` tokens (default `500`), returns to the parent. The sub-agent's own transcript stays isolated. This is what keeps a fan-out of several sub-agents from blowing up the orchestrator's context window.
+- `'full'`—`result.content` is returned verbatim and uncapped. Opt in deliberately, e.g. for a single close-coupled delegation that needs the sub-agent's exact output (structured extraction, code the parent will paste unmodified).
+
+Both modes ultimately hand off to `toToolOutput(result)` (AB-19; renamed from `mapOutput`), which receives the complete successful `RunResult`—including `conversation`, `steps`, and `usage`—so a custom `toToolOutput` CAN reach past the summary and return those fields directly. `toToolOutput` is a pure projection, not runtime validation: it is never invoked for a non-success terminal, which rejects with `SubagentRunError` before `toToolOutput` is ever reached. `returnMode`/`summaryTokenCap` cap `result.content`, not what a custom `toToolOutput` chooses to do with the rest of the object; keep that in mind if you override it. Omit `toToolOutput` entirely for a schema-less child and the tool returns a plain string (`result.content`).
+
+```typescript
+const researcherTool = createSubagentTool({
+  name: 'research',
+  description: 'Delegates a research task to a specialist agent.',
+  agentName: 'researcher',
+  agent: researcherAgent,
+  input: z.object({ query: z.string() }),
+  toAgentInput: (input) => input.query,
+  // returnMode: 'summary' is the default—shown explicitly here.
+  returnMode: 'summary',
+  summaryTokenCap: 300,
+  // Swap in a real LLM-backed condensation instead of the default
+  // character-truncation summarizer:
+  summarizer: async (result, { agentName, maxTokens, signal }) => {
+    // Pass `signal` through to cancel the LLM call if the parent tool call
+    // is aborted while summarization is in flight.
+    return condenseWithLLM(result.content, { agentName, maxTokens, signal });
+  },
+});
+```
+
+### Child dispatch and discovery (AB-50)
+
+`createSubagentTool` is the model-facing entry point; `dispatchChildRun` is the lower-level primitive underneath it, exported for code that dispatches a subagent directly rather than through a tool. It returns a `ChildRunHandle` that carries `childRunId`, `parentRunId`, and `agentName` alongside `AgentRun`'s own iterate/await/abort/dispose surface, so two concurrently retained handles stay independently addressable—aborting or iterating one never touches the other:
+
+```typescript
+import { dispatchChildRun } from '@repo/operative';
+
+// `AgentRun` carries no id of its own (a recorded gap owned by AB-88), so a
+// caller who wants one supplies it—here, generated up front so it can
+// also correlate every event these two dispatches emit.
+const parentRunId = crypto.randomUUID();
+
+const alpha = dispatchChildRun(researcherAgent, 'Research topic A', {
+  agentName: 'researcher-alpha',
+  parentRunId,
+});
+const beta = dispatchChildRun(researcherAgent, 'Research topic B', {
+  agentName: 'researcher-beta',
+  parentRunId,
+});
+
+const [resultAlpha, resultBeta] = await Promise.all([alpha.result(), beta.result()]);
+// alpha.abort('no longer needed') stops only alpha—beta keeps running.
+```
+
+`dispatchChildRun` dispatches through `RunnableAgent.run()`—the in-process route—and emits the four `multiagent.child-workflow.*` lifecycle events (`started`/`completed`/`failed`/`aborted`) on `emitter` when one is supplied, each correlated by `parentRunId` and `childRunId`.
+
+**Child discovery.** `AgentRun.children()` / `.abortChild(id, reason?)` (the signatures the started-work control contract in `documentation/operative-type-safe-api.md` assigns to AB-50) are backed by an opt-in `ChildRunRegistry`. Discovery does not happen automatically—a tool is constructed once, independent of any particular run, so nothing can inject a run-scoped registry into an already-built tool by itself. Wire the same registry into both places to make a run's children discoverable even when the tool's own return value never surfaces them to the caller:
+
+```typescript
+import { createChildRunRegistry, createSubagentTool } from '@repo/operative';
+
+const registry = createChildRunRegistry();
+// Tools are built once, independent of any particular run—so the parent
+// run's id has to exist before the tool does, not be read off a `run`
+// value that doesn't exist yet.
+const parentRunId = crypto.randomUUID();
+
+const researcherTool = createSubagentTool({
+  name: 'research',
+  description: 'Delegates a research task to a specialist agent.',
+  agentName: 'researcher',
+  agent: researcherAgent,
+  input: z.object({ query: z.string() }),
+  toAgentInput: (input) => input.query,
+  parentContext: {
+    emitter, // the parent run's own event emitter
+    parentAgentName: 'orchestrator',
+    parentRunId,
+    durable: false,
+    registry, // <- makes this tool's children discoverable
+  },
+});
+
+const run = orchestratorAgent.run('...', { childRegistry: registry }); // <- same registry
+// ... after the orchestrator has dispatched some subagent calls ...
+run.children(); // [{ id, parentId, agentName: 'researcher', durable: false, status: 'running' | ..., assessment: 'healthy' | ... }]
+run.abortChild(run.children()[0]?.id, 'no longer needed'); // scoped: this child only
+run.snapshot().worstChildAssessment; // AB-216—most severe non-terminal child assessment, or absent
+```
+
+`ChildRunDescriptor.parentId` carries the edge back to whatever id `parentRunId` was, so nesting `createSubagentTool` inside a child's own toolbox—with every level threading through the SAME `registry`—makes the whole ownership tree reconstructable from one `registry.children()` call at the root, reassembled by `parentId`, even though the registry itself stores a flat list.
+
+`ChildRunDescriptor.assessment` (AB-216) tracks that child's own `LivenessSnapshot.assessment`—populated the moment `dispatchChildRun` attaches the child's `LivenessObservable` to `registry` (synchronously, at dispatch), and kept current by the child's own `subscribeSnapshot` deliveries thereafter. It is the source `AgentRun.snapshot().worstChildAssessment` folds over on the parent side (see "Child-liveness aggregation" above); reading it directly off one child's own descriptor is also useful on its own when a caller wants that one child's state without a parent-level fold.
+
+Omit `registry` on either side and `children()` reads back an empty array and `abortChild()` is a no-op—never a throw. `abortChild()` is idempotent on an unknown or already-terminal child id, matching `abort()`'s own rule, and never propagates to a sibling.
+
+**AB-233—one registry is enough in the ordinary loop.** The explicit `parentContext: { registry }` wiring above remains fully supported (and is still what a direct `dispatchChildRun` caller, or a tool built outside the ordinary agent loop, needs). But for a `createSubagentTool` reached through `createAgent`'s ordinary loop, passing `childRegistry` to `agent.run()` alone is now enough—`run-step.ts` threads THAT run's own registry into every tool call's per-execution context, and `createSubagentTool` reads it there in preference to `parentContext.registry`:
+
+```typescript
+const registry = createChildRunRegistry();
+const researcherTool = createSubagentTool({
+  name: 'research',
+  description: 'Delegates a research task to a specialist agent.',
+  agentName: 'researcher',
+  agent: researcherAgent,
+  input: z.object({ query: z.string() }),
+  toAgentInput: (input) => input.query,
+  // No parentContext.registry needed here.
+});
+
+const run = orchestratorAgent.run('...', { childRegistry: registry });
+```
+
+This also fixes a reuse hazard the construction-time wiring had: build `researcherTool` ONCE and run `orchestratorAgent` twice concurrently, each with its own `childRegistry`—every call registers its child into THAT call's own registry, never a registry frozen at the moment the tool was built and never the other run's registry.
+
+`parentRunId` follows the same per-execution-over-construction-time rule, but only when the active run actually carries a `runId`—session-owned and durable runs (`RunOptions.runId`). A bare `createAgent().run()` call, as in the example above, has none: `AgentRunContext` has no `runId` field today, so `parentContext.parentRunId` (the construction-time value) is what gets stamped on that path. Supply `parentContext.parentRunId` explicitly when you need a correct value there.
+
+**Child terminal lifecycle and relationship-query events (AB-90 child ab90-02, AB-222).** Alongside `ChildWorkflowStartedEvent` (`child.started`), `dispatchChildRun` emits `ChildWorkflowCompletedEvent`/`ChildWorkflowFailedEvent`/`ChildWorkflowAbortedEvent` (`multiagent.child-workflow.completed`/`.failed`/`.aborted`—AB-87's decision record names these `child.completed`/`child.failed`/`child.aborted`; AB-50 shipped them). They're mutually exclusive terminals for one child run, each carrying `childRunId` and `parentRunId`.
+
+Two further event classes are typed and exported by this package but not yet wired to a live dispatch call site: `ChildWorkflowReattachedEvent` (`multiagent.child-workflow.reattached`, `childRunId`/`parentRunId`) fires only once AB-53's persisted parent-child topology recovery reattaches a previously detached child's event stream to its parent—this package defines the type, payload shape, and intended dispatch point, but does not itself implement persisted topology or recovery. `ChildWorkflowProgressEvent` (`multiagent.child-workflow.progress`) additionally carries the child's own `SemanticProgress` (`@repo/operative`'s `liveness` module, AB-88/AB-214) and is explicitly non-cursor-advancing—an ephemeral delta, never a durable state transition.
+
+`listChildRuns(registry, parentRunId)` is a relationship-query function over the same `ChildRunRegistry` `AgentRun.children()` reads from—it lets a caller enumerate a run's children and their outcomes without polling each child's own handle:
+
+```typescript
+import { createChildRunRegistry, dispatchChildRun, listChildRuns } from '@repo/operative';
+
+const registry = createChildRunRegistry();
+dispatchChildRun(researcherAgent, 'Research topic A', {
+  agentName: 'researcher',
+  parentRunId: 'parent-1',
+  registry,
+});
+
+listChildRuns(registry, 'parent-1');
+// [{ id, parentId: 'parent-1', agentName: 'researcher', durable: false, status: undefined }]
+// status is 'completed' | 'failed' | 'aborted' once terminal, undefined while running.
+```
+
+A `parentRunId` with no registered children returns an empty array—never a throw. Deliberately not `bureau.*`-namespaced: `listChildRuns` is an operative-level export over operative's own in-process registry; a Bureau-level relationship-query API, if wanted later, wraps this function rather than being built here.
+
+**Cleanup acknowledgement.** `closed(options?)` (AB-37, delivered by AB-204) is on `ActiveRun`, `AgentRun`, and `DiagnosticAgentRun` alike—a truthful cleanup acknowledgement, backed by the same settlement `abort()` already uses, for a caller that wants more than "I fired `abort()` and hoped":
+
+```typescript
+const cleanup = await run.closed(); // never rejects
+// { status: 'not-required' | 'completed' | 'failed' | 'unresolved', reason?, error? }
+```
+
+`closed()` never rejects and is idempotent: once the underlying cleanup has genuinely settled, a repeated call returns the identical cached object by reference. `not-required` covers work that never needed cleanup in the first place; `completed` is the clean-teardown case; `failed` is a definite, observed teardown failure; `unresolved` covers everything the outcome could not be determined for, with `reason` distinguishing a caller-side `options.signal` timeout (`'timed-out'`—bounds only THIS call's wait, never writes into the shared cache) from an unreachable durable worker (`'unreachable'`), an unconfirmed durable write (`'persistence-failed'`), or unknown side-effect residue (`'unknown-effect'`). On a `DiagnosticAgentRun` (a durable run recovered without a trusted live agent definition) durability cannot be determined from the wrapper, so a wrapped `'completed'` outcome is downgraded to `unresolved`/`unknown-effect`; every other outcome passes through unchanged.
+
+**`completed` waits for real tool-callback completion, not just the cancellation race (AB-289).** In-memory `ActiveRun.closed()` withholds `{ status: 'completed' }` until every run-owned tool call's own callback has genuinely returned or thrown—armorer's toolbox `settled` event fires as soon as the cancellation race against the execution signal settles, and a callback that ignores its abort signal keeps running after that. A caller with its own bounded wait (`closed({ signal })`) still observes `{ status: 'unresolved', reason: 'timed-out' }` if that signal fires before the callback returns.
+
+**Parent `closed()` awaits child cleanup (AB-211/AB-304).** When a run was started with `childRegistry` (the same `ChildRunRegistry` backing `children()` / `abortChild()`), its `closed()` does not resolve `completed` while any registered child's own `closed()` is still pending—not merely while the child's `result()` is unresolved. A run with no `childRegistry`, or one with zero registered children, behaves identically to before this change, with no added latency. Aborting one child never affects an untouched sibling's own path to settlement. This gate applies uniformly to both the in-memory and durable `ActiveRun` paths: `createDurableActiveRun` and `reattachDurableActiveRun` (`durable/active-run-adapter.ts`) also thread `RunOptions.childRegistry` through and fold `awaitChildrenClosed()` into their own `closed()`, so a durable parent's `closed()` waits on its children exactly the same way an in-memory parent's does—including a child dispatched after a reattach/recovery, discovered through the same registry.
+
+**Supervisor:** moved to the `bureau` package (AB-22)—see its README for `createSupervisor`, `RoutingStrategy<D>`, and the built-in routing strategies, which now operate on a `BureauAgentCatalog<D>` and metadata-only `AgentDescriptor`s.
+
+**Handoffs:**
+
+```typescript
+import {
+  createAgent,
+  createHandoffTool,
+  extractHandoffTarget,
+  HANDOFF_MARKER,
+  stopWhen,
+} from '@repo/operative';
+
+// Each handoff targets one specific agent
+const escalateToSupport = createHandoffTool({
+  name: 'escalate-to-support',
+  description: 'Transfer the conversation to the human support agent.',
+  agent: { agentName: 'support', agent: supportAgent },
+});
+
+const triageAgent = createAgent({
+  generate,
+  tools: { 'escalate-to-support': escalateToSupport },
+  stopWhen: [
+    // Pair a handoff tool with stopWhen.toolCalled(name), not
+    // stopWhen.noToolCalls(): the handoff itself IS a tool call, so
+    // noToolCalls() never sees a step with zero tool calls and the loop runs
+    // to maximumSteps instead of exiting on the handoff.
+    //
+    // toolCalled() inspects only the generated call NAME, never the result, so
+    // on its own it also fires on a handoff that FAILED—bad arguments error
+    // before execute runs, no HANDOFF_MARKER is produced, and the run ends
+    // with extractHandoffTarget returning undefined. Requiring the step to be
+    // error-free keeps a failed handoff from ending the loop, giving the model
+    // another step to call it correctly.
+    stopWhen.every(
+      stopWhen.toolCalled('escalate-to-support'),
+      stopWhen.not(stopWhen.toolOutcome('error')),
+    ),
+    // Bound the retry: a handoff the model never gets right would otherwise
+    // run to the default maximumSteps.
+    stopWhen.maximumSteps(8),
+  ],
+});
+
+// After a run, check whether a handoff occurred. extractHandoffTarget expects
+// each step's tool-result content as a string—true for any tool built with
+// createTool() (execute always returns a string), but RunResult.steps carries
+// the wider ToolExecutionResult.content (JSONValue), so narrow it first.
+const target = extractHandoffTarget(
+  result.steps.map((step) => ({
+    results: step.results.map((r) => ({ content: String(r.content) })),
+  })),
+);
+
+// Always branch on undefined rather than assuming the run stopped because a
+// transfer happened. The run can end with no marker in the final step—a
+// handoff that never validated, or a maximumSteps/budget stop.
+if (target) {
+  // target is the agent name that was handed off to
+} else {
+  // No transfer. Handle it—retry, escalate differently, or return the
+  // assistant's own last message—instead of treating it as a handoff.
+}
+```
+
+> [!NOTE] Why the composition, and its limits No built-in stop condition inspects a tool result for _success_—`stopWhen.toolOutcome` triggers on `'error'`/`'action_required'`, and `stopWhen.contentMatches` reads the assistant's text, not tool results. Composing `every` with `not(toolOutcome('error'))` is how you express "the handoff was called _and_ the step is clean" out of what exists. Two consequences are worth knowing:
+>
+> - `toolOutcome('error')` is evaluated across the whole step, not per call. A successful handoff that shares a step with some other failing tool will not stop the loop, and if the run ends later, the marker is no longer in the final step—`extractHandoffTarget` reads only the last step, so it will miss it.
+> - Neither form removes the `undefined` check. `stopWhen.toolCalled` alone stops on a failed handoff; the composition can stop for an unrelated reason. The caller is what decides a transfer occurred.
+
+> [!WARNING] `createHandoffTool`'s `input` option defaults to `z.object({})`—an empty-object schema—when omitted. A tool call whose `arguments` is a bare string (rather than an object) fails schema validation and the call errors instead of reaching `execute`, with nothing in the type signature to flag it. Pass a custom schema when the handoff needs structured input from the model, for example a reason or a ticket summary:
+>
+> ```typescript
+> import { z } from 'zod';
+>
+> const escalateToSupport = createHandoffTool({
+>   name: 'escalate-to-support',
+>   description: 'Transfer the conversation to the human support agent.',
+>   agent: { agentName: 'support', agent: supportAgent },
+>   input: z.object({ reason: z.string() }),
+> });
+> ```
+>
+> A custom schema **constrains and validates** the call; it does not add anything to the transfer. `createHandoffTool`'s `execute` takes no arguments and returns a marker containing only `type` and `agent`, so `extractHandoffTarget` can only ever give you the target agent name—never the `reason`. `HandoffOccurredEvent` is the same story: it carries the source agent, target agent, and session id, and nothing from the input.
+>
+> Read the value back off the recorded tool _call_ instead, which `RunResult.steps` keeps alongside the results. Note this is the raw `arguments` the model sent, as materialized JSON—not Zod's parse output, so schema defaults and transforms are not reflected in it:
+>
+> ```typescript
+> // Read the LAST step, the same step extractHandoffTarget reads. A failed attempt is still
+> // recorded on toolCalls, so scanning every step would find the failed call first and throw.
+> // Gate on `target` so you only parse arguments a successful handoff actually validated.
+> const handoffCall = target
+>   ? result.steps.at(-1)?.toolCalls.find((call) => call.name === 'escalate-to-support')
+>   : undefined;
+>
+> const reason =
+>   handoffCall && z.object({ reason: z.string() }).parse(handoffCall.arguments).reason;
+> ```
+>
+> If the target agent needs the reason in its own context, pass it explicitly when you start that agent's run—the handoff mechanism will not carry it across for you.
+
+**Agent discovery:** moved to the `bureau` package (AB-22)—see its README for `createAgentDiscoveryTool`, which now takes a `BureauAgentCatalog<D>` directly rather than a standalone registry.
+
+### Scheduler
+
+```typescript
+import { createScheduler, createHeartbeat, createChunkedTask, stopWhen } from '@repo/operative';
+import type { SchedulerTask } from '@repo/operative';
+
+// The scheduler shares a generate function and toolbox across all its tasks.
+const scheduler = createScheduler({
+  generate,
+  toolbox,
+  idleDelay: 500, // ms to wait before dispatching non-immediate tasks
+});
+
+scheduler.start();
+
+// Submit a task—resolves when complete, or null if preempted and not re-queued
+const task: SchedulerTask = {
+  id: 'background-sync',
+  priority: 'background',
+  createRun: () => ({
+    generate,
+    toolbox,
+    conversation,
+    stopWhen: stopWhen.noToolCalls(),
+  }),
+  onComplete: (result) => {
+    /* result.content */
+  },
+};
+
+await scheduler.submit(task);
+
+// Periodic proactive task (heartbeat)—requires a running scheduler
+const heartbeat = createHeartbeat({
+  scheduler,
+  interval: 60_000,
+  createHeartbeatRun: () => ({ generate, toolbox, conversation, stopWhen: stopWhen.noToolCalls() }),
+});
+heartbeat.start();
+
+// Break long work into preemption-friendly chunks
+// createChunkedTask returns a function you call with a scheduler
+const runChunked = createChunkedTask({
+  name: 'dataset-processing',
+  initialState: { offset: 0, processed: 0 },
+  processChunk: async (state, signal) => {
+    // do one chunk of work
+    const done = state.offset >= totalItems;
+    return { state: { ...state, offset: state.offset + 50 }, done };
+  },
+  onComplete: (finalState) => {
+    /* all chunks done */
+  },
+});
+
+await runChunked(scheduler);
+```
+
+**Callback promises are tracked and awaited, not fired-and-forgotten (AB-208).** A scheduler task's `onComplete`/`onPreempted` callback can return a promise; `Scheduler.stop()` awaits every such promise (in the same pass it already awaits durable cancellations) before its own returned promise resolves, so a stopped scheduler is a real boundary for anything the callback closes over—a rejection after the owner stopped is captured and reported as a `task.failed` event rather than becoming an unhandled rejection. `createChunkedTask`'s `onComplete`/`onError` callbacks are likewise awaited before `submitChunkedWork`'s returned promise settles. `createHeartbeat(...).stop()` returns `Promise<void>`, resolving once the in-flight `tick()` (and its `onTick` callback promise) settles—calling it on an already-stopped heartbeat is a no-op that resolves promptly.
+
+### Cost Estimation and Budget
+
+```typescript
+import { estimateCost, createCostBudgetMonitor } from '@repo/operative';
+
+const estimate = estimateCost(
+  { prompt: 5000, completion: 800, total: 5800 },
+  'claude-opus-4-20250514',
+);
+// estimate.totalCost—total dollar cost for this call
+
+const monitor = createCostBudgetMonitor({
+  budget: 0.1, // $0.10 USD
+  model: 'claude-sonnet-4-20250514',
+  thresholds: [0.5, 0.8], // warn at 50% and 80%
+  onThreshold: (event) => console.warn(`${event.threshold * 100}% of budget used`),
+  onExceeded: (event) => console.error('Budget exceeded at $' + event.currentCost.toFixed(4)),
+});
+```
+
+### Model Catalog (AB-64)
+
+`createModelCatalog` (`@repo/operative`) builds a static, synchronous, side-effect-free `ModelCatalog`—one `BackendDescriptor` row per `(provider, endpoint, model)` this package ships a generate function for. Each descriptor names its `modalities` (an AB-70 `ModalityMatrix`, re-exported from `conversationalist`), context/output limits, effort support and degradation, parameter compatibility, pricing (derived from `defaultPricingTable`, never fabricated), and availability/health. `voyage` and `ollama` are embedding-only and get no row. `CreateModelCatalogOptions.runtime?: RuntimeServices` (AB-325) backs the default `now` when `options.now` is not supplied—defaults to the real implementation; an explicit `now` still takes precedence over `runtime` when both are given.
+
+```typescript
+import { createModelCatalog } from '@repo/operative';
+
+const catalog = createModelCatalog();
+// catalog.revision, catalog.descriptors, catalog.projection ('privileged')
+
+const anthropicRows = catalog.descriptors.filter((d) => d.provider === 'anthropic');
+```
+
+`getProviderCapabilities` is now implemented as a projection over `createModelCatalog`'s descriptors—its public signature and every previously published answer are unchanged.
+
+### Agent Generation Profile (AB-64, AB-245)
+
+Every `RunnableAgent` optionally carries an immutable, cached `generationProfile: AgentGenerationProfile` naming which `BackendDescriptor`(s) sit behind its `GenerateFunction` and in which mode: `'fixed'` (exactly one descriptor—a single provider factory), `'routed'` (more than one—e.g. `createRoutingGenerate`), `'selectable'` (candidates named, no selector yet—AB-66), or `'opaque'` (a custom `GenerateFunction` this package can't introspect, never an invented descriptor). Read it with `readGenerationProfile(agent)`, which falls back to a frozen `mode: 'opaque'` profile when an agent carries none—never a network call, a lazy-module load, or any other background work.
+
+```typescript
+import {
+  createAgent,
+  createLazyGenerate,
+  readGenerationProfile,
+  type AgentGenerationProfile,
+} from '@repo/operative';
+import {
+  createAnthropicProvider,
+  createModelCatalog,
+  readBackendDescriptors,
+  withBackendDescriptors,
+} from '@repo/operative';
+
+// createAnthropicProvider/createOpenAIProvider/createGeminiProvider (and the
+// Anthropic/OpenAI streaming siblings) attach the single seed descriptor
+// matching their resolved model automatically—nothing to do here.
+// createGeminiProviderStream is the one exception: the seed catalog's Gemini
+// row describes `generateContent`, not the distinct `generateContentStream`
+// operation this factory calls, so it deliberately attaches nothing.
+const generate = createAnthropicProvider({ model: 'claude-sonnet-5', apiKey: '...' });
+const agent = createAgent({ generate });
+agent.generationProfile.mode; // 'fixed'
+
+// A custom GenerateFunction can attach its own descriptor(s)—e.g. one
+// resolved from the seed catalog for a model this package doesn't wrap.
+const catalog = createModelCatalog();
+const customDescriptor = catalog.descriptors.find((d) => d.provider === 'anthropic');
+const custom = withBackendDescriptors(
+  async (context) => {
+    /* ... */
+    return { content: '', toolCalls: [] };
+  },
+  customDescriptor ? [customDescriptor] : [],
+);
+readBackendDescriptors(custom); // the array just attached, never inferred
+
+// A lazy generate function attaches descriptors at construction time—a
+// profile read never triggers the loader.
+const lazyGenerate = createLazyGenerate(
+  () => import('./anthropic-generate.ts').then((m) => m.default),
+  {
+    descriptors: customDescriptor ? [customDescriptor] : [],
+  },
+);
+
+const readOnly: AgentGenerationProfile = readGenerationProfile(agent);
+```
+
+`AgentPreferences` (`requiredCapabilities`, `preferredProviders`, `preferredModels`, `minimumContextWindowTokens`) and `allowedCandidates` reach the profile through two new `createAgent` options, `generationPreferences` and `allowedCandidates`—the latter promotes the mode to `'selectable'`. `selector` always reads `'unavailable'` on a standalone agent (no Bureau, no policy, no catalog to select through); `'available'` is reported only through Bureau's future catalog read (AB-66/AB-247).
+
+Every generate-function wrapper this package ships preserves whatever descriptors the function it wraps carried, so composing wrappers around a described provider factory never silently downgrades an Agent's profile to `'opaque'`: `withStreaming`, `withRoutingMetrics`, `withEnhancedStreaming`, `withCache`, `withCacheMetrics`, the provider instrumentation wrapper (`instrumentGenerate`), `createFallbackGenerate`, and `createFalloverGenerate` all read `readBackendDescriptors` off their inner function(s) and reattach the result to the function they return. `createFallbackGenerate` and `createFalloverGenerate`, like `createRoutingGenerate`, attach the ordered union of every candidate's descriptors, deduplicated by `(provider, endpoint, model)`.
+
+### Model Policy Precedence (AB-64, AB-248)
+
+`composePolicy` (`@repo/operative`) is a pure, synchronous function that composes AB-64's five precedence layers—deployment invariants, Bureau invariants, Agent requirements and preferences, delegated authority, and user constraints and preferences—over a fixed set of `BackendDescriptor`s. Each layer only narrows what the layer above allowed; the first layer to exclude a candidate owns its `exclusionCode`, and no later layer can overwrite it or re-admit a candidate a higher layer denied.
+
+```typescript
+import { composePolicy, createModelCatalog } from '@repo/operative';
+
+const { descriptors } = createModelCatalog();
+
+const result = composePolicy({
+  descriptors,
+  deployment: { deniedProviders: ['gemini'] },
+  bureau: { deniedModels: ['gpt-4o'] },
+  agent: { minimumContextWindowTokens: 100_000 },
+  delegated: { grantedProviders: ['anthropic', 'openai'], policyVersion: 'grant-v1' },
+  user: { deniedRegions: ['eu'] },
+});
+
+// One PolicyCandidate per descriptor, in input order—never dropped silently.
+result[0]?.eligible; // boolean
+result[0]?.exclusionCode; // e.g. 'denied-by-deployment', when excluded
+```
+
+`AgentPreferences` expresses needs, never denials: a missing `requiredCapabilities` entry or a `minimumContextWindowTokens` shortfall excludes with `missing-required-capability`, while `preferredProviders`/`preferredModels` exclude nothing and are carried through for the selector below to rank on. `DelegatedAuthority` narrows by omission—`grantedProviders`/`grantedModels` absent narrows nothing, present-and-not-naming excludes with `exceeds-delegated-authority`, and `policyVersion` is traceable in every exclusion this layer produces. `user.exactOverride` must name both `provider` and `model` to identify exactly one descriptor—a partially specified override resolves to none, never an ambiguous multi-candidate result. A fully specified override is checked only against the four layers above the user's before being honored: a rejected override yields a single-candidate result carrying the denying layer's own code, never `denied-by-user`.
+
+Ranking, tie-breaking, the deterministic selector, and the `SelectionPlan` itself are the next section's scope (AB-249)—this composition only produces the eligible/excluded candidate set that selector consumes.
+
+### Deterministic Backend Selector and Selection Plan (AB-64, AB-249)
+
+`select(request, options)` (`@repo/operative`) is a pure, synchronous function: no input or output, no clock read except the injected `options.now`/`options.runtime`. It calls `composePolicy` internally for hard-constraint filtering, applies effort compatibility within the eligible set, then ranks by `costPreference`/`latencyPreference`/`preferredProviders`/`preferredModels`, breaking ties by `(provider, model)` lexicographic order. Two calls with the same recorded input produce deeply equal plans. `SelectOptions.runtime?: RuntimeServices` (AB-325) backs the default `now`/`newPlanId` when those are not supplied, defaulting to the real implementation; explicit `now`/`newPlanId` still take precedence over `runtime` when both are given.
+
+```typescript
+import { composePolicy, createModelCatalog, select } from '@repo/operative';
+
+const catalog = createModelCatalog();
+
+const plan = select(
+  {
+    agentName: 'researcher',
+    catalogRevision: catalog.revision,
+    policyRevision: 1,
+    availabilitySnapshotRevision: 1,
+    requestedValue: { target: 'effort', override: 'high' },
+  },
+  {
+    catalog,
+    user: { costPreference: 'lowest-cost', effortFallbackMode: 'degrade' },
+    now: () => new Date().toISOString(),
+    newPlanId: () => crypto.randomUUID(),
+  },
+);
+
+plan.outcome; // 'selected' | 'no-candidate' | 'stale-catalog' | ...
+plan.selected; // { provider, model, effort? } | undefined
+plan.candidates[0]?.descriptorSnapshot; // inlined by value—safe to replay after the catalog moves on
+```
+
+Every eligible candidate's `descriptorSnapshot` is a deep, independent structural copy of the deciding `BackendDescriptor`—never a live reference—so a `SelectionPlan` replays its own eligibility reasoning unchanged after the source catalog has moved on, been mutated, or been discarded. `rankingInputs` names three signals per eligible candidate (`cost`, `latency`, `preferenceMatch`) rather than summarizing into one score. All seven `SelectionOutcomeKind` values are reachable; `failure` is present if and only if `outcome !== 'selected'`, enforced structurally by the exported type. `recordEffectiveGeneration(plan, effective)` folds a completed generation's actual backend into a `'selected'` plan without ever rewriting `selected`: a divergence produces a new terminal `'provider-effective-divergence'` plan alongside the original selection; a non-divergence returns `plan` unchanged, by reference.
+
+Bureau wiring (`BureauOptions.modelPolicy`, `Bureau.planSelection`) and `runStep` boundary revalidation ship next (AB-250, below); cross-mode replay fixtures are AB-251's.
+
+### Selection Gate and Boundary Revalidation (AB-64, AB-250)
+
+`RunOptions` gains an optional `selection?: SelectionGate`, mirroring the shipped `steering?: SteeringGate` field (unlike `steering`, it carries no `runId` coupling). `run-step.ts` reads it at the same shared boundary the steering gate is already read—after the pause-wait loop, before backpressure—and calls `gate.revalidate()`, which is synchronous and pure, exactly like `select` itself:
+
+```typescript
+import { createSelectionGate } from '@repo/operative';
+import { select } from '@repo/operative';
+
+const gate = createSelectionGate({
+  initialPlan: select(request, options),
+  request: () => currentRequest(), // read fresh on every revalidate() call
+  options: () => currentOptions(), // read fresh on every revalidate() call
+});
+
+// ...later, at the runStep boundary:
+const revalidated = gate.revalidate();
+revalidated.outcome; // 'selected' when nothing changed; a typed replacement otherwise
+```
+
+A revalidated plan that no longer reaches `outcome: 'selected'` fails the step with the new `SelectionRevalidationError` (`kind: 'policy'`, `code: 'SELECTION_REVALIDATION_FAILED'`), carrying both the failed replacement plan (`.plan`) and the superseded plan it replaces (`.supersededPlan`)—never silently falling back to the superseded plan's model. Omitting `RunOptions.selection` leaves `runStep` behaving exactly as it does today.
+
+`DelegatedAuthority` threads through `dispatchChildRun`'s `DispatchChildRunOptions.delegatedAuthority`, forwarded to `agent.run()` as the new `AgentRunContext.delegatedAuthority`—never through `BureauRunOptions`. `attenuateDelegatedAuthority(parent, child)` (`@repo/operative`) composes a parent's grant with the authority a dispatch site wants to hand one specific child: `grantedProviders`/`grantedModels` intersect (never widen), `maximumEffort` takes the lower tier, and the result's `policyVersion` is the attenuating (child) grant's own version.
+
+`AgentRunContext.delegatedAuthority` also threads through `RunOptions.delegatedAuthority` into every tool call's per-execution `ToolContext.executionContext.delegatedAuthority` (AB-300), matching the AB-233 `childRegistry`/`parentRunId` pattern exactly. `createSubagentTool` reads it there at execute time, attenuates it with its own `delegatedAuthority` construction option (a tool's own narrowing for the specific child it dispatches, if any) via `attenuateDelegatedAuthority`, and forwards the result into `dispatchChildRun`. A parent run carrying no grant and a tool with no narrowing of its own dispatch with `delegatedAuthority` left `undefined`, exactly as before this wiring existed.
+
+Bureau's `planSelection`/`createSelectionGateFor` surface (`packages/bureau/src/model-policy.ts`) is documented in `packages/bureau/README.md`.
+
+### Structured Output
+
+`output` (AB-18) is the single validated output contract: one Zod schema that drives inference, the provider-native JSON Schema (via `z.toJSONSchema(schema, { io: 'input' })`), and runtime validation. There is no separate `responseSchema`/`responseJsonSchema` pair, no non-Zod Standard Schema branch, and no raw JSON Schema input—a caller who needs the latter converts it to a Zod schema first.
+
+```typescript
+import { createActiveRun, stopWhen } from '@repo/operative';
+import { z } from 'zod';
+
+const OutputSchema = z.object({
+  summary: z.string(),
+  keyPoints: z.array(z.string()),
+  confidence: z.number().min(0).max(1),
+});
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  output: OutputSchema,
+  schemaRetries: 2,
+});
+```
+
+An unrepresentable schema (e.g. `z.date()`, `z.custom()`) throws a synchronous `OutputSchemaConversionError`—there is no generic-object fallback; both `createAgent` and `createActiveRun` run this check at their own (synchronous) call time, before a run ever starts. The final text is parsed with `JSON.parse` when it's valid JSON (and the parsed value is checked against the recursive JSON-value contract: finite numbers, dense arrays, no cycles, no exotic objects); otherwise the raw string itself is validated against the schema, so `output: z.string()` still works for a non-JSON reply. A schema mismatch on JSON throws `OutputValidationError` (its `.issues` field exposes the underlying `ZodError`'s per-field issues); non-JSON text that still fails validation throws `NonJsonOutputError`.
+
+`validateOutputValue(schema, candidate)` runs that same JSON-value-then-schema contract directly on an already-decoded value, for a caller that holds one rather than raw text—a durable checkpoint's persisted `output`, or a provider whose native structured-output mode returns a decoded object. `validateOutput(schema, text)` (the text-based entry point above) delegates to it for its JSON-parsed branch.
+
+> [!IMPORTANT] An `output` schema **must not** declare a field intended to carry binary or media content (the AB-70 amendment to this issue). Structured output is JSON-only—`output` is never permitted to contain a `PortableContentPart` or a base64 blob. A generated asset (an image, a file, audio) a run produces belongs in `RunResult.parts` as a managed-asset reference part (`{ source: { kind: 'managed-asset', assetId } }`), never inlined as base64 inside the schema-validated `output`. `output` and conversational content are orthogonal and may both be present on a successful result.
+
+### Scratchpad
+
+```typescript
+import {
+  createAgent,
+  createScratchpad,
+  createScratchpadReadTool,
+  createScratchpadWriteTool,
+} from '@repo/operative';
+
+const scratchpad = createScratchpad({ initialValues: { step: 0 } });
+
+const readTool = createScratchpadReadTool(scratchpad);
+const writeTool = createScratchpadWriteTool(scratchpad);
+
+const agent = createAgent({
+  generate,
+  tools: { 'scratchpad-read': readTool, 'scratchpad-write': writeTool },
+});
+```
+
+### Context Compaction
+
+```typescript
+import { createActiveRun, createContextCompactor, stopWhen } from '@repo/operative';
+
+// createContextCompactor returns an onCompact function for contextManagement.
+// The summarize callback receives an array of Message objects (not a Conversation).
+const onCompact = createContextCompactor({
+  summarize: async (messages) => {
+    // Condense messages into a summary string—call your provider here.
+    return `Summary of ${messages.length} prior messages.`;
+  },
+  retainRecentMessages: 6,
+});
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  contextManagement: {
+    maxTokens: 80_000,
+    onCompact,
+  },
+});
+```
+
+### Memory Bridge
+
+```typescript
+import { createActiveRun, createMemoryBridge, createScratchpad, stopWhen } from '@repo/operative';
+import type { GenerateFunction, MemoryLike } from '@repo/operative';
+
+declare const generate: GenerateFunction;
+declare const myMemoryAdapter: MemoryLike;
+
+// operative never imports the memory package directly—supply a MemoryLike adapter.
+// createMemoryBridge returns { prepareStep, onStep }.
+// prepareStep recalls memories into the scratchpad on step 0.
+// onStep persists scratchpad entries back to long-term memory on the final step.
+// Register createScratchpadReadTool(scratchpad) / createScratchpadWriteTool(scratchpad)
+// on the toolbox you pass below so the model can read and write it.
+const scratchpad = createScratchpad();
+const bridge = createMemoryBridge({
+  memory: myMemoryAdapter, // satisfies MemoryLike
+  scratchpad,
+  recallLimit: 5,
+  scratchpadKey: 'memories',
+});
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  prepareStep: bridge.prepareStep,
+  onStep: bridge.onStep,
+});
+```
+
+### Identity Hook
+
+```typescript
+import { createActiveRun, createIdentityHook, stopWhen } from '@repo/operative';
+
+const identityHook = createIdentityHook({
+  resolve: async () => 'You are Aria, a friendly customer success agent.',
+});
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  prepareStep: identityHook,
+});
+```
+
+### Policy Enforcement
+
+```typescript
+import { createPolicyEnforcementHook } from '@repo/operative';
+import type { ToolLike } from '@repo/operative';
+
+// createPolicyEnforcementHook returns a tool-filtering function:
+//   (tools: T[]) => T[]
+// Apply it to any array of ToolLike objects to enforce allow/deny policies.
+const enforcePolicy = createPolicyEnforcementHook({
+  personaToolPolicy: {
+    denyList: ['fs.write', 'fs.delete'], // always blocked
+  },
+  getActiveSkillToolPolicy: () => ({
+    allowList: ['search', 'summarize'], // dynamic—per active skill
+  }),
+});
+
+// Example: filter a tool-descriptor array before constructing a toolbox.
+// `toolbox.tools()` returns the registered tools; pass them through enforcePolicy.
+const allTools: ToolLike[] = toolbox.tools();
+const allowedTools = enforcePolicy(allTools);
+```
+
+### Early Stopping
+
+```typescript
+import { createActiveRun, createEarlyStoppingHandler, stopWhen } from '@repo/operative';
+
+// Creates an onMaximumSteps callback that calls the model one final time
+// without tools, prompting it to summarize findings before the loop ends.
+const onMaximumSteps = createEarlyStoppingHandler(generate, {
+  message: 'Summarize your findings so far in one paragraph.',
+});
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  maximumSteps: 10,
+  onMaximumSteps,
+});
+```
+
+### Stop Conditions
+
+Composable predicates for loop exit. All are available on the `stopWhen` namespace object, or can be imported individually.
+
+```typescript
+import { createActiveRun } from '@repo/operative';
+import { stopWhen } from '@repo/operative';
+
+// Stop when the model produces no tool calls (each predicate is a factory—call it)
+const noTools = stopWhen.noToolCalls();
+
+// Stop after 5 steps
+const maxSteps = stopWhen.maximumSteps(5);
+
+// Stop when a specific tool was called
+const submitted = stopWhen.toolCalled('submit-form');
+
+// Stop when any tool result's outcome is 'error' or 'action_required'
+const errored = stopWhen.toolOutcome('error');
+
+// Stop when content satisfies a predicate
+const goodbyeDetected = stopWhen.contentMatches((content) => /goodbye/i.test(content));
+
+// Logical composition
+const compound = stopWhen.some(stopWhen.noToolCalls(), stopWhen.maximumSteps(10));
+
+// Must ALL conditions be true to stop
+const strict = stopWhen.every(stopWhen.noToolCalls(), stopWhen.toolCalled('finalize'));
+
+// Invert any condition
+const mustUseTool = stopWhen.not(stopWhen.noToolCalls());
+
+// Detect the model repeating the same tool call in a loop (windowSize defaults to 3)
+const noLoop = stopWhen.repeatingToolCalls({ windowSize: 3 });
+
+// Stop on token budget (maxTokens is positional)
+const underBudget = stopWhen.tokenBudget(50_000);
+
+// Hard wall-clock timeout (milliseconds is positional)
+const timed = stopWhen.wallClockTimeout(30_000);
+
+// Stop when accumulated cost exceeds a dollar amount
+const affordable = stopWhen.costBudget({ budget: 0.05, model: 'claude-sonnet-4-20250514' });
+
+// Fork: stop condition for branching workflows
+const branchDone = stopWhen.forked();
+
+// Park cleanly after a step whose tool results include a pending approval —
+// no further generate call happens. See createAgent's stateless chat host
+// recipe above for the full resume flow (toolbox.resumeApproval + a fresh
+// run started from the updated conversation history).
+const parkOnApproval = stopWhen.pendingApproval();
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: [noTools, maxSteps],
+});
+```
+
+**All `stopWhen` predicates:**
+
+| Predicate | Description |
+| --- | --- |
+| `noToolCalls()` | Stop when a step produces zero tool calls. |
+| `toolCalled(name)` | Stop when a tool with the given name was called. |
+| `maximumSteps(n)` | Stop after `n` steps. |
+| `toolOutcome(outcome)` | Stop when any tool result's outcome is `'error'` or `'action_required'`. |
+| `contentMatches(predicate)` | Stop when `predicate(content)` returns `true`. |
+| `every(...conditions)` | AND—stop when all conditions are true. |
+| `some(...conditions)` | OR—stop when any condition is true. |
+| `not(condition)` | Negate a condition. |
+| `forked()` | Stop condition for branching / forked workflow control. |
+| `repeatingToolCalls(options?)` | Stop when the same tool repeats `windowSize` times (default 3). |
+| `tokenBudget(maxTokens, options?)` | Stop when cumulative token usage exceeds `maxTokens`. |
+| `wallClockTimeout(milliseconds, options?)` | Stop when elapsed wall-clock time exceeds `milliseconds`. |
+| `costBudget(options)` | Stop when accumulated dollar cost exceeds `options.budget`. |
+
+### Guardrails
+
+Guardrails are the trust boundary between the agent loop and everything that can inject untrusted content into it—the user, retrieved memories, ingested documents, and skill resources. Detectors live in `armorer` (shared with the retrieval surfaces); `@repo/operative` wires them into the loop as `prepareStep`/`validateResponse` hooks. Import these functions from the single `@repo/operative` entry point.
+
+### The Tripwire Model (AB-40)
+
+Every detector/validator returns a `DetectionResult`/`ValidationResult` carrying a `confidence` score. What happens when one triggers is governed by an `action`, configured per guardrail group—`InputGuardrailOptions.action` (`'block' | 'warn' | 'sanitize' | 'tripwire'`, using `DetectionResult.sanitized` for `'sanitize'`) and `OutputGuardrailOptions.action` (`'block' | 'warn' | 'redact' | 'tripwire'`, using `ValidationResult.redacted` for `'redact'`). `GuardrailsOptions.mode` sets both sides at once:
+
+- **`mode: 'validate'`** (default)—a tripped detector/validator substitutes a blocked/sanitized/redacted response and the run continues, per each guardrail's own `action`.
+- **`mode: 'tripwire'`**—overrides `input.action`/`output.action` to `'tripwire'` regardless of what they were set to. A tripped wire throws a `GuardrailTripwireError`, hard-halting the run with `finishReason: 'tripwire'` and a `run.tripwire` event identifying the guardrail, instead of substituting a blocked or redacted response. Use this where a false negative is unacceptable and a human should look at the transcript before the agent takes another step.
+
+`withMinimumTripwireConfidence(detector, threshold)` wraps a detector so it only trips at or above a confidence floor, letting a broad detector stay quiet on low-confidence hits while still reaching the tripwire on high-confidence ones.
+
+### Detector and Validator Catalog
+
+| Name | Kind | Scans | Notes |
+| --- | --- | --- | --- |
+| `createPromptInjectionDetector` | Input detector | Incoming content, any provenance | Pattern + heuristic scoring; confidence scales with the number of matched signals. |
+| `createInputLengthDetector` | Input detector | Incoming content | Blocks overlong inputs before they reach the model. |
+| `createTopicBoundaryDetector` | Input detector | Incoming content | Restricts the conversation to an allow/block topic list. Matching is literal, case-insensitive substring matching, not semantic—see the note below the table. |
+| `createOutputPIIValidator` | Output validator | Model output | Detects and redacts email addresses, phone numbers, and API-key-shaped secrets in generated text. |
+| `createGroundingValidator` | Output validator | Model output vs. supplied context | Flags claims the output makes that aren't traceable to the provided context. |
+| `createCodeSafetyValidator` | Output validator | Model output | Flags destructive shell patterns (`rm -rf`), code execution (`eval`/`exec`/`Function`/`subprocess`), dangerous SQL (`DROP TABLE`, unfiltered `DELETE FROM`), and pipe-to-shell (`curl \| bash`) in generated code. Extend with `blockedPatterns`. |
+| `createSessionTaintTracker` | Session state | Cumulative session history | Sticky escalation: once a high-confidence hit taints a session, escalated detectors/validators activate for its remainder. |
+
+> [!WARNING] `createTopicBoundaryDetector`'s `allowedTopics`/`blockedKeywords` matching is **literal, case-insensitive substring matching**—`input.toLowerCase().includes(keyword.toLowerCase())`—not semantic matching. There is no NLP, embeddings, or synonym lookup involved. With `allowedTopics: ['cooking']`, the clearly on-topic input `"What is a good recipe for banana bread?"` is flagged and blocked, because the literal substring `"cooking"` never appears. List every literal word or phrase you expect callers to use—including common synonyms and paraphrases—not just one representative term.
+
+### Provenance and the Three Retrieval Surfaces (AB-41)
+
+Input detectors run against a `GuardrailProvenance` tag—every `DetectorContext.provenance` and every `GuardrailTriggeredEvent.provenance` on the input side carries one of:
+
+- `'user-input'`—content typed directly by the session's user.
+- `'recalled-memory'`—content pulled in by `memory`'s recall tool.
+- `'ingested-document'`—content pulled in from an ingested document (e.g. a file or URL fetched into context).
+- `'skill-resource'`—content pulled in from a skill's bundled resources.
+
+The three retrieval tags mark a distinct trust boundary from `'user-input'`: that content was authored by someone (or something) other than the current session's user and may have been crafted specifically to manipulate the model. Callers that assemble context from memory, documents, or skills should tag detector calls with the matching provenance so guardrail triggers and audit logs can distinguish "the user asked for this" from "this arrived via retrieval." (Provenance is an input-side concept—output validators run against generated text with no retrieval source to tag; a taint raised from a retrieval surface can still carry its `provenance` through `SessionTaintedEvent.provenance` into `createSessionTaintTracker`.)
+
+### The Bureau Default Preset
+
+`bureau` wires a guardrail preset automatically whenever `BureauOptions.guardrails` is left `undefined`:
+
+- `mode: 'tripwire'`—any trigger hard-halts the run.
+- **Input**: `createPromptInjectionDetector()` wrapped in `withMinimumTripwireConfidence(..., DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD)`—the threshold is `0.6`, so only medium-to-high-confidence injection matches trip the run.
+- **Output**: `createOutputPIIValidator()`—output PII trips the run rather than being redacted.
+
+Pass `guardrails: false` to `bureau`'s options to opt out entirely, or a `GuardrailsOptions` object to replace the preset with your own detectors/validators.
+
+**Buffered-generation note:** the default preset's output PII validator only ever sees a complete response—it cannot inspect a stream mid-flight. `bureau` accounts for this: whenever the default preset is in effect (`options.guardrails === undefined`), it forces buffered (non-streaming) generation so the tripwire has a chance to fire before any output reaches the caller. A caller who supplies their own `GuardrailsOptions` (replacing the preset) has opted into managing that tradeoff themselves and keeps streaming enabled.
+
+### Usage
+
+```typescript
+import {
+  createGuardrails,
+  createPromptInjectionDetector,
+  createOutputPIIValidator,
+  withMinimumTripwireConfidence,
+} from '@repo/operative';
+import { createActiveRun, stopWhen } from '@repo/operative';
+
+const guardrails = createGuardrails({
+  mode: 'tripwire',
+  input: {
+    detectors: [withMinimumTripwireConfidence(createPromptInjectionDetector(), 0.6)],
+  },
+  output: { validators: [createOutputPIIValidator()] },
+});
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  prepareStep: guardrails.prepareStep,
+  validateResponse: guardrails.validateResponse,
+});
+```
+
+**Exported functions:** `createGuardrails`, `createInputGuardrail`, `createOutputGuardrail`, `createSessionTaintTracker`, `createCodeSafetyValidator`, `createGroundingValidator`, `createOutputPIIValidator`, `createInputLengthDetector`, `createPromptInjectionDetector`, `createTopicBoundaryDetector`, `withMinimumTripwireConfidence`, `DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD`.
+
+**Exported types:** `DetectionResult`, `DetectorContext`, `GuardrailHooks`, `GuardrailProvenance`, `GuardrailsOptions`, `GuardrailTriggeredEvent`, `InputDetector`, `InputGuardrailOptions`, `OutputGuardrailOptions`, `OutputGuardrailTriggeredEvent`, `OutputValidator`, `SessionTaintedEvent`, `SessionTaintOptions`, `SessionTaintTracker`, `ValidationResult`, `ValidatorContext`, `CodeSafetyValidatorOptions`, `GroundingValidatorOptions`, `InputLengthDetectorOptions`, `PromptInjectionDetectorOptions`, `TopicBoundaryDetectorOptions`.
+
+### Liveness Watchdog
+
+AB-88's binding liveness, progress, and stuck-work contract, implemented by AB-214/obs-01. `LivenessSnapshot` is the plain-data, immutable-per-revision read every `LivenessObservable` (`ActiveRun`, `AgentRun`, `DiagnosticAgentRun`) returns from `snapshot()`/`subscribeSnapshot()`: lifecycle status, reachability, progress, a derived single-glance `assessment`, attempt-fenced evidence, and the `StallPolicy` version that produced it.
+
+```typescript
+import {
+  createStallWatchdog,
+  LIVENESS_POLICY_VERSION,
+  TOOL_CALL_POLICY,
+  toolCallPolicy,
+} from '@repo/operative';
+
+const clock = {
+  now: () => Date.now(),
+  setTimeout: (cb, ms) => setTimeout(cb, ms),
+  clearTimeout: (handle) => clearTimeout(handle),
+};
+
+const watchdog = createStallWatchdog(toolCallPolicy(30_000), clock);
+watchdog.recordPulse('tool-progress', /* attempt */ 0, { percent: 50 });
+const { reachability, progress, missedPulseCount } = watchdog.assess();
+watchdog.dispose(); // clears the internal cadence timer
+```
+
+`createStallWatchdog` is the single timer-agnostic implementation of a `StallPolicy` row's cadence, grace, jitter, and missed-pulse math—every consumer that classifies its OWN silence (obs-02's `SessionHandle` wiring, obs-06's Gateway connection watchdog) imports it rather than reimplementing it. obs-03's child-liveness rollup (below) is deliberately NOT a `createStallWatchdog` consumer: a parent never classifies a child's silence with a watchdog of its own—it only folds each child's own already-computed `assessment`, per AB-88's delegated-policy rule. Evidence sources are isolated per AB-88's AC5 table: a `host-reachability` pulse never resets a missed-pulse count accrued from `provider-io`, `tool-progress`, `worker-session-heartbeat`, `task-attempt-heartbeat`, or `lease-renewal`; an evidence entry whose `attempt` is older than the watchdog's current attempt is discarded, never merged. Every `monotonic-observer` policy pauses accrual across a clock gap an order of magnitude larger than `cadenceMs + graceMs` (a suspected process/laptop suspension, not real silence).
+
+**Exported functions:** `createStallWatchdog`, `createDefaultRunIdentifierSeam(runtime?: RuntimeServices)`, `sessionMonitorPolicy`, `toolCallPolicy`.
+
+`createDefaultRunIdentifierSeam` (AB-325) reads through a `RuntimeServices` instance (`options.runtime`, defaulting to `createDefaultRuntimeServices()` from `lifecycle`) rather than a bare `crypto.randomUUID()` call, so a manual runtime controls its minted ids in tests. `createActiveRunLiveness`'s `ActiveRunLivenessOptions` gains the same `runtime?: RuntimeServices` option (AB-325), backing `startedAt`/`lastTransitionAt` and—when `options.clock` is not separately supplied—the watchdog's monotonic/timer seam too; `options.clock` still takes precedence over `runtime` for that seam when both are supplied.
+
+**Exported constants:** `LIVENESS_POLICY_VERSION`, `defaultRunIdentifierSeam`, `AGENT_RUN_PROVIDER_TURN_POLICY`, `TOOL_CALL_POLICY`, `SCHEDULER_TASK_POLICY`, `GATEWAY_CONNECTION_POLICY`, `BACKGROUND_EVALUATION_POLICY`, `WEBHOOK_DELIVERY_POLICY`, `WEFT_ACTIVITY_POLICY`, `WEFT_WORKER_POLICY`, `WEFT_TASK_POLICY`, `WEFT_STREAM_POLICY`.
+
+**Exported types:** `LivenessSnapshot`, `LivenessSubjectKind`, `LivenessLifecycleStatus`, `LivenessReachability`, `LivenessProgressState`, `LivenessAssessment`, `SemanticProgress`, `LivenessLeaseEvidence`, `LivenessEvidenceSource`, `LivenessEvidenceEntry`, `DeclaredWait`, `DeclaredWaitReason`, `StallPolicy`, `LivenessClockSource`, `LivenessSuspensionBehavior`, `LivenessRecoveryRule`, `LivenessObservable`, `StallWatchdog`, `StallWatchdogAssessment`, `StallWatchdogClock`, `RunIdentifierSeam`.
+
+**Child-liveness aggregation (AB-216, obs-03).** When a run is dispatched through `dispatchChildRun`/`createSubagentTool` with a `ChildRunRegistry` (the same registry backing `children()`/`abortChild()`, below), that registry also tracks each child's own `LivenessAssessment` and notifies its parent on every change. A parent `ActiveRun`/`AgentRun` supplied that same `RunOptions.childRegistry` therefore also carries an optional `LivenessSnapshot.worstChildAssessment`: the most severe assessment among its non-terminal children (`assessment !== 'terminal'`), most severe first—`unreachable` > `alive-but-stalled` > `aborting` > `cleaning-up` > `legitimately-waiting` > `healthy`—or absent when there are no children or every child is terminal. The parent's own `revision` advances whenever the folded value changes, even when none of the parent's own dimensions did; a stalled or unreachable child never changes the parent's own `reachability`/`progress`/`status`. Omit `childRegistry` and `worstChildAssessment` stays permanently absent, matching `children()`'s own opt-in default.
+
+**Standalone-run identity (AB-88's Amendment 1, corrected by AB-214, migrated onto `RuntimeServices` by AB-325).** A standalone (non-Bureau) run mints a process-local id at `ActiveRun` construction from `createActiveRun`'s own resolved `RuntimeServices.identifiers` directly whenever `RunOptions.runId` and `CreateActiveRunDependencies.identifiers` are both absent—`RunIdentifierSeam` (`createDefaultRunIdentifierSeam`, itself now backed by a `RuntimeServices` instance) remains only as that explicit-override escape hatch and as public API from `@repo/operative`. The minted id populates `LivenessSnapshot.id` and stamps curated `tool.*` bubble events and `createSubagentTool`'s per-call `parentRunId`; it is never registered with Bureau's `Store` and confers no locator or reattachment capability. A Bureau- or caller-supplied `runId` is always used as-is.
+
+### Run Store
+
+Observes one or more `ActiveRun` instances, accumulating steps, usage, and the action log. Use this to build dashboards, replay UIs, or cross-run analytics.
+
+```typescript
+import { createStore } from '@repo/operative';
+import { createActiveRun, stopWhen } from '@repo/operative';
+
+const store = createStore({ maxActions: 500, maxSnapshots: 10 });
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+});
+const runId = store.register(activeRun, 'run-001');
+
+// Subscribe to all store mutations
+store.subscribe((state, action) => {
+  const runState = state.runs.get(runId);
+  console.log(runState?.status, action.type);
+});
+
+// Subscribe to a specific event type
+store.subscribe('action', (event) => {
+  console.log('Action recorded:', event.action.type);
+});
+
+// Inspect a run
+const run = store.getRun(runId);
+console.log(run?.steps.length, run?.usage.total);
+
+// Remove when done
+store.removeRun(runId);
+
+// Tear down all subscriptions
+store.dispose();
+```
+
+**`Store` interface:**
+
+| Member                      | Description                                                   |
+| --------------------------- | ------------------------------------------------------------- |
+| `register(activeRun, id?)`  | Start tracking an `ActiveRun`. Returns the run id.            |
+| `getState()`                | Returns `{ runs: Map<string, RunState>, actions: Action[] }`. |
+| `getRun(id)`                | Returns the current `RunState` for a run.                     |
+| `subscribe(listener)`       | Subscribe to all state mutations.                             |
+| `subscribe(type, observer)` | Subscribe to a specific `StoreEventType`.                     |
+| `removeRun(id)`             | Remove a run from the store.                                  |
+| `deregister(id)`            | Detach store listeners without deleting run state.            |
+| `dispose()`                 | Unsubscribe all runs and complete the event target.           |
+
+**`RunState`:**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Run identifier. |
+| `status` | `'running' \| 'completed' \| 'error' \| 'aborted'` | Current run status. |
+| `steps` | `StepResult[]` | Completed steps. |
+| `usage` | `TokenUsage` | Accumulated token counts. |
+| `finishReason` | `FinishReason \| undefined` | Set on terminal transition. |
+| `snapshots` | `ConversationSnapshot[]` | Conversation snapshots after each step. |
+| `actions` | `Action[]` | Per-run action log slice. |
+| `activeRun` | `ActiveRun` | Reference to the live run. |
+
+**Events:** `RunRegisteredEvent`, `RunRemovedEvent`, `StoreActionEvent`.
+
+### Streaming Helpers
+
+Wraps a streaming generate function into the standard `GenerateFunction` contract, and provides enhanced streaming primitives with state machines and backpressure buffers.
+
+### `withStreaming(fn)`
+
+Adapts a `StreamingGenerateFunction` (one that receives a `StreamingHandle`) into a standard `GenerateFunction`. The helper manages `appendStreamingMessage → updateStreamingMessage → finalizeStreamingMessage` on the conversation so the loop never sees raw streaming state:
+
+```typescript
+import { createActiveRun, stopWhen } from '@repo/operative';
+import { withStreaming } from '@repo/operative';
+import type { StreamingGenerateFunction } from '@repo/operative';
+
+const streamingGenerate: StreamingGenerateFunction = async ({ conversation, streaming }) => {
+  // Push incremental tokens through streaming.update()
+  streaming.update('Hello');
+  streaming.update(', world');
+  return {
+    content: 'Hello, world',
+    toolCalls: [],
+    usage: { prompt: 5, completion: 10, total: 15 },
+  };
+};
+
+const generate = withStreaming(streamingGenerate);
+
+// `generate` is now a standard GenerateFunction—pass it anywhere.
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+});
+const result = await activeRun.result;
+```
+
+### `withEnhancedStreaming(fn, options?)`
+
+Wraps a `StreamingGenerateFunction` (like `withStreaming`, above) but also drives a `StreamStateMachine` internally and calls fine-grained callbacks as text and tool-call deltas arrive:
+
+```typescript
+import { withEnhancedStreaming } from '@repo/operative';
+import type { StreamingGenerateFunction } from '@repo/operative';
+
+declare const streamingGenerate: StreamingGenerateFunction;
+
+const generate = withEnhancedStreaming(streamingGenerate, {
+  onTextDelta: (delta, accumulated) => console.log('Text delta:', delta, accumulated),
+  onToolCallStart: (toolName) => console.log('Tool call started:', toolName),
+  onToolCallDelta: (_toolName, partialArgs) => console.log('Tool call args so far:', partialArgs),
+});
+```
+
+By default the tool-call events are reconstructed from the resolved `GenerateResponse`, which means they land _after_ the provider response has closed. Text deltas stream live; tool-call deltas do not. Set `liveToolCalls` to change that:
+
+```typescript
+import { createAnthropicProviderStream } from '@repo/operative';
+import { withEnhancedStreaming } from '@repo/operative';
+
+const generate = withEnhancedStreaming(createAnthropicProviderStream({ model, apiKey }), {
+  eventTarget,
+  liveToolCalls: true,
+});
+```
+
+The option installs `StreamingHandle.report`, an optional structured channel alongside the text-only `update`. The Anthropic and OpenAI streaming adapters push through it as the provider emits—Anthropic from `content_block_start`/`input_json_delta`, OpenAI from `delta.tool_calls`—so `stream:tool-call-start` and `stream:tool-call-delta` reach a host while the response is still open.
+
+Two things to know before turning it on:
+
+- **`blockId` changes.** Live events carry the provider's own block id (`toolu_01`, `call_01`) instead of the wrapper's synthesized `tool-${name}-${index}-${messageId}`.
+- **`stream:tool-call-complete` stays late, by design.** An adapter only knows a tool call's parsed `arguments` once the stream has closed and the accumulated JSON has been through `JSON.parse`—the step that raises `ToolCallParseError`. The wrapper synthesizes the completion from the resolved response, reusing the live `blockId` so start, delta, and complete correlate.
+
+A streaming function that reports nothing—a hand-written one, or the Gemini adapter—falls back to the reconstruction, so the option is safe to leave on across providers.
+
+### `createBackpressureBuffer(options)`
+
+Creates a backpressure-aware buffer for streaming events—queues, coalesces, and drops `StreamEvent`s under load:
+
+```typescript
+import { createBackpressureBuffer } from '@repo/operative';
+
+const buffer = createBackpressureBuffer({
+  maxBufferSize: 100,
+  coalesceDeltas: true,
+  onOverflow: (droppedCount) => console.warn(`Dropped ${droppedCount} buffered events`),
+  onEmit: (event) => console.log('Emit:', event.type),
+});
+
+buffer.push({ type: 'stream:text-delta', content: 'Hello', accumulated: 'Hello' });
+```
+
+### `createStreamStateMachine()`
+
+Parses a raw token stream into typed blocks (`text`, `tool-call`, `thinking`, `metadata`):
+
+```typescript
+import { createStreamStateMachine } from '@repo/operative';
+
+const machine = createStreamStateMachine();
+const state = machine.process({ type: 'block-start', id: 'block-1', blockType: 'text' });
+machine.process({ type: 'block-delta', id: 'block-1', delta: 'Hello' });
+console.log(state.textContent);
+```
+
+**Exported types:** `StreamBlock`, `StreamCommand`, `StreamEvent`, `StreamEventMap`, `StreamState`, `StreamStateMachine`, `BlockType`, `EnhancedStreamingOptions`, `LiveStreamEvent`, `BackpressureBuffer`, `BackpressureBufferOptions`, `StreamCustomEvent`.
+
+### Retry Mutators
+
+Transforms the generate context before each retry attempt—escalate temperature, drop bad tools, inject schema error feedback, or add jitter to delays.
+
+```typescript
+import {
+  composeMutators,
+  createTemperatureEscalationMutator,
+  createSchemaErrorMutator,
+  createToolRemovalMutator,
+  createOverflowMutator,
+  addJitter,
+} from '@repo/operative';
+import { createActiveRun, stopWhen } from '@repo/operative';
+
+// Increase by 0.2 per attempt (default), capped at 1.0
+const escalate = createTemperatureEscalationMutator({
+  increment: 0.2,
+  max: 1.0,
+});
+
+// Re-inject a schema validation error as a user message
+const schemaFeedback = createSchemaErrorMutator();
+
+// Remove tools that caused errors on the previous attempt
+const dropBadTools = createToolRemovalMutator();
+
+// Handle context-window overflow by trimming early messages
+const overflow = createOverflowMutator({
+  summarize: async (messages) => `Summary of ${messages.length} trimmed messages.`,
+  retainRecentMessages: 10,
+});
+
+// Compose into a single mutator
+const mutator = composeMutators(escalate, schemaFeedback, dropBadTools, overflow);
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  retry: {
+    attempts: 3,
+    // addJitter(delay, options) is a plain function, not a factory—apply it
+    // inside your own delay function to jitter each computed backoff.
+    delay: (attempt) => addJitter(1000 * attempt, { maxJitter: 200 }),
+    mutate: mutator,
+  },
+});
+```
+
+**Exported functions:**
+
+| Function | Description |
+| --- | --- |
+| `composeMutators(...mutators)` | Chains mutators left-to-right—each receives the context the previous one returned. |
+| `createTemperatureEscalationMutator(options)` | Increases temperature on each retry. Writes to `RETRY_TEMPERATURE_KEY` in metadata. |
+| `createSchemaErrorMutator()` | Appends schema validation error details as a user message. |
+| `createToolRemovalMutator()` | Removes tools that failed on the previous attempt. |
+| `createOverflowMutator(options)` | Trims the conversation when a context-overflow error is detected. |
+| `addJitter(options?)` | Wraps a delay function to add random offset. |
+| `RETRY_TEMPERATURE_KEY` | Metadata key used by `createTemperatureEscalationMutator`. |
+
+### OpenTelemetry
+
+Attaches OpenTelemetry spans to an `ActiveRun`, mirroring the agent loop lifecycle as nested spans. `@opentelemetry/api` is a direct dependency whose version comes from the root catalog.
+
+```typescript
+import { instrumentRun } from '@repo/operative';
+import { createActiveRun, stopWhen } from '@repo/operative';
+import { trace } from '@opentelemetry/api';
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+});
+
+// Wire up OTel spans
+const stopInstrumentation = instrumentRun(activeRun, {
+  tracer: trace.getTracer('my-app', '1.0.0'),
+  // Or let instrumentRun create a default tracer:
+  // tracerName: 'operative',
+  // tracerVersion: '0.0.0',
+  agentName: 'Math Tutor', // optional—names the run span `invoke_agent Math Tutor`
+});
+
+await activeRun.result;
+stopInstrumentation(); // Remove listeners and end any open spans
+```
+
+`instrumentRun()` creates:
+
+- `invoke_agent` (or `invoke_agent {agentName}`) span for the full run lifetime—the OTel GenAI "Invoke agent (internal)" span.
+- `step` spans for each loop iteration, nested under the run span (`operative.step.index` carries the step number; the name is intentionally stable to avoid unbounded span-name cardinality).
+- `generate` spans for each LLM call observed at the loop boundary, nested under their step.
+- `tool_calls` spans grouping the tool calls issued in a step, nested under their step.
+
+See [OTel GenAI Semantic Conventions](#otel-genai-semantic-conventions) below for the full attribute mapping and pinned conventions version.
+
+**Exported:**
+
+| Symbol                               | Description                                            |
+| ------------------------------------ | ------------------------------------------------------ |
+| `instrumentRun(activeRun, options?)` | Attach OTel spans; returns an unsubscribe function.    |
+| `RunInstrumentationOptions`          | `{ tracer?, tracerName?, tracerVersion?, agentName? }` |
+
+### OpenTelemetry (Inference Calls)
+
+Wraps a `GenerateFunction` with a single CLIENT span per call, following the OTel GenAI "Inference" (chat) span convention. Use this when you want the canonical, spec-compliant span for the actual LLM request—with model, provider, and token usage—as opposed to the loop-level `generate` span from `@repo/operative`, which has no model/provider visibility.
+
+```typescript
+import { instrumentGenerate } from '@repo/operative';
+import { createAnthropicProvider } from '@repo/operative';
+import { trace } from '@opentelemetry/api';
+
+const rawGenerate = createAnthropicProvider({ model: 'claude-sonnet-5' });
+const generate = instrumentGenerate(rawGenerate, {
+  provider: 'anthropic',
+  model: 'claude-sonnet-5',
+  tracer: trace.getTracer('my-app', '1.0.0'),
+});
+```
+
+`instrumentGenerate()` creates a `{operation} {model}` CLIENT span—`operation` is `chat` for turn-based chat completion providers (Anthropic, OpenAI, Voyage, Ollama) and `generate_content` for Gemini's native `generateContent` surface—with `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.max_tokens` (when supplied), and `gen_ai.usage.*` token attributes (including provider cache fields, when present).
+
+**Exported:**
+
+| Symbol | Description |
+| --- | --- |
+| `instrumentGenerate(generateFunction, options)` | Wrap a `GenerateFunction` with a CLIENT chat span. |
+| `GenerateInstrumentationOptions` | `{ tracer?, tracerName?, tracerVersion? }` |
+| `InstrumentableGenerateOptions` | `{ provider: ProviderName, model: string, maximumTokens? }` |
+
+### OTel GenAI Semantic Conventions
+
+Spans and attributes across Operative runtime and provider instrumentation and `@repo/armorer` follow the [OpenTelemetry GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai) wherever a direct mapping exists. The conventions are still in **Development** status (no tagged release as of this writing) and can change—this table is pinned to:
+
+- `open-telemetry/semantic-conventions-genai` commit [`63f8200`](https://github.com/open-telemetry/semantic-conventions-genai/commit/63f8200eee093730ce845d26ce2aafb621b0807e) (`docs/gen-ai/gen-ai-spans.md`, `docs/gen-ai/gen-ai-agent-spans.md`)
+- general attributes (`error.*`, `server.*`) cross-referenced against semantic-conventions [v1.43.0](https://github.com/open-telemetry/semantic-conventions/tree/v1.43.0)
+
+When the pinned spec revision changes, re-diff these two files against the new commit and update this table alongside the code.
+
+| Our span (package) | OTel GenAI span | Span name | Kind | Key attributes | Divergence |
+| --- | --- | --- | --- | --- | --- |
+| `invoke_agent` (`@repo/operative`) | Invoke agent (internal) | `invoke_agent [{agentName}]` | INTERNAL | `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name`, `gen_ai.usage.*` | `operative.finish_reason`/`operative.total_steps`/`operative.abort_reason` are documented custom extensions. `event.finishReason` (`stop-condition`, `maximum-steps`, `budget-exceeded`, `aborted`, ...) is intentionally kept OFF `gen_ai.response.finish_reasons`—it is operative's own agent-loop control-flow reason, not a provider-reported model completion reason, and mapping it there would mislead OTel GenAI backends that expect well-known provider stop reasons. |
+| `step` (`@repo/operative`) | _(none)_ | `step` | INTERNAL | `operative.step.index` | **Divergent.** No spec equivalent for a single loop iteration. Kept as a non-normative structural span; name held constant (not `step {n}`) to avoid unbounded span-name cardinality. |
+| `generate` (`@repo/operative`) | _(none—see `providers/instrumentation` row)_ | `generate` | INTERNAL | `operative.usage.*`, `operative.generate.duration_ms` | **Divergent, intentionally.** Observes the loop's call boundary without model/provider visibility. NOT labeled `gen_ai.operation.name=chat` and usage is namespaced under `operative.*` (not `gen_ai.*`) so it never double-reports usage against the canonical chat span below when both instrumentation points are wired to the same call. |
+| `tool_calls` (`@repo/operative`) | _(none)_ | `tool_calls` | INTERNAL | `operative.tools.count`, `operative.tools.names`, `operative.tools.results_count` | **Divergent.** The spec defines a per-call `execute_tool` span (see below), not a batch wrapper for the calls issued in one step. |
+| `{chat\|generate_content} {model}` (`@repo/operative`) | Inference | `{gen_ai.operation.name} {model}` | CLIENT | `gen_ai.operation.name` (`chat`, or `generate_content` for Gemini), `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.max_tokens`, `gen_ai.usage.*` | None—full compliance. This is the canonical span for a single LLM inference call. |
+| `execute_tool {name}` (`@repo/armorer`) | Execute tool | `execute_tool {gen_ai.tool.name}` | INTERNAL | `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.description`, `error.type` | `gen_ai.tool.call.arguments`/`gen_ai.tool.call.result` are Opt-In under the conventions and deliberately not emitted—they can carry privileged tool arguments/results (AB-87/AB-230). `armorer.tool.*` carries duration/digest/status extensions the spec doesn't define. |
+
+`gen_ai.provider.name` values are mapped from operative's internal `ProviderName` to the conventions' well-known values where one is registered:
+
+| `ProviderName` | `gen_ai.provider.name` | Note |
+| --- | --- | --- |
+| `anthropic` | `anthropic` | Well-known value. |
+| `openai` | `openai` | Well-known value. |
+| `gemini` | `gcp.gemini` | operative's `gemini` provider talks to the AI Studio endpoint (`generativelanguage.googleapis.com`) via `@google/genai`, which the conventions register as `gcp.gemini` (not bare `gemini`). |
+| `voyage` | `voyage` | No well-known value registered—a custom value, as explicitly permitted by the conventions. |
+| `ollama` | `ollama` | No well-known value registered—a custom value, as explicitly permitted by the conventions. |
+
+`total_tokens` is intentionally not emitted as a `gen_ai.usage.*` attribute anywhere—it isn't a defined attribute in the conventions, and any GenAI-aware backend already sums `input_tokens` + `output_tokens` itself.
+
+### Durable Runs
+
+Drives agent runs through the Weft durable execution engine—checkpointed, crash-recoverable, and resumable. The `ActiveRun` surface is identical to the in-memory path; only the second argument to `createActiveRun()` changes.
+
+```typescript
+import { createActiveRun } from '@repo/operative';
+import type { DurableRunRouting } from '@repo/operative';
+import { createCheckpointStore, createRunEngine, createRunWorkflow } from '@repo/operative';
+
+// Build the durable substrate once at startup. createRunEngine returns
+// { engine, checkpointStore }—`storage` is Weft's raw Storage backend;
+// `checkpointStore` wraps a TextValueStore over that same backend.
+const checkpointStore = createCheckpointStore(kvStore);
+const runWorkflow = createRunWorkflow(checkpointStore);
+const { engine } = await createRunEngine({ storage: rawStorage, runWorkflow, checkpointStore });
+
+// Start a new durable run—survives crashes and resumes automatically
+const durable: DurableRunRouting = {
+  engine,
+  checkpointStore,
+  runId: 'run-2024-001',
+  prompt: 'Summarize the annual report.',
+};
+
+const activeRun = createActiveRun({ generate, toolbox, conversation }, durable);
+const result = await activeRun.result;
+```
+
+> [!NOTE] Reattaching after a restart `reattachDurableActiveRun` wraps a handle already returned by `engine.recoverAll()`—it does not take a `sessionId`/`options` bag. `createRunEngine`'s default `recover: true` runs recovery during construction and does not surface the handles, so observing a recovered run as a live `ActiveRun` requires `recover: false` plus calling `engine.recoverAll()` yourself and reattaching each returned handle. See `reattachDurableActiveRun`'s own JSDoc and `bureau`'s `create-bureau.ts` (`reattachRecoveredRun`) for the full recovery-driven flow.
+
+> [!NOTE] Multi-process safety (AB-178) `createRunEngine`'s `ownership` option defaults to `'none'`—one engine per durable store, enforced by infrastructure convention (one replica, a `Recreate` deploy) rather than the engine itself. Pass `ownership: 'workflow-lease'` to let more than one engine safely share a store: Weft claims each workflow for exactly one engine before its generator runs, so a second engine racing to resume the same workflow fails closed instead of double-executing it. This requires a storage backend with the `conditionalBatch` capability (`MemoryStorage` and `SQLiteStorage` both qualify). Same-engine suspend/resume preemption is supported under `'workflow-lease'`; the claim is reacquired after suspend and remains exclusive to the resuming engine. Hosts that require multi-engine safety should opt in with a conditional-batch-capable storage adapter.
+
+> [!WARNING] weft 0.23 persisted-data schema bump (breaking for existing stores) `@repo/weft` 0.23 advances its persisted-data schema from version 1 to version 2 with **no in-place migration**: a store written by weft 0.22.x or earlier is rejected with `PersistedDataIncompatibleError` when opened under 0.23+. There is no online upgrade path—plan a cutover (new store, or offline migration) before deploying this version against an existing durable store.
+
+**Exported functions:**
+
+| Function | Description |
+| --- | --- |
+| `createRunEngine(options)` | Creates and recovers a `RunEngine` backed by Weft storage. |
+| `createCheckpointStore(kvStore)` | KV-backed store for per-step run checkpoints. |
+| `createDurableActiveRun(context, input)` | Low-level: create a durable `ActiveRun` directly. |
+| `reattachDurableActiveRun(context, input)` | Reattach listeners to a run already in progress (e.g. after server restart). |
+| `createRunWorkflow(options)` | Creates the Weft workflow definition for agent runs. |
+| `isAgentRunWorkflowInput(value)` | Type guard for `AgentRunWorkflowInput`. |
+| `createStorageActivities(store)` | Weft activities for checkpoint read/write. |
+| `startDurableRunResult(options)` | Starts a run result inside a durable workflow context. |
+| `resumeDurableRunResult(options)` | Resumes an existing run result from checkpoint. |
+| `SCHEDULER_ORIGIN_TAG` | Tag identifying scheduler-originated durable runs. |
+| `SCHEDULER_RUN_ID_PREFIX` | Prefix for scheduler-managed run IDs. |
+
+**Exported types:** `DurableActiveRunOptions`, `DurableActiveRunContext`, `RecoveredRunHandle`, `StartDurableRunResultOptions`, `CheckpointStore`, `RunEngine`, `RegistryAgnosticEngine`, `CreateRunEngineOptions`, `RunEngineObservability`, `AgentRunWorkflowInput`, `AgentRunWorkflowResult`, `DurableRunDeps`, `RunCheckpoint`, `RunCursor`, `StepRecord`, `SteeringCommand`, `SteeringCommandFailure`, `SteeringCommandState`, `SteeringDesiredState`, `SteeringEffectiveState`, `SteeringRequestedValue`, `SteeringTargetKind` (AB-67—the runtime steering contract's type-only surface). `SteeringDesiredState`/`SteeringEffectiveState` are exported here for the contract's shape; the runtime consumer of `SteeringDesiredState` is `RunOptions.steering: SteeringGate` (see the `RunOptions` table above and `GenerateContext.steering` below)—the `runStep` boundary read, pause/resume gate, and `GenerateContext` threading now ship. `submitSteeringCommand` (Bureau's admission surface, `packages/bureau`) ships `pause`/`resume` on in-memory sessions only (AB-199); `route`/`model`/`provider`/`effort`/`agent-identity` and durable-session pause/resume remain `unsupported-capability` until `ab-67-bureau-b`. AB-67's 2026-09-02 coordinator amendments, as tightened by AB-236: `SteeringCommandFailure` is a discriminated union on `reason`—the `'superseded-by'` member requires `readonly supersededBy: string` (the successor command's `id`); every other member carries `supersededBy?: never`, so a literal or non-literal value supplying a real `supersededBy` alongside a different reason, or omitting it alongside `'superseded-by'`, fails to type-check rather than merely violating a documented invariant (the shared TypeScript configuration also rejects an explicit `supersededBy: undefined`); every `SteeringRequestedValue` variant encodes `policyRef`/`override` as an exclusive pair (`policyRef?: never` alongside `override`, `override?: never` alongside `policyRef`), rejecting a literal that supplies both or neither; `SteeringCommand` carries `runId?: string`, binding a `pause`/`resume` command to a session's non-terminal run—present, it must name a non-terminal run owned by the session or admission fails with `'run-terminal'`; absent with exactly one non-terminal run, the command binds to it; absent with zero or more than one, admission fails with the new `SteeringCommandFailure.reason: 'run-ambiguous'`.
+
+> [!NOTE] Session-input admission types (AB-42, type-only) `@repo/operative` also exports `SessionInputDeliveryMode`, `UserAdmissibleContent`, `SessionInputPayload`, `SessionInputRecord`, `SessionInputAdmissionRequest`, `SessionInputReceipt`, `SessionInputConflict`, `SessionInputAdmissionOutcome`, `SessionInputState`, `SessionInputPromotion`, and `SessionInputFailure`—the request, receipt, and state-transition shapes AB-42's decision record fixes for session-input admission (`submitSessionInput`, illustratively named). These are types only: no runtime `submitSessionInput` implementation ships yet. Per AB-42's coordinator amendments (2026-09-02, applied by AB-202): `SessionInputRecord` and `SessionInputAdmissionRequest` take a `TPayload extends SessionInputPayload` bound rather than an unbounded generic, `SessionInputPayload` accepts only `UserAdmissibleContent`, an explicit allowlist of `TextContent` (with `citations` structurally forbidden via `citations?: never`, not merely omitted), `ImageContent`, and `DocumentContent`—not an `Exclude<>` blacklist, because a blacklist would silently admit a future conversation content kind, and `SessionInputConflict.reason` gains `'id-owned-by-other-principal'` for a session-input `id` collision across principals. See `documentation/operative-type-safe-api.md`'s "Session input admission" section for the full contract.
+
+**Session-input admission types:** `SessionInputDeliveryMode`, `UserAdmissibleContent`, `SessionInputPayload`, `SessionInputRecord`, `SessionInputAdmissionRequest`, `SessionInputReceipt`, `SessionInputConflict`, `SessionInputAdmissionOutcome`, `SessionInputState`, `SessionInputPromotion`, `SessionInputFailure`.
+
+> [!NOTE] Durable event history types (AB-91's `ab91-01` slice, AB-310; widened by AB-320) `@repo/operative` also exports `DurableEventOwnerKind` (`'run' | 'session' | 'schedule'`—`'schedule'` added by AB-320, owning a schedule's four definition events only; a scheduled fire stays on the `'run'` owner), `DurableEventOwner`, `DurableEventEnvelope`, `DurableEventPage`, and `DurableEventGap`—the wire types Bureau's `durable-event-history.ts` store and `Bureau.eventHistory(owner, options?)` read/return. `DurableEventEnvelope` is a redacted, owner-scoped projection of Weft's own `FleetEventEnvelope`, carrying a new `schemaVersion` field Weft's envelope does not have. `DurableEventGap` is returned instead of a `DurableEventPage` when a caller's `since` cursor predates the store's retention floor—distinguishable from an ordinary empty page.
+
+**Durable event history types:** `DurableEventOwnerKind`, `DurableEventOwner`, `DurableEventEnvelope`, `DurableEventPage`, `DurableEventGap`.
+
+### Test Utilities
+
+Test helpers for the agent loop. Import in test files only.
+
+```typescript
+import {
+  createEventRecorder,
+  createManualRuntimeServices,
+  createMockGenerate,
+  createMockGenerateOnce,
+  createResourceScope,
+  createRunRecorder,
+  createMockScratchpad,
+  createTestStore,
+} from '@repo/operative';
+import type { EventRecorder, QuiescenceReport, RunRecorder } from '@repo/operative';
+import { createActiveRun, stopWhen } from '@repo/operative';
+
+// Replay pre-canned responses in sequence
+const generate = createMockGenerate([
+  { content: 'Step 1 response', toolCalls: [] },
+  { content: 'Step 2 response', toolCalls: [], usage: { prompt: 5, completion: 8, total: 13 } },
+]);
+
+// A deterministic RuntimeServices—no real timer or real clock anywhere in it
+const runtime = createManualRuntimeServices();
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  runtime,
+});
+
+// Record every event for assertion
+const recorder: RunRecorder = createRunRecorder(activeRun);
+await activeRun.result;
+
+expect(recorder.events.map((e) => e.type)).toContain('run.completed');
+expect(recorder.steps).toHaveLength(2);
+expect(generate.callCount).toBe(2);
+
+// EventRecorder (AB-92/AB-255): subscribes through the complete event-map
+// type, no hand-maintained allowlist, and normalizes into a portable,
+// byte-identical-across-machines causal trace.
+const eventRecorder: EventRecorder = createEventRecorder(runtime);
+eventRecorder.attach(activeRun, { kind: 'run', id: 'example' });
+eventRecorder.assertHappensBefore('run.started', 'run.completed');
+
+// Single-shot generate—throws if called more than once
+const once = createMockGenerateOnce({ content: 'Only once', toolCalls: [] });
+
+// In-memory store for testing operative/store consumers
+const store = createTestStore();
+
+// ResourceScope (AB-92/AB-256): register runs, subscriptions, timers, and
+// deferred-queue items a test expects to become quiescent, then prove it.
+const scope = createResourceScope('example-test', runtime);
+scope.register({ kind: 'run', identifier: 'run-1', run: activeRun });
+const report: QuiescenceReport = await scope.close(); // rejects with a QuiescenceError if anything leaked
+expect(report.quiescent).toBe(true);
+```
+
+**Exported:**
+
+| Symbol | Description |
+| --- | --- |
+| `createMockGenerate(responses)` | Replays `GenerateResponse[]` in sequence; exposes `.calls` and `.callCount`. |
+| `createMockGenerateOnce(response)` | Returns response once; throws on subsequent calls. |
+| `createRunRecorder(activeRun, runtime?)` | Records all events from an `ActiveRun` for assertion. Exposes `.events`, `.steps`, `.clear()`. Built on `createEventRecorder`. |
+| `createEventRecorder(runtime)` | AB-92/AB-255's `EventRecorder`: `attach`/`attachIterable` a resource's complete event-map type, `normalize()` into a portable `CausalTraceEntry[]`, `assertSequence`/`assertHappensBefore`. |
+| `createManualRuntimeServices(options?)` | Deterministic `RuntimeServices` (AB-92/AB-252): explicit `advance(ms)`/`setTime(epoch)` time control, seeded identifiers and randomness, no real timer. |
+| `createMockScratchpad(initialValues?)` | In-memory `Scratchpad` for testing scratchpad-dependent agents. |
+| `createTestStore()` | In-memory `Store` instance from `@repo/operative`. |
+| `createResourceScope(label, runtime)` | AB-92/AB-256's `ResourceScope`: `register()` a run, timer, subscription, deferred-queue item, or `ChildRunRegistry`; `child(label)` nests a scope; `assertQuiescent()` probes without aborting; `close()` aborts every registered run, awaits its `closed()`, and rejects with a `QuiescenceError` naming every resource still live. |
+| `runReactiveSourceConformanceSuite(options, testRunner?)` | AB-92/AB-258's framework-neutral reactive-source conformance suite: registers one `describe` block with one `it` per case (`stableSnapshotIdentity`, `immutableReplacementAfterChange`, `multipleIndependentSubscribers`, `subscribeReadRaceClosure`, `earlyCompletionBeforeSubscription`, `subscribeUnsubscribeSubscribeNoDuplicateWork`, and—only when `options.reattach` is supplied—`serializableLocatorRoundTrip`) against any subject implementing `ReactiveSourceSubject<TSnapshot>`. Never imports a resource type from this package outside its own generic parameter, so it runs against `ActiveRun`/`AgentRun`'s upcoming snapshot surface or any other conforming resource by supplying an adapter. `testRunner` defaults to `bun:test`'s real `describe`/`it`. |
+
+**Exported types:** `RunRecorder`, `EventRecorder`, `CausalTraceEntry`, `EventRecorderOwnerIdentity`, `ManualRuntimeServices`, `ResourceScope`, `QuiescenceReport`, `LeakedResource`, `LeakedResourceKind`, `LeakedResourceDiscoveredVia`, `DetachedResource`, `RegisterableResource`, `ClosableRun`, `ReactiveSourceSubject`, `ReactiveSourceConformanceOptions`, `ReactiveSourceConformanceTestRunner`.
+
+**Also exported (runtime value, not a type):** `QuiescenceError`—the `Error` subclass `close()` rejects with; import it normally (`import { QuiescenceError } from '@repo/operative'`), not with `import type`.
+
+### Scripted doubles and the `FaultPlan` vocabulary (AB-92/AB-257)
+
+`fault-plan.ts` ships AB-92's `FaultPlan` type vocabulary—`FaultBoundary`, `FaultOperation`, `FaultOccurrence`, `FaultPlanEntry`, `FaultPlan`, `FiredFault`—with no executor yet (a future fault engine applies a `FaultPlan` at a boundary; this slice ships only the shapes).
+
+`createScriptedGenerate`, `createScriptedTool`, and `createScriptedHook` are named doubles for the boundaries AB-92 enumerates—a `GenerateFunction`, a toolbox-ready `Tool`, and a `HookRegistry<OperativeHookMap>` handler, respectively—each driven by a script of steps consumed one per call:
+
+```typescript
+import { createToolbox } from '@repo/armorer';
+import { HookRegistry, createManualRuntimeServices } from '@repo/lifecycle';
+import { Conversation } from '@repo/conversationalist';
+import { createScriptedGenerate, createScriptedHook, createScriptedTool } from '@repo/operative';
+import { createActiveRun, stopWhen } from '@repo/operative';
+import type { OperativeHookMap } from '@repo/operative';
+
+const runtime = createManualRuntimeServices();
+
+// One ScriptedGenerateStep consumed per call: 'respond' | 'stream' | 'block' | 'fail' | 'ignore-abort'.
+const generate = createScriptedGenerate([
+  { kind: 'respond', response: { content: 'hi', toolCalls: [] } },
+]);
+
+// A toolbox-ready Tool double: 'resolve' | 'reject' | 'block' steps, settled() for async assertions.
+const tool = createScriptedTool('search', [{ kind: 'resolve', result: 'ok' }]);
+const toolbox = createToolbox([tool]);
+
+// A hook double for one of the four phases; `hookName` is the OperativeHookMap key to register it under.
+const hooks = new HookRegistry<OperativeHookMap>();
+const afterTool = createScriptedHook('after-tool', [{ kind: 'resolve', value: undefined }]);
+hooks.on(afterTool.hookName, afterTool);
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation: new Conversation(),
+  stopWhen: stopWhen.noToolCalls(),
+  hooks,
+  runtime,
+});
+await activeRun.result;
+
+// assertReceived compares only the fields you supply, against a call already recorded.
+generate.assertReceived(0, { tools: ['search'] });
+await tool.settled(); // readonly ScriptedSettlement[]—resolved/rejected outcome per call
+```
+
+A `block` step (`{ kind: 'block', barrier: 'name' }`) suspends the call until the test calls `release('name')`; `reached('name')` resolves once the double has arrived at that barrier, so a test awaits arrival instead of sleeping. `release` before `reached` is a latch, not a race—releasing a barrier no one has hit yet still unblocks the call once it gets there.
+
+**Exported:** `createScriptedGenerate(script)`, `createScriptedTool(name, script)`, `createScriptedHook(phase, script)`.
+
+**Exported types:** `FaultBoundary`, `FaultOperation`, `FaultOccurrence`, `FaultPlanEntry`, `FaultPlan`, `FiredFault`, `ScriptedGenerate`, `ScriptedGenerateStep`, `ScriptedGenerateCall`, `ScriptedGenerateExpectation`, `ScriptedTool`, `ScriptedToolStep`, `ScriptedToolCall`, `ScriptedHook`, `ScriptedHookPhase`, `ScriptedHookStep`, `ScriptedHookCall`, `ScriptedSettlement`.
+
+### The named barrier registry (AB-92/AB-266)
+
+`createBarrierRegistry(recorder?)` builds a `BarrierRegistry`: a named collection of `Barrier`s a deterministic suite uses in place of a real-timer sleep, at any coordination point where the public surface already offers a hook, an event, or an injected double—a model call, a tool call, a hook phase (through the scripted doubles' own `block` step), a durable checkpoint, a session commit, a child registration, a signal delivery, an event publication, or a cleanup boundary (through `closed()`).
+
+```typescript
+import { createBarrierRegistry } from '@repo/operative';
+
+const registry = createBarrierRegistry();
+const barrier = registry.barrier('slow-write');
+
+// The guarded operation: suspends until the test releases it.
+async function guardedOperation() {
+  const value = await barrier.arrive(); // resolves to release()'s value, or throws reject()'s error
+  return value;
+}
+const pending = guardedOperation();
+
+// The test: waits for arrival (never hangs on a late subscribe), inspects
+// counts, then lets exactly one waiting arrival through.
+await barrier.reached();
+expect(barrier.inspect()).toEqual({ name: 'slow-write', arrivals: 1, released: 0, pending: true });
+barrier.release('ok');
+expect(await pending).toBe('ok');
+
+// A test that ends with an arrival never released fails loudly, naming it.
+registry.assertNoPending();
+```
+
+`release()` called before any arrival is banked and lets the next `arrive()` through without blocking—an over-release, not a race. `reject(error)` makes the waiting `arrive()` call throw `error`, doubling as a fault-placement mechanism at a point `fault-plan.ts`'s vocabulary doesn't name; it counts toward `released` the same way `release()` does, so a rejected arrival is never reported as still pending.
+
+When `recorder` (an `EventRecorder`) is supplied, every arrival, release, and rejection is recorded as a `CausalTraceEntry` with `resource: 'barrier:<name>'` and `event: 'barrier.reached' | 'barrier.released' | 'barrier.rejected'`—`attach`'s own `${kind}:${id}` resource shape, not the bare name, since `event-recorder.ts` exposes no lower-level entry-push API.
+
+**Exported:** `createBarrierRegistry(recorder?)`.
+
+**Exported types:** `Barrier`, `BarrierRegistry`, `BarrierState`.
+
+### The reproduction artifact (AB-92/AB-334)
+
+`ReproductionArtifact<TCleanupReport>` is AB-92 AC8's normalized reproduction shape—`sourceRevision`, `packageVersions`, `effectiveModel`, `clockOrigin`/`identifierSeed`/`randomSeed`, `scriptedOutcomes`, `firedFaults`, `causalTrace`, `terminalResult`, and `cleanupReport`—written and read by `writeReproductionArtifact`/`readReproductionArtifact` (AB-267) as stable, fixed-key-order JSON. It is the ONE declaration of the shape in the repository: `cleanupReport` is a type parameter (defaulting to `ReproductionCleanupReport`, i.e. `CleanupAcknowledgement | DeferredDrainReport`) rather than a fixed union, so a downstream package with its own cleanup-report shape—`bureau/test`'s `ReproductionArtifact` adds `BureauShutdownReport`—instantiates this declaration instead of redeclaring it (`bureau` depends on `@repo/operative`, never the reverse, so the canonical shape has to live here for that to work).
+
+```typescript
+import type { ReproductionArtifact, ReproductionCleanupReport } from '@repo/operative';
+
+// A caller with no wider cleanup-report shape of its own uses the default:
+type MyArtifact = ReproductionArtifact; // cleanupReport: ReproductionCleanupReport
+
+// A caller that widens it composes onto the named union instead of
+// repeating its members:
+type MyWiderArtifact = ReproductionArtifact<ReproductionCleanupReport | { readonly custom: true }>;
+```
+
+**Exported types:** `ReproductionArtifact<TCleanupReport>`, `ReproductionCleanupReport`, `ScriptedOutcome`, `BaselineReplayResult`.
+
+## Development
+
+Run the focused checks from this package directory:
+
+```bash
+bun run lint
+bun run typecheck
+bun run test
+```
+
+From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@repo/operative` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.

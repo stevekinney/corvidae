@@ -1,0 +1,22 @@
+[
+  {
+    "filePath": "src/components/kanban-board/kanban-board.css",
+    "name": "--cinder-shadow-xs",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/select/select.css",
+    "name": "--cinder-control-height",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/toast-region/toast-region.css",
+    "name": "--cinder-spinner-size-sm",
+    "allowedCount": 2
+  },
+  {
+    "filePath": "src/styles/components/_control-item.css",
+    "name": "--cinder-control-height-md",
+    "allowedCount": 1
+  }
+]

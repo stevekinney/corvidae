@@ -1,199 +1,58 @@
-# Project Name
+# Corvidae
 
-A Turborepo monorepo powered by [Bun](https://bun.sh).
+Corvidae is an internal [Bun](https://bun.sh) workspace for agent runtimes, durable workflows, and [Svelte](https://svelte.dev) interfaces. [Turborepo](https://turborepo.com/docs) coordinates local quality checks and application builds. The libraries are private, consume one another through `workspace:*`, and export TypeScript source directly.
 
-## Prerequisites
+## Working locally
 
-- [Bun](https://bun.sh) (v1.3.0 or later)
-
-## Getting Started
+Use the Bun version declared in `package.json`. Install from the root:
 
 ```bash
-bun create turbo my-project
-cd my-project
+bun install --frozen-lockfile
+bun run validate
 ```
 
-Or clone and install manually:
+The local quality commands are `bun run lint`, `bun run typecheck`, `bun run test`, `bun run build`, and `bun run format:check`. `bun audit --audit-level=high` checks dependency advisories. No CI, publishing, deployment, or Git-hook setup is included.
+
+Weft storage integration tests start and dispose local PostgreSQL clusters. Install PostgreSQL and make `initdb` and `pg_ctl` available on `PATH` before running the full test suite. The tests use temporary loopback-only databases and require no external database credentials.
+
+Run one workspace through its package scripts:
 
 ```bash
-bun install
+bunx turbo run lint typecheck test --filter=@repo/operative
+bun run --filter=@repo/chat-room dev
+bun run --filter=@repo/chat-room build
+bun run --filter=@repo/chat-room preview
 ```
 
-## What's Inside
+Chat-room uses the documented [SvelteKit Vite integration](https://svelte.dev/docs/kit/@sveltejs-kit-vite). Its `dev`, `build`, and `preview` commands invoke Vite through Bun. Application output is disposable and excluded from source control.
 
-### Apps
+## Workspace boundaries
 
-- **`apps/server`** -- Example Bun server application
+Libraries live in `packages/`. The Agent Bureau packages provide agent composition, tools, conversations, memory, skills, and lifecycle primitives. Weft provides durable execution; Weft UI provides its reusable operator interface. Cinder, Chat, Editor, and Markdown provide the component and document surfaces. Testing contains shared test infrastructure. The existing TypeScript configuration package owns compiler policy.
 
-### Packages
+Applications live in `applications/`. Chat-room exercises the agent and interface packages. Weft Console owns the operator console's browser build, and Weft CLI owns executable command-line composition. Cinder Browser Fixtures hosts component tests through Vite and owns their generated manifest. The existing server remains a Bun application.
 
-- **`packages/shared`** -- Shared utilities (internal package, no build step)
-- **`packages/typescript-configuration`** -- Shared TypeScript compiler options
-
-### Core Tools
-
-- [Turborepo](https://turbo.build/repo) -- Monorepo task orchestration with caching
-- [Bun](https://bun.sh) -- Runtime, bundler, test runner, and package manager
-- [TypeScript](https://www.typescriptlang.org/) -- Static type checking
-- [Oxlint](https://oxc.rs/docs/guide/usage/linter.html) -- Fast Rust-based linter
-- [Prettier](https://prettier.io/) -- Code formatting
-- [Lefthook](https://lefthook.dev/) -- Git hooks
-
-## Development
-
-```bash
-bun run dev         # Start dev servers (via turbo)
-bun run build       # Build all workspaces
-bun run test        # Run all tests
-bun run lint        # Lint all workspaces
-bun run typecheck   # Type check all workspaces
-bun run format      # Format all files
-bun run validate    # Full validation (lint + typecheck + test)
-bun run clean       # Clean build artifacts
-```
-
-### Filtering by Workspace
-
-Run tasks for a specific workspace using turbo's `--filter` flag:
-
-```bash
-bunx turbo run build --filter=@repo/server
-bunx turbo run test --filter=@repo/shared
-```
-
-## Project Structure
-
-```
-apps/
-  server/                   # Example Bun application
-    src/                    # Application source code
-    scripts/build.ts        # Build script using Bun.build
-    package.json
-    tsconfig.json
-packages/
-  shared/                   # Shared internal package
-    src/                    # Library source code
-    package.json            # Exports TypeScript directly (no build)
-    tsconfig.json
-  typescript-configuration/ # Shared tsconfig files
-    base.json               # Base compiler options
-    server.json             # Bun server apps
-    library.json            # Runtime-agnostic libraries
-turbo.json                  # Task pipeline configuration
-package.json                # Workspace root
-```
-
-## Adding a New Workspace
-
-### New Package
-
-Create a directory in `packages/` with a `package.json`:
+Every library exposes exactly one package entry:
 
 ```json
 {
-  "name": "@repo/my-package",
+  "name": "@repo/example",
   "private": true,
-  "version": "0.0.1",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
-  "scripts": {
-    "lint": "oxlint --type-aware --tsconfig ./tsconfig.json",
-    "lint:fix": "oxlint --fix --type-aware --tsconfig ./tsconfig.json",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@repo/typescript-configuration": "workspace:*",
-    "@types/bun": "^1.3.14",
-    "oxlint": "^1.70.0"
-  }
+  "exports": { ".": "./src/index.ts" }
 }
 ```
 
-Add a `tsconfig.json` extending the shared config:
+Import supported values and types from the package root. There are no built library artifacts or public subpath aliases. The consuming application compiles its libraries. Root style imports accompany the interface library APIs so applications receive their required CSS cascade.
 
-```json
-{
-  "extends": "@repo/typescript-configuration/library.json",
-  "compilerOptions": {
-    "rootDir": ".",
-    "paths": { "@/*": ["./src/*"] }
-  },
-  "include": ["src"],
-  "exclude": ["node_modules", "coverage"]
-}
-```
+Declare a dependency in the workspace that imports it. Internal dependencies use `workspace:*`; shared third-party versions use the root [Bun catalog](https://bun.sh/docs/pm/catalogs). Run `bun install` after changing manifests and commit the resulting root lockfile with the manifests.
 
-Then run `bun install` to link the workspace.
+## Configuration and verification
 
-### New App
+Formatting, lint policy, editor settings, dependency versions, and task coordination live at the root. Compiler options live in `packages/typescript-configuration`. Local TypeScript configurations select their source files; tool-required application and test configurations remain beside their owners.
 
-Same pattern but in `apps/`, extending `server.json` instead of `library.json`, and with additional scripts for `build`, `clean`, `dev`, and `start`.
+Turbo hashes upstream library source through transit tasks, so changing a provider invalidates its consumers' checks without building the libraries. Root tool configuration and shared scripts also participate in cache keys. Chat-room, Weft Console, and Cinder Browser Fixtures share the grammar-asset Vite plugin in `scripts/shiki-grammar-assets.ts`; its outputs belong to those applications. Chat-room checks generate and cache their SvelteKit configuration and types; Cinder fixture tests generate and cache their manifest.
 
-## Cross-Workspace Dependencies
+`bun run test:self` checks the workspace architecture, including source exports, dependency cycles, declared imports, catalog use, cache invalidation, build ownership, and the absence of publishing and hook installation. These checks keep the consolidation rules executable.
 
-Use the `workspace:*` protocol in `package.json`:
-
-```json
-{
-  "dependencies": {
-    "@repo/shared": "workspace:*"
-  }
-}
-```
-
-Then import normally:
-
-```typescript
-import { greet } from '@repo/shared';
-```
-
-## Internal Packages Pattern
-
-Packages in `packages/` export TypeScript source directly -- no build step needed. The consuming application's bundler handles transpilation. This means:
-
-- Changes are reflected immediately (no rebuild required)
-- TypeScript types are available without generating declarations
-- The turbo pipeline is simpler (fewer build tasks)
-
-## Git Hooks
-
-Hooks are configured in `lefthook.yml` and implemented as Bun TypeScript files
-under `scripts/hooks/`. Lefthook is installed via the `prepare` script on
-`bun install`.
-
-- `pre-commit`: formats staged files with Prettier, runs `oxlint --fix` on them,
-  blocks staged conflict markers, then checks that `bun.lock` is staged when a
-  `package.json` changes. Fast by design — typecheck and tests are deferred to
-  pre-push. Skipped during merge/rebase.
-- `pre-push`: runs `bun run validate` (lint, typecheck, test, build, and format
-  check across all workspaces via turbo). The full gate before code leaves your
-  machine. Skipped in CI.
-- `post-checkout`: installs deps when dependencies changed; surfaces config
-  changes across workspaces.
-- `post-merge`: installs/cleans when dependencies or config changed; flags
-  leftover conflict markers.
-
-Hooks print only when something fails, so clean commits and pushes stay quiet.
-Use `--no-verify` to bypass hooks (not recommended; CI will catch you anyway).
-
-## TypeScript Path Aliases
-
-Each workspace supports the `@/*` path alias pointing to its own `src/` directory:
-
-```typescript
-import { something } from '@/utilities';
-// Resolves to ./src/utilities
-```
-
-## Template Bootstrap
-
-When you create a new project with `bun create`, setup scripts automatically:
-
-1. Set the package name from the directory name
-2. Copy `.env.example` to `.env`
-3. Write any available API keys to `.env`
-4. Initialize git hooks
-5. Clean up the setup scripts
+The [migration inventory](./MIGRATION.md) records source revisions, package mappings, dependency edges, removal decisions, and validation evidence. It is the completion record for this consolidation.

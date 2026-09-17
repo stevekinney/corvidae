@@ -1,0 +1,405 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../badge/badge.css';
+@import '../collapsible/collapsible.css';
+@import '../link/link.css';
+@import '../progress/progress.css';
+@import '../status-dot/status-dot.css';
+
+@layer cinder.components {
+  /* ========================================
+   * RUN-STEP-TIMELINE
+   * Ordered async execution rail with per-step status, metadata,
+   * optional progress, and expandable detail panels.
+   * ======================================== */
+
+  .cinder-run-step-timeline {
+    --_cinder-rst-rail-size: 1.5rem;
+    --_cinder-rst-marker-size: 0.875rem;
+    --_cinder-rst-rail-center: 0.6875rem;
+    --_cinder-rst-depth: 0;
+    --_cinder-rst-nested-indent: 1.75rem;
+
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    position: relative;
+  }
+
+  /* ----------------------------------------
+   * List item
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__item {
+    --_cinder-rst-depth-offset: calc(var(--_cinder-rst-depth) * var(--_cinder-rst-nested-indent));
+
+    position: relative;
+    padding-bottom: var(--cinder-space-4);
+  }
+
+  .cinder-run-step-timeline__item:last-child {
+    padding-bottom: 0;
+  }
+
+  /* Connector rail line between items */
+  .cinder-run-step-timeline__item::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(var(--_cinder-rst-depth-offset) + var(--_cinder-rst-rail-center));
+    inset-block-start: 1rem;
+    inset-block-end: 0;
+    inline-size: 1px;
+    background: var(--cinder-border-muted);
+  }
+
+  .cinder-run-step-timeline__item[data-cinder-connector-after='hidden']::before {
+    display: none;
+  }
+
+  .cinder-run-step-timeline__item[data-cinder-selectable] {
+    cursor: pointer;
+  }
+
+  .cinder-run-step-timeline__selection-control {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .cinder-run-step-timeline__item[data-cinder-selectable]:has(
+      .cinder-run-step-timeline__selection-control:focus-visible
+    )
+    .cinder-run-step-timeline__event {
+    border-radius: var(--cinder-radius-md);
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-run-step-timeline__item[data-cinder-selected] .cinder-run-step-timeline__event {
+    border-radius: var(--cinder-radius-md);
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 90%);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--cinder-accent-solid), transparent 55%);
+  }
+
+  /* ----------------------------------------
+   * Event layout: marker column + content column
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__event {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: var(--_cinder-rst-rail-size) 1fr;
+    gap: var(--cinder-space-3);
+    align-items: start;
+    padding-inline-start: var(--_cinder-rst-depth-offset);
+  }
+
+  /* ----------------------------------------
+   * Marker: StatusDot on the rail
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__marker {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--_cinder-rst-rail-size);
+    padding-top: var(--cinder-space-1);
+  }
+
+  /* ----------------------------------------
+   * Content column
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-width: 0;
+  }
+
+  /* ----------------------------------------
+   * Header: step label + status badge
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-run-step-timeline__label {
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-default);
+    flex-shrink: 0;
+  }
+
+  /* Running step: label highlighted */
+  .cinder-run-step-timeline__item[data-cinder-status='running'] .cinder-run-step-timeline__label,
+  .cinder-run-step-timeline__item[data-cinder-status='retrying'] .cinder-run-step-timeline__label,
+  .cinder-run-step-timeline__item[data-cinder-status='waiting_approval']
+    .cinder-run-step-timeline__label {
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-run-step-timeline__link {
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-run-step-timeline__link--unsafe {
+    color: var(--cinder-text-muted);
+  }
+
+  /* Pending step: label muted */
+  .cinder-run-step-timeline__item[data-cinder-status='pending'] .cinder-run-step-timeline__label,
+  .cinder-run-step-timeline__item[data-cinder-status='skipped'] .cinder-run-step-timeline__label,
+  .cinder-run-step-timeline__item[data-cinder-status='cancelled'] .cinder-run-step-timeline__label {
+    color: var(--cinder-text-muted);
+  }
+
+  /* ----------------------------------------
+   * Progress bar wrapper
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__progress {
+    width: 100%;
+    max-width: 24rem;
+  }
+
+  /* ----------------------------------------
+   * Metadata: start/end/duration/attempts
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__meta {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1) var(--cinder-space-4);
+  }
+
+  .cinder-run-step-timeline__meta-row {
+    display: flex;
+    gap: var(--cinder-space-1);
+    align-items: baseline;
+  }
+
+  .cinder-run-step-timeline__meta-term {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .cinder-run-step-timeline__meta-term::after {
+    content: ':';
+  }
+
+  .cinder-run-step-timeline__meta-definition {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ----------------------------------------
+   * Expandable detail panels
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    border-inline-start: 2px solid var(--cinder-border-muted);
+    padding-inline-start: var(--cinder-space-3);
+    margin-top: var(--cinder-space-1);
+  }
+
+  .cinder-run-step-timeline__detail-content {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-subtle);
+    background: var(--cinder-surface-inset);
+    border-radius: var(--cinder-radius-sm);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    overflow-x: auto;
+  }
+
+  /* ----------------------------------------
+   * Per-step body slot
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__body {
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  /* ----------------------------------------
+   * Rewound steps: speculatively executed, then unwound. Struck-through and
+   * de-emphasized but still inspectable (details/collapsibles keep working).
+   * The "Rewound" badge carries the state as text so it is never color-only.
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__item[data-cinder-rewound] .cinder-run-step-timeline__label {
+    text-decoration: line-through;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-run-step-timeline__item[data-cinder-rewound] .cinder-run-step-timeline__marker {
+    opacity: 0.55;
+  }
+
+  .cinder-run-step-timeline__item[data-cinder-rewound] .cinder-run-step-timeline__meta {
+    opacity: 0.7;
+  }
+
+  /* ----------------------------------------
+   * Compensation steps: inset beneath their forward step with a dashed
+   * reversal connector. The "Compensates <step>" badge names the relationship.
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__item[data-cinder-compensation] {
+    --_cinder-rst-compensation-inset: var(--cinder-space-5);
+
+    padding-inline-start: var(--_cinder-rst-compensation-inset);
+  }
+
+  .cinder-run-step-timeline__item[data-cinder-compensation]::after {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(var(--_cinder-rst-depth-offset) + var(--_cinder-rst-rail-center));
+    inset-block-start: -0.5rem;
+    inline-size: var(--cinder-space-5);
+    block-size: 1.5rem;
+    border-inline-start: 1px dashed var(--cinder-border-strong);
+    border-block-end: 1px dashed var(--cinder-border-strong);
+    border-end-start-radius: var(--cinder-radius-md);
+    pointer-events: none;
+  }
+
+  /* ----------------------------------------
+   * Branch / coordination groups: N parallel sub-lanes with won/lost/settled
+   * outcomes. Winner emphasized, losers muted — driven by tokens.
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__branch {
+    min-width: 0;
+  }
+
+  .cinder-run-step-timeline__branch-heading {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-run-step-timeline__lanes {
+    list-style: none;
+    margin: var(--cinder-space-2) 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-run-step-timeline__lane {
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-3);
+    background: var(--cinder-surface-inset);
+    min-width: 0;
+  }
+
+  .cinder-run-step-timeline__lane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+    margin-block-end: var(--cinder-space-2);
+  }
+
+  .cinder-run-step-timeline__lane-label {
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-run-step-timeline__lane-steps {
+    margin: 0;
+  }
+
+  /* Winner: emphasized border + full-strength text. */
+  .cinder-run-step-timeline__lane[data-cinder-outcome='won'] {
+    border-color: var(--cinder-status-success-solid);
+    border-inline-start-width: 3px;
+  }
+
+  /* Loser: muted via a muted border and lane label — not a blanket opacity, so
+   * step text, links, detail triggers, and focus rings keep full contrast. The
+   * "Lost" outcome badge carries the outcome as text. */
+  .cinder-run-step-timeline__lane[data-cinder-outcome='lost'] {
+    border-color: var(--cinder-border-muted);
+  }
+
+  .cinder-run-step-timeline__lane[data-cinder-outcome='lost']
+    .cinder-run-step-timeline__lane-label {
+    color: var(--cinder-text-muted);
+  }
+
+  /* Settled: neutral, no competitive emphasis. */
+  .cinder-run-step-timeline__lane[data-cinder-outcome='settled'] {
+    border-color: var(--cinder-border);
+  }
+
+  /* Still racing: accent edge to signal in-flight. */
+  .cinder-run-step-timeline__lane[data-cinder-outcome='racing'] {
+    border-color: var(--cinder-accent-solid);
+    border-inline-start-width: 3px;
+  }
+
+  /* ----------------------------------------
+   * Focus ring (not applicable to the root list, but included for
+   * completeness if the component is ever given an interactive element)
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-run-step-timeline:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+    }
+
+    /* Ensure connector lines are visible in high-contrast mode */
+    .cinder-run-step-timeline__item::before {
+      background: ButtonText;
+    }
+
+    .cinder-run-step-timeline__item[data-cinder-selected] .cinder-run-step-timeline__event {
+      outline: 1px solid Highlight;
+      background: Canvas;
+      box-shadow: none;
+    }
+
+    .cinder-run-step-timeline__item[data-cinder-selectable]:has(
+        .cinder-run-step-timeline__selection-control:focus-visible
+      )
+      .cinder-run-step-timeline__event {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      box-shadow: none;
+    }
+  }
+}

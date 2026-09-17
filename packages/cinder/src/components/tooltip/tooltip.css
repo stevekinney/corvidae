@@ -1,0 +1,79 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * TOOLTIP
+ * ======================================== */
+
+  .cinder-tooltip-wrapper {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* ----------------------------------------
+ * Tooltip element
+ * ---------------------------------------- */
+
+  .cinder-tooltip {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: var(--cinder-z-tooltip);
+
+    max-width: 16rem;
+    padding: var(--cinder-space-1-5) var(--cinder-space-2-5);
+
+    border-radius: var(--cinder-radius-md);
+    /* Dark-overlay in both themes.
+     * Light: --cinder-surface-inverse → --cinder-text-default (dark ink bg);
+     *        --cinder-text-inverse → --cinder-surface (near-white text).
+     * Dark:  --cinder-surface-inverse → --cinder-surface-raised (elevated dark
+     *        surface); --cinder-text-inverse → --cinder-text-default (near-white, ~8.3:1).
+     *        --cinder-border-inverse adds 1px strong border so tooltip separates
+     *        from the dark stage. Both arms render a dark overlay with legible
+     *        light text — no theme inversion occurs. */
+    background: var(--cinder-surface-inverse);
+    color: var(--cinder-text-inverse);
+    border: 1px solid var(--cinder-border-inverse);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    white-space: nowrap;
+
+    pointer-events: none;
+    user-select: none;
+    opacity: 0;
+
+    transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* Steady-state hidden: removed from the a11y/paint tree only once the exit
+   transition below has genuinely finished (driven by
+   `createAnchoredOverlayExitState` / `waitForTransitionCompletion`), not the
+   instant it stops being shown — see OVERLAY-POLICY.md § "Transition
+   lifecycle". `aria-hidden` (set directly by the component) still flips
+   immediately for assistive tech; only the visual `visibility` waits. */
+  .cinder-tooltip:not([data-cinder-visible]) {
+    visibility: hidden;
+  }
+
+  .cinder-tooltip[data-cinder-position-ready='true'] {
+    opacity: 1;
+  }
+
+  /* Exit transition: mirrors the visible state above so the tooltip fades
+   back out instead of snapping away with `visibility`. */
+  .cinder-tooltip[data-cinder-closing] {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* ----------------------------------------
+ * Reduced motion
+ * ---------------------------------------- */
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-tooltip {
+      transition: none;
+    }
+  }
+}

@@ -1,0 +1,1129 @@
+import { describe, expect, it, mock } from 'bun:test';
+
+import { KEYS } from '../../storage/interface.ts';
+import { MemoryStorage } from '../../storage/memory.ts';
+import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { serializeCheckpoint } from '../checkpoint/serialization.ts';
+import { decode, encode } from '../codec.ts';
+import { DevelopmentWarningEvent } from '../events.ts';
+import { buildTimerBatchOperations } from '../scheduler.ts';
+import {
+  workflow,
+  type Checkpoint,
+  type TimerEntry,
+  type WorkflowContext,
+  type WorkflowState,
+} from '../types.ts';
+import { WorkflowNotRegisteredError } from './errors.ts';
+import { Engine } from './index.ts';
+import {
+  processSleepOperation,
+  startDelayedWorkflow,
+  type TimeOperationCallbacks,
+} from './operations-time.ts';
+
+function createWorkflowState(
+  workflowId: string,
+  overrides: Partial<WorkflowState> = {},
+): WorkflowState {
+  return {
+    createdAt: 1_000,
+    id: workflowId,
+    input: { value: 1 },
+    status: 'pending',
+    type: 'delayed-workflow',
+    updatedAt: 1_000,
+    versionTuple: { workflowVersion: '1' },
+    ...overrides,
+  };
+}
+
+function createCheckpoint(workflowId: string): Checkpoint {
+  return {
+    accumulatedResults: [],
+    createdAt: 1_000,
+    locals: {},
+    schemaVersion: 2,
+    searchAttributes: {},
+    step: 0,
+    version: '1',
+    workflowId,
+  };
+}
+
+function createDelayedStartEntry(
+  workflowId: string,
+  overrides: Partial<TimerEntry> = {},
+): TimerEntry {
+  return {
+    fireAt: 2_000,
+    id: `delayed-start:${workflowId}`,
+    kind: 'delayed-start',
+    workflowId,
+    ...overrides,
+  };
+}
+
+function createCallbacks(
+  overrides: Partial<TimeOperationCallbacks> = {},
+): Pick<
+  TimeOperationCallbacks,
+  | 'beginWorkflowExecution'
+  | 'dispatchEvent'
+  | 'failWorkflow'
+  | 'handleCleanupError'
+  | 'loadWorkflowStartHeaders'
+  | 'loadWorkflowState'
+  | 'resolveExecutableRegistrationForRevision'
+  | 'runSerializedWorkflowStateWrite'
+  | 'setWorkflowStartHeaders'
+  | 'workflowVersionTupleFromState'
+> {
+  return {
+    beginWorkflowExecution: mock(() => {}),
+    dispatchEvent: mock(() => {}),
+    failWorkflow: mock(async () => {}),
+    handleCleanupError: mock(() => {}),
+    loadWorkflowStartHeaders: mock(async () => undefined),
+    loadWorkflowState: mock(async () => null),
+    // Default: no registration exists — mirrors an `internals.registrations`
+    // Map with no matching key. Tests exercising a real registration pass
+    // their own `resolveExecutableRegistrationForRevision` override instead.
+    resolveExecutableRegistrationForRevision: mock(async (type: string) => {
+      throw new WorkflowNotRegisteredError(type);
+    }),
+    runSerializedWorkflowStateWrite: async (_workflowId, writeOperation) => writeOperation(),
+    setWorkflowStartHeaders: mock(() => {}),
+    workflowVersionTupleFromState: () => ({ workflowVersion: '1' }),
+    ...overrides,
+  };
+}
+
+type DelayedStartServicesFixture = {
+  beginWorkflowExecution: () => void;
+  failed: Array<[string, Error]>;
+  failWorkflow(id: string, error: Error): Promise<void>;
+  registration: { handler: () => AsyncGenerator<unknown, void, unknown>; version: string };
+  state: WorkflowState;
+  storage: MemoryStorage;
+  workflowId: string;
+};
+
+async function createDelayedStartServicesFixture(
+  workflowId: string,
+): Promise<DelayedStartServicesFixture> {
+  const storage = new MemoryStorage();
+  const state = createWorkflowState(workflowId);
+  const checkpoint = createCheckpoint(workflowId);
+  const registration = { handler: async function* () {}, version: '1' };
+  const beginWorkflowExecution = mock(() => {});
+  const failed: Array<[string, Error]> = [];
+  const failWorkflow = async (id: string, error: Error): Promise<void> => {
+    failed.push([id, error]);
+  };
+
+  await storage.put(KEYS.workflow(workflowId), encode(state));
+  await storage.put(KEYS.checkpoint(workflowId), serializeCheckpoint(checkpoint));
+  await storage.put(KEYS.workflowHasServices(workflowId), new Uint8Array(0));
+
+  return {
+    beginWorkflowExecution,
+    failed,
+    failWorkflow,
+    registration,
+    state,
+    storage,
+    workflowId,
+  };
+}
+
+describe('engine time operation helpers', () => {
+  it('ignores delayed-start timers for missing or non-pending workflows', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'workflow-delayed-not-pending';
+    const failWorkflow = mock(async () => {});
+
+    await startDelayedWorkflow(
+      { options: { getNow: () => 2_000 }, registrations: new Map(), storage } as never,
+      createDelayedStartEntry(workflowId),
+      createCallbacks({
+        failWorkflow,
+        loadWorkflowState: async () => createWorkflowState(workflowId, { status: 'running' }),
+      }),
+    );
+
+    expect(failWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('fails delayed-start workflows with missing checkpoint or registration data', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'workflow-delayed-missing-data';
+    const state = createWorkflowState(workflowId);
+    const failWorkflow = mock(async () => {});
+
+    await startDelayedWorkflow(
+      { options: { getNow: () => 2_000 }, registrations: new Map(), storage } as never,
+      createDelayedStartEntry(workflowId),
+      createCallbacks({ failWorkflow, loadWorkflowState: async () => state }),
+    );
+
+    expect(failWorkflow).toHaveBeenCalledWith(
+      workflowId,
+      expect.objectContaining({
+        message: `Checkpoint not found for delayed workflow "${workflowId}"`,
+      }),
+    );
+
+    failWorkflow.mockClear();
+    await storage.put(
+      KEYS.checkpoint(workflowId),
+      serializeCheckpoint(createCheckpoint(workflowId)),
+    );
+
+    await startDelayedWorkflow(
+      { options: { getNow: () => 2_000 }, registrations: new Map(), storage } as never,
+      createDelayedStartEntry(workflowId),
+      createCallbacks({ failWorkflow, loadWorkflowState: async () => state }),
+    );
+
+    expect(failWorkflow).toHaveBeenCalledWith(
+      workflowId,
+      expect.objectContaining({
+        message: `No workflow registered with name "${state.type}"`,
+      }),
+    );
+  });
+
+  it('fails delayed-start workflows with invalid execution timeout values', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'workflow-delayed-invalid-timeout';
+    const state = createWorkflowState(workflowId);
+    const failWorkflow = mock(async () => {});
+    const registration = { handler: async function* () {}, version: '1' };
+
+    await storage.put(
+      KEYS.checkpoint(workflowId),
+      serializeCheckpoint(createCheckpoint(workflowId)),
+    );
+
+    await startDelayedWorkflow(
+      {
+        options: { getNow: () => 2_000 },
+        registrations: new Map([[state.type, registration]]),
+        storage,
+      } as never,
+      createDelayedStartEntry(workflowId, { executionTimeoutMs: -1 }),
+      createCallbacks({
+        failWorkflow,
+        loadWorkflowState: async () => state,
+        resolveExecutableRegistrationForRevision: async () => ({
+          entry: registration,
+          revision: undefined,
+        }),
+      }),
+    );
+
+    expect(failWorkflow).toHaveBeenCalledWith(
+      workflowId,
+      expect.objectContaining({
+        message: `Invalid delayed execution timeout for workflow "${workflowId}"`,
+      }),
+    );
+
+    failWorkflow.mockClear();
+    await startDelayedWorkflow(
+      {
+        options: { getNow: () => Number.MAX_SAFE_INTEGER },
+        registrations: new Map([[state.type, registration]]),
+        storage,
+      } as never,
+      createDelayedStartEntry(workflowId, { executionTimeoutMs: Number.MAX_SAFE_INTEGER }),
+      createCallbacks({
+        failWorkflow,
+        loadWorkflowState: async () => state,
+        resolveExecutableRegistrationForRevision: async () => ({
+          entry: registration,
+          revision: undefined,
+        }),
+      }),
+    );
+
+    expect(failWorkflow).toHaveBeenCalledWith(
+      workflowId,
+      expect.objectContaining({
+        message: `Invalid delayed execution timeout for workflow "${workflowId}"`,
+      }),
+    );
+  });
+
+  it('starts delayed workflows only when serialized state is still pending', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'workflow-delayed-start';
+    const state = createWorkflowState(workflowId, { executionStateOwnerId: 'owner-workflow' });
+    const checkpoint = createCheckpoint(workflowId);
+    const registration = { handler: async function* () {}, version: '1' };
+    const beginWorkflowExecution = mock(() => {});
+    const setWorkflowStartHeaders = mock(() => {});
+
+    await storage.put(KEYS.workflow(workflowId), encode(state));
+    await storage.put(KEYS.checkpoint(workflowId), serializeCheckpoint(checkpoint));
+
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        options: { getNow: () => 2_000 },
+        registrations: new Map([[state.type, registration]]),
+        storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(workflowId, { executionTimeoutMs: 500 }),
+      createCallbacks({
+        beginWorkflowExecution,
+        loadWorkflowStartHeaders: async () => new Map([['traceparent', '00-test']]),
+        loadWorkflowState: async () => state,
+        resolveExecutableRegistrationForRevision: async () => ({
+          entry: registration,
+          revision: undefined,
+        }),
+        setWorkflowStartHeaders,
+      }),
+    );
+
+    expect(beginWorkflowExecution).toHaveBeenCalledWith(
+      workflowId,
+      state.workflowExecutionToken,
+      state.type,
+      state.revision,
+      state.input,
+      checkpoint,
+      2_500,
+      'owner-workflow',
+      registration,
+    );
+    expect(setWorkflowStartHeaders).toHaveBeenCalledWith(
+      workflowId,
+      new Map([['traceparent', '00-test']]),
+    );
+
+    beginWorkflowExecution.mockClear();
+    let loadCount = 0;
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        options: { getNow: () => 3_000 },
+        registrations: new Map([[state.type, registration]]),
+        storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(workflowId),
+      createCallbacks({
+        beginWorkflowExecution,
+        loadWorkflowState: mock(async () => {
+          loadCount += 1;
+          return createWorkflowState(workflowId, {
+            status: loadCount === 1 ? 'pending' : 'completed',
+          });
+        }),
+        resolveExecutableRegistrationForRevision: async () => ({
+          entry: registration,
+          revision: undefined,
+        }),
+        runSerializedWorkflowStateWrite: async (_workflowId, writeOperation) => {
+          return writeOperation();
+        },
+      }),
+    );
+
+    expect(beginWorkflowExecution).not.toHaveBeenCalled();
+  });
+
+  it("resolves the delayed-start fire against the pending run's own pinned revision (WFT-17), never a fresh active-pointer lookup", async () => {
+    // The pending record's `revision` was already set correctly at the
+    // original `engine.start({ startAt })` call; the fire path here must
+    // honor that exact pin, matching `resumeWorkflowFromStorage()`'s own
+    // use of `resolveExecutableRegistrationForRevision` rather than
+    // resolving fresh against whatever is currently active.
+    const storage = new MemoryStorage();
+    const workflowId = 'workflow-delayed-revision-pin';
+    const state = createWorkflowState(workflowId, { revision: 'sha256:pinned-revision' });
+    const checkpoint = createCheckpoint(workflowId);
+    const registration = { handler: async function* () {}, version: '1' };
+    const resolveCalls: Array<{ type: string; revision: string | undefined }> = [];
+
+    await storage.put(KEYS.workflow(workflowId), encode(state));
+    await storage.put(KEYS.checkpoint(workflowId), serializeCheckpoint(checkpoint));
+
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        options: { getNow: () => 2_000 },
+        registrations: new Map(),
+        storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(workflowId),
+      createCallbacks({
+        beginWorkflowExecution: mock(() => {}),
+        loadWorkflowState: async () => state,
+        resolveExecutableRegistrationForRevision: async (type: string, revision) => {
+          resolveCalls.push({ type, revision });
+          return { entry: registration, revision };
+        },
+      }),
+    );
+
+    expect(resolveCalls).toEqual([{ type: state.type, revision: 'sha256:pinned-revision' }]);
+  });
+
+  it("threads the resolver's own resolved revision into launch for a legacy pending record the resolver resolves unambiguously (WFT-19 review round 7)", async () => {
+    // `state.revision` is `undefined` — a legacy, pre-revision-pinning pending
+    // record on a `registerSource()`-registered type — but the resolver can
+    // still unambiguously resolve the sole registered candidate and reports
+    // that candidate's revision back. The fire path must carry THAT resolved
+    // revision into `beginWorkflowExecution` and the persisted running state,
+    // never the still-`undefined` `state.revision`/`runningState.revision`
+    // (the bug this test guards against: the per-instance identity cache
+    // silently stamped with a missing revision).
+    const storage = new MemoryStorage();
+    const workflowId = 'workflow-delayed-legacy-resolved';
+    const state = createWorkflowState(workflowId, { executionStateOwnerId: 'owner-workflow' });
+    const checkpoint = createCheckpoint(workflowId);
+    const registration = { handler: async function* () {}, version: '1' };
+    const beginWorkflowExecution = mock(() => {});
+    const resolvedRevision = 'sha256:sole-candidate-revision';
+
+    await storage.put(KEYS.workflow(workflowId), encode(state));
+    await storage.put(KEYS.checkpoint(workflowId), serializeCheckpoint(checkpoint));
+
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        options: { getNow: () => 2_000 },
+        registrations: new Map(),
+        storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(workflowId),
+      createCallbacks({
+        beginWorkflowExecution,
+        loadWorkflowState: async () => state,
+        resolveExecutableRegistrationForRevision: async (_type: string, revision) => {
+          // Input `revision` is `undefined` (legacy record); the resolver
+          // still unambiguously resolves the sole registered candidate and
+          // reports its revision — mirroring `resolveExecutableRegistrationForRevision`'s
+          // documented `legacy, unambiguous` fast path.
+          expect(revision).toBeUndefined();
+          return { entry: registration, revision: resolvedRevision };
+        },
+      }),
+    );
+
+    expect(beginWorkflowExecution).toHaveBeenCalledWith(
+      workflowId,
+      state.workflowExecutionToken,
+      state.type,
+      resolvedRevision,
+      state.input,
+      checkpoint,
+      undefined,
+      'owner-workflow',
+      registration,
+    );
+
+    const persisted = decode((await storage.get(KEYS.workflow(workflowId)))!) as WorkflowState;
+    expect(persisted.revision).toBe(resolvedRevision);
+  });
+
+  it("never overwrites an already-pinned revision with the resolver's `undefined` (an eager registration always resolves with `revision: undefined`)", async () => {
+    // `resolveExecutableRegistrationForRevision()` always returns
+    // `revision: undefined` for an eager registration, even when the
+    // pending state's own `revision` is a real, independently-meaningful
+    // pin. The fire path must keep that existing pin — never overwrite it
+    // with the resolver's `undefined` — mirroring `createForkedWorkflowState()`'s
+    // `sourceState.revision ?? resolvedRevision` fix (WFT-19 review round 6)
+    // for the same resolver contract.
+    const storage = new MemoryStorage();
+    const workflowId = 'workflow-delayed-eager-pin-preserved';
+    const state = createWorkflowState(workflowId, {
+      executionStateOwnerId: 'owner-workflow',
+      revision: 'sha256:already-pinned',
+    });
+    const checkpoint = createCheckpoint(workflowId);
+    const registration = { handler: async function* () {}, version: '1' };
+    const beginWorkflowExecution = mock(() => {});
+
+    await storage.put(KEYS.workflow(workflowId), encode(state));
+    await storage.put(KEYS.checkpoint(workflowId), serializeCheckpoint(checkpoint));
+
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        options: { getNow: () => 2_000 },
+        registrations: new Map([[state.type, registration]]),
+        storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(workflowId),
+      createCallbacks({
+        beginWorkflowExecution,
+        loadWorkflowState: async () => state,
+        // Eager-registration resolver behavior: always `revision: undefined`.
+        resolveExecutableRegistrationForRevision: async () => ({
+          entry: registration,
+          revision: undefined,
+        }),
+      }),
+    );
+
+    expect(beginWorkflowExecution).toHaveBeenCalledWith(
+      workflowId,
+      state.workflowExecutionToken,
+      state.type,
+      'sha256:already-pinned',
+      state.input,
+      checkpoint,
+      undefined,
+      'owner-workflow',
+      registration,
+    );
+
+    const persisted = decode((await storage.get(KEYS.workflow(workflowId)))!) as WorkflowState;
+    expect(persisted.revision).toBe('sha256:already-pinned');
+  });
+
+  it('fails a recovered delayed-start run whose services the resolver reports unavailable', async () => {
+    const fixture = await createDelayedStartServicesFixture('workflow-delayed-no-services');
+    // This run WAS launched with services, so its durable "expects services"
+    // marker is present — that is what makes the recovery seam consult the
+    // resolver on this fresh-process timer firing.
+
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        // Inline engine with an empty services map (fresh-process recovery) and a
+        // resolver that reports the run unavailable.
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        options: {
+          getNow: () => 2_000,
+          resolveWorkflowServices: () => ({ status: 'unavailable', reason: 'no config' }),
+        },
+        registrations: new Map([[fixture.state.type, fixture.registration]]),
+        storage: fixture.storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(fixture.workflowId, { executionTimeoutMs: 500 }),
+      createCallbacks({
+        beginWorkflowExecution: fixture.beginWorkflowExecution,
+        failWorkflow: fixture.failWorkflow,
+        loadWorkflowState: async () => fixture.state,
+        resolveExecutableRegistrationForRevision: async () => ({
+          entry: fixture.registration,
+          revision: undefined,
+        }),
+        runSerializedWorkflowStateWrite: async (_workflowId, writeOperation) => writeOperation(),
+      }),
+    );
+
+    // The run is failed with the canonical unavailable-services error, and the
+    // generator is never started.
+    expect(fixture.failed).toHaveLength(1);
+    expect(fixture.failed[0]![1].message).toContain('services unavailable');
+    expect(fixture.beginWorkflowExecution).not.toHaveBeenCalled();
+  });
+
+  it('fails a recovered delayed-start run and warns when it expected services but no resolver is configured', async () => {
+    const fixture = await createDelayedStartServicesFixture('workflow-delayed-missing-resolver');
+    const warnings: DevelopmentWarningEvent[] = [];
+
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        options: { getNow: () => 2_000 },
+        registrations: new Map([[fixture.state.type, fixture.registration]]),
+        storage: fixture.storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(fixture.workflowId, { executionTimeoutMs: 500 }),
+      createCallbacks({
+        beginWorkflowExecution: fixture.beginWorkflowExecution,
+        dispatchEvent: (event) => {
+          if (event instanceof DevelopmentWarningEvent) {
+            warnings.push(event);
+          }
+        },
+        failWorkflow: fixture.failWorkflow,
+        loadWorkflowState: async () => fixture.state,
+        resolveExecutableRegistrationForRevision: async () => ({
+          entry: fixture.registration,
+          revision: undefined,
+        }),
+        runSerializedWorkflowStateWrite: async (_workflowId, writeOperation) => writeOperation(),
+      }),
+    );
+
+    expect(fixture.failed).toHaveLength(1);
+    expect(fixture.failed[0]![1].message).toContain('resolveWorkflowServices');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.workflowId).toBe(fixture.workflowId);
+    expect(warnings[0]!.message).toContain('resolveWorkflowServices');
+    expect(fixture.beginWorkflowExecution).not.toHaveBeenCalled();
+  });
+
+  it('starts a recovered delayed-start run with no services without consulting the resolver', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'workflow-delayed-plain';
+    const state = createWorkflowState(workflowId, { executionStateOwnerId: workflowId });
+    const checkpoint = createCheckpoint(workflowId);
+    const registration = { handler: async function* () {}, version: '1' };
+    const beginWorkflowExecution = mock(() => {});
+    let resolverCalls = 0;
+    const failed: Array<[string, Error]> = [];
+    const failWorkflow = async (id: string, error: Error): Promise<void> => {
+      failed.push([id, error]);
+    };
+
+    await storage.put(KEYS.workflow(workflowId), encode(state));
+    await storage.put(KEYS.checkpoint(workflowId), serializeCheckpoint(checkpoint));
+    // No `wf-has-services` marker: this run was started WITHOUT services. A
+    // fail-closed resolver must NOT be consulted, and the run must start normally.
+
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        options: {
+          getNow: () => 2_000,
+          resolveWorkflowServices: () => {
+            resolverCalls += 1;
+            return { status: 'unavailable', reason: 'should never be consulted' };
+          },
+        },
+        registrations: new Map([[state.type, registration]]),
+        storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(workflowId, { executionTimeoutMs: 500 }),
+      createCallbacks({
+        beginWorkflowExecution,
+        failWorkflow,
+        loadWorkflowState: async () => state,
+        resolveExecutableRegistrationForRevision: async () => ({
+          entry: registration,
+          revision: undefined,
+        }),
+        runSerializedWorkflowStateWrite: async (_workflowId, writeOperation) => writeOperation(),
+      }),
+    );
+
+    // The resolver was never consulted and the generator was started normally.
+    expect(resolverCalls).toBe(0);
+    expect(failed).toHaveLength(0);
+    expect(beginWorkflowExecution).toHaveBeenCalledTimes(1);
+  });
+
+  // Both delayed-start terminal-cleanup tests share the same recovery harness:
+  // seed a workflow + checkpoint, run startDelayedWorkflow against a fresh-process
+  // internals object (empty in-memory cleanup set), and observe whether the run
+  // re-joins the set. They differ only in whether the durable terminalCleanupNeeded
+  // marker is present, so the marker decision and the final assertion stay at the
+  // call site while this helper owns the duplicated setup + invocation.
+  async function runDelayedStartTerminalCleanup(options: {
+    workflowId: string;
+    writeDurableMarker: boolean;
+  }): Promise<{
+    workflowsNeedingTerminalCleanup: Set<string>;
+    beginWorkflowExecution: ReturnType<typeof mock>;
+  }> {
+    const storage = new MemoryStorage();
+    const state = createWorkflowState(options.workflowId, {
+      executionStateOwnerId: options.workflowId,
+    });
+    const checkpoint = createCheckpoint(options.workflowId);
+    const registration = { handler: async function* () {}, version: '1' };
+    const beginWorkflowExecution = mock(() => {});
+    const workflowsNeedingTerminalCleanup = new Set<string>();
+
+    await storage.put(KEYS.workflow(options.workflowId), encode(state));
+    await storage.put(KEYS.checkpoint(options.workflowId), serializeCheckpoint(checkpoint));
+    if (options.writeDurableMarker) {
+      await storage.put(KEYS.terminalCleanupNeeded(options.workflowId), new Uint8Array(0));
+    }
+
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        workflowsNeedingTerminalCleanup,
+        options: { getNow: () => 2_000 },
+        registrations: new Map([[state.type, registration]]),
+        storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(options.workflowId, { executionTimeoutMs: 500 }),
+      createCallbacks({
+        beginWorkflowExecution,
+        loadWorkflowState: async () => state,
+        resolveExecutableRegistrationForRevision: async () => ({
+          entry: registration,
+          revision: undefined,
+        }),
+        runSerializedWorkflowStateWrite: async (_workflowId, writeOperation) => writeOperation(),
+      }),
+    );
+
+    return { workflowsNeedingTerminalCleanup, beginWorkflowExecution };
+  }
+
+  it('re-derives terminal-cleanup tracking from the durable marker on fresh-process recovery', async () => {
+    // Regression: on a fresh process the in-memory workflowsNeedingTerminalCleanup
+    // set is empty. A recovered delayed-start run whose durable terminalCleanupNeeded
+    // key is present (e.g. a services-only run, which has no headers to re-add it)
+    // must re-join the set, or completeWorkflow skips the deferred durable sweep and
+    // leaks the run's per-run scratch (the wf-has-services marker). Mirrors the
+    // running-workflow resume path's loadTerminalCleanupTrackedState.
+    const { workflowsNeedingTerminalCleanup, beginWorkflowExecution } =
+      await runDelayedStartTerminalCleanup({
+        workflowId: 'workflow-delayed-rederive',
+        writeDurableMarker: true,
+      });
+
+    // The run rejoined the cleanup set, so its later completion will schedule the
+    // deferred durable sweep. Without the fix the set stays empty.
+    expect(workflowsNeedingTerminalCleanup.has('workflow-delayed-rederive')).toBe(true);
+    expect(beginWorkflowExecution).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves terminal-cleanup tracking empty when no durable marker exists', async () => {
+    // The complement: a delayed-start run with no durable terminalCleanupNeeded key
+    // (no headers, no services) must NOT join the cleanup set — scheduling a sweep
+    // for a run with nothing to sweep would be wasted work.
+    const { workflowsNeedingTerminalCleanup, beginWorkflowExecution } =
+      await runDelayedStartTerminalCleanup({
+        workflowId: 'workflow-delayed-no-marker',
+        writeDurableMarker: false,
+      });
+
+    expect(workflowsNeedingTerminalCleanup.has('workflow-delayed-no-marker')).toBe(false);
+    expect(beginWorkflowExecution).toHaveBeenCalledTimes(1);
+  });
+
+  it('hydrates terminal-cleanup tracking before failing on a dynamic-source resolve error', async () => {
+    // Regression: a delayed-start whose dynamic-source load fails committed
+    // failWorkflow() BEFORE ever hydrating workflowsNeedingTerminalCleanup from
+    // the durable marker, so the failing write carried no terminalCleanupToken
+    // and stranded the marker — see `ensureDelayedStartClaimAndCleanupBeforeFailure`.
+    const workflowId = 'workflow-delayed-fail-hydrate';
+    const storage = new MemoryStorage();
+    const state = createWorkflowState(workflowId, { executionStateOwnerId: workflowId });
+    const checkpoint = createCheckpoint(workflowId);
+    const workflowsNeedingTerminalCleanup = new Set<string>();
+    const failWorkflow = mock(async () => {});
+
+    await storage.put(KEYS.workflow(workflowId), encode(state));
+    await storage.put(KEYS.checkpoint(workflowId), serializeCheckpoint(checkpoint));
+    await storage.put(KEYS.terminalCleanupNeeded(workflowId), new Uint8Array(0));
+
+    await startDelayedWorkflow(
+      {
+        checkpoints: new Map<string, Checkpoint>(),
+        inlineStrategy: {},
+        workflowServices: new Map<string, unknown>(),
+        workflowsNeedingTerminalCleanup,
+        options: { getNow: () => 2_000 },
+        registrations: new Map(),
+        storage,
+        workflowVersionTuples: new Map(),
+      } as never,
+      createDelayedStartEntry(workflowId),
+      createCallbacks({
+        failWorkflow,
+        loadWorkflowState: async () => state,
+        // Default resolveExecutableRegistrationForRevision throws WorkflowNotRegisteredError.
+      }),
+    );
+
+    expect(workflowsNeedingTerminalCleanup.has(workflowId)).toBe(true);
+    expect(failWorkflow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('processSleepOperation', () => {
+  type SleepResolver = { resolve: () => void; fireAt: number };
+  type SleepResolverMaps = {
+    sleepResolvers: Map<string, SleepResolver>;
+    sleepResolversByWorkflow: Map<string, Set<string>>;
+  };
+
+  // Shared fixture for both race-condition tests.
+  function createSleepInternals(
+    storage: MemoryStorage,
+    scheduler: { schedule(entry: TimerEntry): Promise<void> },
+    sleepTimersFiredWithoutResolver = new Map<string, Map<string, number>>(),
+  ) {
+    return {
+      options: { getNow: () => 0 },
+      scheduler,
+      sleepResolvers: new Map<string, SleepResolver>(),
+      sleepResolversByWorkflow: new Map<string, Set<string>>(),
+      sleepTimersFiredWithoutResolver,
+      storage,
+    } as never;
+  }
+
+  function createSleepCallbacks(workflowId: string) {
+    const completeOperation = mock((_id: string, _value: unknown) => {});
+    const loadWorkflowState = mock(async () => ({
+      createdAt: 1_000,
+      id: workflowId,
+      input: null,
+      status: 'running' as const,
+      type: 'test-workflow',
+      updatedAt: 1_000,
+      versionTuple: { workflowVersion: '1' },
+    }));
+    return { completeOperation, loadWorkflowState };
+  }
+
+  function createSleepResolverMaps(): SleepResolverMaps {
+    return {
+      sleepResolvers: new Map<string, SleepResolver>(),
+      sleepResolversByWorkflow: new Map<string, Set<string>>(),
+    };
+  }
+
+  async function deleteTimerIndex(storage: MemoryStorage, entry: TimerEntry): Promise<void> {
+    const indexKey = `timer-idx:${entry.id}`;
+    const indexValue = await storage.get(indexKey);
+    if (indexValue === null) return;
+
+    const deadlineKey = decode(indexValue) as string;
+    await storage.batch([
+      { type: 'delete', key: deadlineKey },
+      { type: 'delete', key: indexKey },
+    ]);
+  }
+
+  function createTimerIndexDeletingResolverScheduler({
+    beforeResolve,
+    operationId,
+    sleepResolvers,
+    sleepResolversByWorkflow,
+    storage,
+    workflowId,
+  }: SleepResolverMaps & {
+    beforeResolve?: () => void;
+    operationId: string;
+    storage: MemoryStorage;
+    workflowId: string;
+  }): { schedule(entry: TimerEntry): Promise<void> } {
+    return {
+      schedule: async (entry: TimerEntry) => {
+        await storage.batch(buildTimerBatchOperations(entry));
+        await deleteTimerIndex(storage, entry);
+        setTimeout(() => {
+          const resolverKey = `${workflowId}:${operationId}`;
+          const resolver = sleepResolvers.get(resolverKey);
+          if (!resolver) return;
+
+          sleepResolvers.delete(resolverKey);
+          const operations = sleepResolversByWorkflow.get(workflowId);
+          if (operations) {
+            operations.delete(operationId);
+            if (operations.size === 0) sleepResolversByWorkflow.delete(workflowId);
+          }
+          beforeResolve?.();
+          resolver.resolve();
+        }, 0);
+      },
+    };
+  }
+
+  it('resolves via the in-memory marker even after the tick deletes the timer index (Window B)', async () => {
+    // Race: tick fires, finds no resolver, sets the marker AND deletes the timer
+    // index from storage, THEN registerSleepResolver() runs. The marker — not a
+    // storage-absence check — is the authoritative signal: resolveSleepTimer
+    // always records a fireAt-bearing marker when it fires with no resolver,
+    // independent of whether the index was already deleted. A storage lookup is
+    // unsafe here because the deterministic `sleep:` key is shared across a
+    // start-new restart, so a stale run's deletion would falsely self-resolve.
+    const storage = new MemoryStorage();
+    const workflowId = 'sleep-race-window-b';
+    const operationId = 'op-b';
+    const firedWithoutResolver = new Map<string, Map<string, number>>();
+
+    const scheduler = {
+      schedule: async (entry: TimerEntry) => {
+        await storage.batch(buildTimerBatchOperations(entry));
+        // Simulate tick: onTimerFired finds no resolver, records the marker with
+        // the fired timer's fireAt, then deletes the index as cleanup would.
+        let markers = firedWithoutResolver.get(workflowId);
+        if (!markers) {
+          markers = new Map();
+          firedWithoutResolver.set(workflowId, markers);
+        }
+        markers.set(operationId, entry.fireAt);
+        const indexKey = `timer-idx:${entry.id}`;
+        const indexValue = await storage.get(indexKey);
+        if (indexValue !== null) {
+          const deadlineKey = decode(indexValue) as string;
+          await storage.batch([
+            { type: 'delete', key: deadlineKey },
+            { type: 'delete', key: indexKey },
+          ]);
+        }
+      },
+    };
+
+    const { completeOperation, loadWorkflowState } = createSleepCallbacks(workflowId);
+    expect(
+      processSleepOperation(
+        createSleepInternals(storage, scheduler, firedWithoutResolver),
+        workflowId,
+        { type: 'sleep', operationId, duration: 3_600_000, scheduledFireAt: 3_600_000 },
+        { completeOperation, loadWorkflowState },
+      ),
+    ).resolves.toBeUndefined();
+    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined);
+    // Marker consumed — no leak into sleepTimersFiredWithoutResolver.
+    expect(firedWithoutResolver.size).toBe(0);
+  });
+
+  it('parks instead of self-resolving when a stale earlier-run marker has a fireAt below this run deadline', async () => {
+    // Regression for the start-new restart race: a terminated run left a marker
+    // for the shared deterministic operationId with an EARLIER fireAt, and its
+    // tick already deleted the shared `timer-idx:sleep:` entry. The replacement
+    // run must reject the stale marker (markedFireAt < this run's deadline) and
+    // PARK for its own timer — not fall through to a storage-absence check that
+    // the stale deletion would make self-resolve the sleep early.
+    const storage = new MemoryStorage();
+    const workflowId = 'sleep-race-stale-marker';
+    const operationId = 'op-stale';
+    const staleFireAt = 1_000;
+    const thisRunFireAt = 3_600_000;
+    const firedWithoutResolver = new Map<string, Map<string, number>>([
+      [workflowId, new Map([[operationId, staleFireAt]])],
+    ]);
+    const { sleepResolvers, sleepResolversByWorkflow } = createSleepResolverMaps();
+
+    let realTimerFired = false;
+    const internals = {
+      options: { getNow: () => 0 },
+      scheduler: createTimerIndexDeletingResolverScheduler({
+        beforeResolve: () => {
+          realTimerFired = true;
+        },
+        operationId,
+        sleepResolvers,
+        sleepResolversByWorkflow,
+        storage,
+        workflowId,
+      }),
+      sleepResolvers,
+      sleepResolversByWorkflow,
+      sleepTimerAcknowledgementWaiters: new Map(),
+      sleepTimersFiredWithoutResolver: firedWithoutResolver,
+      storage,
+    } as never;
+
+    const completeOperation = mock((_id: string, _value: unknown) => {
+      // Captured at call time: proves the sleep parked for its own timer rather
+      // than self-resolving on the stale marker.
+      expect(realTimerFired).toBe(true);
+    });
+    const { loadWorkflowState } = createSleepCallbacks(workflowId);
+    expect(
+      processSleepOperation(
+        internals,
+        workflowId,
+        { type: 'sleep', operationId, duration: thisRunFireAt, scheduledFireAt: thisRunFireAt },
+        { completeOperation, loadWorkflowState },
+      ),
+    ).resolves.toBeUndefined();
+    expect(completeOperation).toHaveBeenCalledTimes(1);
+    // Stale marker consumed — it cannot leak into a later replay.
+    expect(firedWithoutResolver.size).toBe(0);
+  });
+
+  it('resolves via in-memory marker when the tick fires before index deletion (Window A)', async () => {
+    // Race: tick fires, finds no resolver, sets marker in sleepTimersFiredWithoutResolver,
+    // with the storage index still present. The fireAt-aware marker is what the
+    // early-fire guard reads — it reaches this run's deadline, so the sleep
+    // self-resolves.
+    const storage = new MemoryStorage();
+    const workflowId = 'sleep-race-window-a';
+    const operationId = 'op-a';
+    const firedWithoutResolver = new Map<string, Map<string, number>>();
+
+    const scheduler = {
+      schedule: async (entry: TimerEntry) => {
+        await storage.batch(buildTimerBatchOperations(entry));
+        // Simulate tick calling resolveSleepTimer with no resolver registered yet:
+        // the marker records the fired timer's fireAt (the run's own deadline) but
+        // the storage index is deliberately left in place to reproduce the
+        // pre-deletion window.
+        let markers = firedWithoutResolver.get(workflowId);
+        if (!markers) {
+          markers = new Map();
+          firedWithoutResolver.set(workflowId, markers);
+        }
+        markers.set(operationId, entry.fireAt);
+      },
+    };
+
+    const { completeOperation, loadWorkflowState } = createSleepCallbacks(workflowId);
+    expect(
+      processSleepOperation(
+        createSleepInternals(storage, scheduler, firedWithoutResolver),
+        workflowId,
+        { type: 'sleep', operationId, duration: 3_600_000, scheduledFireAt: 3_600_000 },
+        { completeOperation, loadWorkflowState },
+      ),
+    ).resolves.toBeUndefined();
+    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined);
+    // Marker consumed — no leak into sleepTimersFiredWithoutResolver.
+    expect(firedWithoutResolver.size).toBe(0);
+  });
+
+  it('does not add a spurious marker when the tick settles the resolver normally after registration', async () => {
+    // Regression for: tick fires AFTER registerSleepResolver() and calls the
+    // resolver through the normal path. The timer index is then deleted. The
+    // early-fire guard finds no marker (the tick settled the resolver directly
+    // rather than recording one), so it must NOT synthesize a resolveSleepTimer
+    // call — doing so with no resolver left would add a stale
+    // sleepTimersFiredWithoutResolver marker that could prematurely self-resolve
+    // a later replay of the same sleep step.
+    const storage = new MemoryStorage();
+    const workflowId = 'sleep-race-spurious-marker';
+    const operationId = 'op-spurious';
+    const firedWithoutResolver = new Map<string, Map<string, number>>();
+    const { sleepResolvers, sleepResolversByWorkflow } = createSleepResolverMaps();
+
+    // Scheduler that deletes the timer index as a real tick would after firing
+    // via the normal (post-registration) path, then uses a macrotask to call
+    // the resolver that processSleepOperation registered after schedule(). No
+    // marker is recorded, so the early-fire guard returns false and must NOT
+    // synthesize a spurious resolveSleepTimer call for the already-settled run.
+    const internals = {
+      options: { getNow: () => 0 },
+      scheduler: createTimerIndexDeletingResolverScheduler({
+        operationId,
+        sleepResolvers,
+        sleepResolversByWorkflow,
+        storage,
+        workflowId,
+      }),
+      sleepResolvers,
+      sleepResolversByWorkflow,
+      sleepTimersFiredWithoutResolver: firedWithoutResolver,
+      storage,
+    } as never;
+
+    const { completeOperation, loadWorkflowState } = createSleepCallbacks(workflowId);
+    expect(
+      processSleepOperation(
+        internals,
+        workflowId,
+        { type: 'sleep', operationId, duration: 3_600_000, scheduledFireAt: 3_600_000 },
+        { completeOperation, loadWorkflowState },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined);
+    // The tick settled the resolver normally — no spurious marker must remain.
+    expect(firedWithoutResolver.size).toBe(0);
+  });
+});
+
+describe('handleTimerFired "wait-condition" + Scheduler: WFT-79 findings 1 & 2 regression (two real engines, one durable store)', () => {
+  const sharedConditionWorkflow = workflow({ name: 'wft-79-shared-wait-condition' }).execute(
+    async function* (ctx: WorkflowContext) {
+      const met = yield* ctx.waitUntil(() => false, '5m');
+      return met;
+    },
+  );
+  type SharedConditionWorkflows = {
+    'wft-79-shared-wait-condition': typeof sharedConditionWorkflow;
+  };
+  const sharedConditionWorkflows: SharedConditionWorkflows = {
+    'wft-79-shared-wait-condition': sharedConditionWorkflow,
+  };
+
+  async function createSharedStoreEngine(storage: MemoryStorage, getNow: () => number) {
+    // Driven by hand via `.scheduler.tick(now)` — see the sibling sleep-timer
+    // regression suite in `sleep-timer-acknowledgements.test.ts` for why.
+    return Engine.create({
+      storage,
+      workflows: sharedConditionWorkflows,
+      ownership: 'workflow-lease',
+      getNow,
+      backgroundTasks: 'manual',
+      startScheduler: false,
+    });
+  }
+
+  async function countConditionTimerIndexKeys(storage: MemoryStorage): Promise<number> {
+    let count = 0;
+    for await (const [_key] of storage.scan('timer-idx:cond:')) count += 1;
+    return count;
+  }
+
+  it('a non-owner engine scanning the same expired wait-condition deadline retains the durable key; the true owner still wakes and deletes it', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+
+    await using owner = await createSharedStoreEngine(storage, () => now);
+    await using nonOwner = await createSharedStoreEngine(storage, () => now);
+
+    const handle = await owner.start('wft-79-shared-wait-condition', null);
+    await sleepForTesting(10);
+    expect(await owner.get(handle.id).then((state) => state?.status)).toBe('running');
+    expect(await countConditionTimerIndexKeys(storage)).toBe(1);
+
+    now += 5 * 60 * 1000 + 1;
+
+    // `nonOwner` never acquired a claim for this workflow id. Finding 1: prior
+    // to the fix, `handleTimerFired` returned before the ownership check (and
+    // any wake dispatch) had settled, so the Scheduler deleted the timer key
+    // regardless. Finding 2: even once awaited, a `'discard'` outcome must not
+    // itself be treated as "processed" — it must retain the durable key for
+    // the true owner.
+    await nonOwner.scheduler.tick(now);
+
+    expect(await owner.get(handle.id).then((state) => state?.status)).toBe('running');
+    expect(await countConditionTimerIndexKeys(storage)).toBe(1);
+
+    // The true owner's own copy of this same fire performs the real wake —
+    // the predicate never became true, so the deadline resolves `false` — and
+    // this time actually deletes the durable timer key.
+    await owner.scheduler.tick(now);
+    expect(handle.result()).resolves.toBe(false);
+    expect(await countConditionTimerIndexKeys(storage)).toBe(0);
+  });
+
+  // Note: unlike `sleep`, cancelling a workflow parked on `ctx.waitUntil()`
+  // proactively removes its durable deadline timer as part of that same
+  // cancel commit — there is no leftover-timer-on-a-terminal-workflow window
+  // to reproduce here the way `sleep-timer-acknowledgements.test.ts` does
+  // (sleep timers deliberately OUTLIVE terminal cleanup; see that module's
+  // doc comment). The shared "never retry a terminal orphan forever"
+  // property `retainDiscardedDurableTimer`/`resolveDiscardedTimerDisposition`
+  // provide is still fully covered: end to end for `sleep` in that sibling
+  // file, and in isolation (every `WorkflowStatus`) by
+  // `resolveDiscardedTimerDisposition`'s own describe block there — both wake
+  // kinds share that exact same disposition helper.
+});

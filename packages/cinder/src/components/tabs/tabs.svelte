@@ -1,0 +1,301 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category navigation
+   * @status stable
+   * @purpose Root tabs composite that owns the active value and orientation and coordinates tab, tab-list, and tab-panel descendants via context.
+   * @tag navigation
+   * @tag tabs
+   * @useWhen Switching between several panels of related content under one heading area.
+   * @useWhen Building the WAI-ARIA tabs pattern with shared keyboard navigation and activation rules.
+   * @avoidWhen Picking one of two to five short values inline — use segmented-control instead.
+   * @avoidWhen Showing ordered progress through a wizard — use steps instead.
+   * @related tab, tab-list, tab-panel, segmented-control
+   */
+  export type { TabsContext, TabsOrientation, TabsProps } from './tabs.types.ts';
+</script>
+
+<script lang="ts">
+  import type { TabsProps } from './tabs.types.ts';
+  import { setTabsContext } from './tabs-context.ts';
+
+  import { handleRovingKeydown, isRovingKey } from '../../utilities/roving-tabindex.ts';
+  import { classNames } from '../../utilities/class-names.ts';
+  import { commitValue } from '../../utilities/value-change.ts';
+
+  const baseId = $props.id();
+
+  let {
+    value = $bindable(''),
+    onValueChangeRequest,
+    onValueChange,
+    orientation = 'horizontal',
+    fill = false,
+    activateOnFocus,
+    class: className,
+    children,
+  }: TabsProps = $props();
+
+  // Default activation behavior follows the WAI-ARIA tabs pattern: horizontal
+  // tablists activate on focus (left/right are dedicated to tab navigation),
+  // vertical tablists activate on Enter/Space (down/up commonly belong to the
+  // panel content too).
+  const effectiveActivateOnFocus = $derived(activateOnFocus ?? orientation === 'horizontal');
+
+  type RegistryEntry = { button: HTMLButtonElement | undefined; disabled: boolean };
+
+  /**
+   * Registry of tab buttons keyed by their `value`. Order of registration
+   * determines navigation order — children register in mount order.
+   *
+   * In-place mutation of an entry's `disabled` field does not trigger Svelte
+   * reactivity on its own, so every mutation path also bumps `version`. Any
+   * `$derived` that reads from the registry must also read `version` to
+   * re-run when entries change.
+   *
+   * Order metadata (`registerOrder`) is written synchronously from each
+   * Tab's top-level script, so the registry is fully populated for every
+   * sibling before any `$effect` runs — including on the server, where
+   * effects never run at all. The button reference itself (`attachButton`)
+   * is only available once a Tab has mounted, so `button` starts out
+   * `undefined` and is only used for imperative focus, never for
+   * tabindex calculation.
+   */
+  const buttons: Map<string, RegistryEntry> = new Map();
+  let version = $state(0);
+  /**
+   * Flips to `true` exactly once, from the first effect flush after the
+   * initial render commits (server render and the client's initial render
+   * both leave this `false`). `isFocusable`'s registry-dependent fallback
+   * rule is gated behind this so it never runs mid-registration — see
+   * `isFocusable` below.
+   */
+  let mounted = $state(false);
+
+  $effect(() => {
+    mounted = true;
+  });
+
+  const focusableValue = $derived.by(() => {
+    void version;
+    for (const [registeredValue, entry] of buttons) {
+      if (!entry.disabled) return registeredValue;
+    }
+    return undefined;
+  });
+
+  function focusValue(target: string): void {
+    const entry = buttons.get(target);
+    entry?.button?.focus();
+  }
+
+  function resolveFocusedIndex(active: Element | null): number {
+    const entries = [...buttons.values()];
+    return entries.findIndex(({ button }) => button === active);
+  }
+
+  function readActiveElement(event: KeyboardEvent): Element | null {
+    // Prefer the event target if it is itself a registered tab button —
+    // that is the most local, most reliable signal. Fall back to
+    // ownerDocument.activeElement when the target is not a tab (e.g., when
+    // the handler is attached at a higher level).
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (target) {
+      for (const { button } of buttons.values()) {
+        if (button === target) return target;
+      }
+    }
+    const currentTarget = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    return currentTarget?.ownerDocument.activeElement ?? null;
+  }
+
+  function resolveStartingIndex(event: KeyboardEvent): number {
+    const entries = [...buttons.values()];
+    if (entries.length === 0) return -1;
+    const focused = resolveFocusedIndex(readActiveElement(event));
+    if (focused !== -1) return focused;
+    // Fallback: active tab if enabled, else first enabled. Returns -1 only
+    // when every entry is disabled — the caller's guard handles that case.
+    const order = [...buttons.keys()];
+    const activeIdx = order.indexOf(value);
+    if (activeIdx !== -1 && !entries[activeIdx]?.disabled) return activeIdx;
+    return entries.findIndex((entry) => !entry.disabled);
+  }
+
+  /**
+   * Whether the given key is one this orientation handles. Home/End are
+   * always relevant; Arrow keys are orientation-specific. Mirrors the
+   * `horizontal`/`vertical` filtering inside `handleRovingKeydown` so the
+   * all-disabled no-op path does not preventDefault on keys we would
+   * otherwise have let bubble (e.g., ArrowUp on a horizontal tablist).
+   */
+  function isOrientedKey(key: string, isHorizontal: boolean): boolean {
+    if (!isRovingKey(key)) return false;
+    if (key === 'Home' || key === 'End') return true;
+    if (isHorizontal) return key === 'ArrowLeft' || key === 'ArrowRight';
+    return key === 'ArrowUp' || key === 'ArrowDown';
+  }
+
+  function handleKeydown(event: KeyboardEvent): void {
+    const entries = [...buttons.values()];
+    const order = [...buttons.keys()];
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      // Manual activation: activate the focused tab if it is enabled.
+      const focused = resolveFocusedIndex(readActiveElement(event));
+      if (focused === -1) return;
+      if (entries[focused]?.disabled !== false) return;
+      const focusedValue = order[focused];
+      if (focusedValue === undefined) return;
+      event.preventDefault();
+      commitValue(
+        focusedValue,
+        onValueChangeRequest,
+        (next) => {
+          value = next;
+        },
+        onValueChange,
+      );
+      return;
+    }
+
+    const isHorizontal = orientation === 'horizontal';
+    if (!isOrientedKey(event.key, isHorizontal)) return;
+    if (entries.length === 0) return;
+
+    const currentIndex = resolveStartingIndex(event);
+    if (currentIndex === -1) {
+      // All entries disabled — prevent default so arrow/Home/End do not leak
+      // page scroll, but otherwise no-op.
+      event.preventDefault();
+      return;
+    }
+
+    const nextIdx = handleRovingKeydown(event, currentIndex, entries.length, {
+      isDisabled: (i) => entries[i]?.disabled ?? false,
+      horizontal: isHorizontal,
+      vertical: !isHorizontal,
+    });
+
+    if (nextIdx === null) return;
+    event.preventDefault();
+    if (nextIdx === currentIndex) return;
+
+    const nextValue = order[nextIdx];
+    if (nextValue === undefined) return;
+    focusValue(nextValue);
+    if (effectiveActivateOnFocus) {
+      commitValue(
+        nextValue,
+        onValueChangeRequest,
+        (next) => {
+          value = next;
+        },
+        onValueChange,
+      );
+    }
+  }
+
+  setTabsContext({
+    get value() {
+      return value;
+    },
+    get orientation() {
+      return orientation;
+    },
+    get activateOnFocus() {
+      return effectiveActivateOnFocus;
+    },
+    get baseId() {
+      return baseId;
+    },
+    select(next) {
+      commitValue(
+        next,
+        onValueChangeRequest,
+        (nextValue) => {
+          value = nextValue;
+        },
+        onValueChange,
+      );
+    },
+    isActive(candidate) {
+      return value === candidate;
+    },
+    registerOrder(target, disabled) {
+      // Idempotent: only inserts an order entry the first time a target is
+      // seen. Called both synchronously (once, from each Tab's top-level
+      // script — see tab.svelte) and defensively from Effect A on every
+      // rerun, so a rerun that finds the entry already present is a no-op
+      // rather than clobbering the seeded `disabled` state.
+      if (buttons.has(target)) return;
+      buttons.set(target, { button: undefined, disabled });
+      version += 1;
+    },
+    attachButton(target, button) {
+      const existing = buttons.get(target);
+      if (!existing) return;
+      existing.button = button;
+    },
+    unregister(target) {
+      if (buttons.delete(target)) {
+        version += 1;
+      }
+    },
+    setDisabled(target, disabled) {
+      const existing = buttons.get(target);
+      if (!existing) return;
+      if (existing.disabled === disabled) return;
+      existing.disabled = disabled;
+      version += 1;
+    },
+    isFocusable(candidate) {
+      // Force reads of every reactive input up front, regardless of which
+      // branch the predicate ultimately takes. The calling $derived in
+      // tab.svelte needs to subscribe to `value`, `version`, AND `mounted`
+      // for any possible code path — early-returning before reading one of
+      // them would leave the derived under-subscribed and stale when only
+      // the unread input changes. Must be called inside a $derived/$effect.
+      void value;
+      void version;
+      void mounted;
+
+      // `candidate` is always the calling Tab's own value, and every Tab
+      // registers its own order entry synchronously before its own
+      // isFocusable is ever read (see tab.svelte) — so this lookup never
+      // misses on a real render.
+      const entry = buttons.get(candidate);
+      if (!entry || entry.disabled) return false;
+
+      // Direct rule — order-independent. If this candidate IS the selected
+      // value and is enabled (already confirmed above), it is always the
+      // tab stop, regardless of registration order or position among
+      // siblings. Needs no information about any other tab, so it is
+      // correct on the very first render pass, whether that's SSR or the
+      // client's initial render.
+      if (candidate === value) return true;
+
+      // Fallback rule — "first enabled tab" — is only correct once every
+      // sibling has registered. Gated behind `mounted` so it never runs
+      // mid-registration: evaluating it during a single top-down SSR pass
+      // (or the client's still-registering initial render) would answer
+      // "has the selected tab registered yet?" based on registration
+      // order rather than tab identity, wrongly awarding the tab stop to
+      // an earlier, unrelated sibling.
+      if (!mounted) return false;
+      const selectedEntry = buttons.get(value);
+      const selectedIsEnabled = selectedEntry !== undefined && !selectedEntry.disabled;
+      if (selectedIsEnabled) return false; // the real selected tab handles itself via the direct rule
+      return focusableValue === candidate;
+    },
+    handleKeydown,
+  });
+</script>
+
+<div
+  class={classNames('cinder-tabs', className)}
+  data-cinder-orientation={orientation}
+  data-cinder-fill={fill ? '' : undefined}
+>
+  {@render children()}
+</div>

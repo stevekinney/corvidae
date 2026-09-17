@@ -1,0 +1,75 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    trigger: {
+      type: 'string',
+      description: 'Trigger label text. (The snippet form is template-only; see the type above.)',
+    },
+    open: {
+      type: 'boolean',
+      description:
+        'Bindable open state. Without `bind:open`, this seeds local state and can be\nupdated by parent prop changes. Use `bind:open` for full parent/trigger\nsynchronization.',
+      default: false,
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'When true, the trigger cannot be toggled.',
+      default: false,
+    },
+    triggerAriaLabel: {
+      type: 'string',
+      description:
+        'Accessible name override for the trigger button. The runtime prop also\naccepts a state-aware function (`{ open, disabled } => string`), but JSON\nSchema can only model the string variant.',
+    },
+    triggerClass: {
+      type: 'string',
+      description: 'Additional class names applied to the disclosure trigger button.',
+    },
+    labelClass: {
+      type: 'string',
+      description: 'Additional class names applied to the trigger label wrapper.',
+    },
+    animated: {
+      type: 'boolean',
+      description: 'Whether opening and closing uses the slide transition.',
+      default: true,
+    },
+    idBase: {
+      type: 'string',
+      description:
+        'Base used to derive the trigger, label, and panel ARIA ids. Auto-generated when omitted.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional classes merged onto the root element.',
+    },
+  },
+  additionalProperties: false,
+  required: ['trigger'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Panel content shown when open.',
+      },
+      {
+        name: 'leadingIcon',
+        reason: 'function-or-snippet',
+        description: 'Optional decorative icon rendered inside the disclosure trigger.',
+      },
+      {
+        name: 'onToggle',
+        reason: 'function-or-snippet',
+        description:
+          'Fired on every successful toggle with the next open state. Not called while disabled.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

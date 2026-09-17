@@ -1,0 +1,57 @@
+# DropdownGroup
+
+Accessible group boundary that clusters related dropdown-item rows inside a dropdown-menu.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { DropdownGroup } from '@repo/cinder';
+  import { DropdownItem } from '@repo/cinder';
+</script>
+
+<DropdownGroup label="Actions">
+  <DropdownItem onclick={() => {}}>Duplicate</DropdownItem>
+  <DropdownItem onclick={() => {}}>Archive</DropdownItem>
+</DropdownGroup>
+```
+
+## Guidance
+
+### Use When
+
+- Grouping related dropdown actions under one accessible heading.
+- Pairing dropdown-label with a role='group' container inside dropdown-menu.
+
+### Avoid When
+
+- Rendering a clickable row — use dropdown-item.
+- Separating sections without a group label — use dropdown-separator.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `ariaLabelledby` | `string` | no | — | ID of an existing element whose text labels the group, applied as aria-labelledby. Provide exactly one of `label` or `ariaLabelledby`. |
+| `class` | `string` | no | — | Additional class names merged onto the group root. |
+| `label` | `string` | no | — | Accessible label for the group, applied as aria-label. Provide exactly one of `label` or `ariaLabelledby`. |
+| `children` | `(opaque)` | no | — | DropdownLabel plus grouped DropdownItem rows. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

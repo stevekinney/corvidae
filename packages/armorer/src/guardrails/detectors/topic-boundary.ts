@@ -1,0 +1,80 @@
+import type { DetectionResult, DetectorContext, InputDetector } from '../types';
+
+/**
+ * Options for configuring the topic boundary detector.
+ *
+ * Matching against both `allowedTopics` and `blockedKeywords` is **literal,
+ * case-insensitive substring matching** — `input.toLowerCase().includes(keyword.toLowerCase())` —
+ * not semantic or fuzzy matching. There is no NLP, embeddings, or synonym
+ * lookup involved.
+ *
+ * This means a clearly on-topic paraphrase can be flagged as off-topic when
+ * it never uses the literal keyword. For example, with
+ * `allowedTopics: ['cooking']`, the input `"What is a good recipe for banana
+ * bread?"` is flagged and blocked, because the substring `"cooking"` never
+ * appears — the detector has no way to know "recipe" and "banana bread" are
+ * about cooking. Conversely, a keyword can also match inside an unrelated
+ * word (`"cooking"` matches `"cookingware"`), and a blocked keyword can
+ * appear inside an otherwise-innocuous sentence and still trigger.
+ *
+ * Choose `allowedTopics`/`blockedKeywords` accordingly: list every literal
+ * word or phrase you want matched (including common synonyms and
+ * paraphrases you expect callers to use), not just one representative term.
+ */
+export interface TopicBoundaryDetectorOptions {
+  allowedTopics: string[];
+  blockedKeywords?: string[];
+}
+
+/**
+ * Creates a detector that enforces topic boundaries via literal, case-insensitive
+ * substring matching — see {@link TopicBoundaryDetectorOptions} for what that does and
+ * does not catch.
+ *
+ * Blocked keywords always trigger regardless of allowed topics. When no blocked keyword
+ * matches, the detector checks whether the input contains at least one allowed topic keyword.
+ * All matching is case-insensitive.
+ */
+export function createTopicBoundaryDetector(options: TopicBoundaryDetectorOptions): InputDetector {
+  const { allowedTopics, blockedKeywords = [] } = options;
+
+  return {
+    name: 'topic-boundary',
+    detect(input: string, _context: DetectorContext): Promise<DetectionResult> {
+      if (!input) {
+        return Promise.resolve({ triggered: false, confidence: 0, category: 'topic-boundary' });
+      }
+
+      const lowerInput = input.toLowerCase();
+
+      // Blocked keywords always win
+      const blockedKeyword = blockedKeywords.find((keyword) =>
+        lowerInput.includes(keyword.toLowerCase()),
+      );
+      if (blockedKeyword) {
+        return Promise.resolve({
+          triggered: true,
+          confidence: 1.0,
+          category: 'topic-boundary',
+          detail: `Blocked keyword detected: "${blockedKeyword}"`,
+        });
+      }
+
+      // Check if input matches at least one allowed topic
+      const matchesAllowedTopic = allowedTopics.some((topic) =>
+        lowerInput.includes(topic.toLowerCase()),
+      );
+
+      if (matchesAllowedTopic) {
+        return Promise.resolve({ triggered: false, confidence: 0, category: 'topic-boundary' });
+      }
+
+      return Promise.resolve({
+        triggered: true,
+        confidence: 0.7,
+        category: 'topic-boundary',
+        detail: `Input does not match any allowed topic: ${allowedTopics.join(', ')}`,
+      });
+    },
+  };
+}

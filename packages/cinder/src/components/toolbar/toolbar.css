@@ -1,0 +1,65 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    flex-wrap: nowrap;
+    container-type: inline-size;
+    container-name: cinder-toolbar;
+  }
+
+  .cinder-toolbar[data-cinder-orientation='horizontal'] {
+    flex-wrap: wrap;
+  }
+
+  .cinder-toolbar[data-cinder-orientation='vertical'] {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cinder-toolbar__group {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    flex-wrap: nowrap;
+  }
+
+  .cinder-toolbar[data-cinder-orientation='vertical'] .cinder-toolbar__group,
+  .cinder-toolbar__group[data-cinder-orientation='vertical'] {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cinder-toolbar[data-cinder-orientation='vertical']
+    > .cinder-toolbar__group
+    + .cinder-toolbar__group::before {
+    content: '';
+    inline-size: 100%;
+    block-size: 1px;
+    background: var(--cinder-border-faint);
+  }
+
+  .cinder-toolbar__spacer {
+    flex: 1 1 auto;
+    min-inline-size: var(--cinder-space-2);
+  }
+
+  .cinder-toolbar[data-cinder-orientation='horizontal']
+    > .cinder-toolbar__spacer
+    + .cinder-toolbar__group {
+    margin-inline-start: auto;
+  }
+
+  @container cinder-toolbar (max-width: 30rem) {
+    .cinder-toolbar[data-cinder-orientation='horizontal'] {
+      align-items: stretch;
+    }
+
+    .cinder-toolbar[data-cinder-orientation='horizontal'] .cinder-toolbar__group {
+      flex-wrap: wrap;
+    }
+  }
+}

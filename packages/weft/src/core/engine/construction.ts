@@ -1,0 +1,497 @@
+import { CompressedStorage } from '../../storage/compressed-storage.ts';
+import type { Storage as WeftStorage } from '../../storage/interface.ts';
+import { MemoryStorage } from '../../storage/memory.ts';
+import { ActivityWorkerDispatcher } from '../../workers/activity-worker-dispatcher.ts';
+import { WorkerPool } from '../../workers/pool.ts';
+import { optionalInlineDependencies } from '../inline-execution-strategy.context-options.ts';
+import { InlineExecutionStrategy } from '../inline-execution-strategy.ts';
+import type { ComposedWorkflowInterceptor, Interceptor } from '../interceptor.ts';
+import {
+  DEFAULT_POLL_INTERVAL_MS,
+  DEFAULT_RETENTION_SWEEP_BATCH_SIZE,
+  DEFAULT_RETENTION_SWEEP_INTERVAL_MS,
+  type AnyActivityDefinition,
+  type AnyWorkflowDefinition,
+  type RegisteredWorkflowDefinition,
+} from '../types.ts';
+import type { WorkflowLogRecord } from '../types/workflow-log.ts';
+import { WorkerExecutionStrategy } from '../worker-execution-strategy.ts';
+import {
+  DEFAULT_WORKER_PROTOCOL_MESSAGE_BYTES,
+  DEFAULT_WORKER_TURN_TIMEOUT_MS,
+  MIN_WORKER_PROTOCOL_MESSAGE_BYTES,
+} from '../worker-protocol.ts';
+import type {
+  EngineConstructorOptions,
+  ExecutionStrategyBundle,
+  RegistrationEntry,
+  ResolvedOptions,
+} from './engine-internal-types.ts';
+import { copyFinalizerMetadata } from './finalizer-metadata.ts';
+import { resolveBackgroundTaskMode, resolveOwnershipFields } from './ownership-options.ts';
+import {
+  normalizeHistoryPolicy,
+  normalizePayloadSizePolicy,
+  normalizeRetentionDuration,
+  normalizeRetentionPolicy,
+} from './validation.ts';
+
+export type KnownWorkflowNames<TWorkflows extends object> = Extract<keyof TWorkflows, string>;
+declare const emptyWorkflowDefinitions: unique symbol;
+declare const emptyActivityDefinitions: unique symbol;
+export type EmptyWorkflowDefinitions = Record<string, never> & {
+  readonly [emptyWorkflowDefinitions]: true;
+};
+export type EmptyActivityDefinitions = Record<string, never> & {
+  readonly [emptyActivityDefinitions]: true;
+};
+export type EngineCreateRuntimeOptions = EngineConstructorOptions & {
+  activities?: Record<string, AnyActivityDefinition> | undefined;
+  workflows?: Record<string, AnyWorkflowDefinition> | undefined;
+  recover?: boolean | undefined;
+  acknowledgeUnknownWorkflowTypes?: boolean | undefined;
+  startScheduler?: boolean | undefined;
+};
+
+export type NormalizedWorkerExecutionConfiguration =
+  | { mode: 'inline'; workerExecution: null }
+  | {
+      mode: 'worker';
+      workerExecution: NonNullable<EngineConstructorOptions['workerExecution']>;
+      // Worker mode is reachable only via explicit `workflowExecutionMode: 'worker'`,
+      // which always applies the hardened defaults — these are never undefined and
+      // the two guards are always on.
+      workflowTurnTimeoutMs: number;
+      maxProtocolMessageBytes: number;
+      requireProtocolVersion: true;
+      discardOnCancel: true;
+    };
+
+export function definitionEntries<TDefinition extends object>(
+  definitions: Record<string, TDefinition> | undefined,
+): Array<[string, TDefinition]> {
+  return Object.entries(definitions ?? {});
+}
+
+export function typedEngineView(engine: object): never {
+  // Cycle-breaking workaround. The runtime instance is the same Engine; the
+  // declared return type is `never` so this module does not need to import
+  // the Engine class from `./index.ts` (which itself imports from this
+  // module — a runtime cycle). The public return type callers actually see
+  // is produced entirely by `register`'s overload signatures in
+  // `./index.ts` — this helper never inspects or returns anything
+  // type-parameterized, so it takes no phantom type parameters of its own.
+  // This helper is only invoked from inside `register`'s `unknown`-typed
+  // implementation body, where `never` is assignable. Do not call from any
+  // other context.
+  return engine as never;
+}
+
+let didWarnOnMemoryStorageFallback = false;
+
+/**
+ * Read an environment variable without assuming a runtime. The engine
+ * constructor runs in Bun, Node, and the browser/Service Worker, so a bare
+ * `Bun.env[...]` (or `process.env[...]`) would throw a ReferenceError where
+ * that global is absent. Returns `undefined` when no environment object exists.
+ */
+function readEnvironmentVariable(name: string): string | undefined {
+  return readEnvironmentVariableFromSources(name, {
+    bunEnv: typeof Bun !== 'undefined' ? Bun.env : undefined,
+    processEnv: typeof process !== 'undefined' ? process.env : undefined,
+  });
+}
+
+export function readEnvironmentVariableFromSources(
+  name: string,
+  sources: {
+    bunEnv?: Record<string, string | undefined> | undefined;
+    processEnv?: Record<string, string | undefined> | undefined;
+  },
+): string | undefined {
+  if (sources.bunEnv !== undefined) {
+    return sources.bunEnv[name];
+  }
+  if (sources.processEnv !== undefined) {
+    return sources.processEnv[name];
+  }
+  return undefined;
+}
+
+/**
+ * Whether to warn when an `Engine` falls back to {@link MemoryStorage}. Gated
+ * to development so production never logs it: the explicit `development: true`
+ * option, or the same environment signals as the other engine dev-warnings
+ * (`WEFT_DEV_WARNINGS=1` / `NODE_ENV=development`). No test override is needed —
+ * the gate is just an option plus two env vars, so tests drive it directly.
+ */
+function shouldWarnOnMemoryStorageFallback(options?: EngineConstructorOptions): boolean {
+  return (
+    options?.development === true ||
+    readEnvironmentVariable('WEFT_DEV_WARNINGS') === '1' ||
+    readEnvironmentVariable('NODE_ENV') === 'development'
+  );
+}
+
+/** Test-only reset of the one-shot MemoryStorage-fallback warning latch. */
+export function resetMemoryStorageFallbackWarningForTesting(): void {
+  didWarnOnMemoryStorageFallback = false;
+}
+
+export function resolveEngineStorage(options?: EngineConstructorOptions): WeftStorage {
+  // `?? null`-style coalescing: a `null` storage (untyped JS callers) falls back
+  // just like `undefined`, matching the original `options?.storage ?? …` and the
+  // `defaultTo` helper's documented behavior.
+  const providedStorage = options?.storage ?? undefined;
+  let baseStorage = providedStorage;
+  if (baseStorage === undefined) {
+    // No storage configured: workflow state lives only in memory and is lost
+    // when the process exits. Warn in development so a first-time user who
+    // crashes and restarts understands why their workflows vanished; stay
+    // silent in production, where MemoryStorage may be a deliberate choice.
+    // The latch keeps repeated Engine constructions from spamming the log.
+    if (!didWarnOnMemoryStorageFallback && shouldWarnOnMemoryStorageFallback(options)) {
+      didWarnOnMemoryStorageFallback = true;
+      console.warn(
+        '[weft] Engine started with no `storage` configured — falling back to MemoryStorage. ' +
+          'Workflow state is held only in memory and is lost when the process exits, so a crash ' +
+          'or restart discards every in-flight workflow. Pass a durable adapter (e.g. ' +
+          'SQLiteStorage) via `new Engine({ storage })` for anything beyond tests and local dev. ' +
+          '(This warning appears only in development.)',
+      );
+    }
+    baseStorage = new MemoryStorage();
+  }
+  if (!options?.compression) return baseStorage;
+  return new CompressedStorage(baseStorage, options.compression);
+}
+
+export function resolveEngineInterceptors(options?: EngineConstructorOptions): Interceptor[] {
+  // Defensive copy: callers must not mutate the engine's interceptor list
+  // after construction. Mutating the source array directly would bypass
+  // the composed-interceptor cache invalidation in `addInterceptor`.
+  return options?.interceptors ? [...options.interceptors] : [];
+}
+
+export function copyWorkflowDefinition(
+  type: string,
+  registration: RegistrationEntry,
+): RegisteredWorkflowDefinition {
+  return {
+    type,
+    version: registration.version,
+    tags: registration.tags === undefined ? [] : [...registration.tags],
+    ...(registration.description === undefined ? {} : { description: registration.description }),
+    ...(registration.inputSchema === undefined ? {} : { inputSchema: registration.inputSchema }),
+    ...(registration.outputSchema === undefined ? {} : { outputSchema: registration.outputSchema }),
+    ...(registration.signals === undefined ? {} : { signals: { ...registration.signals } }),
+    ...(registration.updates === undefined ? {} : { updates: { ...registration.updates } }),
+    ...(registration.queries === undefined ? {} : { queries: { ...registration.queries } }),
+    ...(registration.searchAttributes === undefined
+      ? {}
+      : { searchAttributes: registration.searchAttributes }),
+    ...(registration.concurrency === undefined ? {} : { concurrency: registration.concurrency }),
+    ...copyFinalizerMetadata(registration.finalizer),
+  };
+}
+
+function resolveRetentionFields(
+  options: EngineConstructorOptions | undefined,
+): Pick<ResolvedOptions, 'retention' | 'retentionSweepIntervalMs' | 'retentionSweepBatchSize'> {
+  return {
+    retention: normalizeRetentionPolicy(options?.retention, 'options.retention'),
+    retentionSweepIntervalMs:
+      normalizeRetentionDuration(
+        options?.retentionSweepInterval,
+        'options.retentionSweepInterval',
+      ) ?? DEFAULT_RETENTION_SWEEP_INTERVAL_MS,
+    retentionSweepBatchSize:
+      options?.retentionSweepBatchSize !== undefined
+        ? Math.max(1, Math.floor(options.retentionSweepBatchSize))
+        : DEFAULT_RETENTION_SWEEP_BATCH_SIZE,
+  };
+}
+
+// `??` coerces both `undefined` and `null` to the default; destructuring
+// defaults only fire on `undefined`. Using `??` here preserves the
+// pre-refactor behavior for untyped JS callers that may pass an explicit
+// `null` for an optional field. `defaultTo` keeps each defaulting expression
+// at constant complexity, so the surrounding helpers stay under the
+// per-function complexity ceiling.
+function defaultTo<T>(value: T | null | undefined, fallback: T): T {
+  return value ?? fallback;
+}
+
+function resolveBooleanDefaults(
+  options: EngineConstructorOptions | undefined,
+): Pick<ResolvedOptions, 'development' | 'broadcastEvents'> {
+  return {
+    development: defaultTo(options?.development, false),
+    broadcastEvents: defaultTo(options?.broadcastEvents, false),
+  };
+}
+
+function resolveNumericDefaults(
+  options: EngineConstructorOptions | undefined,
+): Pick<
+  ResolvedOptions,
+  | 'checkpointHistory'
+  | 'checkpointSizeWarningThreshold'
+  | 'maxNestingDepth'
+  | 'schedulerPollIntervalMs'
+> {
+  return {
+    checkpointHistory: defaultTo(options?.checkpointHistory, 10),
+    checkpointSizeWarningThreshold: defaultTo(options?.checkpointSizeWarningThreshold, 65_536),
+    maxNestingDepth: defaultTo(options?.maxNestingDepth, 10),
+    schedulerPollIntervalMs:
+      normalizePositiveSafeIntegerOption(
+        options?.schedulerPollIntervalMs,
+        'options.schedulerPollIntervalMs',
+        DEFAULT_POLL_INTERVAL_MS,
+      ) ?? DEFAULT_POLL_INTERVAL_MS,
+  };
+}
+
+function resolveHistoryFields(
+  options: EngineConstructorOptions | undefined,
+): Pick<ResolvedOptions, 'historyPolicy' | 'archiveAdapter' | 'payloadSizePolicy'> {
+  return {
+    historyPolicy: normalizeHistoryPolicy(options?.history, 'options.history'),
+    archiveAdapter: options?.archive ?? null,
+    payloadSizePolicy: normalizePayloadSizePolicy(options?.payloadSize, 'options.payloadSize'),
+  };
+}
+
+/** Default heartbeat interval for the best-effort second-instance detector. */
+const DEFAULT_SECOND_INSTANCE_HEARTBEAT_INTERVAL_MS = 15_000;
+
+function resolveSecondInstanceFields(
+  options: EngineConstructorOptions | undefined,
+): Pick<ResolvedOptions, 'secondInstanceDetectionEnabled' | 'secondInstanceHeartbeatIntervalMs'> {
+  const enabled = defaultTo(options?.detectSecondInstance, false);
+  // The option is documented as "ignored when detection is disabled", so do NOT
+  // validate it when detection is off — an invalid interval must not make an
+  // off-by-default config fatal at construction. Only normalize (and thus
+  // potentially throw) when detection is actually enabled.
+  const intervalMs = enabled
+    ? (normalizeRetentionDuration(
+        options?.secondInstanceHeartbeatInterval,
+        'options.secondInstanceHeartbeatInterval',
+      ) ?? DEFAULT_SECOND_INSTANCE_HEARTBEAT_INTERVAL_MS)
+    : DEFAULT_SECOND_INSTANCE_HEARTBEAT_INTERVAL_MS;
+  return {
+    secondInstanceDetectionEnabled: enabled,
+    secondInstanceHeartbeatIntervalMs: intervalMs,
+  };
+}
+
+export function resolveEngineOptions(
+  storage: WeftStorage,
+  options: EngineConstructorOptions | undefined,
+  getNow: () => number,
+): ResolvedOptions {
+  return {
+    storage,
+    getNow,
+    resolveWorkflowServices: options?.resolveWorkflowServices ?? null,
+    onLog: options?.onLog ?? null,
+    backgroundTaskMode: resolveBackgroundTaskMode(options),
+    ...resolveBooleanDefaults(options),
+    ...resolveNumericDefaults(options),
+    ...resolveRetentionFields(options),
+    ...resolveHistoryFields(options),
+    ...resolveSecondInstanceFields(options),
+    ...resolveOwnershipFields(options),
+  };
+}
+
+export function normalizeWorkerExecutionConfiguration(
+  options: EngineConstructorOptions | undefined,
+): NormalizedWorkerExecutionConfiguration {
+  const workflowExecutionMode = normalizeWorkflowExecutionMode(options?.workflowExecutionMode);
+  const workerExecution = resolveWorkerExecutionForMode(options, workflowExecutionMode);
+  if (!workerExecution) {
+    return { mode: 'inline', workerExecution: null };
+  }
+
+  return normalizeWorkerModeConfiguration(workerExecution);
+}
+
+function normalizeWorkflowExecutionMode(
+  value: unknown,
+): EngineConstructorOptions['workflowExecutionMode'] {
+  if (value === undefined || value === 'inline' || value === 'worker') {
+    return value;
+  }
+  throw new Error('options.workflowExecutionMode must be "inline" or "worker" when provided');
+}
+
+function resolveWorkerExecutionForMode(
+  options: EngineConstructorOptions | undefined,
+  workflowExecutionMode: EngineConstructorOptions['workflowExecutionMode'],
+): NonNullable<EngineConstructorOptions['workerExecution']> | null {
+  if (workflowExecutionMode === 'inline') {
+    if (options?.workerExecution !== undefined) {
+      throw new Error(
+        'options.workerExecution cannot be provided when workflowExecutionMode is "inline"',
+      );
+    }
+    return null;
+  }
+  if (workflowExecutionMode === 'worker') {
+    if (options?.workerExecution === undefined) {
+      throw new Error('options.workerExecution is required when workflowExecutionMode is "worker"');
+    }
+    return options.workerExecution;
+  }
+  // Omitted mode defaults to inline. Worker execution is the hardened untrusted
+  // posture and must be requested explicitly; providing workerExecution alone is
+  // an error rather than a silent, weaker Worker selection.
+  if (options?.workerExecution !== undefined) {
+    throw new Error(
+      'options.workflowExecutionMode must be "worker" when options.workerExecution is provided',
+    );
+  }
+  return null;
+}
+
+function normalizeWorkerModeConfiguration(
+  workerExecution: NonNullable<EngineConstructorOptions['workerExecution']>,
+): NormalizedWorkerExecutionConfiguration {
+  // Worker mode is reachable only via explicit `workflowExecutionMode: 'worker'`,
+  // so it always applies the hardened turn-timeout and protocol-message defaults.
+  // Validate any caller override (which may be undefined), then fall back to the
+  // hardened default so both values are always a concrete `number`.
+  const workflowTurnTimeoutMs =
+    normalizePositiveSafeIntegerOption(
+      workerExecution.workflowTurnTimeoutMs,
+      'options.workerExecution.workflowTurnTimeoutMs',
+      undefined,
+    ) ?? DEFAULT_WORKER_TURN_TIMEOUT_MS;
+  const maxProtocolMessageBytes =
+    normalizePositiveSafeIntegerOption(
+      workerExecution.maxProtocolMessageBytes,
+      'options.workerExecution.maxProtocolMessageBytes',
+      undefined,
+    ) ?? DEFAULT_WORKER_PROTOCOL_MESSAGE_BYTES;
+  if (maxProtocolMessageBytes < MIN_WORKER_PROTOCOL_MESSAGE_BYTES) {
+    throw new Error(
+      `options.workerExecution.maxProtocolMessageBytes must be at least ${MIN_WORKER_PROTOCOL_MESSAGE_BYTES}`,
+    );
+  }
+
+  return {
+    mode: 'worker',
+    workerExecution,
+    workflowTurnTimeoutMs,
+    maxProtocolMessageBytes,
+    requireProtocolVersion: true,
+    discardOnCancel: true,
+  };
+}
+
+function normalizePositiveSafeIntegerOption(
+  value: unknown,
+  fieldName: string,
+  defaultValue: number | undefined,
+): number | undefined {
+  if (value === undefined) return defaultValue;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${fieldName} must be a positive safe integer when provided`);
+  }
+  return value;
+}
+
+export function createExecutionStrategyBundle(parameters: {
+  options: EngineConstructorOptions | undefined;
+  getNow: () => number;
+  maxNestingDepth: number;
+  development: boolean;
+  broadcastEvents: boolean;
+  getRegistration: (workflowType: string, workflowId: string) => RegistrationEntry | undefined;
+  /** Live accessor for registered workflow type names (WFT-28); registrations are still empty here. */
+  listRegisteredWorkflowTypes: () => Iterable<string>;
+  getComposedWorkflowInterceptor?: () => ComposedWorkflowInterceptor | null;
+  resolveWorkflowType: (target: string | Function) => string;
+  registerCancelHandler?: (workflowId: string, handler: () => Promise<void> | void) => () => void;
+  recordFinalizerState?: (workflowId: string, value: unknown) => void;
+  getWorkflowServices?: (workflowId: string) => unknown;
+  getLogSink?: () => ((record: WorkflowLogRecord) => void) | undefined;
+}): ExecutionStrategyBundle {
+  const {
+    options,
+    getNow,
+    maxNestingDepth,
+    development,
+    broadcastEvents,
+    getRegistration,
+    listRegisteredWorkflowTypes,
+    getComposedWorkflowInterceptor,
+    resolveWorkflowType,
+    registerCancelHandler,
+    recordFinalizerState,
+    getWorkflowServices,
+    getLogSink,
+  } = parameters;
+  const workerExecutionConfiguration = normalizeWorkerExecutionConfiguration(options);
+  if (workerExecutionConfiguration.mode === 'worker') {
+    const pool = new WorkerPool({
+      workerUrl: workerExecutionConfiguration.workerExecution.workerUrl,
+      concurrency: workerExecutionConfiguration.workerExecution.poolSize ?? 4,
+      smol: workerExecutionConfiguration.workerExecution.smol ?? false,
+    });
+    // Resolve the host `onLog` sink once at construction — like the inline path, the
+    // sink is fixed for the engine's life (`EngineOptions.onLog` has no setter). When
+    // present, workers forward `ctx.log` records to the host instead of their console (#529).
+    const logSink = getLogSink?.();
+    const strategyOptions = {
+      broadcastEvents,
+      requireProtocolVersion: workerExecutionConfiguration.requireProtocolVersion,
+      discardOnCancel: workerExecutionConfiguration.discardOnCancel,
+      // Realm-ready handshake (WFT-28) is mandatory here for the same reason
+      // requireProtocolVersion is above: host and worker are one package build.
+      requireRealmReady: true,
+      getExpectedWorkflowTypes: () => [...listRegisteredWorkflowTypes()],
+      workflowTurnTimeoutMs: workerExecutionConfiguration.workflowTurnTimeoutMs,
+      maxProtocolMessageBytes: workerExecutionConfiguration.maxProtocolMessageBytes,
+      // Forwarded-log abuse counter (#545): the strategy uses the engine clock so the
+      // flood window is deterministic in tests (no wall-clock sleeps). Thresholds use
+      // the gate's generous defaults — not an operator-tunable surface.
+      getNow,
+      ...(logSink !== undefined && { onLog: logSink }),
+    };
+    return {
+      strategy: new WorkerExecutionStrategy(pool, strategyOptions),
+      inlineStrategy: null,
+    };
+  }
+  const inlineStrategy = new InlineExecutionStrategy({
+    getRegistration,
+    getNow,
+    maxNestingDepth,
+    development,
+    resolveWorkflowType,
+    ...optionalInlineDependencies({
+      getComposedWorkflowInterceptor,
+      registerCancelHandler,
+      recordFinalizerState,
+      getWorkflowServices,
+      getLogSink,
+    }),
+  });
+  return { strategy: inlineStrategy, inlineStrategy };
+}
+
+export function createActivityWorkerDispatcher(
+  activityExecution: EngineConstructorOptions['activityExecution'],
+): ActivityWorkerDispatcher | null {
+  if (!activityExecution) return null;
+  return new ActivityWorkerDispatcher(
+    new WorkerPool({
+      workerUrl: activityExecution.workerUrl,
+      concurrency: activityExecution.poolSize ?? 4,
+      smol: activityExecution.smol ?? false,
+    }),
+  );
+}

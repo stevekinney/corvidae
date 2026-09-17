@@ -1,0 +1,43 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    added: {
+      type: 'number',
+      description: 'Number of added lines.',
+    },
+    removed: {
+      type: 'number',
+      description: 'Number of removed lines.',
+    },
+    modified: {
+      type: 'number',
+      description: 'Number of modified lines.',
+    },
+    variant: {
+      enum: ['default', 'compact'],
+      description:
+        'Layout variant. `default` shows full statistic markup; `compact` trims it\nfor tight surfaces. Distinct from `density`, which adjusts control height.',
+    },
+    density: {
+      const: 'toolbar',
+      description:
+        'Toolbar density opt-in (compact variant only). When set, pills snap to\nthe shared `--cinder-control-height-sm` tier.',
+    },
+    zeroVisible: {
+      type: 'boolean',
+      description: 'Whether zero-value statistics render. Set `false` to hide them.',
+      default: true,
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-diff-statistics`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['added', 'modified', 'removed'],
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

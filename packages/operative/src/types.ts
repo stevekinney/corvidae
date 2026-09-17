@@ -1,0 +1,734 @@
+import type { AnyToolbox, ToolExecuteOptions, ToolExecutionResult } from '@repo/armorer';
+import type { Conversation, ConversationHistory, TokenUsage } from '@repo/conversationalist';
+import type { JSONValue, ToolCall, ToolCallInput } from '@repo/interoperability';
+import type { HookRegistry, RuntimeServices } from '@repo/lifecycle';
+import type { ZodType } from 'zod';
+
+import type { BackpressureStrategy } from './backpressure';
+import type { ChildRunRegistry } from './child-run';
+import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
+import type { SteeringDesiredState } from './durable/types';
+import type { AgentRunErrorCode, AgentRunErrorKind } from './errors';
+import type { OperativeHookMap } from './hooks';
+import type { DelegatedAuthority } from './providers/policy.ts';
+import type { RetryMutator } from './retry/types';
+import type { SelectionGate } from './selection-gate';
+import type { LiveStreamEvent } from './streaming/types';
+import type { ResponseFormat, ToolChoice } from './structured-output/types';
+
+export type { AnyToolbox, Toolbox, ToolExecuteOptions, ToolExecutionResult } from '@repo/armorer';
+export type { Conversation, ConversationHistory, TokenUsage } from '@repo/conversationalist';
+export type { JSONValue, ToolCall, ToolCallInput } from '@repo/interoperability';
+
+/**
+ * Options passed to toolbox.execute() within the loop.
+ */
+export type OperativeExecuteOptions = Omit<ToolExecuteOptions, 'durableOperationKey'> & {
+  concurrency?: number | undefined;
+  mode?: ('parallel' | 'sequential') | undefined;
+  errorMode?: ('failFast' | 'collect') | undefined;
+  durableOperationKey?: string | ((call: ToolCall, index: number) => string | undefined);
+};
+
+export interface ElicitationOptions {
+  readonly toolCallId?: string | undefined;
+}
+
+export interface ElicitationRequest<T = unknown> {
+  /** Immutable identity for correlating the response to this request. */
+  readonly requestId: string;
+  /** Tool identity when elicitation was requested during tool execution. */
+  readonly toolCallId?: string | undefined;
+  readonly message: string;
+  /** Parse the untrusted response payload before returning it. */
+  readonly schema: ZodType<T>;
+  readonly context: StepContext;
+}
+
+export type ElicitationResponse<T = unknown> = {
+  /** Must match the request's immutable requestId. */
+  readonly requestId: string;
+  readonly toolCallId?: string | undefined;
+  readonly data: T;
+} | null;
+
+/**
+ * Handles one request and returns validated data, or `null` when the caller
+ * declines or cancellation wins. A late response for an older request is
+ * ignored and cannot settle a replacement request; omission of the callback
+ * makes elicitation unavailable and leaves `elicit` undefined.
+ */
+export type OnElicitation = <T>(request: ElicitationRequest<T>) => Promise<ElicitationResponse<T>>;
+
+/**
+ * Options for retrying the generate call on transient failures.
+ */
+export interface RetryOptions {
+  attempts: number;
+  delay?: (number | ((attempt: number) => number)) | undefined;
+  shouldRetry?: ((error: unknown, attempt: number) => boolean | Promise<boolean>) | undefined;
+  /** Transforms the generate context before a retry attempt. */
+  mutate?: RetryMutator | undefined;
+  /** Injectable sleep used between retry attempts. Defaults to a setTimeout-backed delay. */
+  sleep?: ((milliseconds: number, signal?: AbortSignal) => Promise<void>) | undefined;
+  /** Whether to add random jitter to the retry delay. Defaults to false. */
+  jitter?: boolean | undefined;
+  /** Maximum jitter offset in milliseconds. Defaults to half the delay. */
+  maxJitter?: number | undefined;
+}
+
+/**
+ * Options for automatic context window management.
+ */
+export interface ContextManagementOptions {
+  maxTokens: number;
+  onCompact: (conversation: Conversation, context: StepContext) => Promise<void>;
+  tokenEstimator?: ((conversation: Conversation) => number) | undefined;
+  /** Minimum tokens reserved for the model response. Default: `1500`. */
+  minimumResponseTokens?: number | undefined;
+  /** Warning when remaining tokens drop to this level. Default: 20% of `maxTokens`. */
+  warningThreshold?: number | undefined;
+  /** Compaction triggered when used tokens reach this level. Default: 80% of `maxTokens`. */
+  compactionThreshold?: number | undefined;
+}
+
+/**
+ * Finish reasons for the agent loop.
+ */
+export type FinishReason =
+  | 'stop-condition'
+  | 'maximum-steps'
+  | 'aborted'
+  | 'error'
+  | 'elicitation-denied'
+  | 'budget-exceeded'
+  | 'tripwire';
+
+/**
+ * Discriminates an `unresolved` {@link CleanupAcknowledgement}: "incomplete"
+ * and "timed out" collapse into `'timed-out'`, an unreachable durable worker
+ * into `'unreachable'`, a durable write that could not be confirmed into
+ * `'persistence-failed'`, and unknown side-effect residue into
+ * `'unknown-effect'` — never `'failed'`, which is reserved for a definite,
+ * observed teardown failure.
+ *
+ * Ratified by AB-37's decision record (`documentation/operative-type-safe-api.md`'s
+ * started-work control contract) and implemented by AB-204.
+ */
+export type CleanupAcknowledgementReason =
+  'timed-out' | 'unknown-effect' | 'unreachable' | 'persistence-failed';
+
+/**
+ * The result of awaiting a resource's `closed()` — a truthful cleanup
+ * acknowledgement, distinct from merely firing `abort()`. Reuses armorer's
+ * existing four-value outcome set (`not-required | completed | failed |
+ * unresolved`) rather than inventing a fifth status; `reason` further
+ * classifies an `unresolved` outcome. See {@link ClosedOptions}.
+ */
+export type CleanupAcknowledgement =
+  | { readonly status: 'not-required' }
+  | { readonly status: 'completed' }
+  | { readonly status: 'failed'; readonly error?: unknown }
+  | {
+      readonly status: 'unresolved';
+      readonly reason: CleanupAcknowledgementReason;
+      readonly error?: unknown;
+    };
+
+/**
+ * Options for `closed()`. `signal` bounds one caller's own wait — it does not
+ * cancel the underlying cleanup, and it never writes into the resource's
+ * shared cached acknowledgement (see `closed()`'s own doc comment for the
+ * full idempotency contract).
+ */
+export interface ClosedOptions {
+  /**
+   * Caller-supplied bound: abandons this call's wait and resolves
+   * `{ status: 'unresolved', reason: 'timed-out' }` for THIS caller only,
+   * rather than hanging. A concurrent signal-free call keeps waiting on the
+   * real settlement and observes it once it lands.
+   */
+  readonly signal?: AbortSignal | undefined;
+}
+
+/**
+ * Context passed to the user-provided generate function.
+ */
+export interface GenerateContext {
+  conversation: Conversation;
+  step: number;
+  signal?: AbortSignal | undefined;
+  toolbox: AnyToolbox;
+  toolChoice?: ToolChoice | undefined;
+  responseFormat?: ResponseFormat | undefined;
+  /**
+   * Per-request output token cap; overrides the provider's construction-time
+   * maximumTokens for this call.
+   */
+  maximumTokens?: number | undefined;
+  /**
+   * The session's desired route/model/provider/effort configuration and
+   * pause flag, as read at this step's `runStep` entry boundary (AB-67).
+   * `undefined` when no `RunOptions.steering` gate is configured — a run
+   * with no steering dependency behaves exactly as it does today.
+   *
+   * NOT hook-overridable: `beforeGenerate` may replace the rest of
+   * `GenerateContext`, but `runStep` re-applies this field from its own
+   * boundary read after the hook returns, so a hook can read the session's
+   * desired steering state but never silently drop or override it.
+   */
+  steering?: SteeringDesiredState | undefined;
+}
+
+/**
+ * Response returned by the user-provided generate function.
+ */
+export interface GenerateResponse {
+  content: string;
+  toolCalls: ToolCallInput[];
+  usage?: TokenUsage | undefined;
+  metadata?: Record<string, JSONValue> | undefined;
+  /**
+   * When true, the generate function has already appended the assistant message
+   * to the conversation (e.g. via streaming finalization). The loop will skip
+   * its own `appendAssistantMessage` call to avoid duplicates.
+   */
+  messageAppended?: boolean | undefined;
+}
+
+/**
+ * The user-provided function that calls the LLM.
+ */
+export type GenerateFunction = (context: GenerateContext) => Promise<GenerateResponse>;
+
+/**
+ * Wraps a GenerateFunction, returning a new GenerateFunction.
+ */
+export type GenerateMiddleware = (next: GenerateFunction) => GenerateFunction;
+
+/**
+ * Result of a single step in the agent loop.
+ */
+export interface StepResult {
+  step: number;
+  conversation: Conversation;
+  content: string;
+  toolCalls: readonly ToolCall[];
+  results: readonly ToolExecutionResult[];
+  usage?: TokenUsage | undefined;
+  metadata?: Record<string, JSONValue> | undefined;
+  final: boolean;
+}
+
+export interface RunOutcome {
+  readonly finishReason: FinishReason;
+  readonly error?:
+    { readonly kind: AgentRunErrorKind; readonly code: AgentRunErrorCode } | undefined;
+}
+
+/**
+ * Context passed to the prepareStep hook.
+ */
+export interface StepContext {
+  conversation: Conversation;
+  step: number;
+  signal?: AbortSignal | undefined;
+  abortStep?: ((reason?: string) => void) | undefined;
+  elicit?:
+    | (<T>(message: string, schema: ZodType<T>, options?: ElicitationOptions) => Promise<T | null>)
+    | undefined;
+}
+
+/**
+ * Context passed to the beforeToolExecution hook.
+ */
+export interface ToolExecutionHookContext {
+  conversation: Conversation;
+  step: number;
+  toolCalls: ToolCall[];
+  elicit?:
+    | (<T>(message: string, schema: ZodType<T>, options?: ElicitationOptions) => Promise<T | null>)
+    | undefined;
+}
+
+/**
+ * Context passed to the afterToolExecution hook.
+ */
+export interface ToolExecutionResultContext {
+  conversation: Conversation;
+  step: number;
+  toolCalls: readonly ToolCall[];
+  results: readonly ToolExecutionResult[];
+  elicit?:
+    | (<T>(message: string, schema: ZodType<T>, options?: ElicitationOptions) => Promise<T | null>)
+    | undefined;
+}
+
+/**
+ * Named hook type aliases for composable hook arrays.
+ */
+export type PrepareStepHook = (context: StepContext) => Promise<void | GenerateResponse>;
+export type BeforeToolExecutionHook = (context: ToolExecutionHookContext) => Promise<ToolCall[]>;
+export type AfterToolExecutionHook = (context: ToolExecutionResultContext) => Promise<void>;
+export type OnStepHook = (context: StepResult) => Promise<void>;
+export type SelectToolsHook = (context: StepContext) => Promise<AnyToolbox> | AnyToolbox;
+export type ValidateResponseHook = (
+  response: GenerateResponse,
+  context: StepContext,
+) => Promise<GenerateResponse | void>;
+export type ValidateToolResultHook = (
+  result: ToolExecutionResult,
+  context: ToolExecutionResultContext,
+) => Promise<ToolExecutionResult | void>;
+
+/** Hook called before the LLM generate call. Can modify the generate context. */
+export type BeforeGenerateHook = OperativeHookMap['beforeGenerate'];
+/** Hook called after the LLM generate call. Can modify the response. */
+export type AfterGenerateHook = OperativeHookMap['afterGenerate'];
+/** Read-only monitoring hook for LLM input. */
+export type OnLLMInputHook = OperativeHookMap['onLLMInput'];
+/** Read-only monitoring hook for LLM output. */
+export type OnLLMOutputHook = OperativeHookMap['onLLMOutput'];
+/** Hook called when a run starts. */
+export type OnRunStartHook = OperativeHookMap['onRunStart'];
+/** Hook called when a run completes successfully. */
+export type OnRunCompleteHook = OperativeHookMap['onRunComplete'];
+/** Hook called when a run errors. */
+export type OnRunErrorHook = OperativeHookMap['onRunError'];
+/** Hook called when a run is aborted. */
+export type OnRunAbortHook = OperativeHookMap['onRunAbort'];
+/** Error recovery hook. Returns an action to control recovery behavior. */
+export type OnErrorHook = OperativeHookMap['onError'];
+
+/**
+ * A predicate that determines whether the loop should stop.
+ */
+export type StopCondition = (context: StepResult) => boolean | Promise<boolean>;
+
+/**
+ * Result of a completed agent loop run.
+ */
+export interface RunResultBase {
+  conversation: Conversation;
+  steps: readonly StepResult[];
+  content: string;
+  usage: TokenUsage;
+  /**
+   * Cost estimate for `usage`, computed from `RunOptions.costEstimation` when
+   * provided. Present on every terminal result — stop-condition, maximum-steps,
+   * abort, and error alike — so a budget-triggered or errored run still
+   * reports what it spent. Absent (never `0`) when `costEstimation` wasn't
+   * supplied or its model has no resolvable pricing.
+   *
+   * This is an in-loop budgeting estimate, not a billing figure — see
+   * {@link estimateCost}'s doc comment.
+   */
+  costEstimate?: CostEstimate | undefined;
+  finishReason: FinishReason;
+  error?: unknown;
+  schemaValidation?: { success: boolean; error?: unknown } | undefined;
+  /**
+   * The `output`-schema-validated structured output (AB-18), present when
+   * the run stopped after an `output` Zod schema was applied AND validation
+   * succeeded (`schemaValidation.success === true`). Distinct from `content`
+   * (the raw model text) — this is the Zod-parsed value. Absent when
+   * there's no `output` schema, or when validation failed.
+   */
+}
+
+/**
+ * Terminal result. The validated value is exposed under `output`; the
+ * conditional intersection keeps the property out of untyped (`H = false`)
+ * results while retaining the historical, unparameterized internal shape.
+ */
+export type RunResult<O = unknown, H extends boolean = true> = RunResultBase &
+  ([H] extends [true] ? { output?: O | undefined } : Record<never, never>);
+
+/**
+ * The `RunResult` fields safe to expose under a `'redacted'` liveness
+ * projection (AB-88/AC4) — never the full `conversation` transcript, raw
+ * model `content`, `output`, or `error`. Every standalone run's projection
+ * is `'redacted'` permanently (AB-88's "Standalone-run projection,
+ * resolved"); nothing in this codebase today produces `'privileged'`, so
+ * `LivenessSnapshot.result` would otherwise leak the complete conversation
+ * and tool arguments/results under a label that promises otherwise
+ * (AB-214 review PRRT_kwDORvupsc6es7pl).
+ */
+export interface RedactedRunResultSummary {
+  readonly finishReason: FinishReason;
+  readonly hasError: boolean;
+}
+
+/** Builds the `'redacted'`-safe summary — see {@link RedactedRunResultSummary}. */
+export function toRedactedRunResultSummary(result: RunResultBase): RedactedRunResultSummary {
+  return { finishReason: result.finishReason, hasError: result.error !== undefined };
+}
+
+/**
+ * Per-session gate `runStep` consults at its entry boundary (AB-67, "Define
+ * the runtime steering contract") to read desired steering state and, when
+ * `paused: true`, block until released.
+ *
+ * `runStep` never talks to a Bureau session or a durable store directly —
+ * a caller (illustratively, Bureau's `submitSteeringCommand` admission path)
+ * owns the real implementation, writes into desired state on the accept
+ * side of a command, and resolves `awaitResume()` on the accept side of a
+ * `resume`. Absent a `resume` verb ever calling it, `awaitResume()` simply
+ * never resolves on its own — an inert, safe default equivalent to today's
+ * non-steerable behavior.
+ *
+ * Supplied via `RunOptions.steering`. Optional: a run with no `steering`
+ * dependency proceeds exactly as it does today, with no behavior change.
+ */
+export interface SteeringGate {
+  /**
+   * The owning Bureau session's id. `SteeringDesiredState`/`SteeringEffectiveState`
+   * carry no `sessionId` field themselves (AB-67 — desired state is scoped to,
+   * not self-describing, the session that owns it), so `runStep` reads it from
+   * here to stamp the `sessionId` AB-90/AB-221's `steering.applied` event
+   * carries.
+   */
+  readonly sessionId: string;
+  /** Synchronous read of the session's current desired steering state. */
+  getDesiredState(): SteeringDesiredState;
+  /**
+   * Resolves the next time desired state's `paused` flag reports `false`
+   * (a matching `resume` command is applied). Raced against the step's own
+   * `AbortSignal` by `runStep` — whichever settles first wins.
+   *
+   * `runStep` passes its own step `AbortSignal` as `signal` so a real
+   * implementation can drop its own registered waiter (and any resources
+   * tied to it) the moment the signal fires, instead of leaving a waiter
+   * registered indefinitely once the abort branch of the race has already
+   * won. Passing `signal` is a cleanup hint, not a requirement: a gate that
+   * ignores it still behaves correctly — `runStep` proceeds as abort either
+   * way — it just does not get to release resources any earlier.
+   */
+  awaitResume(signal?: AbortSignal): Promise<void>;
+  /**
+   * The highest `SteeringDesiredState.configVersion` this gate has already
+   * observed applied by ANY run on the owning session (AB-67's ratified
+   * "applied once consumed by a step boundary in any current or future run"
+   * rule, `documentation/operative-type-safe-api.md`'s classification
+   * table). `RunState.lastAppliedConfigVersion` is per-run and starts at 0
+   * for every fresh run (`createRunState()`), so a brand-new run on a
+   * session whose `configVersion` a PRIOR run already applied would
+   * otherwise re-observe and re-fire `steering.applied` for it (a gap
+   * `ab-67-runstep`'s own boundary read explicitly names and defers to this
+   * gate — see `run-step.ts`'s `maybeDispatchSteeringApplied` comment).
+   *
+   * Optional: a gate that doesn't implement cross-run memory (or an absent
+   * `steering` dependency entirely) simply seeds every fresh run's dedupe
+   * cursor at 0 — today's behavior, unchanged. `executeLoop` and the
+   * durable workflow driver each call this once, at the start of a BRAND
+   * NEW run only (never on a durable resume, which carries its own cursor
+   * forward via `RunCursor.lastAppliedConfigVersion`), to seed
+   * `RunState.lastAppliedConfigVersion`.
+   */
+  getAppliedFloor?(): number | undefined;
+}
+
+/**
+ * Options for the agent loop, minus `runId` and `steering` — see
+ * {@link RunOptions}, which adds those two as a discriminated pair via a
+ * `type` (intersecting this interface with a union), not an `interface`,
+ * following AB-16's `CreateAgentOptions`/`CreateAgentOptionsBase` precedent:
+ * enforcing the pairing requires a union, and a TypeScript `interface`
+ * can't `extends` a type containing one, nor declaration-merge into one. A
+ * consumer that previously wrote `interface MyOptions extends RunOptions`
+ * for the full options bag needs `MyOptions = RunOptions & { ... }`
+ * instead; extending or declaration-merging onto just the fields unrelated
+ * to the `runId`/`steering` pairing still works via this separately
+ * exported `RunOptionsBase` interface.
+ */
+export interface RunOptionsBase {
+  generate: GenerateFunction;
+  toolbox: AnyToolbox;
+  conversation: Conversation | ConversationHistory;
+  stopWhen?: (StopCondition | StopCondition[]) | undefined;
+  maximumSteps?: number | undefined;
+  /**
+   * Per-request output token cap; overrides the provider's construction-time
+   * maximumTokens for this call.
+   */
+  maximumTokens?: number | undefined;
+  prepareStep?: (PrepareStepHook | PrepareStepHook[]) | undefined;
+  beforeToolExecution?: (BeforeToolExecutionHook | BeforeToolExecutionHook[]) | undefined;
+  afterToolExecution?: (AfterToolExecutionHook | AfterToolExecutionHook[]) | undefined;
+  onStep?: (OnStepHook | OnStepHook[]) | undefined;
+  executeOptions?: OperativeExecuteOptions | undefined;
+  signal?: AbortSignal | undefined;
+  /**
+   * When true, tool results that resolve to promises are awaited and their
+   * resolved values are appended to the conversation. Useful when tools return
+   * deferred results like streaming content.
+   */
+  collectAsync?: boolean | undefined;
+  retry?: RetryOptions | undefined;
+  /**
+   * Backpressure strategy applied before each step. When set, the loop
+   * calls `backpressure.beforeStep()` and waits for the returned delay
+   * before proceeding with the generate call.
+   */
+  backpressure?: BackpressureStrategy | undefined;
+  validateResponse?: (ValidateResponseHook | ValidateResponseHook[]) | undefined;
+  validateToolResult?: (ValidateToolResultHook | ValidateToolResultHook[]) | undefined;
+  /**
+   * Called before each step to dynamically select which tools are available.
+   * Return a filtered or entirely different toolbox to control which tools
+   * the model can call on a per-step basis.
+   */
+  selectTools?: (SelectToolsHook | SelectToolsHook[]) | undefined;
+  onElicitation?: OnElicitation | undefined;
+  /**
+   * A typed HookRegistry for structured hook registration with priority
+   * ordering. Runs in addition to any old-style hook arrays.
+   */
+  hooks?: HookRegistry<OperativeHookMap> | undefined;
+  contextManagement?: ContextManagementOptions | undefined;
+  /**
+   * The Zod schema the final response must satisfy (AB-18) — the single
+   * validated output contract. Validated with `.parseAsync()`; its
+   * provider-native JSON Schema is derived automatically via
+   * `z.toJSONSchema(schema, { io: 'input' })`. There is no raw JSON Schema
+   * input and no non-Zod Standard Schema branch — see
+   * `structured-output/response-schema.ts`.
+   *
+   * An `output` schema MUST NOT declare a field intended to carry binary or
+   * media content (AB-70's amendment to this issue): a generated asset a
+   * run produces belongs in `RunResult.parts` as a managed-asset reference
+   * part, never inlined as base64 inside the schema-validated `output`.
+   */
+  output?: ZodType | undefined;
+  schemaRetries?: number | undefined;
+  /**
+   * Custom message factory for schema validation retries. Called when the
+   * response fails schema validation and retries remain. The returned string
+   * is appended as a user message to prompt correction.
+   *
+   * Defaults to a generic message containing the validation error.
+   */
+  schemaRetryMessage?: ((error: unknown, attempt: number) => string) | undefined;
+  /**
+   * Called when the loop exits due to reaching `maximumSteps`. If this
+   * returns a string, it replaces the final content (e.g. a forced summary
+   * from one last LLM call without tools). The `finishReason` remains
+   * `'maximum-steps'` regardless.
+   */
+  onMaximumSteps?: ((context: StepContext) => Promise<string | void>) | undefined;
+  /**
+   * Opaque parent trace context (e.g. an OpenTelemetry Context) passed from
+   * a parent agent. Used with `withTraceContext` to nest child spans under the
+   * parent's trace.
+   */
+  parentContext?: unknown;
+
+  /**
+   * Agent name, used to stamp curated `tool.*` bubble events with
+   * `{agentName, runId, step}` metadata. Optional — only supplied when
+   * running inside a named agent (bureau.agent / createAgent).
+   */
+  agentName?: string | undefined;
+
+  /**
+   * Enables replay-safe durable operation keys for tool calls. This is distinct
+   * from `runId`, because in-memory session-owned runs also have stable run ids
+   * for event stamping but should not make effectful tools idempotent.
+   *
+   * @internal
+   */
+  durableOperationKeys?: boolean | undefined;
+  /**
+   * Callback that runs a function within a parent trace context. When both
+   * `parentContext` and `withTraceContext` are provided, the loop wraps
+   * generate and tool-execution calls so child spans nest correctly.
+   *
+   * This keeps operative free of any `@opentelemetry/api` dependency.
+   */
+  withTraceContext?: (<T>(parentContext: unknown, fn: () => Promise<T>) => Promise<T>) | undefined;
+  /**
+   * AB-233 (per AB-50's reuse gap) — this run's own child registry, threaded
+   * into every tool call's per-execution `ToolContext.executionContext` as
+   * `{ childRegistry, parentRunId: runId }` (see `run-step.ts`'s toolbox
+   * execute call site). `createSubagentTool` reads it there at execute time
+   * rather than from whatever `parentContext.registry` was captured at tool
+   * construction, so a single tool instance reused across two `agent.run()`
+   * calls registers each call's children into THIS run's own registry
+   * instead of whichever run happened to be active when the tool was built.
+   */
+  childRegistry?: ChildRunRegistry | undefined;
+  /**
+   * Default tool choice constraint applied to every step unless overridden
+   * by the `selectToolChoice` hook.
+   */
+  toolChoice?: ToolChoice | undefined;
+  /**
+   * When set, every terminal `RunResult` (stop-condition, maximum-steps,
+   * abort, or error) carries a `costEstimate` computed from the run's
+   * accumulated `usage` at this model's pricing. `pricing` overrides
+   * `defaultPricingTable` the same way `estimateCost`'s options do. Omit to
+   * leave `costEstimate` absent — no estimate is fabricated without an
+   * explicit model.
+   */
+  costEstimation?: { model: string; pricing?: CostEstimationOptions } | undefined;
+  /**
+   * The AB-64/AB-250 selection-revalidation gate, read at the same `runStep`
+   * boundary as `steering` (after the pause-wait loop, before backpressure):
+   * `gate.revalidate()` re-checks a previously planned backend selection
+   * against the CURRENT catalog/policy/availability snapshot. A plan that
+   * no longer reaches `outcome: 'selected'` fails the step with a
+   * {@link SelectionRevalidationError} rather than silently continuing on
+   * the superseded plan's model. `undefined` — the default — is a complete
+   * no-op: the boundary read is skipped entirely and behavior is unchanged,
+   * matching today's non-selecting behavior exactly. Unlike `steering`,
+   * `selection` carries no `runId` coupling — see {@link SelectionGate}.
+   */
+  selection?: SelectionGate | undefined;
+  /**
+   * AB-300 — this run's ALREADY-attenuated delegated-authority grant
+   * (forwarded from `AgentRunContext.delegatedAuthority`, itself set by
+   * `dispatchChildRun`'s `DispatchChildRunOptions.delegatedAuthority` — see
+   * `child-run.ts`'s `attenuateDelegatedAuthority`), threaded into every
+   * tool call's per-execution `ToolContext.executionContext.delegatedAuthority`
+   * (see `run-step.ts`'s toolbox execute call site), matching the AB-233
+   * `childRegistry`/`parentRunId` pattern. `createSubagentTool` reads it
+   * there at execute time — never from a value captured once at
+   * tool-construction time — and attenuates it further with its own
+   * narrowing (if any) before forwarding it into the child's own
+   * `dispatchChildRun` call. `undefined` — the default — means this run
+   * inherits no delegated-authority narrowing from a dispatching parent.
+   */
+  delegatedAuthority?: DelegatedAuthority | undefined;
+  /**
+   * AB-241 — the authenticated principal attributed with this run, forwarded
+   * unchanged from `AgentRunContext.principal` by `createAgent`'s run path,
+   * the same way `signal`/`traceContext` forward. Bureau's durable catalog
+   * dispatch (`bureau.run`) reads this back off the resolved `RunOptions` to
+   * record the run's owner exactly as `Bureau.createRun` does. `undefined`
+   * — the default — means this run carries no attribution.
+   */
+  principal?: string | undefined;
+  /**
+   * The AB-92/AB-252 injectable runtime-service seam: wall time, monotonic
+   * time, timers, identifiers, randomness, and deferred-work tracking.
+   * `createActiveRun` resolves `options.runtime ?? createDefaultRuntimeServices()`
+   * exactly once at construction and snapshots the resolved instance into
+   * the run — nothing downstream reads `options.runtime` again or falls
+   * back to a global. Unconfigured (the default), a run reads the real
+   * globals via `createDefaultRuntimeServices()`; a test composes its own
+   * deterministic instance with `createManualRuntimeServices()` from
+   * `@repo/operative`.
+   */
+  runtime?: RuntimeServices | undefined;
+}
+
+/**
+ * Options for the agent loop.
+ *
+ * `runId` and `steering` are a discriminated pair (AB-236, per AB-67's
+ * ratified contract): a run configured with `steering` always has a stable
+ * run identity, because `runStep`'s AB-221 `steering.applied` dispatch
+ * stamps `SteeringEffectiveState.appliedAtRunId` from `runId` and has no
+ * honest value to fall back to when it's absent — a steering-enabled run
+ * with no `runId` would silently never fire that event (see the "declared,
+ * tested gap" comment on `runId` above `runStep`'s boundary read in
+ * `run-step.ts`). AB-67's decision record names two ways to close it: make
+ * `runId` required whenever `steering` is set, or synthesize one through the
+ * identifier seam AB-214 introduces. AB-214 has not merged as of this
+ * change, so this is the type-level option — a caller who omits `runId` on
+ * a steering-enabled `RunOptions` literal gets a compile error, not a
+ * silently-dropped event. When AB-214 merges, `createActiveRun` may instead
+ * synthesize a `runId`, which would let this constraint relax; that is a
+ * separate, later decision, not made here.
+ *
+ * Migration: a caller constructing a steering-enabled `RunOptions` (or
+ * calling `executeLoop`/`buildStepDeps`/`createActiveRun` with one) must
+ * now also supply `runId`. A run with no `steering` is unaffected — `runId`
+ * stays optional there, exactly as before.
+ *
+ * Both fields are `readonly`: a plain (non-`readonly`) `runId`/`steering`
+ * would let a helper holding a type-checked, valid `RunOptions` reach into
+ * it after the fact — `o.runId = undefined` or `o.steering = gate` — and
+ * reintroduce the exact silently-missing-`runId` shape this type exists to
+ * rule out, since TypeScript checks a property WRITE against the union's
+ * combined property type, not against the cross-property pairing. `readonly`
+ * makes both assignments a compile error through any `RunOptions`-typed
+ * reference, matching every other field on `RunOptionsBase` and this
+ * package's immutability-via-spread convention — an object still spreads
+ * cleanly to swap either field, only in-place mutation is blocked.
+ *
+ * The second arm's `steering` is itself optional (`SteeringGate | undefined`),
+ * not required, once `runId` is present — deliberately, so a caller
+ * forwarding an already-`SteeringGate | undefined`-typed value alongside a
+ * definite `runId` (e.g. a helper that always has a stable run identity but
+ * only conditionally steers) matches this arm without a cast or a runtime
+ * branch first. The invariant this type exists to enforce is one-directional
+ * — `steering` (when it holds an actual gate) requires `runId` — not the
+ * reverse; plenty of callers legitimately supply `runId` with no steering
+ * intention at all (bubble-event stamping, durable/session-owned runs). What
+ * the union still forbids, in both arms, is a REAL `SteeringGate` with no
+ * `runId`: that shape satisfies neither arm (the first requires `steering`
+ * to be exactly `undefined`; the second requires `runId`), so it remains a
+ * compile error.
+ */
+export type RunOptions = RunOptionsBase &
+  (
+    | {
+        /**
+         * Run id, used to stamp curated `tool.*` bubble events. Optional
+         * when `steering` is absent — only supplied when the run has a
+         * stable identity (session-owned runs).
+         */
+        readonly runId?: string | undefined;
+        readonly steering?: undefined;
+      }
+    | {
+        /**
+         * Required whenever `steering` holds an actual `SteeringGate` —
+         * see this type's doc comment. Used to stamp curated `tool.*`
+         * bubble events AND `SteeringEffectiveState.appliedAtRunId`.
+         */
+        readonly runId: string;
+        /**
+         * The AB-67 runtime steering gate: read at every step's `runStep`
+         * entry boundary to consult desired route/model/provider/effort
+         * configuration and gate a `paused: true` desired state until a
+         * matching `resume` (or the run's `AbortSignal`) releases it.
+         * Optional here too — this arm exists to let a `runId`-carrying
+         * caller pass a possibly-`undefined` `SteeringGate` through
+         * unbranched (see this type's doc comment); the AC this type
+         * enforces is that an actually-PRESENT gate requires `runId`, not
+         * that `runId` requires a gate.
+         */
+        readonly steering?: SteeringGate | undefined;
+      }
+  );
+
+/**
+ * Context for streaming generate functions.
+ */
+export interface StreamingHandle {
+  update: (content: string) => void;
+  messageId: string;
+  /**
+   * Live channel for structured events the text-only `update` cannot carry.
+   *
+   * A `StreamingGenerateFunction` calls this the moment the provider reports a
+   * tool call, so a wrapper can surface `stream:tool-call-start` and
+   * `stream:tool-call-delta` while the response is still open rather than
+   * reconstructing them from the resolved `GenerateResponse`.
+   *
+   * Optional on both sides: a wrapper installs it only when it wants live
+   * events (`withEnhancedStreaming`'s `liveToolCalls` option), and an adapter
+   * calls it as `streaming.report?.(...)`, so neither half has to know whether
+   * the other opted in.
+   */
+  report?: ((event: LiveStreamEvent) => void) | undefined;
+}
+
+/**
+ * A generate function that supports streaming.
+ */
+export type StreamingGenerateFunction = (
+  context: GenerateContext & { streaming: StreamingHandle },
+) => Promise<GenerateResponse>;

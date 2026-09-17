@@ -1,0 +1,491 @@
+import { isPlainRecord } from '../../worker/manifest/is-plain-record.ts';
+import { ActivityRegistry } from '../activity-registry.ts';
+import { WorkflowDefinitionRegisteredEvent } from '../events.ts';
+import {
+  activity,
+  validateDefinitionSchemaMetadata,
+  type ActivityDefinition,
+  type QueryDefinition,
+  type SignalDefinition,
+  type UpdateDefinition,
+  type WorkflowConcurrencyOptions,
+  type WorkflowDefinition,
+} from '../types.ts';
+import { clonePlain } from '../types/clone-plain.ts';
+import { validateWorkflowOrActivityName } from '../types/name-grammar.ts';
+import { DEFAULT_WORKFLOW_VERSION } from '../versioning.ts';
+import type { RegistrationEntry } from './engine-internal-types.ts';
+import type { EngineInternals } from './internals.ts';
+import { normalizeRetentionPolicy } from './validation.ts';
+
+export type RegistrationCallbacks = {
+  ensureRetentionSweepInterval: () => void;
+  dispatchEvent: (event: Event) => void;
+};
+
+function copiedTags(tags: ReadonlyArray<string> | undefined): string[] | undefined {
+  return tags === undefined ? undefined : [...tags];
+}
+
+/**
+ * Structural predicate for the runtime shape produced by
+ * `workflow({ name }).execute(fn)`: an object carrying `name` and `handler`.
+ * Package-internal — the dynamic workflow-source validation pipeline
+ * (`core/source/validate.ts`, WFT-13/14) validates a loaded export against
+ * the stricter {@link isBuilderWorkflowDefinition} instead, which already
+ * implies this check, so this predicate has no cross-module caller today.
+ */
+function isWorkflowDefinition(value: unknown): value is WorkflowDefinition {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'name' in value &&
+    'handler' in value &&
+    typeof (value as { handler: unknown }).handler === 'function'
+  );
+}
+
+/**
+ * Reject constraints on a workflow definition when the engine has no
+ * inline execution strategy. Exported so `dynamic-source-execution.ts`
+ * (WFT-15/16) can apply the identical guard to a dynamically-resolved
+ * definition — see that module's own call site.
+ */
+export function assertConstraintsSupported(
+  internals: EngineInternals,
+  name: string,
+  registration: WorkflowDefinition,
+): void {
+  if (!registration.constraints || registration.constraints.length === 0) {
+    return;
+  }
+  // Constraints are only evaluated by the inline execution strategy —
+  // `evaluateConstraints` reads per-workflow context via
+  // `internals.inlineStrategy.getContext(...)`. In worker execution mode the
+  // inline strategy is absent, so every constraint would be silently
+  // skipped. Fail loud at registration time rather than swallowing the
+  // invariant at runtime.
+  if (internals.inlineStrategy === null) {
+    throw new Error(
+      `Cannot register workflow "${name}" with constraints: constraints are not supported in worker execution mode. ` +
+        `The engine was constructed with \`workerExecution\`, which runs workflows in a Web Worker where the inline ` +
+        `execution context required by constraint evaluation is unavailable. Remove the \`constraints\` option, or ` +
+        `construct the engine without \`workerExecution\` to run workflows inline.`,
+    );
+  }
+}
+
+function buildBaseRegistrationEntry(
+  name: string,
+  registration: WorkflowDefinition,
+): RegistrationEntry {
+  const tags = copiedTags(registration.tags);
+  const normalizedRetention = normalizeRetentionPolicy(
+    registration.retention,
+    `registration("${name}").retention`,
+  );
+  return {
+    handler: registration.handler,
+    version: registration.version ?? DEFAULT_WORKFLOW_VERSION,
+    ...(registration.description === undefined ? {} : { description: registration.description }),
+    ...(tags === undefined ? {} : { tags }),
+    ...(registration.inputSchema === undefined
+      ? {}
+      : {
+          inputSchema: validateDefinitionSchemaMetadata(
+            registration.inputSchema,
+            `registration("${name}").inputSchema`,
+          ),
+        }),
+    ...(registration.outputSchema === undefined
+      ? {}
+      : {
+          outputSchema: validateDefinitionSchemaMetadata(
+            registration.outputSchema,
+            `registration("${name}").outputSchema`,
+          ),
+        }),
+    ...(normalizedRetention !== null && { retention: normalizedRetention }),
+    ...(registration.concurrency !== undefined
+      ? {
+          concurrency: normalizeWorkflowConcurrencyOptions(
+            registration.concurrency,
+            `registration("${name}").concurrency`,
+          ),
+        }
+      : {}),
+  };
+}
+
+function normalizeWorkflowConcurrencyOptions(
+  concurrency: WorkflowConcurrencyOptions,
+  fieldName: string,
+): WorkflowConcurrencyOptions {
+  if (!Number.isInteger(concurrency.max) || concurrency.max < 1) {
+    throw new RangeError(`${fieldName}.max must be a positive integer`);
+  }
+  if (concurrency.key !== undefined && typeof concurrency.key !== 'function') {
+    throw new TypeError(`${fieldName}.key must be a function when provided`);
+  }
+  return Object.freeze({
+    max: concurrency.max,
+    ...(concurrency.key === undefined ? {} : { key: concurrency.key }),
+  });
+}
+
+function applyOptionalRegistrationFields(
+  entry: RegistrationEntry,
+  registration: WorkflowDefinition,
+): void {
+  if (registration.searchAttributes && Object.keys(registration.searchAttributes).length > 0) {
+    entry.searchAttributes = registration.searchAttributes;
+  }
+  if (registration.constraints && registration.constraints.length > 0) {
+    entry.constraints = registration.constraints;
+  }
+  if (registration.finalizer !== undefined) {
+    // Stored as-declared. The teardown drive (#446 Phase 2) resolves it from this
+    // entry by the workflow's durable `state.type` and narrows it to the
+    // structural `RunnableFinalizer` it invokes — see `runWorkflowFinalizer`.
+    // Finalizers are host-side trusted activity code. workflowExecutionMode:'worker'
+    // isolates only the workflow generator; the finalizer always runs on the engine
+    // host via runFinalizerActivity (see #564).
+    entry.finalizer = registration.finalizer;
+  }
+}
+
+/**
+ * Build the `RegistrationEntry` `engine.register()` would store for
+ * `registration`, without committing anything — pure normalization
+ * (base fields, optional fields, and, for a builder-produced definition,
+ * signal/update/query name-collision checks). Exported so the dynamic
+ * workflow-source validation pipeline (`core/source/validate.ts`, WFT-13/14)
+ * can normalize a loaded module's exported definition through the identical
+ * path `engine.register()` uses, rather than re-deriving a
+ * `RegistrationEntry` independently and risking the two producers drifting
+ * apart.
+ *
+ * @example
+ * ```ts
+ * import { workflow } from '@repo/weft';
+ *
+ * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
+ *   return `hello ${input}`;
+ * });
+ * console.log(greet.name);
+ * ```
+ */
+export function buildRegistrationEntry(
+  name: string,
+  registration: WorkflowDefinition,
+): RegistrationEntry {
+  const entry = buildBaseRegistrationEntry(name, registration);
+  applyOptionalRegistrationFields(entry, registration);
+  if (isBuilderWorkflowDefinition(registration)) {
+    entry.signals = normalizeMessageDefinitions(name, 'signal', registration.signals);
+    entry.updates = normalizeMessageDefinitions(name, 'update', registration.updates);
+    entry.queries = normalizeMessageDefinitions(name, 'query', registration.queries);
+  }
+  return entry;
+}
+
+/**
+ * Visit every RESOLVED `registerSource()`-registered type's normalized
+ * retention policy (via {@link buildRegistrationEntry}) — the dynamic-source
+ * counterpart to walking `internals.registrations.values()` directly for an
+ * eager type. Used by `bulk-operations-purge.ts` so a dynamic workflow's own
+ * (possibly shorter) retention window narrows the purge sweep's scan bound
+ * the same way an eager registration's does.
+ */
+export function forEachResolvedDynamicRetentionPolicy(
+  internals: EngineInternals,
+  visit: (policy: RegistrationEntry['retention']) => void,
+): void {
+  for (const [type, revisions] of internals.sources.resolved) {
+    for (const resolved of revisions.values()) {
+      visit(buildRegistrationEntry(type, resolved.definition).retention);
+    }
+  }
+}
+
+/**
+ * True when at least one `registerSource()`-registered type has a
+ * registered candidate revision this process has NOT yet resolved — its
+ * retention policy (and everything else `buildRegistrationEntry` would
+ * derive) is genuinely unknown, so `getMinimumRetentionMs()`'s scan-bound
+ * optimization in `bulk-operations-purge.ts` cannot be trusted (WFT-19
+ * review round 1): it silently excluded exactly this class of workflow
+ * from the periodic retention sweep's scan bound, since an unresolved
+ * candidate's possibly-shorter-than-default retention window was invisible
+ * to the minimum computation. Used to fall back to an unbounded terminal
+ * scan while any such candidate remains unresolved — self-healing once
+ * `shouldPurgeWorkflowState`'s own per-run resolve installs it.
+ */
+export function hasUnresolvedDynamicSourceCandidate(internals: EngineInternals): boolean {
+  for (const [type, byRevision] of internals.sources.byName) {
+    const resolvedForType = internals.sources.resolved.get(type);
+    for (const revision of byRevision.keys()) {
+      if (resolvedForType?.has(revision) !== true) return true;
+    }
+  }
+  return false;
+}
+
+type RuntimeNamedMessageDefinition = {
+  readonly name: string;
+};
+
+function normalizeMessageDefinitions<TDefinition extends RuntimeNamedMessageDefinition>(
+  workflowType: string,
+  messageKind: 'signal' | 'update' | 'query',
+  definitions: Readonly<Record<string, TDefinition>>,
+): Readonly<Record<string, TDefinition>> {
+  const normalized = Object.create(null) as Record<string, TDefinition>;
+  const sortedDefinitions = Object.values(definitions).toSorted((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  );
+  for (const definition of sortedDefinitions) {
+    if (Object.hasOwn(normalized, definition.name)) {
+      throw new Error(
+        `Duplicate ${messageKind} runtime name "${definition.name}" in workflow "${workflowType}"`,
+      );
+    }
+    normalized[definition.name] = definition;
+  }
+  return normalized;
+}
+
+function commitWorkflowDefinition(
+  internals: EngineInternals,
+  definition: WorkflowDefinition,
+  callbacks: RegistrationCallbacks,
+): void {
+  const name = definition.name;
+  validateWorkflowOrActivityName(name, 'workflow');
+  // Symmetric to `registerSource()`'s own eager-name collision check
+  // (`core/engine/source-registration.ts`, WFT-13/14): a workflow name may
+  // not be both eagerly registered and a dynamic source.
+  if (internals.sources.byName.has(name)) {
+    throw new Error(
+      `Cannot register("${name}"): "${name}" is already registered as a dynamic workflow source ` +
+        'via engine.registerSource(). A workflow name may not be both eagerly registered and a dynamic source.',
+    );
+  }
+  assertConstraintsSupported(internals, name, definition);
+  const entry = buildRegistrationEntry(name, definition);
+  internals.registrations.set(name, entry);
+  callbacks.ensureRetentionSweepInterval();
+  internals.workflowTypesByHandler.set(definition.handler, name);
+  // Invalidate any stale `registeredCatalogRevisions` entry for `name`
+  // (WFT-17): that map is populated only by the ASYNC drain below, once per
+  // pending install, so it can lag `internals.registrations` between this
+  // synchronous commit and the next drain completing. `resolveCachedStartRevision()`
+  // (`lifecycle/start.ts`) reads this map SYNCHRONOUSLY for an internal
+  // start that bypasses the top-level `ensureWorkflowCatalogReady()` gate
+  // (`ctx.startChild()`, a scheduled occurrence firing mid-drain) — without
+  // this delete, such a start could read the PREVIOUS manifest's revision
+  // for code that has already been replaced in `internals.registrations`.
+  // A no-op for the ordinary first-time-registration case (nothing to
+  // delete yet); `checkWorkflowCollision`'s idempotent (same-reference)
+  // branch returns before ever reaching this function, so a routine
+  // re-`register()` call of an unchanged definition never pays this cost.
+  internals.registeredCatalogRevisions.delete(name);
+  // `engine.register()` stays synchronous — it cannot itself build a
+  // manifest (that requires `crypto.subtle`) — so it defers the actual
+  // durable catalog install/activation to the next
+  // `ensureWorkflowCatalogReady` call instead of touching storage here.
+  if (!internals.pendingCatalogInstalls.includes(name)) {
+    internals.pendingCatalogInstalls.push(name);
+  }
+  callbacks.dispatchEvent(new WorkflowDefinitionRegisteredEvent(name));
+}
+
+/**
+ * Heuristic detector for `BuiltWorkflowDefinition` — the runtime shape returned
+ * by `workflow({ name }).execute(...)`. We test for the per-message-kind maps
+ * the builder writes (`activities`, `signals`, `updates`, `queries`,
+ * `searchAttributes`) directly on the definition. We do not import the
+ * type from `workflow-builder.ts` to avoid a cycle with the engine package;
+ * the runtime check is sufficient because the builder is the only producer of
+ * objects with all five fields as plain `Readonly<Record<string, ...>>`.
+ *
+ * Uses {@link isPlainRecord}, not a bare `typeof === 'object' && !== null` check —
+ * the latter also accepts an array, `Map`, `Date`, or another exotic-prototype
+ * value. For a malformed loader export in the dynamic workflow-source
+ * validation pipeline (`core/source/validate.ts`, WFT-13/14), a field like
+ * `activities: new Map(...)` would otherwise pass this structural check,
+ * then `Object.values(...)` on it downstream silently yields an empty
+ * collection — installing a manifest that quietly omits the source's
+ * intended activities/messages instead of being rejected as
+ * `invalid-definition`.
+ */
+function hasNonNullObjectField(value: object, key: string): boolean {
+  if (!(key in value)) return false;
+  const fieldValue = (value as { [k: string]: unknown })[key];
+  return isPlainRecord(fieldValue);
+}
+
+/**
+ * Structural predicate for `BuiltWorkflowDefinition` — the runtime shape
+ * `workflow({ name }).execute(...)` returns. Exported so the dynamic
+ * workflow-source validation pipeline (`core/source/validate.ts`, WFT-13/14)
+ * can reject a loaded export that is a hand-rolled `{ name, handler }`
+ * literal rather than a builder-produced definition — the same "removed
+ * bare-handler shape" rejection `engine.register()` itself applies via
+ * {@link buildRegistrationEntry}.
+ *
+ * @example
+ * ```ts
+ * import { workflow } from '@repo/weft';
+ *
+ * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
+ *   return `hello ${input}`;
+ * });
+ * console.log(typeof greet.activities === 'object');
+ * ```
+ */
+export function isBuilderWorkflowDefinition(value: unknown): value is WorkflowDefinition & {
+  readonly activities: Readonly<Record<string, Readonly<ActivityDefinition>>>;
+  readonly signals: Readonly<Record<string, Readonly<SignalDefinition<unknown>>>>;
+  readonly updates: Readonly<Record<string, Readonly<UpdateDefinition<unknown>>>>;
+  readonly queries: Readonly<Record<string, Readonly<QueryDefinition<unknown>>>>;
+  readonly searchAttributes: Readonly<Record<string, unknown>>;
+} {
+  if (!isWorkflowDefinition(value)) return false;
+  return (
+    hasNonNullObjectField(value, 'activities') &&
+    hasNonNullObjectField(value, 'signals') &&
+    hasNonNullObjectField(value, 'updates') &&
+    hasNonNullObjectField(value, 'queries') &&
+    hasNonNullObjectField(value, 'searchAttributes')
+  );
+}
+
+// `clonePlain` is imported from `../types/clone-plain.ts` — see the import at
+// the top of this file. The engine's defensive deep clone of activity option
+// subtrees uses the same helper as the builder.
+
+/**
+ * Build a fresh per-workflow {@link ActivityRegistry} from a builder workflow's
+ * activities map. Each entry is defensively deep-cloned and then turned into a
+ * fresh `ActivityCallable` via {@link activity}, so the engine's registry holds
+ * its own callable references and the user's `BuiltWorkflowDefinition` cannot
+ * influence dispatch by post-registration mutation.
+ *
+ * Exported so the dynamic workflow-source validation pipeline
+ * (`core/source/validate.ts`, WFT-13/14) can build the same
+ * uncommitted-but-canonical per-workflow registry for a loaded module's
+ * export that `engine.register()` builds for an eagerly registered one —
+ * required so {@link import('../registry-workflow-manifest.ts').buildWorkflowManifestFromDefinition}
+ * produces byte-identical manifests for the two paths.
+ *
+ * @example
+ * ```ts
+ * import { workflow } from '@repo/weft';
+ *
+ * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
+ *   return `hello ${input}`;
+ * });
+ * console.log(Object.keys(greet.activities).length);
+ * ```
+ */
+export function buildPerWorkflowActivityRegistry(
+  activities: Readonly<Record<string, Readonly<ActivityDefinition>>>,
+): ActivityRegistry {
+  const registry = new ActivityRegistry();
+  for (const definition of Object.values(activities)) {
+    const clonedDefinition = clonePlain(definition);
+    // Re-running `activity(...)` rebuilds the callable, validates the name
+    // against the wire-safe grammar, and freezes the colocated metadata
+    // independently from the user's frozen input. The resulting object is the
+    // canonical entry stored in the per-workflow registry.
+    const callable = activity(clonedDefinition);
+    registry.register(callable.name, callable);
+  }
+  return registry;
+}
+
+/**
+ * Apply the runtime collision rule for `engine.register(workflow)`. Same
+ * `WorkflowDefinition` object reference re-registered is a no-op (idempotent
+ * return value `true`). Same-name-but-different-object throws. Same-reference
+ * detection uses identity equality (`===`); deep equality is intentionally not
+ * considered because the builder freezes the returned definition, so two
+ * builder outputs are only equal by reference.
+ */
+/**
+ * Read-only collision check. Returns whether the registration is a no-op
+ * (same reference), throws on name-already-registered-with-different-ref, or
+ * returns "register" when the name is new. Callers are responsible for the
+ * actual `set` once subsequent registration steps succeed — splitting check
+ * from commit ensures a mid-registration failure cannot leave an orphan
+ * entry in `workflowDefinitionsByName` that would make later retries falsely
+ * report idempotency.
+ */
+function checkWorkflowCollision(
+  internals: EngineInternals,
+  name: string,
+  definition: object,
+): { kind: 'idempotent' } | { kind: 'register' } {
+  const existing = internals.workflowDefinitionsByName.get(name);
+  if (existing === undefined) {
+    return { kind: 'register' };
+  }
+  if (existing === definition) {
+    return { kind: 'idempotent' };
+  }
+  throw new Error(`Workflow "${name}" is already registered with a different definition`);
+}
+
+export function register(
+  internals: EngineInternals,
+  definition: unknown,
+  callbacks: RegistrationCallbacks,
+): void {
+  if (!isWorkflowDefinition(definition)) {
+    throw new TypeError(
+      'engine.register() expects a WorkflowDefinition (produced by `workflow({ name }).execute(fn)`) or an ActivityDefinition.',
+    );
+  }
+  if (isBuilderWorkflowDefinition(definition)) {
+    const decision = checkWorkflowCollision(internals, definition.name, definition);
+    if (decision.kind === 'idempotent') return;
+    // Build the per-workflow ActivityRegistry before any commits so an
+    // activity-metadata failure leaves zero state behind. Commit both maps
+    // (workflowDefinitionsByName + activityRegistriesByWorkflow) together
+    // after every fallible step has succeeded — if `commitWorkflowDefinition`
+    // throws below, neither commit happens and a retry sees the workflow as
+    // still unregistered.
+    const perWorkflowRegistry = buildPerWorkflowActivityRegistry(definition.activities);
+    commitWorkflowDefinition(internals, definition, callbacks);
+    internals.workflowDefinitionsByName.set(definition.name, definition);
+    internals.activityRegistriesByWorkflow.set(definition.name, perWorkflowRegistry);
+    return;
+  }
+  // Plain `WorkflowDefinition` (the runtime shape returned by the builder
+  // before `.activities()` / `.signals()` / etc. populate the per-workflow
+  // maps). The builder always populates those maps to empty objects, so this
+  // branch only fires for hand-rolled `WorkflowDefinition` literals — which
+  // are still valid because the public type is structural.
+  commitWorkflowDefinition(internals, definition, callbacks);
+}
+
+export function resolveWorkflowTypeTarget(
+  internals: EngineInternals,
+  target: string | Function,
+  _callbacks: RegistrationCallbacks,
+): string {
+  if (typeof target === 'string') {
+    return target;
+  }
+
+  const registeredType = internals.workflowTypesByHandler.get(target);
+  if (registeredType) {
+    return registeredType;
+  }
+
+  throw new Error(
+    'Workflow functions used in composition operators must be registered before use. ' +
+      'Pass the registered workflow type string or register the function on the engine first.',
+  );
+}

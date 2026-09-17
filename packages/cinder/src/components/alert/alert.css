@@ -1,0 +1,153 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * ALERT
+ * ======================================== */
+
+  /*
+ * Alert's info hue. The global `--cinder-status-info-solid` token now exists in
+ * tokens-base.css, but Alert keeps a component-local base whose dark arm sits
+ * at a slightly higher chroma (0.15 vs the global 0.13) — the tint Alert was
+ * designed around. Scoped to `.cinder-alert` so it does not bleed elsewhere.
+ * Reconciling this with the global token is a separate visual-design decision.
+ */
+  .cinder-alert {
+  }
+
+  .cinder-alert {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-3);
+    inline-size: 100%;
+    padding: var(--cinder-space-4);
+    border-radius: var(--cinder-radius-lg);
+    border: 1px solid var(--cinder-border);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* ----------------------------------------
+ * Icon slot
+ * ---------------------------------------- */
+
+  .cinder-alert__icon {
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    /* Nudge down 1px to optically align with the first line of body text */
+    margin-block-start: 1px;
+  }
+
+  .cinder-alert__icon svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ----------------------------------------
+ * Content area
+ * ---------------------------------------- */
+
+  .cinder-alert__content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ----------------------------------------
+ * Dismiss button
+ * ---------------------------------------- */
+
+  /* Box-model reset, hit-area, and idle :hover live on .cinder-_dismiss-button
+ * (see src/styles/components.css). Only Alert-specific layout positioning
+ * and status-driven focus chrome live here.
+ *
+ * Layout note: the button sits as a flex sibling so it never overlaps the
+ * content. Its box height is sized to the body line-height (1.25rem) so a
+ * dismissible alert is the same height as a non-dismissible one — the
+ * WCAG 2.5.5 hit-area expansion happens via the shared ::after pseudo-
+ * element, which is absolutely positioned and doesn't influence layout. */
+  .cinder-alert__dismiss {
+    align-self: flex-start;
+
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-alert__dismiss:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-alert-ring, var(--cinder-ring-color));
+  }
+
+  @media (forced-colors: active) {
+    .cinder-alert__dismiss:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+  }
+
+  .cinder-alert__dismiss-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  /* ----------------------------------------
+ * Status variants
+ *
+ * The soft-surface background + foreground + border algebra lives in the
+ * shared `_status-surface.css` partial, consumed via `.cinder-_status-surface`
+ * and `.cinder-_status-surface-border` on the root (see alert.svelte), the
+ * same composition Banner uses. Each variant sets the partial's inputs (base
+ * color + per-variant foreground chroma) plus the alert-local focus-ring color.
+ *
+ * NOTE (CSS audit, Batch D): the soft surface is synthesized rather than read
+ * from the `--cinder-color-{status}-{bg,fg,border}` triples because the
+ * dark-theme triple background sits ~8 oklch-L points lighter (28% vs 20% L),
+ * exceeding the 0.02 ΔL threshold. See documentation/css-audit/status-triple-equivalence.md.
+ *
+ * NOTE (post-P7 reversal): P7 previously shed Alert's status-colored frame,
+ * because the pre-P7 border was a hand-tuned saturated color sub-3:1 against
+ * the tint (Batch-D audit) — not a reliable non-color cue. Alert now composes
+ * `.cinder-_status-surface-border`, the SAME accessibility-checked soft-border
+ * recipe Banner uses, rather than reviving that saturated color. Do not
+ * hand-roll a border color here; if the soft border's contrast is ever found
+ * insufficient, fix it once in `_status-surface.css` for both consumers.
+ * ---------------------------------------- */
+
+  .cinder-alert[data-cinder-variant='info'] {
+    --_cinder-alert-ring: var(--cinder-alert-info);
+    --_cinder-status-base: var(--cinder-alert-info);
+    --_cinder-status-fg-chroma-light: 0.12;
+    --_cinder-status-fg-chroma-dark: 0.12;
+  }
+
+  .cinder-alert[data-cinder-variant='success'] {
+    --_cinder-alert-ring: var(--cinder-status-success-solid);
+    --_cinder-status-base: var(--cinder-status-success-solid);
+    --_cinder-status-fg-chroma-light: 0.14;
+    --_cinder-status-fg-chroma-dark: 0.12;
+  }
+
+  .cinder-alert[data-cinder-variant='warning'] {
+    --_cinder-alert-ring: var(--cinder-status-warning-solid);
+    --_cinder-status-base: var(--cinder-status-warning-solid);
+    --_cinder-status-fg-chroma-light: 0.16;
+    --_cinder-status-fg-chroma-dark: 0.14;
+  }
+
+  .cinder-alert[data-cinder-variant='danger'] {
+    --_cinder-alert-ring: var(--cinder-status-danger-solid);
+    --_cinder-status-base: var(--cinder-status-danger-solid);
+    --_cinder-status-fg-chroma-light: 0.18;
+    --_cinder-status-fg-chroma-dark: 0.16;
+  }
+}

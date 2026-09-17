@@ -1,0 +1,78 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+    },
+    value: {
+      type: 'string',
+    },
+    granularity: {
+      enum: ['minute', 'second'],
+    },
+    timezones: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+    },
+    timezone: {
+      type: 'string',
+    },
+    timezoneName: {
+      type: 'string',
+    },
+    label: {
+      type: 'string',
+    },
+    description: {
+      type: 'string',
+    },
+    error: {
+      type: 'string',
+    },
+    disabled: {
+      type: 'boolean',
+    },
+    readonly: {
+      type: 'boolean',
+    },
+    required: {
+      type: 'boolean',
+    },
+    name: {
+      type: 'string',
+    },
+    class: {
+      type: 'string',
+    },
+    'aria-label': {
+      type: 'string',
+    },
+    'aria-labelledby': {
+      type: 'string',
+    },
+    'aria-describedby': {
+      type: 'string',
+    },
+    'aria-invalid': {
+      enum: [false, true, 'true', 'false'],
+    },
+  },
+  additionalProperties: false,
+  required: ['id'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+        description: 'Called when the user commits a time or timezone change.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

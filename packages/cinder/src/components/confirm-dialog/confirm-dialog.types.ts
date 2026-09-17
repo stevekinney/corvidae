@@ -1,0 +1,66 @@
+import type { DialogCancelProps } from '../../utilities/dialog-props.ts';
+
+/**
+ * A thin opinionated preset over `<Modal>` for destructive-action confirmations.
+ *
+ * Composes `<Modal>` + two `<Button>`s. Does not open its own `<dialog>` or manage
+ * its own focus trap — all of that is owned by `<Modal>`.
+ *
+ * Default focus lands on the **cancel** button (`autofocus`) — the industry-standard
+ * guard against accidental destructive confirms.
+ *
+ * For richer body content (markup, lists, multi-paragraph text), compose `<Modal>` +
+ * `<Button>` directly. `aria-describedby` works best with short, plain-text descriptions.
+ */
+/**
+ * Cancel semantics (shared vocabulary from {@link DialogCancelProps}): the
+ * cancel button ALWAYS renders, defaulting its label to "Cancel". `onCancel`
+ * fires on every dismissal affordance — cancel button, Escape, backdrop
+ * click, or the close-X — but NOT on parent-driven `open = false`; callbacks
+ * are not awaited and thrown callbacks do not block close.
+ */
+export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
+  /**
+   * Label for the cancel button, which ALWAYS renders.
+   * @default 'Cancel'
+   */
+  cancelLabel?: string;
+  /** Controls visibility. Bindable. */
+  open: boolean;
+  /** Modal title; passed through to <Modal>. */
+  title: string;
+  /**
+   * Optional body description — short, plain text only. Rendered as a single <p> and wired
+   * to aria-describedby. For rich content (markup, lists, multiple paragraphs), compose
+   * <Modal> + <Button> directly — screen readers announce aria-describedby targets as one
+   * continuous run.
+   */
+  description?: string;
+  /**
+   * Confirm button label. Required — no default. Name the action being confirmed:
+   * - Destructive: "Delete", "Discard changes", "Remove from organization".
+   * - Non-destructive: "Save", "Continue", "Publish".
+   * Never use "OK" or "Confirm" in production — they don't describe the action.
+   */
+  confirmLabel: string;
+  /**
+   * When true, the confirm button uses variant="danger". The cancel button still
+   * receives default focus regardless — color is never the sole destructive signal.
+   */
+  destructive?: boolean;
+  /**
+   * When set, renders a labelled text input and disables the confirm button until the
+   * trimmed input matches this value case-insensitively.
+   */
+  typeToConfirm?: string;
+  /** Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`. */
+  typeToConfirmLabel?: string;
+  /** Fired when the user activates the confirm button. Required. Component closes itself after. */
+  onConfirm: () => void;
+  /** Fired once the underlying modal's exit transition has completed. */
+  onExitComplete?: () => void;
+  /** Forwarded to <Modal>; focus is restored here on close. */
+  triggerRef?: HTMLElement | null;
+  /** Optional extra class on the underlying <Modal>. Destructured as `class: className` per repo convention. */
+  class?: string;
+};

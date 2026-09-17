@@ -1,0 +1,161 @@
+/**
+ * Hand-rolled JSON tokenizer for inline syntax highlighting.
+ *
+ * Parses the input first with `JSON.parse` to confirm it is well-formed JSON;
+ * non-JSON input falls through to plain (escaped) text. When parsing succeeds,
+ * walks the original source string with a small state machine and wraps each
+ * token in a `<span class="cinder-json-token cinder-json-token-{kind}">`.
+ *
+ * **HTML-safety invariant.** Every byte of the input is HTML-escaped before
+ * being placed in the output. Token spans are constructed from a fixed set of
+ * class names plus escaped text. The output is therefore safe to render via
+ * Svelte's `{@html}`. Future maintainers must keep the escape step — do not
+ * route raw input into the output.
+ *
+ * Returns a `<code class="cinder-json">…</code>` snippet only. The caller wraps
+ * it in `<pre>` so headed and headerless code blocks share container styling.
+ */
+
+const KEYWORDS = [
+  { value: 'true', kind: 'boolean' },
+  { value: 'false', kind: 'boolean' },
+  { value: 'null', kind: 'null' },
+];
+const PUNCTUATION = new Set(['{', '[', '}', ']', ',', ':']);
+
+// Only escape characters that are syntactically meaningful in HTML *text*
+// content. The double-quote needs escaping only inside attribute values, and
+// every quote in our output sits inside text nodes — escaping it would change
+// what users see when copying the rendered string.
+function escapeHtml(text: string): string {
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function span(kind: string, raw: string): string {
+  return `<span class="cinder-json-token cinder-json-token-${kind}">${escapeHtml(raw)}</span>`;
+}
+
+function plainCode(raw: string): string {
+  return `<code class="cinder-json">${escapeHtml(raw)}</code>`;
+}
+
+/**
+ * Read a JSON string token starting at `source[index]` (which is `"`).
+ * Returns the literal source slice including the surrounding quotes.
+ */
+function readStringLiteral(source: string, startIndex: number): string {
+  const stringPattern = /"(?:\\.|[^"\\])*"/y;
+  stringPattern.lastIndex = startIndex;
+  const match = stringPattern.exec(source);
+  return match?.[0] ?? source[startIndex] ?? '';
+}
+
+/**
+ * Read a JSON number token starting at `source[startIndex]`. Numbers consist of
+ * an optional minus, integer digits, an optional fractional part, and an
+ * optional exponent.
+ */
+function readNumberLiteral(source: string, startIndex: number): string {
+  const numberPattern = /-?(?:\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+  numberPattern.lastIndex = startIndex;
+  const match = numberPattern.exec(source);
+  return match?.[0] ?? source[startIndex] ?? '';
+}
+
+/**
+ * Tokenize a well-formed JSON source string into highlighted markup.
+ * Caller has already verified `JSON.parse(source)` succeeds.
+ *
+ * `openerStack` tracks the currently-open container kinds left-to-right.
+ * After a comma, the top of the stack tells us whether we're inside an
+ * object (next string is a key) or an array (next string is a value).
+ * Avoids the previous O(n²) backward scan and naturally handles strings
+ * with escaped quotes — no scan that could misread `\"` as a real boundary.
+ */
+function tokenize(source: string): string {
+  let output = '';
+  let index = 0;
+  let pendingKey = false;
+  const openerStack: Array<'{' | '['> = [];
+
+  while (index < source.length) {
+    const character = source[index];
+    if (character === undefined) break;
+    if (/^[ \t\n\r]$/.test(character)) {
+      output += escapeHtml(character);
+      index += 1;
+    } else if (PUNCTUATION.has(character)) {
+      output += span('punctuation', character);
+      pendingKey = updateContainerState(character, openerStack, pendingKey);
+      index += 1;
+    } else {
+      const token = readValueToken(source, index, character, pendingKey);
+      output += token.markup;
+      index += token.value.length;
+    }
+  }
+  return `<code class="cinder-json">${output}</code>`;
+}
+
+function updateContainerState(
+  character: string,
+  openerStack: Array<'{' | '['>,
+  pendingKey: boolean,
+): boolean {
+  switch (character) {
+    case '{':
+    case '[':
+      openerStack.push(character);
+      return character === '{';
+    case '}':
+    case ']':
+      openerStack.pop();
+      return pendingKey;
+    case ',':
+      return openerStack[openerStack.length - 1] === '{';
+    case ':':
+      return false;
+    default:
+      return pendingKey;
+  }
+}
+
+function readValueToken(
+  source: string,
+  index: number,
+  character: string,
+  pendingKey: boolean,
+): { value: string; markup: string } {
+  if (character === '"') {
+    const value = readStringLiteral(source, index);
+    return { value, markup: span(pendingKey ? 'key' : 'string', value) };
+  }
+  if (character === '-' || (character >= '0' && character <= '9')) {
+    const value = readNumberLiteral(source, index);
+    return { value, markup: span('number', value) };
+  }
+  const keyword = KEYWORDS.find(({ value }) => source.startsWith(value, index));
+  if (keyword) return { value: keyword.value, markup: span(keyword.kind, keyword.value) };
+  return { value: character, markup: escapeHtml(character) };
+}
+
+export const jsonHighlightInternalsForTesting = { tokenize };
+
+/**
+ * Highlight a JSON value as syntax-colored HTML. Non-JSON input is returned as
+ * a plain `<code>` with the input HTML-escaped, so the caller can wrap either
+ * result in the same `<pre>` for visual parity.
+ */
+export function highlightJson(value: string): string {
+  try {
+    JSON.parse(value);
+  } catch {
+    return plainCode(value);
+  }
+  return tokenize(value);
+}
+
+/** Highlight source that has already been validated by the caller. */
+export function highlightJsonValidated(value: string): string {
+  return tokenize(value);
+}

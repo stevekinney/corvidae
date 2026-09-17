@@ -1,0 +1,363 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category overlay
+   * @status stable
+   * @purpose Root container that wires a trigger to a popover-backed menu and coordinates open state, keyboard navigation, and CSS Anchor Positioning for descendant menu parts.
+   * @tag overlay
+   * @tag menu
+   * @useWhen Composing a menu of actions or links revealed by clicking a button trigger.
+   * @useWhen Building a custom dropdown layout from dropdown-trigger, dropdown-menu, dropdown-item, dropdown-label, and dropdown-separator parts.
+   * @avoidWhen Selecting a value from a list of options — use select or combobox instead.
+   * @avoidWhen Showing supplementary content rather than a menu of choices — use popover.
+   * @related dropdown-trigger, dropdown-menu, dropdown-item, dropdown-label, dropdown-separator
+   */
+  export type { DropdownContext, DropdownPlacement, DropdownProps } from './dropdown.types.ts';
+</script>
+
+<script lang="ts">
+  import { onDestroy } from 'svelte';
+  import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
+  import { pushEscapeHandler } from '../../_internal/overlay.ts';
+  import { createClickOutside } from '../../utilities/attachments.ts';
+  import { classNames } from '../../utilities/class-names.ts';
+  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import {
+    setDropdownContext,
+    setDropdownRegister,
+    setDropdownRegisterTrigger,
+    setDropdownSetOpen,
+  } from './dropdown.context.ts';
+  import type { DropdownProps } from './dropdown.types.ts';
+
+  const generatedId = $props.id();
+
+  let {
+    id = generatedId,
+    open = $bindable(false),
+    placement = 'bottom-start',
+    class: customClassName,
+    trigger,
+    children,
+    ...rest
+  }: DropdownProps = $props();
+
+  let compoundMenuElement = $state<HTMLElement | null>(null);
+  let compoundTriggerElement = $state<HTMLElement | null>(null);
+  let compoundOpen = $state(false);
+
+  // Popover + CSS Anchor Positioning detection is deferred to after mount so
+  // the server and client produce identical initial markup (both start with the
+  // fallback {#if open} branch). Popover alone is not enough: without anchor()
+  // support, top-layer menus cannot stay positioned relative to the trigger.
+  let supportsPopover = $state(false);
+
+  // $props.id() returns a framework-managed SSR-stable identifier — always a
+  // valid CSS ident, so it can be safely interpolated into the inline
+  // `anchor-name`/`position-anchor` styles below without sanitization.
+  const menuId = `${generatedId}-menu`;
+
+  let menuElement: HTMLDivElement | undefined = $state();
+  let triggerWrapper: HTMLDivElement | undefined = $state();
+
+  const compoundMenuId = $derived(`${id}-menu`);
+  const usesLegacySnippetApi = $derived(Boolean(trigger));
+
+  function closeCompoundMenu(): void {
+    // Optional-chain the method too: when CSS Anchor Positioning is missing,
+    // the menu renders without `popover="auto"` (see dropdown-menu.svelte),
+    // and calling hidePopover() on a non-popover element throws
+    // InvalidStateError — which would prevent compoundOpen from flipping
+    // to false and leave the menu stuck open.
+    compoundMenuElement?.hidePopover?.();
+    compoundOpen = false;
+  }
+
+  function registerCompoundMenu(element: HTMLElement | null): void {
+    compoundMenuElement = element;
+  }
+
+  function registerCompoundTrigger(element: HTMLElement | null): void {
+    compoundTriggerElement = element;
+  }
+
+  function focusCompoundTrigger(): void {
+    compoundTriggerElement?.focus();
+  }
+
+  function setCompoundOpen(nextOpen: boolean): void {
+    compoundOpen = nextOpen;
+  }
+
+  setDropdownContext({
+    get menuId() {
+      return compoundMenuId;
+    },
+    get isOpen() {
+      return compoundOpen;
+    },
+    get supportsPopover() {
+      return supportsPopover;
+    },
+    get anchorElement() {
+      return compoundTriggerElement;
+    },
+    get fallbackPlacement() {
+      return placement;
+    },
+    get widthMode() {
+      return 'menu' as const;
+    },
+    get initialFocus() {
+      return undefined;
+    },
+    close: closeCompoundMenu,
+    focusTrigger: focusCompoundTrigger,
+  });
+  setDropdownRegister(registerCompoundMenu);
+  setDropdownRegisterTrigger(registerCompoundTrigger);
+  setDropdownSetOpen(setCompoundOpen);
+
+  // Keep aria-expanded on the trigger element in sync with open state.
+  $effect(() => {
+    if (!usesLegacySnippetApi) return;
+    const btn = triggerWrapper?.querySelector<HTMLElement>(
+      'button, a, [tabindex]:not([tabindex="-1"]), input, select',
+    );
+    if (!btn) return;
+    btn.setAttribute('aria-haspopup', 'menu');
+    btn.setAttribute('aria-expanded', String(open));
+    btn.setAttribute('aria-controls', menuId);
+    return () => {
+      btn.removeAttribute('aria-haspopup');
+      btn.removeAttribute('aria-expanded');
+      btn.removeAttribute('aria-controls');
+    };
+  });
+
+  $effect(() => {
+    // Runs only on the client after mount — safe to check browser APIs.
+    supportsPopover =
+      typeof HTMLElement !== 'undefined' &&
+      'showPopover' in HTMLElement.prototype &&
+      typeof CSS !== 'undefined' &&
+      typeof CSS.supports === 'function' &&
+      CSS.supports('anchor-name: --x') &&
+      CSS.supports('position-anchor: --x') &&
+      CSS.supports('top: anchor(bottom)');
+  });
+
+  // Escape ownership (CIN-428).
+  //
+  // Compound / modern branch (`compoundOpen`): covered transitively — the
+  // inner DropdownMenu registers its own escape-stack handler unconditionally
+  // on `context.isOpen`, which here reads `compoundOpen`, so it fires
+  // regardless of where focus sits (including on the trigger). No fallback
+  // handling is needed here anymore.
+  //
+  // Legacy `usesLegacySnippetApi` branch has two sub-branches sharing the
+  // `open` prop, each registering directly below: the non-popover
+  // `exitState.renderPanel` fallback gets a straightforward registration
+  // that dismisses; the native `supportsPopover` branch registers WITHOUT
+  // calling `preventDefault()` so the browser's own `popover="auto"`
+  // light-dismiss keeps working, and its `ontoggle` handler keeps `open` in
+  // sync once the browser actually closes it.
+
+  // Same element the aria-expanded effect above resolves: the legacy
+  // snippet API has no bound trigger reference (unlike `compoundTriggerElement`),
+  // so the first focusable descendant of the consumer-supplied `trigger`
+  // snippet's wrapper is the closest thing to one.
+  function resolveLegacyTriggerElement(): HTMLElement | null {
+    return (
+      triggerWrapper?.querySelector<HTMLElement>(
+        'button, a, [tabindex]:not([tabindex="-1"]), input, select',
+      ) ?? null
+    );
+  }
+
+  function dismissLegacyFallbackMenu(event?: KeyboardEvent): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    open = false;
+    // Matches the compound fallback's `dismissMenu()` (dropdown-menu.svelte):
+    // this branch fully owns the close (no native light-dismiss to defer
+    // to), so restore focus to the trigger unconditionally, the same as
+    // dropdown.a11y.md's Escape-returns-focus-to-trigger contract requires —
+    // otherwise, when focus had tabbed outside the open menu before Escape,
+    // it's left on whatever was outside instead.
+    resolveLegacyTriggerElement()?.focus();
+  }
+
+  $effect(() => {
+    if (!usesLegacySnippetApi || supportsPopover || !open) return;
+    const releaseEscape = pushEscapeHandler(dismissLegacyFallbackMenu);
+    return releaseEscape;
+  });
+
+  // NOTE: `supportsPopover` is almost certainly `false` under happy-dom (no
+  // `showPopover`/CSS Anchor Positioning support in the test DOM — see the
+  // NOTE atop dropdown.test.ts), so this sub-branch cannot be meaningfully
+  // unit-tested in this repo's suite today. Registering here still matters
+  // in a real browser: without an entry on the stack while this popover is
+  // open, a LOWER escape-stack overlay would incorrectly react to the same
+  // Escape keystroke (our LIFO stack only ever invokes the top-most
+  // handler). The callback never calls `preventDefault()` — the browser's
+  // native close-request path for the top-layer popover is left completely
+  // alone — but it DOES call `stopPropagation()`: the two are independent
+  // (propagation only controls whether the event keeps reaching other
+  // listeners in its path; only `preventDefault()` cancels the browser's own
+  // default action), so this keeps a focused descendant's own keydown
+  // listener, or a page-level Escape handler, from also reacting to the same
+  // keystroke while this top-most overlay is supposed to own it.
+  $effect(() => {
+    if (!usesLegacySnippetApi || !supportsPopover || !open) return;
+    const releaseEscape = pushEscapeHandler((event?: KeyboardEvent) => {
+      event?.stopPropagation();
+      // Native focus restoration only returns focus to the invoker if focus
+      // was still *inside* the popover at the moment it closes; if focus had
+      // already moved outside before Escape, native restoration doesn't
+      // apply, leaving focus on the unrelated element instead of the
+      // trigger — contrary to dropdown.a11y.md:14's Escape contract. Restore
+      // it ourselves in that case only, the same conditional restoration the
+      // compound branch's (dropdown-menu.svelte) native-popover handler uses.
+      if (menuElement && !menuElement.contains(document.activeElement)) {
+        resolveLegacyTriggerElement()?.focus();
+      }
+    });
+    return releaseEscape;
+  });
+
+  const dismissOnOutsideClick = $derived(
+    createClickOutside({
+      handler: () => {
+        open = false;
+        compoundOpen = false;
+      },
+      // Match the original effect gate: only the non-popover fallback path, and only while open.
+      enabled: () => !supportsPopover && (open || compoundOpen),
+      ignoreRefs: [() => menuElement ?? null, () => compoundMenuElement ?? null],
+      capture: false,
+    }),
+  );
+
+  // Popover API path: imperatively show/hide after the feature is detected.
+  $effect(() => {
+    if (!supportsPopover || !menuElement) return;
+    const menu = menuElement as HTMLElement & {
+      showPopover?: () => void;
+      hidePopover?: () => void;
+    };
+    if (open) {
+      menu.showPopover?.();
+    } else {
+      menu.hidePopover?.();
+    }
+  });
+
+  function handlePopoverToggle(event: Event) {
+    const toggleEvent = event as ToggleEvent;
+    open = toggleEvent.newState === 'open';
+  }
+
+  const reducedMotion = useReducedMotion();
+  // Shared anchored-overlay exit-transition lifecycle (OVERLAY-POLICY.md §
+  // "Transition lifecycle") for the legacy `usesLegacySnippetApi` /
+  // non-popover-API fallback branch below (`{:else if exitState.renderPanel}`),
+  // which is a plain conditionally-rendered div this helper can fully own.
+  //
+  // The sibling `supportsPopover` branch is NOT wired through this helper:
+  // it's the native HTML Popover API, and its close (`menu.hidePopover()`
+  // above) synchronously removes the element from the top layer — there is
+  // no JS hook to delay that removal the way `waitForTransitionCompletion`
+  // does for a component-owned `{#if}`. That branch instead uses the
+  // web-platform-native equivalent mechanism (`@starting-style` +
+  // `transition-behavior: allow-discrete`, see dropdown.css), which is
+  // symmetric and collapses under reduced motion the same way, just without
+  // a JS wait — the same "accepted equivalent mechanism" precedent
+  // OVERLAY-POLICY.md already grants Svelte `transition:` directives.
+  const exitState = createAnchoredOverlayExitState({
+    getOpen: () => open,
+    getPanelElement: () => menuElement,
+    getReducedMotion: () => reducedMotion.current,
+  });
+
+  $effect(() => {
+    exitState.sync();
+  });
+
+  onDestroy(() => {
+    exitState.destroy();
+  });
+</script>
+
+<div
+  {id}
+  class={classNames('cinder-dropdown', customClassName)}
+  data-cinder-placement={placement}
+  {@attach dismissOnOutsideClick}
+  {...rest}
+>
+  {#if usesLegacySnippetApi}
+    <!--
+      The legacy trigger wrapper intercepts clicks to toggle open, and wires ARIA attributes
+      onto the first focusable element inside the snippet. The anchor-name on the trigger
+      and position-anchor on the menu hand off positioning to CSS Anchor Positioning,
+      so the menu lands beside the trigger even after the popover API promotes the menu
+      into the top layer (where percent-based offsets would otherwise resolve against the viewport).
+    -->
+    <!--
+      Presentational delegation wrapper: the consumer's focusable trigger child
+      is the real interactive element (it receives aria-haspopup / aria-expanded
+      / aria-controls via the effect above). Keyboard activation works through
+      that child — Enter/Space fire a native click that bubbles here — so this
+      wrapper only needs role="presentation" to stay out of the a11y tree.
+    -->
+    <div
+      class="cinder-dropdown__trigger"
+      role="presentation"
+      bind:this={triggerWrapper}
+      style={`anchor-name: --${menuId};`}
+      onclick={() => (open = !open)}
+    >
+      {#if trigger}
+        {@render trigger()}
+      {/if}
+    </div>
+
+    {#if supportsPopover}
+      <div
+        bind:this={menuElement}
+        id={menuId}
+        class="cinder-dropdown__menu"
+        popover="auto"
+        role="menu"
+        data-cinder-placement={placement}
+        style={`position-anchor: --${menuId};`}
+        ontoggle={handlePopoverToggle}
+        aria-hidden={!open ? 'true' : undefined}
+        inert={!open ? true : undefined}
+      >
+        {#if children}
+          {@render children()}
+        {/if}
+      </div>
+    {:else if exitState.renderPanel}
+      <div
+        bind:this={menuElement}
+        id={menuId}
+        class="cinder-dropdown__menu"
+        role="menu"
+        data-cinder-placement={placement}
+        data-cinder-closing={exitState.isClosing ? '' : undefined}
+        aria-hidden={exitState.isClosing ? 'true' : undefined}
+        inert={exitState.isClosing ? true : undefined}
+      >
+        {#if children}
+          {@render children()}
+        {/if}
+      </div>
+    {/if}
+  {:else if children}
+    {@render children()}
+  {/if}
+</div>

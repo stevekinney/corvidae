@@ -1,0 +1,505 @@
+# RemoteWorker Wire Protocol
+
+This document describes the versioned worker transports Weft uses to dispatch activity tasks to remote workers. The built-in TypeScript `RemoteWorker` speaks the WebSocket protocol, and `LongPollWorker` speaks the HTTP long-poll fallback. Non-TypeScript SDKs can validate the WebSocket protocol against the exported JSON Schemas instead of reverse-engineering the source.
+
+## At a glance
+
+- **Protocol version**: v3. `register.protocolVersion` is required and must be exactly `3`.
+- **Transport**: WebSocket text frames containing JSON objects.
+- **Endpoint**: `/api/v1/tasks/:queue/stream` on the Weft server. Connect to one queue per WebSocket.
+- **Direction**: bidirectional. Workers send `register`, `heartbeat`, `taskResult`. Server sends `task`, `cancel`, `shutdown`, `registerAck`, `registerError`, `protocolError`.
+- **Heartbeat**: workers heartbeat every 10 seconds after registration is acknowledged.
+- **Authentication**: not part of the protocol envelope. Auth happens at the WebSocket transport layer.
+- **Frame limit**: every server WebSocket endpoint is capped at a fixed 4 MiB raw frame size before JSON parsing. This transport ceiling is separate from `payloadSize.maxBytes`, which applies to codec-encoded workflow values at admission time.
+- **Fatal close codes**: unsupported or invalid registration receives `registerError`, then WebSocket close code `1008`. Malformed protocol frames receive `protocolError`, then WebSocket close code `1002`.
+
+The public schema contract is exported from `@repo/weft`:
+
+```ts
+import {
+  REMOTE_WORKER_PROTOCOL_JSON_SCHEMA,
+  REMOTE_WORKER_MESSAGE_SCHEMAS,
+  REMOTE_WORKER_PROTOCOL_VERSION,
+} from '@repo/weft';
+```
+
+## Connecting
+
+The server exposes one WebSocket endpoint per task queue:
+
+```text
+ws://server.example.com/api/v1/tasks/:queue/stream
+wss://server.example.com/api/v1/tasks/:queue/stream
+```
+
+`:queue` must consist only of word characters and hyphens (`[\w-]+`). The default queue is `default`. A worker connects to exactly one queue per WebSocket connection. To serve multiple queues, open one connection per queue.
+
+The TypeScript `RemoteWorker` accepts the full URL via its `serverUrl` option:
+
+```ts partial
+import { RemoteWorker } from '@repo/weft';
+
+using worker = new RemoteWorker({
+  serverUrl: 'ws://localhost:7233/api/v1/tasks/default/stream',
+  workflows: { notifications: { name: 'notifications', activities: { sendEmail } } },
+  concurrency: 5,
+  queue: 'default',
+  deploymentName: 'notifications',
+  buildId: '2026.08.19-1',
+});
+await worker.connect();
+```
+
+`connect()` resolves only after the server sends `registerAck`. It rejects if the server sends `registerError` or if the socket closes before acknowledgement.
+
+### Authentication
+
+Authentication is not specified inside protocol messages. The built-in Weft server authenticator accepts credentials on the WebSocket HTTP upgrade request:
+
+- `Authorization: Bearer <token>` for JWTs or API keys.
+- `X-API-Key: <key>` for API keys in a dedicated header.
+
+Production deployments should use TLS (`wss://`) and pass credentials through headers or a trusted reverse proxy.
+
+## Lifecycle
+
+```text
+Worker                              Server
+  |                                   |
+  |--- WebSocket open ------------->  |
+  |--- register ------------------>   |
+  |   <-------- registerAck -------   |   accepted, capacity is effective
+  |                                   |
+  |   <---------------- task ------   |
+  |--- taskResult ----------------->  |
+  |                                   |
+  |--- heartbeat ------------------>  |   extends visibility for in-flight tasks
+  |                                   |
+  |   <---- cancel (operationId) --   |
+  |--- taskResult ----------------->  |
+  |                                   |
+  |   <---- shutdown -------------    |
+  |--- WebSocket close ------------>  |
+```
+
+Registration can fail before the worker is accepted:
+
+```text
+Worker                              Server
+  |--- WebSocket open ------------->  |
+  |--- register ------------------>   |
+  |   <-------- registerError -----   |
+  |   <-------- close 1008 --------   |
+```
+
+Malformed JSON, malformed message shapes, worker-to-server message types not defined by v3, and `heartbeat` or `taskResult` before registration are fatal protocol errors:
+
+```text
+Worker                              Server
+  |--- malformed frame ----------->   |
+  |   <-------- protocolError -----   |
+  |   <-------- close 1002 --------   |
+```
+
+The server tracks the worker by `workerId` in an in-memory registry. While a worker socket is live, another socket cannot claim the same `workerId`: the duplicate registration receives `registerError` with code `invalid_registration` and the server closes that socket. This blocks same-id task hijacking when authentication is disabled, but it also means a legitimate reconnect can be rejected until the old socket's close is observed.
+
+If a registered worker disconnects with tasks in flight, the server waits for the configured `ServeOptions.workerReconnectGracePeriodMs` before requeueing those tasks. A same-`workerId` `register` inside that grace window cancels the pending requeue and preserves the worker's in-flight assignments. If the window expires, the server reassigns the tasks to another available worker on the same queue or moves them through the fallback queue path according to the dispatch machinery. The grace window defaults to `2000` ms. Use `100` only for low-latency test or embedded scenarios, and use `5000` for cloud or load-balancer deployments where replacement workers commonly need several seconds to reconnect.
+
+## Message catalog
+
+All messages are JSON objects with a `type` discriminator. Message schemas are available in `REMOTE_WORKER_MESSAGE_SCHEMAS`, and the full schema document is available in `REMOTE_WORKER_PROTOCOL_JSON_SCHEMA`.
+
+Workers may ignore unknown server-to-worker message types for forward compatibility. Servers reject unknown worker-to-server message types with `protocolError` because worker messages cross the trust boundary.
+
+### Worker -> Server
+
+#### `register`
+
+Sent immediately after the WebSocket opens.
+
+```json
+{
+  "type": "register",
+  "protocolVersion": 3,
+  "workerId": "<string>",
+  "manifest": {
+    "manifestVersion": 1,
+    "protocolVersion": 3,
+    "sdkVersion": "0.18.0",
+    "runtime": { "name": "bun", "version": "1.3.14" },
+    "deployment": {
+      "name": "payments",
+      "buildId": "2026-05-12.1",
+      "artifactDigest": "sha256:41d0e2"
+    },
+    "workflows": {
+      "notifications": {
+        "workflowVersion": "0.0.0",
+        "workflowRevision": "declared-shape:9f1c2a7b3e4d5f60",
+        "contractHash": "declared-shape:9f1c2a7b3e4d5f60",
+        "activities": {
+          "sendEmail": {
+            "contractHash": "declared-shape:1a2b3c4d5e6f7081",
+            "implementationRevision": "declared-shape:1a2b3c4d5e6f7081"
+          }
+        }
+      }
+    },
+    "capabilities": { "region": "us-west" }
+  },
+  "concurrency": 10,
+  "startedAt": 1778608949187
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `"register"` | Yes | Message discriminator. |
+| `protocolVersion` | `3` | Yes | Required v3 protocol version. Missing or unsupported versions receive `registerError`. |
+| `workerId` | string | Yes | Stable identifier for this worker. Must be non-empty. |
+| `manifest` | `WorkerManifest` | Yes | Canonical worker manifest — deployment, runtime, workflows, activities, and capabilities. Deeply validated by `parseWorkerManifest()` server-side, not by this wire-shape layer; see [Canonical worker manifest](api-workers.md#canonical-worker-manifest). Routing `activities` are derived from `manifest.workflows`, not sent as a separate field. |
+| `concurrency` | number | No | Maximum concurrent tasks. Server clamps finite numbers to `[1, 1000]`. Defaults to `10`. |
+| `startedAt` | number | No | Worker process start time in epoch milliseconds. Defaults to registration time when omitted. |
+
+`queue`, `deploymentName`, `buildId`, `runtimeVersion`, `gitSha`, and `capabilities` are no longer top-level `register` fields as of protocol v3 — deployment and runtime identity live inside `manifest`, `gitSha` was retired entirely, and the effective queue always comes from the worker-stream URL rather than a field a worker could disagree with.
+
+The server processes `register` only on worker-stream paths (`/api/v1/tasks/:queue/stream`). On other WebSocket endpoints, worker protocol messages are ignored or handled by that endpoint's own protocol.
+
+#### `heartbeat`
+
+Sent every 10 seconds after `registerAck`. It tells the server the worker is alive and extends the visibility timeout on in-flight tasks assigned to this connection.
+
+```json
+{
+  "type": "heartbeat",
+  "workerId": "<string>"
+}
+```
+
+| Field      | Type          | Required | Description                               |
+| ---------- | ------------- | -------- | ----------------------------------------- |
+| `type`     | `"heartbeat"` | Yes      | Message discriminator.                    |
+| `workerId` | string        | Yes      | The same `workerId` used at registration. |
+
+The server validates the field for protocol shape, but it trusts the worker identity stored on the WebSocket connection, not the heartbeat payload. A heartbeat sent before successful registration receives `protocolError` and the socket is closed.
+
+#### `taskResult`
+
+Sent when an in-flight task completes, fails, or is cancelled.
+
+**Success:**
+
+```json
+{
+  "type": "taskResult",
+  "operationId": "<string>",
+  "status": "completed",
+  "value": null
+}
+```
+
+**Failure:**
+
+```json
+{
+  "type": "taskResult",
+  "operationId": "<string>",
+  "status": "failed",
+  "error": "<message>"
+}
+```
+
+**Cancellation:**
+
+```json
+{
+  "type": "taskResult",
+  "operationId": "<string>",
+  "status": "cancelled",
+  "cancelled": true,
+  "error": "Task cancelled"
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `"taskResult"` | Yes | Message discriminator. |
+| `operationId` | string | Yes | The opaque `operationId` from the corresponding `task` message. |
+| `status` | `"completed" \| "failed" \| "cancelled"` | Yes | Terminal outcome. |
+| `value` | any JSON value | Yes if `completed` | Activity result. Use `null` when the activity has no value. |
+| `error` | string | Yes if `failed`/`cancelled` | Human-readable error message. |
+| `cancelled` | `true` | No | Optional marker for cancelled results. If present, it must be `true`. |
+| `attemptToken` | non-empty string | Yes | Per-dispatch token from the matching `task` frame. The worker must echo it unchanged. |
+| `workflowRevision` | non-empty string | No (WFT-20) | Echo of `task.workflowRevision`, when the dispatch carried one. See below. |
+
+The server stores `completed` as a completed task and treats `failed` and `cancelled` as failed terminal resolutions. Missing `operationId`, missing `value` on completed results, unknown statuses, non-string errors on failed or cancelled results, and non-string or empty `attemptToken` values are malformed messages. The server sends `protocolError` and closes the socket with `1002`.
+
+For a well-formed result, the server verifies that the WebSocket connection still owns the `operationId`, and then requires the echoed `attemptToken` to match the current dispatch exactly. Missing or mismatched tokens are rejected with `protocolError` before task state changes.
+
+**Revision staleness (WFT-20).** When the dispatch carried a `workflowRevision` (see `task` below), the in-flight entry remembers it. The WebSocket transport's authorization is ADDITIVE: a `taskResult` with no `workflowRevision` echo is tolerated whenever the in-flight entry itself carries none (an older worker SDK that has never heard of the field, or a dispatch that never opted in); a `taskResult` that echoes a DIFFERENT revision than the in-flight entry's is always rejected with `protocolError`, regardless of SDK age. This is deliberately more lenient than the HTTP long-poll transport below, which has no live in-flight registry entry to fall back on and is therefore strict.
+
+Workers must echo the token from every `task` frame:
+
+```json
+{
+  "type": "taskResult",
+  "operationId": "<string>",
+  "status": "completed",
+  "value": null,
+  "attemptToken": "<string>"
+}
+```
+
+### Server -> Worker
+
+#### `task`
+
+Dispatched when the server has work for this worker.
+
+```json
+{
+  "type": "task",
+  "operationId": "<string>",
+  "activityName": "<string>",
+  "input": null,
+  "attempt": 1,
+  "workflowExecutionToken": "<string>",
+  "workflowRevision": "<string>",
+  "attemptToken": "<string>",
+  "headers": { "<key>": "<value>" }
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `"task"` | Yes | Message discriminator. |
+| `operationId` | string | Yes | Unique task identifier the worker echoes back in `taskResult`. |
+| `activityName` | string | Yes | Name of the activity to execute. Must be in the worker's `activities` list. |
+| `input` | any JSON value | Yes | Activity input. `null` is used when the dispatch input is undefined. |
+| `attempt` | number | No | Retry counter. Present on retries. |
+| `workflowExecutionToken` | non-empty string | No | Durable per-run token exposed to the activity context for external write fencing. |
+| `workflowRevision` | non-empty string | No (WFT-20) | The dispatching workflow run's persisted revision, populated by the `TaskDispatch` caller (via `server.dispatchTask()`). Echo it back unchanged on `taskResult`. |
+| `attemptToken` | non-empty string | Yes | Per-dispatch token the worker must echo on `taskResult` for stale-attempt rejection. |
+| `headers` | `Record<string, string>` | No | Interceptor-propagated headers from the dispatch path. |
+
+If the worker does not recognize `activityName`, it should send `taskResult` with `status: "failed"` and an explanatory `error`.
+
+#### `cancel`
+
+Server requests cancellation of an in-flight task.
+
+```json
+{
+  "type": "cancel",
+  "operationId": "<string>"
+}
+```
+
+| Field         | Type       | Required | Description                                 |
+| ------------- | ---------- | -------- | ------------------------------------------- |
+| `type`        | `"cancel"` | Yes      | Message discriminator.                      |
+| `operationId` | string     | Yes      | The in-flight task the worker should abort. |
+
+Workers should signal cancellation to the activity, usually by aborting an `AbortSignal`, and then report the terminal outcome with `taskResult`.
+
+#### `shutdown`
+
+Server requests graceful shutdown of the worker.
+
+```json
+{
+  "type": "shutdown"
+}
+```
+
+The TypeScript implementation sets a `shuttingDown` flag, refuses new `task` messages, stops heartbeats, drains in-flight tasks up to `disconnectTimeoutMs`, aborts anything still running after the deadline, and closes the WebSocket.
+
+#### `registerAck`
+
+Server acknowledgement that registration succeeded.
+
+```json
+{
+  "type": "registerAck",
+  "protocolVersion": 3,
+  "workerId": "<string>",
+  "queue": "default",
+  "concurrency": 10,
+  "acceptedManifestDigest": "sha256:41d0e2",
+  "serverCapabilities": []
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `"registerAck"` | Yes | Message discriminator. |
+| `protocolVersion` | `3` | Yes | Effective protocol version. |
+| `workerId` | string | Yes | Accepted worker identifier. |
+| `queue` | string | Yes | Effective queue from the WebSocket URL. |
+| `concurrency` | number | Yes | Effective concurrency after server clamping to the supported capacity. |
+| `acceptedManifestDigest` | string | Yes | Digest of the canonical manifest the server stored, from `computeWorkerManifestDigest()`. |
+| `serverCapabilities` | string[] | Yes | Bounded list of server-side capability names. Currently always empty. |
+
+`registerAck` no longer echoes `activities` — the worker already knows what it sent, and routing activities are derived server-side from the accepted manifest. Workers should not start heartbeats or report `connect()` success until this message arrives.
+
+#### `registerError`
+
+Server rejection of registration. The server sends this message, then closes the WebSocket with close code `1008`.
+
+```json
+{
+  "type": "registerError",
+  "code": "unsupported_protocol_version",
+  "message": "Unsupported RemoteWorker protocol version: 1",
+  "supportedProtocolVersions": [3],
+  "requestedProtocolVersion": 1
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `"registerError"` | Yes | Message discriminator. |
+| `code` | `"invalid_registration" \| "unsupported_protocol_version" \| "deployment_conflict" \| "registration_rejected"` | Yes | Machine-readable registration failure. `deployment_conflict` means the manifest's `(deploymentName, buildId)` was already registered with a different `artifactDigest`; `registration_rejected` means a configured `WorkerAdmissionPolicy` refused the worker. |
+| `message` | string | Yes | Human-readable diagnostic. |
+| `supportedProtocolVersions` | number[] | Yes | The _server's_ supported protocol versions — not narrowed to the requesting worker's own, so a mismatched value can still be parsed and diagnosed. |
+| `requestedProtocolVersion` | number | No | Version sent by the worker when it was a finite number. |
+
+#### `protocolError`
+
+Server rejection of a malformed worker-to-server frame after the WebSocket is open. The server sends this message, then closes the WebSocket with close code `1002`.
+
+```json
+{
+  "type": "protocolError",
+  "code": "invalid_message",
+  "message": "taskResult.operationId must be a non-empty string"
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `"protocolError"` | Yes | Message discriminator. |
+| `code` | `"invalid_json" \| "invalid_message" \| "unknown_message_type" \| "registration_required"` | Yes | Machine-readable protocol failure. |
+| `message` | string | Yes | Human-readable diagnostic. |
+
+## Conformance
+
+Use `weft conformance` to run the SDK-facing protocol checks against a candidate worker process:
+
+```bash
+weft conformance --timeout 15000 --json -- ./my-worker --flag value
+```
+
+The command starts a localhost Weft server and launches the worker command with these environment variables:
+
+| Variable                       | Description                                      |
+| ------------------------------ | ------------------------------------------------ |
+| `WEFT_WORKER_URL`              | WebSocket URL for the temporary worker endpoint. |
+| `WEFT_WORKER_QUEUE`            | Queue name the worker should register for.       |
+| `WEFT_WORKER_ACTIVITIES`       | Comma-separated activity names to implement.     |
+| `WEFT_WORKER_PROTOCOL_VERSION` | Current protocol version, `3`.                   |
+
+The conformance runner verifies registration acknowledgement, echo task completion, heartbeat-preserved work, cancellation, in-flight reassignment after disconnect, graceful shutdown, and failure of a deliberately broken worker fixture. `--json` returns a stable machine-readable report. Without `--json`, each check prints as `PASS` or `FAIL`.
+
+## HTTP long-poll transport
+
+`LongPollWorker` uses the same task queue and activity execution model over plain HTTP. It does not use the WebSocket `register` frame. Each poll request advertises the activities it can execute, the server claims one matching task if available, and the worker posts the result to a queue-scoped result endpoint.
+
+### Poll request
+
+```text
+GET /api/v1/tasks/:queue?activity=<activity-name>&timeout=<milliseconds>
+```
+
+`:queue` must consist only of word characters and hyphens (`[\w-]+`). Repeat the `activity` query parameter once per activity name the worker can execute. At least one `activity` value is required. `timeout` is optional; it defaults to `30000` milliseconds and is clamped to a maximum of `60000` milliseconds.
+
+With authentication configured, the caller must authenticate with a principal that has the `workers:write` scope.
+
+| Response | Meaning |
+| --- | --- |
+| `200` | A task was claimed and the response body is the task JSON. |
+| `204` | No matching task became available before the timeout, or the client disconnected before a claim. |
+| `400` | No `activity` query parameter was supplied. |
+| `403` | Authentication was present but did not include `workers:write`. |
+
+Task response body:
+
+```json
+{
+  "operationId": "activity-operation-id",
+  "activityName": "order.chargeCard",
+  "input": { "orderId": "order-42" },
+  "attempt": 1,
+  "headers": { "traceparent": "00-..." },
+  "workerId": "longpoll-a1b2c3d4",
+  "workflowExecutionToken": "workflow-run-token",
+  "workflowRevision": "sha256:9f2c…",
+  "attemptToken": "per-claim-token"
+}
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `operationId` | string | Opaque task identifier to echo in the result request. |
+| `activityName` | string | Activity name selected from the advertised `activity` values. |
+| `input` | JSON value | Activity input. |
+| `attempt` | number | Retry attempt number. Present on retried dispatches. |
+| `headers` | `Record<string, string>` | Interceptor-propagated headers when present. |
+| `workerId` | string | Synthetic worker id for this HTTP claim. Echo it in the result request. |
+| `workflowExecutionToken` | string | Durable per-run token exposed to the activity context for external writes. |
+| `workflowRevision` | string | The dispatching workflow run's persisted revision (WFT-20), when the dispatch carried one. Echo it back UNCHANGED in the result request — see below. |
+| `attemptToken` | string | Per-claim token for stale-attempt rejection. Echo it in the result request. |
+
+### Result request
+
+```text
+POST /api/v1/tasks/:queue/result
+Content-Type: application/json
+```
+
+Success body:
+
+```json
+{
+  "operationId": "activity-operation-id",
+  "workerId": "longpoll-a1b2c3d4",
+  "attemptToken": "per-claim-token",
+  "status": "completed",
+  "value": null
+}
+```
+
+Failure body:
+
+```json
+{
+  "operationId": "activity-operation-id",
+  "workerId": "longpoll-a1b2c3d4",
+  "attemptToken": "per-claim-token",
+  "status": "failed",
+  "error": "Activity failed"
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `operationId` | string | Yes | Opaque task identifier from the poll response. |
+| `workerId` | string | Yes for claimed tasks | Synthetic worker id from the poll response. |
+| `attemptToken` | non-empty string | Yes | Per-claim token from the poll response. |
+| `workflowRevision` | non-empty string | See below | Echo of the poll response's `workflowRevision`, when present — required whenever the stored ledger record has one; see below. |
+| `status` | `"completed" \| "failed"` | Yes | Terminal activity result status. |
+| `value` | JSON value | Yes if `completed` | Activity result. Use `null` when the activity has no value. |
+| `error` | string | Yes if `failed` | Human-readable failure message. |
+
+| Response | Meaning |
+| --- | --- |
+| `200` | Result accepted. Body is `{ "ok": true }`. |
+| `400` | Invalid JSON, missing required fields, unsupported status, or malformed `attemptToken`. |
+| `403` | The echoed `workerId`, `attemptToken`, or `workflowRevision` does not match the current in-flight record. |
+| `413` | The result body or serialized activity result exceeds `maxRequestBodyBytes` or `payloadSize.maxBytes`. |
+
+**Revision staleness is STRICT for long-poll (WFT-20)**, unlike the WebSocket transport's additive policy above: when the stored ledger record for this task carries a `workflowRevision`, the result request must echo it back EXACTLY — a missing echo is rejected the same as a mismatched one. Long-poll has no live in-flight registry entry to fall back on the way the WebSocket transport does, so once ANY `TaskDispatch` caller starts supplying `workflowRevision` for a given operation, every worker completing it must echo the value back or receive `403`.
+
+Long-poll authorization is strict. A claimed task records the synthetic `workerId` and a fresh `attemptToken`; the completion must echo both while that record is still current. If the worker misses the visibility window and the task is reclaimed, a late result from the old claim is rejected instead of mutating the workflow.
+
+Aborting a poll before a task is claimed returns `204` and leaves queued work available for another poller. After a `200` response, the task is in flight until the worker posts a result or the visibility timeout/reconciliation path makes it available for another attempt.

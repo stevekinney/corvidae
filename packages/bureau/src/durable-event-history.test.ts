@@ -1,0 +1,3387 @@
+/**
+ * Tests for `createDurableEventHistory` (AB-91's `ab91-01` slice, AB-310).
+ *
+ * Uses `resolveStorage({ type: 'memory' })` directly for the ordering/gap/
+ * validation tests — `MemoryStorage` implements the same `Storage` contract
+ * `FleetEventFeed` requires (`conditionalBatch`), so no real backend is
+ * needed to prove owner-filtering, cursor, and retention-floor logic. The
+ * SQLite and LMDB restart-durability tests reuse AB-261's
+ * `createSqliteStorageFixture`/`createLmdbStorageFixture` fixtures — no new
+ * storage-fixture code — and never sleep: every ordering assertion relies
+ * on `createManualRuntimeServices()`'s manual clock.
+ */
+import { CompletableEventTarget, createManualRuntimeServices } from '@repo/lifecycle';
+import type {
+  Action,
+  DurableEventEnvelope,
+  DurableEventOwner,
+  Subscription,
+} from '@repo/operative';
+import {
+  AgentScheduledEvent,
+  ScheduleCancelledEvent,
+  ScheduleCompletedEvent,
+  ScheduleFailedEvent,
+  SchedulePausedEvent,
+  ScheduleResumedEvent,
+  SessionCreatedEvent,
+  SessionDeletedEvent,
+  SessionSavedEvent,
+} from '@repo/operative';
+import {
+  createFleetEventFeed,
+  type FleetEventFeed,
+  KEYS,
+  resolveStorage,
+  type Storage,
+} from '@repo/weft';
+import { describe, expect, it } from 'bun:test';
+
+import {
+  createDurableEventHistory,
+  createDurableEventProducer,
+  DEFAULT_PAGE_LIMIT,
+  type DurableEventHistory,
+} from './durable-event-history';
+import {
+  ActionEvent,
+  type BureauEventMap,
+  ReviewApprovedEvent,
+  ReviewCanceledEvent,
+  ReviewDeniedEvent,
+  ReviewExpiredEvent,
+  ReviewRejectedEvent,
+  ReviewRevokedEvent,
+  ReviewSupersededEvent,
+} from './events';
+import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
+import type { Bureau, BureauDiagnostic } from './types';
+
+async function createMemoryStorage(): Promise<Storage> {
+  return resolveStorage({ type: 'memory' });
+}
+
+/**
+ * Wraps `storage` so its FIRST `get(gateKey)` call blocks until the test
+ * calls `release()` — used to force a deterministic (never real-timing)
+ * append in the exact window between `subscribeEventHistory`'s underlying
+ * `FleetEventFeed.subscribe()` snapshotting the fleet's tail sequence and
+ * that same call's first replay read, which is `loadConsistentReplayPage`'s
+ * `storage.get(KEYS.fleetEventWatermark())` (weft's
+ * `replay-live-feed-internals.ts`/`fleet-event-feed.ts`) — the concrete
+ * read this module's own `page()` performs too, for the retention-floor
+ * check, but `subscribeEventHistory` never calls `snapshotRetentionFloor()`
+ * itself (see its own doc comment), so gating this key only ever catches
+ * weft's own replay read, never a second, competing read from this module.
+ *
+ * Deliberately does NOT gate `get(KEYS.fleetEventTail())` (used by
+ * `snapshotTailSequence()`, called BEFORE the watermark read) or any
+ * `conditionalBatch`/scan a concurrent `history.record()` needs — gating
+ * either would deadlock the concurrent writer against the very read it is
+ * supposed to race.
+ */
+function createReplayGateBarrier(
+  storage: Storage,
+  gateKey: string,
+): { readonly storage: Storage; waitUntilGated(): Promise<void>; release(): void } {
+  let hasGated = false;
+  let resolveGated!: () => void;
+  const gated = new Promise<void>((resolve) => {
+    resolveGated = resolve;
+  });
+  let resolveReleased!: () => void;
+  const released = new Promise<void>((resolve) => {
+    resolveReleased = resolve;
+  });
+
+  const gatedStorage = new Proxy(storage, {
+    get(target, property, receiver) {
+      if (property === 'get') {
+        return async (key: string): Promise<Uint8Array | null> => {
+          if (!hasGated && key === gateKey) {
+            hasGated = true;
+            resolveGated();
+            await released;
+          }
+          return target.get(key);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+
+  return {
+    storage: gatedStorage,
+    waitUntilGated: () => gated,
+    release: () => {
+      resolveReleased();
+    },
+  };
+}
+
+/**
+ * Wraps `storage` to count `scan()` calls — `feed.replay()`'s
+ * `loadConsistentReplayPage` issues exactly one `scan()` per 128-record
+ * page it walks (weft's `fleet-event-feed.ts` `REPLAY_PAGE_SIZE`), so this
+ * counter is a direct proxy for "how many pages of the fleet feed did this
+ * call read" — the exact cost `refreshRetainedRunOwnerIds` (AB-363, Codex
+ * review PR #568, "Avoid replaying the full fleet feed per candidate
+ * session") must keep bounded by NEW activity, not by the size of the
+ * already-scanned retained window.
+ */
+function createScanCountingStorage(storage: Storage): {
+  storage: Storage;
+  scanCalls: () => number;
+} {
+  let scanCalls = 0;
+  const counting = new Proxy(storage, {
+    get(target, property, receiver) {
+      if (property === 'scan') {
+        return (...args: Parameters<Storage['scan']>) => {
+          scanCalls += 1;
+          return target.scan(...args);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  return { storage: counting, scanCalls: () => scanCalls };
+}
+
+/**
+ * A deterministic, non-polling collector for `subscribeEventHistory`
+ * tests: every wait resolves from a callback the listener/diagnostic sink
+ * itself triggers (never a real timer, never a fixed-iteration retry
+ * loop).
+ */
+function createCollector(): {
+  readonly events: DurableEventEnvelope[];
+  push(event: DurableEventEnvelope): void;
+  waitForCount(count: number): Promise<void>;
+  waitForSequence(sequence: number): Promise<void>;
+  waitForClosed(subscription: Subscription): Promise<void>;
+} {
+  const events: DurableEventEnvelope[] = [];
+  let onPush: (() => void) | undefined;
+
+  function push(event: DurableEventEnvelope): void {
+    events.push(event);
+    onPush?.();
+  }
+
+  async function waitForCount(count: number): Promise<void> {
+    while (events.length < count) {
+      await new Promise<void>((resolve) => {
+        onPush = resolve;
+      });
+    }
+  }
+
+  async function waitForSequence(sequence: number): Promise<void> {
+    while (!events.some((event) => event.sequence >= sequence)) {
+      await new Promise<void>((resolve) => {
+        onPush = resolve;
+      });
+    }
+  }
+
+  async function waitForClosed(subscription: Subscription): Promise<void> {
+    // `closed` flips inside the subscription's own `finally` block, which
+    // runs strictly after the abort listener's synchronous work — polling
+    // the microtask queue observes that completion without a real timer.
+    while (!subscription.closed) {
+      await Promise.resolve();
+    }
+  }
+
+  return { events, push, waitForCount, waitForSequence, waitForClosed };
+}
+
+describe('createDurableEventHistory', () => {
+  describe('record()', () => {
+    it('stamps owner into workflowId and returns the decoded envelope', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      runtime.setTime(Date.parse('2026-09-03T00:00:00.000Z'));
+      const envelope = await history.record({ kind: 'run', id: 'run-1' }, 'tool.started', {
+        toolName: 'search',
+      });
+
+      expect(envelope.kind).toBe('tool.started');
+      expect(envelope.owner).toEqual({ kind: 'run', id: 'run-1' });
+      expect(envelope.sequence).toBe(0);
+      expect(envelope.cursor).toBe('0');
+      expect(envelope.emittedAtMs).toBe(Date.parse('2026-09-03T00:00:00.000Z'));
+      expect(envelope.payload).toEqual({ toolName: 'search' });
+      expect(envelope.schemaVersion).toBe(1);
+
+      await history.dispose();
+    });
+
+    it('round-trips an id containing a colon', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      const owner = { kind: 'session' as const, id: 'sess:with:colons' };
+      await history.record(owner, 'session.created', { hello: 'world' });
+
+      const page = await history.page(owner);
+      if ('outcome' in page) throw new Error('expected a page, got a gap');
+      expect(page.events).toHaveLength(1);
+      expect(page.events[0]?.owner).toEqual(owner);
+
+      await history.dispose();
+    });
+
+    it('an emittedAtMs option overrides the clock-derived timestamp (AB-389, "Persist the commit time with each outbox entry")', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      runtime.setTime(Date.parse('2026-09-05T00:00:00.000Z'));
+      const envelope = await history.record(
+        { kind: 'session', id: 'sess-1' },
+        'session.saved',
+        { sessionId: 'sess-1' },
+        { emittedAtMs: Date.parse('2026-09-01T00:00:00.000Z') },
+      );
+
+      expect(envelope.emittedAtMs).toBe(Date.parse('2026-09-01T00:00:00.000Z'));
+
+      await history.dispose();
+    });
+  });
+
+  describe('record() with a dedupeKey and wasRecorded() (AB-389)', () => {
+    it('wasRecorded() is false before the write and true after it', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'session' as const, id: 'sess-1' };
+
+      expect(await history.wasRecorded(owner, 'session.created', '1')).toBe(false);
+      await history.record(owner, 'session.created', { sessionId: 'sess-1' }, { dedupeKey: '1' });
+      expect(await history.wasRecorded(owner, 'session.created', '1')).toBe(true);
+
+      await history.dispose();
+    });
+
+    it('a second record() call with the same dedupeKey is a no-op read of the first write, not a second append (redelivery of the same outbox entry)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'session' as const, id: 'sess-1' };
+
+      const first = await history.record(
+        owner,
+        'session.created',
+        { sessionId: 'sess-1' },
+        { dedupeKey: '1' },
+      );
+      const second = await history.record(
+        owner,
+        'session.created',
+        { sessionId: 'sess-1' },
+        { dedupeKey: '1' },
+      );
+
+      expect(second).toEqual(first);
+      const page = await history.page(owner);
+      if ('outcome' in page) throw new Error('expected a page, got a gap');
+      expect(page.events).toHaveLength(1);
+
+      await history.dispose();
+    });
+
+    it('two concurrent record() calls racing the SAME dedupeKey — simulating two Bureau processes draining the same outbox entry — produce exactly one durable record (Codex P1 review finding, PR #598, "Make cross-process outbox deduplication atomic")', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'session' as const, id: 'sess-race' };
+
+      // Two calls issued back-to-back with no await between them race the
+      // SAME atomic compare-and-swap on the SAME dedupe marker key — the
+      // exact race a read-before-write scan (the design this replaced)
+      // cannot close, since both would observe "not found" before either
+      // wrote anything.
+      const [first, second] = await Promise.all([
+        history.record(owner, 'session.created', { sessionId: 'sess-race' }, { dedupeKey: '1' }),
+        history.record(owner, 'session.created', { sessionId: 'sess-race' }, { dedupeKey: '1' }),
+      ]);
+
+      expect(second).toEqual(first);
+      const page = await history.page(owner);
+      if ('outcome' in page) throw new Error('expected a page, got a gap');
+      expect(page.events).toHaveLength(1);
+
+      await history.dispose();
+    });
+
+    it('the dedupeKey never appears in the recorded payload — an application payload with its own same-named field is unaffected (Codex P2 review finding, PR #598, "Keep deduplication metadata out of application payloads")', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'session' as const, id: 'sess-1' };
+
+      const envelope = await history.record(
+        owner,
+        'session.created',
+        { sessionId: 'sess-1', dedupeKey: 'this-is-the-caller-own-field' },
+        { dedupeKey: '1' },
+      );
+
+      // The caller's OWN `dedupeKey`-named payload field survives untouched
+      // — this module's own dedupe marker is a separate, reserved storage
+      // key, never mixed into the payload.
+      expect(envelope.payload).toEqual({
+        sessionId: 'sess-1',
+        dedupeKey: 'this-is-the-caller-own-field',
+      });
+
+      const page = await history.page(owner);
+      if ('outcome' in page) throw new Error('expected a page, got a gap');
+      expect(page.events[0]?.payload).toEqual({
+        sessionId: 'sess-1',
+        dedupeKey: 'this-is-the-caller-own-field',
+      });
+
+      await history.dispose();
+    });
+
+    it('a different dedupeKey for the same owner/kind records a second, independent event', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'session' as const, id: 'sess-1' };
+
+      await history.record(owner, 'session.saved', { n: 1 }, { dedupeKey: '1' });
+      await history.record(owner, 'session.saved', { n: 2 }, { dedupeKey: '2' });
+
+      const page = await history.page(owner);
+      if ('outcome' in page) throw new Error('expected a page, got a gap');
+      expect(page.events.map((event) => event.payload)).toEqual([{ n: 1 }, { n: 2 }]);
+
+      await history.dispose();
+    });
+  });
+
+  describe('page() ordering and owner filtering', () => {
+    it('returns events in sequence order for one owner while interleaved events from a second owner produce legal gaps', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      const runA = { kind: 'run' as const, id: 'run-a' };
+      const runB = { kind: 'run' as const, id: 'run-b' };
+
+      await history.record(runA, 'run.started', { step: 0 }); // sequence 0
+      await history.record(runB, 'run.started', { step: 0 }); // sequence 1
+      await history.record(runA, 'tool.started', { step: 1 }); // sequence 2
+      await history.record(runB, 'tool.started', { step: 1 }); // sequence 3
+      await history.record(runA, 'run.completed', { step: 2 }); // sequence 4
+
+      const page = await history.page(runA);
+      if ('outcome' in page) throw new Error('expected a page, got a gap');
+
+      expect(page.events.map((event) => event.sequence)).toEqual([0, 2, 4]);
+      expect(page.events.map((event) => event.kind)).toEqual([
+        'run.started',
+        'tool.started',
+        'run.completed',
+      ]);
+      expect(page.hasMore).toBe(false);
+      expect(page.nextCursor).toBe('4');
+
+      await history.dispose();
+    });
+
+    it('honors an exclusive since cursor', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const first = await history.record(owner, 'run.started', {});
+      await history.record(owner, 'step.completed', {});
+
+      const page = await history.page(owner, { since: first.cursor });
+      if ('outcome' in page) throw new Error('expected a page, got a gap');
+      expect(page.events.map((event) => event.kind)).toEqual(['step.completed']);
+
+      await history.dispose();
+    });
+
+    it('bounds the page by limit and reports hasMore', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      for (let index = 0; index < 5; index += 1) {
+        await history.record(owner, 'step.completed', { index });
+      }
+
+      const firstPage = await history.page(owner, { limit: 2 });
+      if ('outcome' in firstPage) throw new Error('expected a page, got a gap');
+      expect(firstPage.events).toHaveLength(2);
+      expect(firstPage.hasMore).toBe(true);
+      expect(firstPage.nextCursor).toBe(firstPage.events[1]?.cursor);
+
+      const secondPage = await history.page(owner, {
+        since: firstPage.nextCursor,
+        limit: 2,
+      });
+      if ('outcome' in secondPage) throw new Error('expected a page, got a gap');
+      expect(secondPage.events).toHaveLength(2);
+      expect(secondPage.hasMore).toBe(true);
+
+      const thirdPage = await history.page(owner, {
+        since: secondPage.nextCursor,
+        limit: 2,
+      });
+      if ('outcome' in thirdPage) throw new Error('expected a page, got a gap');
+      expect(thirdPage.events).toHaveLength(1);
+      expect(thirdPage.hasMore).toBe(false);
+
+      await history.dispose();
+    });
+
+    it('uses DEFAULT_PAGE_LIMIT when limit is omitted', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      for (let index = 0; index < DEFAULT_PAGE_LIMIT + 1; index += 1) {
+        await history.record(owner, 'step.completed', { index });
+      }
+
+      const page = await history.page(owner);
+      if ('outcome' in page) throw new Error('expected a page, got a gap');
+      expect(page.events).toHaveLength(DEFAULT_PAGE_LIMIT);
+      expect(page.hasMore).toBe(true);
+
+      await history.dispose();
+    });
+
+    it('returns an ordinary empty page — not a gap — when the owner is caught up and retention has not advanced', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const recorded = await history.record(owner, 'run.started', {});
+      const page = await history.page(owner, { since: recorded.cursor });
+
+      expect(page).toEqual({ events: [], hasMore: false });
+
+      await history.dispose();
+    });
+
+    it('returns an empty page for an owner with no events at all', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      await history.record({ kind: 'run', id: 'run-a' }, 'run.started', {});
+
+      const page = await history.page({ kind: 'run', id: 'run-b' });
+      expect(page).toEqual({ events: [], hasMore: false });
+
+      await history.dispose();
+    });
+
+    it('rejects a non-positive-integer limit', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      expect(history.page(owner, { limit: 0 })).rejects.toThrow(RangeError);
+      expect(history.page(owner, { limit: -1 })).rejects.toThrow(RangeError);
+      expect(history.page(owner, { limit: 1.5 })).rejects.toThrow(RangeError);
+
+      await history.dispose();
+    });
+
+    it('rejects a malformed since cursor', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      expect(history.page(owner, { since: 'not-a-cursor' })).rejects.toThrow();
+
+      await history.dispose();
+    });
+
+    it('rejects a since cursor whose digits exceed the safe-integer range', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      expect(history.page(owner, { since: '99999999999999999999' })).rejects.toThrow(
+        /invalid cursor/,
+      );
+
+      await history.dispose();
+    });
+  });
+
+  describe('page() retention-floor gap', () => {
+    it('returns a gap, distinguishable from an empty page, when since predates the retention floor', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const first = await history.record(owner, 'run.started', {}); // sequence 0
+      await history.record(owner, 'step.completed', {}); // sequence 1
+      await history.record(owner, 'run.completed', {}); // sequence 2
+
+      // Retire sequences 0 and 1 by advancing the retention floor to 2
+      // from a second feed sharing the same storage — legitimate multi-
+      // consumer access (WFT-83 made the fleet feed safe over shared
+      // storage), and this module deliberately does not expose `retain()`
+      // itself. `first.cursor` ("0") now predates the new floor.
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      const retained = await adminFeed.retain({ beforeSequence: 2 });
+      expect(retained).toBe(2);
+      adminFeed.dispose();
+
+      const gap = await history.page(owner, { since: first.cursor });
+      expect(gap).toEqual({
+        outcome: 'gap',
+        requestedCursor: first.cursor,
+        firstRetainedSequence: 2,
+      });
+
+      await history.dispose();
+    });
+
+    it('gaps a cursorless caller too, when retention has already advanced past the beginning', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.started', {});
+      await history.record(owner, 'step.completed', {});
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 });
+      adminFeed.dispose();
+
+      const gap = await history.page(owner);
+      expect(gap).toEqual({
+        outcome: 'gap',
+        requestedCursor: '-1',
+        firstRetainedSequence: 1,
+      });
+
+      await history.dispose();
+    });
+  });
+
+  describe('latestDeletionMarker() (AB-385)', () => {
+    it('finds a session.deleted marker regardless of a small limit or a since cursor that would exclude it from page()', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'session' as const, id: 'session-1' };
+
+      await history.record(owner, 'session.created', {});
+      const marker = await history.record(owner, 'session.deleted', {});
+      await history.record(owner, 'session.saved', {});
+      await history.record(owner, 'session.saved', {});
+
+      // A page limited to the first event, or one starting strictly after
+      // the marker's own cursor, never contains it — proving this read is
+      // genuinely independent of `page()`'s own window.
+      const truncatedPage = await history.page(owner, { limit: 1 });
+      if ('outcome' in truncatedPage) throw new Error('expected a page, got a gap');
+      expect(truncatedPage.events.map((event) => event.kind)).not.toContain('session.deleted');
+
+      const afterMarkerPage = await history.page(owner, { since: marker.cursor });
+      if ('outcome' in afterMarkerPage) throw new Error('expected a page, got a gap');
+      expect(afterMarkerPage.events.map((event) => event.kind)).not.toContain('session.deleted');
+
+      const found = await history.latestDeletionMarker(owner);
+      expect(found).toEqual(marker);
+
+      await history.dispose();
+    });
+
+    it('finds a run.removed marker regardless of a small limit or a since cursor that would exclude it from page()', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.started', {});
+      const marker = await history.record(owner, 'run.removed', {});
+      await history.record(owner, 'run.completed', {});
+
+      const truncatedPage = await history.page(owner, { limit: 1 });
+      if ('outcome' in truncatedPage) throw new Error('expected a page, got a gap');
+      expect(truncatedPage.events.map((event) => event.kind)).not.toContain('run.removed');
+
+      const afterMarkerPage = await history.page(owner, { since: marker.cursor });
+      if ('outcome' in afterMarkerPage) throw new Error('expected a page, got a gap');
+      expect(afterMarkerPage.events.map((event) => event.kind)).not.toContain('run.removed');
+
+      const found = await history.latestDeletionMarker(owner);
+      expect(found).toEqual(marker);
+
+      await history.dispose();
+    });
+
+    it('returns the highest-sequence marker when more than one is retained (a recreated id deleted twice)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'session' as const, id: 'session-1' };
+
+      await history.record(owner, 'session.deleted', {});
+      await history.record(owner, 'session.created', {});
+      const secondMarker = await history.record(owner, 'session.deleted', {});
+
+      const found = await history.latestDeletionMarker(owner);
+      expect(found).toEqual(secondMarker);
+
+      await history.dispose();
+    });
+
+    it('returns undefined when the owner has never recorded a deletion marker', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.completed', {});
+
+      const found = await history.latestDeletionMarker(owner);
+      expect(found).toBeUndefined();
+
+      await history.dispose();
+    });
+
+    it('never scans the feed for a schedule owner, which has no deletion-marker concept', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      // Would be found for a `run`/`session` owner (same kind string,
+      // different owner kind) — proving this returns `undefined` from the
+      // owner-kind check itself, not merely because no matching record
+      // exists.
+      await history.record({ kind: 'run', id: 'schedule-1' }, 'run.removed', {});
+
+      const found = await history.latestDeletionMarker({ kind: 'schedule', id: 'schedule-1' });
+      expect(found).toBeUndefined();
+
+      await history.dispose();
+    });
+
+    it("ignores another owner's deletion marker of the same kind", async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      await history.record({ kind: 'run', id: 'run-a' }, 'run.removed', {});
+
+      const found = await history.latestDeletionMarker({ kind: 'run', id: 'run-b' });
+      expect(found).toBeUndefined();
+
+      await history.dispose();
+    });
+
+    it('skips a corrupt marker record, diagnosing rather than throwing, and still finds an earlier valid one', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const diagnostics: BureauDiagnostic[] = [];
+      const history = createDurableEventHistory(storage, runtime, (diagnostic) => {
+        diagnostics.push(diagnostic);
+      });
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const marker = await history.record(owner, 'run.removed', {});
+
+      const rawFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await rawFeed.append({
+        kind: 'run.removed',
+        workflowId: 'run:run-1',
+        emittedAtMs: 0,
+        payload: 'not-a-wrapper',
+      });
+      rawFeed.dispose();
+
+      const found = await history.latestDeletionMarker(owner);
+      expect(found).toEqual(marker);
+      expect(
+        diagnostics.some((diagnostic) =>
+          diagnostic.message.includes('Skipped corrupt deletion marker'),
+        ),
+      ).toBe(true);
+
+      await history.dispose();
+    });
+  });
+
+  describe('retainedRunOwnerIds() (AB-363)', () => {
+    it('returns undefined when the retention floor is still 0 — nothing has been retired yet', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      await history.record({ kind: 'run', id: 'run-1' }, 'run.started', {});
+
+      expect(await history.retainedRunOwnerIds()).toBeUndefined();
+      // The floor stays 0, so `refreshRetainedRunOwnerIds` is never
+      // called against an `undefined` snapshot in production — the
+      // pruning pass returns early instead (see create-bureau.ts).
+
+      await history.dispose();
+    });
+
+    it('reports a run owner as retained while any of its events are still pageable', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.started', {}); // sequence 0
+      await history.record(owner, 'run.completed', {}); // sequence 1
+
+      // Retire only sequence 0 — sequence 1 is still retained, so run-1's
+      // history is NOT entirely below the floor yet.
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 });
+      adminFeed.dispose();
+
+      const retained = await history.retainedRunOwnerIds();
+      expect(retained?.ownerIds).toEqual(new Set(['run-1']));
+
+      await history.dispose();
+    });
+
+    it('drops a run owner once the floor has passed every one of its events', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const stale = { kind: 'run' as const, id: 'run-stale' };
+      const survivor = { kind: 'run' as const, id: 'run-survivor' };
+
+      await history.record(stale, 'run.started', {}); // sequence 0
+      await history.record(stale, 'run.completed', {}); // sequence 1
+      await history.record(survivor, 'run.started', {}); // sequence 2
+
+      // Retire through sequence 1 (both of run-stale's events) — run-
+      // survivor's sequence 2 is untouched.
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 2 });
+      adminFeed.dispose();
+
+      const retained = await history.retainedRunOwnerIds();
+      expect(retained?.ownerIds).toEqual(new Set(['run-survivor']));
+
+      await history.dispose();
+    });
+
+    it('never includes a session or schedule owner — only run owners are candidates for pruning', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      await history.record({ kind: 'run', id: 'run-1' }, 'run.started', {}); // sequence 0
+      await history.record({ kind: 'session', id: 'session-1' }, 'session.created', {}); // sequence 1
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 }); // retires sequence 0 only
+      adminFeed.dispose();
+
+      const retained = await history.retainedRunOwnerIds();
+      expect(retained?.ownerIds).toEqual(new Set());
+
+      await history.dispose();
+    });
+  });
+
+  describe('retainedRunOwnerIdsForAuditRetention() (AB-388, Codex review, PR #597, "Scan retained run owners at floor zero")', () => {
+    it('returns the real owner set at floor 0, unlike retainedRunOwnerIds()', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.started', {});
+      await history.record(owner, 'run.completed', {});
+
+      // Floor is still 0 — nothing has ever been retired.
+      expect(await history.retainedRunOwnerIds()).toBeUndefined();
+
+      const retained = await history.retainedRunOwnerIdsForAuditRetention();
+      expect(retained.ownerIds).toEqual(new Set(['run-1']));
+
+      await history.dispose();
+    });
+
+    it('still excludes a run whose every event has been retired past the floor', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const stale = { kind: 'run' as const, id: 'run-stale' };
+      const survivor = { kind: 'run' as const, id: 'run-survivor' };
+
+      await history.record(stale, 'run.started', {}); // sequence 0
+      await history.record(stale, 'run.completed', {}); // sequence 1
+      await history.record(survivor, 'run.started', {}); // sequence 2
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 2 });
+      adminFeed.dispose();
+
+      const retained = await history.retainedRunOwnerIdsForAuditRetention();
+      expect(retained.ownerIds).toEqual(new Set(['run-survivor']));
+
+      await history.dispose();
+    });
+
+    it('returns an empty set, not undefined, for a fleet feed with no run owners at all', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      const retained = await history.retainedRunOwnerIdsForAuditRetention();
+      expect(retained.ownerIds).toEqual(new Set());
+
+      await history.dispose();
+    });
+  });
+
+  describe('retentionFloorTimestamp() (AB-388)', () => {
+    it('protects a retained record even while the retention floor is still 0 — a floor of 0 means nothing has ever been retired, not "prune everything" (Codex review, PR #597)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      await history.record({ kind: 'run', id: 'run-1' }, 'run.started', {});
+      const t0 = runtime.clock.now();
+
+      // `retain()` was never called — the floor is still its initial 0 —
+      // yet the one recorded event is still currently retained and must
+      // still be protected: this must NOT read back as `undefined` (no
+      // clamp), which would let `auditRetention` delete audit records for
+      // this event while it remains fully pageable.
+      expect(await history.retentionFloorTimestamp()).toBe(t0);
+
+      await history.dispose();
+    });
+
+    it('returns undefined when the feed has never recorded anything at all', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      expect(await history.retentionFloorTimestamp()).toBeUndefined();
+
+      await history.dispose();
+    });
+
+    it('returns the minimum emittedAtMs across the retained window, not the first-by-sequence envelope, when retained events are not timestamp-monotonic', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      // Simulates skewed fleet-writer clocks / a clock moving backward:
+      // sequence 0 carries a LATER emittedAtMs than sequence 1. Appended
+      // directly through the raw feed (rather than `history.record()`,
+      // which always draws from the monotonic runtime clock) so the two
+      // envelopes land out of timestamp order despite being in sequence
+      // order.
+      const rawFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await rawFeed.append({
+        kind: 'run.started',
+        workflowId: 'run:run-1',
+        emittedAtMs: 5000,
+        payload: { schemaVersion: 1, payload: {} },
+      });
+      await rawFeed.append({
+        kind: 'run.started',
+        workflowId: 'run:run-2',
+        emittedAtMs: 1000,
+        payload: { schemaVersion: 1, payload: {} },
+      });
+      rawFeed.dispose();
+
+      // The conservative minimum (1000) must win, not sequence 0's 5000 —
+      // otherwise a prune cutoff derived from 5000 could delete an audit
+      // record tied to sequence 1's still-retained, earlier-timestamped
+      // event.
+      expect(await history.retentionFloorTimestamp()).toBe(1000);
+
+      await history.dispose();
+    });
+
+    it('returns the emittedAtMs of the earliest still-retained event once the floor has advanced past an earlier one', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.started', {}); // sequence 0, at t0
+      const t0 = runtime.clock.now();
+      await runtime.advance(1000);
+      await history.record(owner, 'run.completed', {}); // sequence 1, at t0 + 1000
+      const t1 = runtime.clock.now();
+      expect(t1).toBe(t0 + 1000);
+
+      // Retire only sequence 0 — sequence 1 is now the earliest retained
+      // event, so its own emittedAtMs is the floor timestamp.
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 });
+      adminFeed.dispose();
+
+      expect(await history.retentionFloorTimestamp()).toBe(t1);
+
+      await history.dispose();
+    });
+
+    it('skips the internal fleet:gap marker retain() leaves at the head of replay, rather than reporting its emittedAtMs: 0 as the floor', async () => {
+      // A real bug this guards against: `retain()` leaves a synthetic
+      // `fleet:gap` envelope (`workflowId: undefined`, `emittedAtMs: 0`)
+      // at the head of `feed.replay({})` once anything has been retired —
+      // confirmed by direct inspection while diagnosing AB-388's own
+      // integration test. Without skipping it explicitly,
+      // `retentionFloorTimestamp()` would report `0` as the floor for
+      // EVERY retained history, which would collapse `create-bureau.ts`'s
+      // `pruneAuditTrail`'s `effectiveCutoff` to `0` and silently disable
+      // `auditRetention` pruning entirely, forever, the instant any
+      // retention had ever happened — never diagnosed, never thrown.
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.started', {}); // sequence 0
+      await runtime.advance(1000);
+      const t1 = runtime.clock.now();
+      await history.record(owner, 'run.completed', {}); // sequence 1, at t1
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 });
+      adminFeed.dispose();
+
+      // Confirms the gap marker is genuinely present in this scenario —
+      // otherwise this test would not exercise the skip at all.
+      let sawGapMarker = false;
+      const inspectionFeed: FleetEventFeed = createFleetEventFeed(storage);
+      for await (const envelope of inspectionFeed.replay({})) {
+        if (envelope.kind === 'fleet:gap') sawGapMarker = true;
+      }
+      inspectionFeed.dispose();
+      expect(sawGapMarker).toBe(true);
+
+      expect(await history.retentionFloorTimestamp()).toBe(t1);
+      expect(await history.retentionFloorTimestamp()).not.toBe(0);
+
+      await history.dispose();
+    });
+
+    it('returns undefined once the floor has advanced past every event that ever existed — nothing currently retained needs protecting', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.started', {}); // sequence 0
+      await history.record(owner, 'run.completed', {}); // sequence 1
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 2 });
+      adminFeed.dispose();
+
+      expect(await history.retentionFloorTimestamp()).toBeUndefined();
+
+      await history.dispose();
+    });
+  });
+
+  describe('refreshRetainedRunOwnerIds() (AB-363, Codex review PR #568)', () => {
+    it("extends a snapshot with an owner whose event was appended after the snapshot's cursor", async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      // A throwaway leading record lets `retain()` push the floor above 0
+      // without evicting run-1's own event — `retain({ beforeSequence })`
+      // retires everything strictly BELOW that sequence.
+      await history.record({ kind: 'run', id: 'sacrifice' }, 'run.started', {}); // sequence 0
+      await history.record({ kind: 'run', id: 'run-1' }, 'run.started', {}); // sequence 1
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 }); // retires only sequence 0
+
+      const snapshot = await history.retainedRunOwnerIds();
+      expect(snapshot?.ownerIds).toEqual(new Set(['run-1']));
+
+      // A run that had NO retained event at snapshot time gets one now —
+      // this is the exact staleness window "Revalidate retained owners
+      // before pruning" names.
+      await history.record({ kind: 'run', id: 'run-2' }, 'run.completed', {}); // sequence 2
+
+      const refreshed = await history.refreshRetainedRunOwnerIds(snapshot!);
+      expect(refreshed.ownerIds).toEqual(new Set(['run-1', 'run-2']));
+
+      adminFeed.dispose();
+      await history.dispose();
+    });
+
+    it('mutates the SAME underlying owner set in place rather than cloning it on every call (Codex review, PR #579, "Stop copying the full owner set on every refresh")', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      await history.record({ kind: 'run', id: 'sacrifice' }, 'run.started', {}); // sequence 0
+      await history.record({ kind: 'run', id: 'run-1' }, 'run.started', {}); // sequence 1
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 });
+
+      const snapshot = await history.retainedRunOwnerIds();
+      if (!snapshot) throw new Error('expected a snapshot');
+
+      const firstRefresh = await history.refreshRetainedRunOwnerIds(snapshot);
+      // Referentially the SAME object as `snapshot.ownerIds` — proof the
+      // refresh mutated it in place instead of allocating a fresh `Set`
+      // copy of every retained owner on this call.
+      expect(firstRefresh.ownerIds).toBe(snapshot.ownerIds);
+
+      const secondRefresh = await history.refreshRetainedRunOwnerIds(firstRefresh);
+      expect(secondRefresh.ownerIds).toBe(firstRefresh.ownerIds);
+      expect(secondRefresh.ownerIds).toBe(snapshot.ownerIds);
+
+      adminFeed.dispose();
+      await history.dispose();
+    });
+
+    it('never rescans records the prior snapshot already walked — cost tracks NEW activity, not the size of the retained window', async () => {
+      const backing = await createMemoryStorage();
+      const { storage, scanCalls } = createScanCountingStorage(backing);
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      // A throwaway leading record lets `retain()` push the floor above 0
+      // (`retainedRunOwnerIds()` returns `undefined` at floor 0) without
+      // retiring any of the "noise" owners below.
+      await history.record({ kind: 'run', id: 'sacrifice' }, 'run.started', {}); // sequence 0
+
+      // More than one 128-record replay page's worth of distinct "noise"
+      // owners, all retained — stands in for a fleet feed with a large
+      // retained window.
+      const noiseRunCount = 300;
+      for (let index = 0; index < noiseRunCount; index += 1) {
+        await history.record({ kind: 'run', id: `noise-${index}` }, 'run.started', {});
+      }
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 }); // retires only the sacrifice
+
+      const snapshot = await history.retainedRunOwnerIds();
+      expect(snapshot?.ownerIds.size).toBe(noiseRunCount);
+      const scanCallsForInitialSnapshot = scanCalls();
+      // 300 records at 128/page needs at least 3 scans — establishes this
+      // memory backend genuinely pages, so the assertion below is a real
+      // comparison, not a vacuous one against a backend that scans
+      // everything in one call regardless of page size.
+      expect(scanCallsForInitialSnapshot).toBeGreaterThanOrEqual(3);
+
+      // One new event appended after the snapshot was taken.
+      await history.record({ kind: 'run', id: 'fresh-run' }, 'run.completed', {});
+
+      const refreshed = await history.refreshRetainedRunOwnerIds(snapshot!);
+      expect(refreshed.ownerIds).toEqual(new Set([...snapshot!.ownerIds, 'fresh-run']));
+      // The refresh call's OWN scan cost — never proportional to
+      // `noiseRunCount` — is far below what a from-scratch
+      // `retainedRunOwnerIds()` over the same feed would cost.
+      const scanCallsForRefresh = scanCalls() - scanCallsForInitialSnapshot;
+      expect(scanCallsForRefresh).toBeLessThan(scanCallsForInitialSnapshot);
+      expect(scanCallsForRefresh).toBeLessThanOrEqual(2);
+
+      adminFeed.dispose();
+      await history.dispose();
+    });
+
+    it('does not remove an owner that was retired between the snapshot and the refresh — safe to be wrong in the "still retained" direction only', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      await history.record({ kind: 'run', id: 'sacrifice' }, 'run.started', {}); // sequence 0
+      await history.record({ kind: 'run', id: 'run-about-to-retire' }, 'run.started', {}); // sequence 1
+      await history.record({ kind: 'run', id: 'run-survivor' }, 'run.started', {}); // sequence 2
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 }); // retires only the sacrifice
+
+      const snapshot = await history.retainedRunOwnerIds();
+      expect(snapshot?.ownerIds).toEqual(new Set(['run-about-to-retire', 'run-survivor']));
+
+      // Advance the floor past run-about-to-retire's only event, entirely
+      // AFTER the snapshot was taken.
+      await adminFeed.retain({ beforeSequence: 2 });
+
+      const refreshed = await history.refreshRetainedRunOwnerIds(snapshot!);
+      // Deliberately conservative: the refresh never re-verifies an owner
+      // already in the snapshot, so a retirement that happens after the
+      // snapshot is caught by the NEXT full `retainedRunOwnerIds()` pass,
+      // not this one. Leaving it in for one extra cycle costs one no-op
+      // write; removing it here would risk a false negative if the
+      // direction were ever reversed.
+      expect(refreshed.ownerIds).toEqual(new Set(['run-about-to-retire', 'run-survivor']));
+
+      adminFeed.dispose();
+      await history.dispose();
+    });
+
+    it('issues no storage.scan() at all when nothing new has landed (AB-393, Codex review, PR #600, "Batch retained-owner refreshes instead of replaying per record") — the tail-sequence pre-check short-circuits before any feed.replay()', async () => {
+      const backing = await createMemoryStorage();
+      const { storage, scanCalls } = createScanCountingStorage(backing);
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      await history.record({ kind: 'run', id: 'sacrifice' }, 'run.started', {}); // sequence 0
+      await history.record({ kind: 'run', id: 'run-1' }, 'run.started', {}); // sequence 1
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 1 });
+
+      const snapshot = await history.retainedRunOwnerIds();
+      if (!snapshot) throw new Error('expected a snapshot');
+
+      // Nothing appended since the snapshot — nothing SHOULD ever call
+      // `feed.replay()`, which is the only thing in this module that
+      // calls `storage.scan()`.
+      const scanCallsBeforeRefresh = scanCalls();
+      const refreshed = await history.refreshRetainedRunOwnerIds(snapshot);
+      expect(refreshed.ownerIds).toEqual(snapshot.ownerIds);
+      expect(scanCalls()).toBe(scanCallsBeforeRefresh);
+
+      // A repeated refresh with STILL nothing new costs no scan either —
+      // this is not a one-call fluke.
+      const secondRefresh = await history.refreshRetainedRunOwnerIds(refreshed);
+      expect(secondRefresh.ownerIds).toEqual(snapshot.ownerIds);
+      expect(scanCalls()).toBe(scanCallsBeforeRefresh);
+
+      // Once something genuinely new lands, the pre-check correctly falls
+      // through to the real scan and still observes the new owner — this
+      // optimization never trades correctness for the cheap path.
+      await history.record({ kind: 'run', id: 'run-2' }, 'run.completed', {});
+      const thirdRefresh = await history.refreshRetainedRunOwnerIds(secondRefresh);
+      expect(thirdRefresh.ownerIds).toEqual(new Set(['run-1', 'run-2']));
+      expect(scanCalls()).toBeGreaterThan(scanCallsBeforeRefresh);
+
+      adminFeed.dispose();
+      await history.dispose();
+    });
+
+    it('still short-circuits repeated refreshes against a snapshot whose OWNER SET is empty for a reason other than the feed being virgin — e.g. every envelope walked named a non-run owner (Codex review, PR #600, "Fast-path refreshes for an initially empty feed") — a scan that walks real envelopes but adds no `run` owner still confirms a real, comparable tailSequence', async () => {
+      const backing = await createMemoryStorage();
+      const { storage, scanCalls } = createScanCountingStorage(backing);
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      // A real fleet event exists (the tail record is written), but its
+      // owner kind is `schedule`, not `run` — `retainedRunOwnerIdsForAuditRetention()`'s
+      // own scan walks it (advancing `tailSequence` the NORMAL way, via
+      // the envelope itself) yet adds nothing to `ownerIds`, since only
+      // `run`-kind owners are ever tracked. This is the realistic shape
+      // of "an empty retained-owner set that is not simply an unused
+      // feed" the review named (administrative/schedule activity with no
+      // retained run candidates) — distinct from a feed that has NEVER
+      // had anything appended at all, where `FleetEventFeed`'s own
+      // `snapshotTailSequence()` falls back to its own storage scan
+      // (documented, not fixable from this module) regardless of this
+      // optimization.
+      await history.record({ kind: 'schedule', id: 'sched-1' }, 'schedule.created', {});
+
+      const snapshot = await history.retainedRunOwnerIdsForAuditRetention();
+      expect(snapshot.ownerIds.size).toBe(0);
+      expect(snapshot.tailSequence).not.toBeUndefined();
+
+      const scanCallsBeforeRefresh = scanCalls();
+      const firstRefresh = await history.refreshRetainedRunOwnerIds(snapshot);
+      expect(firstRefresh.ownerIds.size).toBe(0);
+      expect(scanCalls()).toBe(scanCallsBeforeRefresh);
+
+      const secondRefresh = await history.refreshRetainedRunOwnerIds(firstRefresh);
+      expect(secondRefresh.ownerIds.size).toBe(0);
+      expect(scanCalls()).toBe(scanCallsBeforeRefresh);
+
+      // A genuinely NEW run owner still correctly falls through and gets
+      // observed — this optimization never trades correctness away.
+      await history.record({ kind: 'run', id: 'first-run' }, 'run.completed', {});
+      const thirdRefresh = await history.refreshRetainedRunOwnerIds(secondRefresh);
+      expect(thirdRefresh.ownerIds).toEqual(new Set(['first-run']));
+      expect(scanCalls()).toBeGreaterThan(scanCallsBeforeRefresh);
+
+      await history.dispose();
+    });
+
+    it("gives a genuinely VIRGIN feed (never had a single event appended) a real tailSequence (-1), not undefined, and still resolves refreshes correctly — the ACCEPTED RESIDUAL for this exact case (documented on RetainedRunOwnerSnapshot.tailSequence) is that FleetEventFeed.snapshotTailSequence() itself still falls back to its own storage.scan() here (no tail record has ever been written for it to read cheaply), so this test asserts CORRECTNESS, not a scan-count win, for the narrow window before a bureau's first-ever durable event", async () => {
+      const backing = await createMemoryStorage();
+      const { storage, scanCalls } = createScanCountingStorage(backing);
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      // No `history.record()` call at all yet — genuinely virgin.
+      const snapshot = await history.retainedRunOwnerIdsForAuditRetention();
+      expect(snapshot.ownerIds.size).toBe(0);
+      // The whole point of this round's fix: NEVER `undefined`, even
+      // here — `FleetEventFeed.snapshotTailSequence()`'s own `-1`
+      // sentinel for "nothing has ever been appended".
+      expect(snapshot.tailSequence).toBe(-1);
+
+      // Refreshing against a snapshot that is still virgin resolves
+      // correctly (still empty, no error) — this DOES still cost a scan
+      // per call (the accepted residual), so this assertion is about
+      // correctness, not cost.
+      const refreshed = await history.refreshRetainedRunOwnerIds(snapshot);
+      expect(refreshed.ownerIds.size).toBe(0);
+      expect(refreshed.tailSequence).toBe(-1);
+      expect(scanCalls()).toBeGreaterThan(0);
+
+      // The FIRST-EVER durable event this bureau records is still
+      // observed correctly, closing the residual window from this point
+      // forward — every later refresh becomes the cheap, `get`-only path
+      // the sibling test above exercises.
+      await history.record({ kind: 'run', id: 'first-ever-run' }, 'run.completed', {});
+      const afterFirstEvent = await history.refreshRetainedRunOwnerIds(refreshed);
+      expect(afterFirstEvent.ownerIds).toEqual(new Set(['first-ever-run']));
+
+      await history.dispose();
+    });
+
+    it('reads FleetEventFeed.snapshotTailSequence() BEFORE starting the replay scan on a fresh snapshot, never after (Codex review, PR #600, "Do not advance the tail past an unscanned first append") — reading it after would let a run event that commits WHILE the scan is executing be silently marked as already covered, without its owner ever being recorded', async () => {
+      const backing = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+
+      // Tracks the ORDER `KEYS.fleetEventTail()` (read by
+      // `snapshotTailSequence()`) and `KEYS.fleetEventPrefix()` (scanned
+      // by `feed.replay()`'s own `loadConsistentReplayPage`, and by
+      // `snapshotTailSequence()`'s OWN virgin-feed fallback scan — see
+      // that function's doc comment) are read in — the exact ordering
+      // this fix depends on. If the tail were instead read AFTER the
+      // replay scan (this fix's own bug, closed here), a run event
+      // committed in the gap between "the scan walked nothing" and "the
+      // tail is read" would make the returned snapshot claim a
+      // `tailSequence` covering that event while never having recorded
+      // its owner or advanced `cursor` past it — permanently hiding that
+      // owner from every LATER refresh, since a fresh
+      // `snapshotTailSequence()` reading would already read as "no new
+      // activity" against the falsely-advanced value.
+      const callOrder: string[] = [];
+      const trackedStorage = new Proxy(backing, {
+        get(target, property, receiver) {
+          if (property === 'get') {
+            return async (key: string) => {
+              if (key === KEYS.fleetEventTail()) callOrder.push('tail-read');
+              return target.get(key);
+            };
+          }
+          if (property === 'scan') {
+            return (prefix: string, options?: Parameters<Storage['scan']>[1]) => {
+              if (prefix === KEYS.fleetEventPrefix()) callOrder.push('replay-scan');
+              return target.scan(prefix, options);
+            };
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+
+      const history = createDurableEventHistory(trackedStorage, runtime);
+
+      // Genuinely virgin feed — this exercises the exact fresh-scan path
+      // (`fromCursor === undefined`) this fix's own pre-scan tail read
+      // guards.
+      await history.retainedRunOwnerIdsForAuditRetention();
+
+      const firstTailRead = callOrder.indexOf('tail-read');
+      const firstReplayScan = callOrder.indexOf('replay-scan');
+      expect(firstTailRead).toBeGreaterThanOrEqual(0);
+      expect(firstReplayScan).toBeGreaterThanOrEqual(0);
+      expect(firstTailRead).toBeLessThan(firstReplayScan);
+
+      await history.dispose();
+    });
+  });
+
+  describe('corrupt/unrecognized record handling', () => {
+    it('never surfaces an event with no workflowId through an owner-scoped page', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+
+      // A record written by something else entirely (no workflowId at
+      // all) can never match `page()`'s exact-string-match owner filter,
+      // so it is silently excluded rather than causing a decode failure —
+      // proving the filter, independent of this store's own writes.
+      const rawFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await rawFeed.append({ kind: 'fleet:other', emittedAtMs: 0, payload: {} });
+      rawFeed.dispose();
+
+      const page = await history.page({ kind: 'run', id: 'run-1' });
+      expect(page).toEqual({ events: [], hasMore: false });
+
+      await history.dispose();
+    });
+
+    it('skips a fleet event whose payload is not the stored-wrapper shape, diagnosing rather than aborting the page (AB-313)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const diagnostics: BureauDiagnostic[] = [];
+      const history = createDurableEventHistory(storage, runtime, (diagnostic) => {
+        diagnostics.push(diagnostic);
+      });
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const good1 = await history.record(owner, 'run.started', {});
+
+      const rawFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await rawFeed.append({
+        kind: 'legacy.kind',
+        workflowId: 'run:run-1',
+        emittedAtMs: 0,
+        payload: 'not-a-wrapper',
+      });
+      rawFeed.dispose();
+
+      const good2 = await history.record(owner, 'run.completed', {});
+
+      const page = await history.page(owner);
+      expect(page).toEqual({
+        events: [good1, good2],
+        hasMore: false,
+        nextCursor: good2.cursor,
+      });
+      expect(
+        diagnostics.some((diagnostic) =>
+          diagnostic.message.includes('Skipped corrupt durable record'),
+        ),
+      ).toBe(true);
+
+      await history.dispose();
+    });
+
+    it('skips a stored record with an unrecognized schemaVersion, diagnosing rather than aborting the page (AB-313)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const diagnostics: BureauDiagnostic[] = [];
+      const history = createDurableEventHistory(storage, runtime, (diagnostic) => {
+        diagnostics.push(diagnostic);
+      });
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const good1 = await history.record(owner, 'run.started', {});
+
+      const rawFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await rawFeed.append({
+        kind: 'run.error',
+        workflowId: 'run:run-1',
+        emittedAtMs: 0,
+        payload: { schemaVersion: 999, payload: { bogus: true } },
+      });
+      rawFeed.dispose();
+
+      const good2 = await history.record(owner, 'run.completed', {});
+
+      const page = await history.page(owner);
+      expect(page).toEqual({
+        events: [good1, good2],
+        hasMore: false,
+        nextCursor: good2.cursor,
+      });
+      expect(
+        diagnostics.some((diagnostic) =>
+          diagnostic.message.includes('Skipped corrupt durable record'),
+        ),
+      ).toBe(true);
+
+      await history.dispose();
+    });
+
+    it('never reports hasMore: true because of a corrupt record sitting at the limit boundary with nothing valid after it (copilot review, PR #551)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const good1 = await history.record(owner, 'run.started', {});
+
+      const rawFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await rawFeed.append({
+        kind: 'legacy.kind',
+        workflowId: 'run:run-1',
+        emittedAtMs: 0,
+        payload: 'not-a-wrapper',
+      });
+      rawFeed.dispose();
+
+      // limit: 1 — exactly `good1`'s count. The only record after it is
+      // corrupt and skipped, so there is genuinely nothing more to page to.
+      const page = await history.page(owner, { limit: 1 });
+      expect(page).toEqual({ events: [good1], hasMore: false, nextCursor: good1.cursor });
+
+      await history.dispose();
+    });
+
+    it('reports hasMore: true when a genuine valid record follows a corrupt one at the limit boundary', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const good1 = await history.record(owner, 'run.started', {});
+
+      const rawFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await rawFeed.append({
+        kind: 'legacy.kind',
+        workflowId: 'run:run-1',
+        emittedAtMs: 0,
+        payload: 'not-a-wrapper',
+      });
+      rawFeed.dispose();
+
+      await history.record(owner, 'run.completed', {}); // a real record beyond the limit
+
+      const page = await history.page(owner, { limit: 1 });
+      expect(page).toEqual({ events: [good1], hasMore: true, nextCursor: good1.cursor });
+
+      await history.dispose();
+    });
+  });
+
+  describe('dispose()', () => {
+    it('is safe to call more than once', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history: DurableEventHistory = createDurableEventHistory(storage, runtime);
+
+      await history.dispose();
+      await history.dispose();
+    });
+  });
+
+  describe('restart durability', () => {
+    it('survives reopening the same SQLite backend across two independently constructed instances', async () => {
+      const runtime = createManualRuntimeServices();
+      const fixture = createSqliteStorageFixture({ runtime });
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      try {
+        const storage1 = await resolveStorage(fixture.configuration);
+        const history1 = createDurableEventHistory(storage1, runtime);
+        await history1.record(owner, 'run.started', { attempt: 1 });
+        await history1.record(owner, 'step.completed', { attempt: 1 });
+        await history1.dispose();
+        storage1[Symbol.dispose]();
+
+        const storage2 = await resolveStorage(fixture.configuration);
+        const history2 = createDurableEventHistory(storage2, runtime);
+        const page = await history2.page(owner);
+        if ('outcome' in page) throw new Error('expected a page, got a gap');
+
+        expect(page.events.map((event) => event.kind)).toEqual(['run.started', 'step.completed']);
+        expect(page.events.map((event) => event.sequence)).toEqual([0, 1]);
+
+        await history2.dispose();
+        storage2[Symbol.dispose]();
+      } finally {
+        await fixture.dispose();
+      }
+    });
+
+    it('survives reopening the same SQLite backend across two independently constructed instances for a schedule owner (AB-320)', async () => {
+      const runtime = createManualRuntimeServices();
+      const fixture = createSqliteStorageFixture({ runtime });
+      const owner = { kind: 'schedule' as const, id: 'sched-1' };
+
+      try {
+        const storage1 = await resolveStorage(fixture.configuration);
+        const history1 = createDurableEventHistory(storage1, runtime);
+        await history1.record(owner, 'schedule.created', { scheduleId: 'sched-1' });
+        await history1.record(owner, 'schedule.paused', { scheduleId: 'sched-1' });
+        await history1.dispose();
+        storage1[Symbol.dispose]();
+
+        const storage2 = await resolveStorage(fixture.configuration);
+        const history2 = createDurableEventHistory(storage2, runtime);
+        const page = await history2.page(owner);
+        if ('outcome' in page) throw new Error('expected a page, got a gap');
+
+        expect(page.events.map((event) => event.kind)).toEqual([
+          'schedule.created',
+          'schedule.paused',
+        ]);
+        expect(page.events.map((event) => event.sequence)).toEqual([0, 1]);
+
+        await history2.dispose();
+        storage2[Symbol.dispose]();
+      } finally {
+        await fixture.dispose();
+      }
+    });
+
+    it('survives reopening the same LMDB backend across two independently constructed instances', async () => {
+      const runtime = createManualRuntimeServices();
+      const fixture = createLmdbStorageFixture({ runtime });
+      const owner = { kind: 'session' as const, id: 'session-1' };
+
+      try {
+        const storage1 = await resolveStorage(fixture.configuration);
+        const history1 = createDurableEventHistory(storage1, runtime);
+        await history1.record(owner, 'session.created', { attempt: 1 });
+        await history1.record(owner, 'session.deleted', { attempt: 1 });
+        await history1.dispose();
+        // LMDB's single-writer lock: the first handle must be fully closed
+        // before a second handle opens the same directory, or the second
+        // open deadlocks (per the fixture's own doc comment).
+        storage1[Symbol.dispose]();
+
+        const storage2 = await resolveStorage(fixture.configuration);
+        const history2 = createDurableEventHistory(storage2, runtime);
+        const page = await history2.page(owner);
+        if ('outcome' in page) throw new Error('expected a page, got a gap');
+
+        expect(page.events.map((event) => event.kind)).toEqual([
+          'session.created',
+          'session.deleted',
+        ]);
+        expect(page.events.map((event) => event.sequence)).toEqual([0, 1]);
+
+        await history2.dispose();
+        storage2[Symbol.dispose]();
+      } finally {
+        await fixture.dispose();
+      }
+    });
+  });
+
+  describe('subscribeEventHistory()', () => {
+    it('never starts work: a fresh, never-appended-to owner replays zero events and then waits live with no error', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+      expect(subscription.closed).toBe(false);
+      expect(collector.events).toEqual([]);
+
+      // Prove the subscription is genuinely live (not merely "hasn't
+      // crashed yet") by recording a real event through it — never-
+      // starts-work is a claim about what happens BEFORE any event
+      // exists, not about the subscription being inert forever.
+      const recorded = await history.record(owner, 'run.started', {});
+      await collector.waitForSequence(recorded.sequence);
+      expect(collector.events.map((event) => event.kind)).toEqual(['run.started']);
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+
+    it('replays existing history in order, then continues with live events, with no gap or duplicate', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.started', { step: 0 });
+      await history.record(owner, 'step.completed', { step: 0 });
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+
+      await collector.waitForCount(2);
+      expect(collector.events.map((event) => event.kind)).toEqual([
+        'run.started',
+        'step.completed',
+      ]);
+
+      const third = await history.record(owner, 'run.completed', { step: 1 });
+      await collector.waitForSequence(third.sequence);
+      expect(collector.events.map((event) => event.kind)).toEqual([
+        'run.started',
+        'step.completed',
+        'run.completed',
+      ]);
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+
+    it('honors an exclusive since cursor: the event AT since is never replayed, only what comes strictly after it', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const first = await history.record(owner, 'run.started', {});
+      const second = await history.record(owner, 'step.completed', {});
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push, {
+        since: first.cursor,
+      });
+
+      await collector.waitForSequence(second.sequence);
+      // Exclusive: `first` itself never arrives, only `second` (and later
+      // live events) — proving `since` behaves the same way here as it
+      // already does for `page()`'s own exclusive cursor.
+      expect(collector.events.map((event) => event.kind)).toEqual(['step.completed']);
+
+      const third = await history.record(owner, 'run.completed', {});
+      await collector.waitForSequence(third.sequence);
+      expect(collector.events.map((event) => event.kind)).toEqual([
+        'step.completed',
+        'run.completed',
+      ]);
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+
+    it('never delivers another owner’s events', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-a' };
+      const otherOwner = { kind: 'run' as const, id: 'run-b' };
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+
+      await history.record(otherOwner, 'run.started', {});
+      const last = await history.record(owner, 'run.started', {});
+
+      // A cursor-carrying event for THIS owner proves the live leg has
+      // caught up through (at least) `last`'s sequence without needing a
+      // real sleep: the owner filter would have delivered `otherOwner`'s
+      // event too, at the same point in the stream, if it were broken.
+      await collector.waitForSequence(last.sequence);
+      expect(collector.events.map((event) => event.owner)).toEqual([owner]);
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+
+    it('delivers an event committed during the replay-to-live handoff exactly once — a manual barrier, never real timing', async () => {
+      const rawStorage = await createMemoryStorage();
+      const barrier = createReplayGateBarrier(rawStorage, KEYS.fleetEventWatermark());
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(barrier.storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+
+      // Block the underlying replay exactly at its first storage read —
+      // AFTER the fleet's tail sequence has been snapshotted (Weft's own
+      // `snapshotTailSequence()`, a different key) but BEFORE the replay
+      // leg consumes anything. Appending here, through the SAME
+      // `history`/feed so the live leg's storage re-read (not a poll
+      // timer) is guaranteed to observe it, forces exactly the race this
+      // test exists to prove deterministic delivery for.
+      await barrier.waitUntilGated();
+      const eventA = await history.record(owner, 'run.completed', { step: 1 });
+      barrier.release();
+
+      await collector.waitForSequence(eventA.sequence);
+      expect(collector.events.map((event) => event.kind)).toEqual(['run.completed']);
+
+      // Prove no duplicate by observing a SECOND, distinguishable live
+      // event arrive cleanly after the first, rather than checking a
+      // count at one instant.
+      const eventB = await history.record(owner, 'run.aborted', { step: 2 });
+      await collector.waitForSequence(eventB.sequence);
+      expect(collector.events.map((event) => event.kind)).toEqual(['run.completed', 'run.aborted']);
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+
+    it('delivers the full event set to each of multiple independent subscribers, unaffected by another’s disposal', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const first = await history.record(owner, 'run.started', {});
+
+      const collectorA = createCollector();
+      const subscriptionA = history.subscribeEventHistory(owner, collectorA.push);
+      await collectorA.waitForSequence(first.sequence);
+
+      const collectorB = createCollector();
+      const subscriptionB = history.subscribeEventHistory(owner, collectorB.push);
+      await collectorB.waitForSequence(first.sequence);
+
+      // Dispose A; B must keep receiving events undisturbed.
+      subscriptionA.unsubscribe();
+      expect(subscriptionA.closed).toBe(true);
+
+      const second = await history.record(owner, 'run.completed', {});
+      await collectorB.waitForSequence(second.sequence);
+      expect(collectorB.events.map((event) => event.kind)).toEqual([
+        'run.started',
+        'run.completed',
+      ]);
+
+      // A received nothing past its own disposal.
+      expect(collectorA.events.map((event) => event.kind)).toEqual(['run.started']);
+
+      // The underlying feed is unaffected by A's disposal — a THIRD,
+      // brand-new subscription still works.
+      const collectorC = createCollector();
+      const subscriptionC = history.subscribeEventHistory(owner, collectorC.push);
+      await collectorC.waitForSequence(second.sequence);
+      expect(collectorC.events.map((event) => event.kind)).toEqual([
+        'run.started',
+        'run.completed',
+      ]);
+
+      subscriptionB.unsubscribe();
+      subscriptionC.unsubscribe();
+      await history.dispose();
+    });
+
+    it('ends the subscription when the passed AbortSignal aborts', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const controller = new AbortController();
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push, {
+        signal: controller.signal,
+      });
+
+      // The subscription's own internal generator only observes the abort
+      // once it resumes (weft's `createDurableSubscription` checks
+      // `signal?.aborted` at the top of each loop iteration, awaited
+      // inside `waitForAppendOrPoll`) — recording a first, harmless event
+      // BEFORE aborting gives the loop a deterministic point to resume at
+      // and notice the signal, rather than racing whether the abort
+      // listener or the initial replay runs first.
+      const before = await history.record(owner, 'run.started', {});
+      await collector.waitForSequence(before.sequence);
+
+      controller.abort();
+      await collector.waitForClosed(subscription);
+      expect(subscription.closed).toBe(true);
+
+      await history.record(owner, 'run.completed', {});
+      // Nothing further arrives — proven by disposing and observing the
+      // collector's event count is unchanged after the store itself is
+      // torn down (a duplicate/late delivery would have landed by then).
+      await history.dispose();
+      expect(collector.events.map((event) => event.kind)).toEqual(['run.started']);
+    });
+
+    it('rejects a malformed since cursor synchronously, before any replay starts', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      expect(() =>
+        history.subscribeEventHistory(owner, () => {}, { since: 'not-a-cursor' }),
+      ).toThrow();
+
+      await history.dispose();
+    });
+
+    it('isolates a throwing listener: delivery continues for the next event', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const diagnostics: BureauDiagnostic[] = [];
+      const history = createDurableEventHistory(storage, runtime, (diagnostic) => {
+        diagnostics.push(diagnostic);
+      });
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, (event) => {
+        collector.push(event);
+        if (event.kind === 'run.started') {
+          throw new Error('listener boom');
+        }
+      });
+
+      const first = await history.record(owner, 'run.started', {});
+      await collector.waitForSequence(first.sequence);
+
+      const second = await history.record(owner, 'run.completed', {});
+      await collector.waitForSequence(second.sequence);
+
+      expect(collector.events.map((event) => event.kind)).toEqual(['run.started', 'run.completed']);
+      expect(subscription.closed).toBe(false);
+      expect(diagnostics.some((diagnostic) => diagnostic.message.includes('Listener threw'))).toBe(
+        true,
+      );
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+
+    it('ends the subscription (via the diagnostic sink) when a stored record is corrupt, rather than throwing', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      let notifyDiagnosed: (() => void) | undefined;
+      const diagnosed = new Promise<void>((resolve) => {
+        notifyDiagnosed = resolve;
+      });
+      const diagnostics: BureauDiagnostic[] = [];
+      const history = createDurableEventHistory(storage, runtime, (diagnostic) => {
+        diagnostics.push(diagnostic);
+        notifyDiagnosed?.();
+      });
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+
+      const rawFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await rawFeed.append({
+        kind: 'legacy.kind',
+        workflowId: 'run:run-1',
+        emittedAtMs: 0,
+        payload: 'not-a-wrapper',
+      });
+      rawFeed.dispose();
+
+      // The listener never fires (the corrupt record fails decode before
+      // `listener` is called) — the diagnostic sink is the only signal.
+      // `closed` itself flips slightly later, once returning out of the
+      // `for await` loop drains the underlying async generator's own
+      // `finally` (its iterator-return protocol), so wait for that too —
+      // deterministically (microtask draining), never a real timer.
+      await diagnosed;
+      await collector.waitForClosed(subscription);
+
+      expect(collector.events).toEqual([]);
+      expect(subscription.closed).toBe(true);
+      expect(
+        diagnostics.some((diagnostic) => diagnostic.message.includes('corrupt durable record')),
+      ).toBe(true);
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+
+    it('ends the subscription (via the diagnostic sink) when the underlying replay itself rejects — not a value the listener ever sees', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      let notifyDiagnosed: (() => void) | undefined;
+      const diagnosed = new Promise<void>((resolve) => {
+        notifyDiagnosed = resolve;
+      });
+      const diagnostics: BureauDiagnostic[] = [];
+      const history = createDurableEventHistory(storage, runtime, (diagnostic) => {
+        diagnostics.push(diagnostic);
+        notifyDiagnosed?.();
+      });
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      // Establish a valid record so `snapshotTailSequence()`/the retention
+      // watermark are both present, then corrupt the STORED BYTES for that
+      // record directly — this fails inside weft's own
+      // `loadConsistentReplayPage` (`decodeStorageValue`/`isFleetEventEnvelope`),
+      // rejecting the replay `AsyncIterable` itself, unlike the sibling test
+      // above (a well-formed envelope whose PAYLOAD this module's own
+      // `toDurableEventEnvelope` rejects, inside this module's loop body).
+      await history.record(owner, 'run.started', {});
+      await storage.put(KEYS.fleetEvent(0), new Uint8Array([1, 2, 3, 4]));
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+
+      await diagnosed;
+      await collector.waitForClosed(subscription);
+
+      expect(collector.events).toEqual([]);
+      expect(subscription.closed).toBe(true);
+      expect(
+        diagnostics.some((diagnostic) => diagnostic.message.includes('ended with an error')),
+      ).toBe(true);
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+
+    it('silently skips a since predating the retention floor, delivering only what is still retained — unlike page(), which reports an explicit gap', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      const first = await history.record(owner, 'run.started', {}); // sequence 0
+      await history.record(owner, 'step.completed', {}); // sequence 1
+      const third = await history.record(owner, 'run.completed', {}); // sequence 2
+
+      const adminFeed: FleetEventFeed = createFleetEventFeed(storage);
+      await adminFeed.retain({ beforeSequence: 2 });
+      adminFeed.dispose();
+
+      // Confirm page() would report a gap for the very same since — the
+      // contrast this test is named for.
+      const gap = await history.page(owner, { since: first.cursor });
+      expect(gap).toEqual({
+        outcome: 'gap',
+        requestedCursor: first.cursor,
+        firstRetainedSequence: 2,
+      });
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+
+      await collector.waitForSequence(third.sequence);
+      expect(collector.events.map((event) => event.sequence)).toEqual([2]);
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+  });
+});
+
+/**
+ * A fake bureau event surface for `createDurableEventProducer()` unit
+ * tests below — a real, typed `CompletableEventTarget<BureauEventMap>`
+ * (the same base class `create-bureau.ts`'s own `emitter` uses), exposed
+ * through the two methods `createDurableEventProducer` actually calls
+ * (`addEventListener`/`removeEventListener` — verified by reading that
+ * function's body, which touches no other `Bureau` member). Building a
+ * full structural `Bureau` fake here would mean stubbing dozens of
+ * unrelated members for a producer that only ever listens; the cast below
+ * is narrow, load-bearing for this one call site, and ESLint's `as`/`any`
+ * discipline is relaxed in test files (`testing-standards.md`).
+ */
+function createFakeBureauEventSurface(): {
+  readonly bureau: Bureau;
+  dispatchAction(action: Action): void;
+  dispatchScheduleCompleted(event: ScheduleCompletedEvent): void;
+  dispatchScheduleFailed(event: ScheduleFailedEvent): void;
+  dispatchScheduleCreated(event: AgentScheduledEvent): void;
+  dispatchSchedulePaused(event: SchedulePausedEvent): void;
+  dispatchScheduleResumed(event: ScheduleResumedEvent): void;
+  dispatchScheduleCancelled(event: ScheduleCancelledEvent): void;
+  dispatchReviewApproved(event: ReviewApprovedEvent): void;
+  dispatchReviewDenied(event: ReviewDeniedEvent): void;
+  dispatchReviewRejected(event: ReviewRejectedEvent): void;
+  dispatchReviewExpired(event: ReviewExpiredEvent): void;
+  dispatchReviewRevoked(event: ReviewRevokedEvent): void;
+  dispatchReviewCanceled(event: ReviewCanceledEvent): void;
+  dispatchReviewSuperseded(event: ReviewSupersededEvent): void;
+  dispatchSessionCreated(event: SessionCreatedEvent): void;
+  dispatchSessionSaved(event: SessionSavedEvent): void;
+  dispatchSessionDeleted(event: SessionDeletedEvent): void;
+} {
+  const target = new CompletableEventTarget<BureauEventMap>();
+  const bureau = {
+    addEventListener: target.addEventListener.bind(target),
+    removeEventListener: target.removeEventListener.bind(target),
+  } as unknown as Bureau;
+
+  return {
+    bureau,
+    dispatchAction: (action) => {
+      target.dispatch(new ActionEvent(action));
+    },
+    dispatchScheduleCompleted: (event) => {
+      target.dispatch(event);
+    },
+    dispatchScheduleFailed: (event) => {
+      target.dispatch(event);
+    },
+    dispatchScheduleCreated: (event) => {
+      target.dispatch(event);
+    },
+    dispatchSchedulePaused: (event) => {
+      target.dispatch(event);
+    },
+    dispatchScheduleResumed: (event) => {
+      target.dispatch(event);
+    },
+    dispatchScheduleCancelled: (event) => {
+      target.dispatch(event);
+    },
+    dispatchReviewApproved: (event) => {
+      target.dispatch(event);
+    },
+    dispatchReviewDenied: (event) => {
+      target.dispatch(event);
+    },
+    dispatchReviewRejected: (event) => {
+      target.dispatch(event);
+    },
+    dispatchReviewExpired: (event) => {
+      target.dispatch(event);
+    },
+    dispatchReviewRevoked: (event) => {
+      target.dispatch(event);
+    },
+    dispatchReviewCanceled: (event) => {
+      target.dispatch(event);
+    },
+    dispatchReviewSuperseded: (event) => {
+      target.dispatch(event);
+    },
+    dispatchSessionCreated: (event) => {
+      target.dispatch(event);
+    },
+    dispatchSessionSaved: (event) => {
+      target.dispatch(event);
+    },
+    dispatchSessionDeleted: (event) => {
+      target.dispatch(event);
+    },
+  };
+}
+
+function createAction(overrides: Partial<Action> = {}): Action {
+  return {
+    sequence: 0,
+    runId: 'run-1',
+    type: 'run.completed',
+    detail: {},
+    timestamp: 0,
+    ...overrides,
+  };
+}
+
+/** A `DurableEventHistory` fake that records every `record()` call — `page`/`subscribeEventHistory`/`dispose` are unused by the producer and throw if ever called. */
+function createRecordingHistory(
+  recordImpl?: (owner: DurableEventOwner, kind: string, payload: unknown) => Promise<void>,
+): {
+  readonly history: DurableEventHistory;
+  readonly calls: {
+    owner: DurableEventOwner;
+    kind: string;
+    payload: unknown;
+    emittedAtMs: number | undefined;
+  }[];
+} {
+  const calls: {
+    owner: DurableEventOwner;
+    kind: string;
+    payload: unknown;
+    emittedAtMs: number | undefined;
+  }[] = [];
+  const history: DurableEventHistory = {
+    async record(owner, kind, payload, options) {
+      calls.push({ owner, kind, payload, emittedAtMs: options?.emittedAtMs });
+      if (recordImpl) await recordImpl(owner, kind, payload);
+      return {
+        kind,
+        owner,
+        sequence: calls.length - 1,
+        cursor: String(calls.length - 1),
+        emittedAtMs: 0,
+        payload,
+        schemaVersion: 1,
+      };
+    },
+    page() {
+      throw new Error('unused by createDurableEventProducer');
+    },
+    subscribeEventHistory() {
+      throw new Error('unused by createDurableEventProducer');
+    },
+    retainedRunOwnerIds() {
+      throw new Error('unused by createDurableEventProducer');
+    },
+    retainedRunOwnerIdsForAuditRetention() {
+      throw new Error('unused by createDurableEventProducer');
+    },
+    refreshRetainedRunOwnerIds() {
+      throw new Error('unused by createDurableEventProducer');
+    },
+    latestDeletionMarker() {
+      throw new Error('unused by createDurableEventProducer');
+    },
+    wasRecorded() {
+      throw new Error('unused by createDurableEventProducer');
+    },
+    retentionFloorTimestamp() {
+      throw new Error('unused by createDurableEventProducer');
+    },
+    dispose: async () => {},
+  };
+  return { history, calls };
+}
+
+describe('createDurableEventProducer()', () => {
+  it('records a run-durable action type under the run owner, with the same serialized detail the audit trail would produce', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchAction(createAction({ type: 'run.completed', runId: 'run-1', detail: { ok: true } }));
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([
+      {
+        owner: { kind: 'run', id: 'run-1' },
+        kind: 'run.completed',
+        payload: { ok: true },
+        emittedAtMs: 0,
+      },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('records a run-durable action type with the originating action.timestamp as emittedAtMs, not a fresh clock read (AB-388, Codex review PR #597, "Clamp at an audit-safe timestamp boundary")', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    // The action's own timestamp (1_000) is earlier than the clock reading
+    // at the moment this listener actually runs (5_000) — simulating the
+    // runtime clock advancing between the action being created and this
+    // producer recording it.
+    await runtime.advance(5_000);
+    dispatchAction(
+      createAction({ type: 'run.completed', runId: 'run-1', detail: {}, timestamp: 1_000 }),
+    );
+    await runtime.deferred.drain();
+
+    expect(calls[0]?.emittedAtMs).toBe(1_000);
+    expect(calls[0]?.emittedAtMs).not.toBe(runtime.clock.now());
+
+    await producer.dispose();
+  });
+
+  it('records every run-durable action type: completed, error, aborted, tripwire', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    for (const type of ['run.completed', 'run.error', 'run.aborted', 'run.tripwire']) {
+      dispatchAction(createAction({ type, runId: 'run-1' }));
+    }
+    await runtime.deferred.drain();
+
+    expect(calls.map((call) => call.kind)).toEqual([
+      'run.completed',
+      'run.error',
+      'run.aborted',
+      'run.tripwire',
+    ]);
+
+    await producer.dispose();
+  });
+
+  describe('hasActiveWrite() (AB-363)', () => {
+    it('reports true while a write is in flight and false once it settles, scoped to the exact owner', async () => {
+      const runtime = createManualRuntimeServices();
+      const { bureau, dispatchAction } = createFakeBureauEventSurface();
+      let releaseWrite!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      const { history } = createRecordingHistory(async () => {
+        await gate;
+      });
+      const producer = createDurableEventProducer(bureau, history, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      // Before dispatch: no write has ever started for this owner.
+      expect(producer.hasActiveWrite(owner)).toBe(false);
+
+      dispatchAction(createAction({ type: 'run.completed', runId: 'run-1' }));
+
+      // `sink()` increments the count SYNCHRONOUSLY, before `record()`'s
+      // gated promise ever resolves — no `await` needed to observe it.
+      expect(producer.hasActiveWrite(owner)).toBe(true);
+      // An unrelated owner is never affected.
+      expect(producer.hasActiveWrite({ kind: 'run', id: 'run-2' })).toBe(false);
+
+      releaseWrite();
+      await runtime.deferred.drain();
+
+      expect(producer.hasActiveWrite(owner)).toBe(false);
+
+      await producer.dispose();
+    });
+
+    it('drops back to false only once EVERY concurrent write for the same owner has settled', async () => {
+      const runtime = createManualRuntimeServices();
+      const { bureau, dispatchAction } = createFakeBureauEventSurface();
+      const gates: Array<() => void> = [];
+      let callIndex = 0;
+      const { history } = createRecordingHistory(async () => {
+        const index = callIndex;
+        callIndex += 1;
+        await new Promise<void>((resolve) => {
+          gates[index] = resolve;
+        });
+      });
+      const producer = createDurableEventProducer(bureau, history, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      // Two independent durable writes for the SAME owner in flight at
+      // once (mirrors a run's own terminal write racing a still-in-flight
+      // earlier write for that run, e.g. a prior step's durable record).
+      dispatchAction(createAction({ type: 'run.completed', runId: 'run-1' }));
+      dispatchAction(createAction({ type: 'run.tripwire', runId: 'run-1' }));
+      expect(producer.hasActiveWrite(owner)).toBe(true);
+
+      gates[0]?.();
+      await Promise.resolve();
+      // The SECOND write is still outstanding.
+      expect(producer.hasActiveWrite(owner)).toBe(true);
+
+      gates[1]?.();
+      await runtime.deferred.drain();
+      expect(producer.hasActiveWrite(owner)).toBe(false);
+
+      await producer.dispose();
+    });
+  });
+
+  describe('waitForActiveWrites() (AB-372)', () => {
+    it('resolves immediately for an owner with no write in flight', async () => {
+      const runtime = createManualRuntimeServices();
+      const { bureau } = createFakeBureauEventSurface();
+      const { history } = createRecordingHistory();
+      const producer = createDurableEventProducer(bureau, history, runtime);
+
+      await producer.waitForActiveWrites({ kind: 'run', id: 'never-dispatched' });
+
+      await producer.dispose();
+    });
+
+    it('awaits a write already in flight for the owner, and resolves once it settles', async () => {
+      const runtime = createManualRuntimeServices();
+      const { bureau, dispatchAction } = createFakeBureauEventSurface();
+      let releaseWrite!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      const { history } = createRecordingHistory(async () => {
+        await gate;
+      });
+      const producer = createDurableEventProducer(bureau, history, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      dispatchAction(createAction({ type: 'run.completed', runId: 'run-1' }));
+
+      let resolved = false;
+      const waited = producer.waitForActiveWrites(owner).then(() => {
+        resolved = true;
+      });
+
+      await Promise.resolve();
+      expect(resolved).toBe(false);
+
+      releaseWrite();
+      await waited;
+      expect(resolved).toBe(true);
+
+      await producer.dispose();
+    });
+
+    it('never waits on a write that starts AFTER the call — a snapshot, not an open-ended subscription', async () => {
+      const runtime = createManualRuntimeServices();
+      const { bureau, dispatchAction } = createFakeBureauEventSurface();
+      let releaseSecondWrite!: () => void;
+      const secondGate = new Promise<void>((resolve) => {
+        releaseSecondWrite = resolve;
+      });
+      let callIndex = 0;
+      const { history } = createRecordingHistory(async () => {
+        const index = callIndex;
+        callIndex += 1;
+        // The FIRST write (index 0) resolves immediately, establishing a
+        // real "nothing in flight" baseline BEFORE the snapshot below is
+        // taken — the SECOND write (index 1, gated) is the one this test
+        // is actually about (Codex review finding, PR #580, "Gate the
+        // write this snapshot test actually dispatches" — an earlier round
+        // of this test dispatched only one write, so its own gate was
+        // never reached and the assertion passed on coincidental microtask
+        // ordering rather than proving snapshot semantics).
+        if (index === 1) await secondGate;
+      });
+      const producer = createDurableEventProducer(bureau, history, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      dispatchAction(createAction({ type: 'run.completed', runId: 'run-1' }));
+      await runtime.deferred.drain();
+      expect(producer.hasActiveWrite(owner)).toBe(false);
+
+      // No write in flight yet — the snapshot below is genuinely empty.
+      const waited = producer.waitForActiveWrites(owner);
+
+      // A SECOND write starts for the SAME owner right after the snapshot,
+      // and is deliberately left pending (gated).
+      dispatchAction(createAction({ type: 'run.tripwire', runId: 'run-1' }));
+
+      await waited;
+      // The second write (still gated) is unaffected — this call never
+      // promised to wait for it.
+      expect(producer.hasActiveWrite(owner)).toBe(true);
+
+      releaseSecondWrite();
+      await runtime.deferred.drain();
+      await producer.dispose();
+    });
+
+    it('never rejects even when the awaited write itself fails', async () => {
+      const runtime = createManualRuntimeServices();
+      const { bureau, dispatchAction } = createFakeBureauEventSurface();
+      let releaseWrite!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      const { history } = createRecordingHistory(async () => {
+        await gate;
+        throw new Error('storage boom');
+      });
+      const diagnostics: BureauDiagnostic[] = [];
+      const producer = createDurableEventProducer(bureau, history, runtime, (diagnostic) =>
+        diagnostics.push(diagnostic),
+      );
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      dispatchAction(createAction({ type: 'run.completed', runId: 'run-1' }));
+      const waited = producer.waitForActiveWrites(owner);
+
+      releaseWrite();
+      const result = await waited;
+      expect(result).toBeUndefined();
+      await runtime.deferred.drain();
+
+      await producer.dispose();
+    });
+  });
+
+  it('ignores an action type outside the durable run/session sets — tool.* and step.completed are audit-trail-only, never durable', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchAction(createAction({ type: 'tool.started' }));
+    dispatchAction(createAction({ type: 'step.completed' }));
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([]);
+
+    await producer.dispose();
+  });
+
+  it('records a session-durable action type under the session owner from its detail.sessionId', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchAction(
+      createAction({
+        type: 'session.created',
+        runId: 'run-1',
+        detail: { sessionId: 'sess-A', agentName: 'x' },
+      }),
+    );
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([
+      {
+        owner: { kind: 'session', id: 'sess-A' },
+        kind: 'session.created',
+        payload: { sessionId: 'sess-A', agentName: 'x' },
+        emittedAtMs: 0,
+      },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('drops a session-durable action with no string sessionId on its detail, diagnosing instead of fabricating an owner', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const diagnostics: BureauDiagnostic[] = [];
+    const producer = createDurableEventProducer(bureau, history, runtime, (diagnostic) =>
+      diagnostics.push(diagnostic),
+    );
+
+    dispatchAction(createAction({ type: 'session.saved', detail: { agentName: 'x' } }));
+    dispatchAction(createAction({ type: 'session.saved', detail: { sessionId: 42 } }));
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([]);
+    expect(
+      diagnostics.filter(
+        (diagnostic) =>
+          diagnostic.scope === 'durable-event-history' &&
+          diagnostic.message.includes('no string sessionId'),
+      ),
+    ).toHaveLength(2);
+
+    await producer.dispose();
+  });
+
+  it('records schedule.completed and schedule.failed under the fired run\'s own owner — "a schedule fire is an ordinary run" (AB-87)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchScheduleCompleted, dispatchScheduleFailed } =
+      createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchScheduleCompleted(new ScheduleCompletedEvent('sched-1', 'run-1'));
+    dispatchScheduleFailed(new ScheduleFailedEvent('sched-2', 'run-2'));
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([
+      {
+        owner: { kind: 'run', id: 'run-1' },
+        kind: 'schedule.completed',
+        payload: { scheduleId: 'sched-1', runId: 'run-1' },
+        emittedAtMs: undefined,
+      },
+      {
+        owner: { kind: 'run', id: 'run-2' },
+        kind: 'schedule.failed',
+        payload: { scheduleId: 'sched-2', runId: 'run-2' },
+        emittedAtMs: undefined,
+      },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('records schedule.created under the schedule owner (AB-320)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchScheduleCreated } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchScheduleCreated(
+      new AgentScheduledEvent({
+        agentName: 'triage',
+        scheduleId: 'sched-1',
+        spec: { cron: '* * * * *' },
+        sessionId: 'sess-1',
+      }),
+    );
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([
+      {
+        owner: { kind: 'schedule', id: 'sched-1' },
+        kind: 'schedule.created',
+        payload: {
+          scheduleId: 'sched-1',
+          agentName: 'triage',
+          spec: { cron: '* * * * *' },
+          sessionId: 'sess-1',
+        },
+        // AB-388: no longer `undefined` — the shared `eventTimestamp`
+        // resolver (`event-timestamp.ts`) now stamps this dedicated
+        // listener's `sink()` call with a real clock reading, so it can
+        // never diverge from `createAuditTrail`'s own record for the same
+        // event. `createManualRuntimeServices()`'s manual clock is fixed,
+        // so this is deterministic.
+        emittedAtMs: 1577836800000,
+      },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('records schedule.created with no sessionId key when the event carries none (AB-320)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchScheduleCreated } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchScheduleCreated(
+      new AgentScheduledEvent({
+        agentName: 'triage',
+        scheduleId: 'sched-1',
+        spec: { every: '5m' },
+      }),
+    );
+    await runtime.deferred.drain();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({
+      owner: { kind: 'schedule', id: 'sched-1' },
+      kind: 'schedule.created',
+      payload: { scheduleId: 'sched-1', agentName: 'triage', spec: { every: '5m' } },
+      // AB-388: see the sibling test's own comment above.
+      emittedAtMs: 1577836800000,
+    });
+    expect(calls[0]?.payload).not.toHaveProperty('sessionId');
+
+    await producer.dispose();
+  });
+
+  it('records schedule.paused under the schedule owner (AB-320)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchSchedulePaused } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchSchedulePaused(new SchedulePausedEvent('sched-1'));
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([
+      {
+        owner: { kind: 'schedule', id: 'sched-1' },
+        kind: 'schedule.paused',
+        payload: { scheduleId: 'sched-1' },
+        // AB-388: see the "records schedule.created" test's own comment.
+        emittedAtMs: 1577836800000,
+      },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('records schedule.resumed under the schedule owner (AB-320)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchScheduleResumed } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchScheduleResumed(new ScheduleResumedEvent('sched-1'));
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([
+      {
+        owner: { kind: 'schedule', id: 'sched-1' },
+        kind: 'schedule.resumed',
+        payload: { scheduleId: 'sched-1' },
+        // AB-388: see the "records schedule.created" test's own comment.
+        emittedAtMs: 1577836800000,
+      },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('records schedule.cancelled under the schedule owner (AB-320)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchScheduleCancelled } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchScheduleCancelled(new ScheduleCancelledEvent('sched-1'));
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([
+      {
+        owner: { kind: 'schedule', id: 'sched-1' },
+        kind: 'schedule.cancelled',
+        payload: { scheduleId: 'sched-1' },
+        // AB-388: see the "records schedule.created" test's own comment.
+        emittedAtMs: 1577836800000,
+      },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it("records each review.* lifecycle event under the fired review's own run owner, with the minimal privileged payload (AB-224)", async () => {
+    const runtime = createManualRuntimeServices();
+    const {
+      bureau,
+      dispatchReviewApproved,
+      dispatchReviewDenied,
+      dispatchReviewRejected,
+      dispatchReviewExpired,
+      dispatchReviewRevoked,
+      dispatchReviewCanceled,
+      dispatchReviewSuperseded,
+    } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchReviewApproved(
+      new ReviewApprovedEvent('approval:run-1:call-1', 'run-1', 'operator-a', 'tool-approval'),
+    );
+    dispatchReviewDenied(
+      new ReviewDeniedEvent('approval:run-1:call-2', 'run-1', 'operator-b', 'tool-approval'),
+    );
+    dispatchReviewRejected(
+      new ReviewRejectedEvent('approval:run-1:call-3', 'run-1', 'operator-c', 'tool-approval'),
+    );
+    dispatchReviewExpired(
+      new ReviewExpiredEvent(
+        'approval:run-1:call-4',
+        'run-1',
+        'system:expiry-sweep',
+        'tool-approval',
+      ),
+    );
+    dispatchReviewRevoked(
+      new ReviewRevokedEvent(
+        'approval:run-1:call-5',
+        'run-1',
+        'system:run-deletion',
+        'tool-approval',
+      ),
+    );
+    dispatchReviewCanceled(
+      new ReviewCanceledEvent('human-wait:run-1:sig', 'run-1', 'system:run-abort', 'human-wait'),
+    );
+    dispatchReviewSuperseded(
+      new ReviewSupersededEvent(
+        'approval:run-1:call-6',
+        'run-1',
+        'system:supersession',
+        'tool-approval',
+      ),
+    );
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([
+      {
+        owner: { kind: 'run', id: 'run-1' },
+        kind: 'review.approved',
+        payload: {
+          reviewId: 'approval:run-1:call-1',
+          runId: 'run-1',
+          principal: 'operator-a',
+          kind: 'tool-approval',
+        },
+        emittedAtMs: undefined,
+      },
+      {
+        owner: { kind: 'run', id: 'run-1' },
+        kind: 'review.denied',
+        payload: {
+          reviewId: 'approval:run-1:call-2',
+          runId: 'run-1',
+          principal: 'operator-b',
+          kind: 'tool-approval',
+        },
+        emittedAtMs: undefined,
+      },
+      {
+        owner: { kind: 'run', id: 'run-1' },
+        kind: 'review.rejected',
+        payload: {
+          reviewId: 'approval:run-1:call-3',
+          runId: 'run-1',
+          principal: 'operator-c',
+          kind: 'tool-approval',
+        },
+        emittedAtMs: undefined,
+      },
+      {
+        owner: { kind: 'run', id: 'run-1' },
+        kind: 'review.expired',
+        payload: {
+          reviewId: 'approval:run-1:call-4',
+          runId: 'run-1',
+          principal: 'system:expiry-sweep',
+          kind: 'tool-approval',
+        },
+        emittedAtMs: undefined,
+      },
+      {
+        owner: { kind: 'run', id: 'run-1' },
+        kind: 'review.revoked',
+        payload: {
+          reviewId: 'approval:run-1:call-5',
+          runId: 'run-1',
+          principal: 'system:run-deletion',
+          kind: 'tool-approval',
+        },
+        emittedAtMs: undefined,
+      },
+      {
+        owner: { kind: 'run', id: 'run-1' },
+        kind: 'review.canceled',
+        payload: {
+          reviewId: 'human-wait:run-1:sig',
+          runId: 'run-1',
+          principal: 'system:run-abort',
+          kind: 'human-wait',
+        },
+        emittedAtMs: undefined,
+      },
+      {
+        owner: { kind: 'run', id: 'run-1' },
+        kind: 'review.superseded',
+        payload: {
+          reviewId: 'approval:run-1:call-6',
+          runId: 'run-1',
+          principal: 'system:supersession',
+          kind: 'tool-approval',
+        },
+        emittedAtMs: undefined,
+      },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('records session.deleted under the session owner from a directly-dispatched SessionDeletedEvent (AB-372)', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = await createMemoryStorage();
+    const history = createDurableEventHistory(storage, runtime);
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0));
+    await runtime.deferred.drain();
+
+    const page = await history.page({ kind: 'session', id: 'sess-1' });
+    if ('outcome' in page) throw new Error('expected a page, got a gap');
+    expect(page.events.map((event) => event.kind)).toEqual(['session.deleted']);
+    expect(page.events[0]?.payload).toEqual({
+      sessionId: 'sess-1',
+      incarnation: 'incarnation-a',
+    });
+
+    await producer.dispose();
+    await history.dispose();
+  });
+
+  it('dispatching the same SessionDeletedEvent twice while the first write is still in flight produces exactly one durable record (AB-372)', async () => {
+    // The realistic case this issue's own acceptance criterion targets: a
+    // genuinely CONCURRENT duplicate dispatch of the SAME underlying
+    // deletion (e.g. the documented cross-process race), not a later,
+    // separate deletion — see the sibling "session id legitimately reused"
+    // test below for why those two cases must be told apart.
+    const runtime = createManualRuntimeServices();
+    let releaseWrite!: () => void;
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory(async () => {
+      await writeGate;
+    });
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0));
+    // A second dispatch arrives while the first write is still pending —
+    // checked and dropped SYNCHRONOUSLY, before the first write's `record()`
+    // has even resolved.
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0));
+
+    releaseWrite();
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([
+      {
+        owner: { kind: 'session', id: 'sess-1' },
+        kind: 'session.deleted',
+        payload: { sessionId: 'sess-1', incarnation: 'incarnation-a' },
+        // AB-389: the event's own `committedAtMs` (the 4th constructor
+        // arg above, `0`) — not the shared `eventTimestamp` resolver,
+        // which only the schedule-definition listeners use (see the
+        // "records schedule.created" test's own comment).
+        emittedAtMs: 0,
+      },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('dispatching the literal SAME SessionDeletedEvent object twice, AFTER the first write has settled, still produces exactly one durable record (Codex P2 review findings, PR #580, "Remember/Deduplicate a SessionDeletedEvent after its write settles")', async () => {
+    // The in-flight-by-owner map alone only protects a duplicate dispatch
+    // arriving WHILE the first write is pending — its entry is gone once
+    // that write settles. A literal replay of the SAME event object after
+    // settlement must still be dropped; the sibling "session id legitimately
+    // reused" test below proves the opposite case — two DIFFERENT event
+    // objects for the same id — still produces two records, which is why
+    // this dedup is keyed on object identity, not owner.
+    const runtime = createManualRuntimeServices();
+    const storage = await createMemoryStorage();
+    const history = createDurableEventHistory(storage, runtime);
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    const event = new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0);
+    dispatchSessionDeleted(event);
+    await runtime.deferred.drain();
+    // The first write has fully settled; this is the literal SAME object,
+    // not a new incarnation's deletion.
+    dispatchSessionDeleted(event);
+    await runtime.deferred.drain();
+
+    const page = await history.page({ kind: 'session', id: 'sess-1' });
+    if ('outcome' in page) throw new Error('expected a page, got a gap');
+    expect(page.events.map((pageEvent) => pageEvent.kind)).toEqual(['session.deleted']);
+
+    await producer.dispose();
+    await history.dispose();
+  });
+
+  it('a session id legitimately reused after deletion gets its own session.deleted record when it is deleted again (Codex P1 review finding, PR #580)', async () => {
+    // Before this fix, idempotency was a read-then-write check against the
+    // owner's OWN durable history: a session recreated with the same id
+    // after its first incarnation was deleted (a real, supported scenario
+    // — see `create-bureau.test.ts`'s "does not coalesce a deleteSession
+    // call for a session RECREATED with the same id") would find its
+    // predecessor's `'session.deleted'` marker already in the page and
+    // silently skip recording its OWN, separate deletion — permanently
+    // losing that durable fact for the second incarnation.
+    const runtime = createManualRuntimeServices();
+    const storage = await createMemoryStorage();
+    const history = createDurableEventHistory(storage, runtime);
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0));
+    await runtime.deferred.drain();
+    // The first write has fully settled — this is a genuinely LATER,
+    // separate dispatch, not a concurrent duplicate of the same one. A
+    // DIFFERENT ordinal too (AB-389's `record()`-level dedupe keys on
+    // `(owner, kind, dedupeKey)`; reusing ordinal 1 here would make this
+    // second, genuinely distinct deletion look like a redelivery of the
+    // first and silently skip its own durable write).
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-b', 2, 0));
+    await runtime.deferred.drain();
+
+    const page = await history.page({ kind: 'session', id: 'sess-1' });
+    if ('outcome' in page) throw new Error('expected a page, got a gap');
+    expect(page.events.map((event) => event.kind)).toEqual(['session.deleted', 'session.deleted']);
+
+    await producer.dispose();
+    await history.dispose();
+  });
+
+  it("records both incarnations' deletions when a second incarnation is deleted WHILE the first incarnation's own write is still pending (AB-384 — inverts the #580 known-limitation test)", async () => {
+    // Before AB-384, `SessionDeletedEvent` carried no per-incarnation
+    // identity, so a plain in-flight-by-OWNER map could not tell these two
+    // cases apart: (a) a genuine duplicate dispatch of the SAME
+    // incarnation's own deletion, and (b) a DIFFERENT, later incarnation
+    // (the id reused and deleted again) whose deletion merely happens to
+    // overlap the first incarnation's still-pending write — case (b) was
+    // silently dropped as if it were a duplicate of (a). `SessionStore`
+    // (`@repo/operative`) now mints and carries `incarnation` on
+    // every session, so the two dispatches below are distinguishable by
+    // `(sessionId, incarnation)`, and both are expected to produce their
+    // own durable record even though their writes overlap.
+    const runtime = createManualRuntimeServices();
+    let releaseFirstWrite!: () => void;
+    const firstWriteGate = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve;
+    });
+    let writeCount = 0;
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory(async () => {
+      writeCount += 1;
+      if (writeCount === 1) await firstWriteGate;
+    });
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    // Incarnation A's deletion — its own `record()` call is gated and does
+    // not resolve yet.
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0));
+    // Incarnation B's deletion, overlapping A's still-pending write. A
+    // DIFFERENT incarnation of the same session id, never a duplicate of A.
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-b', 2, 0));
+
+    releaseFirstWrite();
+    await runtime.deferred.drain();
+
+    const deletionCalls = calls.filter((call) => call.kind === 'session.deleted');
+    expect(deletionCalls).toHaveLength(2);
+    expect(deletionCalls.map((call) => call.payload)).toEqual([
+      { sessionId: 'sess-1', incarnation: 'incarnation-a' },
+      { sessionId: 'sess-1', incarnation: 'incarnation-b' },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('does not conflate two DIFFERENT (sessionId, incarnation) pairs whose delimiter-joined forms would collide (Codex P2 review finding, PR #592, "Encode deletion dedupe keys without delimiter collisions")', async () => {
+    // A plain `${ownerKey}:${incarnation}` template-string key is not a
+    // unique encoding once an injected identifier policy can emit a colon:
+    // `('x:y', 'z')` and `('x', 'y:z')` both concatenate to the identical
+    // string. The dedupe key must be collision-free even in that case.
+    const runtime = createManualRuntimeServices();
+    let releaseFirstWrite!: () => void;
+    const firstWriteGate = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve;
+    });
+    let writeCount = 0;
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory(async () => {
+      writeCount += 1;
+      if (writeCount === 1) await firstWriteGate;
+    });
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    // Overlapping writes for two GENUINELY DIFFERENT session/incarnation
+    // pairs whose naive `id:incarnation` concatenation would be identical.
+    dispatchSessionDeleted(new SessionDeletedEvent('x:y', 'z', 1, 0));
+    dispatchSessionDeleted(new SessionDeletedEvent('x', 'y:z', 2, 0));
+
+    releaseFirstWrite();
+    await runtime.deferred.drain();
+
+    const deletionCalls = calls.filter((call) => call.kind === 'session.deleted');
+    expect(deletionCalls).toHaveLength(2);
+    expect(deletionCalls.map((call) => call.owner)).toEqual([
+      { kind: 'session', id: 'x:y' },
+      { kind: 'session', id: 'x' },
+    ]);
+
+    await producer.dispose();
+  });
+
+  it('records session.created and session.saved under the session owner from directly-dispatched events (AB-384)', async () => {
+    // `SESSION_DURABLE_ACTION_TYPES` has listed `'session.created'`/
+    // `'session.saved'` since AB-91, but — same gap `session.deleted` had
+    // before AB-372 — nothing dispatched either onto the `'action'` stream
+    // this producer's `actionListener` reads. `@repo/operative`'s
+    // `SessionStore` now dispatches both directly, forwarded by
+    // `create-bureau.ts` onto the bureau-level emitter this producer's
+    // dedicated `sessionCreatedListener`/`sessionSavedListener` subscribe
+    // through — the same shape `session.deleted` already used.
+    const runtime = createManualRuntimeServices();
+    const storage = await createMemoryStorage();
+    const history = createDurableEventHistory(storage, runtime);
+    const { bureau, dispatchSessionCreated, dispatchSessionSaved } = createFakeBureauEventSurface();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchSessionCreated(
+      new SessionCreatedEvent('sess-created', 'triage', 'incarnation-a', 1, 0),
+    );
+    dispatchSessionSaved(new SessionSavedEvent('sess-created', 'triage', 'incarnation-a', 2, 0));
+    await runtime.deferred.drain();
+
+    const page = await history.page({ kind: 'session', id: 'sess-created' });
+    if ('outcome' in page) throw new Error('expected a page, got a gap');
+    expect(page.events.map((event) => event.kind)).toEqual(['session.created', 'session.saved']);
+    expect(page.events.map((event) => event.payload)).toEqual([
+      {
+        sessionId: 'sess-created',
+        agentName: 'triage',
+        incarnation: 'incarnation-a',
+      },
+      {
+        sessionId: 'sess-created',
+        agentName: 'triage',
+        incarnation: 'incarnation-a',
+      },
+    ]);
+
+    await producer.dispose();
+    await history.dispose();
+  });
+
+  it("hasActiveWrite() reports true for a session owner for the write's full duration (AB-372, Copilot review finding, PR #580)", async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    const owner = { kind: 'session' as const, id: 'sess-1' };
+    let releaseWrite!: () => void;
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const { history } = createRecordingHistory(async () => {
+      await writeGate;
+    });
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    expect(producer.hasActiveWrite(owner)).toBe(false);
+
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0));
+
+    // The listener increments the owner's active-write count SYNCHRONOUSLY
+    // when it fires, before `record()`'s gated promise ever resolves.
+    expect(producer.hasActiveWrite(owner)).toBe(true);
+
+    releaseWrite();
+    await runtime.deferred.drain();
+
+    expect(producer.hasActiveWrite(owner)).toBe(false);
+
+    await producer.dispose();
+  });
+
+  it('diagnoses (never throws) when a session.deleted record() write rejects', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    const { history } = createRecordingHistory(async () => {
+      throw new Error('storage boom');
+    });
+    const diagnostics: BureauDiagnostic[] = [];
+    const producer = createDurableEventProducer(bureau, history, runtime, (diagnostic) =>
+      diagnostics.push(diagnostic),
+    );
+
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0));
+    await runtime.deferred.drain();
+
+    expect(
+      diagnostics.some(
+        (diagnostic) =>
+          diagnostic.scope === 'durable-event-history' &&
+          diagnostic.message.includes('Failed to record durable event "session.deleted"'),
+      ),
+    ).toBe(true);
+
+    await producer.dispose();
+  });
+
+  it('redispatching the SAME SessionDeletedEvent after a failed write retries and succeeds, rather than being dropped forever (Codex P2 review finding, PR #580, "Allow retries after a failed deletion write")', async () => {
+    // Marking an event as handled BEFORE its write even started would
+    // permanently block a legitimate retry of the same object once a
+    // transient storage failure recovers. The event must only be
+    // remembered on SUCCESS.
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    let attempt = 0;
+    const { history, calls } = createRecordingHistory(async () => {
+      attempt += 1;
+      if (attempt === 1) throw new Error('storage boom (transient)');
+    });
+    const diagnostics: BureauDiagnostic[] = [];
+    const producer = createDurableEventProducer(bureau, history, runtime, (diagnostic) =>
+      diagnostics.push(diagnostic),
+    );
+
+    const event = new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0);
+    dispatchSessionDeleted(event);
+    await runtime.deferred.drain();
+
+    expect(
+      diagnostics.some((diagnostic) =>
+        diagnostic.message.includes('Failed to record durable event "session.deleted"'),
+      ),
+    ).toBe(true);
+
+    // The SAME event object, redispatched after the failed write settled —
+    // storage has since recovered.
+    dispatchSessionDeleted(event);
+    await runtime.deferred.drain();
+
+    expect(calls.filter((call) => call.kind === 'session.deleted')).toHaveLength(2);
+
+    await producer.dispose();
+  });
+
+  it('refuses to start a new session.deleted record once the owner-issued signal aborts', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const controller = new AbortController();
+    const producer = createDurableEventProducer(bureau, history, runtime, undefined, {
+      signal: controller.signal,
+    });
+
+    controller.abort();
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 0));
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([]);
+
+    await producer.dispose();
+  });
+
+  it('the schedule page excludes fires, and the fired run page excludes definition events (AB-320)', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = await createMemoryStorage();
+    const history = createDurableEventHistory(storage, runtime);
+    const {
+      bureau,
+      dispatchScheduleCreated,
+      dispatchSchedulePaused,
+      dispatchScheduleResumed,
+      dispatchScheduleCancelled,
+      dispatchScheduleCompleted,
+    } = createFakeBureauEventSurface();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchScheduleCreated(
+      new AgentScheduledEvent({ agentName: 'triage', scheduleId: 'sched-1', spec: { cron: '*' } }),
+    );
+    dispatchSchedulePaused(new SchedulePausedEvent('sched-1'));
+    dispatchScheduleCompleted(new ScheduleCompletedEvent('sched-1', 'run-1'));
+    dispatchScheduleResumed(new ScheduleResumedEvent('sched-1'));
+    dispatchScheduleCancelled(new ScheduleCancelledEvent('sched-1'));
+    await runtime.deferred.drain();
+
+    const schedulePage = await history.page({ kind: 'schedule', id: 'sched-1' });
+    if ('outcome' in schedulePage) throw new Error('expected a page, got a gap');
+    expect(schedulePage.events.map((event) => event.kind)).toEqual([
+      'schedule.created',
+      'schedule.paused',
+      'schedule.resumed',
+      'schedule.cancelled',
+    ]);
+
+    const runPage = await history.page({ kind: 'run', id: 'run-1' });
+    if ('outcome' in runPage) throw new Error('expected a page, got a gap');
+    expect(runPage.events.map((event) => event.kind)).toEqual(['schedule.completed']);
+
+    await producer.dispose();
+    await history.dispose();
+  });
+
+  it('subscribeEventHistory tails a schedule owner, delivering definition events live and never a fire (AB-320)', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = await createMemoryStorage();
+    const history = createDurableEventHistory(storage, runtime);
+    const { bureau, dispatchSchedulePaused, dispatchScheduleResumed, dispatchScheduleCompleted } =
+      createFakeBureauEventSurface();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+    const collector = createCollector();
+
+    const subscription = history.subscribeEventHistory(
+      { kind: 'schedule', id: 'sched-1' },
+      collector.push,
+    );
+
+    dispatchSchedulePaused(new SchedulePausedEvent('sched-1'));
+    dispatchScheduleCompleted(new ScheduleCompletedEvent('sched-1', 'run-1'));
+    dispatchScheduleResumed(new ScheduleResumedEvent('sched-1'));
+    await runtime.deferred.drain();
+    await collector.waitForCount(2);
+
+    expect(collector.events.map((event) => event.kind)).toEqual([
+      'schedule.paused',
+      'schedule.resumed',
+    ]);
+
+    subscription.unsubscribe();
+    await producer.dispose();
+    await history.dispose();
+  });
+
+  it('diagnoses (never throws) when a record() write rejects', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    const { history } = createRecordingHistory(async () => {
+      throw new Error('storage boom');
+    });
+    const diagnostics: BureauDiagnostic[] = [];
+    const producer = createDurableEventProducer(bureau, history, runtime, (diagnostic) =>
+      diagnostics.push(diagnostic),
+    );
+
+    dispatchAction(createAction({ type: 'run.completed', runId: 'run-1' }));
+    await runtime.deferred.drain();
+
+    expect(
+      diagnostics.some(
+        (diagnostic) =>
+          diagnostic.scope === 'durable-event-history' &&
+          diagnostic.message.includes('Failed to record durable event'),
+      ),
+    ).toBe(true);
+
+    await producer.dispose();
+  });
+
+  it('refuses to start a new record once the owner-issued signal aborts, but still awaits a write already in flight', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction, dispatchScheduleCreated } = createFakeBureauEventSurface();
+    let releaseWrite: (() => void) | undefined;
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const { history, calls } = createRecordingHistory(async () => {
+      await writeGate;
+    });
+    const controller = new AbortController();
+    const producer = createDurableEventProducer(bureau, history, runtime, undefined, {
+      signal: controller.signal,
+    });
+
+    dispatchAction(createAction({ type: 'run.completed', runId: 'run-1' }));
+    controller.abort();
+    dispatchAction(createAction({ type: 'run.error', runId: 'run-2' }));
+    dispatchScheduleCreated(
+      new AgentScheduledEvent({ agentName: 'triage', scheduleId: 'sched-1', spec: { cron: '*' } }),
+    );
+
+    releaseWrite?.();
+    await producer.dispose();
+
+    expect(calls.map((call) => call.kind)).toEqual(['run.completed']);
+  });
+
+  it('dispose() removes every listener — a subsequent event on the same bureau records nothing', async () => {
+    const runtime = createManualRuntimeServices();
+    const {
+      bureau,
+      dispatchAction,
+      dispatchScheduleCompleted,
+      dispatchScheduleFailed,
+      dispatchScheduleCreated,
+      dispatchSchedulePaused,
+      dispatchScheduleResumed,
+      dispatchScheduleCancelled,
+      dispatchReviewApproved,
+      dispatchReviewDenied,
+      dispatchReviewRejected,
+      dispatchReviewExpired,
+      dispatchReviewRevoked,
+      dispatchReviewCanceled,
+      dispatchReviewSuperseded,
+    } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    await producer.dispose();
+    await producer.dispose(); // idempotent
+
+    dispatchAction(createAction({ type: 'run.completed' }));
+    dispatchScheduleCompleted(new ScheduleCompletedEvent('sched-1', 'run-1'));
+    dispatchScheduleFailed(new ScheduleFailedEvent('sched-2', 'run-2'));
+    dispatchScheduleCreated(
+      new AgentScheduledEvent({ agentName: 'triage', scheduleId: 'sched-1', spec: { cron: '*' } }),
+    );
+    dispatchSchedulePaused(new SchedulePausedEvent('sched-1'));
+    dispatchScheduleResumed(new ScheduleResumedEvent('sched-1'));
+    dispatchScheduleCancelled(new ScheduleCancelledEvent('sched-1'));
+    dispatchReviewApproved(
+      new ReviewApprovedEvent('approval:run-1:call-1', 'run-1', 'operator-a', 'tool-approval'),
+    );
+    dispatchReviewDenied(
+      new ReviewDeniedEvent('approval:run-1:call-2', 'run-1', 'operator-b', 'tool-approval'),
+    );
+    dispatchReviewRejected(
+      new ReviewRejectedEvent('approval:run-1:call-3', 'run-1', 'operator-c', 'tool-approval'),
+    );
+    dispatchReviewExpired(
+      new ReviewExpiredEvent(
+        'approval:run-1:call-4',
+        'run-1',
+        'system:expiry-sweep',
+        'tool-approval',
+      ),
+    );
+    dispatchReviewRevoked(
+      new ReviewRevokedEvent(
+        'approval:run-1:call-5',
+        'run-1',
+        'system:run-deletion',
+        'tool-approval',
+      ),
+    );
+    dispatchReviewCanceled(
+      new ReviewCanceledEvent('human-wait:run-1:sig', 'run-1', 'system:run-abort', 'human-wait'),
+    );
+    dispatchReviewSuperseded(
+      new ReviewSupersededEvent(
+        'approval:run-1:call-6',
+        'run-1',
+        'system:supersession',
+        'tool-approval',
+      ),
+    );
+    await runtime.deferred.drain();
+
+    expect(calls).toEqual([]);
+  });
+
+  describe('AB-388 — eventTimestamp resolver (Codex review, PR #597, "Reuse event timestamps for dedicated lifecycle listeners")', () => {
+    it('stamps schedule.paused via the supplied eventTimestamp resolver instead of runtime.clock.now()', async () => {
+      const runtime = createManualRuntimeServices();
+      const { bureau, dispatchSchedulePaused } = createFakeBureauEventSurface();
+      const { history, calls } = createRecordingHistory();
+      const eventTimestamp = () => 555_555;
+      const producer = createDurableEventProducer(bureau, history, runtime, undefined, {
+        eventTimestamp,
+      });
+
+      dispatchSchedulePaused(new SchedulePausedEvent('sched-1'));
+      await runtime.deferred.drain();
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.emittedAtMs).toBe(555_555);
+
+      await producer.dispose();
+    });
+
+    it("stamps session.deleted with the event's own committedAtMs (AB-389: the session outbox entry's authoritative commit time), not the eventTimestamp resolver", async () => {
+      const runtime = createManualRuntimeServices();
+      const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
+      const { history, calls } = createRecordingHistory();
+      // A resolver that would return a DIFFERENT value proves it is never
+      // consulted for this event — see `sink()`'s own dedicated listeners
+      // above, which DO use it, for the contrast.
+      const eventTimestamp = () => 111_111;
+      const producer = createDurableEventProducer(bureau, history, runtime, undefined, {
+        eventTimestamp,
+      });
+
+      dispatchSessionDeleted(new SessionDeletedEvent('sess-1', 'incarnation-a', 1, 777_777));
+      await runtime.deferred.drain();
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.emittedAtMs).toBe(777_777);
+
+      await producer.dispose();
+    });
+  });
+
+  describe('AB-388 — waitForAllActiveWrites (Codex review, PR #597, "Wait for durable event writes before reading the floor")', () => {
+    it('resolves immediately when nothing is in flight', async () => {
+      const runtime = createManualRuntimeServices();
+      const { bureau } = createFakeBureauEventSurface();
+      const { history } = createRecordingHistory();
+      const producer = createDurableEventProducer(bureau, history, runtime);
+
+      await expect(producer.waitForAllActiveWrites()).resolves.toBeUndefined();
+
+      await producer.dispose();
+    });
+
+    it('awaits every write currently in flight across every owner, not just one', async () => {
+      const runtime = createManualRuntimeServices();
+      let releaseWrites!: () => void;
+      const writeGate = new Promise<void>((resolve) => {
+        releaseWrites = resolve;
+      });
+      const { bureau, dispatchSchedulePaused, dispatchScheduleResumed } =
+        createFakeBureauEventSurface();
+      const { history } = createRecordingHistory(async () => {
+        await writeGate;
+      });
+      const producer = createDurableEventProducer(bureau, history, runtime);
+
+      dispatchSchedulePaused(new SchedulePausedEvent('sched-1'));
+      dispatchScheduleResumed(new ScheduleResumedEvent('sched-2'));
+
+      let settled = false;
+      const waited = producer.waitForAllActiveWrites().then(() => {
+        settled = true;
+      });
+
+      // Still gated — neither owner's write has settled yet.
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      releaseWrites();
+      await waited;
+      expect(settled).toBe(true);
+
+      await producer.dispose();
+    });
+  });
+});

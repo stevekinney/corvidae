@@ -1,0 +1,40 @@
+export { createSoulSeed } from './create-seed';
+export type { CreateSoulSeedOptions } from './create-seed';
+export { createSoulDistillationTask } from './create-soul-distillation';
+export type {
+  CreateSoulDistillationOptions,
+  SoulDistillationChunkedTaskOptions,
+  SoulDistillationState,
+} from './create-soul-distillation';
+export { createStaticIdentityProvider } from './create-static-provider';
+export { createStorageIdentityProvider } from './create-storage-provider';
+export { resolveIdentity } from './resolve-identity';
+export {
+  acceptSoulUpdate,
+  getSoulDiff,
+  pinSoulItem,
+  rejectSoulUpdate,
+  unpinSoulItem,
+} from './soul-approval';
+export type { SoulDiff, SoulDiffEntry } from './soul-approval';
+export {
+  createIdentityToolbox,
+  createPersonaCreateTool,
+  createPersonaDeleteTool,
+  createPersonaListTool,
+  createPersonaUpdateTool,
+  createPersonaViewTool,
+  createSoulAcceptTool,
+  createSoulDiffTool,
+  createSoulPinTool,
+  createSoulRejectTool,
+  createSoulViewTool,
+} from './tools';
+export type {
+  AgentIdentity,
+  IdentityProvider,
+  PersonaDescriptor,
+  SoulBudget,
+  SoulHistoryEntry,
+  SoulItem,
+} from './types';

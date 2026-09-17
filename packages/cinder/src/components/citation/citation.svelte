@@ -1,0 +1,115 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category data-display
+   * @status beta
+   * @purpose Inline citation marker opening a paginated preview of source references.
+   * @tag citation
+   * @useWhen Attaching sources to an inline claim or generated answer.
+   * @avoidWhen Building a full bibliography page.
+   * @related popover
+   * @rationale Nearest alternative: Popover — Citation adds source pagination and an inline marker.
+   */
+  export type { CitationProps, CitationSource } from './citation.types.ts';
+</script>
+
+<script lang="ts">
+  import { classNames } from '../../utilities/class-names.ts';
+  import { default as Popover } from '../popover/index.ts';
+
+  import type { CitationProps } from './citation.types.ts';
+
+  let {
+    sources = [],
+    label = 'Sources',
+    children,
+    class: customClassName,
+    ...rest
+  }: CitationProps = $props();
+  let page = $state(0);
+  let open = $state(false);
+  let markerElement = $state<HTMLButtonElement | null>(null);
+  let preserveMarkerForClose = $state(false);
+  const markerDisabled = $derived(sources.length === 0 && !preserveMarkerForClose);
+  const source = $derived(sources[page]);
+
+  function hasUnsafeUrlCharacter(url: string): boolean {
+    for (const character of url) {
+      if (character === '\\') return true;
+      const codePoint = character.charCodeAt(0);
+      if (codePoint <= 0x1f || codePoint === 0x7f) return true;
+    }
+    return false;
+  }
+
+  const safeSourceUrl = $derived.by(() => {
+    const url = source?.url?.trim();
+    if (!url || hasUnsafeUrlCharacter(url) || /^[\\/]{2}/.test(url)) return undefined;
+
+    if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(url)) {
+      try {
+        const protocol = new URL(url).protocol;
+        return protocol === 'http:' || protocol === 'https:' ? url : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+
+    return url;
+  });
+  $effect(() => {
+    if (sources.length === 0) {
+      page = 0;
+      if (open) {
+        preserveMarkerForClose = true;
+        open = false;
+      }
+    } else if (page >= sources.length) {
+      page = sources.length - 1;
+      preserveMarkerForClose = false;
+    } else if (preserveMarkerForClose) {
+      preserveMarkerForClose = false;
+    }
+  });
+</script>
+
+<span class={classNames('cinder-citation', customClassName)} {...rest}
+  ><Popover
+    bind:open
+    {label}
+    triggerRef={markerElement}
+    onExitComplete={() => {
+      preserveMarkerForClose = false;
+    }}
+  >
+    {#snippet trigger()}<button
+        bind:this={markerElement}
+        type="button"
+        class="cinder-citation__marker"
+        disabled={markerDisabled}
+        onclick={() => {
+          if (sources.length > 0) open = !open;
+        }}
+        aria-label={sources.length > 0 ? `${label} (${sources.length})` : `${label} (no sources)`}
+        >{#if children}{@render children()}{:else}[{sources.length}]{/if}</button
+      >{/snippet}
+    <section aria-label={label}>
+      <strong>{source?.label}</strong>{#if source?.detail}<p>
+          {source.detail}
+        </p>{/if}{#if safeSourceUrl}<a href={safeSourceUrl}>Open source</a>{/if}
+      {#if sources.length > 1}<div class="cinder-citation__pagination">
+          <button
+            type="button"
+            onclick={() => (page = Math.max(0, page - 1))}
+            disabled={page === 0}
+            aria-label="Previous source">Previous</button
+          ><span aria-live="polite">{page + 1} of {sources.length}</span><button
+            type="button"
+            onclick={() => (page = Math.min(sources.length - 1, page + 1))}
+            disabled={page === sources.length - 1}
+            aria-label="Next source">Next</button
+          >
+        </div>{/if}
+    </section>
+  </Popover></span
+>

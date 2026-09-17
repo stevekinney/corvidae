@@ -1,0 +1,7 @@
+/*
+ * Tokens aggregator. Imports the base token primitives plus any per-component
+ * token partials. Wave-2 of Phase 2 appends @import lines for components that
+ * declare their own tokens.
+ */
+
+@import './tokens-base.css';

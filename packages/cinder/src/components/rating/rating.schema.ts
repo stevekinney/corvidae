@@ -1,0 +1,86 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      description: 'Stable id used as the radio-group id prefix and as the hidden input id.',
+    },
+    value: {
+      type: 'number',
+      description:
+        'Bindable rating value. `0` represents an unrated state. External values\nare clamped into `[0, count]` and snapped to the nearest precision step.\n\n**No write-back normalization.** The bound prop reflects exactly what the\nconsumer set — it is NOT mutated back to the clamped/snapped value. The\ndisplayed and submitted value is normalized via `$derived`, but the binding\nitself is left untouched. This is intentional: the consumer owns the source\nof truth, and silent mutation of a bound prop is a surprising side-effect.',
+    },
+    count: {
+      type: 'number',
+      description:
+        'Number of rating slots. Normalized to an integer in `[1, 10]`; non-finite\nor out-of-range values fall back to `5`.',
+    },
+    precision: {
+      enum: ['whole', 'half'],
+      description: "Precision of each step. Defaults to `'whole'`.",
+    },
+    label: {
+      type: 'string',
+      description: 'Visible group label rendered above the rating.',
+    },
+    labelVisible: {
+      type: 'boolean',
+      description:
+        'Whether the `label` is visibly rendered. Set `false` to visually hide it\nwhile keeping it programmatically associated.',
+      default: true,
+    },
+    'aria-label': {
+      type: 'string',
+      description: 'Group accessible name when no visible `label` is supplied.',
+    },
+    'aria-labelledby': {
+      type: 'string',
+      description: 'Space-separated list of ids that label the group when no `label` is supplied.',
+    },
+    description: {
+      type: 'string',
+      description: 'Optional description text rendered below the rating.',
+    },
+    error: {
+      type: 'string',
+      description: 'Optional error message; sets `aria-invalid="true"` on the rating group.',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Disable every rating control and the hidden input.',
+    },
+    readonly: {
+      type: 'boolean',
+      description: 'Render a non-interactive display with an accessible text equivalent.',
+    },
+    required: {
+      type: 'boolean',
+      description: 'Mark the group as required for assistive technology.',
+    },
+    name: {
+      type: 'string',
+      description: 'Form-control name applied to the hidden `<input>` that submits with the form.',
+    },
+    class: {
+      type: 'string',
+      description: 'Extra class names appended to the root group element.',
+    },
+  },
+  additionalProperties: false,
+  required: ['id'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'onValueChange',
+        reason: 'function-or-snippet',
+        description:
+          'Fires only for user-initiated committed value changes (click, arrow keys,\nSpace/Enter). Never fires for hover preview or external prop synchronization.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

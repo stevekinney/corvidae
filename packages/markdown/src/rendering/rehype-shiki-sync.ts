@@ -1,0 +1,399 @@
+/**
+ * Synchronous rehype plugin for Shiki syntax highlighting.
+ *
+ * DEP-79: Add syntax highlighting to code blocks across the application.
+ *
+ * This plugin transforms `pre > code` elements in hast to highlighted HTML
+ * using a pre-initialized Shiki highlighter. Unlike the standard @shikijs/rehype
+ * plugin, this one is fully synchronous, enabling use with unified's `runSync()`.
+ *
+ * **Important**: The highlighter must be initialized before this plugin runs.
+ * If the highlighter is not ready, code blocks are left unhighlighted.
+ *
+ * @module
+ */
+
+import type { Element, ElementContent, Root } from 'hast';
+import { visit } from 'unist-util-visit';
+import {
+  getHighlighterSync,
+  isBundledLanguage,
+  PLAINTEXT_LANGUAGE,
+  type SupportedLanguage,
+} from './highlighter.js';
+
+/**
+ * Options for the synchronous Shiki rehype plugin.
+ */
+export interface RehypeShikiSyncOptions {
+  /** Theme name to use (must be registered with the highlighter). Default: 'depict' */
+  theme?: string;
+  /** Default language for code blocks without a specified language. Default: 'plaintext' */
+  defaultLanguage?: SupportedLanguage;
+}
+
+/**
+ * Extract language from a code element's class list.
+ *
+ * Looks for classes matching `language-*` or `lang-*` patterns,
+ * which are the standard ways to specify language in markdown code blocks.
+ *
+ * @param element - The code element to extract language from
+ * @returns The language identifier, or null if not found
+ */
+function extractLanguage(element: Element): string | null {
+  const className = element.properties?.['className'];
+  if (!Array.isArray(className)) return null;
+
+  for (const cls of className) {
+    if (typeof cls !== 'string') continue;
+
+    // Check for language-* pattern (standard)
+    if (cls.startsWith('language-')) {
+      return cls.slice(9); // Remove 'language-' prefix
+    }
+    // Check for lang-* pattern (alternative)
+    if (cls.startsWith('lang-')) {
+      return cls.slice(5); // Remove 'lang-' prefix
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract text content from a hast element.
+ *
+ * Recursively collects all text nodes within the element.
+ *
+ * @param element - The element to extract text from
+ * @returns The concatenated text content
+ */
+function extractText(element: Element): string {
+  let text = '';
+
+  function walk(nodes: ElementContent[]) {
+    for (const node of nodes) {
+      if (node.type === 'text') {
+        text += node.value;
+      } else if (node.type === 'element' && 'children' in node) {
+        walk(node.children);
+      }
+    }
+  }
+
+  walk(element.children);
+  return text;
+}
+
+/**
+ * Parse Shiki's HTML output into hast nodes.
+ *
+ * Shiki returns a string like `<pre class="shiki" ...><code>...</code></pre>`.
+ * We need to convert this to hast nodes to insert into the tree.
+ *
+ * This is a simplified parser that handles Shiki's specific output format.
+ * It extracts the attributes from the pre element and the inner content.
+ *
+ * @param html - The HTML string from Shiki
+ * @returns The parsed hast element
+ */
+function parseShikiHtml(html: string): Element {
+  const preAttrs = html.match(/<pre([^>]*)>/)?.[1] ?? '';
+  const innerHtml = html.match(/<pre[^>]*>([\s\S]*)<\/pre>/)?.[1] ?? '';
+  const codeMatch = innerHtml.match(/<code([^>]*)>([\s\S]*)<\/code>/);
+  const codeAttrs = codeMatch?.[1] ?? '';
+  const codeContent = codeMatch?.[2] ?? innerHtml;
+  const codeElement: Element = {
+    type: 'element',
+    tagName: 'code',
+    properties: { className: splitAttribute(codeAttrs, 'class') },
+    children: parseSpans(codeContent),
+  };
+  return {
+    type: 'element',
+    tagName: 'pre',
+    properties: {
+      className: splitAttribute(preAttrs, 'class'),
+      style: getAttribute(preAttrs, 'style'),
+      dataLanguage: getAttribute(preAttrs, 'data-language'),
+      tabIndex: parseTabIndex(getAttribute(preAttrs, 'tabindex')),
+    },
+    children: [codeElement],
+  };
+}
+
+function getAttribute(attributes: string, name: string): string | undefined {
+  return attributes.match(new RegExp(`${name}="([^"]*)"`))?.[1];
+}
+
+function splitAttribute(attributes: string, name: string): string[] | undefined {
+  const value = getAttribute(attributes, name);
+  return value ? value.split(/\s+/) : undefined;
+}
+
+function parseTabIndex(value: string | undefined): number | undefined {
+  return value === undefined ? undefined : Number.parseInt(value, 10);
+}
+
+/**
+ * Parse Shiki's span elements into hast nodes.
+ *
+ * Shiki wraps each line in a `<span class="line">` with nested token spans.
+ * This function recursively parses the nested structure.
+ *
+ * @param html - The inner HTML content with spans
+ * @returns Array of hast element/text nodes
+ */
+function parseSpans(html: string): ElementContent[] {
+  const children: ElementContent[] = [];
+  let position = 0;
+
+  while (position < html.length) {
+    const span = html.startsWith('<span', position)
+      ? parseSpan(html, position)
+      : parseTextOrTag(html, position);
+    if (!span) break;
+    children.push(...span.nodes);
+    position = span.position;
+  }
+
+  return children;
+}
+
+type ParsedSegment = { nodes: ElementContent[]; position: number };
+
+function parseSpan(html: string, position: number): ParsedSegment | null {
+  const tagEnd = html.indexOf('>', position);
+  if (tagEnd === -1) return null;
+  const closingStart = findSpanEnd(html, tagEnd + 1);
+  if (closingStart === -1) return null;
+  const attrs = html.slice(position + 5, tagEnd);
+  const innerHtml = html.slice(tagEnd + 1, closingStart);
+  const children = innerHtml.includes('<span')
+    ? parseSpans(innerHtml)
+    : innerHtml
+      ? [{ type: 'text' as const, value: decodeHtmlEntities(innerHtml) }]
+      : [];
+  return {
+    nodes: [
+      {
+        type: 'element',
+        tagName: 'span',
+        properties: {
+          style: getAttribute(attrs, 'style'),
+          className: splitAttribute(attrs, 'class'),
+        },
+        children,
+      },
+    ],
+    position: closingStart + 7,
+  };
+}
+
+function findSpanEnd(html: string, start: number): number {
+  let depth = 1;
+  let position = start;
+  while (depth > 0 && position < html.length) {
+    const nextOpen = html.indexOf('<span', position);
+    const nextClose = html.indexOf('</span>', position);
+    if (nextClose === -1) return -1;
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth++;
+      position = nextOpen + 5;
+    } else {
+      depth--;
+      position = nextClose + 7;
+      if (depth === 0) return nextClose;
+    }
+  }
+  return -1;
+}
+
+function parseTextOrTag(html: string, position: number): ParsedSegment | null {
+  if (html[position] === '<') {
+    const tagEnd = html.indexOf('>', position);
+    return tagEnd === -1 ? null : { nodes: [], position: tagEnd + 1 };
+  }
+  const nextTag = html.indexOf('<', position);
+  const textEnd = nextTag === -1 ? html.length : nextTag;
+  const text = html.slice(position, textEnd);
+  return {
+    nodes: text ? [{ type: 'text', value: decodeHtmlEntities(text) }] : [],
+    position: textEnd,
+  };
+}
+
+const HTML_ENTITY_PATTERN = /&(?:lt|gt|amp|quot|apos|#39|#x27|#x2F|#x3C|#x3E|#x22|#x26);/gi;
+
+const HTML_ENTITY_MAP: Record<string, string> = {
+  '&lt;': '<',
+  '&gt;': '>',
+  '&amp;': '&',
+  '&quot;': '"',
+  '&apos;': "'",
+  '&#39;': "'",
+  '&#x27;': "'",
+  '&#x2f;': '/',
+  '&#x3c;': '<',
+  '&#x3e;': '>',
+  '&#x22;': '"',
+  '&#x26;': '&',
+};
+
+/**
+ * Decode HTML entities in text content using a single-pass replacement.
+ *
+ * Single-pass prevents cascade: `&#x26;amp;` → `&amp;` (not `&`) because
+ * the `&amp;` produced by decoding `&#x26;` is never re-scanned.
+ *
+ * @internal exported for unit testing only
+ */
+export function decodeHtmlEntities(text: string): string {
+  return text.replace(
+    HTML_ENTITY_PATTERN,
+    (match) => HTML_ENTITY_MAP[match.toLowerCase()] ?? match,
+  );
+}
+
+/**
+ * Normalize language identifiers to match Shiki's expectations.
+ *
+ * @param language - The language identifier from the code block
+ * @returns The normalized language, or 'plaintext' if unknown
+ */
+function normalizeLanguage(language: string): SupportedLanguage {
+  const normalized = language.toLowerCase();
+
+  // Common aliases - map to bundled languages or plaintext
+  const aliases: Record<string, SupportedLanguage> = {
+    ts: 'typescript',
+    js: 'javascript',
+    py: 'python',
+    sh: 'bash',
+    shell: 'bash',
+    zsh: 'bash',
+    yml: 'yaml',
+    md: 'markdown',
+    text: PLAINTEXT_LANGUAGE,
+    txt: PLAINTEXT_LANGUAGE,
+    plain: PLAINTEXT_LANGUAGE,
+    plaintext: PLAINTEXT_LANGUAGE,
+  };
+
+  if (aliases[normalized]) {
+    return aliases[normalized];
+  }
+
+  if (isBundledLanguage(normalized)) {
+    return normalized;
+  }
+
+  return PLAINTEXT_LANGUAGE;
+}
+
+/**
+ * Synchronous rehype plugin for Shiki syntax highlighting.
+ *
+ * Transforms `pre > code` elements to highlighted code using Shiki.
+ * If the highlighter is not initialized, code blocks are left as-is.
+ *
+ * @param options - Plugin options
+ * @returns A rehype transformer function
+ *
+ * @example
+ * ```ts
+ * import { unified } from 'unified';
+ * import { rehypeShikiSync } from './rehype-shiki-sync';
+ *
+ * const processor = unified()
+ *   .use(remarkRehype)
+ *   .use(rehypeShikiSync, { theme: 'depict' })
+ *   .use(rehypeSanitize, schema)
+ *   .use(rehypeStringify);
+ * ```
+ */
+export function rehypeShikiSync(options: RehypeShikiSyncOptions = {}) {
+  const { theme = 'depict', defaultLanguage = PLAINTEXT_LANGUAGE } = options;
+
+  return (tree: Root) => {
+    const highlighter = getHighlighterSync();
+
+    // If highlighter isn't ready, skip highlighting
+    // Code blocks will render as plain text
+    if (!highlighter) {
+      return tree;
+    }
+
+    visit(tree, 'element', (node, index, parent) => {
+      if (node.tagName !== 'pre' || !parent || typeof index !== 'number') return;
+      const codeChild = node.children.find(
+        (child): child is Element => child.type === 'element' && child.tagName === 'code',
+      );
+      if (!codeChild) return;
+      highlightCodeBlock(node, codeChild, parent, index, highlighter, theme, defaultLanguage);
+    });
+    return tree;
+  };
+}
+
+function highlightCodeBlock(
+  node: Element,
+  codeChild: Element,
+  parent: Root | Element,
+  index: number,
+  highlighter: ReturnType<typeof getHighlighterSync>,
+  theme: string,
+  defaultLanguage: SupportedLanguage,
+): void {
+  if (!highlighter) return;
+  const rawLanguage = extractLanguage(codeChild);
+  const language = rawLanguage ? normalizeLanguage(rawLanguage) : defaultLanguage;
+  // `mdast-util-to-hast` terminates every fence's text node with a
+  // trailing "\n" (it is what makes the serialized `<pre>` end on its own
+  // line). Shiki treats that newline as starting one more line and emits a
+  // phantom `<span class="line"></span>` at the end of every block, which
+  // renders as a stray blank row.
+  //
+  // Exactly one newline, via an anchored replace — NOT `.trimEnd()`. A
+  // fence is whitespace-significant (think a `diff` fence, or a snippet
+  // that deliberately ends in blank lines), and `trimEnd()` would eat all
+  // of that meaningful trailing whitespace, not just the serializer's
+  // artifact.
+  const code = extractText(codeChild).replace(/\n$/, '');
+
+  // Skip empty code blocks
+  if (!code.trim()) return;
+
+  // Skip plaintext - no highlighting needed
+  if (language === PLAINTEXT_LANGUAGE) {
+    // Just add data-language attribute for styling/accessibility
+    if (!node.properties) node.properties = {};
+    node.properties['dataLanguage'] = language;
+    return;
+  }
+
+  try {
+    // Generate highlighted HTML (only for bundled languages)
+    const highlightedHtml = highlighter.codeToHtml(code, {
+      lang: language,
+      theme: theme,
+    });
+
+    // Parse the HTML into hast nodes
+    const highlightedElement = parseShikiHtml(highlightedHtml);
+
+    // Preserve the original data-language for accessibility
+    if (!highlightedElement.properties['dataLanguage']) {
+      highlightedElement.properties['dataLanguage'] = language;
+    }
+
+    // Replace the original pre element with the highlighted one
+    parent.children[index] = highlightedElement;
+  } catch {
+    // If highlighting fails, leave the code block as-is
+    // This ensures graceful degradation for unsupported languages
+  }
+}
+
+export default rehypeShikiSync;

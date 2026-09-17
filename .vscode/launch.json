@@ -7,7 +7,7 @@
       "request": "launch",
       "program": "run",
       "args": ["start"],
-      "cwd": "${workspaceFolder}/apps/server",
+      "cwd": "${workspaceFolder}/applications/server",
       "internalConsoleOptions": "neverOpen",
       "env": {
         "NODE_ENV": "development"
@@ -19,7 +19,7 @@
       "request": "launch",
       "program": "run",
       "args": ["dev"],
-      "cwd": "${workspaceFolder}/apps/server",
+      "cwd": "${workspaceFolder}/applications/server",
       "internalConsoleOptions": "neverOpen",
       "env": {
         "NODE_ENV": "development"

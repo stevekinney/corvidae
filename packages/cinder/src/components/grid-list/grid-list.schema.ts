@@ -1,0 +1,30 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    minColumnWidth: {
+      type: 'string',
+      description:
+        'Minimum width of each grid cell, expressed as a CSS `<length>` value\n(e.g. `"16rem"`, `"240px"`, `"min(20rem, 100%)"`). Used as the first\nargument to `minmax()` inside a `repeat(auto-fill, ...)` track.\nDefault: `"16rem"`. Empty string is treated as unset.',
+    },
+    class: {
+      type: 'string',
+      description: 'Extra class names merged with `cinder-grid-list`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Items — typically `GridListItem` instances.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+export default schema as ComponentSchema;

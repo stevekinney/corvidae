@@ -1,0 +1,75 @@
+{
+  "plugins": [
+    "stylelint-use-logical",
+    "./packages/cinder/scripts/stylelint/no-focus-visible-colored-outline.mjs",
+    "./packages/cinder/scripts/stylelint/no-unguarded-hover-colors.cjs",
+    "./packages/cinder/scripts/stylelint/require-forced-colors-focus-fallback.mjs",
+    "./packages/cinder/scripts/stylelint/z-index-scale.mjs",
+    "./packages/cinder/scripts/stylelint/no-surface-on-form-control.mjs",
+    "./packages/cinder/scripts/stylelint/interior-border-weight.mjs"
+  ],
+  "overrides": [
+    {
+      "files": ["**/*.svelte"],
+      "customSyntax": "postcss-html"
+    }
+  ],
+  "rules": {
+    "declaration-property-value-disallowed-list": {
+      "/.*/": [
+        "/color-mix\\([\\s\\S]*?var\\(\\s*--cinder-(info|success|warning|danger)\\s*(?:[,\\)])/",
+        "/var\\(\\s*--cinder-(?:color-(?:text|text-muted|surface|border|border-subtle|foreground|foreground-muted|success|danger)|font-size-[a-z0-9-]+|line-height-[a-z0-9-]+|accent-subtle|accent-foreground|focus-ring)(?:\\s*[,)])/"
+      ]
+    },
+    "cinder/no-focus-visible-colored-outline": true,
+    "cinder/no-unguarded-hover-colors": true,
+    "cinder/require-forced-colors-focus-fallback": true,
+    "cinder/z-index-scale": true,
+    "cinder/no-surface-on-form-control": true,
+    "cinder/interior-border-weight": true,
+    "csstools/use-logical": [
+      "always",
+      {
+        "direction": "ltr",
+        "except": [
+          "top",
+          "bottom",
+          "left",
+          "right",
+          "width",
+          "min-width",
+          "max-width",
+          "height",
+          "min-height",
+          "max-height",
+          "margin-top",
+          "margin-bottom",
+          "padding-top",
+          "padding-bottom",
+          "border-top",
+          "border-bottom",
+          "border-top-width",
+          "border-bottom-width",
+          "border-top-style",
+          "border-bottom-style",
+          "border-top-color",
+          "border-bottom-color",
+          "border-top-left-radius",
+          "border-top-right-radius",
+          "border-bottom-left-radius",
+          "border-bottom-right-radius",
+          "float",
+          "clear",
+          "text-align"
+        ]
+      }
+    ]
+  },
+  "ignoreFiles": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/build/**",
+    "**/.svelte-kit/**"
+  ]
+}

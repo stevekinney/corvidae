@@ -1,0 +1,188 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * TEXTAREA FIELD
+ * ========================================
+ *
+ * Structural layout for the field wrapper, label, textarea, description,
+ * and error message. All tokens reference the shared cinder design system
+ * custom properties defined in the base token sheet.
+ * ======================================== */
+
+  .cinder-textarea-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1-5);
+    inline-size: 100%;
+  }
+
+  /* ----------------------------------------
+ * Label
+ * ---------------------------------------- */
+
+  .cinder-textarea-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    line-height: 1;
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-textarea-label[data-disabled] {
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+  }
+
+  /* ----------------------------------------
+ * Textarea control
+ * ---------------------------------------- */
+
+  .cinder-textarea {
+    display: block;
+    width: 100%;
+    min-height: 6rem;
+    resize: vertical;
+
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+
+    font-family: inherit;
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-default);
+
+    background: var(--cinder-surface-raised);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+
+    transition:
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @supports (field-sizing: content) {
+    .cinder-textarea {
+      field-sizing: content;
+    }
+  }
+
+  .cinder-textarea::placeholder {
+    color: var(--cinder-text-muted);
+  }
+
+  @media (hover: hover) {
+    .cinder-textarea:hover:not(:disabled) {
+      border-color: var(--cinder-border-strong);
+    }
+  }
+
+  .cinder-textarea:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    /* Ring replaces the border while focused rather than stacking on it — the two
+       together read as one heavier shape than either was designed to be. */
+    border-color: transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* Forced Colors Mode — box-shadow is invisible in WHCM; use a real outline instead. */
+  @media (forced-colors: active) {
+    .cinder-textarea:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
+  /* ----------------------------------------
+ * Code variant
+ * ---------------------------------------- */
+
+  .cinder-textarea[data-cinder-variant='code'] {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    tab-size: var(--cinder-type-tab-size);
+  }
+
+  /* Defensive: text written between `<textarea>` tags is parsed as literal
+   text, not markup, so this can't target `.cinder-textarea` itself — a real
+   `<code>` element can never be its descendant. Nothing renders one inside
+   the field wrapper today, but if a consumer ever overlays one (e.g. a
+   syntax-highlighted backdrop), match it to the control's own metrics
+   directly (not `font: inherit`) — the wrapper itself carries no metric
+   declarations, so inheriting from it would give an overlay <code> the
+   wrapper's ordinary (sans) font. Declaring the same explicit values the
+   control uses keeps the wrapper's label, description, error, and counter
+   in their normal font; only a <code> overlay matches the control. */
+  .cinder-textarea-field[data-cinder-variant='code'] :where(code) {
+    all: unset;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    tab-size: var(--cinder-type-tab-size);
+  }
+
+  /* ----------------------------------------
+ * Invalid / error state
+ * ---------------------------------------- */
+
+  .cinder-textarea[aria-invalid='true'] {
+    border-color: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-textarea[aria-invalid='true']:focus-visible {
+    border-color: transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--cinder-status-danger-solid);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-textarea[aria-invalid='true']:focus-visible {
+      outline: var(--cinder-ring-width) solid Mark;
+      outline-offset: 3px;
+      box-shadow: none;
+    }
+  }
+
+  /* ----------------------------------------
+ * Disabled state
+ * ---------------------------------------- */
+
+  .cinder-textarea:disabled {
+    cursor: not-allowed;
+    resize: none;
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-disabled);
+    border-color: var(--cinder-border-muted);
+  }
+
+  /* ----------------------------------------
+ * Description and error messages
+ * ---------------------------------------- */
+
+  .cinder-textarea-description,
+  .cinder-textarea-error {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-textarea-description {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-textarea-error {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-textarea-count {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+    text-align: end;
+  }
+}

@@ -1,0 +1,127 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* MenuBar renders DropdownItem, DropdownMenu, DropdownGroup, DropdownLabel,
+ * and DropdownSeparator inside its overflow menus. Pull in their styles so
+ * that importing `cinder/menu-bar` is self-sufficient. */
+@import '../dropdown/dropdown.css';
+
+@layer cinder.components {
+  .cinder-menu-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    position: relative;
+    inline-size: fit-content;
+  }
+
+  .cinder-menu-bar__menu {
+    position: relative;
+  }
+
+  .cinder-menu-bar__trigger {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-default);
+    cursor: pointer;
+    font: inherit;
+    line-height: var(--cinder-leading-tight);
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+  }
+
+  .cinder-menu-bar__trigger[data-cinder-state='open'] {
+    border-color: var(--cinder-border);
+    background: var(--cinder-surface-raised);
+  }
+
+  @media (hover: hover) {
+    .cinder-menu-bar__trigger:not(:disabled):hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-menu-bar__trigger:disabled {
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+  }
+
+  .cinder-menu-bar__trigger:focus-visible {
+    outline: var(--cinder-ring-width, 2px) solid transparent;
+    /* Ring replaces the border while focused rather than stacking on it — the two
+       together read as one heavier shape than either was designed to be. */
+    border-color: transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-menu-bar__trigger:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      /* 3px separates the outline from ButtonBorder (which renders in forced-colors
+         on all button-like controls and shares the ButtonText color family in HCM);
+         at 2px the ring and border can visually merge. */
+      outline-offset: 3px;
+      box-shadow: none;
+    }
+  }
+
+  .cinder-menu-bar__access-key {
+    text-decoration: underline;
+    text-underline-offset: 0.125em;
+  }
+
+  .cinder-menu-bar__dropdown-menu {
+    position: absolute;
+    display: grid;
+    inset-block-start: calc(100% + var(--cinder-space-1));
+    right: auto;
+    left: 0;
+    min-inline-size: 12rem;
+    max-inline-size: min(24rem, calc(100vw - var(--cinder-space-6)));
+    overflow: visible;
+    z-index: var(--cinder-z-dropdown);
+  }
+
+  .cinder-menu-bar__dropdown-scroll {
+    min-inline-size: 100%;
+    max-block-size: min(28rem, calc(100vh - var(--cinder-space-6)));
+    overflow: auto;
+  }
+
+  .cinder-menu-bar__submenu {
+    position: relative;
+    inline-size: 100%;
+  }
+
+  .cinder-menu-bar__submenu-menu {
+    position: absolute;
+    inset-block-start: 0;
+    right: auto;
+    left: calc(100% + var(--cinder-space-1));
+    min-inline-size: 12rem;
+    max-inline-size: min(24rem, calc(100vw - var(--cinder-space-6)));
+    max-block-size: min(28rem, calc(100vh - var(--cinder-space-6)));
+    overflow: auto;
+    z-index: var(--cinder-z-dropdown);
+  }
+
+  .cinder-menu-bar__item-label {
+    flex: 1 1 auto;
+  }
+
+  .cinder-menu-bar__shortcut {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    margin-inline-start: var(--cinder-space-4);
+  }
+
+  .cinder-menu-bar__submenu-indicator {
+    display: inline-flex;
+    align-items: center;
+    color: var(--cinder-text-muted);
+    margin-inline-start: var(--cinder-space-4);
+  }
+
+  .cinder-menu-bar__submenu-indicator[dir='rtl'] {
+    transform: rotate(180deg);
+  }
+}

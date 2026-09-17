@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Optional title rendered as a `<p class=\"cinder-callout__title\">`.\n\nRendered as a paragraph rather than a heading element so the\ncallout does not inject an entry into the document outline. If a\ncallout genuinely participates in the outline (e.g. it titles a\nstandalone section), wrap it in a `<section>` with its own heading\nrather than promoting this prop to `<h*>`.\n\nWhen supplied and no `aria-label` or `aria-labelledby` is passed\non rest props, the title also becomes the `aria-label` of the\nroot element so the landmark or note has an accessible name."
+    },
+    "variant": {
+      "enum": ["info", "success", "warning", "danger"],
+      "description": "Visual + semantic variant. Default `'info'`."
+    },
+    "semantic": {
+      "enum": ["aside", "note"],
+      "description": "Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark."
+    },
+    "class": {
+      "type": "string",
+      "description": "Extra classes appended to the root element. Pass via the explicit\n`class` prop — it is excluded from rest-prop spread, so writing\n`class=\"x\"` inside spread attributes will not reach the root."
+    }
+  },
+  "additionalProperties": false,
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "children",
+        "reason": "function-or-snippet",
+        "required": true,
+        "description": "Callout body content."
+      },
+      {
+        "name": "icon",
+        "reason": "function-or-snippet",
+        "description": "Optional decorative icon rendered inside an `aria-hidden` wrapper.\n\nThe icon is a second visual channel alongside variant color — it\nhelps satisfy WCAG 1.4.1 (Use of Color) by ensuring the variant is\nconveyed by more than color alone. The accessible meaning still\nlives in `title` and/or `children`; the icon must not be the only\ncarrier of information."
+      }
+    ]
+  }
+}

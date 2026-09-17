@@ -1,0 +1,367 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category data-display
+   * @status alpha
+   * @purpose Categorical × categorical heatmap for dense analytics, confusion matrices, and correlation grids.
+   * @tag chart
+   * @tag heatmap
+   * @tag matrix
+   * @tag analytics
+   * @useWhen Showing density or magnitude across two categorical dimensions simultaneously.
+   * @useWhen Rendering a confusion matrix where rows are actual classes and columns are predicted classes.
+   * @avoidWhen Showing a continuous trend over time — use line-chart instead.
+   * @avoidWhen Comparing discrete category totals — use bar-chart instead.
+   * @related bar-chart, line-chart, area-chart
+   */
+  export type { MatrixChartProps, MatrixChartSchemaProps } from './matrix-chart.types.ts';
+</script>
+
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import {
+    createChartGeometry,
+    dataTableClass,
+    observeChartFontLoading,
+    resolveChartTheme,
+  } from '../../_internal/chart/chart-utilities.ts';
+  import ChartDataTable from '../_internal/chart-data-table.svelte';
+  import {
+    heatmapCellFill,
+    heatmapDomain,
+    heatmapLabelFill,
+    toFiniteOrNull,
+  } from '../../_internal/chart/heatmap-utilities.ts';
+  import { classNames } from '../../utilities/class-names.ts';
+  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import type { MatrixChartProps } from './matrix-chart.types.ts';
+
+  let {
+    label,
+    description,
+    data,
+    xField,
+    yField,
+    valueField,
+    colorScale = 'sequential',
+    cellLabelsVisible = true,
+    height = 280,
+    loading = false,
+    dataTableCaption,
+    dataTableVisibility = 'screen-reader-only',
+    theme,
+    class: customClassName,
+    empty,
+    loadingContent,
+    id,
+    ...rest
+  }: MatrixChartProps = $props();
+
+  const generatedId = $props.id();
+  const rootId = $derived(id ?? generatedId);
+  const descriptionId = $derived(description ? `${rootId}-description` : undefined);
+
+  const resolvedTheme = $derived(resolveChartTheme(theme));
+  let rootElement = $state<HTMLElement>();
+  let measureText = $state(false);
+  let measurementVersion = $state(0);
+  onMount(() => {
+    measureText = true;
+    return observeChartFontLoading(() => {
+      measurementVersion += 1;
+    });
+  });
+
+  let measuredWidth = $state(400);
+
+  const observeResize = useResizeObserver((entries) => {
+    const entry = entries[0];
+    // Ignore zero-width measurements (element hidden / display:none) so the
+    // last good width is kept instead of collapsing the chart geometry.
+    if (entry && entry.contentRect.width > 0) measuredWidth = entry.contentRect.width;
+  });
+
+  // Collect unique x and y labels in insertion order
+  const xLabels = $derived.by(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const datum of data) {
+      const value = datum[xField];
+      if (value === null || value === undefined) continue;
+      const xLabel = String(value);
+      if (!seen.has(xLabel)) {
+        seen.add(xLabel);
+        result.push(xLabel);
+      }
+    }
+    return result;
+  });
+
+  const yLabels = $derived.by(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const datum of data) {
+      const value = datum[yField];
+      if (value === null || value === undefined) continue;
+      const yLabel = String(value);
+      if (!seen.has(yLabel)) {
+        seen.add(yLabel);
+        result.push(yLabel);
+      }
+    }
+    return result;
+  });
+
+  const geometry = $derived(
+    createChartGeometry(measuredWidth, height, {
+      xTickLabels: xLabels,
+      yTickLabels: yLabels,
+      xTickPosition: 'top',
+      measureText,
+      measurementElement: rootElement,
+      measurementVersion,
+    }),
+  );
+  const { plotWidth, plotHeight, marginTop, marginLeft } = $derived(geometry);
+
+  const isEmpty = $derived(xLabels.length === 0 || yLabels.length === 0);
+
+  // Cell pixel dimensions
+  const cellWidth = $derived(xLabels.length > 0 ? plotWidth / xLabels.length : 0);
+  const cellHeight = $derived(yLabels.length > 0 ? plotHeight / yLabels.length : 0);
+
+  // Build value lookup and find min/max for color scaling
+  type CellData = {
+    /** Stable, collision-free key built from the grid indices (labels may contain `::`). */
+    key: string;
+    xLabel: string;
+    yLabel: string;
+    value: number | null;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+
+  // Nested x → (y → value) lookup. A nested map avoids the string-join collision
+  // where `x="A::B", y="C"` and `x="A", y="B::C"` would share a flat `A::B::C` key.
+  const valueLookup = $derived.by((): Map<string, Map<string, number | null>> => {
+    const lookup = new Map<string, Map<string, number | null>>();
+    for (const datum of data) {
+      const xRaw = datum[xField];
+      const yRaw = datum[yField];
+      if (xRaw === null || xRaw === undefined) continue;
+      if (yRaw === null || yRaw === undefined) continue;
+      const xKey = String(xRaw);
+      const yKey = String(yRaw);
+      let column = lookup.get(xKey);
+      if (!column) {
+        column = new Map<string, number | null>();
+        lookup.set(xKey, column);
+      }
+      // Non-finite values (NaN / Infinity) are treated as missing rather than
+      // poisoning the domain, normalization, and color-mix percentages.
+      column.set(yKey, toFiniteOrNull(datum[valueField]));
+    }
+    return lookup;
+  });
+
+  function lookupValue(xLabel: string, yLabel: string): number | null {
+    return valueLookup.get(xLabel)?.get(yLabel) ?? null;
+  }
+
+  const cells = $derived.by((): CellData[] => {
+    const result: CellData[] = [];
+    for (const [yIndex, currentYLabel] of yLabels.entries()) {
+      for (const [xIndex, currentXLabel] of xLabels.entries()) {
+        result.push({
+          key: `${xIndex}:${yIndex}`,
+          xLabel: currentXLabel,
+          yLabel: currentYLabel,
+          value: lookupValue(currentXLabel, currentYLabel),
+          x: xIndex * cellWidth,
+          y: yIndex * cellHeight,
+          width: cellWidth,
+          height: cellHeight,
+        });
+      }
+    }
+    return result;
+  });
+
+  // Domain over the finite values only (shared with Spectrogram). Diverging is
+  // zero-centred inside the utility so 0 always maps to the neutral midpoint.
+  const domain = $derived(heatmapDomain(cells.map((cell) => cell.value)));
+
+  function cellFill(value: number | null): string {
+    return heatmapCellFill(
+      value,
+      domain,
+      colorScale,
+      resolvedTheme.palette,
+      theme?.background ?? 'var(--cinder-surface-inset)',
+    );
+  }
+
+  // Hoisted so a dense grid's ~3x(rows*cols) formatting calls (tooltip
+  // title, visible label, and data-table fallback per cell) reuse one
+  // formatter instead of constructing a new Intl.NumberFormat per call.
+  const numberFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+
+  function formatValue(value: number | null): string {
+    if (value === null) return '';
+    return numberFormatter.format(value);
+  }
+
+  function cellLabelFill(value: number | null): string {
+    return heatmapLabelFill(value, resolvedTheme.muted);
+  }
+
+  const hasDataTable = $derived(dataTableVisibility !== 'hidden');
+
+  // Pointer hover tracking: the key of the cell under the pointer, or null.
+  // Each cell rect sets this on pointerenter; the plot group clears it on leave.
+  // Hovering a cell also surfaces its native <title> (the value-on-hover tooltip).
+  let hoveredCellKey = $state<string | null>(null);
+
+  function handlePlotPointerLeave(): void {
+    hoveredCellKey = null;
+  }
+
+  // Table rows for the data table fallback: xLabel × yLabel grid. Reuses the
+  // nested lookup (O(1) per cell) instead of scanning the flattened cells array.
+  const tableRows = $derived.by(() => {
+    return yLabels.map((currentYLabel) => {
+      const values = xLabels.map((currentXLabel) => ({
+        xLabel: currentXLabel,
+        value: lookupValue(currentXLabel, currentYLabel),
+      }));
+      return { yLabel: currentYLabel, values };
+    });
+  });
+</script>
+
+<figure
+  {...rest}
+  {@attach observeResize}
+  bind:this={rootElement}
+  id={rootId}
+  class={classNames('cinder-matrix-chart', customClassName)}
+  style:--_cinder-chart-foreground={resolvedTheme.foreground}
+  style:--_cinder-chart-muted={resolvedTheme.muted}
+  style:--_cinder-chart-grid={resolvedTheme.grid}
+  style:--_cinder-chart-background={resolvedTheme.background}
+  aria-label={label}
+  aria-describedby={descriptionId}
+  data-cinder-color-scale={colorScale}
+>
+  {#if description}
+    <p id={descriptionId} class="cinder-matrix-chart__description">{description}</p>
+  {/if}
+  <div
+    class="cinder-matrix-chart__viewport"
+    style:height="{height}px"
+    data-cinder-loading={loading || undefined}
+  >
+    {#if loading}
+      <div class="cinder-matrix-chart__state">
+        {#if loadingContent}{@render loadingContent()}{:else}Loading chart…{/if}
+      </div>
+    {:else if isEmpty}
+      <div class="cinder-matrix-chart__state">
+        {#if empty}{@render empty()}{:else}No chart data{/if}
+      </div>
+    {/if}
+    <svg
+      role="img"
+      viewBox={`0 0 ${measuredWidth} ${height}`}
+      aria-hidden={loading || isEmpty ? 'true' : undefined}
+      aria-labelledby={!loading && !isEmpty ? `${rootId}-svg-title` : undefined}
+    >
+      {#if !loading && !isEmpty}
+        <title id="{rootId}-svg-title">{label}</title>
+      {/if}
+      <!-- The plot only renders with data and when not loading — otherwise the
+           heatmap cells/labels would draw under the loading or empty overlay
+           (data may be present while loading, so isEmpty alone is not enough). -->
+      {#if !loading && !isEmpty}
+        <!-- Clearing on plot-level leave (not per-cell) avoids a stale highlight
+             flickering at the sub-pixel seams between cells, whose dimensions are
+             fractional (plotWidth / xLabels.length). -->
+        <g
+          role="presentation"
+          transform={`translate(${marginLeft}, ${marginTop})`}
+          onpointerleave={handlePlotPointerLeave}
+        >
+          <!-- X-axis labels (column headers) -->
+          {#each xLabels as xLabel, index (xLabel)}
+            <text
+              class="cinder-matrix-chart__tick-label"
+              x={index * cellWidth + cellWidth / 2}
+              y={-8}
+              text-anchor="middle"
+              dominant-baseline="auto">{xLabel}</text
+            >
+          {/each}
+          <!-- Y-axis labels (row headers) -->
+          {#each yLabels as yLabel, index (yLabel)}
+            <text
+              class="cinder-matrix-chart__tick-label"
+              x={-8}
+              y={index * cellHeight + cellHeight / 2}
+              text-anchor="end"
+              dominant-baseline="middle">{yLabel}</text
+            >
+          {/each}
+          <!-- Matrix cells -->
+          {#each cells as cell (cell.key)}
+            <g class="cinder-matrix-chart__cell-group">
+              <rect
+                class="cinder-matrix-chart__cell"
+                x={cell.x}
+                y={cell.y}
+                width={cell.width}
+                height={cell.height}
+                fill={cellFill(cell.value)}
+                aria-hidden="true"
+                data-cinder-x={cell.xLabel}
+                data-cinder-y={cell.yLabel}
+                data-cinder-active={hoveredCellKey === cell.key ? '' : undefined}
+                onpointerenter={() => (hoveredCellKey = cell.key)}
+              >
+                <title
+                  >{cell.xLabel} × {cell.yLabel}: {cell.value !== null
+                    ? formatValue(cell.value)
+                    : 'no data'}</title
+                >
+              </rect>
+              {#if cellLabelsVisible && cell.value !== null}
+                <text
+                  class="cinder-matrix-chart__cell-label"
+                  x={cell.x + cell.width / 2}
+                  y={cell.y + cell.height / 2}
+                  text-anchor="middle"
+                  dominant-baseline="middle"
+                  fill={cellLabelFill(cell.value)}
+                  aria-hidden="true">{formatValue(cell.value)}</text
+                >
+              {/if}
+            </g>
+          {/each}
+        </g>
+      {/if}
+    </svg>
+  </div>
+  {#if hasDataTable}
+    <ChartDataTable
+      caption={dataTableCaption ?? label}
+      headers={[yField, ...xLabels]}
+      rows={tableRows.map((row) => ({
+        id: row.yLabel,
+        header: row.yLabel,
+        cells: row.values.map((cell) => (cell.value !== null ? formatValue(cell.value) : '—')),
+      }))}
+      visibilityClass={dataTableClass(dataTableVisibility)}
+    />
+  {/if}
+</figure>
