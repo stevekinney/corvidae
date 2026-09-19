@@ -1,5 +1,6 @@
 import { createDefaultRuntimeServices, type RuntimeClock } from '@corvidae/lifecycle';
 import type {
+  Effort,
   SteeringCommand,
   SteeringCommandFailure,
   SteeringCommandState,
@@ -166,9 +167,29 @@ export type SteeringCommandAdmissionOutcome =
 export type ImplementedSteeringCommand = SteeringCommand & {
   readonly requestedValue: Extract<
     SteeringRequestedValue,
-    { target: 'pause' | 'resume' | 'agent-identity' }
+    { target: 'pause' | 'resume' | 'agent-identity' | ConfigurationTargetKind }
   >;
 };
+
+/**
+ * AB-200 — the four backend coordinates steering can address, as distinct
+ * from `agent-identity` (which also changes the tool set and hook plan, and
+ * therefore defers to the next run) and from `pause`/`resume` (which carry
+ * no value and bind to one run).
+ */
+export type ConfigurationTargetKind = 'route' | 'model' | 'provider' | 'effort';
+
+const CONFIGURATION_TARGETS: ReadonlySet<string> = new Set<ConfigurationTargetKind>([
+  'route',
+  'model',
+  'provider',
+  'effort',
+]);
+
+/** Narrows a target to one of the four configuration coordinates. */
+export function isConfigurationTarget(target: string): target is ConfigurationTargetKind {
+  return CONFIGURATION_TARGETS.has(target);
+}
 
 /**
  * Context {@link BureauSteeringGate.admit} needs from its caller:
@@ -559,6 +580,50 @@ export function createSteeringGate(
   // first one ever applied (review finding, PR #430 — Codex P2, "Supersede
   // earlier pending identity commands").
   let pendingIdentityKey: { principal: string; id: string } | undefined;
+  /**
+   * AB-200 — the session's desired route/model/provider/effort.
+   *
+   * Session-scoped, like `agentName`, because AB-67's coordinator
+   * amendments fix configuration-targeting commands as session-scoped and
+   * `runId`-ignoring. But unlike `agentName` these are NOT deferred to the
+   * next run's step 0: AB-67's own operation table applies agent, provider,
+   * model, route, and effort changes "no earlier than the entry of the next
+   * `runStep` call", and only agent-identity carries the extra
+   * next-`bureau.run` deferral (it has to — swapping the agent mid-run
+   * would change the tool set and hook plan underneath a run already in
+   * flight, which the four backend coordinates do not).
+   *
+   * So these advance `effectiveConfigVersion` at admission and are visible
+   * to the very next boundary read of every run on the session, including
+   * runs already in flight. That is the whole point of steering a model
+   * mid-run.
+   */
+  const desiredConfiguration: {
+    route?: string;
+    model?: string;
+    provider?: string;
+    effort?: Effort;
+  } = {};
+  /**
+   * The ledger key of the currently-pending, not-yet-applied command for
+   * each of the four configuration targets, so a replacement supersedes its
+   * predecessor rather than silently overwriting `desiredConfiguration` and
+   * leaving the earlier command stuck `accepted` forever. Exactly the
+   * `pendingIdentityKey` treatment above, kept per target because steering
+   * `model` must not supersede a pending `effort`.
+   */
+  const pendingConfigurationKeys = new Map<
+    ConfigurationTargetKind,
+    { principal: string; id: string }
+  >();
+  /**
+   * The highest `configVersion` any configuration-target command has
+   * reached. Session-wide by design — see `runVisibleVersion`, which folds
+   * it into every run's visible version so a session-scoped change is
+   * observable by runs already in flight without also leaking a concurrent
+   * run's own run-scoped pause bump.
+   */
+  let lastConfigurationVersion = 0;
   // Keyed by runId (or the '(unbound)' sentinel for a pause admitted with no
   // resolvable boundRunId — reachable only from a direct `admit()` call with
   // no `boundRunId` in context, never from `submitSteeringCommand`, which
@@ -723,7 +788,24 @@ export function createSteeringGate(
   }
 
   function runVisibleVersion(runId: string): number {
-    return Math.max(runBaseline.get(runId) ?? 0, runLastPauseVersion.get(runId) ?? 0);
+    return Math.max(
+      runBaseline.get(runId) ?? 0,
+      runLastPauseVersion.get(runId) ?? 0,
+      // AB-200: a route/model/provider/effort change is session-scoped and
+      // effective at the next boundary read, so every run — including one
+      // already in flight, which by definition has no newer baseline —
+      // must see its version advance. Without this the desired value would
+      // reach `GenerateContext.steering` while the run's own
+      // `configVersion` stayed put, so `maybeDispatchSteeringApplied`
+      // would never fire `steering.applied` for it and the command would
+      // sit `accepted` forever despite having visibly taken effect.
+      //
+      // Deliberately NOT `effectiveConfigVersion`, which a concurrent
+      // run's pause also advances: that would leak a different run's
+      // run-scoped bump into this run's visible version, the exact defect
+      // `forRun`'s per-run scoping exists to prevent.
+      lastConfigurationVersion,
+    );
   }
 
   function ledgerGet(principal: string, id: string): StoredSteeringCommand | undefined {
@@ -789,6 +871,10 @@ export function createSteeringGate(
         ...(pendingAgentName !== undefined || agentName !== undefined
           ? { agentName: pendingAgentName ?? agentName }
           : {}),
+        // AB-200: session-scoped and immediately effective, so the raw
+        // gate's aggregate view reports them verbatim — there is no
+        // per-run variation to aggregate over, unlike `paused`.
+        ...desiredConfiguration,
       };
     },
 
@@ -836,6 +922,14 @@ export function createSteeringGate(
             ...(promotedAgentName !== undefined && !identityExpired
               ? { agentName: promotedAgentName }
               : {}),
+            // AB-200: NOT scoped per run, deliberately. A model or effort
+            // change is session-scoped and effective at the next boundary
+            // read, so a run already in flight must observe it — that is
+            // the case steering a model mid-run exists for. Contrast
+            // `agentName` directly above, which is pinned to whatever this
+            // run captured at its own promotion precisely because swapping
+            // the agent under a live run would change its tools and hooks.
+            ...desiredConfiguration,
           };
         },
         awaitResume(signal?: AbortSignal): Promise<void> {
@@ -1015,6 +1109,63 @@ export function createSteeringGate(
         return { outcome: 'accepted', command: snapshotOf(stored) };
       }
 
+      // AB-200 — route/model/provider/effort. Session-scoped and
+      // `runId`-ignoring per AB-67's coordinator amendments, and effective
+      // at the next boundary read rather than deferred to the next run:
+      // see `desiredConfiguration`'s doc comment for why these differ from
+      // agent-identity on exactly that point.
+      //
+      // A `policyRef` is resolved by the CALLER (`submitSteeringCommand`
+      // runs it through the model-policy planner and rewrites the command
+      // to the concrete `override` the selector chose) before reaching
+      // here, for the same reason agent-identity rejects one below: nothing
+      // in this module resolves a policy name, so admitting an unresolved
+      // reference would accept a command that never changes anything.
+      if (isConfigurationTarget(target)) {
+        if (
+          !('override' in command.requestedValue) ||
+          command.requestedValue.override === undefined
+        ) {
+          return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
+        }
+        const requested = command.requestedValue.override;
+        // Idempotent at the value, matching the pause/resume rule directly
+        // above: re-requesting the value the session already desires is
+        // accepted with no new `configVersion` and no state change, so a
+        // client that retries with a fresh command id cannot inflate the
+        // version and invalidate every other caller's `expectedRevision`.
+        if (desiredConfiguration[target] === requested) {
+          const stored = record(command, undefined, effectiveConfigVersion, context.now);
+          return { outcome: 'accepted', command: snapshotOf(stored) };
+        }
+        const version = bump();
+        // Unlike agent-identity, this DOES advance the effective version:
+        // its application boundary is the next `runStep` entry, which every
+        // live run on this session reaches without restarting.
+        effectiveConfigVersion = version;
+        lastConfigurationVersion = version;
+        const priorKey = pendingConfigurationKeys.get(target);
+        if (priorKey !== undefined) {
+          const prior = ledgerGet(priorKey.principal, priorKey.id);
+          if (prior && prior.state === 'accepted') {
+            prior.state = 'superseded';
+            prior.failure = {
+              failedAt: context.now,
+              reason: 'superseded-by',
+              supersededBy: command.id,
+            };
+          }
+        }
+        if (target === 'effort') {
+          desiredConfiguration.effort = requested as Effort;
+        } else {
+          desiredConfiguration[target] = requested;
+        }
+        const stored = record(command, undefined, version, context.now);
+        pendingConfigurationKeys.set(target, { principal: command.principal, id: command.id });
+        return { outcome: 'accepted', command: snapshotOf(stored) };
+      }
+
       // agent-identity: reachable only via a direct `admit()` call, never
       // through `submitSteeringCommand` (see `ImplementedSteeringCommand`'s
       // doc comment). Resolving a `policyRef` against AB-66's catalog is
@@ -1090,21 +1241,33 @@ export function createSteeringGate(
           const isIdentity =
             stored.runId === undefined && stored.requestedValue.target === 'agent-identity';
           const isPause = stored.runId === runId && stored.requestedValue.target === 'pause';
-          const eligible = isIdentity
-            ? stored.configVersion <= baseline
-            : // Exact match, not `<=`: a pause/resume the run's boundary
-              // never actually observed — because a LATER transition on the
-              // same run overtook it first, before this boundary ever fired
-              // — must not be misreported as `applied` merely because its
-              // version is numerically at or below the version this
-              // boundary DID observe. `admit()`'s `clearPauseOwners`
-              // supersession already marks that stale command `superseded`
-              // the moment it is overtaken (so it is normally no longer
-              // `accepted` by the time this runs at all); this exact match
-              // is the belt to that suspenders (review finding, PR #430 —
-              // Codex P2, "Do not mark skipped steering versions as
-              // applied").
-              stored.runId === runId && stored.configVersion === configVersion;
+          // AB-200: session-scoped and effective at the next boundary read,
+          // so `<=` against the version this boundary actually OBSERVED —
+          // not against the run's start baseline the way agent-identity is
+          // measured, because a configuration change admitted mid-run is
+          // meant to reach that very run. A boundary that observed version
+          // N has consumed every configuration command at or below N: they
+          // are all folded into one `desiredConfiguration`, so unlike a
+          // superseded pause there is no "skipped" version to misreport.
+          const isConfiguration =
+            stored.runId === undefined && isConfigurationTarget(stored.requestedValue.target);
+          const eligible = isConfiguration
+            ? stored.configVersion <= configVersion
+            : isIdentity
+              ? stored.configVersion <= baseline
+              : // Exact match, not `<=`: a pause/resume the run's boundary
+                // never actually observed — because a LATER transition on the
+                // same run overtook it first, before this boundary ever fired
+                // — must not be misreported as `applied` merely because its
+                // version is numerically at or below the version this
+                // boundary DID observe. `admit()`'s `clearPauseOwners`
+                // supersession already marks that stale command `superseded`
+                // the moment it is overtaken (so it is normally no longer
+                // `accepted` by the time this runs at all); this exact match
+                // is the belt to that suspenders (review finding, PR #430 —
+                // Codex P2, "Do not mark skipped steering versions as
+                // applied").
+                stored.runId === runId && stored.configVersion === configVersion;
           if (!eligible) continue;
           // Deadline expiry at application time applies to agent-identity
           // (deferred effect — the deadline must prevent it from ever taking

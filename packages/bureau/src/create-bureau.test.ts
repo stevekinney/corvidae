@@ -6460,39 +6460,126 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     }
   });
 
-  it('returns unsupported-capability/selector-unavailable for the four targets the gate does not implement', async () => {
-    // AB-68 narrowed this from "every target other than pause/resume":
-    // `agent-identity` is now admitted (see the tests below). The gate
-    // stays type-narrowed against route/model/provider/effort, so those
-    // four remain unreachable through this verb.
+  it('admits a model override that the selector endorses, and reports it as desired state (AB-200)', async () => {
+    // The four configuration targets resolve through the shipped AB-64
+    // selector rather than a steering-only validation path: one
+    // `planSelection` call validates the override against the live catalog.
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
     const bureau = await createBureau({
-      agents: {},
+      agents: { steered },
       generate: () => new Promise<never>(() => {}),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
     });
     try {
-      const run = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
       await pollUntil(async () => {
         const session = await bureau.getSession(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      for (const requestedValue of [
-        { target: 'route', override: 'r1' },
-        { target: 'model', override: 'm1' },
-        { target: 'provider', override: 'p1' },
-        { target: 'effort', override: 'high' },
-      ] as const) {
-        const outcome = await bureau.submitSteeringCommand(run.sessionId, {
-          principal: 'alice',
-          requestedValue,
-        });
-        expect(outcome).toEqual({
-          outcome: 'unsupported-capability',
-          reason: 'selector-unavailable',
-        });
+      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+      });
+
+      expect(outcome.outcome).toBe('accepted');
+      if (outcome.outcome !== 'accepted') throw new Error('expected accepted');
+      // Session-scoped and immediately effective: unlike agent-identity,
+      // a model change applies at the next runStep boundary rather than
+      // deferring to the next run, so configVersion advances now.
+      expect(outcome.command.configVersion).toBeGreaterThan(0);
+      expect(outcome.command.requestedValue).toEqual({
+        target: 'model',
+        override: 'claude-sonnet-5',
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('rejects a model override outside the catalog with policy-denied (AB-200)', async () => {
+    // The rollback trigger this guards: a steering command silently
+    // bypassing the catalog check and recording a model the deployment
+    // cannot actually run.
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
+    const bureau = await createBureau({
+      agents: { steered },
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+    });
+    try {
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', override: 'not-a-real-model' },
+      });
+
+      expect(outcome.outcome).toBe('rejected');
+      if (outcome.outcome !== 'rejected') throw new Error('expected rejected');
+      expect(outcome.failure.reason).toBe('policy-denied');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('is idempotent at the value: re-steering the same model does not advance configVersion (AB-200)', async () => {
+    // A client retrying with a fresh command id must not inflate the
+    // version and invalidate every other caller's expectedRevision.
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
+    const bureau = await createBureau({
+      agents: { steered },
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+    });
+    try {
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const first = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+      });
+      const second = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+      });
+
+      if (first.outcome !== 'accepted' || second.outcome !== 'accepted') {
+        throw new Error('expected both accepted');
       }
+      expect(second.command.configVersion).toBe(first.command.configVersion);
     } finally {
       await bureau.dispose();
     }

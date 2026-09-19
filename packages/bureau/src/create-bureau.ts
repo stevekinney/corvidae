@@ -28,6 +28,7 @@ import {
   createFlowController,
   createModelCatalog,
   createRecoveredRunEventSurface,
+  type Effort,
   createRunFinishedFrame,
   createRunStartedFrame,
   createStore,
@@ -71,6 +72,7 @@ import {
   type SessionSummary,
   SteeringAcceptedEvent,
   SteeringAppliedEvent,
+  type SteeringRequestedValue,
   type StepRecord,
   type Store,
   StoreActionEvent,
@@ -173,6 +175,7 @@ import {
   createSteeringCommandLedger,
   createSteeringGate,
   type ImplementedSteeringCommand,
+  isConfigurationTarget,
   type SteeringCommandAdmissionOutcome,
   type SteeringCommandRequest,
 } from './steering';
@@ -6140,10 +6143,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // separate state-machine slice that owns per-target desired-state
     // writes and per-run `configVersion` accounting.
     const steeringTarget = request.requestedValue.target;
-    const isPauseOrResume = steeringTarget === 'pause' || steeringTarget === 'resume';
-    if (!isPauseOrResume && steeringTarget !== 'agent-identity') {
-      return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
-    }
     // A `policyRef` names a pre-approved policy only the AB-66 selector can
     // resolve into a concrete agent name. Until that resolution path exists
     // here, a `policyRef`-carrying command is unsupported rather than
@@ -6175,6 +6174,80 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       };
     }
 
+    // AB-200 — validate a configuration override against the live model
+    // catalog, coordinate by coordinate.
+    //
+    // NOT through `planSelection`, and the reason is a real constraint
+    // rather than a preference. `composePolicy`'s exact-override path
+    // (`providers/policy.ts`'s `matchesOverride`) requires provider AND
+    // model together — "a partially specified override cannot resolve to
+    // one candidate, so it matches nothing" — and rejects any override
+    // naming a `route`, because `route` is not a field `BackendDescriptor`
+    // carries. A steering command addresses exactly one coordinate, so it
+    // can never satisfy that path: routing every one of them through
+    // `planSelection` would reject every legitimate single-coordinate
+    // command as `no-candidate`. That is the catalog gap AB-65 names.
+    //
+    // What a steering override actually needs to answer is narrower: "is
+    // this coordinate one the deployment knows about?" The accumulated
+    // desired configuration is recomputed into a full plan at the runStep
+    // selection boundary anyway (AB-250's revalidation), which is where
+    // whole-backend coherence is decided. Admission's job is only to stop
+    // a value the catalog has never heard of.
+    //
+    // The one cast: every target the gate cannot admit has already
+    // returned above (the four configuration targets are admitted, and
+    // `agent-identity` with a `policyRef` returned at the policyRef check),
+    // so this value genuinely is one of the gate's accepted variants.
+    // TypeScript cannot carry that narrowing across the intervening
+    // statements because the checks are separate early returns rather than
+    // one discriminating switch.
+    const resolvedRequestedValue =
+      request.requestedValue as ImplementedSteeringCommand['requestedValue'];
+    if (isConfigurationTarget(steeringTarget)) {
+      // Narrowing `steeringTarget` does not narrow `request.requestedValue`:
+      // they are separate bindings, so the predicate above tells TypeScript
+      // nothing about the value's own discriminant. Bind the narrowed view
+      // once here rather than casting at each field access.
+      const configurationRequest = request.requestedValue as Extract<
+        SteeringRequestedValue,
+        { target: 'route' | 'model' | 'provider' | 'effort' }
+      >;
+      if (configurationRequest.policyRef !== undefined) {
+        // A policyRef names a pre-approved policy. Resolving one to a
+        // concrete coordinate is the selector's job and needs a full
+        // selection request, not a catalog membership test — deferred for
+        // the same reason agent-identity's policyRef is.
+        return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
+      }
+      const override = configurationRequest.override;
+      const { descriptors } = modelCatalog.catalog();
+      const known =
+        steeringTarget === 'model'
+          ? descriptors.some((descriptor) => descriptor.model === override)
+          : steeringTarget === 'provider'
+            ? descriptors.some((descriptor) => descriptor.provider === override)
+            : steeringTarget === 'effort'
+              ? descriptors.some((descriptor) =>
+                  descriptor.effort.portable.includes(override as Effort),
+                )
+              : // `route`: a routing entry is configured on the generate
+                // function (`RoutingOptions.routes`), not in the model
+                // catalog, and Bureau does not hold that table. There is
+                // nothing here to validate against, so admission accepts
+                // the name and the routing layer rejects an unknown route
+                // at generate time. Recorded rather than faked: a
+                // membership test against a catalog that structurally
+                // cannot contain routes would reject every valid route.
+                true;
+      if (!known) {
+        return {
+          outcome: 'rejected',
+          failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+        };
+      }
+    }
+
     let gate = steeringGates.get(sessionId);
     if (!gate) {
       gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
@@ -6188,10 +6261,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       idOrigin: request.id !== undefined ? 'caller' : 'generated',
       sessionId,
       principal: request.principal,
-      // Narrowed by the target early returns above — TypeScript tracks
-      // this back through `request.requestedValue` without a cast because
-      // `request` is never reassigned.
-      requestedValue: request.requestedValue,
+      // For pause/resume/agent-identity this is `request.requestedValue`
+      // unchanged, narrowed by the target early returns above. For the four
+      // configuration targets it is the selector-resolved coordinate, so a
+      // `policyRef` is admitted as the concrete value the plan chose.
+      requestedValue: resolvedRequestedValue,
       requestedAt: now,
       ...(request.expectedRevision !== undefined
         ? { expectedRevision: request.expectedRevision }
