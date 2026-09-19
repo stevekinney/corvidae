@@ -32,7 +32,20 @@
  *
  * ## Running
  *
- * This file runs in the default `bun test` pass.
+ * Gate: WEFT_BROWSER_SMOKE=1 must be set (the shared flag for all real-browser
+ * smokes, via `browserSmokeEnabled`). Otherwise all tests skip. This test does
+ * NOT run in the default `bun test` pass. Run it with
+ * `bun run --filter=@corvidae/weft test:browser`.
+ *
+ * It used to run in the default pass, deliberately, because it is regression
+ * coverage for a crash that shipped (#713). That is a real reason and it is
+ * why this file was left alone when the other three were gated. What changed
+ * the answer is the cost of the `beforeAll`: it shells out to `bun build` and
+ * then launches Chromium, with no explicit budget, so it sits on bun's 5,000 ms
+ * default. Under a loaded machine that is a coin flip, and a regression test
+ * that fails for reasons unrelated to the regression stops being coverage and
+ * starts being noise. The coverage is preserved by `test:browser` rather than
+ * discarded.
  *
  * Browser provisioning: `bunx playwright install chromium` (run once).
  */
@@ -45,6 +58,8 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { Browser, BrowserContext } from 'playwright';
 import { chromium } from 'playwright';
+
+import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
 
 const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -99,7 +114,7 @@ let server: ReturnType<typeof Bun.serve>;
 let clientScriptSource: string;
 let baseUrl: string;
 
-describe('HttpClient — real Chromium construction', () => {
+describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction', () => {
   beforeAll(async () => {
     clientScriptSource = await buildClientScript();
 
