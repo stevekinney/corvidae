@@ -245,6 +245,9 @@ function snapshotResolution(resolution: {
 function snapshotResolveOptions(
   options: ToolboxResolveApprovalOptions,
 ): ToolboxResolveApprovalOptions {
+  if (Object.prototype.hasOwnProperty.call(options, 'arguments')) {
+    throw new Error('Approval resolution options cannot include arguments.');
+  }
   return {
     ...options,
     requestContext: freezeToolRequestContext(options.requestContext),

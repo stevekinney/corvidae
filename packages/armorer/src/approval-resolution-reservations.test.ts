@@ -195,7 +195,33 @@ describe('approval resolution reservations and authority', () => {
         },
       }),
     ],
+    [
+      'ownerId',
+      createRequestContext({
+        authority: {
+          principalId: ownerId,
+          tenantId: 'approval-resolution-tenant',
+          ownerId: 'other-owner',
+          capabilities: [],
+          authorizationRevision: '1',
+        },
+      }),
+    ],
+    [
+      'capabilitiesRevision',
+      createRequestContext({
+        authority: {
+          principalId: ownerId,
+          tenantId: 'approval-resolution-tenant',
+          ownerId,
+          capabilities: ['extra-capability'],
+          authorizationRevision: '1',
+        },
+      }),
+    ],
+    ['audience', createRequestContext({ audience: 'operator' })],
     ['agentId', createRequestContext({ agentId: 'other-agent' })],
+    ['runId', createRequestContext({ runId: 'other-run' })],
   ] as const)('rejects cross-authority %s resolution attempts', async (field, requestContext) => {
     const { store, counts } = createCountingApprovalStateStore();
     const tool = createTool({
@@ -257,6 +283,53 @@ describe('approval resolution reservations and authority', () => {
         { requestContext },
       ),
     ).rejects.toThrow('toolDefinitionRevision');
+    expect(counts.revoke).toBe(0);
+  });
+
+  it.each([
+    ['toolboxRevision', { toolboxRevision: 'toolbox:2' }],
+    ['policyRevision', { policyRevision: 'policy:2' }],
+    ['approvalRevision', { approvalRevision: 'approval:2' }],
+  ] as const)('rejects stale %s before resolving denial', async (field, options) => {
+    const { store, counts } = createCountingApprovalStateStore();
+    const requestContext = createRequestContext();
+    const tool = createTool({
+      name: `approval-stale-${field}`,
+      version: '1.0.0',
+      description: 'Approval stale resolver revision test tool',
+      input: z.object({}),
+      policy: {
+        beforeExecute: () => ({ status: 'needs_approval', reason: 'Approve stale revision' }),
+      },
+      execute: async () => 'must not execute',
+    });
+    const original = createToolbox([tool], {
+      approvalSecret,
+      approvalStateStore: store,
+      toolboxRevision: 'toolbox:1',
+      policyRevision: 'policy:1',
+      approvalRevision: 'approval:1',
+    });
+    const changed = createToolbox([tool], {
+      approvalSecret,
+      approvalStateStore: store,
+      toolboxRevision: 'toolbox:1',
+      policyRevision: 'policy:1',
+      approvalRevision: 'approval:1',
+      ...options,
+    });
+    const parked = await original.execute(createToolCall(tool.name, {}, `stale-${field}-call`), {
+      ownerId,
+      requestContext,
+    });
+
+    await expect(
+      changed.resolveApproval(
+        requireSignedApproval(parked),
+        { decision: 'deny', remember: false },
+        { requestContext },
+      ),
+    ).rejects.toThrow(field);
     expect(counts.revoke).toBe(0);
   });
 

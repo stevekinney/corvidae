@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   approvalResolutionSecret as approvalSecret,
+  createCountingApprovalStateStore,
   createDeferredReserveRevokeApprovalStateStore,
   createDeferredStateApprovalStateStore,
   createApprovalResolutionRequestContext as createRequestContext,
@@ -149,6 +150,51 @@ describe('approval resolution mutable caller boundaries', () => {
       toolName: 'approval-edited-snapshot',
       result: 'edited',
     });
+  });
+
+  it('rejects resolveApproval option arguments before they can override approved arguments', async () => {
+    const { store, counts } = createCountingApprovalStateStore();
+    let executedValue: string | undefined;
+    const tool = createTool({
+      name: 'approval-resolve-options-arguments',
+      version: '1.0.0',
+      description: 'Approval resolve options argument injection test tool',
+      input: z.object({ value: z.string() }),
+      policy: {
+        beforeExecute: ({ params }) => {
+          const value = (params as { value?: string }).value;
+          return value === 'injected'
+            ? { status: 'allow' }
+            : { status: 'needs_approval', reason: 'Approve original arguments' };
+        },
+      },
+      execute: async ({ value }) => {
+        executedValue = value;
+        return value;
+      },
+    });
+    const toolbox = createToolbox([tool], { approvalSecret, approvalStateStore: store });
+    const requestContext = createRequestContext();
+    const parked = await toolbox.execute(
+      createToolCall(tool.name, { value: 'original' }, 'resolve-options-arguments-call'),
+      { ownerId, requestContext },
+    );
+    const options = {
+      requestContext,
+      arguments: { value: 'injected' },
+    } as unknown as Parameters<typeof toolbox.resolveApproval>[2];
+
+    await expect(
+      toolbox.resolveApproval(
+        requireSignedApproval(parked),
+        { decision: 'approve', remember: false },
+        options,
+      ),
+    ).rejects.toThrow('Approval resolution options cannot include arguments');
+    expect(executedValue).toBeUndefined();
+    expect(counts.reserve).toBe(0);
+    expect(counts.commit).toBe(0);
+    expect(counts.revoke).toBe(0);
   });
 
   it('validates and uses one resolution snapshot when resolution accessors change', async () => {
