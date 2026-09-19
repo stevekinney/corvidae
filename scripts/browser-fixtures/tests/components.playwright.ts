@@ -1,3 +1,4 @@
+import type { ComponentEntry, Theme, Viewport } from '@corvidae/testing';
 import {
   applyComponentFilter,
   applyInteractions,
@@ -14,6 +15,15 @@ import { expect, test } from './component-page-fixture.ts';
 import { runFixtureSweep } from './component-sweep.ts';
 
 type LiveManifest = { digest: string; entries: unknown[] };
+type ComponentPage = {
+  open(args: {
+    entry: ComponentEntry;
+    theme: Theme;
+    viewport: Viewport;
+    fixtureName?: string;
+    fixtureContentHash?: string;
+  }): Promise<import('@playwright/test').Page>;
+};
 
 function isLiveManifest(value: unknown): value is LiveManifest {
   return (
@@ -141,79 +151,107 @@ test.describe('fixture interaction rendering', () => {
   });
 });
 
-test('dropdown dividers appear only between visible items', async ({ componentPage }) => {
-  const cases = [
-    ['dropdown', '.cinder-dropdown-item'],
-    ['command-menu', '.cinder-command-item'],
-    ['side-navigation', '.cinder-navigation-item'],
-    ['combobox', '.cinder-combobox__option'],
-    ['select', '.cinder-select'],
-  ] as const;
+async function assertRows(page: import('@playwright/test').Page, selector: string) {
+  const result = await page.locator(selector).evaluateAll((rows, expectedSelector) => {
+    const pseudo = (row: Element) => getComputedStyle(row, '::after').content !== 'none';
+    return rows.map((row) => {
+      const siblings = Array.from(row.parentElement?.children ?? []);
+      const index = siblings.indexOf(row);
+      const later = siblings.slice(index + 1);
+      const nextSeparator = later.findIndex((sibling) =>
+        sibling.classList.contains('cinder-dropdown-separator'),
+      );
+      const beforeSeparator = nextSeparator < 0 ? later : later.slice(0, nextSeparator);
+      const hasVisibleLaterRow = beforeSeparator.some(
+        (sibling) =>
+          sibling.matches(expectedSelector) && !(sibling instanceof HTMLElement && sibling.hidden),
+      );
+      return { hasVisibleLaterRow, hasDivider: pseudo(row) };
+    });
+  }, selector);
+  expect(result.length, `${selector} must render real option rows`).toBeGreaterThan(0);
+  for (const row of result) expect(row.hasDivider).toBe(row.hasVisibleLaterRow);
+}
 
-  async function assertRows(page: import('@playwright/test').Page, selector: string) {
-    const result = await page.locator(selector).evaluateAll((rows, expectedSelector) => {
-      const pseudo = (row: Element) => getComputedStyle(row, '::after').content !== 'none';
-      return rows.map((row) => {
-        const siblings = Array.from(row.parentElement?.children ?? []);
-        const index = siblings.indexOf(row);
-        const later = siblings.slice(index + 1);
-        const nextSeparator = later.findIndex((sibling) =>
-          sibling.classList.contains('cinder-dropdown-separator'),
-        );
-        const beforeSeparator = nextSeparator < 0 ? later : later.slice(0, nextSeparator);
-        const hasVisibleLaterRow = beforeSeparator.some(
-          (sibling) =>
-            sibling.matches(expectedSelector) &&
-            !(sibling instanceof HTMLElement && sibling.hidden),
-        );
-        return { hasVisibleLaterRow, hasDivider: pseudo(row) };
-      });
-    }, selector);
-    expect(result.length, `${selector} must render real option rows`).toBeGreaterThan(0);
-    for (const row of result) expect(row.hasDivider).toBe(row.hasVisibleLaterRow);
+async function openAssertionFixture(
+  componentPage: ComponentPage,
+  slug: string,
+  theme: (typeof THEMES)[number],
+  width: number,
+) {
+  const entry = allEntries.find((candidate) => candidate.slug === slug);
+  expect(entry, `${slug} must be present in the fixture manifest`).toBeDefined();
+  const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'assertion');
+  expect(fixture, `${slug} must expose its assertion fixture`).toBeDefined();
+  const page = await componentPage.open({
+    entry: entry!,
+    theme,
+    viewport: VIEWPORTS.find((viewport) => viewport.name === 'desktop')!,
+    fixtureName: fixture!.name,
+    fixtureContentHash: fixture!.fixtureContentHash,
+  });
+  await page.setViewportSize({ width, height: 900 });
+  return page;
+}
+
+for (const theme of THEMES) {
+  for (const width of [320, 512, 848]) {
+    test(`dropdown dividers appear only between visible items ${theme}-${width}`, async ({
+      componentPage,
+    }) => {
+      const page = await openAssertionFixture(componentPage, 'dropdown', theme, width);
+      const trigger = page.getByRole('button', { name: 'Row regression' });
+      await trigger.focus();
+      await trigger.press('Enter');
+      await expect(page.getByRole('menu').last()).toBeVisible();
+      await assertRows(page, '.cinder-dropdown-item');
+    });
+
+    test(`command-menu dividers appear only between visible items ${theme}-${width}`, async ({
+      componentPage,
+    }) => {
+      const page = await openAssertionFixture(componentPage, 'command-menu', theme, width);
+      const notes = page.getByLabel('Notes');
+      await notes.fill('/');
+      await expect(page.locator('.cinder-command-item').first()).toBeVisible();
+      await page.locator('.cinder-command-item').first().press('ArrowDown');
+      await assertRows(page, '.cinder-command-item');
+    });
+
+    test(`side-navigation dividers appear only between visible items ${theme}-${width}`, async ({
+      componentPage,
+    }) => {
+      const page = await openAssertionFixture(componentPage, 'side-navigation', theme, width);
+      const first = page.locator('.cinder-navigation-item').first();
+      await first.focus();
+      await first.press('Tab');
+      await assertRows(page, '.cinder-navigation-item');
+    });
+
+    test(`combobox dividers appear only between visible items ${theme}-${width}`, async ({
+      componentPage,
+    }) => {
+      const page = await openAssertionFixture(componentPage, 'combobox', theme, width);
+      const input = page.getByLabel('Favorite fruit');
+      await input.click();
+      await expect(page.locator('.cinder-combobox__option').first()).toBeVisible();
+      await input.press('ArrowDown');
+      await assertRows(page, '.cinder-combobox__option');
+    });
+
+    test(`native select keyboard behavior is preserved ${theme}-${width}`, async ({
+      componentPage,
+    }) => {
+      const page = await openAssertionFixture(componentPage, 'select', theme, width);
+      const select = page.getByLabel('Environment');
+      await select.focus();
+      await expect(select.locator('option')).toHaveCount(2);
+      await expect(select).toBeFocused();
+      await select.press('ArrowDown');
+      await expect(select).toHaveValue('beta');
+    });
   }
-
-  for (const theme of THEMES) {
-    for (const width of [320, 512, 848]) {
-      for (const [slug, rowClass] of cases) {
-        const entry = allEntries.find((candidate) => candidate.slug === slug);
-        expect(entry, `${slug} must be present in the fixture manifest`).toBeDefined();
-        const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'assertion');
-        expect(fixture, `${slug} must expose its assertion fixture`).toBeDefined();
-
-        const page = await componentPage.open({
-          entry: entry!,
-          theme,
-          viewport: VIEWPORTS.find((viewport) => viewport.name === 'desktop')!,
-          fixtureName: fixture!.name,
-          fixtureContentHash: fixture!.fixtureContentHash,
-        });
-        await page.setViewportSize({ width, height: 900 });
-
-        if (slug === 'dropdown') {
-          await page.getByRole('button', { name: 'Row regression' }).click();
-          await expect(page.getByRole('menu').last()).toBeVisible();
-        }
-        if (slug === 'command-menu') {
-          await page.getByLabel('Notes').fill('/');
-          await expect(page.locator('.cinder-command-item').first()).toBeVisible();
-        }
-        if (slug === 'combobox') {
-          await page.getByLabel('Favorite fruit').click();
-          await expect(page.locator('.cinder-combobox__option').first()).toBeVisible();
-        }
-        if (slug === 'select') {
-          const select = page.getByLabel('Environment');
-          await select.focus();
-          await expect(select.locator('option')).toHaveCount(2);
-          await expect(select).toBeFocused();
-          continue;
-        }
-        await assertRows(page, rowClass);
-      }
-    }
-  }
-});
+}
 
 for (const entry of entries) {
   test.describe(entry.name, () => {

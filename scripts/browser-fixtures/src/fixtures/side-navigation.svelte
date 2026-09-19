@@ -21,13 +21,15 @@
       <SideNavigation.Item href="/projects/atlas" active={active === 'atlas'}>
         Atlas
       </SideNavigation.Item>
-      <SideNavigation.Item href="/projects/beacon" active={active === 'beacon'}>
-        Beacon
-      </SideNavigation.Item>
+      {#if projectsExpanded}
+        <SideNavigation.Item href="/projects/beacon" active={active === 'beacon'}>
+          Beacon
+        </SideNavigation.Item>
+      {/if}
     </SideNavigation.Group>
     <SideNavigation.Group label="Settings">
       <SideNavigation.Item href="/settings/team">Team</SideNavigation.Item>
-      <SideNavigation.Item href="/settings/billing">Billing</SideNavigation.Item>
+      <SideNavigation.Item href="/settings/billing" hidden>Billing</SideNavigation.Item>
     </SideNavigation.Group>
   </SideNavigation>
 </div>
