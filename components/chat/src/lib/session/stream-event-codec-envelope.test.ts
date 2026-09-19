@@ -5,7 +5,7 @@ import { decodeChatStreamEvent, encodeChatStreamEvent } from './stream-event-cod
 describe('wire envelope (CIN-507)', () => {
   test('rejects an unsupported wireVersion on a legacy member', () => {
     expect(() =>
-      decodeChatStreamEvent({ type: 'text', text: 'hi', wireVersion: 2, sequence: 0 }),
+      decodeChatStreamEvent({ type: 'text', text: 'hi', wireVersion: 3, sequence: 0 }),
     ).toThrow('Invalid chat stream event');
   });
 
@@ -15,10 +15,16 @@ describe('wire envelope (CIN-507)', () => {
         type: 'stream:text-delta',
         content: 'h',
         accumulated: 'h',
-        wireVersion: 2,
+        wireVersion: 3,
         sequence: 0,
       }),
     ).toThrow('Invalid chat stream event');
+  });
+
+  test('accepts wire version 2 on a member that predates it', () => {
+    expect(
+      decodeChatStreamEvent({ type: 'text', text: 'hi', wireVersion: 2, sequence: 0 }),
+    ).toEqual({ type: 'text', text: 'hi', wireVersion: 2, sequence: 0 });
   });
 
   test('new members require the envelope — missing sequence is rejected', () => {

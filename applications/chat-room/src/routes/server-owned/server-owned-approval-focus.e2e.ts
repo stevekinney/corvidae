@@ -1,8 +1,12 @@
 import { expect, test } from '@playwright/test';
 import {
+  askOnStream,
   fixtureMarker,
   gotoHydrated,
   newFixtureMarker,
+  pushFrame,
+  resolveOnStream,
+  serveStreamFromTest,
   uniqueTitle,
 } from './server-owned-approval-focus-test-helpers';
 
@@ -67,10 +71,15 @@ test('answering keeps focus inside the chat', async ({ page }) => {
   expect(landedGeometry.focusIndicator).toBe(true);
 });
 
-test('a remote answer hands focus back when polling removes the controls', async ({
+test('a remote answer hands focus back when the stream removes the controls', async ({
   page,
   request,
 }) => {
+  // UNCHANGED BY THE POLL'S REMOVAL, and that is the finding worth recording.
+  // A second client answers the question over the real endpoint; this client
+  // used to notice on its next 250ms read and now is told, because settling
+  // the question makes the run write `elicitation.resolved`. The race is the
+  // same, the delivery is not, and the assertion did not have to move.
   await gotoHydrated(page, '/server-owned');
   const title = uniqueTitle('Remote approval focus');
   await page.locator('[data-testid="server-owned-new-title"]').fill(title);
@@ -121,6 +130,19 @@ test('a remote answer hands focus back when polling removes the controls', async
 });
 
 test('a remote replacement hands focus back when the pending call changes', async ({ page }) => {
+  // A REPLACEMENT IS STILL REACHABLE, so this still has to be pinned. The gate
+  // asks about each gated call in turn: one question resolves and the next
+  // registers under a new id, and a person whose focus is on Approve must be
+  // moved to the new question rather than left pressing a control that now
+  // means something else.
+  //
+  // What changed is how the replacement is DELIVERED. It used to be fabricated
+  // as a `GET …/elicitation` body, because that poll was how the component
+  // discovered anything; now a question arrives as `elicitation.requested` and
+  // leaves as `elicitation.resolved`, so the replacement is pushed onto the
+  // response body instead. The local fixture emits exactly one gated call, so
+  // the test serves the turn itself — see `serveStreamFromTest`.
+  await serveStreamFromTest(page);
   await gotoHydrated(page, '/server-owned');
   const title = uniqueTitle('Replacement approval focus');
   await page.locator('[data-testid="server-owned-new-title"]').fill(title);
@@ -130,27 +152,25 @@ test('a remote replacement hands focus back when the pending call changes', asyn
   await page.getByRole('textbox').fill(fixtureMarker('approval', newFixtureMarker()));
   await page.getByRole('textbox').press('Enter');
 
+  const first = { requestId: 'request-a', callId: 'remote-call-a', message: 'Save this note?' };
+  await askOnStream(page, first);
+
   const approve = page.locator('[data-testid="approval-approve"]');
   await expect(approve).toBeVisible();
   await approve.focus();
-  await page.route('**/api/server-owned/conversations/*/elicitation', async (route) => {
-    if (route.request().method() !== 'GET') return route.continue();
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        pending: {
-          toolName: 'remember_note',
-          callId: 'remote-call-b',
-          message: 'Save the replacement note?',
-          arguments: { text: 'replacement' },
-        },
-      }),
-    });
+
+  // The run moves on: the first question settles and the second registers.
+  await resolveOnStream(page, first);
+  await askOnStream(page, {
+    requestId: 'request-b',
+    callId: 'remote-call-b',
+    message: 'Save the replacement note?',
   });
 
   await expect(page.locator('[data-testid="approval-question"]')).toContainText(
     'Save the replacement note?',
   );
   await expect(page.locator('[data-testid="approval-question"]')).toBeFocused();
+
+  await pushFrame(page, { type: 'run.aborted' });
 });

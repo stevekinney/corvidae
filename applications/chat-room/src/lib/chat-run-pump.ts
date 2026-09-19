@@ -1,6 +1,8 @@
 import type { ToolExecutionResult, ToolResult } from '@corvidae/armorer';
 import type { ChatStreamEvent } from '@corvidae/chat';
 import {
+  ElicitationRequestedEvent,
+  ElicitationResolvedEvent,
   StepCompletedEvent,
   ToolErrorBubbleEvent,
   ToolPolicyDeniedBubbleEvent,
@@ -189,11 +191,53 @@ function isFilteredToolSettledBubble(event: unknown): event is ToolSettledBubble
   );
 }
 
+/**
+ * Mirrors Operative's own elicitation lifecycle onto the wire.
+ *
+ * `ElicitationRequestedEvent` is dispatched BEFORE the `onElicitation`
+ * callback is awaited (`run-step-support.ts`), which is what makes a live
+ * question possible at all: this frame is written while the run is still
+ * parked, so a client learns the question exists on the stream it already has
+ * open rather than by asking whether one appeared.
+ *
+ * `elicitation.resolved` reports THE HUMAN'S ANSWER and nothing else. It is
+ * deliberately not synthesized from a tool result, and a tool result is
+ * deliberately not treated as an answer: a denied call still settles
+ * afterwards through `tool.settled`, and a question can be answered while its
+ * tool is still executing. Two events, written from the two events.
+ *
+ * `action` is NOT emitted. Operative's event says a question was asked, not
+ * whether it is an approval or a request for input, and inventing that
+ * distinction here would put a claim on the wire the run never made.
+ */
+function writeElicitationEvent(event: unknown, writer: ChatStreamWriter): boolean {
+  if (event instanceof ElicitationRequestedEvent) {
+    writer.write({
+      type: 'elicitation.requested',
+      requestId: event.requestId,
+      ...(event.toolCallId === undefined ? {} : { toolCallId: event.toolCallId }),
+      message: event.message,
+    });
+    return true;
+  }
+  if (event instanceof ElicitationResolvedEvent) {
+    writer.write({
+      type: 'elicitation.resolved',
+      requestId: event.requestId,
+      ...(event.toolCallId === undefined ? {} : { toolCallId: event.toolCallId }),
+      accepted: event.accepted,
+    });
+    return true;
+  }
+  return false;
+}
+
 function writeRunEvent(
   event: unknown,
   writer: ChatStreamWriter,
   filteredToolCalls: Set<string>,
 ): void {
+  if (writeElicitationEvent(event, writer)) return;
   if (writeToolBubbleEvent(event, writer)) return;
   if (isFilteredToolSettledBubble(event)) {
     // The bubble arrives before StepCompletedEvent supplies the canonical call

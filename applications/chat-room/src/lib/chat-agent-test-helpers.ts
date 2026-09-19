@@ -144,10 +144,17 @@ export function ofType<T extends ChatStreamEvent['type']>(
  * Every frame carries the envelope, `sequence` is strictly increasing from
  * zero, and exactly one terminal `run.*` frame closes the stream — the
  * reference architecture's stream wire contract, asserted on every run.
+ *
+ * VERSION 2 since this lab began emitting `assistant.step.*` and
+ * `elicitation.*`, which `@corvidae/chat` gates behind a version 2 envelope.
+ * The version is asserted on EVERY frame rather than only on the new ones,
+ * because a stream speaks one version for its whole length — a mixed stream
+ * is rejected by `decodeChatStreamEvents`, so a producer that bumped only the
+ * frames that needed it would emit a body no client could read.
  */
 export function expectWellFormedWire(frames: ChatStreamEvent[]): void {
   frames.forEach((frame, index) => {
-    expect(frame.wireVersion).toBe(1);
+    expect(frame.wireVersion).toBe(2);
     expect(frame.sequence).toBe(index);
   });
   const terminals = frames.filter((frame) => TERMINAL_TYPES.has(frame.type));

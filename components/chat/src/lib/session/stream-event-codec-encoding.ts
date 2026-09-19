@@ -2,6 +2,7 @@ import { isConversationHistory } from '../components/chat/builders.ts';
 import {
   isAssistantStepEvent,
   isBlockStreamEvent,
+  isElicitationEvent,
   isRunEvent,
   isStateStreamEvent,
   isStreamEvent,
@@ -13,14 +14,20 @@ import {
   projectChatSerializedRunError,
   projectChatStreamBlock,
   projectChatStreamState,
+  projectChatToolAction,
   projectChatToolResult,
   projectPlainJSON,
   projectTokenUsage,
   projectWireEnvelope,
+  requireBoolean,
   requireString,
 } from './stream-event-codec-encoding-projection.ts';
 import type { ChatStreamEvent, WireEnvelope } from './stream-event-codec-types.ts';
-import { isNonNegativeSafeInteger, isRecord } from './stream-event-codec-validation.ts';
+import {
+  isNonNegativeSafeInteger,
+  isRecord,
+  toChatToolAction,
+} from './stream-event-codec-validation.ts';
 
 function isLegacyChatStreamEventType(
   type: ChatStreamEvent['type'],
@@ -76,6 +83,7 @@ export function projectChatStreamEventBody(
   if (isToolEvent(event)) return projectToolEvent(event, envelope);
   if (isRunEvent(event)) return projectRunEvent(event, envelope);
   if (isAssistantStepEvent(event)) return projectAssistantStepEvent(event, envelope);
+  if (isElicitationEvent(event)) return projectElicitationEvent(event, envelope);
   if (event.type === 'text' || event.type === 'tool_call' || event.type === 'tool_result')
     return projectLegacyEvent(event, envelope);
   return throwUnsupportedType(event);
@@ -86,6 +94,65 @@ type StreamEvent = Extract<ChatStreamEvent, { type: `stream:${string}` }>;
 type ToolEvent = Extract<ChatStreamEvent, { type: `tool.${string}` }>;
 type RunEvent = Extract<ChatStreamEvent, { type: `run.${string}` }>;
 type AssistantStepEvent = Extract<ChatStreamEvent, { type: `assistant.step.${string}` }>;
+type ElicitationEvent = Extract<ChatStreamEvent, { type: `elicitation.${string}` }>;
+
+/**
+ * Projects one elicitation frame into exactly its declared fields.
+ *
+ * `toolCallId` and `action` are SPREAD ONLY WHEN PRESENT rather than written
+ * as `undefined`. `JSON.stringify` drops an `undefined` value, so the two
+ * would look the same on the wire — but not to the decoder's
+ * `Object.hasOwn`-shaped reads, and not to a test asserting on the projected
+ * object before it is serialized. Omission is the honest representation of
+ * "the producer said nothing".
+ *
+ * The `action` descriptor goes through the same projection `tool_result`'s own
+ * action does, so the two cannot describe the same shape differently.
+ */
+function projectElicitationEvent(
+  event: ElicitationEvent,
+  envelope: Partial<WireEnvelope>,
+): ProjectedChatStreamEvent {
+  const correlation = {
+    requestId: requireString(event.requestId, 'requestId'),
+    ...(event.toolCallId === undefined
+      ? {}
+      : { toolCallId: requireString(event.toolCallId, 'toolCallId') }),
+  };
+  if (event.type === 'elicitation.resolved')
+    return {
+      type: event.type,
+      ...correlation,
+      accepted: requireBoolean(event.accepted, 'accepted'),
+      ...envelope,
+    };
+  return {
+    type: event.type,
+    ...correlation,
+    message: requireString(event.message, 'message'),
+    ...(event.action === undefined ? {} : { action: projectElicitationAction(event.action) }),
+    ...envelope,
+  };
+}
+
+/**
+ * The action descriptor, whitelisted and then checked against the SAME guard
+ * the decoder will apply to it.
+ *
+ * Structural, and last — the mirror of what `projectChatToolResult` does with
+ * `isToolResult` over its whole projection. Without it the encoder would
+ * happily write `action: { type: 'nonsense' }` and the failure would surface
+ * at the far end, after the payload had already crossed the wire, which is
+ * the hazard every other member's encode-time guard exists to close.
+ */
+function projectElicitationAction(
+  action: NonNullable<Extract<ElicitationEvent, { type: 'elicitation.requested' }>['action']>,
+): Record<string, unknown> {
+  const projected = projectChatToolAction(action);
+  if (toChatToolAction(projected) === undefined)
+    throw new Error('Invalid chat stream event: action is not a valid tool action');
+  return projected;
+}
 
 function projectAssistantStepEvent(
   event: AssistantStepEvent,

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   APPROVAL_FOLLOW_UP_TEXT,
   APPROVAL_NOTE_TEXT,
@@ -9,11 +9,73 @@ import {
   uniqueTitle,
 } from './server-owned-test-helpers';
 
+/**
+ * Records the NDJSON body of the server-owned stream as the page reads it.
+ *
+ * TEED, not intercepted: the application still receives the identical stream,
+ * so nothing about the turn this spec drives is altered by watching it.
+ *
+ * It exists because the live ordering this spec cares about is not observable
+ * from the DOM. `run.completed` carries the server's authoritative history and
+ * the controller reconciles the transcript against it the moment the stream
+ * closes — with this fixture that lands in the same paint as the reply itself,
+ * so a DOM snapshot taken at any reachable instant already shows the
+ * reconciled order, and would pass whether or not the frames that produce the
+ * live ordering were ever emitted. Measured: a snapshot polled every animation
+ * frame from before the approval already reports `data-streaming="false"`.
+ *
+ * The wire is where the claim is checkable, and checking it there is exact
+ * rather than timing-dependent.
+ */
+async function recordWire(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const chunks: string[] = [];
+    Reflect.set(window, '__serverOwnedWire', chunks);
+    const original = window.fetch.bind(window);
+    const patched = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const response = await original(input, init);
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.includes('/stream') || response.body === null) return response;
+      const [forPage, forProbe] = response.body.tee();
+      void (async () => {
+        const decoder = new TextDecoder();
+        const reader = forProbe.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(decoder.decode(value, { stream: true }));
+        }
+      })();
+      return new Response(forPage, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    };
+    // Merged onto the original rather than assigned over it: `fetch` carries
+    // properties of its own (`preconnect`) that a bare replacement would drop,
+    // and the platform type requires them.
+    window.fetch = Object.assign(patched, window.fetch);
+  });
+}
+
+async function readWire(page: Page): Promise<Array<Record<string, unknown>>> {
+  const body = await page.evaluate(() => {
+    const chunks: unknown = Reflect.get(window, '__serverOwnedWire');
+    return Array.isArray(chunks) ? chunks.join('') : '';
+  });
+  return body
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
 test('a person approves the note in the browser and the turn completes', async ({ page }) => {
   // The whole point of the elicitation path, driven the way a person drives
   // it. The request-fixture specs above prove the endpoints; this proves there
   // is a way to reach them without one — which is what makes the feature
   // operable rather than merely present.
+  await recordWire(page);
   await gotoHydrated(page, '/server-owned');
   const title = uniqueTitle('Browser approval');
   await page.locator('[data-testid="server-owned-new-title"]').fill(title);
@@ -39,8 +101,13 @@ test('a person approves the note in the browser and the turn completes', async (
   await composer.fill(fixtureMarker('approval', marker));
   await composer.press('Enter');
 
-  await expect(question).toContainText('Save this note?');
-  await expect(question).toContainText('remember_note');
+  // THE WHOLE SENTENCE, not two substrings of it. The tool name is now
+  // appended conditionally — it arrives from the side channel rather than from
+  // the frame that raises the question — and a conditional block in Svelte
+  // trims the whitespace at its edges. Two `toContainText` calls would both
+  // pass against `Save this note?The assistant wants to run remember_note.`,
+  // which is what made this worth pinning exactly.
+  await expect(question).toHaveText('Save this note? The assistant wants to run remember_note.');
 
   // The MODEL'S own argument, so the person approves a specific note — in its
   // own disclosure rather than inside the announcement. A note has no length
@@ -83,22 +150,59 @@ test('a person approves the note in the browser and the turn completes', async (
   await expect(page.locator('[data-testid="approval-approve"]')).toHaveCount(0);
   await expect(question).toBeEmpty();
 
-  // THE PERSISTED ORDER IS THE CORRECT ONE, and it is what this pins.
+  // THE LIVE HALF, read off the wire the page actually consumed.
   //
-  // Live, the two model steps of one response land in a single assistant row
-  // and the follow-up text renders ABOVE the tool disclosure it is replying
-  // about — the session controller inserts one assistant placeholder before
-  // reading any frames, so the second step's text goes back into a row that
-  // already precedes the tool activity. Measured:
+  // This is what the `assistant.step.*` frames buy. Without them the stream
+  // says nothing about where one model step ends and the next begins, and the
+  // session controller — which opens exactly one assistant placeholder before
+  // reading any frames — has no choice but to put both steps' text into that
+  // one row, rendering the follow-up ABOVE the tool activity it is replying
+  // about. Measured, before the frames existed:
   //
   //   live:   You … | Assistant "Saved that note." Called 1 tool … Succeeded
   //   reload: You … | Assistant Called 1 tool … Succeeded | Assistant "Saved that note."
   //
-  // Delineating assistant steps belongs to the wire and the controller in
-  // `@corvidae/chat`, which this issue's delivery boundary excludes —
-  // CIN-615 carries it with these measurements. What is asserted here is the
-  // half that IS this route's to keep true: the server's own history, which a
-  // reload renders, puts the tool before the reply.
+  // Asserted on the FRAMES rather than the rendered transcript, because the
+  // rendered transcript cannot answer it — see `recordWire`.
+  const wire = await readWire(page);
+  const types = wire.map((frame) => String(frame['type']));
+
+  // One version for the whole stream, and it is the version the elicitation
+  // and step vocabularies live in.
+  expect(new Set(wire.map((frame) => frame['wireVersion']))).toEqual(new Set([2]));
+
+  // The question reached the browser ON THE STREAM, and its answer came back
+  // under the same identity.
+  const requested = wire.find((frame) => frame['type'] === 'elicitation.requested');
+  const resolved = wire.find((frame) => frame['type'] === 'elicitation.resolved');
+  expect(requested?.['message']).toBe('Save this note?');
+  expect(resolved?.['requestId']).toBe(requested?.['requestId']);
+  expect(resolved?.['accepted']).toBe(true);
+
+  // THE CALL THE QUESTION IS ABOUT travels with it. Without this the frame
+  // says a question exists and what it asks, but not which call it is about —
+  // and the answering POST is keyed on exactly that id, so a client reading
+  // only the stream would have a question it could display and could not
+  // answer.
+  expect(requested?.['toolCallId']).toBeTruthy();
+  expect(resolved?.['toolCallId']).toBe(requested?.['toolCallId']);
+
+  // TWO STEPS, and the second one's reply is bracketed by its own boundary —
+  // after the tool frames rather than inside the row that precedes them.
+  const steps = wire.filter((frame) => frame['type'] === 'assistant.step.started');
+  expect(steps.map((frame) => frame['step'])).toEqual([0, 1]);
+  const secondStepAt = types.lastIndexOf('assistant.step.started');
+  const toolResultAt = types.indexOf('tool_result');
+  expect(toolResultAt).toBeGreaterThan(-1);
+  expect(toolResultAt).toBeLessThan(secondStepAt);
+  const replyAtOnWire = wire.findIndex(
+    (frame) => frame['type'] === 'text' && String(frame['text']).includes(APPROVAL_FOLLOW_UP_TEXT),
+  );
+  expect(replyAtOnWire).toBeGreaterThan(secondStepAt);
+
+  // AND THE RELOADED HALF AGREES: the server's own history, which a reload
+  // renders, puts the tool before the reply. Either half alone would pass with
+  // the defect present in the other.
   await page.reload();
   await page.waitForSelector('body[data-hydrated="true"]');
 
@@ -253,4 +357,62 @@ test('a long approval question leaves the transcript its space', async ({ page }
   // Answer it, so the turn does not stay parked for the next test in this file.
   await page.locator('[data-testid="approval-deny"]').click();
   await expect(chat).toHaveAttribute('data-streaming', 'false');
+});
+
+test('the question reaches the browser with the elicitation GET dead', async ({ page }) => {
+  // THE POINT OF PUTTING THE QUESTION ON THE STREAM. The side channel used to
+  // be the only way a client learned a question existed: nothing on the
+  // response body said so, and the surface discovered it by asking
+  // `…/elicitation` every 250ms. A client whose poll could not get through had
+  // a run parked on a question it would never show, and a person watching a
+  // reply that never arrived.
+  //
+  // The GET is aborted here rather than made to fail slowly, so there is no
+  // cadence for the poll to recover on — the only remaining path to the
+  // question is the `elicitation.requested` frame on the connection that is
+  // already open.
+  //
+  // The POST is left alone: an answer is a separate request either way, and
+  // this pins that the question arrives without the side channel, not that the
+  // side channel is gone.
+  await page.route('**/api/server-owned/conversations/*/elicitation', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+
+  await gotoHydrated(page, '/server-owned');
+  const title = uniqueTitle('Streamed approval');
+  await page.locator('[data-testid="server-owned-new-title"]').fill(title);
+  await page.locator('[data-testid="server-owned-create"]').click();
+  await page.getByRole('link', { name: new RegExp(title) }).click();
+  await page.waitForSelector('body[data-hydrated="true"]');
+
+  const composer = page.getByRole('textbox');
+  await composer.fill(fixtureMarker('approval', newFixtureMarker()));
+  await composer.press('Enter');
+
+  // The QUESTION ITSELF, from the frame. The model's proposed arguments are
+  // not asserted: the frame has no field for them, so they are the one part
+  // that genuinely does depend on the side channel.
+  const question = page.locator('[data-testid="approval-question"]');
+  await expect(question).toContainText('Save this note?');
+
+  // And it is ANSWERABLE, which needs the call id the frame carries — a
+  // question that renders but cannot be acted on would be worse than none.
+  await page.locator('[data-testid="approval-approve"]').click();
+
+  await expect(page.locator('[data-testid="server-owned-chat"]')).toHaveAttribute(
+    'data-streaming',
+    'false',
+  );
+  await expect(page.locator('[data-testid="server-owned-chat"]')).toContainText(
+    APPROVAL_FOLLOW_UP_TEXT,
+  );
+
+  // No assertion on the failure banner: an aborted poll installs one, and that
+  // ownership is pinned by `server-owned-approval-focus.part-03.e2e.ts`. What
+  // is being pinned here is that the turn completes anyway.
 });

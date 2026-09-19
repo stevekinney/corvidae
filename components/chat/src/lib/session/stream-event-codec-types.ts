@@ -4,8 +4,13 @@ import type { JSONValue } from '../components/chat/conversation-model.ts';
 
 /**
  * Wire-envelope fields a frame carries per the reference architecture's
- * stream wire contract: `wireVersion: 1` plus a request-local monotonically
- * increasing `sequence`.
+ * stream wire contract: a supported `wireVersion` plus a request-local
+ * monotonically increasing `sequence`.
+ *
+ * Version 2 adds the `assistant.step.*` vocabulary and nothing else. A
+ * version 1 producer keeps working unchanged, and a version 1 frame is still
+ * decoded exactly as before — the version is carried through rather than
+ * normalized, so a consumer can tell which vocabulary it is reading.
  *
  * These are REQUIRED on every member added by CIN-507 (`stream:*`, `tool.*`,
  * `run.*`) because that vocabulary is defined by the wire contract the
@@ -15,7 +20,18 @@ import type { JSONValue } from '../components/chat/conversation-model.ts';
  * must decode them unchanged rather than break a deployed producer.
  */
 export type WireEnvelope = {
-  wireVersion: 1;
+  wireVersion: 1 | 2;
+  sequence: number;
+};
+
+/**
+ * The envelope a member introduced by wire version 2 requires. Declaring it
+ * separately is what makes "this frame did not exist before version 2" a
+ * type error rather than a convention: a version 1 producer cannot construct
+ * an `assistant.step.*` frame at all.
+ */
+export type V2WireEnvelope = {
+  wireVersion: 2;
   sequence: number;
 };
 
@@ -37,8 +53,13 @@ export type WireEnvelope = {
 export type WithOptionalEnvelope<T> =
   (T & { wireVersion?: never; sequence?: never }) | (T & WireEnvelope);
 
-/** The one supported wire version. Any other value is rejected outright. */
-export const SUPPORTED_WIRE_VERSION = 1;
+/** The supported wire versions. Any other value is rejected outright. */
+export const SUPPORTED_WIRE_VERSIONS = [1, 2] as const;
+
+/** Narrows an untrusted value to a wire version this codec speaks. */
+export function isSupportedWireVersion(value: unknown): value is 1 | 2 {
+  return value === 1 || value === 2;
+}
 
 // ---------------------------------------------------------------------------
 // Local, provider-neutral equivalents of Operative's `StreamEvent` vocabulary
@@ -220,7 +241,7 @@ export type ChatStreamEvent =
   | ({ type: 'run.error'; error: ChatSerializedRunError } & WireEnvelope)
   | ({ type: 'run.tripwire'; error: ChatSerializedRunError } & WireEnvelope)
   | ({ type: 'run.aborted'; reason?: string } & WireEnvelope)
-  // Assistant step boundaries.
+  // Assistant step boundaries (wire version 2).
   //
   // `messageId` is the HOST'S identifier for the row this step's text
   // belongs to, read from Operative's `StreamingHandle.messageId` before the
@@ -228,5 +249,45 @@ export type ChatStreamEvent =
   // those are per-block and per-provider — and deliberately not something
   // the client minted, because then the client would be reconciling its own
   // guess against the server's history rather than being told.
-  | ({ type: 'assistant.step.started'; step: number; messageId: string } & WireEnvelope)
-  | ({ type: 'assistant.step.completed'; step: number; messageId: string } & WireEnvelope);
+  | ({ type: 'assistant.step.started'; step: number; messageId: string } & V2WireEnvelope)
+  | ({ type: 'assistant.step.completed'; step: number; messageId: string } & V2WireEnvelope)
+  // Elicitation: a question the run is waiting on, and the human's answer.
+  //
+  // `elicitation.resolved` REPORTS THE HUMAN'S RESPONSE — it is not tool
+  // settlement, and conflating the two is the defect this vocabulary exists
+  // to avoid. A denied call still settles afterwards, through its own
+  // `tool.settled`/`tool_result` frames saying the tool did not run; a client
+  // that read a resolution as a settlement would close the call's row on an
+  // answer rather than on a result, and would have nothing at all to show for
+  // a question answered while its tool was still executing.
+  //
+  // REQUEST IDENTITY IS IMMUTABLE. `requestId` is the host's own identifier
+  // for the question, minted once when it is asked and repeated verbatim on
+  // the resolution. It is what lets a client tell "the question I am showing
+  // was answered" from "some question was answered" — which is the whole
+  // difference between clearing the right prompt and clearing a replacement
+  // the person has not read yet. It is required on both members for that
+  // reason: a resolution nobody can correlate is not a resolution.
+  //
+  // `toolCallId` is OPTIONAL because elicitation is not exclusively a tool
+  // affordance — a host may ask a question between steps, with no call to
+  // attribute it to. When it is present it names the call the question is
+  // about.
+  //
+  // `action` reuses `ChatToolResult['action']` — the same descriptor
+  // `tool_result` already carries and validates — because "approval" versus
+  // "input" is exactly the distinction it draws, and a second parallel
+  // vocabulary for it would be two things to keep in step.
+  | ({
+      type: 'elicitation.requested';
+      requestId: string;
+      toolCallId?: string;
+      message: string;
+      action?: ChatToolResult['action'];
+    } & V2WireEnvelope)
+  | ({
+      type: 'elicitation.resolved';
+      requestId: string;
+      toolCallId?: string;
+      accepted: boolean;
+    } & V2WireEnvelope);

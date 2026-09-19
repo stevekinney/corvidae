@@ -89,10 +89,10 @@ test('keeps an unsaved failure through canonical adoption and later turns until 
           {
             type: 'stream:error',
             error: { source: 'server-owned-persistence', userMessageId: authoritativeId, failure },
-            wireVersion: 1,
+            wireVersion: 2,
             sequence: 1,
           },
-          { type: 'run.error', error: { name: 'Error', ...failure }, wireVersion: 1, sequence: 2 },
+          { type: 'run.error', error: { name: 'Error', ...failure }, wireVersion: 2, sequence: 2 },
         ]
           .map((frame) => JSON.stringify(frame))
           .join('\n') + '\n',

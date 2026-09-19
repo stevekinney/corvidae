@@ -2,12 +2,14 @@ import { isJSONValue, isToolResult } from '../components/chat/builders.ts';
 import { decodeStreamEvent } from './stream-event-codec-decoding-stream.ts';
 import { decodeRunEvent, decodeToolEvent } from './stream-event-codec-decoding-tool-run.ts';
 import { projectPlainJSON } from './stream-event-codec-encoding-projection.ts';
-import type { ChatStreamEvent, WireEnvelope } from './stream-event-codec-types.ts';
+import type { ChatStreamEvent, V2WireEnvelope, WireEnvelope } from './stream-event-codec-types.ts';
 import {
   isNonNegativeSafeInteger,
   isRecord,
   readWireEnvelope,
+  requireV2Envelope,
   requireWireEnvelope,
+  toChatToolAction,
 } from './stream-event-codec-validation.ts';
 
 /** Decodes and validates one provider-neutral stream event. */
@@ -26,7 +28,9 @@ function decodeVersionedEvent(
   required: WireEnvelope,
 ): ChatStreamEvent {
   if (assistantStepEventTypes.includes(eventType))
-    return decodeAssistantStepEvent(eventType, parsed, required);
+    return decodeAssistantStepEvent(eventType, parsed, requireV2Envelope(required));
+  if (elicitationEventTypes.includes(eventType))
+    return decodeElicitationEvent(eventType, parsed, requireV2Envelope(required));
   if (streamEventTypes.includes(eventType)) return decodeStreamEvent(eventType, parsed, required);
   if (toolEventTypes.includes(eventType)) return decodeToolEvent(eventType, parsed, required);
   if (runEventTypes.includes(eventType)) return decodeRunEvent(eventType, parsed, required);
@@ -54,11 +58,57 @@ const toolEventTypes = [
 ];
 const runEventTypes = ['run.completed', 'run.error', 'run.tripwire', 'run.aborted'];
 const assistantStepEventTypes = ['assistant.step.started', 'assistant.step.completed'];
+const elicitationEventTypes = ['elicitation.requested', 'elicitation.resolved'];
+
+/**
+ * Decodes one elicitation frame, field by field.
+ *
+ * `requestId` is required on BOTH members and validated identically, because
+ * it is the only thing correlating an answer to the question a client showed.
+ * `toolCallId` is optional but, when present, must be a string — a `null` or a
+ * number there is a producer bug, not an absence, and reading it as "no call"
+ * would attribute the question to nothing.
+ */
+function decodeElicitationEvent(
+  eventType: string,
+  parsed: Record<string, unknown>,
+  envelope: V2WireEnvelope,
+): ChatStreamEvent {
+  const requestId = parsed['requestId'];
+  const toolCallId = parsed['toolCallId'];
+  if (typeof requestId !== 'string') throw new Error('Invalid chat stream event');
+  if (toolCallId !== undefined && typeof toolCallId !== 'string')
+    throw new Error('Invalid chat stream event');
+  const correlation = {
+    requestId,
+    ...(toolCallId === undefined ? {} : { toolCallId }),
+  };
+  if (eventType === 'elicitation.resolved') {
+    const accepted = parsed['accepted'];
+    if (typeof accepted !== 'boolean') throw new Error('Invalid chat stream event');
+    return { type: 'elicitation.resolved', ...correlation, accepted, ...envelope };
+  }
+  const message = parsed['message'];
+  if (typeof message !== 'string') throw new Error('Invalid chat stream event');
+  const action = parsed['action'];
+  // A PRESENT but malformed descriptor is a rejection, not an absence — see
+  // `toChatToolAction`. `undefined` alone means the producer said nothing.
+  const decodedAction = action === undefined ? undefined : toChatToolAction(action);
+  if (action !== undefined && decodedAction === undefined)
+    throw new Error('Invalid chat stream event');
+  return {
+    type: 'elicitation.requested',
+    ...correlation,
+    message,
+    ...(decodedAction === undefined ? {} : { action: decodedAction }),
+    ...envelope,
+  };
+}
 
 function decodeAssistantStepEvent(
   eventType: string,
   parsed: Record<string, unknown>,
-  envelope: WireEnvelope,
+  envelope: V2WireEnvelope,
 ): ChatStreamEvent {
   const step = parsed['step'];
   const messageId = parsed['messageId'];

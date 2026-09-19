@@ -10,6 +10,21 @@ type StreamGuardState = {
    * provide partway through the response.
    */
   mode: 'bare' | 'versioned' | undefined;
+  /**
+   * Which wire version this request-local stream committed to on its first
+   * versioned frame. A stream speaks ONE version for its whole length.
+   *
+   * Separate from `mode` because the two answer different questions, and
+   * only one of them can be asked per-frame. `mode` distinguishes a legacy
+   * producer from a versioned one; this distinguishes two versioned
+   * vocabularies, and version 2 is a superset rather than a replacement —
+   * every version 1 member is also a legal version 2 member, so no
+   * individual frame is malformed. A consumer that read the opening frame as
+   * version 1 and then meets a version 2 frame has been told two different
+   * things about which vocabulary it is reading, and the only place that is
+   * visible is here.
+   */
+  wireVersion: 1 | 2 | undefined;
   sawTerminal: boolean;
   lastSequence: number | undefined;
 };
@@ -26,8 +41,9 @@ function isTerminalChatStreamEvent(event: ChatStreamEvent): boolean {
 /**
  * Applies the stream-level invariants a single frame's own decode can't
  * check on its own: a request-local monotonically increasing `sequence`
- * (reference architecture, "Stream wire contract"), and one consistent
- * envelope mode for the whole stream.
+ * (reference architecture, "Stream wire contract"), one consistent envelope
+ * mode for the whole stream, and one consistent wire version within that
+ * mode.
  */
 function noteDecodedStreamEvent(event: ChatStreamEvent, guard: StreamGuardState): void {
   // Exactly one terminal frame is written when the connection remains
@@ -50,7 +66,21 @@ function noteFrameMode(event: ChatStreamEvent, guard: StreamGuardState): void {
   if (guard.mode === undefined) guard.mode = frameMode;
   else if (guard.mode !== frameMode)
     throw new Error('Invalid chat stream event: envelope mode changed mid-stream');
-  if (frameMode === 'versioned') noteSequence(event, guard);
+  if (frameMode === 'versioned') {
+    noteWireVersion(event, guard);
+    noteSequence(event, guard);
+  }
+}
+
+function noteWireVersion(event: ChatStreamEvent, guard: StreamGuardState): void {
+  // The frame has already decoded, so its version is one the codec speaks;
+  // what is checked here is only whether it is the SAME one the stream opened
+  // with.
+  const wireVersion = Object.hasOwn(event, 'wireVersion') ? event.wireVersion : undefined;
+  if (wireVersion === undefined) throw new Error('Invalid chat stream event: missing wireVersion');
+  if (guard.wireVersion === undefined) guard.wireVersion = wireVersion;
+  else if (guard.wireVersion !== wireVersion)
+    throw new Error('Invalid chat stream event: wire version changed mid-stream');
 }
 
 function noteSequence(event: ChatStreamEvent, guard: StreamGuardState): void {
@@ -104,7 +134,12 @@ export async function* guardChatStreamEvents(
   events: AsyncIterable<ChatStreamEvent>,
   options?: ChatStreamDecodeOptions,
 ): AsyncGenerator<ChatStreamEvent> {
-  const guard: StreamGuardState = { mode: undefined, sawTerminal: false, lastSequence: undefined };
+  const guard: StreamGuardState = {
+    mode: undefined,
+    wireVersion: undefined,
+    sawTerminal: false,
+    lastSequence: undefined,
+  };
   for await (const event of events) {
     // Per-frame validation first: the static type says `ChatStreamEvent`, but
     // a transport built in JavaScript (or through a cast) can yield a frame
@@ -152,7 +187,12 @@ export async function* decodeChatStreamEvents(
   source: string | AsyncIterable<string | Uint8Array> | ReadableStream<Uint8Array>,
   options?: ChatStreamDecodeOptions,
 ): AsyncGenerator<ChatStreamEvent> {
-  const guard: StreamGuardState = { mode: undefined, sawTerminal: false, lastSequence: undefined };
+  const guard: StreamGuardState = {
+    mode: undefined,
+    wireVersion: undefined,
+    sawTerminal: false,
+    lastSequence: undefined,
+  };
   const decodeAndTrack = (line: string): ChatStreamEvent =>
     reportProtocolError(options, () => {
       const event = decodeChatStreamEvent(line);

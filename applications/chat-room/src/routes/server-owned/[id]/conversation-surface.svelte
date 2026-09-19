@@ -118,6 +118,14 @@
   let syncStatusGeneration = $state(0);
   let knownRejectedUserId = $state<string | undefined>(undefined);
   let streaming = $state(false);
+  // The question this turn's stream has raised, if any. `$state.raw` because
+  // it is replaced wholesale and never mutated in place, and because the
+  // approval child compares it by identity.
+  let streamedQuestion = $state.raw<{
+    requestId: string;
+    callId: string;
+    message: string;
+  } | null>(null);
   let streamEpoch = 0;
   let disposed = false;
   // Failures are replaced as immutable records. Preserve their identity so the
@@ -266,6 +274,44 @@
       const events = decodeChatStreamEvents(response.body);
       return (async function* () {
         for await (const event of events) {
+          // THE QUESTION, on the connection that is already open.
+          //
+          // Read here rather than in a controller hook because the session
+          // controller has no reducer for these members and should not: an
+          // elicitation is not a transcript mutation. It is this route's own
+          // affordance, and this generator is already where the route reads
+          // frames that belong to it.
+          //
+          // Guarded by the same epoch/disposal check as the persistence hint
+          // below: a frame from the turn that just ended must not raise a
+          // question against the one now in flight.
+          if (event.type === 'elicitation.requested') {
+            // A frame with no `toolCallId` names no call, and the answering
+            // POST is keyed on exactly that — so it is left to the side
+            // channel rather than shown as a question nobody could answer.
+            if (
+              event.toolCallId !== undefined &&
+              !disposed &&
+              !signal.aborted &&
+              requestEpoch === streamEpoch
+            ) {
+              streamedQuestion = {
+                requestId: event.requestId,
+                callId: event.toolCallId,
+                message: event.message,
+              };
+            }
+            yield event;
+            continue;
+          }
+          // ONLY the question this surface is showing. A resolution for some
+          // other request — a replacement that has already moved on — must not
+          // take down the prompt the person is reading.
+          if (event.type === 'elicitation.resolved') {
+            if (streamedQuestion?.requestId === event.requestId) streamedQuestion = null;
+            yield event;
+            continue;
+          }
           if (event.type === 'stream:error') {
             const hint = parseServerOwnedPersistenceFailureHint(event.error);
             if (hint === undefined) {
@@ -286,6 +332,11 @@
     hooks: {
       onStreamingChange: (value) => {
         if (value) streamEpoch += 1;
+        // Dropped on BOTH edges. A question belongs to the turn that raised
+        // it: carrying one into the next turn would show a prompt whose run
+        // has ended, and leaving one behind after a turn finishes would keep
+        // it on screen with nothing left to answer.
+        streamedQuestion = null;
         streaming = value;
         synchronizer?.setStreaming(value);
         // Cleared when the NEXT turn starts, not when this one fails: a
@@ -357,7 +408,7 @@
   });
 </script>
 
-<ApprovalSurface {id} {streaming} bind:failure {failureMessage} />
+<ApprovalSurface {id} {streaming} question={streamedQuestion} bind:failure {failureMessage} />
 
 <!--
 		Mounted ALWAYS, empty until there is something to say. Chat's own

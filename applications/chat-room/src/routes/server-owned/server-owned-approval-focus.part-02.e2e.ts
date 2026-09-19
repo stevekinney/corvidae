@@ -2,10 +2,14 @@ import type { Request } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PostOutcome, Route } from './server-owned-approval-focus-test-helpers';
 import {
+  askOnStream,
   assertApprovedPost,
   fixtureMarker,
   gotoHydrated,
   newFixtureMarker,
+  pushFrame,
+  resolveOnStream,
+  serveStreamFromTest,
   uniqueTitle,
 } from './server-owned-approval-focus-test-helpers';
 
@@ -22,33 +26,20 @@ function isElicitationPostRequest(request: Request): boolean {
   return request.method() === 'POST' && request.url().includes('/elicitation');
 }
 
-type RemoteState = 'server' | 'removed' | 'replaced';
+type Question = { requestId: string; callId: string; message: string };
 
-async function fulfillRemotePending(route: Route, remoteState: RemoteState): Promise<boolean> {
-  if (remoteState === 'removed') {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: '{"pending":null}',
-    });
-    return true;
-  }
-  if (remoteState === 'replaced') {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        pending: {
-          toolName: 'remember_note',
-          callId: 'remote-replacement',
-          message: 'Save the replacement note?',
-          arguments: { text: 'replacement' },
-        },
-      }),
-    });
-    return true;
-  }
-  return false;
+const ASK = 'Save this note?';
+const REPLACEMENT_ASK = 'Save the replacement note?';
+
+/** The question the run raises next, distinct from every one before it. */
+function nextQuestion(step: number, replacement: boolean): Question {
+  return replacement
+    ? {
+        requestId: `request-${step}-r`,
+        callId: `remote-replacement-${step}`,
+        message: REPLACEMENT_ASK,
+      }
+    : { requestId: `request-${step}`, callId: `call-${step}`, message: ASK };
 }
 
 async function fulfillCompletedPost(route: Route, postOutcome: PostOutcome): Promise<void> {
@@ -71,6 +62,19 @@ async function fulfillResolvedPost(route: Route, postOutcome: PostOutcome): Prom
 test('stale approval POST outcomes cannot mutate a removed or replaced question', async ({
   page,
 }) => {
+  // Six ways an answer can land late, against a question that has since been
+  // REMOVED or REPLACED underneath it. Both of those are real — a second
+  // client can answer at any moment, and the gate raises the next gated call's
+  // question as soon as the previous one settles — and neither is producible
+  // from the local fixture, whose approval scenario emits exactly one gated
+  // call.
+  //
+  // They used to be fabricated as `GET …/elicitation` bodies, because that
+  // poll was the only thing the component listened to. It listens to the
+  // response body now, so they are pushed there instead: a removal is
+  // `elicitation.resolved`, and a replacement is that followed by
+  // `elicitation.requested` under a new id. The POST gate below is unchanged.
+  await serveStreamFromTest(page);
   await gotoHydrated(page, '/server-owned');
   const title = uniqueTitle('Stale approval outcome');
   await page.locator('[data-testid="server-owned-new-title"]').fill(title);
@@ -83,9 +87,11 @@ test('stale approval POST outcomes cannot mutate a removed or replaced question'
   const question = page.locator('[data-testid="approval-question"]');
   const approve = page.locator('[data-testid="approval-approve"]');
   const failure = page.locator('[data-testid="server-owned-turn-failure"]');
+
+  let current = nextQuestion(0, false);
+  await askOnStream(page, current);
   await expect(approve).toBeVisible();
 
-  let remoteState: RemoteState = 'server';
   let releasePost!: () => void;
   let postReady = false;
   let postOutcome: PostOutcome = 'success';
@@ -138,11 +144,7 @@ test('stale approval POST outcomes cannot mutate a removed or replaced question'
     });
   });
   await page.route('**/api/server-owned/conversations/*/elicitation', async (route) => {
-    if (route.request().method() === 'GET') {
-      if (await fulfillRemotePending(route, remoteState)) return;
-      await route.continue();
-      return;
-    }
+    if (route.request().method() === 'GET') return route.continue();
 
     assertApprovedPost(route);
     if (postOutcome.startsWith('completed-')) {
@@ -206,12 +208,15 @@ test('stale approval POST outcomes cannot mutate a removed or replaced question'
     } else {
       await expect.poll(() => postReady).toBe(true);
     }
-    remoteState =
-      currentOutcome.startsWith('completed-') || index % 2 !== 0 ? 'replaced' : 'removed';
-    if (remoteState === 'removed') {
-      await expect(approve).toHaveCount(0);
-    } else {
+    const replaced = currentOutcome.startsWith('completed-') || index % 2 !== 0;
+    // The question the POST above is answering goes away underneath it.
+    await resolveOnStream(page, current);
+    if (replaced) {
+      current = nextQuestion(index, true);
+      await askOnStream(page, current);
       await expect(question).toContainText('replacement note');
+    } else {
+      await expect(approve).toHaveCount(0);
     }
     postReady = false;
     // Abort cases and completed continuations exercise different boundaries.
@@ -247,15 +252,20 @@ test('stale approval POST outcomes cannot mutate a removed or replaced question'
       expect(await postSettled).toBe('failed');
     }
     await expect(failure).toBeEmpty();
-    if (remoteState === 'removed') {
-      await expect(approve).toHaveCount(0);
-      await expect(question).toBeEmpty();
-    } else {
+    if (replaced) {
       await expect(question).toContainText('replacement note');
       await expect(approve).toBeEnabled();
+      await resolveOnStream(page, current);
+    } else {
+      await expect(approve).toHaveCount(0);
+      await expect(question).toBeEmpty();
     }
-    remoteState = 'server';
-    await expect(question).toContainText('Save this note?');
+    // Back to a plain pending question for the next outcome.
+    current = nextQuestion(index + 1, false);
+    await askOnStream(page, current);
+    await expect(question).toContainText(ASK);
     await expect(approve).toBeVisible();
   }
+
+  await pushFrame(page, { type: 'run.aborted' });
 });
