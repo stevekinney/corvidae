@@ -127,7 +127,7 @@ describe('temporary exceptions', () => {
       manifestKeys: [{ key: 'name', reason: 'fixture' }],
       manifestDefaults: [{ key: 'engines', reason: 'fixture' }],
       dependencies: { policy: 'fixture' },
-      typeScriptKeys: [{ key: 'extends', reason: 'fixture' }],
+      typeScriptTargetOwnedPolicy: 'fixture',
       typeScriptTargetOwned: [{ key: 'include', reason: 'fixture' }],
     },
     openQuestions: [],
