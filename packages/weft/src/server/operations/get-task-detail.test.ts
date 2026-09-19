@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { encode } from '../../core/codec.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { encodeRemoteTaskRecord, taskLedgerKey } from '../task-ledger.ts';
-import * as fixture from './get-task-detail-test-support.ts';
+import * as fixture from './get-task-detail.test-support.ts';
 
 describe('weft.tasks.get', () => {
   it('faults NotFound for an operationId that was never dispatched', async () => {

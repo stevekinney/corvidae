@@ -6,7 +6,7 @@ import { buildErrorResponses } from './openapi-error-responses.ts';
 import { generateOpenApiDocument } from './openapi.ts';
 import type { ErasedOperation } from './operation-catalog.ts';
 import { defineOperation } from './operation-registry.ts';
-import { isRecord } from './protocol-test-support.ts';
+import { isRecord } from './protocol.test-support.ts';
 
 function operation(producibleFaults?: readonly FaultCode[]): ErasedOperation {
   const base = defineOperation({

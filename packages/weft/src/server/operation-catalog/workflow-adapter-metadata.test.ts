@@ -20,7 +20,7 @@ import {
   makeDefinitionSchema,
   type CheckoutInput,
   type WorkflowRegistrationFixture,
-} from './workflow-adapter-test-support.ts';
+} from './workflow-adapter.test-support.ts';
 import { catalogWorkflow } from './workflow-adapter.ts';
 
 describe('catalogWorkflow — registration and metadata', () => {
