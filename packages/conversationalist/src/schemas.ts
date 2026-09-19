@@ -293,9 +293,9 @@ function isExplicitTimezoneIsoDateTime(value: string): boolean {
     const timezoneMinute = Number(timezone.slice(4, 6));
     if (timezoneHour > 23 || timezoneMinute > 59) return false;
   }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return false;
-  const calendar = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  calendar.setUTCHours(hour, minute, second, 0);
   return (
     calendar.getUTCFullYear() === year &&
     calendar.getUTCMonth() === month - 1 &&

@@ -123,6 +123,19 @@ function normalizeToolAction(
 function normalizeApprovalAction(
   action: NonNullable<ToolResultInput['action']>,
 ): ToolApprovalAction {
+  assertKnownKeys(action, 'approval action', [
+    'type',
+    'message',
+    'risk',
+    'operation',
+    'sandbox',
+    'env',
+    'snapshotId',
+    'expiresAt',
+    'editableArgs',
+    'policyVersion',
+    'idempotencyKey',
+  ]);
   const risk = normalizeApprovalRisk(action.risk);
   const operation = normalizeApprovalOperation(action.operation);
   const policyVersion = requiredString(action.policyVersion, 'approval action policyVersion');
@@ -160,6 +173,12 @@ function normalizeApprovalOperation(value: unknown): ToolApprovalOperation {
   const kind = operation['kind'];
   switch (kind) {
     case 'command':
+      assertKnownKeys(operation, 'approval command operation', [
+        'kind',
+        'command',
+        'filesTouched',
+        'argsPreview',
+      ]);
       return {
         kind,
         command: requiredString(operation['command'], 'approval command operation command'),
@@ -167,6 +186,11 @@ function normalizeApprovalOperation(value: unknown): ToolApprovalOperation {
         ...optionalArgsPreview(operation),
       };
     case 'file-write':
+      assertKnownKeys(operation, 'approval file-write operation', [
+        'kind',
+        'filesTouched',
+        'argsPreview',
+      ]);
       return {
         kind,
         filesTouched: normalizeFilesTouched(operation['filesTouched'], {
@@ -176,6 +200,12 @@ function normalizeApprovalOperation(value: unknown): ToolApprovalOperation {
         ...optionalArgsPreview(operation),
       };
     case 'patch':
+      assertKnownKeys(operation, 'approval patch operation', [
+        'kind',
+        'filesTouched',
+        'argsPreview',
+        'diff',
+      ]);
       return {
         kind,
         ...optionalFilesTouched(operation),
@@ -183,6 +213,11 @@ function normalizeApprovalOperation(value: unknown): ToolApprovalOperation {
         diff: requiredString(operation['diff'], 'approval patch operation diff'),
       };
     case 'other':
+      assertKnownKeys(operation, 'approval other operation', [
+        'kind',
+        'filesTouched',
+        'argsPreview',
+      ]);
       return {
         kind,
         ...optionalFilesTouched(operation),
@@ -225,6 +260,7 @@ function optionalArgsPreview(operation: Record<string, unknown>): {
 
 function normalizeApprovalSandbox(value: unknown): ToolApprovalSandbox {
   const sandbox = requiredRecord(value, 'approval action sandbox');
+  assertKnownKeys(sandbox, 'approval action sandbox', ['provider', 'name', 'workingDir']);
   return {
     provider: requiredString(sandbox['provider'], 'approval action sandbox provider'),
     name: requiredString(sandbox['name'], 'approval action sandbox name'),
@@ -277,10 +313,9 @@ function isExplicitTimezoneIsoDateTime(value: string): boolean {
     const timezoneMinute = Number(timezone.slice(4, 6));
     if (timezoneHour > 23 || timezoneMinute > 59) return false;
   }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return false;
-  const utc =
-    timezone === 'Z' ? parsed : new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const utc = new Date(0);
+  utc.setUTCFullYear(year, month - 1, day);
+  utc.setUTCHours(hour, minute, second, 0);
   return (
     utc.getUTCFullYear() === year &&
     utc.getUTCMonth() === month - 1 &&
@@ -296,6 +331,14 @@ function requiredRecord(value: unknown, label: string): Record<string, unknown> 
     throw new Error(`${label} must be an object.`);
   }
   return value as Record<string, unknown>;
+}
+
+function assertKnownKeys(value: object, label: string, keys: readonly string[]): void {
+  const allowed = new Set(keys);
+  const unknownKey = Object.keys(value).find((key) => !allowed.has(key));
+  if (unknownKey !== undefined) {
+    throw new Error(`${label} has unknown field "${unknownKey}".`);
+  }
 }
 
 function requiredString(value: unknown, label: string): string {

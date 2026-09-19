@@ -7,7 +7,8 @@ import type {
   ReusableApprovalGrant,
 } from './approval-binding';
 import type { ToolError } from './core/errors';
-import type { ToolRequestContext } from './execution-context';
+import { assertJsonValue } from './core/serialization/json';
+import { freezeToolRequestContext, type ToolRequestContext } from './execution-context';
 import type { Tool } from './is-tool';
 import {
   issueGrant,
@@ -15,7 +16,7 @@ import {
   restoreApproval,
   revokeApproval,
   revokeGrant,
-  verifyPendingApproval,
+  verifyAndSnapshotPendingApproval,
 } from './toolbox-approval';
 import type { GrantListFilter, ReusableApprovalGrantInput } from './toolbox-approval-contracts';
 import { resumeApproval as resumeApprovalOwner } from './toolbox-approval-resume';
@@ -126,17 +127,19 @@ export function createToolboxApprovalApi(context: ToolboxApprovalContext): Toolb
     options: ToolboxResolveApprovalOptions,
   ): Promise<ToolExecutionResult> {
     const normalizedResolution = normalizeResolution(resolution);
+    const verifiedApproval = verifyAndSnapshotPendingApproval(approval, context);
+    const resolveOptions = snapshotResolveOptions(options);
     if (normalizedResolution.decision === 'approve') {
-      return resumeApproval(receiver, approval, options);
+      return resumeApproval(receiver, verifiedApproval, resolveOptions);
     }
     if (normalizedResolution.decision === 'approve_with_edits') {
-      return resumeApproval(receiver, approval, {
-        ...options,
+      return resumeApproval(receiver, verifiedApproval, {
+        ...resolveOptions,
         arguments: normalizedResolution.editedArgs,
       });
     }
     if (isRejectionResolution(normalizedResolution)) {
-      return rejectApproval(approval, normalizedResolution, options, context);
+      return rejectApproval(verifiedApproval, normalizedResolution, resolveOptions, context);
     }
     throw new Error('Approval resolution decision is invalid.');
   }
@@ -191,19 +194,61 @@ function normalizeResolution(resolution: ToolApprovalResolution): NormalizedReso
   if (typeof resolution !== 'object' || resolution === null) {
     throw new Error('Approval resolution must be an object.');
   }
-  if (!isResolutionDecision(resolution.decision)) {
+  const decision = resolution.decision;
+  const remember = resolution.remember;
+  const reason = resolution.reason;
+  const hasEditedArgs = Object.prototype.hasOwnProperty.call(resolution, 'editedArgs');
+  const editedArgs = decision === 'approve_with_edits' ? resolution.editedArgs : undefined;
+  const snapshot = snapshotResolution({ decision, remember, reason, hasEditedArgs, editedArgs });
+  if (!isResolutionDecision(snapshot.decision)) {
     throw new Error('Approval resolution decision is invalid.');
   }
-  if (typeof resolution.remember !== 'boolean') {
+  if (typeof snapshot.remember !== 'boolean') {
     throw new Error('Approval resolution remember must be boolean.');
   }
-  if (resolution.reason !== undefined && typeof resolution.reason !== 'string') {
+  if (snapshot.reason !== undefined && typeof snapshot.reason !== 'string') {
     throw new Error('Approval resolution reason must be a string.');
   }
-  if (resolution.decision === 'approve_with_edits' && !('editedArgs' in resolution)) {
+  if (snapshot.decision === 'approve_with_edits' && !('editedArgs' in snapshot)) {
     throw new Error('Approval resolution editedArgs are required for approve_with_edits.');
   }
-  return resolution;
+  return snapshot;
+}
+
+function snapshotResolution(resolution: {
+  decision: ToolApprovalResolution['decision'];
+  remember: ToolApprovalResolution['remember'];
+  reason: ToolApprovalResolution['reason'];
+  hasEditedArgs: boolean;
+  editedArgs: unknown;
+}): NormalizedResolution {
+  const snapshot: NormalizedResolution = {
+    decision: resolution.decision,
+    remember: resolution.remember,
+    ...(resolution.reason !== undefined ? { reason: resolution.reason } : {}),
+  };
+  if (resolution.decision === 'approve_with_edits') {
+    if (!resolution.hasEditedArgs) {
+      throw new Error('Approval resolution editedArgs are required for approve_with_edits.');
+    }
+    const serialized = JSON.stringify(resolution.editedArgs);
+    if (serialized === undefined) {
+      throw new Error('Approval resolution editedArgs must be JSON-compatible.');
+    }
+    const editedArgs: unknown = JSON.parse(serialized);
+    assertJsonValue(editedArgs, 'approvalResolution.editedArgs');
+    snapshot.editedArgs = editedArgs;
+  }
+  return snapshot;
+}
+
+function snapshotResolveOptions(
+  options: ToolboxResolveApprovalOptions,
+): ToolboxResolveApprovalOptions {
+  return {
+    ...options,
+    requestContext: freezeToolRequestContext(options.requestContext),
+  };
 }
 
 function isResolutionDecision(value: unknown): value is ToolApprovalResolution['decision'] {
@@ -224,22 +269,18 @@ async function rejectApproval(
   options: ToolboxResolveApprovalOptions,
   context: ToolboxApprovalContext,
 ): Promise<ToolExecutionResult> {
-  verifyPendingApproval(approval, context);
   if (!context.approvalStateStore || !approval.approvalBinding) {
     throw new Error('Approval state store and binding are required to resolve approval denial.');
   }
   const currentTool = context.getTool(approval.toolName);
   if (!currentTool) throw new Error(`Tool not found: ${approval.toolName}`);
   const approvalContext = createApprovalContext(options.requestContext, currentTool, context);
-  await context.approvalStateStore.reserve(
-    approval.approvalBinding,
-    approvalContext,
-    context.approvalNow(),
-  );
+  const binding = approval.approvalBinding;
+  await context.approvalStateStore.reserve(binding, approvalContext, context.approvalNow());
   try {
-    await context.approvalStateStore.revoke(approval.approvalBinding);
+    await context.approvalStateStore.revoke(binding);
   } catch (error) {
-    await context.approvalStateStore.release(approval.approvalBinding);
+    await context.approvalStateStore.release(binding);
     throw error;
   }
   return createRejectedApprovalResult(approval, resolution);

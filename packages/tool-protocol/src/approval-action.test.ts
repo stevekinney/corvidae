@@ -80,23 +80,46 @@ describe('approval tool actions', () => {
   test('accepts valid offset timestamps and elapsed timestamps without rewriting bytes', () => {
     const offset = '2026-09-19T12:34:56-06:00';
     const elapsed = '2020-01-01T00:00:00Z';
+    const earlyZulu = '0099-09-19T12:34:56Z';
+    const earlyOffset = '0099-09-19T12:34:56+00:00';
 
-    expect(
+    for (const expiresAt of [offset, elapsed, earlyZulu, earlyOffset]) {
+      expect(
+        materializeToolResult({
+          callId: `call-${expiresAt}`,
+          outcome: 'action_required',
+          content: null,
+          action: { ...approvalAction, expiresAt },
+        }).action,
+      ).toMatchObject({ expiresAt });
+    }
+  });
+
+  test.each([
+    ['top-level approval', { ...approvalAction, unexpected: 'x' }],
+    [
+      'command operation',
+      {
+        ...approvalAction,
+        operation: { ...approvalAction.operation, unexpected: 'x' },
+      },
+    ],
+    [
+      'sandbox',
+      {
+        ...approvalAction,
+        sandbox: { ...approvalAction.sandbox, unexpected: 'x' },
+      },
+    ],
+  ])('rejects unknown %s fields', (_label, action) => {
+    expect(() =>
       materializeToolResult({
-        callId: 'call-offset',
+        callId: 'call-deploy',
         outcome: 'action_required',
         content: null,
-        action: { ...approvalAction, expiresAt: offset },
-      }).action,
-    ).toMatchObject({ expiresAt: offset });
-    expect(
-      materializeToolResult({
-        callId: 'call-elapsed',
-        outcome: 'action_required',
-        content: null,
-        action: { ...approvalAction, expiresAt: elapsed },
-      }).action,
-    ).toMatchObject({ expiresAt: elapsed });
+        action,
+      }),
+    ).toThrow(/unknown field/);
   });
 
   test('exports a structural approval resolution contract', () => {
