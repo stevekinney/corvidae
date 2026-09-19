@@ -265,7 +265,11 @@ async function handlePolicyDenied<TInput>(
   input.emit('execute-error', { ...parsedState.parsedDetail, error: errorObj });
   input.emit('settled', {
     ...parsedState.parsedDetail,
-    error: errorObj,
+    // The same `ToolError` `deniedResult` returns below, not the `Error`
+    // synthesized for `execute-error`. `settled` is terminal and is what a
+    // consumer compares against the result; the two disagreeing in type is
+    // COR-1261.
+    error: toolError,
     callbackCompletion: input.options.executionHandle?.whenSettled(),
   });
   await input.runPolicyAfter(

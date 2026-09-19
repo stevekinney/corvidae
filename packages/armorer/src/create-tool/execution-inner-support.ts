@@ -155,7 +155,9 @@ export function createCancellationHandler(
     input.emit('execute-error', { ...input.baseDetail, error: errorObj });
     input.emit('settled', {
       ...input.baseDetail,
-      error: errorObj,
+      // The same `ToolError` this handler returns below, not the `Error`
+      // synthesized for `execute-error` (COR-1261).
+      error: toolError,
       callbackCompletion: input.options.executionHandle?.whenSettled(),
     });
     input.finishTelemetry('cancelled', {
