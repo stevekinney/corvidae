@@ -266,9 +266,18 @@ async function assertReviewToolbarActionAccess(reviewEditor: Locator, width: num
 
   const overflowPanel = reviewEditor.page().getByRole('group', { name: 'Additional formatting' });
   await expect(overflowPanel).toBeVisible();
+  const viewport = reviewEditor.page().viewportSize();
+  if (viewport === null) throw new Error('ReviewEditor action access requires a viewport.');
   for (const name of missingInlineActions) {
     const overflowAction = overflowPanel.getByRole('button', { name, exact: true });
     await expect(overflowAction).toBeVisible();
+    const box = await overflowAction.boundingBox();
+    expect(box, `${name}: overflow action has a hitbox`).not.toBeNull();
+    expect(box!.x, `${name}: overflow action starts inside viewport`).toBeGreaterThanOrEqual(0);
+    expect(
+      box!.x + box!.width,
+      `${name}: overflow action ends inside viewport`,
+    ).toBeLessThanOrEqual(viewport.width);
     await overflowAction.focus();
     await expect(overflowAction).toBeFocused();
   }

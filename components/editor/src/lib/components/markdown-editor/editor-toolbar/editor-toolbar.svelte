@@ -475,8 +475,10 @@
   .toolbar-overflow {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--cinder-space-1);
-    min-width: 14rem;
+    min-width: min(14rem, calc(100vw - var(--cinder-space-4)));
+    max-inline-size: calc(100vw - var(--cinder-space-4));
   }
 
   .toolbar-trailing {
