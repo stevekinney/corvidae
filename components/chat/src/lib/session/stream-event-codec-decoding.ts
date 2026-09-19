@@ -2,16 +2,11 @@ import { isJSONValue, isToolResult } from '../components/chat/builders.ts';
 import { decodeStreamEvent } from './stream-event-codec-decoding-stream.ts';
 import { decodeRunEvent, decodeToolEvent } from './stream-event-codec-decoding-tool-run.ts';
 import { projectPlainJSON } from './stream-event-codec-encoding-projection.ts';
-import type {
-  ChatStreamEvent,
-  V2WireEnvelope,
-  WireEnvelope,
-} from './stream-event-codec-types.ts';
+import type { ChatStreamEvent, WireEnvelope } from './stream-event-codec-types.ts';
 import {
   isNonNegativeSafeInteger,
   isRecord,
   readWireEnvelope,
-  requireV2Envelope,
   requireWireEnvelope,
 } from './stream-event-codec-validation.ts';
 
@@ -31,7 +26,7 @@ function decodeVersionedEvent(
   required: WireEnvelope,
 ): ChatStreamEvent {
   if (assistantStepEventTypes.includes(eventType))
-    return decodeAssistantStepEvent(eventType, parsed, requireV2Envelope(required));
+    return decodeAssistantStepEvent(eventType, parsed, required);
   if (streamEventTypes.includes(eventType)) return decodeStreamEvent(eventType, parsed, required);
   if (toolEventTypes.includes(eventType)) return decodeToolEvent(eventType, parsed, required);
   if (runEventTypes.includes(eventType)) return decodeRunEvent(eventType, parsed, required);
@@ -63,7 +58,7 @@ const assistantStepEventTypes = ['assistant.step.started', 'assistant.step.compl
 function decodeAssistantStepEvent(
   eventType: string,
   parsed: Record<string, unknown>,
-  envelope: V2WireEnvelope,
+  envelope: WireEnvelope,
 ): ChatStreamEvent {
   const step = parsed['step'];
   const messageId = parsed['messageId'];
