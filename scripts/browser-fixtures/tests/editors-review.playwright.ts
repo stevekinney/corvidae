@@ -186,6 +186,8 @@ test.describe('review comments toggle', () => {
     await expect(declinedRemove).toBeFocused();
     await expect(firstTextRowOpen).toHaveAttribute('aria-current', 'true');
     await expect(threadList.getByRole('listitem')).toHaveCount(3);
+    await expect(architecturePopover).toHaveCount(1);
+    await expect(architectureDraft).toHaveValue('Keep this draft.');
 
     await firstTextRowOpen.focus();
     await page.keyboard.press('Tab');
@@ -314,6 +316,13 @@ test.describe('review comments toggle', () => {
     expect(readyMetrics.height).toBeGreaterThan(0);
     expect(readyMetrics.x + readyMetrics.width).toBeLessThanOrEqual(readyMetrics.viewportWidth);
     expect(readyMetrics.y + readyMetrics.height).toBeLessThanOrEqual(readyMetrics.viewportHeight);
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Allow document thread removal' }).click();
+    await declinedRemove.click();
+    await expect(threadList.getByRole('listitem')).toHaveCount(0);
+    await expect(sidebar.getByRole('button', { name: 'Add document comment' })).toBeFocused();
   });
 
   test('comment metadata and composer actions keep their spacing', async ({ page }) => {

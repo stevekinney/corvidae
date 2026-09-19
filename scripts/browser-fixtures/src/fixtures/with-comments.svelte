@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '@corvidae/cinder';
   import { ReviewEditor } from '@corvidae/editor';
   import type { Thread, ThreadDeleteEvent } from '@corvidae/editor';
   const original = `# Architecture Notes
@@ -106,8 +107,10 @@ The editor should make source, rendered, and diff modes available without leavin
     },
   ]);
 
+  let documentRemovalAllowed = $state(false);
+
   function handleThreadDelete(event: ThreadDeleteEvent): void {
-    if (event.threadId === 'thread-document') return;
+    if (event.threadId === 'thread-document' && !documentRemovalAllowed) return;
     threads = threads.filter((thread) => thread.id !== event.threadId);
     queueMicrotask(() => {
       threads = [...threads];
@@ -124,4 +127,7 @@ The editor should make source, rendered, and diff modes available without leavin
     currentUserId="steve"
     onthreaddelete={handleThreadDelete}
   />
+  <Button size="xs" variant="secondary" onclick={() => (documentRemovalAllowed = true)}>
+    Allow document thread removal
+  </Button>
 </div>
