@@ -117,7 +117,10 @@
   }));
   const overflowGroupIds = $derived(overflowController.overflowGroupIds);
 
-  $effect(() => untrack(() => overflowController.setLeadingElement(leadingElement)));
+  $effect(() => {
+    const element = leadingElement;
+    return untrack(() => overflowController.setLeadingElement(element));
+  });
   $effect(() => {
     const element = actionsMeasureElement;
     const hasActions = actions !== undefined;

@@ -104,6 +104,44 @@ describe('EditorToolbar lifecycle', () => {
     await unmount(view);
   });
 
+  test('observes the replacement leading element when overflow opens the popover', async () => {
+    const view = render(EditorToolbar, { props: toolbarProps('toolbar-leading-replacement') });
+    await tick();
+    const toolbar = toolbarElement('toolbar-leading-replacement');
+    configureMeasurements(toolbar, 1000);
+    const record = observedToolbar();
+    const inlineLeading = requiredElement(
+      toolbar.querySelector<HTMLElement>('[data-toolbar-flex-group-id="leading"]'),
+    );
+    setMeasuredWidth(inlineLeading, 80);
+    expect(record.disconnected).toBe(false);
+    emitResize(record, toolbar, 1000);
+    await tick();
+
+    emitResize(record, toolbar, 30);
+    await tick();
+
+    expect(toolbar.querySelector('[data-toolbar-flex-group-id="leading"]')).toBeNull();
+    expect(record.unobserved.includes(inlineLeading)).toBe(true);
+
+    const trigger = requiredElement(
+      toolbar.querySelector<HTMLButtonElement>('button[aria-label="More formatting"]'),
+    );
+    trigger.click();
+    await tick();
+
+    const portaledLeading = requiredElement(
+      [
+        ...document.body.querySelectorAll<HTMLElement>('[data-toolbar-flex-group-id="leading"]'),
+      ].find((group) => !toolbar.contains(group) && group.closest('.cinder-popover')),
+    );
+    expect(portaledLeading).not.toBe(inlineLeading);
+    expect(record.observed.includes(portaledLeading)).toBe(true);
+    expect(record.disconnected).toBe(false);
+
+    await unmount(view);
+  });
+
   test('observes toolbar measurements and disconnects observers and document focus listeners on unmount', async () => {
     const addFocus = spyOn(document, 'addEventListener');
     const removeFocus = spyOn(document, 'removeEventListener');
