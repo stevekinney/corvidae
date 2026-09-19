@@ -80,6 +80,18 @@ export interface GitHubApi {
    * both of those end up in an argument vector, and an argument vector ends up in a log.
    */
   pushEnvironment(): Promise<Record<string, string>>;
+  /**
+   * The same, authenticated as the account rather than as the App.
+   *
+   * Seeding a scratch repository carries the target's own `.github/workflows/**`, and GitHub
+   * refuses a workflow file pushed by an App without the `workflows` permission — which this
+   * App deliberately does not hold, because the transform never writes `.github/` on a real
+   * sync: `target-owned.json` reserves it for the target. Widening the App to get a scaffolding
+   * step through would grant standing authority over three real repositories' workflows to
+   * avoid a one-off. Seeding is setup, not the thing under proof, so it pushes as the account
+   * and the transform branch and pull request still go through the App.
+   */
+  accountPushEnvironment(): Promise<Record<string, string>>;
 }
 
 interface JsonResponse {
@@ -95,6 +107,21 @@ export interface GitHubApiOptions {
   userToken: () => Promise<string>;
   /** Resolves the App installation credential used for everything inside a mirror. */
   installationToken: () => Promise<string>;
+}
+
+/**
+ * Git configuration carrying a bearer credential, as environment rather than as a remote URL or
+ * a `-c` flag: both of those end up in an argument vector, and an argument vector ends up in a
+ * log. `x-access-token` is the username GitHub expects for both an installation token and a
+ * personal token, so one shape serves the App and the account alike.
+ */
+function gitCredentialEnvironment(token: string): Record<string, string> {
+  const authorization = `Basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`;
+  return {
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+    GIT_CONFIG_VALUE_0: `Authorization: ${authorization}`,
+  };
 }
 
 function headers(token: string): Record<string, string> {
@@ -259,16 +286,12 @@ export function createGitHubApi({
       assertStatus(response, 204, `Deleting ${fullName}`);
     },
 
+    async accountPushEnvironment(): Promise<Record<string, string>> {
+      return gitCredentialEnvironment(await userToken());
+    },
+
     async pushEnvironment(): Promise<Record<string, string>> {
-      const token = await installationToken();
-      const authorization = `Basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`;
-      // `GIT_CONFIG_*` rather than `-c`: git reads these as configuration without the value ever
-      // appearing in the argument vector this process spawns.
-      return {
-        GIT_CONFIG_COUNT: '1',
-        GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
-        GIT_CONFIG_VALUE_0: `Authorization: ${authorization}`,
-      };
+      return gitCredentialEnvironment(await installationToken());
     },
   };
 }
