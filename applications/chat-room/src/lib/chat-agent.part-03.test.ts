@@ -244,14 +244,14 @@ describe('pumpChatRun: roll_dice tool path', () => {
 });
 
 describe('createChatStreamWriter', () => {
-  test('envelopes every frame with wireVersion 1 and a strictly increasing sequence', () => {
+  test('envelopes every frame with wireVersion 2 and a strictly increasing sequence', () => {
     const lines: string[] = [];
     const writer = createChatStreamWriter((line) => lines.push(line));
     writer.write({ type: 'text', text: 'a' });
     writer.write({ type: 'tool.started', toolCallId: 'c', toolName: 't' });
     expect(decodeLines(lines)).toEqual([
-      { type: 'text', text: 'a', wireVersion: 1, sequence: 0 },
-      { type: 'tool.started', toolCallId: 'c', toolName: 't', wireVersion: 1, sequence: 1 },
+      { type: 'text', text: 'a', wireVersion: 2, sequence: 0 },
+      { type: 'tool.started', toolCallId: 'c', toolName: 't', wireVersion: 2, sequence: 1 },
     ]);
   });
 

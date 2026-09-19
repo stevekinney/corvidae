@@ -8,7 +8,7 @@
  *
  * The wire is `@corvidae/chat`'s `ChatStreamEvent` vocabulary, encoded by
  * its own `encodeChatStreamEvent` so this side can never emit a frame the
- * published decoder rejects. Every frame carries the `wireVersion: 1` +
+ * published decoder rejects. Every frame carries the `wireVersion: 2` +
  * `sequence` envelope, assigned by {@link createChatStreamWriter}; the three
  * legacy frames (`text`, `tool_call`, `tool_result`) keep their exact
  * pre-Operative shape underneath it, so a client that renders only those
@@ -50,7 +50,22 @@ export type ChatStreamFrame = ChatStreamEvent extends infer Member
 
 export type ChatSerializedRunError = Extract<ChatStreamEvent, { type: 'run.error' }>['error'];
 
-const WIRE_VERSION = 1;
+/**
+ * The wire version every frame this lab writes carries.
+ *
+ * TWO, because this lab emits the vocabulary version 2 introduced:
+ * `assistant.step.*` and `elicitation.*`. `@corvidae/chat` gates those members
+ * behind a version 2 envelope on purpose — a version 1 producer cannot
+ * construct one at all — so emitting them means speaking version 2.
+ *
+ * ONE VERSION FOR THE WHOLE APPLICATION, not per route. A stream commits to a
+ * single version for its length and `decodeChatStreamEvents` rejects a mix, so
+ * the choice is per stream; making it per route as well would mean every frame
+ * the shared plumbing writes has to know which family it is serving, and any
+ * frame the two families come to share would need gating that is invisible
+ * until the wrong route emits it.
+ */
+const WIRE_VERSION = 2;
 
 class StreamingEventTarget extends EventTarget {
   dispatch(event: Event): boolean {
@@ -256,6 +271,41 @@ function toStreamFrame(event: StreamEvent): ChatStreamFrame {
 }
 
 /**
+ * Brackets each step's generate call with its `assistant.step.*` frames.
+ *
+ * WRAPPED AROUND THE INNER GENERATE, inside `withEnhancedStreaming` rather
+ * than outside it, and that placement is the whole reason this works.
+ * `withEnhancedStreaming` mints the row with `appendStreamingMessage` and puts
+ * its id on `streaming.messageId` BEFORE it calls the function it wraps — so
+ * by the time this runs, the authoritative id for the row the provider is
+ * about to stream into already exists and nothing has been emitted into it
+ * yet. Wrapping on the outside would read the handle before it was built.
+ *
+ * `messageId` IS OPERATIVE'S. Not a provider block id — those are per-block
+ * and per-provider, and several belong to one row. Not one this lab minted
+ * either: the client would then be reconciling its own guess against the
+ * server's history instead of being told which row the text belongs to, which
+ * is exactly the reconciliation the step frames exist to remove.
+ *
+ * `completed` is written only when the generate call RESOLVES. A step that
+ * threw did not complete, and saying it did would finalize a row on the way
+ * to a terminal failure frame that is about to describe the same step.
+ */
+function withAssistantStepFrames(
+  generate: StreamingGenerateFunction,
+  writer: ChatStreamWriter,
+): StreamingGenerateFunction {
+  return async (context) => {
+    const { step, streaming } = context;
+    const messageId = streaming.messageId;
+    writer.write({ type: 'assistant.step.started', step, messageId });
+    const response = await generate(context);
+    writer.write({ type: 'assistant.step.completed', step, messageId });
+    return response;
+  };
+}
+
+/**
  * The run options a chat turn needs, without the conversation.
  *
  * Split out of `createChatAgent` because `createSessionHandle` takes exactly
@@ -349,7 +399,10 @@ export function createChatRunOptions(options: {
   }
 
   return {
-    generate: withEnhancedStreaming(options.generate, { eventTarget, liveToolCalls: true }),
+    generate: withEnhancedStreaming(withAssistantStepFrames(options.generate, options.writer), {
+      eventTarget,
+      liveToolCalls: true,
+    }),
     toolbox: options.toolbox,
     executeOptions: { requestContext: options.requestContext },
     stopWhen: options.stopWhen ?? [
