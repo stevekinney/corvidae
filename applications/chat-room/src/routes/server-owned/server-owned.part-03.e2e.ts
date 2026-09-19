@@ -32,7 +32,7 @@ async function recordWire(page: Page): Promise<void> {
     const chunks: string[] = [];
     Reflect.set(window, '__serverOwnedWire', chunks);
     const original = window.fetch.bind(window);
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const patched = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const response = await original(input, init);
       const url = input instanceof Request ? input.url : String(input);
       if (!url.includes('/stream') || response.body === null) return response;
@@ -52,6 +52,10 @@ async function recordWire(page: Page): Promise<void> {
         headers: response.headers,
       });
     };
+    // Merged onto the original rather than assigned over it: `fetch` carries
+    // properties of its own (`preconnect`) that a bare replacement would drop,
+    // and the platform type requires them.
+    window.fetch = Object.assign(patched, window.fetch);
   });
 }
 
@@ -348,4 +352,62 @@ test('a long approval question leaves the transcript its space', async ({ page }
   // Answer it, so the turn does not stay parked for the next test in this file.
   await page.locator('[data-testid="approval-deny"]').click();
   await expect(chat).toHaveAttribute('data-streaming', 'false');
+});
+
+test('the question reaches the browser with the elicitation GET dead', async ({ page }) => {
+  // THE POINT OF PUTTING THE QUESTION ON THE STREAM. The side channel used to
+  // be the only way a client learned a question existed: nothing on the
+  // response body said so, and the surface discovered it by asking
+  // `…/elicitation` every 250ms. A client whose poll could not get through had
+  // a run parked on a question it would never show, and a person watching a
+  // reply that never arrived.
+  //
+  // The GET is aborted here rather than made to fail slowly, so there is no
+  // cadence for the poll to recover on — the only remaining path to the
+  // question is the `elicitation.requested` frame on the connection that is
+  // already open.
+  //
+  // The POST is left alone: an answer is a separate request either way, and
+  // this pins that the question arrives without the side channel, not that the
+  // side channel is gone.
+  await page.route('**/api/server-owned/conversations/*/elicitation', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+
+  await gotoHydrated(page, '/server-owned');
+  const title = uniqueTitle('Streamed approval');
+  await page.locator('[data-testid="server-owned-new-title"]').fill(title);
+  await page.locator('[data-testid="server-owned-create"]').click();
+  await page.getByRole('link', { name: new RegExp(title) }).click();
+  await page.waitForSelector('body[data-hydrated="true"]');
+
+  const composer = page.getByRole('textbox');
+  await composer.fill(fixtureMarker('approval', newFixtureMarker()));
+  await composer.press('Enter');
+
+  // The QUESTION ITSELF, from the frame. The model's proposed arguments are
+  // not asserted: the frame has no field for them, so they are the one part
+  // that genuinely does depend on the side channel.
+  const question = page.locator('[data-testid="approval-question"]');
+  await expect(question).toContainText('Save this note?');
+
+  // And it is ANSWERABLE, which needs the call id the frame carries — a
+  // question that renders but cannot be acted on would be worse than none.
+  await page.locator('[data-testid="approval-approve"]').click();
+
+  await expect(page.locator('[data-testid="server-owned-chat"]')).toHaveAttribute(
+    'data-streaming',
+    'false',
+  );
+  await expect(page.locator('[data-testid="server-owned-chat"]')).toContainText(
+    APPROVAL_FOLLOW_UP_TEXT,
+  );
+
+  // No assertion on the failure banner: an aborted poll installs one, and that
+  // ownership is pinned by `server-owned-approval-focus.part-03.e2e.ts`. What
+  // is being pinned here is that the turn completes anyway.
 });

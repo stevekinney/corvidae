@@ -1,23 +1,54 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+
   import { toBannerFailure, type BannerFailure } from '../../../lib/chat-failure.ts';
 
   let {
     id,
     streaming,
+    question = null,
     failure = $bindable<BannerFailure | null>(),
     failureMessage,
   }: {
     id: string;
     streaming: boolean;
+    /**
+     * The question this turn's stream has raised, read off the response body
+     * by the surface above.
+     *
+     * THE PRIMARY PATH. Until it existed, the side channel below was the only
+     * way this component learned a question had been asked: nothing on the
+     * response said so, so it asked `…/elicitation` every 250ms and a client
+     * whose poll could not get through had a run parked on a question it would
+     * never show.
+     */
+    question?: StreamedQuestion | null;
     failure?: BannerFailure | null;
     failureMessage: (response: Response) => Promise<string>;
   } = $props();
 
+  type StreamedQuestion = { requestId: string; callId: string; message: string };
+
+  /**
+   * `toolName` and `arguments` are OPTIONAL, and that is the shape of the two
+   * sources rather than laxity.
+   *
+   * The frame carries the question's identity and its sentence — everything
+   * needed to show it and to answer it. It has no field for the model's
+   * proposed arguments, which are read from `GET …/elicitation` as a second
+   * step. So a question always renders, and the disclosure of what is being
+   * approved appears once that read lands.
+   *
+   * The GET's own body is still required to carry all four: `isPendingApproval`
+   * below is unchanged and strict, because a response that omits them is
+   * malformed. A frame-derived pending is CONSTRUCTED here rather than parsed,
+   * and never goes through that guard.
+   */
   type PendingApproval = {
-    toolName: string;
+    toolName?: string;
     callId: string;
     message: string;
-    arguments: Record<string, unknown>;
+    arguments?: Record<string, unknown>;
   };
 
   let pending = $state<PendingApproval | null>(null);
@@ -65,6 +96,19 @@
       proposedArguments !== null &&
       !Array.isArray(proposedArguments)
     );
+  }
+
+  /**
+   * Shows a question the stream raised, then reads its proposed arguments.
+   *
+   * The ORDER is the point: the sentence renders from the frame immediately,
+   * and the disclosure fills in afterwards if the read succeeds. A component
+   * that waited for the read before showing anything would still have the side
+   * channel on its critical path, just less visibly.
+   */
+  function adoptStreamedQuestion(asked: StreamedQuestion): void {
+    applyPending({ callId: asked.callId, message: asked.message });
+    void readPendingApproval(pollGeneration, pollController?.signal);
   }
 
   function applyPending(nextPending: PendingApproval | null): void {
@@ -184,8 +228,8 @@
   }
 
   async function decide(approved: boolean): Promise<void> {
-    const question = pending;
-    if (question === null || deciding) return;
+    const asked = pending;
+    if (asked === null || deciding) return;
     deciding = true;
     // Captured so a slow failure body cannot install its banner after the
     // question was answered elsewhere or the turn ended.
@@ -195,7 +239,7 @@
     const controller = new AbortController();
     const stale = (): boolean =>
       attempt !== decisionAttempt ||
-      pending?.callId !== question.callId ||
+      pending?.callId !== asked.callId ||
       generation !== pollGeneration ||
       epoch !== answerEpoch;
     decisionController = controller;
@@ -206,7 +250,7 @@
         // The CALL ID travels with the answer. Without it a click that
         // lands after this question's run ended would settle whatever is
         // pending next — approving a note nobody was shown.
-        body: JSON.stringify({ approved, callId: question.callId }),
+        body: JSON.stringify({ approved, callId: asked.callId }),
         signal: controller.signal,
       });
       // The question can change while this POST is in flight. A successful
@@ -224,6 +268,26 @@
       }
     }
   }
+
+  /**
+   * Adopts each new question the stream raises.
+   *
+   * Keyed on `callId`, not on the frame's identity: the periodic read below
+   * can land first and populate the same question in full, and re-adopting it
+   * would drop the arguments that read supplied and bounce focus for a
+   * question that never changed.
+   *
+   * The reads of `pending` are untracked so this runs when a QUESTION
+   * arrives — tracking the value this effect itself writes would re-enter it.
+   */
+  $effect(() => {
+    const asked = question;
+    if (asked === null) return;
+    untrack(() => {
+      if (pending?.callId === asked.callId) return;
+      adoptStreamedQuestion(asked);
+    });
+  });
 
   $effect(() => {
     if (!streaming) {
@@ -309,10 +373,11 @@
     tabindex="-1"
   >
     {#if pending}
-      {pending.message} The assistant wants to run {pending.toolName}.
+      {pending.message}{#if pending.toolName}
+        The assistant wants to run {pending.toolName}.{/if}
     {/if}
   </p>
-  {#if pending}
+  {#if pending?.arguments && pending.toolName}
     <!--
 			A DISCLOSURE, not a scrollable box, and that was the third attempt.
 
@@ -333,6 +398,17 @@
       <summary>{`Arguments proposed for ${pending.toolName}`}</summary>
       <pre>{JSON.stringify(pending.arguments, null, 1)}</pre>
     </details>
+  {/if}
+  {#if pending}
+    <!--
+			THE CONTROLS do not wait on the disclosure above.
+
+			The question and its call id arrive on the stream; the proposed
+			arguments come from a second read that can be slower, or fail. Gating
+			Approve and Deny on that read would put the side channel back on the
+			critical path — a person would be shown a question they could not act
+			on, which is worse than a question shown without its detail.
+		-->
     <div class="approval-actions">
       <button
         type="button"
