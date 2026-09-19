@@ -83,7 +83,7 @@ export type ToolApprovalSandbox = {
 export type ToolApprovalCommandOperation = {
   kind: 'command';
   command: string;
-  filesTouched?: string[] | undefined;
+  filesTouched?: string[];
   argsPreview?: JSONValue | undefined;
 };
 
@@ -95,14 +95,14 @@ export type ToolApprovalFileWriteOperation = {
 
 export type ToolApprovalPatchOperation = {
   kind: 'patch';
-  filesTouched?: string[] | undefined;
+  filesTouched?: string[];
   argsPreview?: JSONValue | undefined;
   diff: string;
 };
 
 export type ToolApprovalOtherOperation = {
   kind: 'other';
-  filesTouched?: string[] | undefined;
+  filesTouched?: string[];
   argsPreview?: JSONValue | undefined;
 };
 

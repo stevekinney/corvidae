@@ -126,7 +126,7 @@ test.describe('production streaming path', () => {
     const response = await resumed;
 
     const posted = JSON.parse(response.request().postData() ?? '{}');
-    expect(posted.decision).toBe('approve');
+    expect(posted.resolution).toEqual({ decision: 'approve', remember: false });
     expect(posted.approval.toolName).toBe('remember_note');
     expect(posted.approval.arguments).toEqual({ text: APPROVAL_NOTE_TEXT });
     // A 64-character hex digest is what armorer's HMAC-SHA256 signing

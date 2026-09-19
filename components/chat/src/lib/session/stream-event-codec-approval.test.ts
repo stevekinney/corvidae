@@ -35,7 +35,14 @@ describe('a paused-approval history still encodes as run.completed', () => {
       callId: 'call_1',
       outcome: 'action_required' as const,
       content: null,
-      action: { type: 'approval' as const, message: 'Save this note?' },
+      action: {
+        type: 'approval' as const,
+        message: 'Save this note?',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     Object.defineProperty(result, 'pendingApproval', {
       value: { toolName: 'remember_note', arguments: { text: 'x' }, approvalToken: 'a'.repeat(64) },
@@ -61,7 +68,14 @@ describe('a paused-approval history still encodes as run.completed', () => {
       callId: 'call_1',
       outcome: 'action_required' as const,
       content: null,
-      action: { type: 'approval' as const, message: 'Save this note?' },
+      action: {
+        type: 'approval' as const,
+        message: 'Save this note?',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     Object.defineProperty(result, 'pendingApproval', {
       value: { toolName: 'remember_note', arguments: { text: 'x' }, approvalToken: 'a'.repeat(64) },

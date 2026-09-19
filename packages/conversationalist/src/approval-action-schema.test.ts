@@ -73,6 +73,22 @@ describe('tool action schema approval metadata', () => {
     expect(toolActionSchema.safeParse(action).success).toBe(false);
   });
 
+  test('keeps approval operation filesTouched exact optional', () => {
+    const omitted = toolActionSchema.safeParse(approvalAction);
+    const present = toolActionSchema.safeParse({
+      ...approvalAction,
+      operation: { ...approvalAction.operation, filesTouched: ['deployments/production.json'] },
+    });
+    const explicitUndefined = toolActionSchema.safeParse({
+      ...approvalAction,
+      operation: { ...approvalAction.operation, filesTouched: undefined },
+    });
+
+    expect(omitted.success).toBe(true);
+    expect(present.success).toBe(true);
+    expect(explicitUndefined.success).toBe(false);
+  });
+
   test('keeps input actions independent', () => {
     expect(
       toolActionSchema.safeParse({

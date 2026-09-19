@@ -77,6 +77,65 @@ describe('approval tool actions', () => {
     ).toThrow();
   });
 
+  test('omits optional filesTouched when absent or explicitly undefined', () => {
+    const withoutFilesTouched = {
+      ...approvalAction,
+      operation: {
+        kind: 'command',
+        command: 'deploy --environment production',
+        argsPreview: { environment: 'production' },
+      },
+    } satisfies ToolApprovalAction;
+    const withUndefinedFilesTouched = {
+      ...approvalAction,
+      operation: {
+        kind: 'command',
+        command: 'deploy --environment production',
+        filesTouched: undefined,
+        argsPreview: { environment: 'production' },
+      },
+    };
+    const withFilesTouched = {
+      ...approvalAction,
+      operation: {
+        kind: 'command',
+        command: 'deploy --environment production',
+        filesTouched: ['deployments/production.json'],
+        argsPreview: { environment: 'production' },
+      },
+    } satisfies ToolApprovalAction;
+
+    const absent = materializeToolResult({
+      callId: 'call-absent-files',
+      outcome: 'action_required',
+      content: null,
+      action: withoutFilesTouched,
+    });
+    const explicitUndefined = materializeToolResult({
+      callId: 'call-undefined-files',
+      outcome: 'action_required',
+      content: null,
+      action: withUndefinedFilesTouched,
+    });
+    const present = materializeToolResult({
+      callId: 'call-present-files',
+      outcome: 'action_required',
+      content: null,
+      action: withFilesTouched,
+    });
+
+    expect(absent.action?.type === 'approval' && 'filesTouched' in absent.action.operation).toBe(
+      false,
+    );
+    expect(
+      explicitUndefined.action?.type === 'approval' &&
+        'filesTouched' in explicitUndefined.action.operation,
+    ).toBe(false);
+    expect(present.action?.type === 'approval' && present.action.operation.filesTouched).toEqual([
+      'deployments/production.json',
+    ]);
+  });
+
   test('accepts valid offset timestamps and elapsed timestamps without rewriting bytes', () => {
     const offset = '2026-09-19T12:34:56-06:00';
     const elapsed = '2020-01-01T00:00:00Z';

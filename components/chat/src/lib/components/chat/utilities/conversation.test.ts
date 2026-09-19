@@ -77,7 +77,14 @@ describe('getUnresolvedToolApprovals', () => {
       callId: 'call-1',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval', message: 'Allow this?' },
+      action: {
+        type: 'approval',
+        message: 'Allow this?',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const result = message({ id: 'r1', role: 'tool-result', toolResult: pending });
     const conversation = history([result]);
@@ -106,7 +113,13 @@ describe('getUnresolvedToolApprovals', () => {
       callId: 'call-1',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval' },
+      action: {
+        type: 'approval',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const conversation = history([
       message({ id: 'r1', role: 'tool-result', toolResult: pending, hidden: true }),
@@ -125,7 +138,13 @@ describe('getUnresolvedToolApprovals', () => {
           callId: 'call-1',
           outcome: 'action_required',
           content: null,
-          action: { type: 'approval' },
+          action: {
+            type: 'approval',
+            risk: 'high',
+            operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+            policyVersion: 'test-policy',
+            idempotencyKey: 'test-approval',
+          },
         },
       }),
     ]);
@@ -138,7 +157,13 @@ describe('getUnresolvedToolApprovals', () => {
       callId: 'call-1',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval' },
+      action: {
+        type: 'approval',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const resolved: ToolResult = { callId: 'call-1', outcome: 'success', content: null };
     const conversation = history([
@@ -154,13 +179,27 @@ describe('getUnresolvedToolApprovals', () => {
       callId: 'call-1',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval', message: 'first' },
+      action: {
+        type: 'approval',
+        message: 'first',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const second: ToolResult = {
       callId: 'call-1',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval', message: 'second' },
+      action: {
+        type: 'approval',
+        message: 'second',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const conversation = history([
       message({ id: 'r1', role: 'tool-result', toolResult: first }),
@@ -178,7 +217,13 @@ describe('getUnresolvedToolApprovals', () => {
       callId: 'call-1',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval' },
+      action: {
+        type: 'approval',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const resolvedHidden: ToolResult = { callId: 'call-1', outcome: 'success', content: null };
     const conversation = history([
@@ -198,7 +243,13 @@ describe('getUnresolvedToolApprovals', () => {
       callId: 'call-1',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval' },
+      action: {
+        type: 'approval',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const conversation = history([
       message({ id: 'r1', role: 'tool-result', toolResult: pendingHidden, hidden: true }),
@@ -215,19 +266,38 @@ describe('getUnresolvedToolApprovals', () => {
       callId: 'call-a',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval' },
+      action: {
+        type: 'approval',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const pendingB: ToolResult = {
       callId: 'call-b',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval' },
+      action: {
+        type: 'approval',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const pendingAAgain: ToolResult = {
       callId: 'call-a',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval', message: 'second look' },
+      action: {
+        type: 'approval',
+        message: 'second look',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     // call-a's latest occurrence (r3) comes after call-b's only occurrence
     // (r2), so call-b must be reported first despite call-a appearing first.

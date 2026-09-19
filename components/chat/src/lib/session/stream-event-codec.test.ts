@@ -6,6 +6,29 @@ import {
   encodeChatStreamEvent,
 } from './stream-event-codec.ts';
 
+const completeApprovalAction = {
+  type: 'approval' as const,
+  message: 'Approve workspace edits?',
+  risk: 'high' as const,
+  operation: {
+    kind: 'command' as const,
+    command: 'bun test',
+    filesTouched: ['components/chat/src/lib/session/stream-event-codec.test.ts'],
+    argsPreview: { filter: '@corvidae/chat', flags: ['--conditions', 'browser'] },
+  },
+  sandbox: {
+    provider: 'codex',
+    name: 'workspace-write',
+    workingDir: '/Users/stevekinney/Developer/corvidae',
+  },
+  env: ['TZ=UTC', 'LANG=en_US.UTF-8'],
+  snapshotId: 'snapshot-approval-1',
+  expiresAt: '2026-09-19T12:34:56-06:00',
+  editableArgs: true,
+  policyVersion: 'approval-policy:2026-09-19',
+  idempotencyKey: 'approval-codec-tool-result',
+};
+
 async function* splitChunks(): AsyncGenerator<string> {
   yield '{"type":"text","text":"hel';
   yield 'lo"}\n{"type":"text","text":"!"}\n';
@@ -39,13 +62,36 @@ describe('chat stream event codec', () => {
     expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual(event);
   });
 
+  test('preserves complete approval metadata on a top-level tool_result', () => {
+    const event = {
+      type: 'tool_result' as const,
+      callId: 'call-approval',
+      outcome: 'action_required' as const,
+      content: 'Approve workspace edits?',
+      action: completeApprovalAction,
+    };
+
+    expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual(event);
+  });
+
   test('preserves a JSON-safe signed pending approval extension', () => {
     const event = {
       type: 'tool_result' as const,
       callId: 'call-approval',
       outcome: 'action_required' as const,
       content: 'Save this note?',
-      action: { type: 'approval' as const, message: 'Save this note?' },
+      action: {
+        type: 'approval' as const,
+        message: 'Save this note?',
+        risk: 'high' as const,
+        operation: {
+          kind: 'command' as const,
+          command: 'echo approval',
+          argsPreview: { ok: true },
+        },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
       pendingApproval: {
         callId: 'call-approval',
         toolName: 'remember_note',

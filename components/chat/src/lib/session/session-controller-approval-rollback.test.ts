@@ -20,7 +20,18 @@ describe('chat session controller', () => {
         appendAssistantMessage(createConversationHistory({ id: 'orphan-approval' }), 'Working.'),
         { id: 'call', name: 'write', arguments: {} },
       ),
-      { callId: 'call', outcome: 'action_required', content: null, action: { type: 'approval' } },
+      {
+        callId: 'call',
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'test-approval',
+        },
+      },
     );
     let calls = 0;
     const controller = createChatSessionController({
@@ -33,7 +44,7 @@ describe('chat session controller', () => {
         return events([{ type: 'text', text: 'unexpected' }]);
       },
       hooks: {
-        approveToolCall: async (toolCallId) => ({
+        resolveToolApproval: async (toolCallId) => ({
           callId: toolCallId,
           outcome: 'success',
           content: 'allowed',
@@ -41,7 +52,10 @@ describe('chat session controller', () => {
       },
     });
 
-    await controller.adapter.approveToolCall?.('call');
+    await controller.adapter.resolveToolApproval?.('call', {
+      decision: 'approve',
+      remember: false,
+    });
 
     expect(calls).toBe(0);
   });
@@ -63,7 +77,13 @@ describe('chat session controller', () => {
             callId: 'a',
             outcome: 'action_required',
             content: null,
-            action: { type: 'approval' },
+            action: {
+              type: 'approval',
+              risk: 'high',
+              operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+              policyVersion: 'test-policy',
+              idempotencyKey: 'test-approval',
+            },
           },
           { type: 'tool_call', id: 'b', name: 'read', arguments: {} },
           { type: 'tool_result', callId: 'b', outcome: 'success', content: 'late' },

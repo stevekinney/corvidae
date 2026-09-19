@@ -2,6 +2,28 @@ import { describe, expect, test } from 'bun:test';
 import { hostileEvent } from './stream-event-codec-test-helpers.ts';
 import { decodeChatStreamEvent, encodeChatStreamEvent } from './stream-event-codec.ts';
 
+const completeApprovalAction = {
+  type: 'approval' as const,
+  message: 'Approve file write?',
+  risk: 'medium' as const,
+  operation: {
+    kind: 'file-write' as const,
+    filesTouched: ['components/chat/src/lib/session/stream-event-codec-tool-events.test.ts'],
+    argsPreview: { bytes: 512, overwrite: false },
+  },
+  sandbox: {
+    provider: 'codex',
+    name: 'workspace-write',
+    workingDir: '/Users/stevekinney/Developer/corvidae/components/chat',
+  },
+  env: ['TZ=UTC'],
+  snapshotId: 'snapshot-tool-settled',
+  expiresAt: '2026-09-19T13:00:00Z',
+  editableArgs: false,
+  policyVersion: 'approval-policy:tool-settled',
+  idempotencyKey: 'approval-codec-tool-settled',
+};
+
 describe('tool.* members key by toolCallId (CIN-507)', () => {
   test('round-trips tool.started', () => {
     const event = {
@@ -70,11 +92,40 @@ describe('tool.* members key by toolCallId (CIN-507)', () => {
         callId: 'call-1',
         outcome: 'action_required' as const,
         content: 'Save this note?',
-        action: { type: 'approval' as const, message: 'Save this note?' },
+        action: {
+          type: 'approval' as const,
+          message: 'Save this note?',
+          risk: 'high' as const,
+          operation: {
+            kind: 'command' as const,
+            command: 'echo approval',
+            argsPreview: { ok: true },
+          },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'test-approval',
+        },
       },
       wireVersion: 1 as const,
       sequence: 2,
     };
+    expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual(event);
+  });
+
+  test('preserves complete approval metadata on a nested tool.settled result', () => {
+    const event = {
+      type: 'tool.settled' as const,
+      toolCallId: 'call-1',
+      toolName: 'write_file',
+      result: {
+        callId: 'call-1',
+        outcome: 'action_required' as const,
+        content: 'Approve file write?',
+        action: completeApprovalAction,
+      },
+      wireVersion: 1 as const,
+      sequence: 3,
+    };
+
     expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual(event);
   });
 

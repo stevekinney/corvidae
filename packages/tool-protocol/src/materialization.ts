@@ -229,7 +229,7 @@ function normalizeApprovalOperation(value: unknown): ToolApprovalOperation {
 }
 
 function optionalFilesTouched(operation: Record<string, unknown>): {
-  filesTouched?: string[] | undefined;
+  filesTouched?: string[];
 } {
   if (operation['filesTouched'] === undefined) return {};
   return {

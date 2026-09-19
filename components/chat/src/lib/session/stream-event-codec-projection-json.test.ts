@@ -123,7 +123,7 @@ describe('encode-time field projection (CIN-507)', () => {
       outcome: 'action_required',
       content: 'confirm?',
       action: {
-        type: 'approval',
+        type: 'input',
         message: 'confirm?',
         schema: { threshold: Number.POSITIVE_INFINITY },
       },
@@ -131,6 +131,147 @@ describe('encode-time field projection (CIN-507)', () => {
     expect(() => encodeChatStreamEvent(event)).toThrow(
       'Invalid chat stream event: tool result action.schema is not a valid JSON value',
     );
+  });
+
+  test('preserves declared approval fields and strips undeclared action fields', () => {
+    const event = hostileEvent({
+      type: 'tool_result',
+      callId: 'call-approval',
+      outcome: 'action_required',
+      content: 'Approve external operation?',
+      action: {
+        type: 'approval',
+        message: 'Approve external operation?',
+        risk: 'low',
+        operation: {
+          kind: 'other',
+          filesTouched: [
+            'components/chat/src/lib/session/stream-event-codec-projection-json.test.ts',
+          ],
+          argsPreview: { target: 'external-system' },
+          providerSecret: 'strip-operation-field',
+        },
+        sandbox: {
+          provider: 'codex',
+          name: 'read-only',
+          workingDir: '/Users/stevekinney/Developer/corvidae',
+          providerSecret: 'strip-sandbox-field',
+        },
+        env: ['TZ=UTC'],
+        snapshotId: 'snapshot-projection',
+        expiresAt: '2026-09-19T21:00:00Z',
+        editableArgs: false,
+        policyVersion: 'approval-policy:projection',
+        idempotencyKey: 'approval-codec-projection',
+        providerSecret: 'strip-action-field',
+      },
+    });
+
+    expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual({
+      type: 'tool_result',
+      callId: 'call-approval',
+      outcome: 'action_required',
+      content: 'Approve external operation?',
+      action: {
+        type: 'approval',
+        message: 'Approve external operation?',
+        risk: 'low',
+        operation: {
+          kind: 'other',
+          filesTouched: [
+            'components/chat/src/lib/session/stream-event-codec-projection-json.test.ts',
+          ],
+          argsPreview: { target: 'external-system' },
+        },
+        sandbox: {
+          provider: 'codex',
+          name: 'read-only',
+          workingDir: '/Users/stevekinney/Developer/corvidae',
+        },
+        env: ['TZ=UTC'],
+        snapshotId: 'snapshot-projection',
+        expiresAt: '2026-09-19T21:00:00Z',
+        editableArgs: false,
+        policyVersion: 'approval-policy:projection',
+        idempotencyKey: 'approval-codec-projection',
+      },
+    });
+  });
+
+  test('keeps input actions input-only when runtime data includes approval fields', () => {
+    const event = hostileEvent({
+      type: 'tool_result',
+      callId: 'call-input',
+      outcome: 'action_required',
+      content: 'Need a threshold',
+      action: {
+        type: 'input',
+        message: 'Need a threshold',
+        schema: { type: 'object', properties: { threshold: { type: 'number' } } },
+        risk: 'high',
+        operation: { kind: 'other', argsPreview: { threshold: 5 } },
+        policyVersion: 'approval-policy:input',
+        idempotencyKey: 'approval-codec-input',
+      },
+    });
+
+    expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual({
+      type: 'tool_result',
+      callId: 'call-input',
+      outcome: 'action_required',
+      content: 'Need a threshold',
+      action: {
+        type: 'input',
+        message: 'Need a threshold',
+        schema: { type: 'object', properties: { threshold: { type: 'number' } } },
+      },
+    });
+  });
+
+  test('encodes the approval action snapshot it validated when getters answer differently', () => {
+    const operations = [
+      {
+        kind: 'other',
+        get argsPreview() {
+          return { read: 'once' };
+        },
+      },
+      { kind: 'other', argsPreview: { score: Number.NaN } },
+    ];
+    const action = {
+      type: 'approval',
+      message: 'Approve getter-backed operation?',
+      risk: 'high',
+      policyVersion: 'approval-policy:getters',
+      idempotencyKey: 'approval-codec-getters',
+    } as Record<string, unknown>;
+    Object.defineProperty(action, 'operation', {
+      enumerable: true,
+      get: () => operations.shift() ?? operations[0],
+    });
+    const event = hostileEvent({
+      type: 'tool_result',
+      callId: 'call-getter',
+      outcome: 'action_required',
+      content: 'Approve getter-backed operation?',
+      action,
+    });
+
+    const decoded = decodeChatStreamEvent(encodeChatStreamEvent(event));
+    expect(decoded).toEqual({
+      type: 'tool_result',
+      callId: 'call-getter',
+      outcome: 'action_required',
+      content: 'Approve getter-backed operation?',
+      action: {
+        type: 'approval',
+        message: 'Approve getter-backed operation?',
+        risk: 'high',
+        operation: { kind: 'other', argsPreview: { read: 'once' } },
+        policyVersion: 'approval-policy:getters',
+        idempotencyKey: 'approval-codec-getters',
+      },
+    });
   });
 
   test('rejects encoding a non-finite number nested in a tool result pendingApproval', () => {

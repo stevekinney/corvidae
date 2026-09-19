@@ -1,3 +1,4 @@
+import type { ApprovalState } from '@corvidae/cinder';
 import type { ChatAnnounceLevel } from '../chat.types.ts';
 import type { Message } from '../conversation-model.ts';
 import type { ChatRenderRow } from './use-chat-message-groups.svelte.ts';
@@ -6,8 +7,7 @@ type AnnouncementOptions = {
   getMessages: () => Message[];
   getRenderRows: () => ChatRenderRow[];
   getConversationId: () => string;
-  getApprovedToolCallIds: () => ReadonlySet<string>;
-  getDeniedToolCallIds: () => ReadonlySet<string>;
+  getApprovalStates: () => ReadonlyMap<string, ApprovalState>;
   getHistoryAnnouncement: () => string;
   getUnreadAnnouncement: () => string;
 };
@@ -147,12 +147,9 @@ export function useChatAnnouncements(options: AnnouncementOptions): UseChatAnnou
         message.toolResult?.outcome === 'action_required' &&
         message.toolResult.action
       ) {
-        if (
-          options.getApprovedToolCallIds().has(message.toolResult.callId) ||
-          options.getDeniedToolCallIds().has(message.toolResult.callId)
-        ) {
-          continue;
-        }
+        const approvalState = options.getApprovalStates().get(message.toolResult.callId);
+        if (approvalState !== undefined && approvalState !== 'pending') continue;
+        if (message.toolResult.action.type !== 'approval') continue;
         const actionMessage =
           message.toolResult.action.message ??
           'This tool call requires your approval before it can continue.';

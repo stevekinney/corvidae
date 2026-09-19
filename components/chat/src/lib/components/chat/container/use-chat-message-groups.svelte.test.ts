@@ -66,6 +66,14 @@ function toolResultMessage(
             action: {
               type: 'approval' as const,
               message: 'Approve this action?',
+              risk: 'high' as const,
+              operation: {
+                kind: 'command' as const,
+                command: 'echo approval',
+                argsPreview: { ok: true },
+              },
+              policyVersion: 'test-policy',
+              idempotencyKey: 'test-approval',
             },
           }
         : {}),

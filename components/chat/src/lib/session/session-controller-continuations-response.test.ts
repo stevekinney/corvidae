@@ -20,12 +20,12 @@ describe('chat session controller', () => {
       transport: async () =>
         new Response(
           calls++ === 0
-            ? '{"type":"tool_call","id":"call","name":"delete","arguments":{}}\n{"type":"tool_result","callId":"call","outcome":"action_required","content":null,"action":{"type":"approval"}}\n'
+            ? '{"type":"tool_call","id":"call","name":"delete","arguments":{}}\n{"type":"tool_result","callId":"call","outcome":"action_required","content":null,"action":{"type":"approval","risk":"high","operation":{"kind":"command","command":"echo approval","argsPreview":{"ok":true}},"policyVersion":"test-policy","idempotencyKey":"test-approval"}}\n'
             : '{"type":"text","text":"denied"}\n',
           { headers: { 'Content-Type': 'application/x-ndjson' } },
         ),
       hooks: {
-        denyToolCall: async (toolCallId) => ({
+        resolveToolApproval: async (toolCallId) => ({
           callId: toolCallId,
           outcome: 'error',
           content: null,
@@ -34,7 +34,7 @@ describe('chat session controller', () => {
       },
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'delete' }, []);
-    await controller.adapter.denyToolCall?.('call');
+    await controller.adapter.resolveToolApproval?.('call', { decision: 'deny', remember: false });
     expect(calls).toBe(2);
     expect(
       Object.values(conversation.messages).some((message) => message.content === 'denied'),
@@ -88,12 +88,22 @@ describe('chat session controller', () => {
                 callId: 'call',
                 outcome: 'action_required',
                 content: null,
-                action: { type: 'approval' },
+                action: {
+                  type: 'approval',
+                  risk: 'high',
+                  operation: {
+                    kind: 'command',
+                    command: 'echo approval',
+                    argsPreview: { ok: true },
+                  },
+                  policyVersion: 'test-policy',
+                  idempotencyKey: 'test-approval',
+                },
               },
             ])
           : events([{ type: 'text', text: 'recovered' }]),
       hooks: {
-        approveToolCall: async (id) => ({ callId: id, outcome: 'success', content: 'allowed' }),
+        resolveToolApproval: async (id) => ({ callId: id, outcome: 'success', content: 'allowed' }),
       },
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'write' }, []);
@@ -108,7 +118,10 @@ describe('chat session controller', () => {
         },
       },
     };
-    await controller.adapter.approveToolCall?.('call');
+    await controller.adapter.resolveToolApproval?.('call', {
+      decision: 'approve',
+      remember: false,
+    });
     expect(conversation.messages[userId]?.metadata['_deliveryStatus']).toBeUndefined();
   });
 

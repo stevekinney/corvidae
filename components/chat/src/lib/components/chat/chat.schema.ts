@@ -220,10 +220,10 @@ const schema = {
           "Overrides Chat's built-in artifact panel. When supplied, Chat calls this\nonce with the resolved artifact and does not open its local panel.",
       },
       {
-        name: 'onapprove',
+        name: 'onapprovalresolve',
         reason: 'function-or-snippet',
         description:
-          'Called when the user approves an action-required tool call. The\nconsumer is responsible for updating its transcript (e.g. calling\nconversationalist to unblock the pending tool) and triggering a new\ngeneration. When an adapter is also wired, Chat calls\n`adapter.approveToolCall(toolCallId)` first and then this callback.',
+          'Called when the user resolves an action-required approval. The complete\nresolution payload is forwarded unchanged. When an adapter is also wired,\nChat calls `adapter.resolveToolApproval(toolCallId, resolution)` first and\nuses this callback only when the adapter does not implement that method.',
       },
       {
         name: 'onattachmentadd',
@@ -261,12 +261,7 @@ const schema = {
         description:
           'Called after pointer or selection activity may have moved the composer\ncaret without changing text. Overlay primitives can resync their active\ntoken from the textarea selection.',
       },
-      {
-        name: 'ondeny',
-        reason: 'function-or-snippet',
-        description:
-          'Called when the user denies an action-required tool call. When an\nadapter is also wired, Chat calls `adapter.denyToolCall(toolCallId)` first\nand then this callback.',
-      },
+
       {
         name: 'onedit',
         reason: 'function-or-snippet',

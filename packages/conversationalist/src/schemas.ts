@@ -209,7 +209,7 @@ const explicitTimezoneIsoDateTimeSchema = z.string().refine(isExplicitTimezoneIs
 });
 
 const toolApprovalOperationBaseSchema = z.object({
-  filesTouched: z.array(z.string()).optional(),
+  filesTouched: z.array(z.string()).exactOptional(),
   argsPreview: jsonValueSchema.optional(),
 });
 
