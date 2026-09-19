@@ -154,7 +154,7 @@ async function measureVirtualRows(timeline: Locator): Promise<VirtualRowMeasurem
           translateY: matrix.m42,
         };
       })
-      .sort((a, b) => a.index - b.index),
+      .toSorted((a, b) => a.index - b.index),
   );
 }
 
@@ -164,24 +164,17 @@ test.describe('chat virtual row measurement — content-visibility scoping', () 
   }) => {
     const { harness, dispose } = await openHarness(browser);
     try {
-      await harness.locator('#t-virtualized').click();
       await harness.locator('[data-testid="seed-thread"]').click();
+      await harness.locator('#t-virtualized').click();
 
       const timeline = harness.locator('.chat-timeline');
-      // The seeded transcript starts pinned to the bottom, so the mounted
-      // virtualization window does not include the leading date-separator
-      // row (index 0) until the top is scrolled into view. Set scrollTop
-      // directly rather than clicking the harness's scroll-top button
-      // (which calls the imperative `chat.scrollToTop()`, invoking the
-      // `data-cinder-force-visible` escape hatch that ALSO forces
-      // content-visibility: visible timeline-wide) — this test must isolate
-      // the `.chat-virtual-row`-scoped rule from that other rule. A
-      // `pointerdown` first marks this as a user-driven scroll so the
-      // virtualized transcript's auto-stick-to-bottom effect does not
-      // immediately correct it back (matching chat-harness.playwright.ts's
-      // own convention for direct scrollTop assignment on a virtualized
-      // timeline).
-      await timeline.dispatchEvent('pointerdown');
+      // Seed before enabling virtualization so this CSS-scoping test does not
+      // also exercise transcript-growth auto-stick-to-bottom. Keep a direct
+      // scrollTop assertion anyway: the row window must be parked at the top
+      // without using scrollToTop(), because that imperative API sets
+      // `data-cinder-force-visible` and would globally force
+      // content-visibility: visible, masking the `.chat-virtual-row` rule this
+      // test isolates.
       await timeline.evaluate((element) => {
         element.scrollTop = 0;
       });
