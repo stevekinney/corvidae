@@ -905,15 +905,27 @@ test.describe('chat harness — mounts cleanly', () => {
         const card = approvalChat.locator('.cinder-approval-card');
         cinderCardCounts.push(await card.count());
         await expect(card.getByText('Approval required for', { exact: false })).toBeVisible();
-        await expect(card.getByText('deploy_to_production', { exact: true })).toBeVisible();
+        await expect(card.getByRole('heading', { name: 'deploy_to_production' })).toBeVisible();
         await expect(
           card.getByText('deploy_to_production --environment production --version 2.4.1', {
             exact: true,
           }),
         ).toBeVisible();
-        await expect(card.getByText('DEPLOY_TOKEN', { exact: true })).toBeVisible();
-        await expect(card.getByText('approval-fixture-policy-v1', { exact: true })).toBeVisible();
-        await approvalChat.getByRole('button', { name: 'Approve' }).click();
+        const detailsButton = card.getByRole('button', { name: 'Details' });
+        await expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
+        await detailsButton.click();
+        await expect(detailsButton).toHaveAttribute('aria-expanded', 'true');
+        await expect(
+          card
+            .getByRole('list', { name: 'Environment variable names only; values are never shown' })
+            .getByText('DEPLOY_TOKEN', { exact: true }),
+        ).toBeVisible();
+        const policyMetadata = card
+          .locator('.cinder-approval-card__metadata-item')
+          .filter({ hasText: 'Policy version' });
+        await expect(policyMetadata.locator('dt')).toHaveText('Policy version');
+        await expect(policyMetadata.locator('dd')).toContainText('approval-fixture-policy-v1');
+        await approvalChat.getByRole('button', { name: 'Approve', exact: true }).click();
         await expectLastResolution({
           toolCallId: 'call-deploy-prod',
           resolution: { decision: 'approve', remember: false },
