@@ -182,7 +182,7 @@ The exported schema version comes from the `conversationalist` version Chat depe
 
 ## Layout and sizing
 
-Chat's root (`.chat-container`) is `height: 100%`. When no ancestor on the chain resolves to a definite height, that `100%` resolves against `auto` and Chat collapses to the intrinsic height of its empty state plus composer. There is no browser error: it just silently shrinks to a small card. Give Chat a sized ancestor with one of the three patterns below.
+Chat's outer layout element is `height: 100%`. When no ancestor on the chain resolves to a definite height, that `100%` resolves against `auto` and Chat collapses to the intrinsic height of its empty state plus composer. There is no browser error: it just silently shrinks to a small card. Give Chat a sized ancestor with one of the three patterns below.
 
 **Fixed-height container.** The simplest option—wrap Chat in an element with an explicit height. This is what every example in this component uses.
 
@@ -207,7 +207,7 @@ Chat's root (`.chat-container`) is `height: 100%`. When no ancestor on the chain
     height: 100dvh;
   }
 
-  /* `:global` because the class lands on Chat's own root element. */
+  /* `:global` because the class lands on Chat's own outer layout element. */
   .chat-page :global(.chat-page-surface) {
     flex: 1;
     min-height: 0;
@@ -311,46 +311,34 @@ Consumer announcements clear after a short interval so Chat's own history, unrea
 
 ## Per-row snippet context
 
-`row`, `messageActions`, and `messageStatus` receive the same `ChatRowContext`. The context contains the message that owns the visible row and optional resolved `toolCallPair` and `artifact` values:
+`row`, `messageActions`, and `messageStatus` receive the same `ChatRowContext`. The context contains the message that owns the visible row and optional resolved `toolCallPair` and `artifact` values. When a row has `cinder:artifact` metadata, Chat renders an always-visible `Open artifact: <title>` row action and opens the built-in artifact panel by default:
 
 ```svelte
 <script lang="ts">
-  import {
-    ArtifactViewer,
-    Chat,
-    ChatArtifactLayout,
-    type ChatArtifact,
-    type ChatRowContext,
-  } from '@corvidae/chat';
+  import { Chat, type ChatRowContext, type ResolvedChatArtifact } from '@corvidae/chat';
   import { Button } from '@corvidae/cinder';
 
-  let selectedArtifact = $state<ChatArtifact | undefined>();
+  let selectedArtifact = $state<ResolvedChatArtifact | undefined>();
 </script>
 
-<ChatArtifactLayout
-  open={selectedArtifact !== undefined}
-  panelTitle={selectedArtifact?.title}
-  onClose={() => (selectedArtifact = undefined)}
+<Chat
+  id="assistant-chat"
+  {conversation}
+  onartifactopen={(artifact) => (selectedArtifact = artifact)}
 >
-  <Chat id="assistant-chat" {conversation}>
-    {#snippet messageActions({ artifact }: ChatRowContext)}
-      {#if artifact}
-        <Button size="xs" variant="ghost" onclick={() => (selectedArtifact = artifact)}>
-          Open artifact
-        </Button>
-      {/if}
-    {/snippet}
-  </Chat>
-
-  {#snippet panel()}
-    {#if selectedArtifact}
-      <ArtifactViewer {...selectedArtifact} />
+  {#snippet messageActions({ artifact }: ChatRowContext)}
+    {#if artifact}
+      <Button size="xs" variant="ghost" onclick={() => (selectedArtifact = artifact)}>
+        Track externally
+      </Button>
     {/if}
   {/snippet}
-</ChatArtifactLayout>
+</Chat>
 ```
 
-`messageActions` is rendered in the same action row as Chat's built-in copy and edit controls. For native buttons, add the shared `chat-message-action-button` class to opt into the action-row sizing, focus, hover, and touch styles:
+`onartifactopen` is an ownership override: when supplied, Chat calls it with the resolved artifact and does not open the internal panel. Omit it to use Chat's built-in `ChatArtifactLayout`, `ArtifactPanel`, and `ArtifactViewer` composition. The resolved artifact keeps the raw descriptor fields and adds `id` from the source message plus a normalized non-empty `title` (`Artifact` when metadata is blank).
+
+`messageActions` is rendered in the same hover/focus action row as Chat's built-in copy and edit controls. Artifact actions are separate persistent row actions. For native buttons in `messageActions`, add the shared `chat-message-action-button` class to opt into the action-row sizing, focus, hover, and touch styles:
 
 ```svelte
 <script lang="ts">
@@ -366,7 +354,7 @@ Consumer announcements clear after a short interval so Chat's own history, unrea
 
 The class is intentionally opt-in so consumers can use their own button component or visual treatment without Chat overriding it. Cinder `Button` instances already provide their own complete styling and do not need this class.
 
-A paired `tool-result` message does not render a second visible row and does not invoke the snippets separately. Chat folds that result into the corresponding tool-call row's `toolCallPair` and resolves `cinder:artifact` metadata from the folded result into `artifact`. Metadata on the visible message takes precedence. Ordinary rows and unpaired tool-result rows resolve their own artifact metadata, so consumers do not need an external message lookup or a hand-rolled type guard.
+A paired `tool-result` message does not render a second visible row and does not invoke the snippets separately. Chat folds that result into the corresponding tool-call row's `toolCallPair` and resolves `cinder:artifact` metadata from the folded result into `artifact`. Metadata on the visible message takes precedence. Ordinary rows and unpaired tool-result rows resolve their own artifact metadata, so consumers do not need an external message lookup or a hand-rolled type guard. Artifact identity always comes from the source message id, so duplicate titles and duplicate content remain independent.
 
 ## Guidance
 
@@ -411,7 +399,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | --- | --- | --- | --- | --- |
 | `atBottom` | `boolean` | no | — | Whether the message viewport is scrolled to the bottom. Bindable; updated automatically as the user scrolls. Default `true`. |
 | `bottomThreshold` | `number` | no | — | Distance in pixels from the bottom of the scroll viewport within which the chat is considered "at bottom" and will auto-scroll on new messages. Default `150`. |
-| `class` | `string` | no | — | Additional class name merged onto the `.chat-container` root element. |
+| `class` | `string` | no | — | Additional class name merged onto the outer Chat layout element. |
 | `composerAriaActiveDescendant` | `string` | no | — | `aria-activedescendant` passed to the composer textarea for overlays such as slash-command menus. |
 | `composerAriaAutocomplete` | `"none"` \| `"inline"` \| `"list"` \| `"both"` | no | — | `aria-autocomplete` passed to the composer textarea for overlays such as slash-command menus. |
 | `composerAriaControls` | `string` | no | — | `aria-controls` passed to the composer textarea for overlays such as slash-command menus. |
@@ -448,6 +436,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `messageSteps` | `(opaque)` | no | — | Override or supplement the step list for a message. Called per-message; return an array to show step indicators, `undefined` to fall back to `message.metadata['cinder:steps']`. An empty array suppresses steps. Not expressible in JSON Schema; see the component types for the signature. |
 | `messageSuggestions` | `(opaque)` | no | — | Override or supplement the suggestion list for a message. Called per-message; return an array of label strings to show suggestion chips, `undefined` to fall back to `message.metadata['cinder:suggestions']`. An empty array suppresses suggestions. Not expressible in JSON Schema; see the component types for the signature. |
 | `onadaptererror` | `(opaque)` | no | — | Called when an adapter command fails — either a rejected promise or a synchronous throw from the method. Not expressible in JSON Schema; see the component types for the signature. |
+| `onartifactopen` | `(opaque)` | no | — | Overrides Chat's built-in artifact panel. When supplied, Chat calls this once with the resolved artifact and does not open its local panel. Not expressible in JSON Schema; see the component types for the signature. |
 | `onapprove` | `(opaque)` | no | — | Called when the user approves an action-required tool call. The consumer is responsible for updating its transcript (e.g. calling conversationalist to unblock the pending tool) and triggering a new generation. When an adapter is also wired, Chat calls `adapter.approveToolCall(toolCallId)` first and then this callback. Not expressible in JSON Schema; see the component types for the signature. |
 | `onattachmentadd` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `onattachmentfailure` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

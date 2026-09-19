@@ -5,7 +5,7 @@
  * content for copy/export operations.
  */
 
-import type { ChatArtifact } from '../artifact/artifact-viewer.types.ts';
+import type { ChatArtifact, ResolvedChatArtifact } from '../artifact/artifact-viewer.types.ts';
 import type { Message, MultiModalContent, ToolResult } from '../conversation-model.ts';
 import type {
   ChatMessagePart,
@@ -107,6 +107,22 @@ function isChatArtifact(value: unknown): value is ChatArtifact {
 export function resolveMessageArtifact(message: Message): ChatArtifact | undefined {
   const candidate: unknown = message.metadata[CINDER_ARTIFACT_METADATA_KEY];
   return isChatArtifact(candidate) ? candidate : undefined;
+}
+
+export function normalizeArtifactTitle(title: string | undefined): string {
+  const normalized = title?.trim();
+  return normalized && normalized.length > 0 ? normalized : 'Artifact';
+}
+
+/** Resolves artifact metadata into a source-identified panel/action value. */
+export function resolveMessageArtifactValue(message: Message): ResolvedChatArtifact | undefined {
+  const artifact = resolveMessageArtifact(message);
+  if (!artifact) return undefined;
+  return {
+    ...artifact,
+    id: message.id,
+    title: normalizeArtifactTitle(artifact.title),
+  };
 }
 
 /**

@@ -7,7 +7,7 @@ import type {
   ChatAdapterErrorEvent,
   ChatReadReceiptEvent,
 } from './adapter/chat-adapter.ts';
-import type { ChatArtifact } from './artifact/artifact-viewer.types.ts';
+import type { ResolvedChatArtifact } from './artifact/artifact-viewer.types.ts';
 import type {
   ChatScrollStateChangeEvent,
   ChatStopGeneratingEvent,
@@ -67,8 +67,8 @@ export type ChatRowContext = {
   message: Message;
   /** The tool call and its folded result for a visible tool-call row. */
   toolCallPair: ToolCallPair | undefined;
-  /** Validated artifact metadata from the visible message or its folded tool result. */
-  artifact: ChatArtifact | undefined;
+  /** Source-identified artifact metadata from the visible message or its folded tool result. */
+  artifact: ResolvedChatArtifact | undefined;
 };
 
 /**
@@ -117,7 +117,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   unreadCount?: number;
   /** Whether the "new messages" indicator is currently visible above the composer. Bindable; cleared automatically when the viewport reaches the bottom. Default `false`. */
   newMessageIndicatorVisible?: boolean;
-  /** Additional class name merged onto the `.chat-container` root element. */
+  /** Additional class name merged onto the outer Chat layout element. */
   class?: string;
   /** Controls the background of the chat surface. Use `'transparent'` to inherit the host element's background when embedding chat inside a card or panel. Default `'default'`. */
   surfaceMode?: 'default' | 'transparent';
@@ -249,6 +249,11 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   onsubmit?: (event: ChatSubmitEvent) => void;
   onretry?: (messageId: string) => void;
   onedit?: (event: { messageId: string; content: string }) => void;
+  /**
+   * Overrides Chat's built-in artifact panel. When supplied, Chat calls this
+   * once with the resolved artifact and does not open its local panel.
+   */
+  onartifactopen?: (artifact: ResolvedChatArtifact) => void;
   /** Commits a confirmed transcript rollback to immediately before the selected user message. */
   onrollback?: (messageId: string) => void;
   /**

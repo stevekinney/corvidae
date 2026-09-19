@@ -19,6 +19,7 @@ import {
   test,
   type Browser,
   type BrowserContextOptions,
+  type ElementHandle,
   type Locator,
   type Page,
   type TestInfo,
@@ -221,6 +222,71 @@ async function captureHarnessScreenshot(
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
+async function openChatFixture(
+  browser: Browser,
+  options: {
+    colorScheme: 'dark' | 'light';
+    viewport: { width: number; height: number };
+  },
+): Promise<{ page: Page; dispose: () => Promise<void> }> {
+  const context = await browser.newContext({
+    baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+    colorScheme: options.colorScheme,
+    reducedMotion: 'reduce',
+    viewport: options.viewport,
+  });
+  const diagnostics: string[] = [];
+  try {
+    await context.addInitScript(
+      ([key, value]) => {
+        localStorage.setItem(key, value);
+      },
+      [THEME_STORAGE_KEY, options.colorScheme] as const,
+    );
+    const page = await context.newPage();
+    page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error' || message.type() === 'warning') {
+        diagnostics.push(`${message.type()}: ${message.text()}`);
+      }
+    });
+    await page.goto(fixtureRoute('chat'), { waitUntil: 'load' });
+    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          theme: document.documentElement.dataset['theme'],
+          cinderTheme: document.documentElement.dataset['cinderTheme'],
+          colorScheme: getComputedStyle(document.documentElement).colorScheme,
+        })),
+      )
+      .toEqual({
+        theme: options.colorScheme,
+        cinderTheme: options.colorScheme,
+        colorScheme: options.colorScheme,
+      });
+    return {
+      page,
+      async dispose() {
+        try {
+          expect(diagnostics, 'Chat fixture must not emit browser errors or warnings').toEqual([]);
+        } finally {
+          await context.close();
+        }
+      },
+    };
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
+}
+
+async function borderBottomWidth(locator: Locator): Promise<number> {
+  return locator.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).borderBottomWidth),
+  );
+}
+
 async function pushHarnessTypingSnapshot(
   page: Page,
   participants: Array<{ id: string; name: string }>,
@@ -286,6 +352,387 @@ function expectContainedWithin(
     `${label} bottom edge must stay inside its parent`,
   ).toBeLessThanOrEqual(parent.y + parent.height + 1);
 }
+
+test('selected conversations and transcript boundaries use one flat divider system', async ({
+  browser,
+}, testInfo) => {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const width of [320, 512, 848]) {
+      const { page, dispose } = await openChatFixture(browser, {
+        colorScheme,
+        viewport: { width, height: 760 },
+      });
+      try {
+        const layout = page.getByTestId('chat-conversation-layout');
+        const selectedConversation = layout.locator('[data-cinder-conversation-selected]').first();
+        const inactiveConversation = layout
+          .locator('[data-cinder-conversation-item]:not([data-cinder-conversation-selected])')
+          .first();
+        await expect(selectedConversation).toHaveAttribute('aria-current', 'page');
+        await expect(selectedConversation).toBeVisible();
+        await expect(inactiveConversation).toBeVisible();
+
+        const selectedBoxBefore = await renderedBox(selectedConversation, 'selected conversation');
+        const selectedStyle = await selectedConversation.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            borderBlockStartWidth: style.borderBlockStartWidth,
+            borderColor: style.borderColor,
+            borderRadius: style.borderRadius,
+          };
+        });
+        expect(selectedStyle.borderBlockStartWidth).toBe('1px');
+        expect(selectedStyle.borderColor).toBe('rgba(0, 0, 0, 0)');
+        expect(selectedStyle.borderRadius).toBe('0px');
+
+        await inactiveConversation.click();
+        const selectedBoxAfter = await renderedBox(
+          layout.locator('[data-cinder-conversation-selected]').first(),
+          'next selected conversation',
+        );
+        expect(selectedBoxAfter.width).toBeCloseTo(selectedBoxBefore.width, 1);
+        expect(selectedBoxAfter.height).toBeCloseTo(selectedBoxBefore.height, 1);
+
+        const chatHeaderWrapper = layout.locator('.chat-header').first();
+        const conversationHeader = layout.locator('.cinder-chat-conversation-header').first();
+        await expect(chatHeaderWrapper).toBeVisible();
+        await expect(conversationHeader).toBeVisible();
+        const dividerWidth =
+          (await borderBottomWidth(chatHeaderWrapper)) +
+          (await borderBottomWidth(conversationHeader));
+        expect(dividerWidth).toBe(1);
+
+        await captureHarnessScreenshot(
+          page,
+          testInfo,
+          `chat-layout-boundary-${colorScheme}-${width}`,
+        );
+      } finally {
+        await dispose();
+      }
+    }
+  }
+});
+
+test('artifact actions remain visible and panel headers stay compact', async ({
+  browser,
+}, testInfo) => {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const width of [320, 512, 848]) {
+      const { page, dispose } = await openChatFixture(browser, {
+        colorScheme,
+        viewport: { width, height: 820 },
+      });
+      try {
+        const defaultLayout = page.getByTestId('chat-default-artifact-layout');
+        const firstArtifact = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Exports report',
+          exact: true,
+        });
+        await expect(firstArtifact).toBeVisible();
+        await expect(firstArtifact).toHaveAttribute('title', 'Exports report');
+        await page.mouse.move(1, 1);
+        await expect(firstArtifact).toBeVisible();
+
+        await expect(
+          defaultLayout.getByRole('button', {
+            name: 'Open artifact: Duplicate report',
+            exact: true,
+          }),
+        ).toHaveCount(2);
+        await expect(
+          defaultLayout.getByRole('button', { name: 'Open artifact: Artifact', exact: true }),
+        ).toBeVisible();
+        const longTitleButton = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Exports report with a long generated title that should truncate visually while retaining the full accessible name',
+        });
+        await expect(longTitleButton).toBeVisible();
+        await expect(longTitleButton).toHaveAttribute(
+          'title',
+          'Exports report with a long generated title that should truncate visually while retaining the full accessible name',
+        );
+        await expect(defaultLayout.getByTestId('custom-artifact-action')).toHaveCount(0);
+
+        await firstArtifact.focus();
+        await page.keyboard.press('Enter');
+        const panel = defaultLayout.locator('.artifact-panel').first();
+        await expect(panel).toBeVisible();
+        await expect(panel.locator('.artifact-panel-title')).toHaveText('Exports report');
+        const layoutRoot = defaultLayout.locator('.chat-artifact-layout').first();
+        const layoutGrid = defaultLayout.locator('.chat-artifact-grid').first();
+        const layoutRootBox = await renderedBox(layoutRoot, 'artifact layout root');
+        const layoutGridBox = await renderedBox(layoutGrid, 'artifact layout grid');
+        const mainBox = await renderedBox(
+          defaultLayout.locator('.chat-artifact-main').first(),
+          'artifact layout main',
+        );
+        const panelBox = await renderedBox(panel, 'artifact panel');
+        const ancestorContainer = await layoutRoot.evaluate((element) => {
+          let parent = element.parentElement;
+          while (parent) {
+            const containerType = getComputedStyle(parent).containerType;
+            if (containerType !== 'normal') return containerType;
+            parent = parent.parentElement;
+          }
+          return null;
+        });
+        expect(
+          ancestorContainer,
+          'responsive layout must not depend on an ancestor container',
+        ).toBe(null);
+        expect(
+          layoutRootBox.width,
+          'layout root should reflect the actual embedded fixture width',
+        ).toBeGreaterThan(0);
+        expect(layoutRootBox.width).toBeLessThanOrEqual(width);
+        expectContainedWithin(layoutGridBox, layoutRootBox, 'artifact layout grid');
+        if (layoutRootBox.width <= 768) {
+          expect(
+            panelBox.y,
+            'narrow artifact panel should stack below the chat area',
+          ).toBeGreaterThanOrEqual(mainBox.y + mainBox.height - 1);
+          expect(panelBox.width).toBeCloseTo(layoutRootBox.width, 1);
+        } else {
+          expect(
+            panelBox.x,
+            'wide artifact panel should sit beside the chat area',
+          ).toBeGreaterThanOrEqual(mainBox.x + mainBox.width - 1);
+          expect(panelBox.height).toBeCloseTo(mainBox.height, 1);
+        }
+        const headerBox = await renderedBox(
+          panel.locator('.artifact-panel-header'),
+          'artifact header',
+        );
+        expect(headerBox.height).toBe(48);
+        const titleBox = await renderedBox(
+          panel.locator('.artifact-panel-title'),
+          'artifact header title',
+        );
+        expect(
+          titleBox.x + titleBox.width / 2,
+          'artifact title center must align with the full header center',
+        ).toBeCloseTo(headerBox.x + headerBox.width / 2, 1);
+        const close = panel.getByRole('button', { name: 'Close artifact panel' });
+        const closeBox = await renderedBox(close, 'artifact close button');
+        expect(closeBox.width).toBe(44);
+        expect(closeBox.height).toBe(44);
+        expectContainedWithin(closeBox, headerBox, 'artifact close button');
+
+        await close.click();
+        await expect(panel).toBeHidden();
+        await expect(firstArtifact).toBeFocused();
+
+        const fallbackTitle = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Artifact',
+          exact: true,
+        });
+        await fallbackTitle.focus();
+        await page.keyboard.press(' ');
+        await expect(defaultLayout.locator('.artifact-panel-title').first()).toHaveText('Artifact');
+        await defaultLayout.getByRole('button', { name: 'Close artifact panel' }).click();
+
+        const secondDuplicate = defaultLayout
+          .getByRole('button', { name: 'Open artifact: Duplicate report', exact: true })
+          .nth(1);
+        await secondDuplicate.click();
+        await expect(defaultLayout.locator('.artifact-panel-content').first()).toContainText(
+          'const duplicate = 2;',
+        );
+
+        const groupedOne = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Grouped artifact one',
+        });
+        const groupedTwo = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Grouped artifact two',
+        });
+        await expect(groupedOne).toBeVisible();
+        await expect(groupedTwo).toBeVisible();
+
+        const externalLayout = page.getByTestId('chat-external-artifact-layout');
+        await expect(externalLayout.getByTestId('custom-artifact-action').first()).toBeVisible();
+        await externalLayout
+          .getByRole('button', { name: 'Open artifact: Exports report', exact: true })
+          .click();
+        await expect(externalLayout.locator('.artifact-panel')).toHaveCount(1);
+        await expect(externalLayout.locator('.artifact-panel-title')).toHaveText('Exports report');
+
+        await captureHarnessScreenshot(
+          page,
+          testInfo,
+          `chat-artifact-layout-${colorScheme}-${width}`,
+        );
+      } finally {
+        await dispose();
+      }
+    }
+  }
+});
+
+async function expectDocumentedChatSizing(
+  shell: Locator,
+  publicClassNames: readonly string[],
+  label: string,
+): Promise<void> {
+  const layoutRoot = shell.locator('.chat-artifact-layout').first();
+  const chatContainer = shell.locator('.chat-container').first();
+  const timeline = shell.locator('.chat-timeline').first();
+
+  for (const publicClassName of publicClassNames) {
+    await expect(layoutRoot).toHaveClass(new RegExp(`\\b${publicClassName}\\b`));
+    await expect(chatContainer).not.toHaveClass(new RegExp(`\\b${publicClassName}\\b`));
+  }
+
+  const [metrics, chatContainerBox, timelineBox] = await Promise.all([
+    shell.evaluate((element) => {
+      const header = element.querySelector<HTMLElement>('.chat-public-sizing-header');
+      const layoutRoot = element.querySelector<HTMLElement>('.chat-artifact-layout');
+      if (!layoutRoot) throw new Error('Missing artifact layout root');
+      const shellBox = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const borderBlock =
+        Number.parseFloat(style.borderBlockStartWidth) +
+        Number.parseFloat(style.borderBlockEndWidth);
+      const borderInline =
+        Number.parseFloat(style.borderInlineStartWidth) +
+        Number.parseFloat(style.borderInlineEndWidth);
+      const paddingBlock =
+        Number.parseFloat(style.paddingBlockStart) + Number.parseFloat(style.paddingBlockEnd);
+      const paddingInline =
+        Number.parseFloat(style.paddingInlineStart) + Number.parseFloat(style.paddingInlineEnd);
+      const headerBox = header?.getBoundingClientRect() ?? {
+        bottom: shellBox.top,
+        height: 0,
+        y: shellBox.top,
+      };
+      const layoutBox = layoutRoot.getBoundingClientRect();
+      return {
+        availableHeight: shellBox.height - borderBlock - paddingBlock - headerBox.height,
+        availableWidth: shellBox.width - borderInline - paddingInline,
+        contentTop: headerBox.bottom,
+        layout: {
+          x: layoutBox.x,
+          y: layoutBox.y,
+          width: layoutBox.width,
+          height: layoutBox.height,
+          bottom: layoutBox.bottom,
+        },
+        shell: {
+          x: shellBox.x,
+          y: shellBox.y,
+          width: shellBox.width,
+          height: shellBox.height,
+          bottom: shellBox.bottom,
+        },
+      };
+    }),
+    renderedBox(chatContainer, `${label} chat container`),
+    renderedBox(timeline, `${label} timeline`),
+  ]);
+  const layoutRootBox = metrics.layout;
+
+  expect(layoutRootBox.y).toBeCloseTo(metrics.contentTop, 1);
+  expect(layoutRootBox.height).toBeCloseTo(metrics.availableHeight, 1);
+  expect(layoutRootBox.bottom).toBeLessThanOrEqual(metrics.shell.bottom);
+  expect(layoutRootBox.width).toBeCloseTo(metrics.availableWidth, 1);
+  expectContainedWithin(chatContainerBox, layoutRootBox, `${label} chat container`);
+  expectContainedWithin(timelineBox, chatContainerBox, `${label} timeline`);
+  expect(timelineBox.height).toBeGreaterThan(80);
+}
+
+async function expectSameDomNode(
+  locator: Locator,
+  original: ElementHandle<HTMLElement | SVGElement>,
+  label: string,
+): Promise<void> {
+  await expect(locator).toBeAttached();
+  const isSameNode = await locator.evaluate(
+    (element, originalElement) => element.isSameNode(originalElement),
+    original,
+  );
+  expect(isSameNode, `${label} should keep the same DOM node`).toBe(true);
+}
+
+async function expectFixedChatSizing(shell: Locator, label: string): Promise<void> {
+  const layoutRoot = shell.locator('.chat-artifact-layout').first();
+  const chatContainer = shell.locator('.chat-container').first();
+  const timeline = shell.locator('.chat-timeline').first();
+
+  await expect(layoutRoot).toHaveClass(/\bchat-public-theme-surface\b/);
+  await expect(chatContainer).not.toHaveClass(/\bchat-public-theme-surface\b/);
+  await expect(layoutRoot).toHaveJSProperty('style.blockSize', '100%');
+  await expect(layoutRoot).toHaveJSProperty('style.minBlockSize', '0px');
+
+  const [shellBox, layoutRootBox, chatContainerBox, timelineBox] = await Promise.all([
+    renderedBox(shell, `${label} shell`),
+    renderedBox(layoutRoot, `${label} layout root`),
+    renderedBox(chatContainer, `${label} chat container`),
+    renderedBox(timeline, `${label} timeline`),
+  ]);
+  expectContainedWithin(layoutRootBox, shellBox, `${label} layout root`);
+  expect(layoutRootBox.height).toBeCloseTo(shellBox.height, 1);
+  expect(layoutRootBox.width).toBeCloseTo(shellBox.width, 1);
+  expectContainedWithin(chatContainerBox, layoutRootBox, `${label} chat container`);
+  expectContainedWithin(timelineBox, chatContainerBox, `${label} timeline`);
+  expect(timelineBox.height).toBeGreaterThan(80);
+}
+
+test('public Chat class sizes documented flex and grid shells with artifact panel open and closed', async ({
+  browser,
+}, testInfo) => {
+  const { page, dispose } = await openChatFixture(browser, {
+    colorScheme: 'light',
+    viewport: { width: 848, height: 900 },
+  });
+  try {
+    for (const { testId, classNames, label } of [
+      {
+        testId: 'chat-public-flex-shell',
+        classNames: ['chat-public-flex-surface', 'chat-public-theme-surface'],
+        label: 'documented flex consumer',
+      },
+      {
+        testId: 'chat-public-grid-shell',
+        classNames: ['chat-public-grid-surface'],
+        label: 'documented grid consumer',
+      },
+    ]) {
+      const shell = page.getByTestId(testId);
+      const composer = shell.locator('.chat-input-area').first();
+      const transcript = shell.locator('.chat-timeline').first();
+      const composerElement = await composer.elementHandle();
+      const transcriptElement = await transcript.elementHandle();
+      if (composerElement === null) throw new Error(`${label} composer was not rendered`);
+      if (transcriptElement === null) throw new Error(`${label} transcript was not rendered`);
+      await expectDocumentedChatSizing(shell, classNames, `${label} closed`);
+
+      await shell
+        .getByRole('button', { name: 'Open artifact: Exports report', exact: true })
+        .click();
+      await expect(shell.locator('.artifact-panel')).toBeVisible();
+      await expectDocumentedChatSizing(shell, classNames, `${label} open`);
+      await expectSameDomNode(composer, composerElement, `${label} composer after open`);
+      await expectSameDomNode(transcript, transcriptElement, `${label} transcript after open`);
+
+      await shell.getByRole('button', { name: 'Close artifact panel' }).click();
+      await expect(shell.locator('.artifact-panel')).toHaveCount(0);
+      await expectDocumentedChatSizing(shell, classNames, `${label} closed after close`);
+      await expectSameDomNode(composer, composerElement, `${label} composer after close`);
+      await expectSameDomNode(transcript, transcriptElement, `${label} transcript after close`);
+    }
+
+    const fixedShell = page.getByTestId('chat-public-fixed-shell');
+    await expectFixedChatSizing(fixedShell, 'fixed-height inline-style consumer');
+    await fixedShell
+      .getByRole('button', { name: 'Open artifact: Exports report', exact: true })
+      .click();
+    await expect(fixedShell.locator('.artifact-panel')).toBeVisible();
+    await expectFixedChatSizing(fixedShell, 'fixed-height inline-style consumer open');
+
+    await captureHarnessScreenshot(page, testInfo, 'chat-public-sizing-artifact-layout');
+  } finally {
+    await dispose();
+  }
+});
 
 async function expectSingleImageGeometry(
   locators: {

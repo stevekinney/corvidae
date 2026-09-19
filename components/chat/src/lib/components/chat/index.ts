@@ -142,8 +142,10 @@ export {
   getMessageText,
   getUnresolvedToolApprovals,
   messagesToMarkdown,
+  normalizeArtifactTitle,
   pairToolCallsWithResults,
   resolveMessageArtifact,
+  resolveMessageArtifactValue,
   type ChatExportOptions,
   type DeliveryStatus,
   type ToolResultMessage,
@@ -215,4 +217,5 @@ export type {
   ChatArtifact,
   CodeRenderer,
   MermaidRenderer,
+  ResolvedChatArtifact,
 } from './artifact/index.ts';

@@ -294,14 +294,23 @@ describe('Chat — basic render', () => {
     expect(timeline?.getAttribute('role')).toBe('log');
   });
 
-  test('forwards a custom class onto the container', () => {
+  test('forwards custom class and style onto the outer layout element', () => {
     const conversation = createConversation({ id: 'conversation-class' });
     const { container } = render(Chat, {
-      props: { id: 'chat-class', conversation, class: 'my-custom-chat' },
+      props: {
+        id: 'chat-class',
+        conversation,
+        class: 'my-custom-chat',
+        style: 'block-size: 100%;',
+      },
     });
 
+    const layout = container.querySelector('.chat-artifact-layout');
     const region = container.querySelector('.chat-container');
-    expect(region?.classList.contains('my-custom-chat')).toBe(true);
+    expect(layout?.classList.contains('my-custom-chat')).toBe(true);
+    expect(layout?.getAttribute('style')).toBe('block-size: 100%;');
+    expect(region?.classList.contains('my-custom-chat')).toBe(false);
+    expect(region?.getAttribute('style')).toBeNull();
   });
 
   test('renders the default empty state when the conversation has no messages', () => {

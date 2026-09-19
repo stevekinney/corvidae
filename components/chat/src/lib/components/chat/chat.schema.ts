@@ -26,7 +26,7 @@ const schema = {
     },
     class: {
       type: 'string',
-      description: 'Additional class name merged onto the `.chat-container` root element.',
+      description: 'Additional class name merged onto the outer Chat layout element.',
     },
     surfaceMode: {
       enum: ['default', 'transparent'],
@@ -212,6 +212,12 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           'Called when an adapter command fails — either a rejected promise or a synchronous throw from the method.',
+      },
+      {
+        name: 'onartifactopen',
+        reason: 'function-or-snippet',
+        description:
+          "Overrides Chat's built-in artifact panel. When supplied, Chat calls this\nonce with the resolved artifact and does not open its local panel.",
       },
       {
         name: 'onapprove',

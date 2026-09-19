@@ -33,7 +33,7 @@
   import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import {
     getMessageText,
-    resolveMessageArtifact,
+    resolveMessageArtifactValue,
     resolveMessageReasoning,
     resolveMessageTranscriptEntries,
     resolveMessageSteps,
@@ -74,6 +74,9 @@
   import { useChatAnnouncements } from './use-chat-announcements.svelte.ts';
   import { useChatAdapterSubscription } from './use-chat-adapter-subscription.svelte.ts';
   import { useChatTranscript } from './use-chat-transcript.svelte.ts';
+  import ChatArtifactLayout from '../artifact/chat-artifact-layout.svelte';
+  import ArtifactViewer from '../artifact/artifact-viewer.svelte';
+  import type { ResolvedChatArtifact } from '../artifact/artifact-viewer.types.ts';
 
   const noopAttachment: Attachment<HTMLElement> = () => {};
   type ChatMessageRenderRow = Extract<ChatRenderRow, { type: 'message' }>;
@@ -124,12 +127,14 @@
     onsubmit,
     onretry,
     onedit,
+    onartifactopen,
     onapprove,
     ondeny,
     messageReasoning,
     messageSteps,
     messageSuggestions,
     onSuggestionSelect,
+    style,
     onLoadHistory,
     onstopgenerating,
     onjumptolatest,
@@ -397,6 +402,18 @@
   const toolCallPairsByCallId = $derived(transcript.toolCallPairsByCallId);
   const toolResultMessagesByResult = $derived(transcript.toolResultMessagesByResult);
   const renderRows = $derived(transcript.renderRows);
+  let selectedArtifactId = $state<string | undefined>(undefined);
+  const resolvedArtifactsById = $derived.by(() => {
+    const artifacts = new Map<string, ResolvedChatArtifact>();
+    for (const message of messages) {
+      const artifact = resolveMessageArtifactValue(message);
+      if (artifact) artifacts.set(artifact.id, artifact);
+    }
+    return artifacts;
+  });
+  const selectedArtifact = $derived(
+    selectedArtifactId === undefined ? undefined : resolvedArtifactsById.get(selectedArtifactId),
+  );
 
   // Expand capabilities object with per-feature defaults.
   const allowAttachments = $derived(capabilities?.attachments ?? true);
@@ -413,6 +430,55 @@
     }
     if (rollbackMessageId && rollbackBoundaryIndex < 0) rollbackMessageId = null;
   });
+
+  $effect(() => {
+    void conversationId;
+    selectedArtifactId = undefined;
+  });
+
+  $effect(() => {
+    if (onartifactopen || (selectedArtifactId !== undefined && selectedArtifact === undefined)) {
+      selectedArtifactId = undefined;
+    }
+  });
+
+  function resolveArtifactForMessage(
+    message: import('../conversation-model.ts').Message,
+    pairedResultMessage: import('../conversation-model.ts').Message | undefined,
+  ): ResolvedChatArtifact | undefined {
+    return (
+      resolveMessageArtifactValue(message) ??
+      (pairedResultMessage ? resolveMessageArtifactValue(pairedResultMessage) : undefined)
+    );
+  }
+
+  function artifactForToolCallMessage(
+    message: import('../conversation-model.ts').Message,
+  ): ResolvedChatArtifact | undefined {
+    if (!message.toolCall?.id) return undefined;
+    const pairs = toolCallPairsByCallId.get(message.toolCall.id) ?? [];
+    const pair = pairs.find((candidate) => candidate.call === message.toolCall) ?? pairs[0];
+    const pairedResultMessage = pair?.result
+      ? toolResultMessagesByResult.get(pair.result)
+      : undefined;
+    return resolveArtifactForMessage(message, pairedResultMessage);
+  }
+
+  function artifactsForToolCallMessages(
+    toolCallMessages: readonly import('../conversation-model.ts').Message[],
+  ): ResolvedChatArtifact[] {
+    return toolCallMessages
+      .map((message) => artifactForToolCallMessage(message))
+      .filter((artifact): artifact is ResolvedChatArtifact => artifact !== undefined);
+  }
+
+  function openArtifact(artifact: ResolvedChatArtifact): void {
+    if (onartifactopen) {
+      onartifactopen(artifact);
+      return;
+    }
+    selectedArtifactId = artifact.id;
+  }
 
   function confirmRollback(): void {
     if (!rollbackMessageId) return;
@@ -1372,295 +1438,326 @@
   }
 </script>
 
-<div
-  bind:this={containerRef}
-  {id}
-  class={classNames('cinder-chat', 'chat-container', className)}
-  data-surface-mode={surfaceMode}
-  data-cinder-density={density}
-  data-cinder-variant={variant}
-  role="region"
-  aria-label="Chat conversation"
-  onkeydown={handleKeyDown}
-  ondrop={handleContainerDrop}
-  ondragover={handleContainerDragOver}
-  ondragleave={handleContainerDragLeave}
-  {...rest}
+<ChatArtifactLayout
+  instanceId={`${id}-artifact`}
+  open={!onartifactopen && selectedArtifact !== undefined}
+  panelTitle={selectedArtifact?.title}
+  onclose={() => (selectedArtifactId = undefined)}
+  class={className}
+  {style}
 >
-  {#if isContainerDragOver && allowAttachments}
-    <div class="chat-drop-overlay" aria-hidden="true">
-      <span class="chat-drop-label">Drop files here</span>
-    </div>
-  {/if}
-  {#if header}
-    <div class="chat-header">
-      {@render header()}
-    </div>
-  {/if}
+  <div
+    bind:this={containerRef}
+    {id}
+    class={classNames('cinder-chat', 'chat-container')}
+    data-surface-mode={surfaceMode}
+    data-cinder-density={density}
+    data-cinder-variant={variant}
+    role="region"
+    aria-label="Chat conversation"
+    onkeydown={handleKeyDown}
+    ondrop={handleContainerDrop}
+    ondragover={handleContainerDragOver}
+    ondragleave={handleContainerDragLeave}
+    {...rest}
+  >
+    {#if isContainerDragOver && allowAttachments}
+      <div class="chat-drop-overlay" aria-hidden="true">
+        <span class="chat-drop-label">Drop files here</span>
+      </div>
+    {/if}
+    {#if header}
+      <div class="chat-header">
+        {@render header()}
+      </div>
+    {/if}
 
-  {#if allowSearch && searchState.isOpen}
-    <ChatSearchBar
-      bind:this={searchBarRef}
-      instanceId={id}
-      query={searchState.query}
-      matchCount={searchState.matchCount}
-      currentMatchIndex={searchState.currentMatchIndex}
-      onquerychange={searchState.setQuery}
-      onnext={searchState.nextMatch}
-      onprevious={searchState.previousMatch}
-      onclose={searchState.close}
-    />
-  {/if}
+    {#if allowSearch && searchState.isOpen}
+      <ChatSearchBar
+        bind:this={searchBarRef}
+        instanceId={id}
+        query={searchState.query}
+        matchCount={searchState.matchCount}
+        currentMatchIndex={searchState.currentMatchIndex}
+        onquerychange={searchState.setQuery}
+        onnext={searchState.nextMatch}
+        onprevious={searchState.previousMatch}
+        onclose={searchState.close}
+      />
+    {/if}
 
-  {#snippet renderTypingIndicator()}
-    <div
-      class="chat-typing-indicator"
-      role="status"
-      aria-label={streamingStatus ?? 'Assistant is typing'}
-    >
-      {#if streamingStatus}
-        <span class="chat-typing-status">{streamingStatus}</span>
-      {:else}
-        <span class="chat-typing-dot" aria-hidden="true"></span>
-        <span class="chat-typing-dot" aria-hidden="true"></span>
-        <span class="chat-typing-dot" aria-hidden="true"></span>
-      {/if}
-    </div>
-  {/snippet}
+    {#snippet renderTypingIndicator()}
+      <div
+        class="chat-typing-indicator"
+        role="status"
+        aria-label={streamingStatus ?? 'Assistant is typing'}
+      >
+        {#if streamingStatus}
+          <span class="chat-typing-status">{streamingStatus}</span>
+        {:else}
+          <span class="chat-typing-dot" aria-hidden="true"></span>
+          <span class="chat-typing-dot" aria-hidden="true"></span>
+          <span class="chat-typing-dot" aria-hidden="true"></span>
+        {/if}
+      </div>
+    {/snippet}
 
-  {#snippet renderMessageRow(messageRow: ChatMessageRenderRow)}
-    {@const message = messageRow.message}
-    {@const pairs = message.toolCall?.id
-      ? (toolCallPairsByCallId.get(message.toolCall.id) ?? [])
-      : []}
-    {@const toolCallPair = pairs.find((pair) => pair.call === message.toolCall) ?? pairs[0]}
-    {@const toolCallPresentation = message.toolCall
-      ? describeToolCallSafely(message.toolCall, toolCallPair?.result)
-      : undefined}
-    {@const pairedResultMessage = toolCallPair?.result
-      ? toolResultMessagesByResult.get(toolCallPair.result)
-      : undefined}
-    {@const rowContext = {
-      message,
-      toolCallPair,
-      artifact:
-        resolveMessageArtifact(message) ??
-        (pairedResultMessage ? resolveMessageArtifact(pairedResultMessage) : undefined),
-    }}
-    {@const isImperativeStreamingMessage = streamingState.messageId === message.id}
-    {@const isContentDrivenStreamingMessage =
-      streaming &&
-      streamingState.messageId === null &&
-      message.id === lastMessageId &&
-      message.role === 'assistant' &&
-      isStreamingMessage(message) &&
-      getMessageText(message).trim().length > 0}
-    {@const isPresentingStreamingMessage =
-      (isImperativeStreamingMessage && streamingState.content.trim().length > 0) ||
-      isContentDrivenStreamingMessage}
-    {@const streamingOverrideContent = isImperativeStreamingMessage
-      ? streamingState.content
-      : undefined}
-    {@const isCurrentSearchMatch =
-      searchState.isOpen &&
-      searchState.currentMatch !== null &&
-      searchState.currentMatch.message.id === message.id}
-    <!-- C4/C5: resolve reasoning/steps/suggestions overlays. Each prefers an
+    {#snippet renderArtifactAction(artifact: ResolvedChatArtifact)}
+      <button
+        type="button"
+        class="chat-artifact-action"
+        title={artifact.title}
+        onclick={() => openArtifact(artifact)}
+      >
+        <span class="chat-artifact-action__label">Open artifact: {artifact.title}</span>
+      </button>
+    {/snippet}
+
+    {#snippet renderMessageRow(messageRow: ChatMessageRenderRow)}
+      {@const message = messageRow.message}
+      {@const pairs = message.toolCall?.id
+        ? (toolCallPairsByCallId.get(message.toolCall.id) ?? [])
+        : []}
+      {@const toolCallPair = pairs.find((pair) => pair.call === message.toolCall) ?? pairs[0]}
+      {@const toolCallPresentation = message.toolCall
+        ? describeToolCallSafely(message.toolCall, toolCallPair?.result)
+        : undefined}
+      {@const pairedResultMessage = toolCallPair?.result
+        ? toolResultMessagesByResult.get(toolCallPair.result)
+        : undefined}
+      {@const artifact = resolveArtifactForMessage(message, pairedResultMessage)}
+      {@const rowContext = {
+        message,
+        toolCallPair,
+        artifact,
+      }}
+      {@const isImperativeStreamingMessage = streamingState.messageId === message.id}
+      {@const isContentDrivenStreamingMessage =
+        streaming &&
+        streamingState.messageId === null &&
+        message.id === lastMessageId &&
+        message.role === 'assistant' &&
+        isStreamingMessage(message) &&
+        getMessageText(message).trim().length > 0}
+      {@const isPresentingStreamingMessage =
+        (isImperativeStreamingMessage && streamingState.content.trim().length > 0) ||
+        isContentDrivenStreamingMessage}
+      {@const streamingOverrideContent = isImperativeStreamingMessage
+        ? streamingState.content
+        : undefined}
+      {@const isCurrentSearchMatch =
+        searchState.isOpen &&
+        searchState.currentMatch !== null &&
+        searchState.currentMatch.message.id === message.id}
+      <!-- C4/C5: resolve reasoning/steps/suggestions overlays. Each prefers an
          explicit per-message prop over `cinder:`-namespaced metadata, validates
          both paths identically, and guards consumer-callback throws — so a
          malformed callback can never break the chat render (see resolve* in
          chat/utilities). A plain transcript yields `undefined` for all three. -->
-    {@const derivedReasoning = resolveMessageReasoning(message, messageReasoning)}
-    {@const derivedEntries = resolveMessageTranscriptEntries(message)}
-    {@const derivedSteps = resolveMessageSteps(message, messageSteps)}
-    {@const derivedSuggestions =
-      message.id === lastMessageId
-        ? resolveMessageSuggestions(message, messageSuggestions)
-        : undefined}
+      {@const derivedReasoning = resolveMessageReasoning(message, messageReasoning)}
+      {@const derivedEntries = resolveMessageTranscriptEntries(message)}
+      {@const derivedSteps = resolveMessageSteps(message, messageSteps)}
+      {@const derivedSuggestions =
+        message.id === lastMessageId
+          ? resolveMessageSuggestions(message, messageSuggestions)
+          : undefined}
 
-    <!-- The built-in row. Wrapped in a snippet so the optional `row`
+      <!-- The built-in row. Wrapped in a snippet so the optional `row`
          override can render it (inversion of control) or replace it. The
          per-part `messagePart` override flows through into the message's
          parts renderer. -->
-    {#snippet renderDefaultRow()}
-      {@const receipt =
-        message.role === 'user' ? readReceiptsState.getReceipt(message.id) : undefined}
-      {#snippet readReceiptMetadata()}
-        {#if receipt}
-          <ChatReadReceipt {receipt} />
-        {/if}
-      {/snippet}
-      <ChatMessage
-        {message}
-        {...receipt ? { metadata: readReceiptMetadata } : {}}
-        toolCallPairs={pairs}
-        {messagePart}
-        {markdownNode}
-        onretry={allowRetry && canRetry ? handleRetry : undefined}
-        onedit={allowEditing && canEdit ? handleEdit : undefined}
-        oneditingchange={(editing) => handleEditingChange(message.id, editing)}
-        onrollback={onrollback ? (messageId) => (rollbackMessageId = messageId) : undefined}
-        rollbackDiscarded={rollbackBoundaryIndex >= 0 &&
-          (messageIndexById.get(message.id) ?? -1) >= rollbackBoundaryIndex}
-        showDefaultActions={allowCopy}
-        {onExpandedChange}
-        streaming={isPresentingStreamingMessage}
-        overrideContent={isPresentingStreamingMessage ? streamingOverrideContent : undefined}
-        searchMatch={isCurrentSearchMatch}
-        tabindex={-1}
-        approvedToolCallIds={commandActions.approvedToolCallIds.size > 0
-          ? commandActions.approvedToolCallIds
-          : undefined}
-        deniedToolCallIds={commandActions.deniedToolCallIds.size > 0
-          ? commandActions.deniedToolCallIds
-          : undefined}
-        {toolCallPresentation}
-        onapprove={canApprove ? handleApprove : undefined}
-        ondeny={canDeny ? handleDeny : undefined}
-        reasoning={derivedReasoning}
-        entries={derivedEntries}
-        steps={derivedSteps}
-        suggestions={derivedSuggestions}
-        reasoningExpanded={reasoningState.isExpanded(message.id)}
-        onreasoning={() => reasoningState.toggle(message.id)}
-        stepsExpanded={stepsState.isExpanded(message.id)}
-        onsteps={() => stepsState.toggle(message.id)}
-        toolCallExpanded={toolCallState.isExpanded(message.id)}
-        ontoolcalltoggle={() => toolCallState.toggle(message.id)}
-        toolActivityActive={progressState === 'tool' && activeTurnMessageIds.has(message.id)}
-        onSuggestionSelect={handleSuggestionSelect}
-      >
-        {#snippet actions()}
-          {#if messageActions}
-            {@render messageActions(rowContext)}
+      {#snippet renderDefaultRow()}
+        {@const receipt =
+          message.role === 'user' ? readReceiptsState.getReceipt(message.id) : undefined}
+        {#snippet readReceiptMetadata()}
+          {#if receipt}
+            <ChatReadReceipt {receipt} />
           {/if}
         {/snippet}
-        {#snippet status()}
-          {#if messageStatus}
-            {@render messageStatus(rowContext)}
-          {/if}
-        {/snippet}
-      </ChatMessage>
-    {/snippet}
-
-    {#if row}
-      {@render row(rowContext, renderDefaultRow)}
-    {:else}
-      {@render renderDefaultRow()}
-    {/if}
-  {/snippet}
-
-  {#snippet renderChatRow(renderRow: ChatRenderRow)}
-    {#if renderRow.type === 'date'}
-      <ChatDateSeparator date={renderRow.date} />
-    {:else if renderRow.type === 'unread-divider'}
-      <div class="chat-unread-divider" role="separator" aria-label="New messages below">
-        <span class="chat-unread-divider-line" aria-hidden="true"></span>
-        <span class="chat-unread-divider-label">New</span>
-        <span class="chat-unread-divider-line" aria-hidden="true"></span>
-      </div>
-    {:else if renderRow.type === 'typing'}
-      {@render renderTypingIndicator()}
-    {:else if renderRow.type === 'tool-call-group'}
-      <ToolCallTimeline
-        messageId={renderRow.messages[0]!.id}
-        activityActive={progressState === 'tool' &&
-          renderRow.messages.some((message) => activeTurnMessageIds.has(message.id))}
-        describeToolCall={adapter?.describeToolCall
-          ? (pair) => describeToolCallSafely(pair.call, pair.result)
-          : undefined}
-        pairs={renderRow.messages.flatMap((message) => {
-          if (!message.toolCall?.id) return [];
-          const pairs = toolCallPairsByCallId.get(message.toolCall.id) ?? [];
-          const pair = pairs.find((candidate) => candidate.call === message.toolCall) ?? pairs[0];
-          return pair ? [pair] : [];
-        })}
-      />
-    {:else}
-      {@render renderMessageRow(renderRow)}
-    {/if}
-  {/snippet}
-
-  {#key timelineResetIdentity}
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div
-      bind:this={viewport}
-      id={timelineId}
-      class={classNames(
-        'chat-timeline',
-        scrollFadeVisible && 'cinder-_scroll-fade cinder-_scroll-fade-start',
-      )}
-      role="log"
-      aria-label="Messages"
-      aria-describedby={statusId}
-      aria-live={isVirtualized ? 'off' : 'polite'}
-      aria-relevant={isVirtualized ? undefined : 'additions'}
-      data-cinder-virtualized={isVirtualized ? '' : undefined}
-      data-cinder-history-restoring={isRestoringNonVirtualHistory ? '' : undefined}
-      tabindex="0"
-      onwheel={getHistoryRestoration().handleUserInput}
-      ontouchstart={getHistoryRestoration().handleUserInput}
-      onpointerdown={getHistoryRestoration().handleUserInput}
-      onfocusin={handleTimelineFocusIn}
-      onfocusout={handleTimelineFocusOut}
-      {@attach scrollAttachment}
-      {@attach getHistoryRestoration().historyAnchorScrollAttachment}
-      {@attach viewportAttach}
-      {@attach timelineScrollFadeAttachment}
-    >
-      {#if showHistoryTrigger}
-        <ChatHistoryTrigger
-          bind:this={historyTriggerRef}
-          loading={historyLifecycle.isLoading}
-          label={loadEarlierLabel}
-          loadingLabel={loadingEarlierLabel}
-          onLoad={() => void handleLoadHistory()}
-        />
-      {/if}
-
-      {#if messages.length === 0 && typingIndicatorState.participantCount === 0}
-        {#if empty}
-          {@render empty()}
-        {:else}
-          <div class="chat-empty" role="status">
-            <p>No messages yet</p>
-            {#if emptyPrompts && emptyPrompts.length > 0}
-              <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
-                {#each emptyPrompts as prompt, index (index)}
-                  <button
-                    type="button"
-                    class="chat-empty-prompt"
-                    onclick={() => handlePromptClick(prompt)}
-                  >
-                    {prompt}
-                  </button>
-                {/each}
-              </div>
+        <ChatMessage
+          {message}
+          {...receipt ? { metadata: readReceiptMetadata } : {}}
+          toolCallPairs={pairs}
+          {messagePart}
+          {markdownNode}
+          onretry={allowRetry && canRetry ? handleRetry : undefined}
+          onedit={allowEditing && canEdit ? handleEdit : undefined}
+          oneditingchange={(editing) => handleEditingChange(message.id, editing)}
+          onrollback={onrollback ? (messageId) => (rollbackMessageId = messageId) : undefined}
+          rollbackDiscarded={rollbackBoundaryIndex >= 0 &&
+            (messageIndexById.get(message.id) ?? -1) >= rollbackBoundaryIndex}
+          showDefaultActions={allowCopy}
+          {onExpandedChange}
+          streaming={isPresentingStreamingMessage}
+          overrideContent={isPresentingStreamingMessage ? streamingOverrideContent : undefined}
+          searchMatch={isCurrentSearchMatch}
+          tabindex={-1}
+          approvedToolCallIds={commandActions.approvedToolCallIds.size > 0
+            ? commandActions.approvedToolCallIds
+            : undefined}
+          deniedToolCallIds={commandActions.deniedToolCallIds.size > 0
+            ? commandActions.deniedToolCallIds
+            : undefined}
+          {toolCallPresentation}
+          onapprove={canApprove ? handleApprove : undefined}
+          ondeny={canDeny ? handleDeny : undefined}
+          reasoning={derivedReasoning}
+          entries={derivedEntries}
+          steps={derivedSteps}
+          suggestions={derivedSuggestions}
+          reasoningExpanded={reasoningState.isExpanded(message.id)}
+          onreasoning={() => reasoningState.toggle(message.id)}
+          stepsExpanded={stepsState.isExpanded(message.id)}
+          onsteps={() => stepsState.toggle(message.id)}
+          toolCallExpanded={toolCallState.isExpanded(message.id)}
+          ontoolcalltoggle={() => toolCallState.toggle(message.id)}
+          toolActivityActive={progressState === 'tool' && activeTurnMessageIds.has(message.id)}
+          onSuggestionSelect={handleSuggestionSelect}
+        >
+          {#snippet actions()}
+            {#if messageActions}
+              {@render messageActions(rowContext)}
             {/if}
+          {/snippet}
+          {#snippet status()}
+            {#if messageStatus}
+              {@render messageStatus(rowContext)}
+            {/if}
+          {/snippet}
+        </ChatMessage>
+        {#if artifact}
+          <div class="chat-artifact-actions" role="group" aria-label="Artifact actions">
+            {@render renderArtifactAction(artifact)}
           </div>
         {/if}
-      {:else if isVirtualized}
-        <div class="chat-virtual-spacer" style={virtualizedSpacerStyle()}>
-          {#each virtualRows as virtualRow (chatRenderRowKey(virtualRow.row))}
-            <div
-              class="chat-virtual-row"
-              data-cinder-virtual-index={virtualRow.virtualItem.index}
-              style={virtualizedRowStyle(virtualRow.virtualItem)}
-              {@attach virtualRowAttachment(virtualRow.row)}
-            >
-              {@render renderChatRow(virtualRow.row)}
-            </div>
-          {/each}
-        </div>
-      {:else}
-        {#key staticRowsResetIdentity}
-          {#each renderRows as renderRow (chatRenderRowKey(renderRow))}
-            {@render renderChatRow(renderRow)}
-          {/each}
-        {/key}
-      {/if}
+      {/snippet}
 
-      <!-- Per-participant typing indicator: above the bottom sentinel.
+      {#if row}
+        {@render row(rowContext, renderDefaultRow)}
+      {:else}
+        {@render renderDefaultRow()}
+      {/if}
+    {/snippet}
+
+    {#snippet renderChatRow(renderRow: ChatRenderRow)}
+      {#if renderRow.type === 'date'}
+        <ChatDateSeparator date={renderRow.date} />
+      {:else if renderRow.type === 'unread-divider'}
+        <div class="chat-unread-divider" role="separator" aria-label="New messages below">
+          <span class="chat-unread-divider-line" aria-hidden="true"></span>
+          <span class="chat-unread-divider-label">New</span>
+          <span class="chat-unread-divider-line" aria-hidden="true"></span>
+        </div>
+      {:else if renderRow.type === 'typing'}
+        {@render renderTypingIndicator()}
+      {:else if renderRow.type === 'tool-call-group'}
+        {@const artifacts = artifactsForToolCallMessages(renderRow.messages)}
+        <ToolCallTimeline
+          messageId={renderRow.messages[0]!.id}
+          activityActive={progressState === 'tool' &&
+            renderRow.messages.some((message) => activeTurnMessageIds.has(message.id))}
+          describeToolCall={adapter?.describeToolCall
+            ? (pair) => describeToolCallSafely(pair.call, pair.result)
+            : undefined}
+          pairs={renderRow.messages.flatMap((message) => {
+            if (!message.toolCall?.id) return [];
+            const pairs = toolCallPairsByCallId.get(message.toolCall.id) ?? [];
+            const pair = pairs.find((candidate) => candidate.call === message.toolCall) ?? pairs[0];
+            return pair ? [pair] : [];
+          })}
+        />
+        {#if artifacts.length > 0}
+          <div class="chat-artifact-actions" role="group" aria-label="Artifact actions">
+            {#each artifacts as artifact (artifact.id)}
+              {@render renderArtifactAction(artifact)}
+            {/each}
+          </div>
+        {/if}
+      {:else}
+        {@render renderMessageRow(renderRow)}
+      {/if}
+    {/snippet}
+
+    {#key timelineResetIdentity}
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <div
+        bind:this={viewport}
+        id={timelineId}
+        class={classNames(
+          'chat-timeline',
+          scrollFadeVisible && 'cinder-_scroll-fade cinder-_scroll-fade-start',
+        )}
+        role="log"
+        aria-label="Messages"
+        aria-describedby={statusId}
+        aria-live={isVirtualized ? 'off' : 'polite'}
+        aria-relevant={isVirtualized ? undefined : 'additions'}
+        data-cinder-virtualized={isVirtualized ? '' : undefined}
+        data-cinder-history-restoring={isRestoringNonVirtualHistory ? '' : undefined}
+        tabindex="0"
+        onwheel={getHistoryRestoration().handleUserInput}
+        ontouchstart={getHistoryRestoration().handleUserInput}
+        onpointerdown={getHistoryRestoration().handleUserInput}
+        onfocusin={handleTimelineFocusIn}
+        onfocusout={handleTimelineFocusOut}
+        {@attach scrollAttachment}
+        {@attach getHistoryRestoration().historyAnchorScrollAttachment}
+        {@attach viewportAttach}
+        {@attach timelineScrollFadeAttachment}
+      >
+        {#if showHistoryTrigger}
+          <ChatHistoryTrigger
+            bind:this={historyTriggerRef}
+            loading={historyLifecycle.isLoading}
+            label={loadEarlierLabel}
+            loadingLabel={loadingEarlierLabel}
+            onLoad={() => void handleLoadHistory()}
+          />
+        {/if}
+
+        {#if messages.length === 0 && typingIndicatorState.participantCount === 0}
+          {#if empty}
+            {@render empty()}
+          {:else}
+            <div class="chat-empty" role="status">
+              <p>No messages yet</p>
+              {#if emptyPrompts && emptyPrompts.length > 0}
+                <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
+                  {#each emptyPrompts as prompt, index (index)}
+                    <button
+                      type="button"
+                      class="chat-empty-prompt"
+                      onclick={() => handlePromptClick(prompt)}
+                    >
+                      {prompt}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        {:else if isVirtualized}
+          <div class="chat-virtual-spacer" style={virtualizedSpacerStyle()}>
+            {#each virtualRows as virtualRow (chatRenderRowKey(virtualRow.row))}
+              <div
+                class="chat-virtual-row"
+                data-cinder-virtual-index={virtualRow.virtualItem.index}
+                style={virtualizedRowStyle(virtualRow.virtualItem)}
+                {@attach virtualRowAttachment(virtualRow.row)}
+              >
+                {@render renderChatRow(virtualRow.row)}
+              </div>
+            {/each}
+          </div>
+        {:else}
+          {#key staticRowsResetIdentity}
+            {#each renderRows as renderRow (chatRenderRowKey(renderRow))}
+              {@render renderChatRow(renderRow)}
+            {/each}
+          {/key}
+        {/if}
+
+        <!-- Per-participant typing indicator: above the bottom sentinel.
            Always in DOM regardless of message count — the aria-live region must
            exist before the first update fires so screen readers receive the
            announcement even in an empty chat. The outer wrapper is always rendered;
@@ -1669,67 +1766,79 @@
            Virtualized path: sits outside the virtual spacer so it does not affect
            row measurement. The sentinel remains the last element so
            IntersectionObserver fires correctly when the typing region gains height. -->
-      <ChatParticipantTyping
-        typingLabel={typingIndicatorState.typingLabel}
-        participantCount={typingIndicatorState.participantCount}
+        <ChatParticipantTyping
+          typingLabel={typingIndicatorState.typingLabel}
+          participantCount={typingIndicatorState.participantCount}
+        />
+
+        <!-- Bottom sentinel for IntersectionObserver -->
+        <div class="chat-bottom-sentinel" aria-hidden="true" {@attach sentinelAttach}></div>
+      </div>
+    {/key}
+
+    <!-- Input Area with Jump Buttons -->
+    <div class="chat-input-wrapper">
+      <ChatJumpControls
+        showJumpButton={scrollState.showJumpButton}
+        hasNewMessageIndicator={unreadState.newMessageIndicatorVisible}
+        unreadCount={unreadState.unreadCount}
+        displayUnreadCount={unreadState.displayUnreadCount}
+        hasLargeCount={unreadState.hasLargeCount}
+        onjumptolatest={handleJumpToLatest}
       />
 
-      <!-- Bottom sentinel for IntersectionObserver -->
-      <div class="chat-bottom-sentinel" aria-hidden="true" {@attach sentinelAttach}></div>
+      <!-- Input Area -->
+      <div class="chat-input-area">
+        <ChatInput
+          id={inputId}
+          bind:this={inputRef}
+          onsubmit={(message, attachments) => handleSubmit(message, attachments)}
+          disabled={streaming}
+          sending={streaming}
+          {allowAttachments}
+          onstop={streaming ? handleStopGenerating : undefined}
+          {oncomposerinput}
+          {oncomposerkeydown}
+          {oncomposerselectionchange}
+          {oncomposerblur}
+          {composerRole}
+          {composerAriaExpanded}
+          {composerAriaControls}
+          {composerAriaActiveDescendant}
+          {composerAriaAutocomplete}
+          {onattachmentadd}
+          {onattachmentremove}
+          {onattachmentfailure}
+        />
+      </div>
     </div>
-  {/key}
 
-  <!-- Input Area with Jump Buttons -->
-  <div class="chat-input-wrapper">
-    <ChatJumpControls
-      showJumpButton={scrollState.showJumpButton}
-      hasNewMessageIndicator={unreadState.newMessageIndicatorVisible}
-      unreadCount={unreadState.unreadCount}
-      displayUnreadCount={unreadState.displayUnreadCount}
-      hasLargeCount={unreadState.hasLargeCount}
-      onjumptolatest={handleJumpToLatest}
+    <ChatStatusAnnouncer
+      {statusId}
+      messageCount={messages.length}
+      announcerMessage={politeAnnouncement}
+      assertiveMessage={assertiveAnnouncement}
     />
 
-    <!-- Input Area -->
-    <div class="chat-input-area">
-      <ChatInput
-        id={inputId}
-        bind:this={inputRef}
-        onsubmit={(message, attachments) => handleSubmit(message, attachments)}
-        disabled={streaming}
-        sending={streaming}
-        {allowAttachments}
-        onstop={streaming ? handleStopGenerating : undefined}
-        {oncomposerinput}
-        {oncomposerkeydown}
-        {oncomposerselectionchange}
-        {oncomposerblur}
-        {composerRole}
-        {composerAriaExpanded}
-        {composerAriaControls}
-        {composerAriaActiveDescendant}
-        {composerAriaAutocomplete}
-        {onattachmentadd}
-        {onattachmentremove}
-        {onattachmentfailure}
-      />
+    <!-- Typing-participant live region: outside role="log" to avoid double announcement.
+       (ChatStatusAnnouncer is similarly placed outside the log for the same reason.)
+       Text is empty when nobody is typing, debounced for brief-burst suppression. -->
+    <div class="cinder-sr-only" aria-live="polite" aria-atomic="true">
+      {typingIndicatorState.announcedLabel}
     </div>
   </div>
 
-  <ChatStatusAnnouncer
-    {statusId}
-    messageCount={messages.length}
-    announcerMessage={politeAnnouncement}
-    assertiveMessage={assertiveAnnouncement}
-  />
-
-  <!-- Typing-participant live region: outside role="log" to avoid double announcement.
-       (ChatStatusAnnouncer is similarly placed outside the log for the same reason.)
-       Text is empty when nobody is typing, debounced for brief-burst suppression. -->
-  <div class="cinder-sr-only" aria-live="polite" aria-atomic="true">
-    {typingIndicatorState.announcedLabel}
-  </div>
-</div>
+  {#snippet panel()}
+    {#if selectedArtifact}
+      <ArtifactViewer
+        type={selectedArtifact.type}
+        content={selectedArtifact.content}
+        title={selectedArtifact.title}
+        {...selectedArtifact.language === undefined ? {} : { language: selectedArtifact.language }}
+      />
+    {/if}
+  {/snippet}
+</ChatArtifactLayout>
 
 <ConfirmDialog
   open={rollbackMessageId !== null}
@@ -1879,6 +1988,56 @@
   /* Prevent non-last messages from being scroll anchors */
   .chat-timeline > :not(:last-child) {
     overflow-anchor: none;
+  }
+
+  .chat-artifact-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1);
+    max-inline-size: min(100%, var(--cinder-chat-message-max-width, 48rem));
+  }
+
+  .chat-artifact-action {
+    display: inline-flex;
+    align-items: center;
+    max-inline-size: min(100%, 24rem);
+    min-block-size: var(--cinder-touch-target-min);
+    padding: 0 var(--cinder-space-2);
+    color: var(--cinder-text-default);
+    background: var(--cinder-surface-raised);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-sm);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    text-align: start;
+  }
+
+  .chat-artifact-action__label {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (hover: hover) {
+    .chat-artifact-action:hover {
+      background: var(--cinder-surface-hover);
+      border-color: var(--cinder-border);
+    }
+  }
+
+  .chat-artifact-action:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width)
+      var(--_cinder-chat-artifact-action-ring, var(--cinder-ring-color));
+  }
+
+  @media (forced-colors: active) {
+    .chat-artifact-action:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
   }
 
   /* Empty State */
