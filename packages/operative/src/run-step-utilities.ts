@@ -162,7 +162,7 @@ export async function callGenerateWithRetry(
    * sealed before `generate.started`; minting a successor for it would
    * claim a context change that did not happen.
    */
-  sealMutatedEpoch?: ((mutatedContext: GenerateContext, attempt: number) => string) | undefined,
+  sealMutatedEpoch?: (mutatedContext: GenerateContext, attempt: number) => string,
 ): Promise<GenerateResponse> {
   if (!retry || retry.attempts <= 1) {
     return generate(context);

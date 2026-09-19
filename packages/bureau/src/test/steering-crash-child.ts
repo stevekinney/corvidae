@@ -33,7 +33,7 @@ if (storagePath === undefined || markerPath === undefined) {
 const bureau = await createBureau({
   agents: {},
   generate: () => new Promise<never>(() => {}),
-  toolbox: createToolbox([]) as never,
+  toolbox: createToolbox([]),
   storage: { type: 'sqlite', path: storagePath },
   durableExecution: true,
 });

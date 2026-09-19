@@ -4,6 +4,7 @@
  * Pure and synchronous: no sleeps, no timers, no provider call. Epoch ids
  * are injected so every assertion names the exact chain it is about.
  */
+import { createTestToolbox } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
@@ -253,16 +254,16 @@ describe('provider-retry mutation (COR-581 gap closure)', () => {
     };
 
     await callGenerateWithRetry(
-      generate as never,
-      { conversation, step: 0, toolbox: { tools: () => [] } } as never,
+      generate,
+      { conversation, step: 0, toolbox: createTestToolbox([]) },
       {
         attempts: 2,
         delay: 0,
-        mutate: (context: { conversation: Conversation }) => {
+        mutate: (context) => {
           context.conversation.appendUserMessage('mutated in');
-          return context as never;
+          return context;
         },
-      } as never,
+      },
       undefined,
       createDefaultRuntimeServices(),
       (mutatedContext, attempt) => {
@@ -297,9 +298,9 @@ describe('provider-retry mutation (COR-581 gap closure)', () => {
     };
 
     await callGenerateWithRetry(
-      generate as never,
-      { conversation, step: 0, toolbox: { tools: () => [] } } as never,
-      { attempts: 2, delay: 0 } as never,
+      generate,
+      { conversation, step: 0, toolbox: createTestToolbox([]) },
+      { attempts: 2, delay: 0 },
       undefined,
       createDefaultRuntimeServices(),
       () => {

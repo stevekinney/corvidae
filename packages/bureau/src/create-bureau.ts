@@ -6387,7 +6387,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // documents: `composePolicy`'s exact-override test needs provider and
       // model together and rejects routes outright, so a single-coordinate
       // request can never satisfy it.
-      let override: string | Effort | undefined = configurationRequest.override;
+      // `Effort` is a union of string literals, so `string` already
+      // covers every coordinate this can hold.
+      let override: string | undefined = configurationRequest.override;
       if (configurationRequest.policyRef !== undefined) {
         const profile = options.modelPolicy?.users?.[configurationRequest.policyRef];
         if (profile === undefined) {
@@ -6429,7 +6431,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         resolvedRequestedValue = (
           steeringTarget === 'effort'
             ? { target: 'effort', override: override as Effort }
-            : { target: steeringTarget, override: override as string }
+            : { target: steeringTarget, override }
         ) satisfies ImplementedSteeringCommand['requestedValue'];
       }
       const { descriptors } = modelCatalog.catalog();
