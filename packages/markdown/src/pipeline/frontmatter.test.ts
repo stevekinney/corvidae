@@ -298,6 +298,76 @@ describe('stringifyFrontMatter', () => {
     expect(parseFrontMatter(result).data).toEqual(data);
   });
 
+  test('uses block-style original raw order for quoted numeric-looking keys when preserving top-level insertion order', () => {
+    const originalRaw =
+      'first: one\n' +
+      '"2": two\n' +
+      '"tag: group #1": [alpha, beta]\n' +
+      '"quoted \\"key\\"": value\n' +
+      'nested:\n' +
+      '  "1": one\n' +
+      '  z: zee\n' +
+      'second: { "3": three, a: aye }\n';
+    const original = parseFrontMatter(`---\n${originalRaw}---\n\n# Content`);
+    if (!original.data) throw new Error('Expected original front matter data.');
+
+    const result = stringifyFrontMatter(
+      {
+        ...original.data,
+        second: { '3': 'three', a: 'updated' },
+      },
+      '\n# Content',
+      {
+        originalRaw,
+        originalData: original.data,
+        sortKeys: false,
+      },
+    );
+
+    expect(result).toBe(
+      '---\nfirst: one\n"2": two\n"tag: group #1": [alpha, beta]\n"quoted \\"key\\"": value\nnested:\n  "1": one\n  z: zee\nsecond:\n  "3": three\n  a: updated\n---\n\n# Content',
+    );
+    expect(parseFrontMatter(result).data).toEqual({
+      first: 'one',
+      '2': 'two',
+      'tag: group #1': ['alpha', 'beta'],
+      'quoted "key"': 'value',
+      nested: { '1': 'one', z: 'zee' },
+      second: { '3': 'three', a: 'updated' },
+    });
+  });
+
+  test('uses flow-style original raw order for quoted numeric-looking keys when preserving top-level insertion order', () => {
+    const originalRaw =
+      '{ first: one, "2": two, "tag: group #1": [alpha, beta], nested: { "1": one, z: zee }, second: { "3": three, a: aye } }';
+    const original = parseFrontMatter(`---\n${originalRaw}\n---\n\n# Content`);
+    if (!original.data) throw new Error('Expected original front matter data.');
+
+    const result = stringifyFrontMatter(
+      {
+        ...original.data,
+        second: { '3': 'three', a: 'updated' },
+      },
+      '\n# Content',
+      {
+        originalRaw,
+        originalData: original.data,
+        sortKeys: false,
+      },
+    );
+
+    expect(result).toBe(
+      '---\nfirst: one\n"2": two\n"tag: group #1": [alpha, beta]\nnested:\n  "1": one\n  z: zee\nsecond:\n  "3": three\n  a: updated\n---\n\n# Content',
+    );
+    expect(parseFrontMatter(result).data).toEqual({
+      first: 'one',
+      '2': 'two',
+      'tag: group #1': ['alpha', 'beta'],
+      nested: { '1': 'one', z: 'zee' },
+      second: { '3': 'three', a: 'updated' },
+    });
+  });
+
   test('preserves original raw when data unchanged', () => {
     const originalRaw = 'zebra: last\napple: first';
     const data = { zebra: 'last', apple: 'first' };

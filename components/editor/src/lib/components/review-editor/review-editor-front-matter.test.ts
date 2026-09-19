@@ -73,6 +73,19 @@ describe('review editor front matter helpers', () => {
     });
   });
 
+  test('preserves quoted numeric-looking key order when persisting an unrelated edit', () => {
+    const markdown = '---\nfirst: one\n"2": two\nsecond: two\n---\n\n# Architecture\n';
+    const parsed = parseReviewEditorFrontMatter(markdown);
+    if (!parsed.data) throw new Error('Expected parsed front matter data.');
+
+    const next = replaceFrontMatterData(markdown, {
+      ...parsed.data,
+      second: 'updated',
+    });
+
+    expect(next).toBe('---\nfirst: one\n"2": two\nsecond: updated\n---\n\n# Architecture\n');
+  });
+
   test('preserves comment-only raw text instead of collapsing it to an empty fence (cinder#1330 round-6 finding)', () => {
     // `FrontMatterFields`' raw-YAML textarea commits comment-only content
     // (`# TODO: fill this in`) as `data: null` -- the same shape genuinely

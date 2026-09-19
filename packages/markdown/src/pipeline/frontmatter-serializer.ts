@@ -1,7 +1,16 @@
+import { JSON_SCHEMA, load } from 'js-yaml';
 import { sortKeys as sortObjectKeys } from '../utilities/sort-keys.js';
 import type { FrontMatterSerializeOptions } from './types.js';
 
-type YamlSerializeOptions = Pick<FrontMatterSerializeOptions, 'sortKeys'>;
+type YamlSerializeOptions = Pick<FrontMatterSerializeOptions, 'sortKeys'> & {
+  keyOrder?: string[];
+};
+
+type ListenerNode = {
+  children: ListenerNode[];
+  kind?: string | null;
+  result?: unknown;
+};
 
 const sortedKeyOptions: YamlSerializeOptions = { sortKeys: true };
 
@@ -58,7 +67,12 @@ export function stringifyFrontMatter(
   } else {
     // Generate new YAML. Deterministic top-level key ordering remains the
     // default; edit flows can opt into the parsed mapping's insertion order.
-    yamlContent = serializeYaml(data, { sortKeys });
+    const serializeOptions: YamlSerializeOptions = { sortKeys };
+    const keyOrder =
+      !sortKeys && originalRaw ? recoverTopLevelKeyOrder(originalRaw, originalData) : undefined;
+    if (keyOrder) serializeOptions.keyOrder = keyOrder;
+
+    yamlContent = serializeYaml(data, serializeOptions);
   }
 
   // Combine front matter and body
@@ -204,7 +218,63 @@ function formatValue(value: unknown): string {
 
 function getOrderedKeys(data: Record<string, unknown>, options: YamlSerializeOptions): string[] {
   const keys = Object.keys(data);
+  if (options.sortKeys === false && options.keyOrder) {
+    const seenKeys = new Set<string>();
+    const orderedKeys = options.keyOrder.filter((key) => {
+      if (!Object.hasOwn(data, key) || seenKeys.has(key)) return false;
+      seenKeys.add(key);
+      return true;
+    });
+
+    orderedKeys.push(
+      ...keys.filter((key) => {
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      }),
+    );
+
+    return orderedKeys;
+  }
   return options.sortKeys === false ? keys : keys.toSorted();
+}
+
+function recoverTopLevelKeyOrder(
+  raw: string,
+  originalData: Record<string, unknown> | null | undefined,
+): string[] | undefined {
+  const stack: ListenerNode[] = [];
+  const completed: ListenerNode[] = [];
+
+  try {
+    const loaded = load(raw, {
+      schema: JSON_SCHEMA,
+      listener(_event, state) {
+        if (_event === 'open') {
+          stack.push({ children: [] });
+          return;
+        }
+
+        const node = stack.pop() ?? { children: [] };
+        node.kind = state.kind;
+        node.result = state.result;
+        completed.push(node);
+        stack.at(-1)?.children.push(node);
+      },
+    });
+
+    if (!isRecord(loaded) || !originalData || !dataEquals(loaded, originalData)) return undefined;
+
+    const rootMapping = [...completed, ...stack]
+      .filter((node) => node.kind === 'mapping' && node.result === loaded)
+      .toSorted((left, right) => right.children.length - left.children.length)[0];
+
+    return rootMapping?.children
+      .filter((_, index) => index % 2 === 0)
+      .map((node) => String(node.result));
+  } catch {
+    return undefined;
+  }
 }
 
 function formatYamlKey(key: string): string {
