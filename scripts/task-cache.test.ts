@@ -85,11 +85,11 @@ async function run(
     : command;
   const fixtureEnvironment = { ...environment };
   if (isTurbo) {
-    delete fixtureEnvironment.TURBO_API;
-    delete fixtureEnvironment.TURBO_TOKEN;
-    delete fixtureEnvironment.TURBO_TEAM;
-    delete fixtureEnvironment.TURBO_TEAMID;
-    delete fixtureEnvironment.TURBO_CACHE;
+    delete fixtureEnvironment['TURBO_API'];
+    delete fixtureEnvironment['TURBO_TOKEN'];
+    delete fixtureEnvironment['TURBO_TEAM'];
+    delete fixtureEnvironment['TURBO_TEAMID'];
+    delete fixtureEnvironment['TURBO_CACHE'];
   }
   const child = Bun.spawn(fixtureCommand, {
     cwd: directory,
