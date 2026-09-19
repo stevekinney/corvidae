@@ -1529,6 +1529,22 @@ export interface RuntimeComposition {
    * resolve a backend and do not own its lifecycle).
    */
   disposeStorage: (() => void) | undefined;
+  /**
+   * The resolved durable `Storage` backend itself, when one exists.
+   *
+   * Distinct from `kv`, which is a `ConditionalTextValueStore` *view* over
+   * this same backend: a `Mailbox` needs the raw `Storage` because it
+   * commits its own state transitions through `conditionalBatch`, which
+   * the text-value view does not expose. Distinct from `disposeStorage`,
+   * which closes the handle without lending it out.
+   *
+   * `undefined` when no persistent backend resolved — the caller is then
+   * genuinely non-durable and must not pretend otherwise.
+   *
+   * Lifecycle stays with this composition: a borrower uses the handle and
+   * never disposes it, because `disposeStorage` above is what owns that.
+   */
+  durableStorage: Storage | undefined;
   memory: Memory | undefined;
   sessionStore: SessionStore | undefined;
   scheduler: Scheduler | undefined;
@@ -3194,6 +3210,7 @@ export async function createRuntimeComposition(
     scheduleFireEvents,
     disposeStorage:
       durableStorage && ownsDurableStorage ? () => durableStorage[Symbol.dispose]() : undefined,
+    durableStorage,
     memory,
     sessionStore,
     scheduler,

@@ -28,7 +28,6 @@ import {
   createFlowController,
   createModelCatalog,
   createRecoveredRunEventSurface,
-  type Effort,
   createRunFinishedFrame,
   createRunStartedFrame,
   createStore,
@@ -37,6 +36,7 @@ import {
   type DurableEventOwner,
   type DurableEventPage,
   type DurableRunDeps,
+  type Effort,
   type FlowController,
   hasDefinitionResolver,
   HumanWaitParkedEvent,
@@ -170,6 +170,13 @@ import {
   serializeUnknownError,
 } from './serialization';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
+import { Mailbox } from '@corvidae/weft';
+
+import {
+  createSteeringMailbox,
+  persistSteeringCommand,
+  recoverSteeringCommands,
+} from './steering-durability';
 import {
   type BureauSteeringGate,
   createSteeringCommandLedger,
@@ -1340,6 +1347,83 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // `deleteSession` below) so a reused session id never inherits a deleted
   // session's pause state / command history / applied floor.
   const steeringGates = new Map<string, BureauSteeringGate>();
+  /**
+   * AB-200 — one steering mailbox per session, for a durably-configured
+   * bureau. Cached because a `Mailbox` holds its own storage-scoped state
+   * and constructing a second one for the same `(namespace, resourceId)`
+   * would defeat the FIFO ordering that is the point of using one.
+   */
+  const steeringMailboxes = new Map<string, Mailbox>();
+  /**
+   * Sessions whose durable steering log has already been drained into a
+   * gate in this process. Recovery is once per session per boot: the
+   * mailbox is consumed by draining, so a second pass would find nothing
+   * and a concurrent second pass could interleave two replays of the same
+   * command into one gate.
+   */
+  const steeringRecovered = new Set<string>();
+
+  /** `undefined` for a non-durable bureau — nothing to persist against. */
+  function getSteeringMailbox(sessionId: string): Mailbox | undefined {
+    const storage = runtime.durableStorage;
+    if (!runtime.durable || storage === undefined) return undefined;
+    let mailbox = steeringMailboxes.get(sessionId);
+    if (!mailbox) {
+      mailbox = createSteeringMailbox(storage, sessionId);
+      steeringMailboxes.set(sessionId, mailbox);
+    }
+    return mailbox;
+  }
+
+  /**
+   * Resolves this session's gate, replaying its durable steering log into
+   * a freshly-created one first.
+   *
+   * Recovery is lazy rather than a boot sweep, and deliberately: a bureau
+   * may hold thousands of sessions whose steering logs are empty, and
+   * draining every one at startup would pay for all of them to recover the
+   * few that need it. The first steering operation on a session after a
+   * restart is exactly when its log matters.
+   */
+  async function ensureSteeringGate(
+    sessionId: string,
+    liveRunIds: readonly string[],
+  ): Promise<BureauSteeringGate> {
+    const existing = steeringGates.get(sessionId);
+    if (existing) return existing;
+
+    const gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
+    steeringGates.set(sessionId, gate);
+
+    const mailbox = getSteeringMailbox(sessionId);
+    if (mailbox !== undefined && !steeringRecovered.has(sessionId)) {
+      steeringRecovered.add(sessionId);
+      const now = runtimeServices.clock.nowISO();
+      for (const recovered of await recoverSteeringCommands(mailbox)) {
+        // Replayed through the gate's ordinary admission, not a private
+        // back door, so a recovered command is subject to every invariant
+        // a live one is. A pause bound to a run this process no longer has
+        // is correctly rejected `run-terminal` — the run genuinely ended.
+        gate.admit(
+          {
+            id: recovered.id,
+            idOrigin: 'caller',
+            sessionId: recovered.sessionId,
+            principal: recovered.principal,
+            requestedValue: recovered.requestedValue,
+            requestedAt: recovered.requestedAt,
+            ...(recovered.expectedRevision !== undefined
+              ? { expectedRevision: recovered.expectedRevision }
+              : {}),
+            ...(recovered.deadline !== undefined ? { deadline: recovered.deadline } : {}),
+            ...(recovered.runId !== undefined ? { runId: recovered.runId } : {}),
+          },
+          { liveRunIds, now },
+        );
+      }
+    }
+    return gate;
+  }
   // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
   // every session's gate shares (see `steering.ts`'s `createSteeringGate`
   // `ledger` parameter doc comment): a same-`(principal, id)` retry against
@@ -6151,7 +6235,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (steeringTarget === 'agent-identity' && request.requestedValue.policyRef !== undefined) {
       return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
     }
-    if (runtime.durable) {
+    // A durably-configured bureau with no resolved storage backend cannot
+    // persist a command, and admitting one into the in-memory gate would
+    // silently lose it on restart — exactly what the durable contract
+    // exists to prevent. That combination is not reachable through normal
+    // composition (durable execution resolves ON only when a persistent
+    // backend is configured), so this stays a guard rather than a path.
+    if (runtime.durable && runtime.durableStorage === undefined) {
       return { outcome: 'unsupported-capability', reason: 'durable-steering-unavailable' };
     }
     // `SteeringRequestedValue`'s own contract: an agent-identity `override`
@@ -6248,11 +6338,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
 
-    let gate = steeringGates.get(sessionId);
-    if (!gate) {
-      gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
-      steeringGates.set(sessionId, gate);
-    }
+    const gate = await ensureSteeringGate(sessionId, liveRunIds);
 
     const now = runtimeServices.clock.nowISO();
     const id = request.id ?? runtimeServices.identifiers.next('steering-command');
@@ -6273,6 +6359,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...(request.deadline !== undefined ? { deadline: request.deadline } : {}),
       ...(request.runId !== undefined ? { runId: request.runId } : {}),
     };
+
+    // AB-200 durable steering: persist BEFORE admitting into desired
+    // state. A crash between the two then loses nothing — recovery finds
+    // the command still unconsumed and replays it. The reverse order
+    // would put a command into desired state that no restart could
+    // recover, which is precisely the failure the durable contract exists
+    // to rule out.
+    const steeringMailbox = getSteeringMailbox(sessionId);
+    if (steeringMailbox !== undefined) {
+      const persistence = await persistSteeringCommand(steeringMailbox, command);
+      if (!persistence.persisted && persistence.reason !== 'idempotency-identity-mismatch') {
+        // Backlog exhaustion: nothing was written, so nothing may enter
+        // desired state either.
+        return { outcome: 'unsupported-capability', reason: persistence.reason };
+      }
+      // A mailbox idempotency conflict deliberately falls through to the
+      // gate rather than returning here. The gate's ledger is the
+      // authority on conflict *shape* — only it holds the original
+      // command's snapshot, which `SteeringCommandConflict` requires — and
+      // after a restart that ledger is rebuilt by the recovery replay
+      // above, so it can still describe the original. The mailbox
+      // conflict and the gate conflict are the same fact seen twice; the
+      // gate reports it in the contract's own terms.
+    }
 
     const outcome = gate.admit(command, { liveRunIds, now });
     // AB-68: give `steering.accepted` its first production dispatch site.

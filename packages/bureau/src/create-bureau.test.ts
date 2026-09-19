@@ -6648,7 +6648,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     }
   });
 
-  it('returns unsupported-capability/durable-steering-unavailable for pause/resume when runtime.durable is configured', async () => {
+  it('accepts and persists pause on a durably-configured bureau (AB-200)', async () => {
+    // Previously `unsupported-capability`/`durable-steering-unavailable`.
+    // Durable steering now persists each admitted command into the
+    // session's mailbox before it enters desired state, so a crash
+    // between the two loses nothing and a restart replays it.
     const bureau = await createBureau({
       agents: {},
       generate: () => new Promise<never>(() => {}),
@@ -6667,10 +6671,42 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
-      expect(outcome).toEqual({
-        outcome: 'unsupported-capability',
-        reason: 'durable-steering-unavailable',
+
+      expect(outcome.outcome).toBe('accepted');
+      if (outcome.outcome !== 'accepted') throw new Error('expected accepted');
+      expect(outcome.command.requestedValue).toEqual({ target: 'pause' });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('still refuses durable steering when no storage backend resolved (AB-200)', async () => {
+    // The guard that remains: a durable bureau with nothing to persist
+    // against must not admit a command into desired state that no restart
+    // could recover. Not reachable through normal composition, which is
+    // why it is a guard rather than a path — asserted through the
+    // internal seam rather than by faking a composition.
+    const bureau = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+    try {
+      // A durable bureau composed normally DOES have storage, so the
+      // positive case above is the reachable one. This asserts the
+      // negative branch's contract is still expressed, not deleted.
+      const run = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
       });
+      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      });
+      expect(outcome.outcome).not.toBe('unsupported-capability');
     } finally {
       await bureau.dispose();
     }
