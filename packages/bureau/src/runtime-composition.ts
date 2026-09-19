@@ -2225,6 +2225,12 @@ export async function createRuntimeComposition(
           // COR-767 — the tools have no view of the owning run or session, so
           // the correlation is stamped here, where both are in scope.
           events: skillEvents,
+          // COR-752, Decision 1 — the same policy that filters the catalog now
+          // gates activation. Previously it filtered only the listing, so a
+          // denied skill remained activatable by name.
+          ...(options.skills.skillPolicy !== undefined
+            ? { admissionPolicy: options.skills.skillPolicy }
+            : {}),
           correlation: {
             ...(request.runId !== undefined ? { runId: request.runId } : {}),
             sessionId: request.sessionId,

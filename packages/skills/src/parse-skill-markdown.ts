@@ -125,13 +125,21 @@ function optionalMetadata(data: Record<string, unknown>, metadata: SkillMetadata
 }
 
 function addToolPolicy(data: Record<string, unknown>, metadata: SkillMetadata): void {
+  // COR-752, Decision 2: `allowed-tools` may only narrow authority the run
+  // already has. A portable top-level `denied-tools` is NOT honoured — a skill
+  // author must not be able to disable a tool for the agent that loaded it,
+  // because that lets untrusted content suppress a safety-relevant tool. Native
+  // deny policy lives in Bureau configuration instead.
+  //
+  // The key is read and discarded rather than made a parse error. Rejecting it
+  // outright would make previously-loadable skills fail to load with no repair
+  // path, and the diagnostic-import mode that would give authors one does not
+  // exist yet (COR-752, Decision 6). Turning this into a hard conformance
+  // failure belongs with that mode. What matters for security is already true
+  // here: the key confers no authority.
   const allowList = parseToolList(data['allowed-tools']);
-  const denyList = parseToolList(data['denied-tools']);
-  if (allowList.length === 0 && denyList.length === 0) return;
-  metadata.toolPolicy = {
-    ...(allowList.length > 0 ? { allowList } : {}),
-    ...(denyList.length > 0 ? { denyList } : {}),
-  };
+  if (allowList.length === 0) return;
+  metadata.toolPolicy = { allowList };
 }
 
 function addCustomMetadata(data: Record<string, unknown>, metadata: SkillMetadata): void {
@@ -207,8 +215,10 @@ function addSerializedToolPolicy(
 ): void {
   const allowList = metadata.toolPolicy?.allowList;
   if (allowList?.length) frontmatterData['allowed-tools'] = allowList.join(', ');
-  const denyList = metadata.toolPolicy?.denyList;
-  if (denyList?.length) frontmatterData['denied-tools'] = denyList.join(', ');
+  // No `denied-tools` round trip: the portable key is not honoured on the way
+  // in (see `addToolPolicy`), so writing it back out would re-publish a
+  // declaration this package refuses to act on. A `denyList` reaching here came
+  // from native configuration, which is not portable frontmatter's to carry.
 }
 
 function addSerializedCustomMetadata(
