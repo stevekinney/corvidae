@@ -29,8 +29,10 @@ import {
 } from './engine/validation/schedule.ts';
 import {
   CleanupWarningEvent,
+  ScheduleAttemptedEvent,
   ScheduleFiredEvent,
   ScheduleMissedFireEvent,
+  ScheduleSkippedEvent,
   WorkflowCancelledEvent,
   WorkflowCompletedEvent,
   WorkflowFailedEvent,
@@ -1684,6 +1686,138 @@ describe('recurring schedules', () => {
       secondEngine?.[Symbol.dispose]();
       errorSpy.mockRestore();
     }
+  });
+
+  it('dispatches schedule:attempted once per tick, before the overlap decision, and schedule:skipped only on a blocked collision (WFT-136)', async () => {
+    const clock = { now: Date.UTC(2026, 0, 1, 0, 0, 0) };
+    const engine = createEngine(clock);
+
+    registerWorkflow(engine, 'observed-skip', async function* (ctx: WorkflowContext) {
+      yield* ctx.waitForSignal('release');
+      return 'released';
+    });
+
+    const observed: string[] = [];
+    const attempted: ScheduleAttemptedEvent[] = [];
+    const skipped: ScheduleSkippedEvent[] = [];
+    engine.addEventListener(ScheduleAttemptedEvent.type, (event) => {
+      observed.push(event.type);
+      attempted.push(event);
+    });
+    engine.addEventListener(ScheduleFiredEvent.type, (event) => {
+      observed.push(event.type);
+    });
+    engine.addEventListener(ScheduleSkippedEvent.type, (event) => {
+      observed.push(event.type);
+      skipped.push(event);
+    });
+
+    const schedule = await engine.schedule('observed-skip', null, '* * * * *', {
+      id: 'observed-skip-schedule',
+      overlap: 'skip',
+    });
+
+    const firstOccurrence = requireNextFireAt(await schedule.describe());
+    await tickEngine(engine, clock, firstOccurrence);
+    const [blockingWorkflowId] = await listRunningWorkflowIds(engine);
+    expect(blockingWorkflowId).toBeDefined();
+
+    const secondOccurrence = requireNextFireAt(await schedule.describe());
+    await tickEngine(engine, clock, secondOccurrence);
+
+    // The collision drops the occurrence: still exactly one run, and the
+    // attempted signal is what distinguishes this from a stopped schedule.
+    expect(await listRunningWorkflowIds(engine)).toEqual([blockingWorkflowId!]);
+    expect(observed).toEqual([
+      ScheduleAttemptedEvent.type,
+      ScheduleFiredEvent.type,
+      ScheduleAttemptedEvent.type,
+      ScheduleSkippedEvent.type,
+    ]);
+
+    expect(attempted.map((event) => event.occurrence)).toEqual([firstOccurrence, secondOccurrence]);
+    expect(attempted.map((event) => event.scheduleId)).toEqual([
+      'observed-skip-schedule',
+      'observed-skip-schedule',
+    ]);
+    expect(attempted.map((event) => event.attemptedAt)).toEqual([
+      firstOccurrence,
+      secondOccurrence,
+    ]);
+
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]).toMatchObject({
+      scheduleId: 'observed-skip-schedule',
+      occurrence: secondOccurrence,
+      skippedAt: secondOccurrence,
+      blockingWorkflowId,
+      policy: 'skip',
+    });
+
+    await releaseRunningWorkflows(engine);
+    engine[Symbol.dispose]();
+  });
+
+  it('dispatches schedule:attempted with no schedule:skipped when a tick has no collision to block (WFT-136)', async () => {
+    const clock = { now: Date.UTC(2026, 0, 1, 0, 0, 0) };
+    const engine = createEngine(clock);
+
+    registerWorkflow(engine, 'observed-uncontended', async function* () {
+      return 'done';
+    });
+
+    const attempted: ScheduleAttemptedEvent[] = [];
+    const skipped: ScheduleSkippedEvent[] = [];
+    engine.addEventListener(ScheduleAttemptedEvent.type, (event) => attempted.push(event));
+    engine.addEventListener(ScheduleSkippedEvent.type, (event) => skipped.push(event));
+
+    const schedule = await engine.schedule('observed-uncontended', null, '* * * * *', {
+      id: 'observed-uncontended-schedule',
+      overlap: 'skip',
+    });
+
+    await tickEngine(engine, clock, requireNextFireAt(await schedule.describe()));
+    await tickEngine(engine, clock, requireNextFireAt(await schedule.describe()));
+
+    expect(attempted).toHaveLength(2);
+    expect(skipped).toEqual([]);
+
+    engine[Symbol.dispose]();
+  });
+
+  it('dispatches schedule:attempted without schedule:skipped when a queue-overlap collision buffers the occurrence (WFT-136)', async () => {
+    const clock = { now: Date.UTC(2026, 0, 1, 0, 0, 0) };
+    const engine = createEngine(clock);
+
+    registerWorkflow(engine, 'observed-queue', async function* (ctx: WorkflowContext) {
+      yield* ctx.waitForSignal('release');
+      return 'released';
+    });
+
+    const attempted: ScheduleAttemptedEvent[] = [];
+    const skipped: ScheduleSkippedEvent[] = [];
+    engine.addEventListener(ScheduleAttemptedEvent.type, (event) => attempted.push(event));
+    engine.addEventListener(ScheduleSkippedEvent.type, (event) => skipped.push(event));
+
+    const schedule = await engine.schedule('observed-queue', null, '* * * * *', {
+      id: 'observed-queue-schedule',
+      overlap: 'queue',
+    });
+
+    await tickEngine(engine, clock, requireNextFireAt(await schedule.describe()));
+    expect(await listRunningWorkflowIds(engine)).toHaveLength(1);
+
+    await tickEngine(engine, clock, requireNextFireAt(await schedule.describe()));
+
+    // Buffered, not dropped — a queued occurrence still runs later, so it is
+    // not a skip.
+    expect(attempted).toHaveLength(2);
+    expect(skipped).toEqual([]);
+    const queuedDescription = await schedule.describe();
+    expect(queuedDescription.queuedRuns).toHaveLength(1);
+
+    await releaseRunningWorkflows(engine);
+    engine[Symbol.dispose]();
   });
 
   it("Overlap policy is configurable. { overlap: 'skip' } does not start a new run while the previous run is still executing.", async () => {

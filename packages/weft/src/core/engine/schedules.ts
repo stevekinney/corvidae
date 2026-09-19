@@ -1,6 +1,7 @@
 import type { BatchOperation } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { decode } from '../codec.ts';
+import { ScheduleAttemptedEvent } from '../events.ts';
 import type {
   PaginatedResult,
   ScheduleFilter,
@@ -398,6 +399,15 @@ export async function applyScheduleOccurrence(
   callbacks: ScheduleCallbacks,
   occurrence?: number,
 ): Promise<ScheduleState> {
+  // WFT-136/COR-105: the one observation point every occurrence passes through,
+  // dispatched before the overlap policy is consulted so a consumer sees the
+  // tick itself rather than only the outcomes that launch a run. The blocked
+  // policies deliberately do not emit `schedule:fired`, so without this a
+  // `skip` collision and a stopped schedule look identical from outside.
+  internals.engine.dispatchEvent(
+    new ScheduleAttemptedEvent(state.id, internals.options.getNow(), occurrence),
+  );
+
   const { state: refreshedState, currentWorkflowState } =
     await callbacks.refreshScheduledWorkflowState(state);
   let stateForOccurrence = refreshedState;
