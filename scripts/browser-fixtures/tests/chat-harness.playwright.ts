@@ -40,7 +40,7 @@ const privateHistoryPrependStressFixture = chatEntry.fixtures?.find(
 );
 
 function themeInitScriptPayload(colorScheme: 'dark' | 'light'): [string, string, string] {
-  const baseUrl = environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577';
+  const baseUrl = environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN;
   return [THEME_STORAGE_KEY, colorScheme, new URL(baseUrl).origin];
 }
 
@@ -867,7 +867,7 @@ test.describe('chat harness — mounts cleanly', () => {
     const cinderCardCounts: number[] = [];
     for (const colorScheme of ['dark', 'light'] as const) {
       const context = await browser.newContext({
-        baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+        baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
         colorScheme,
         reducedMotion: 'reduce',
         viewport: { width: 1280, height: 900 },

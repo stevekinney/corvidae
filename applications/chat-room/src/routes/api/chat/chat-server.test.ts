@@ -2,6 +2,8 @@ import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import type { SignedPendingToolApproval, ToolExecutionResult } from '@corvidae/armorer';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { z } from 'zod';
 import { updatePendingApproval } from '../../../lib/pending-approval.ts';
 import { requestContext, toolbox } from '../../../lib/toolbox.ts';
 import type { RequestEvent } from './resume/$types';
@@ -262,28 +264,47 @@ describe('chat approval continuation response', () => {
   });
 
   test('rejects top-level signed input actions before resolving approvals', async () => {
-    const inputAction = {
-      callId: 'call-input',
-      toolName: 'remember_note',
-      arguments: { text: 'before' },
-      action: {
-        type: 'input' as const,
-        message: 'Provide more input',
-        schema: { type: 'object', properties: { text: { type: 'string' } } },
+    let executedCount = 0;
+    const inputTool = createTool({
+      name: 'needs_input_endpoint_guard',
+      version: '1.0.0',
+      description: 'Endpoint input action guard fixture',
+      input: z.object({ text: z.string() }),
+      policy: {
+        beforeExecute: () => ({
+          status: 'needs_input',
+          reason: 'Provide more input',
+          action: {
+            message: 'Provide more input',
+            schema: { type: 'object', properties: { text: { type: 'string' } } },
+          },
+        }),
       },
-      approvalToken: 'token-input',
-    } satisfies SignedPendingToolApproval;
+      execute: async () => {
+        executedCount += 1;
+        return { executed: true };
+      },
+    });
+    const inputToolbox = createToolbox([inputTool], { approvalSecret: 'endpoint-input-secret' });
+    const parked = await inputToolbox.execute(
+      { id: 'call-input', name: inputTool.name, arguments: { text: 'before' } },
+      { requestContext },
+    );
+    if (!hasSignedPendingApproval(parked)) throw new Error('Expected a signed input descriptor.');
+    expect(parked.pendingApproval.action.type).toBe('input');
+    expect(executedCount).toBe(0);
     const resolveApproval = spyOn(toolbox, 'resolveApproval');
 
     try {
       const response = await post({
-        approval: inputAction,
+        approval: parked.pendingApproval,
         resolution: { decision: 'approve', remember: false },
       });
 
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ error: 'Invalid request body' });
       expect(resolveApproval).not.toHaveBeenCalled();
+      expect(executedCount).toBe(0);
     } finally {
       resolveApproval.mockRestore();
     }

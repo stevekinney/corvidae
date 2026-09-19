@@ -253,7 +253,7 @@ describe('approval resolution foundation metadata', () => {
       let executedCount = 0;
       let firstPolicyCheck = true;
       const innerStore = createProcessLocalApprovalStateStore();
-      const approvalStateCounts = { reserve: 0, revoke: 0, consume: 0 };
+      const approvalStateCounts = { reserve: 0, revoke: 0, consume: 0, commit: 0 };
       const approvalStateStore: ApprovalStateStore = {
         ...innerStore,
         async reserve(binding, context, validationTime) {
@@ -267,6 +267,10 @@ describe('approval resolution foundation metadata', () => {
         async consume(binding, context, validationTime) {
           approvalStateCounts.consume += 1;
           await innerStore.consume(binding, context, validationTime);
+        },
+        async commit(binding) {
+          approvalStateCounts.commit += 1;
+          await innerStore.commit(binding);
         },
       };
       const tool = createTool({
@@ -288,9 +292,9 @@ describe('approval resolution foundation metadata', () => {
             };
           },
         },
-        execute: async () => {
+        execute: async ({ value }) => {
           executedCount += 1;
-          return 'executed';
+          return value;
         },
       });
       const toolbox = createToolbox([tool], { approvalSecret, approvalStateStore });
@@ -312,7 +316,18 @@ describe('approval resolution foundation metadata', () => {
       ).rejects.toThrow('Approval resolution requires an approval action.');
 
       expect(executedCount).toBe(0);
-      expect(approvalStateCounts).toEqual({ reserve: 0, revoke: 0, consume: 0 });
+      expect(approvalStateCounts).toEqual({ reserve: 0, revoke: 0, consume: 0, commit: 0 });
+
+      const continuedValue = decision === 'approve_with_edits' ? 'after' : 'continued';
+      const resumed = await toolbox.resumeApproval(signedInputAction, {
+        requestContext: createRequestContext(),
+        arguments: { value: continuedValue },
+      });
+
+      expect(resumed.outcome).toBe('success');
+      expect(resumed.result).toBe(continuedValue);
+      expect(executedCount).toBe(1);
+      expect(approvalStateCounts).toEqual({ reserve: 1, revoke: 0, consume: 0, commit: 1 });
     },
   );
 
