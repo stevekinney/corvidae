@@ -413,7 +413,17 @@ export const checkRunCompletionAttempts = 180;
 const passingConclusions = new Set(['success', 'skipped', 'neutral']);
 
 /** Why the poll stopped. */
-export type CheckRunWaitStop = 'completed' | 'never-appeared' | 'never-completed';
+export type CheckRunWaitStop =
+  'completed' | 'never-appeared' | 'never-completed' | 'never-stabilised';
+
+/** Whether two polls saw the same check runs, by name rather than by how many there were. */
+function sameCheckRuns(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) return false;
+  for (const name of left) {
+    if (!right.has(name)) return false;
+  }
+  return true;
+}
 
 export interface CheckRunWait {
   stop: CheckRunWaitStop;
@@ -434,6 +444,17 @@ export interface CheckRunWait {
  * Neither bound elapsing is a shrug. This function reports which bound it hit and
  * `assertCheckRunsPassed` turns both into refusals: a driver that stops waiting and calls the
  * result a pass is the same false green as one that never looked at a conclusion.
+ *
+ * "Every registered check run" is the trap, and it is the same false green a third time. GitHub
+ * registers a check run when its job starts, not when the pull request opens, so a snapshot is
+ * only the whole set once the set has stopped growing. A live run of this driver saw `enforce`
+ * and `format-check` complete while eighteen other checks had not yet registered; a poll landing
+ * a few seconds earlier would have read two completed, passing checks, called CI settled, and
+ * exited 0 having observed almost none of it. So settling requires the same check runs — compared
+ * by name, because two polls that both show twenty are not the same observation if one name
+ * appeared and another vanished — across two consecutive polls. A set that never repeats inside
+ * the completion bound is its own refusal rather than a fall-through to whatever the last poll
+ * held, which means confirmation needs at least two polls to be possible at all.
  */
 export async function waitForCheckRuns(options: {
   api: GitHubApi;
@@ -453,11 +474,24 @@ export async function waitForCheckRuns(options: {
   const delay = options.delayMilliseconds ?? checkRunPollDelayMilliseconds;
   const sleep = options.sleep ?? ((milliseconds) => Bun.sleep(milliseconds));
   let latest: readonly CheckRunRecord[] = [];
+  let settledOnce = false;
+  // The names from the previous poll, and only while that poll showed every check completed. A
+  // poll that shows anything unfinished clears it, because a check that just registered means the
+  // set is growing again and an earlier agreement says nothing about the set that is arriving.
+  let previous: ReadonlySet<string> | undefined;
   for (let attempt = 1; attempt <= completion; attempt += 1) {
     latest = await options.api.readCheckRuns(options.scratchRepository, options.ref);
     const waitedMilliseconds = (attempt - 1) * delay;
+    const names = new Set(latest.map((check) => check.name));
     if (latest.length > 0 && latest.every((check) => check.status === 'completed')) {
-      return { stop: 'completed', checkRuns: latest, waitedMilliseconds };
+      settledOnce = true;
+      if (previous && sameCheckRuns(previous, names)) {
+        return { stop: 'completed', checkRuns: latest, waitedMilliseconds };
+      }
+      previous = names;
+    } else {
+      settledOnce = false;
+      previous = undefined;
     }
     if (latest.length === 0 && attempt >= appearance) {
       return { stop: 'never-appeared', checkRuns: latest, waitedMilliseconds };
@@ -465,7 +499,11 @@ export async function waitForCheckRuns(options: {
     if (attempt < completion) await sleep(delay);
   }
   return {
-    stop: 'never-completed',
+    // Two different failures, told apart by what the last poll actually showed: checks still
+    // running is a slow or stuck CI run, whereas checks that are all finished but keep changing
+    // is a set that never stopped registering, and reading conclusions off that would be reading
+    // conclusions off part of the run.
+    stop: settledOnce ? 'never-stabilised' : 'never-completed',
     checkRuns: latest,
     waitedMilliseconds: (completion - 1) * delay,
   };
@@ -527,6 +565,16 @@ export function assertCheckRunsPassed(options: {
         `${pending.length} of ${wait.checkRuns.length} check run(s) on ${pullRequest.htmlUrl} were still unfinished after ${minutes(wait.waitedMilliseconds)}, so this run cannot claim CI passed:`,
         ...pending.map((check) => `  ${check.name}: ${check.status}`),
         `Raise --check-run-timeout-minutes only if this target's CI genuinely takes longer than that. A check that is stuck does not finish because the wait got longer.`,
+        ...surviving,
+      ].join('\n'),
+    );
+  }
+  if (wait.stop === 'never-stabilised') {
+    throw new CheckRunTimeoutError(
+      [
+        `The check runs on ${pullRequest.htmlUrl} were all finished but the set of them was still changing after ${minutes(wait.waitedMilliseconds)}, so this run cannot claim CI passed: a set that is still registering is not the whole run, and a conclusion read off part of a run is not a verdict on it.`,
+        `The last ${wait.checkRuns.length} observed were:`,
+        ...wait.checkRuns.map((check) => `  ${check.name}: ${check.conclusion ?? check.status}`),
         ...surviving,
       ].join('\n'),
     );

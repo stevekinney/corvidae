@@ -458,6 +458,9 @@ describe('runDryRun', () => {
         run: harness.run,
         stage: fakeStage('1.0.0'),
         probe: probes.probe,
+        // The confirming poll needs a tick between reads; nothing here should spend it on a
+        // wall clock.
+        sleep: async () => {},
       }),
     );
 
@@ -520,6 +523,9 @@ describe('runDryRun', () => {
         run: harness.run,
         stage: fakeStage('1.0.0'),
         probe: probes.probe,
+        // The confirming poll needs a tick between reads; nothing here should spend it on a
+        // wall clock.
+        sleep: async () => {},
       }),
     );
     const pushes = harness.commands
@@ -561,6 +567,9 @@ describe('runDryRun', () => {
         run: harness.run,
         stage: fakeStage('1.0.0'),
         probe: probes.probe,
+        // The confirming poll needs a tick between reads; nothing here should spend it on a
+        // wall clock.
+        sleep: async () => {},
       }),
     );
     expect(report.deleted).toBe(false);
@@ -599,17 +608,21 @@ describe('runDryRun', () => {
  * driver that threw *after* deleting the evidence.
  */
 async function runWithCheckRuns(options: {
-  checkRuns: readonly CheckRunRecord[];
+  /** One answer repeated, or one answer per poll, for a set that is still registering. */
+  checkRuns: readonly CheckRunRecord[] | ((poll: number) => readonly CheckRunRecord[]);
   appearanceAttempts?: number;
   completionAttempts?: number;
 }): Promise<{ failure: unknown; calls: Recorded; probes: ProbeHarness }> {
   const { api, calls } = fakeGitHub();
   const harness = fakeRunner();
   const probes = fakeProbe();
+  let polls = 0;
   const answering: GitHubApi = {
     ...api,
     async readCheckRuns() {
-      return options.checkRuns;
+      polls += 1;
+      const { checkRuns } = options;
+      return typeof checkRuns === 'function' ? checkRuns(polls) : checkRuns;
     },
   };
   const failure = await withWorkDirectory((workDirectory) =>
@@ -688,6 +701,31 @@ describe('runDryRun check run verdict', () => {
     expect(calls.deleted).toEqual([]);
   });
 
+  /**
+   * The verdict the live run would have reached had the poll landed a few seconds earlier: two
+   * completed, passing checks out of twenty, read as the whole run. The driver must refuse rather
+   * than assert `success` twice and delete the repository holding the other eighteen.
+   */
+  test('fails the run and keeps the scratch repository when the check run set never stops changing', async () => {
+    const { failure, calls, probes } = await runWithCheckRuns({
+      checkRuns: (poll) =>
+        Array.from({ length: poll }, (_unused, index) => ({
+          name: `job-${index}`,
+          status: 'completed',
+          conclusion: 'success',
+        })),
+      completionAttempts: 4,
+    });
+    expect(failure).toBeInstanceOf(CheckRunTimeoutError);
+    const message = failure instanceof Error ? failure.message : '';
+    expect(message).toContain('the set of them was still changing');
+    expect(message).toContain(`https://github.com/${validName}/pull/1`);
+    expect(message).toContain(`--phase delete --scratch-repository ${validName}`);
+    // Every conclusion in that set was `success`, so nothing but the instability refused it.
+    expect(calls.deleted).toEqual([]);
+    expect(probes.calls).toEqual([]);
+  });
+
   test('fails the run when a check run completes without saying how', async () => {
     const { failure, calls } = await runWithCheckRuns({
       checkRuns: [{ name: 'build', status: 'completed', conclusion: null }],
@@ -730,7 +768,7 @@ describe('runDryRun check run verdict', () => {
 });
 
 describe('waitForCheckRuns', () => {
-  test('polls until every check run is completed', async () => {
+  test('polls until every check run is completed and the set repeats', async () => {
     const answers = [
       [],
       [{ name: 'build', status: 'queued', conclusion: null }],
@@ -752,7 +790,9 @@ describe('waitForCheckRuns', () => {
       ref: 'c0ffee',
       sleep: async () => {},
     });
-    expect(reads).toBe(3);
+    // Four, not three. The third poll is the first to show everything finished; the fourth is
+    // what makes that a whole set rather than a snapshot of one still registering.
+    expect(reads).toBe(4);
     expect(wait.stop).toBe('completed');
     expect(wait.checkRuns).toEqual([{ name: 'build', status: 'completed', conclusion: 'success' }]);
   });
@@ -855,6 +895,162 @@ describe('waitForCheckRuns', () => {
     });
     // Six sleeps between seven reads, at ten seconds each.
     expect(wait.waitedMilliseconds).toBe(60_000);
+  });
+
+  /**
+   * The live failure this exists to stop, reproduced.
+   *
+   * The observed run's `enforce` and `format-check` completed while eighteen other checks had not
+   * registered. A poll landing in that window sees a small set in which everything is finished
+   * and everything passed. Treating that snapshot as the whole run is the same false green as
+   * never reading a conclusion at all, so the set has to hold still before it counts.
+   */
+  test('does not call a set settled while it is still registering', async () => {
+    const polls: readonly CheckRunRecord[][] = [
+      [{ name: 'enforce', status: 'completed', conclusion: 'success' }],
+      [
+        { name: 'enforce', status: 'completed', conclusion: 'success' },
+        { name: 'format-check', status: 'completed', conclusion: 'success' },
+        { name: 'audit', status: 'completed', conclusion: 'success' },
+      ],
+      [
+        { name: 'enforce', status: 'completed', conclusion: 'success' },
+        { name: 'format-check', status: 'completed', conclusion: 'success' },
+        { name: 'audit', status: 'completed', conclusion: 'success' },
+      ],
+    ];
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const registering: GitHubApi = {
+      ...api,
+      async readCheckRuns() {
+        const answer = polls[Math.min(reads, polls.length - 1)] ?? [];
+        reads += 1;
+        return answer;
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: registering,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 2,
+      completionAttempts: 10,
+      sleep: async () => {},
+    });
+    // Not two: the first poll's single completed check is not the run.
+    expect(reads).toBe(3);
+    expect(wait.stop).toBe('completed');
+    expect(wait.checkRuns).toHaveLength(3);
+  });
+
+  /**
+   * Two polls showing the same number of finished checks are not the same observation if a name
+   * appeared and another vanished. Comparing counts would settle on the second poll here; the
+   * third is where the set actually repeats.
+   */
+  test('requires the same check run names, not merely the same count', async () => {
+    const polls: readonly CheckRunRecord[][] = [
+      [
+        { name: 'build', status: 'completed', conclusion: 'success' },
+        { name: 'lint', status: 'completed', conclusion: 'success' },
+      ],
+      [
+        { name: 'build', status: 'completed', conclusion: 'success' },
+        { name: 'typecheck', status: 'completed', conclusion: 'success' },
+      ],
+      [
+        { name: 'build', status: 'completed', conclusion: 'success' },
+        { name: 'typecheck', status: 'completed', conclusion: 'success' },
+      ],
+    ];
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const churning: GitHubApi = {
+      ...api,
+      async readCheckRuns() {
+        const answer = polls[Math.min(reads, polls.length - 1)] ?? [];
+        reads += 1;
+        return answer;
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: churning,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 2,
+      completionAttempts: 10,
+      sleep: async () => {},
+    });
+    expect(reads).toBe(3);
+    expect(wait.checkRuns.map((check) => check.name)).toEqual(['build', 'typecheck']);
+  });
+
+  /**
+   * A set that never repeats is its own answer, told apart from a slow CI run because every check
+   * in it had finished. Falling through to whatever the last poll held would hand the assertion a
+   * partial run to rule on.
+   */
+  test('reports a set that never stops changing rather than ruling on the last one seen', async () => {
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const growing: GitHubApi = {
+      ...api,
+      async readCheckRuns() {
+        reads += 1;
+        return Array.from({ length: reads }, (_unused, index) => ({
+          name: `job-${index}`,
+          status: 'completed',
+          conclusion: 'success',
+        }));
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: growing,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 2,
+      completionAttempts: 6,
+      sleep: async () => {},
+    });
+    expect(reads).toBe(6);
+    expect(wait.stop).toBe('never-stabilised');
+  });
+
+  /**
+   * The two agreeing polls have to be adjacent. A re-run puts a check back to `in_progress` under
+   * the same name, and an agreement recorded before that is an agreement about a run that has
+   * since restarted — so an unfinished poll in between clears it rather than leaving a latch for
+   * the next finished poll to match against.
+   */
+  test('discards an earlier agreement when a check run goes back to running', async () => {
+    const polls: readonly CheckRunRecord[][] = [
+      [{ name: 'build', status: 'completed', conclusion: 'success' }],
+      [{ name: 'build', status: 'in_progress', conclusion: null }],
+      [{ name: 'build', status: 'completed', conclusion: 'success' }],
+      [{ name: 'build', status: 'completed', conclusion: 'success' }],
+    ];
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const rerunning: GitHubApi = {
+      ...api,
+      async readCheckRuns() {
+        const answer = polls[Math.min(reads, polls.length - 1)] ?? [];
+        reads += 1;
+        return answer;
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: rerunning,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 2,
+      completionAttempts: 8,
+      sleep: async () => {},
+    });
+    // Four, not three: the first poll's agreement did not survive the re-run, so the confirming
+    // pair is the third and fourth polls rather than the first and third.
+    expect(reads).toBe(4);
+    expect(wait.stop).toBe('completed');
   });
 });
 
