@@ -5,6 +5,39 @@ import { join } from 'node:path';
 
 const root = join(import.meta.dir, '..');
 
+test('temporary task fixtures never access an inherited remote cache', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-cache-isolation-'));
+  const remoteRequests: string[] = [];
+  const remote = Bun.serve({
+    port: 0,
+    fetch(request) {
+      remoteRequests.push(`${request.method} ${new URL(request.url).pathname}`);
+      if (new URL(request.url).pathname.endsWith('/status')) {
+        return Response.json({ status: 'enabled' });
+      }
+      return new Response(null, { status: request.method === 'PUT' ? 200 : 404 });
+    },
+  });
+  try {
+    await createWorkspace(directory);
+    await run(
+      directory,
+      [join(root, 'node_modules/.bin/turbo'), 'run', 'test', '--filter=@fixture/base'],
+      {
+        ...process.env,
+        TURBO_API: remote.url.origin,
+        TURBO_TOKEN: 'fixture-cache-token',
+        TURBO_TEAM: 'team_fixture',
+        TURBO_CACHE: 'remote:rw',
+      },
+    );
+    expect(remoteRequests).toEqual([]);
+  } finally {
+    await remote.stop(true);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('application hosts and tests receive only their owned configuration', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-host-environment-'));
   try {
@@ -45,18 +78,31 @@ async function run(
   command: string[],
   environment = process.env,
 ): Promise<string> {
-  const child = Bun.spawn(command, {
+  // Synthetic workspaces must exercise their own cache, never inherited shared caches.
+  const isTurbo = command[0] === join(root, 'node_modules/.bin/turbo');
+  const fixtureCommand = isTurbo
+    ? [...command, '--cache=local:rw', `--cache-dir=${join(directory, '.turbo/cache')}`]
+    : command;
+  const fixtureEnvironment = { ...environment };
+  if (isTurbo) {
+    delete fixtureEnvironment.TURBO_API;
+    delete fixtureEnvironment.TURBO_TOKEN;
+    delete fixtureEnvironment.TURBO_TEAM;
+    delete fixtureEnvironment.TURBO_TEAMID;
+    delete fixtureEnvironment.TURBO_CACHE;
+  }
+  const child = Bun.spawn(fixtureCommand, {
     cwd: directory,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: environment,
+    env: fixtureEnvironment,
   });
   const [exitCode, output, errors] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]);
-  if (exitCode !== 0) throw new Error(`${command.join(' ')} exited ${exitCode}: ${errors}`);
+  if (exitCode !== 0) throw new Error(`${fixtureCommand.join(' ')} exited ${exitCode}: ${errors}`);
   return output;
 }
 
