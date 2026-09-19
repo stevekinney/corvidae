@@ -185,6 +185,11 @@ import {
   serializeRunState,
   serializeUnknownError,
 } from './serialization';
+import {
+  admitSessionInput,
+  createSessionInputMailbox,
+  type PersistedSessionInput,
+} from './session-input-durability';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import {
   type BureauSteeringGate,
@@ -227,6 +232,10 @@ import type {
   SubmitSchedulerTaskRequest,
   SubmitSchedulerTaskResponse,
   ToolSummary,
+} from './types';
+import {
+  DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
+  DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
 } from './types';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
 import { streamEventToFrame } from './websocket-frames';
@@ -1127,6 +1136,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     options.sessionInput?.principalBacklogLimit,
     'principalBacklogLimit',
   );
+  // COR-435: the values `ab-42-bureau-b` above anticipated. Resolved once,
+  // here, so every session's mailbox is constructed against the identical
+  // pair this bureau validated at construction time.
+  const sessionInputSessionBacklogLimit =
+    options.sessionInput?.sessionBacklogLimit ?? DEFAULT_SESSION_INPUT_BACKLOG_LIMIT;
+  const sessionInputPrincipalBacklogLimit =
+    options.sessionInput?.principalBacklogLimit ?? DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT;
   validateAuditRetentionOption(options.auditRetention);
   validateCheckpointRetentionOption(options.checkpointRetention);
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
@@ -1452,6 +1468,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!mailbox) {
       mailbox = createSteeringMailbox(storage, sessionId);
       steeringMailboxes.set(sessionId, mailbox);
+    }
+    return mailbox;
+  }
+
+  /**
+   * COR-435 — one session-input mailbox per session, for a
+   * durably-configured bureau. See `session-input-durability.ts`'s module
+   * doc: the cross-session identity index lives in `runtime.kv` directly,
+   * not in a second `Mailbox`. Cached for the same reason
+   * `steeringMailboxes` is: constructing a second `Mailbox` for the same
+   * `(namespace, resourceId)` would defeat the FIFO ordering that is the
+   * point of using one.
+   */
+  const sessionInputMailboxes = new Map<string, Mailbox>();
+
+  /** `undefined` for a non-durable bureau — nothing to persist against. */
+  function getSessionInputMailbox(sessionId: string): Mailbox | undefined {
+    const storage = runtime.durableStorage;
+    if (!runtime.durable || storage === undefined) return undefined;
+    let mailbox = sessionInputMailboxes.get(sessionId);
+    if (!mailbox) {
+      mailbox = createSessionInputMailbox(storage, sessionId, sessionInputSessionBacklogLimit);
+      sessionInputMailboxes.set(sessionId, mailbox);
     }
     return mailbox;
   }
@@ -6548,6 +6587,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * `unsupported-capability`. No `SessionInputRecord` is created and no `id`
    * is consumed by this method today.
    */
+  /**
+   * COR-435 — generalizes the `inFlightSessionDeletions` coalescing pattern
+   * (see that map's own doc comment, below `deleteSession`) to
+   * `(principal, 'session-input', id)`: two concurrent admission attempts
+   * for the identical retry identity share ONE in-flight promise rather
+   * than racing two independent mailbox admissions. Keyed by a joined
+   * string (not a nested Map) for the same reason a plain `Map<string, ...>`
+   * suffices for session deletions — the three components are individually
+   * unbounded strings, so a delimiter that cannot appear in any of them is
+   * used to prevent `("a\x00b", "c")` and `("a", "b\x00c")` from colliding.
+   */
+  const inFlightSessionInputAdmissions = new Map<string, Promise<SessionInputAdmissionOutcome>>();
+
   async function submitSessionInput(
     sessionId: string,
     request: SessionInputAdmissionRequest,
@@ -6557,14 +6609,58 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // ephemeral bureau (no persistence/storage) is a supported configuration,
     // and every sessionId is necessarily unknown in it — the correct outcome
     // per this method's own contract is `not-found`, not a throw.
-    const session = runtime.sessionStore ? await runtime.sessionStore.load(sessionId) : undefined;
-    if (!session || !isSessionAuthorityAuthorized(session.metadata, request.principal)) {
+    const sessionStoreForInput = runtime.sessionStore;
+    const session = sessionStoreForInput ? await sessionStoreForInput.load(sessionId) : undefined;
+    // `session` truthy implies `sessionStoreForInput` was truthy above, but
+    // TypeScript cannot carry that narrowing across the ternary into later
+    // code — this makes it explicit rather than asserting it away.
+    if (
+      !session ||
+      !sessionStoreForInput ||
+      !isSessionAuthorityAuthorized(session.metadata, request.principal)
+    ) {
       return { outcome: 'not-found' };
     }
     if (isSessionRunTerminal(session.metadata)) {
       return { outcome: 'session-terminal', sessionId };
     }
-    return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
+
+    const sessionMailbox = getSessionInputMailbox(sessionId);
+    const storage = runtime.durableStorage;
+    const kv = runtime.kv;
+    if (sessionMailbox === undefined || storage === undefined || kv === undefined) {
+      return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
+    }
+
+    const id = request.id ?? runtimeServices.identifiers.next('session-input');
+    const reservationKey = `${request.principal}\u0000session-input\u0000${id}`;
+    const existing = inFlightSessionInputAdmissions.get(reservationKey);
+    if (existing) return existing;
+
+    const payload: PersistedSessionInput = {
+      payload: request.payload,
+      ...(request.expiresAt !== undefined ? { expiresAt: request.expiresAt } : {}),
+      ...(request.supersedes !== undefined ? { supersedes: request.supersedes } : {}),
+    };
+
+    const admission = admitSessionInput({
+      storage,
+      kv,
+      sessionStore: sessionStoreForInput,
+      sessionMailbox,
+      sessionId,
+      id,
+      principal: request.principal,
+      deliveryMode: request.deliveryMode,
+      payload,
+      principalBacklogLimit: sessionInputPrincipalBacklogLimit,
+      sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
+      nowMs: runtimeServices.clock.now(),
+    }).finally(() => {
+      inFlightSessionInputAdmissions.delete(reservationKey);
+    });
+    inFlightSessionInputAdmissions.set(reservationKey, admission);
+    return admission;
   }
 
   /**

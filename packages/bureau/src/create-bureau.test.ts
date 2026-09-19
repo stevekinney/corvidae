@@ -6176,13 +6176,17 @@ describe('createBureau session update/query capability unavailability (AB-192)',
 
 describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => {
   // AB-42's fixed pre-admission check order: authorization, then session
-  // lifecycle, then capability/capacity. No adopted @corvidae/weft
-  // version exposes WFT-84's durable mailbox yet, so every authorized,
-  // non-terminal request unconditionally returns 'unsupported-capability' —
-  // 'admitted'/'replayed'/'conflict'/'backlog-exhausted' are structurally
-  // unreachable until ab-42-bureau-b lands. A `runtime.durable` with no
-  // mailbox composed is exactly today's real configuration, per the issue's
-  // testing plan — no mailbox double needed.
+  // lifecycle, then capability/capacity. This block covers the first two —
+  // the not-found/session-terminal rejections that hold regardless of
+  // whether a mailbox is composed — plus the remaining
+  // 'unsupported-capability' case COR-435 (`ab-42-bureau-b`) left true: a
+  // bureau with no durable storage at all. Once durable storage IS
+  // composed, an authorized, non-terminal request now reaches the real
+  // mailbox-backed 'admitted'/'replayed'/'conflict'/'backlog-exhausted'
+  // outcomes — see `session-input-mailbox-admission.test.ts` for that
+  // coverage, including the two tests below that used to assert the old
+  // unconditional 'unsupported-capability' behavior for a durable,
+  // mailbox-composed bureau and now assert the real outcome instead.
 
   it('returns not-found for an unknown sessionId', async () => {
     const bureau = await createBureau({
@@ -6320,7 +6324,16 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     }
   });
 
-  it('returns unsupported-capability for an authorized, non-terminal-session request', async () => {
+  it('admits an authorized, non-terminal-session request through the real mailbox (COR-435)', async () => {
+    // Renamed from "returns unsupported-capability for an authorized,
+    // non-terminal-session request": this exact configuration (durable
+    // storage composed) now DOES compose a real session-input mailbox, so
+    // it reaches 'admitted' rather than the old unconditional
+    // 'unsupported-capability'. See `session-input-mailbox-admission.test.ts`
+    // for the full mailbox-backed contract; this test keeps its original
+    // purpose — proving that an authorized, non-terminal request clears
+    // the pre-admission checks — while asserting the outcome COR-435 made
+    // real.
     const bureau = await createBureau({
       agents: {},
       generate: () => new Promise<never>(() => {}),
@@ -6340,21 +6353,24 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         deliveryMode: 'steer',
         payload: 'hello',
       });
-      expect(outcome).toEqual({
-        outcome: 'unsupported-capability',
-        reason: 'durable-mailbox-unavailable',
-      });
+      expect(outcome.outcome).toBe('admitted');
 
       const sessionAfter = await bureau.getSession(run.sessionId);
-      // No SessionInputRecord created, no id consumed — the session's
-      // metadata is untouched by this call beyond the pre-existing keys.
+      // A SessionInputRecord lives in the mailbox's own durable storage
+      // keys, never in the session's own metadata blob — this call still
+      // leaves session metadata itself untouched.
       expect(sessionAfter?.metadata['lastRunStatus']).toBe('running');
     } finally {
       await bureau.dispose();
     }
   });
 
-  it('returns unsupported-capability for an open session (no recorded authority) with any principal', async () => {
+  it('admits an open session (no recorded authority) for any principal through the real mailbox (COR-435)', async () => {
+    // Renamed from "returns unsupported-capability for an open session
+    // (no recorded authority) with any principal" for the same reason as
+    // the test above: this configuration now composes a real mailbox, so
+    // an authorized (here: unconditionally, since the session is "open")
+    // request reaches 'admitted'.
     const storage = await resolveStorage({ type: 'memory' });
     const sessionStore = createSessionStore(textValueStore(storage));
     await sessionStore.save(
@@ -6382,10 +6398,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         deliveryMode: 'steer',
         payload: 'hello',
       });
-      expect(outcome).toEqual({
-        outcome: 'unsupported-capability',
-        reason: 'durable-mailbox-unavailable',
-      });
+      expect(outcome.outcome).toBe('admitted');
     } finally {
       await bureau.dispose();
     }
