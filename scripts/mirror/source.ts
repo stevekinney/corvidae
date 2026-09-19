@@ -91,9 +91,10 @@ export interface DeclaredSourceFiles {
  * does not reach. `assertNoSourceEscapes` in `source-escapes.ts` is what makes that loud; this is
  * what answers it.
  *
- * **Why files and not directories.** Every path here names one file, and the set is exactly the
- * transitive closure of what the emitted source imports — nothing reachable is missing and
- * nothing unreachable is present. The alternatives were both worse. `components/cinder/scripts`
+ * **Why files and not directories.** Every path here names one file, and the set is the transitive
+ * closure of what the emitted source imports, plus one type-declaration sibling that TypeScript
+ * finds by name rather than by specifier and that says so in its own reason. The alternatives were
+ * both worse. `components/cinder/scripts`
  * is 236 files, which is the "emit the whole workspace" fork COR-1221 ruled against wearing a
  * different name. Declaring the containing directories instead — `scripts/tokens` alone is 81
  * files, `packages/armorer/test` is 91 for the one helper five tests import — lands at over a

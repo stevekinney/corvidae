@@ -34,6 +34,14 @@ import ts from 'typescript';
  * `scripts/workspace-imports.test.ts` uses the first and `scripts/measure-codebase.ts` the
  * second — so the module graph is read from real syntax trees, and a string in a comment or a
  * fixture is never mistaken for an edge.
+ *
+ * **What it does not see.** A path a module reads at run time — `readFile(join(packageRoot,
+ * 'components.json'))` in `scripts/knowledge/knowledge.ts`, the token corpus `scripts/tokens/
+ * load.ts` opens — is a string computed at run time, not a module edge, and no closure over the
+ * module graph can reach it. The gate's claim is bounded accordingly: the emitted target can
+ * *resolve* every import, which is what its typecheck and its build ask. Whether a file some
+ * emitted module opens at run time is also in the tarball is the `files` allowlist's question,
+ * which `checkTargetCoverage` and `checkTarball` ask separately.
  */
 
 export class SourceEscapeError extends Error {}
