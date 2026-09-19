@@ -50,6 +50,7 @@ import {
   type RecoveredRunHandle,
   type RequestHumanInputResult,
   type RunReport,
+  ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
   type ScheduledAgentRunInput,
@@ -59,6 +60,7 @@ import {
   ScheduleResumedEvent,
   SchedulerTaskCompletedEvent,
   SchedulerTaskFailedEvent,
+  ScheduleSkippedEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
   type SessionInputAdmissionOutcome,
@@ -1135,6 +1137,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   });
   runtime.scheduleFireEvents.addEventListener(ScheduleFailedEvent.type, (event) => {
     emitter.dispatch(new ScheduleFailedEvent(event.scheduleId, event.runId));
+  });
+  // COR-660 — the per-tick observation pair, forwarded the same way and for
+  // the same reason: a scheduled tick is headless, so the bureau emitter is
+  // the only surface it has. Fresh instances again, for the WHATWG
+  // already-being-dispatched reason above.
+  runtime.scheduleFireEvents.addEventListener(ScheduleAttemptedEvent.type, (event) => {
+    emitter.dispatch(new ScheduleAttemptedEvent(event.scheduleId, event.occurrence));
+  });
+  runtime.scheduleFireEvents.addEventListener(ScheduleSkippedEvent.type, (event) => {
+    emitter.dispatch(
+      new ScheduleSkippedEvent(
+        event.scheduleId,
+        event.policy,
+        event.occurrence,
+        event.blockingRunId,
+      ),
+    );
   });
   // AB-389 — `SessionStore.events` (`@corvidae/operative`) now carries
   // only the best-effort `SessionOutboxAppendedEvent` drain trigger, never
