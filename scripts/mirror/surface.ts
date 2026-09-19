@@ -99,6 +99,7 @@ function applySurfaceToManifest(
   exports: SurfaceExportsMap,
   files: readonly string[],
 ): void {
+  for (const [key, value] of Object.entries(entry.manifestFields)) manifest[key] = value;
   manifest['exports'] = exports;
   manifest['files'] = [...files];
   const scripts = isJsonObject(manifest['scripts'])
@@ -175,6 +176,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
         files: resolved.files,
         sourceRoot: entry.build.sourceRoot,
         packageRoot,
+        bin: resolved.bin,
       }),
     );
   }

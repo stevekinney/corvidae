@@ -64,6 +64,8 @@ const packageEntrySchema = z.object({
   peerDependencies: z.record(z.string().min(1), z.string().min(1)).optional(),
   sideEffects: z.union([z.boolean(), z.array(z.string().min(1))]).optional(),
   bin: z.union([z.string().min(1), z.record(z.string().min(1), z.string().min(1))]).optional(),
+  /** Top-level keys a published package needs beyond `exports`; see the document's documentation. */
+  manifestFields: z.record(z.string().min(1), z.unknown()),
 });
 
 const packageSurfaceSchema = z.object({
@@ -109,6 +111,7 @@ export interface ResolvedSurface {
   peerDependencies?: Record<string, string> | undefined;
   sideEffects?: boolean | string[] | undefined;
   bin?: string | Record<string, string> | undefined;
+  manifestFields: Readonly<Record<string, unknown>>;
 }
 
 export interface ResolveOptions {
@@ -138,6 +141,7 @@ export function resolveSurface({
       peerDependencies: entry.peerDependencies,
       sideEffects: entry.sideEffects,
       bin: entry.bin,
+      manifestFields: entry.manifestFields,
     };
   }
   if (components === undefined) {
@@ -158,6 +162,7 @@ export function resolveSurface({
     peerDependencies: entry.peerDependencies,
     sideEffects: entry.sideEffects,
     bin: entry.bin,
+    manifestFields: entry.manifestFields,
   };
 }
 
@@ -271,6 +276,12 @@ export interface CoverageOptions {
   sourceRoot: string;
   /** The checkout the source must exist in. */
   packageRoot: string;
+  /**
+   * The `bin` field, checked alongside the exports targets. A published binary is a path into the
+   * same build output and fails the same two ways, so leaving it out would let a manifest ship an
+   * executable entry pointing at a file the build cannot produce.
+   */
+  bin?: string | Record<string, string> | undefined;
 }
 
 /**
@@ -288,8 +299,12 @@ export function checkTargetCoverage({
   files,
   sourceRoot,
   packageRoot,
+  bin,
 }: CoverageOptions): CoverageFinding[] {
   const findings: CoverageFinding[] = [];
+  for (const [subpath, value] of Object.entries(binEntries(bin))) {
+    exports = { ...exports, [subpath]: value };
+  }
   for (const [subpath, value] of Object.entries(exports)) {
     for (const [condition, target] of flattenExportTarget(value)) {
       const relative = packageRelative(target);
@@ -314,6 +329,20 @@ export function checkTargetCoverage({
     }
   }
   return findings;
+}
+
+/**
+ * The `bin` field as pseudo-subpaths, so one walker covers both. A binary's target is not relative
+ * by convention (weft writes `dist/cli-main.js`, cinder writes `./dist/cli/index.js`), so it is
+ * normalized here rather than in the resolver.
+ */
+function binEntries(bin: string | Record<string, string> | undefined): SurfaceExportsMap {
+  if (bin === undefined) return {};
+  const normalize = (target: string): string => (target.startsWith('./') ? target : `./${target}`);
+  if (typeof bin === 'string') return { 'bin:.': normalize(bin) };
+  return Object.fromEntries(
+    Object.entries(bin).map(([name, target]) => [`bin:${name}`, normalize(target)]),
+  );
 }
 
 /** One line per finding, grouped by subpath, suitable for a failure message. */

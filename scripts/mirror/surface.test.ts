@@ -40,12 +40,16 @@ async function planFor(target: MirrorTarget): Promise<SurfacePlan> {
  * restore-or-accept ruling before a sync can run. The list is pinned rather than tolerated: a new
  * orphan fails this test, and so does resolving one without deleting its line.
  *
- * COR-1186 predicted the ten cinder entries. The other nine are new.
+ * COR-1186 predicted the ten cinder exports entries. The other eleven are new, and two of them
+ * are `bin` targets rather than subpaths: a published binary is a path into the same build output
+ * and breaks the same way, so it is walked alongside the exports map.
  */
 const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
   weft: [
     // upstream `src/storage/sqlite.ts`; corvidae keeps only `sqlite-key-value-queries.ts`
     '@lostgradient/weft ./storage/sqlite',
+    // upstream `src/mcp/cli.ts`; corvidae renamed it `src/cli-mcp.ts`, so the binary has no source
+    '@lostgradient/weft bin:weft-mcp',
   ],
   cinder: [
     // the two promoted components' shims: `src/components/experimental/` is absent here
@@ -62,6 +66,8 @@ const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
     '@lostgradient/cinder ./styles/utilities',
     // `src/styles/base-guard.ts` is absent here
     '@lostgradient/cinder ./styles/guard',
+    // the published `cinder` binary, built from the same relocated `src/cli/`
+    '@lostgradient/cinder bin:cinder',
     // corvidae moved the barrel to `src/index.ts`; the published tree builds from `src/lib/index.ts`
     '@lostgradient/editor .',
     // upstream `component-runtime.ts`; corvidae renamed it `milkdown-plugin-runtime.ts`

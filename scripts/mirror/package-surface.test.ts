@@ -48,6 +48,7 @@ function entryFor(overrides: Partial<PackageSurfaceEntry> = {}): PackageSurfaceE
       sourceRoot: 'src',
       packedBy: 'files',
     },
+    manifestFields: {},
     ...overrides,
   };
 }
@@ -80,6 +81,33 @@ describe('package-surface.json', () => {
     const onDisk = new Set(workspaces.map(({ name }) => name));
     for (const workspace of Object.keys(surface.packages)) {
       expect(onDisk.has(workspace), `${workspace} is not a workspace on disk`).toBe(true);
+    }
+  });
+
+  test('carries the top-level fields a published package needs beyond its exports map', async () => {
+    const surface = await loadPackageSurface();
+    /**
+     * `@lostgradient/weft-ui` is the one scoped package whose upstream manifest declares no
+     * `publishConfig`, and it is also the one that was never published despite carrying a version.
+     * Without `access: public` npm rejects a scoped first publish outright, so this is a plausible
+     * contributing cause of what COR-1194 records as an incomplete trusted-publisher registration.
+     * Vendoring is a port, so the gap is pinned here rather than invented away.
+     */
+    const withoutPublishConfig = ['@lostgradient/weft-ui'];
+    for (const [workspace, entry] of Object.entries(surface.packages)) {
+      const access = (entry.manifestFields['publishConfig'] as { access?: string } | undefined)
+        ?.access;
+      if (entry.publicName.startsWith('@') && !withoutPublishConfig.includes(entry.publicName)) {
+        expect(access, workspace).toBe('public');
+      }
+      expect(entry.manifestFields['engines'], `${workspace} engines`).toBeDefined();
+    }
+    for (const publicName of withoutPublishConfig) {
+      const entry = Object.values(surface.packages).find((one) => one.publicName === publicName);
+      expect(
+        entry?.manifestFields['publishConfig'],
+        `${publicName} gained a publishConfig`,
+      ).toBeUndefined();
     }
   });
 
@@ -228,6 +256,23 @@ describe('checkTargetCoverage', () => {
       });
       expect(findings).toHaveLength(1);
       expect(findings[0]).toMatchObject({ subpath: './gone', problem: 'no-source' });
+    });
+  });
+
+  test('walks bin targets alongside the exports map', async () => {
+    await withPackageRoot({ 'src/main.ts': 'export {};\n' }, (packageRoot) => {
+      const options = {
+        publicName: 'example',
+        exports: {},
+        files: ['dist'],
+        sourceRoot: 'src',
+        packageRoot,
+      };
+      // A bin target is conventionally written without the leading `./`.
+      expect(checkTargetCoverage({ ...options, bin: { example: 'dist/main.js' } })).toEqual([]);
+      const findings = checkTargetCoverage({ ...options, bin: { example: 'dist/gone.js' } });
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({ subpath: 'bin:example', problem: 'no-source' });
     });
   });
 
