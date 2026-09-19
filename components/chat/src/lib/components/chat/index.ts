@@ -75,8 +75,9 @@ export {
   appendStreamingMessage,
   cancelStreamingMessage,
   finalizeStreamingMessage,
+  isStreamingMessage,
   updateStreamingMessage,
-} from '@corvidae/conversationalist';
+} from './builders.ts';
 
 // Conversationalist runtime helper — validates that values a consumer builds
 // by hand (message content, metadata, tool call arguments) are JSON-compatible

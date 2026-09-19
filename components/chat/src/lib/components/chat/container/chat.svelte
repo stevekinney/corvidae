@@ -28,6 +28,7 @@
 
 <script lang="ts">
   import { flushSync, tick } from 'svelte';
+  import { isStreamingMessage } from '../builders.ts';
   import { classNames } from '../../../utilities/class-names.ts';
   import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import {
@@ -1452,7 +1453,7 @@
       streamingState.messageId === null &&
       message.id === lastMessageId &&
       message.role === 'assistant' &&
-      message.metadata['streaming'] === true &&
+      isStreamingMessage(message) &&
       getMessageText(message).trim().length > 0}
     {@const isPresentingStreamingMessage =
       (isImperativeStreamingMessage && streamingState.content.trim().length > 0) ||

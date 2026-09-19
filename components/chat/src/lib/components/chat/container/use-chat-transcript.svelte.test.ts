@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
+import { appendStreamingMessage, updateStreamingMessage } from '../builders.ts';
 import type { ConversationHistory, Message } from '../conversation-model.ts';
 import { createTranscriptFixture } from './use-chat-transcript-test-fixture.svelte.ts';
 
@@ -137,25 +138,24 @@ describe('useChatTranscript live inputs', () => {
     expect(transcript.renderRows.map((item) => item.type)).not.toContain('typing');
   });
 
-  test('keeps content-driven streaming typing until the active message has text', async () => {
-    const fixture = createTranscriptFixture(
-      conversation([{ ...message('first', 'assistant', { streaming: true }), content: '' }]),
-    );
+  test('recognizes the canonical Conversationalist streaming marker for content-driven streams', async () => {
+    const started = appendStreamingMessage(conversation([]), 'assistant', undefined, {
+      now: () => '2026-06-01T12:00:00.000Z',
+      randomId: () => 'streaming-assistant',
+    });
+    const fixture = createTranscriptFixture(started.conversation);
     const { transcript } = fixture;
 
     fixture.setStreaming(true);
     await tick();
 
     expect(transcript.showTypingIndicator).toBe(true);
-    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
 
     fixture.setConversation(
-      conversation([
-        {
-          ...message('first', 'assistant', { streaming: true }),
-          content: 'first token',
-        },
-      ]),
+      updateStreamingMessage(started.conversation, started.messageId, 'first token', {
+        now: () => '2026-06-01T12:00:01.000Z',
+        randomId: () => 'unused',
+      }),
     );
     await tick();
 

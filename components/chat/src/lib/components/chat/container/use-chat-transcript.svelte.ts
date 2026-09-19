@@ -1,3 +1,4 @@
+import { isStreamingMessage } from '../builders.ts';
 import type { ConversationHistory, Message, ToolResult } from '../conversation-model.ts';
 import {
   getMessages,
@@ -42,7 +43,7 @@ export interface UseChatTranscriptReturn {
 }
 
 function isStreamingAssistantMessage(message: Message | undefined): message is Message {
-  return message?.role === 'assistant' && message.metadata['streaming'] === true;
+  return message?.role === 'assistant' && isStreamingMessage(message);
 }
 
 export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTranscriptReturn {
@@ -94,7 +95,7 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
     const activeMessageId = options.getStreamingMessageId() ?? messages.at(-1)?.id;
     const activeMessage = messages.find((message) => message.id === activeMessageId);
     if (!activeMessage) return false;
-    if (options.getStreamingMessageId() === null && activeMessage.metadata['streaming'] !== true) {
+    if (options.getStreamingMessageId() === null && !isStreamingMessage(activeMessage)) {
       return false;
     }
     return Boolean(resolveMessageReasoning(activeMessage, options.getMessageReasoning?.()));
