@@ -21,6 +21,7 @@
     "svelte": "catalog:"
   },
   "devDependencies": {
+    "@corvidae/operative": "workspace:*",
     "@corvidae/testing": "workspace:*",
     "@corvidae/typescript": "workspace:*",
     "@testing-library/svelte": "catalog:",

@@ -42,10 +42,10 @@ export const SUPPORTED_WIRE_VERSION = 1;
 
 // ---------------------------------------------------------------------------
 // Local, provider-neutral equivalents of Operative's `StreamEvent` vocabulary
-// (@lostgradient/operative@0.7.0, src/streaming/types.ts). Chat does not
-// depend on Operative — depending on it here would invert the provider-
+// (`@corvidae/operative`, `src/streaming/types.ts`). Chat does not depend on
+// Operative at runtime — depending on it here would invert the provider-
 // neutral layering — so these shapes are declared structurally rather than
-// imported. Keep them in lockstep with Operative's published `StreamEvent`,
+// imported. Keep them in lockstep with Operative's `StreamEvent`,
 // `StreamBlock`, and `StreamState` types by hand.
 // ---------------------------------------------------------------------------
 
@@ -80,7 +80,16 @@ export type ChatStreamState = {
 
 /**
  * Local equivalents of Operative's `AgentRunErrorKind` / `AgentRunErrorCode`
- * (@lostgradient/operative@0.7.0, src/errors.ts).
+ * (`@corvidae/operative`, `src/errors.ts`). Declared structurally rather
+ * than imported at runtime — Chat must not depend on Operative at runtime,
+ * since that would invert the provider-neutral layering and pull Operative's
+ * Anthropic/OpenAI/Gemini provider code into the browser bundle — but
+ * `ChatAgentRunErrorCode` is kept in exact, compiler-verified lockstep with
+ * Operative's exported `AgentRunErrorCode` by a type-only devDependency and
+ * a bidirectional type-equality assertion in
+ * `stream-event-codec-error-code-parity.test.ts` (COR-248). Add or remove a
+ * member here only in the same change that does so on the Operative side;
+ * the parity test fails to typecheck otherwise.
  */
 export type ChatAgentRunErrorKind =
   'load' | 'contract' | 'generate' | 'tool' | 'abort' | 'output' | 'policy';
@@ -91,8 +100,13 @@ export type ChatAgentRunErrorCode =
   | 'ABORTED'
   | 'BUDGET_EXCEEDED'
   | 'ELICITATION_DENIED'
+  | 'INVALID_AGENT_HANDLE'
   | 'INVALID_OUTPUT'
   | 'MAXIMUM_STEPS'
+  | 'NON_JSON_OUTPUT'
+  | 'OUTPUT_SCHEMA_CONVERSION_FAILED'
+  | 'SELECTION_REVALIDATION_FAILED'
+  | 'SUBAGENT_RUN_FAILED'
   | 'TRIPWIRE'
   | 'UNKNOWN';
 
