@@ -541,6 +541,7 @@ export function createRunFinishedFrame(
 export function stringifyError(error: unknown): string {
   if (error instanceof AgentRunError) return serializeAgentRunError(error);
   if (error instanceof Error) return error.message;
+  if (isStructuredToolError(error)) return error.message;
   if (typeof error === 'string') return error;
   if (error === null || error === undefined) return 'null';
   try {
@@ -548,6 +549,30 @@ export function stringifyError(error: unknown): string {
   } catch {
     return '[unserializable error]';
   }
+}
+
+/**
+ * A tool-protocol `ToolError` — a plain object, not an `Error`, so the
+ * `instanceof` branch above cannot see it and the `JSON.stringify` fallback
+ * below turns a readable message into a serialized object. A frame's `error` is
+ * a human-facing string, so the message is what belongs there.
+ *
+ * Armorer has settled a `ToolError` on the approval path since COR-45, so these
+ * have been reaching here already; COR-1261 made ordinary tool failures settle
+ * one too, which is what surfaced it.
+ *
+ * Checked structurally rather than with armorer's own `isToolError`, which
+ * would add a dependency edge from operative onto armorer for one guard. The
+ * shape matches what that guard checks.
+ */
+function isStructuredToolError(value: unknown): value is { message: string } {
+  if (!value || typeof value !== 'object') return false;
+  return (
+    typeof Reflect.get(value, 'code') === 'string' &&
+    typeof Reflect.get(value, 'category') === 'string' &&
+    typeof Reflect.get(value, 'retryable') === 'boolean' &&
+    typeof Reflect.get(value, 'message') === 'string'
+  );
 }
 
 /** Coerces an arbitrary value to a JSON-safe value, or `undefined` if it can't round-trip. */
