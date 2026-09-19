@@ -318,7 +318,7 @@ test.describe('production streaming path', () => {
       });
     });
     all.forEach((frame, index) => {
-      expect(frame['wireVersion']).toBe(1);
+      expect(frame['wireVersion']).toBe(2);
       expect(frame['sequence']).toBe(index);
     });
     const allTypes = all.map((frame) => frame['type']);
