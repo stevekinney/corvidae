@@ -1023,4 +1023,93 @@ describe('handleTaskPollRequest', () => {
     );
     expect(response?.status).toBe(403);
   });
+
+  // COR-233 item 2: a `queued` record has no current attempt either — it was
+  // never claimed by anyone (or was requeued after a previous attempt), so
+  // there is no worker/attempt identity to authorize against. Same rejection
+  // shape as no record at all, not a tolerant no-op.
+  it('rejects a task result for an operation whose ledger record is still queued', async () => {
+    const context = createMinimalContext();
+    const storage = new MemoryStorage();
+    const options = createMinimalOptions(storage);
+    const now = Date.now();
+    await storage.put(
+      taskLedgerKey('op-queued'),
+      encodeRemoteTaskRecord({
+        recordVersion: 1,
+        operationId: 'op-queued',
+        workflowType: 'testWorkflow',
+        activityName: 'charge',
+        queue: 'default',
+        input: null,
+        headers: {},
+        visibilityTimeoutMilliseconds: 30_000,
+        createdAt: now,
+        generation: 1,
+        state: 'queued',
+        attempt: 0,
+        availableAt: now,
+        firstQueuedAt: now,
+        lastQueuedAt: now,
+        retryCount: 0,
+        requeueCount: 0,
+      }),
+    );
+
+    const response = await handleTaskResultRequest(
+      context,
+      options,
+      makePostRequest({
+        operationId: 'op-queued',
+        workerId: 'longpoll-worker',
+        attemptToken: 'attempt-token',
+        status: 'completed',
+        value: 42,
+      }),
+      makeUrl('/v1/tasks/default/result'),
+      WORKER_PRINCIPAL,
+    );
+    expect(response?.status).toBe(403);
+    const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-queued')));
+    expect(record?.state).toBe('queued');
+  });
+
+  // COR-233 item 3: `isLongPollCompletionAuthorized` used to require
+  // `record.state` to still be `leased`/`completing`, which meant a resend of
+  // an already-resolved result — the same content, same attemptToken, after
+  // the worker never received the first `{ ok: true, disposition: 'applied' }`
+  // response — was rejected with 403 instead of reaching
+  // `commitTaskLedgerCompletion`'s idempotent `duplicate` handling. The
+  // shared `authorizeTaskResultForCurrentAttempt` decision now authorizes a
+  // resend against a `terminal` record by attempt token alone (the only
+  // identity a resolved record still carries), so the resend is accepted and
+  // answered `duplicate` without writing a second terminal record.
+  it('accepts a resend of an already-resolved result and answers duplicate without a second terminal write (COR-233)', async () => {
+    const context = createMinimalContext();
+    const storage = new MemoryStorage();
+    const options = createMinimalOptions(storage);
+    await writeLeasedRecord(storage, { operationId: 'op-resend' });
+
+    const request = () =>
+      makePostRequest({
+        operationId: 'op-resend',
+        workerId: 'longpoll-worker',
+        attemptToken: 'attempt-token',
+        status: 'completed',
+        value: 42,
+      });
+
+    const first = await handleTaskResultRequest(context, options, request(), makeUrl());
+    expect(first?.status).toBe(200);
+    expect(await first?.json()).toEqual({ ok: true, disposition: 'applied' });
+    const resolved = await readResolvedTerminalRecord(storage, 'op-resend');
+
+    const second = await handleTaskResultRequest(context, options, request(), makeUrl());
+    expect(second?.status).toBe(200);
+    expect(await second?.json()).toEqual({ ok: true, disposition: 'duplicate' });
+
+    const afterResend = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-resend')));
+    expect(afterResend?.state).toBe('terminal');
+    expect(afterResend?.generation).toBe(resolved.generation);
+  });
 });

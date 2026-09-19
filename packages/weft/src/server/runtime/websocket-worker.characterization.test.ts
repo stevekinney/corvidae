@@ -1221,6 +1221,143 @@ describe('handleWorkerWebSocketMessage', () => {
       const dispatchedEvent = deadLetterEvents[0] as TaskResultDeadLetteredEvent;
       expect(dispatchedEvent.operationId).toBe('op-rejection-loses-cas');
     });
+
+    // COR-233 item 2: a missing current attempt is a rejection, never a
+    // tolerant no-op success — the WebSocket-side counterpart of
+    // `task-polling.characterization.test.ts`'s "unknown operations reject,
+    // not no-op" test. Nothing was ever dispatched to this worker, so
+    // `WorkerRegistry` has no in-flight entry and the durable ledger has no
+    // record at all; the fallback path (`applyTaskResultFallback`) must still
+    // reject rather than silently drop the frame.
+    it('rejects a taskResult for an operation with no in-flight entry and no ledger record — unassigned operations reject, not no-op', async () => {
+      const context = minimalServerContext();
+      const options = minimalServeOptions();
+      const ws = createFakeWs();
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        registerMessageJson('w-unassigned', ['doWork'], { concurrency: 5 }),
+        NOOP_CLEANUP,
+      );
+      await waitForRegistrationSideEffect(
+        () => context.registry.getWorker('w-unassigned') !== undefined,
+      );
+
+      const sentBeforeResult = ws.sentMessages.length;
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        JSON.stringify({
+          type: 'taskResult',
+          operationId: 'op-never-dispatched',
+          attemptToken: 'attempt-token',
+          status: 'completed',
+          value: 'done',
+        }),
+        NOOP_CLEANUP,
+      );
+
+      await waitForCondition(async () => ws.sentMessages.length > sentBeforeResult, {
+        timeoutMs: 1000,
+        intervalMs: 10,
+        label: 'unassigned taskResult to be rejected',
+      });
+
+      const rejection = JSON.parse(ws.sentMessages.at(-1)!);
+      expect(rejection).toMatchObject({ type: 'protocolError', code: 'invalid_message' });
+      expect(String(rejection.message)).toContain('not assigned to worker');
+      expect(ws.sentMessages.some((raw) => JSON.parse(raw).type === 'taskResultAck')).toBe(false);
+    });
+
+    // COR-233 item 3: the headline fixture scenario at the transport-unit
+    // level. `WorkerRegistry.completeTask()` deletes the in-flight entry the
+    // instant the FIRST delivery of a result is processed — before the
+    // durable commit even completes, and long before any `taskResultAck`
+    // necessarily reaches the worker. Before COR-233, a worker resending that
+    // exact result (its outbox's whole reason to exist, see
+    // `worker/task-result-outbox.ts`) found no in-flight entry and was
+    // rejected with a permanent `protocolError` that could never clear.
+    // `applyTaskResultFallback` now consults the durable ledger instead, so
+    // the resend reaches `commitTaskLedgerCompletion`'s idempotent handling
+    // and comes back `duplicate` — and the ledger's terminal record is never
+    // rewritten a second time (`generation` unchanged).
+    it('acknowledges a resend of an already-resolved result with disposition duplicate once the registry has forgotten it (COR-233)', async () => {
+      const context = minimalServerContext();
+      const storage = new MemoryStorage();
+      const options = minimalServeOptions(storage);
+      const ws = createFakeWs();
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        registerMessageJson('w-resend', ['doWork'], { concurrency: 5 }),
+        NOOP_CLEANUP,
+      );
+      await waitForRegistrationSideEffect(
+        () => context.registry.getWorker('w-resend') !== undefined,
+      );
+
+      context.registry.assignTask('w-resend', 'op-resend', 30_000, undefined, 'attempt-token');
+      await writeLeasedLedgerRecord(storage, {
+        operationId: 'op-resend',
+        workerSessionId: 'w-resend',
+      });
+
+      const taskResultFrame = JSON.stringify({
+        type: 'taskResult',
+        operationId: 'op-resend',
+        attemptToken: 'attempt-token',
+        status: 'completed',
+        value: 'done',
+      });
+
+      handleWorkerWebSocketMessage(context, options, ws as never, taskResultFrame, NOOP_CLEANUP);
+
+      const resolved = await waitForResolvedTerminalRecord(
+        storage,
+        'op-resend',
+        'first delivery to resolve',
+      );
+      expect(resolved.generation).toBeGreaterThan(0);
+      const firstAck = JSON.parse(ws.sentMessages.at(-1)!);
+      expect(firstAck).toEqual({
+        type: 'taskResultAck',
+        operationId: 'op-resend',
+        attemptToken: 'attempt-token',
+        disposition: 'applied',
+      });
+      expect(context.registry.isAssigned('op-resend')).toBe(false);
+
+      const sentBeforeResend = ws.sentMessages.length;
+
+      // The byte-identical resend a real `TaskResultOutbox` would replay
+      // after losing the first ack — same operationId, attemptToken, and
+      // content.
+      handleWorkerWebSocketMessage(context, options, ws as never, taskResultFrame, NOOP_CLEANUP);
+
+      await waitForCondition(async () => ws.sentMessages.length > sentBeforeResend, {
+        timeoutMs: 1000,
+        intervalMs: 10,
+        label: 'resend to be acknowledged',
+      });
+
+      const secondAck = JSON.parse(ws.sentMessages.at(-1)!);
+      expect(secondAck).toEqual({
+        type: 'taskResultAck',
+        operationId: 'op-resend',
+        attemptToken: 'attempt-token',
+        disposition: 'duplicate',
+      });
+
+      const afterResend = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-resend')));
+      expect(afterResend?.state).toBe('terminal');
+      expect(afterResend?.generation).toBe(resolved.generation);
+    });
   });
 
   describe('heartbeat message', () => {

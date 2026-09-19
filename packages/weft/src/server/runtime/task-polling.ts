@@ -9,6 +9,10 @@ import type { TaskResultDisposition } from './task-ledger-completion.ts';
 import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
 import { recordTaskBacklogMetric, recordTaskQueueLatencyMetric } from './task-metrics.ts';
 import { applyWorkerTaskResult } from './task-result-application.ts';
+import {
+  authorizeTaskResultForCurrentAttempt,
+  currentAttemptFromLedgerRecord,
+} from './task-result-authorization.ts';
 import { taskResultPayloadSizeError } from './task-result-resolution.ts';
 
 const TASK_POLL_RE = /^\/v1\/tasks\/([\w-]+)$/;
@@ -120,7 +124,12 @@ function validateTaskResultBody(body: Record<string, unknown>): ValidatedTaskRes
  * duplicate-tolerant no-op — the ledger's single authoritative key removes
  * the ambiguity that made "absent" a plausible stand-in for "already
  * resolved elsewhere" (see the project brief's failure matrix: "Result
- * arrives for unknown operation → Rejected").
+ * arrives for unknown operation → Rejected"). The identity/attempt-token
+ * decision itself is shared with the WebSocket transport (COR-233) — see
+ * `authorizeTaskResultForCurrentAttempt` in `task-result-authorization.ts`,
+ * which is also what lets a resend of an already-`terminal`/`deadLettered`
+ * result reach `commitTaskLedgerCompletion`'s idempotent `duplicate`
+ * handling instead of dying here the way it did before COR-233.
  *
  * Revision authorization (WFT-20) is STRICT for long-poll, unlike the
  * WebSocket transport's additive policy: when the stored ledger record
@@ -129,7 +138,12 @@ function validateTaskResultBody(body: Record<string, unknown>): ValidatedTaskRes
  * live in-flight registry entry to fall back to ("was this SDK ever told
  * about the field") the way the WebSocket path does, so once ANY caller
  * starts supplying `workflowRevision` on `TaskDispatch` for a given
- * operation, every worker completing it must echo the value back.
+ * operation, every worker completing it must echo the value back. Checked
+ * only while the attempt is still live (`leased`/`completing`) — a resend
+ * against an already-resolved record is authorized by attempt token alone
+ * (see `authorizeTaskResultForCurrentAttempt`), and `commitTaskLedgerCompletion`'s
+ * content-digest comparison is what actually guards a resolved record
+ * against a genuinely different resubmission from there.
  *
  * `queue` is the `:queue` path segment the result POST arrived on. It must
  * match the record's own `queue` exactly (COR-240) — otherwise a result
@@ -142,19 +156,24 @@ function isLongPollCompletionAuthorized(
   validated: ValidatedTaskResult,
   queue: string,
 ): boolean {
-  if (record === null) return false;
-  if (record.state !== 'leased' && record.state !== 'completing') return false;
-  if (record.queue !== queue) return false;
-  if (validated.workerId === undefined || record.workerSessionId !== validated.workerId) {
-    return false;
-  }
-  if (validated.attemptToken !== record.attemptToken) return false;
+  if (record !== null && record.queue !== queue) return false;
+
+  const authorization = authorizeTaskResultForCurrentAttempt(
+    currentAttemptFromLedgerRecord(record),
+    validated.workerId,
+    validated.attemptToken,
+  );
+  if (!authorization.ok) return false;
+
   if (
+    record !== null &&
+    (record.state === 'leased' || record.state === 'completing') &&
     record.workflowRevision !== undefined &&
     validated.workflowRevision !== record.workflowRevision
   ) {
     return false;
   }
+
   return true;
 }
 

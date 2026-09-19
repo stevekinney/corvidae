@@ -29,6 +29,7 @@ const schema = z.object({
     .transform((value) => value ?? 'default')
     .meta({ env: 'WEFT_SHORT_SLEEP_EXIT_MODE' }),
   shortSleepExitStateFile: z.string().optional().meta({ env: 'WEFT_SHORT_SLEEP_EXIT_STATE_FILE' }),
+  lostAckStateFile: z.string().optional().meta({ env: 'WEFT_LOST_ACK_STATE_FILE' }),
 });
 
 /** Resolve the subprocess conformance protocol's existing defaults and conversions. */
@@ -41,6 +42,7 @@ export function resolveFixtureEnvironment() {
     'WEFT_CONFORMANCE_HEARTBEAT_INTERVAL_MS',
     'WEFT_SHORT_SLEEP_EXIT_MODE',
     'WEFT_SHORT_SLEEP_EXIT_STATE_FILE',
+    'WEFT_LOST_ACK_STATE_FILE',
   ]) {
     const value = Bun.env[name];
     if (value !== undefined) env[name] = value;
