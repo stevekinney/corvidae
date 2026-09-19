@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   APPROVAL_FOLLOW_UP_TEXT,
   APPROVAL_NOTE_TEXT,
@@ -9,11 +9,69 @@ import {
   uniqueTitle,
 } from './server-owned-test-helpers';
 
+/**
+ * Records the NDJSON body of the server-owned stream as the page reads it.
+ *
+ * TEED, not intercepted: the application still receives the identical stream,
+ * so nothing about the turn this spec drives is altered by watching it.
+ *
+ * It exists because the live ordering this spec cares about is not observable
+ * from the DOM. `run.completed` carries the server's authoritative history and
+ * the controller reconciles the transcript against it the moment the stream
+ * closes — with this fixture that lands in the same paint as the reply itself,
+ * so a DOM snapshot taken at any reachable instant already shows the
+ * reconciled order and would pass whether or not the frames that produce it
+ * live ordering were ever emitted. Measured: a snapshot polled every animation
+ * frame from before the approval reports `data-streaming="false"` already.
+ *
+ * The wire is where the claim is checkable, and checking it there is exact
+ * rather than timing-dependent.
+ */
+async function recordWire(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const chunks: string[] = [];
+    Reflect.set(window, '__serverOwnedWire', chunks);
+    const original = window.fetch.bind(window);
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const response = await original(input, init);
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.includes('/stream') || response.body === null) return response;
+      const [forPage, forProbe] = response.body.tee();
+      void (async () => {
+        const decoder = new TextDecoder();
+        const reader = forProbe.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(decoder.decode(value, { stream: true }));
+        }
+      })();
+      return new Response(forPage, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    };
+  });
+}
+
+async function readWire(page: Page): Promise<Array<Record<string, unknown>>> {
+  const body = await page.evaluate(() => {
+    const chunks: unknown = Reflect.get(window, '__serverOwnedWire');
+    return Array.isArray(chunks) ? chunks.join('') : '';
+  });
+  return body
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
 test('a person approves the note in the browser and the turn completes', async ({ page }) => {
   // The whole point of the elicitation path, driven the way a person drives
   // it. The request-fixture specs above prove the endpoints; this proves there
   // is a way to reach them without one — which is what makes the feature
   // operable rather than merely present.
+  await recordWire(page);
   await gotoHydrated(page, '/server-owned');
   const title = uniqueTitle('Browser approval');
   await page.locator('[data-testid="server-owned-new-title"]').fill(title);
@@ -83,22 +141,51 @@ test('a person approves the note in the browser and the turn completes', async (
   await expect(page.locator('[data-testid="approval-approve"]')).toHaveCount(0);
   await expect(question).toBeEmpty();
 
-  // THE PERSISTED ORDER IS THE CORRECT ONE, and it is what this pins.
+  // THE LIVE HALF, read off the wire the page actually consumed.
   //
-  // Live, the two model steps of one response land in a single assistant row
-  // and the follow-up text renders ABOVE the tool disclosure it is replying
-  // about — the session controller inserts one assistant placeholder before
-  // reading any frames, so the second step's text goes back into a row that
-  // already precedes the tool activity. Measured:
+  // This is what the `assistant.step.*` frames buy. Without them the stream
+  // says nothing about where one model step ends and the next begins, and the
+  // session controller — which opens exactly one assistant placeholder before
+  // reading any frames — has no choice but to put both steps' text into that
+  // one row, rendering the follow-up ABOVE the tool activity it is replying
+  // about. Measured, before the frames existed:
   //
   //   live:   You … | Assistant "Saved that note." Called 1 tool … Succeeded
   //   reload: You … | Assistant Called 1 tool … Succeeded | Assistant "Saved that note."
   //
-  // Delineating assistant steps belongs to the wire and the controller in
-  // `@corvidae/chat`, which this issue's delivery boundary excludes —
-  // CIN-615 carries it with these measurements. What is asserted here is the
-  // half that IS this route's to keep true: the server's own history, which a
-  // reload renders, puts the tool before the reply.
+  // Asserted on the FRAMES rather than the rendered transcript, because the
+  // rendered transcript cannot answer it — see `recordWire`.
+  const wire = await readWire(page);
+  const types = wire.map((frame) => String(frame['type']));
+
+  // One version for the whole stream, and it is the version the elicitation
+  // and step vocabularies live in.
+  expect(new Set(wire.map((frame) => frame['wireVersion']))).toEqual(new Set([2]));
+
+  // The question reached the browser ON THE STREAM, and its answer came back
+  // under the same identity.
+  const requested = wire.find((frame) => frame['type'] === 'elicitation.requested');
+  const resolved = wire.find((frame) => frame['type'] === 'elicitation.resolved');
+  expect(requested?.['message']).toBe('Save this note?');
+  expect(resolved?.['requestId']).toBe(requested?.['requestId']);
+  expect(resolved?.['accepted']).toBe(true);
+
+  // TWO STEPS, and the second one's reply is bracketed by its own boundary —
+  // after the tool frames rather than inside the row that precedes them.
+  const steps = wire.filter((frame) => frame['type'] === 'assistant.step.started');
+  expect(steps.map((frame) => frame['step'])).toEqual([0, 1]);
+  const secondStepAt = types.lastIndexOf('assistant.step.started');
+  const toolResultAt = types.indexOf('tool_result');
+  expect(toolResultAt).toBeGreaterThan(-1);
+  expect(toolResultAt).toBeLessThan(secondStepAt);
+  const replyAtOnWire = wire.findIndex(
+    (frame) => frame['type'] === 'text' && String(frame['text']).includes(APPROVAL_FOLLOW_UP_TEXT),
+  );
+  expect(replyAtOnWire).toBeGreaterThan(secondStepAt);
+
+  // AND THE RELOADED HALF AGREES: the server's own history, which a reload
+  // renders, puts the tool before the reply. Either half alone would pass with
+  // the defect present in the other.
   await page.reload();
   await page.waitForSelector('body[data-hydrated="true"]');
 
