@@ -14,7 +14,7 @@
     <SideNavigation.Item href="/dashboard" active={active === 'dashboard'}>
       Dashboard
     </SideNavigation.Item>
-    <SideNavigation.Group label="Projects" expanded={projectsExpanded}>
+    <SideNavigation.Group label="Projects" bind:expanded={projectsExpanded}>
       <SideNavigation.Item href="/projects/phoenix" active={active === 'phoenix'}>
         Phoenix
       </SideNavigation.Item>

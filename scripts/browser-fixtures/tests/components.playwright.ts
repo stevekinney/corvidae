@@ -232,18 +232,27 @@ for (const theme of THEMES) {
       await first.press('Tab');
       const projects = page.getByRole('button', { name: 'Projects' });
       await projects.click();
-      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(4);
-      await projects.click();
-      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(7);
+      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(3);
+      await expect(page.getByRole('link', { name: 'Standalone second' })).toHaveCount(0);
+      await assertRows(page, '.cinder-navigation-item');
       const standalone = page.getByRole('navigation', { name: 'Standalone entries' });
       const standaloneRows = standalone.locator('.cinder-navigation-item');
+      const collapsedFirstStandaloneDivider = await standaloneRows
+        .first()
+        .evaluate((row) => getComputedStyle(row, '::after').content);
+      expect(collapsedFirstStandaloneDivider).toBe('none');
+      await projects.click();
+      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(7);
+      await expect(page.getByRole('link', { name: 'Standalone second' })).toBeVisible();
       await expect(standaloneRows).toHaveCount(3);
-      await expect(
-        standaloneRows.nth(0).evaluate((row) => getComputedStyle(row, '::after').content),
-      ).not.toBe('none');
-      await expect(
-        standaloneRows.nth(1).evaluate((row) => getComputedStyle(row, '::after').content),
-      ).toBe('none');
+      const firstStandaloneDivider = await standaloneRows
+        .nth(0)
+        .evaluate((row) => getComputedStyle(row, '::after').content);
+      expect(firstStandaloneDivider).not.toBe('none');
+      const secondStandaloneDivider = await standaloneRows
+        .nth(1)
+        .evaluate((row) => getComputedStyle(row, '::after').content);
+      expect(secondStandaloneDivider).toBe('none');
       await assertRows(page, '.cinder-navigation-item');
     });
 
@@ -255,11 +264,16 @@ for (const theme of THEMES) {
       await input.click();
       await expect(page.locator('.cinder-combobox__option').first()).toBeVisible();
       await input.press('ArrowDown');
-      await input.fill('apple');
+      await input.fill('apri');
       await expect(page.locator('.cinder-combobox__option:visible')).toHaveCount(1);
+      await expect(page.locator('.cinder-combobox__option:visible')).toHaveText(/Apricot/);
+      await expect(page.locator('.cinder-combobox__option[data-cinder-active]')).toHaveText(
+        /Apricot/,
+      );
       await assertRows(page, '.cinder-combobox__option');
       await input.fill('');
       await expect(page.locator('.cinder-combobox__option:visible')).toHaveCount(10);
+      await expect(input).toBeFocused();
       await assertRows(page, '.cinder-combobox__option');
     });
 
@@ -271,8 +285,11 @@ for (const theme of THEMES) {
       await select.focus();
       await expect(select.locator('option')).toHaveCount(2);
       await expect(select).toBeFocused();
-      await select.press('ArrowDown');
+      await expect(select).toHaveValue('alpha');
+      await select.press('b');
       await expect(select).toHaveValue('beta');
+      await expect(select).toBeFocused();
+      await expect(page.locator('.cinder-select__option')).toHaveCount(0);
     });
   }
 }
