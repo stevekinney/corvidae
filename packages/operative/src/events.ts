@@ -314,10 +314,20 @@ export class GenerateStartedEvent extends Event {
    * to `undefined`.
    */
   readonly selection?: GenerationSelectionRecord | undefined;
-  constructor(step: number, selection?: GenerationSelectionRecord) {
+  /**
+   * COR-581 — the effective-context epoch this generation was issued
+   * under, referenced by identity. The epoch itself is the authoritative
+   * record; carrying only its id here keeps the event small and keeps one
+   * epoch shared by every attempt that genuinely reused it.
+   *
+   * Absent when the run composes no context-epoch sealer.
+   */
+  readonly contextEpochId?: string | undefined;
+  constructor(step: number, selection?: GenerationSelectionRecord, contextEpochId?: string) {
     super(GenerateStartedEvent.type);
     this.step = step;
     this.selection = selection;
+    this.contextEpochId = contextEpochId;
   }
 }
 

@@ -16,6 +16,7 @@ import { prepareStep } from './run-step-preparation';
 import { accumulateUsage } from './run-step-support';
 import { executeTools } from './run-step-tools';
 import { explicitAbortReason } from './run-step-utilities';
+import type { ContextEpochSealer } from './context-epoch';
 import type { SelectionGate } from './selection-gate';
 import type { ToolChoice } from './structured-output/types';
 import type {
@@ -111,6 +112,13 @@ export interface StepDeps {
    * and behavior is unchanged.
    */
   readonly selection: SelectionGate | undefined;
+  /**
+   * COR-581's effective-context epoch sealer, threaded from
+   * `RunOptions.contextEpoch`. `undefined` when the run composes none —
+   * the seal below is skipped entirely and `generate.started` carries no
+   * `contextEpochId`, exactly as before.
+   */
+  readonly contextEpoch: ContextEpochSealer | undefined;
   readonly stopConditions: StopCondition[];
   readonly prepareStepHooks: PrepareStepHook[];
   readonly beforeToolExecutionHooks: BeforeToolExecutionHook[];
