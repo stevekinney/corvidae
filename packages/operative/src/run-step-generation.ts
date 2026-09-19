@@ -4,6 +4,7 @@ import { Conversation } from '@corvidae/conversationalist';
 import type { SteeringDesiredState } from './durable/types';
 import { GuardrailTripwireError } from './errors';
 import { GenerateErrorEvent, GenerateStartedEvent, RunErrorEvent } from './events';
+import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { createElicit } from './run-step-support';
@@ -161,7 +162,16 @@ export async function executeGeneration(
         });
         hookTracker?.(onLLMInputHookPromise);
 
-        emitter?.dispatch(new GenerateStartedEvent(step));
+        // AB-68: record the configuration this call is issued under. Read
+        // from the gate rather than re-planning — `prepareStep` already
+        // revalidated it at this step's boundary, so `getPlan()` returns
+        // the exact plan this step acted on.
+        emitter?.dispatch(
+          new GenerateStartedEvent(
+            step,
+            composeGenerationSelectionRecord(deps.selection?.getPlan(), steeringDesiredState),
+          ),
+        );
         const generateStart = deps.runtime.monotonic.now();
         let durationMilliseconds: number;
         try {

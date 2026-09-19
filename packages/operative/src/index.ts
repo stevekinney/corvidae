@@ -159,7 +159,12 @@ export {
   ToolSettledBubbleEvent,
   ToolStartedBubbleEvent,
 } from './events';
-export type { ToolEventStamp } from './events';
+export type {
+  GenerationBackendRecord,
+  GenerationDivergence,
+  GenerationSelectionRecord,
+  ToolEventStamp,
+} from './events';
 // C3 — session verb events
 export {
   SessionCancelEvent,
