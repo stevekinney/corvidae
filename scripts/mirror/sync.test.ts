@@ -378,30 +378,25 @@ describe('the mirror sync against a fake remote', () => {
     async () => {
       await withHarness(async (harness) => {
         await sync(harness, 'first');
+        // The mutation has to be something the transform owns, and since COR-1223 that is a much
+        // shorter list than corvidae's whole manifest. A new `description` used to serve here and
+        // no longer can: package metadata is target-owned now, so adding one to corvidae is
+        // correctly a no-op downstream, and this test would have gone on passing for the wrong
+        // reason once the first sync had given the target a manifest to own. Source is the thing
+        // the mirror exists to carry and is transform-owned outright, so it is what this mutates.
+        const changedSource =
+          'export const digest = (value: string): string => `sha512:${value}`;\n';
         await Bun.write(
-          join(harness.corvidae, 'packages/cryptography/package.json'),
-          `${JSON.stringify(
-            {
-              name: '@corvidae/cryptography',
-              private: true,
-              type: 'module',
-              description: 'A description the first sync did not carry',
-              exports: { '.': './src/index.ts' },
-              scripts: { typecheck: 'tsc --noEmit' },
-              devDependencies: {
-                '@corvidae/typescript': 'workspace:*',
-                '@types/bun': 'catalog:',
-                typescript: 'catalog:',
-              },
-            },
-            undefined,
-            2,
-          )}\n`,
+          join(harness.corvidae, 'packages/cryptography/src/index.ts'),
+          changedSource,
         );
 
         const second = await sync(harness, 'second');
         expect(second.decision).toBe('pushed');
-        expect(second.changed.join('\n')).toContain('packages/cryptography/package.json');
+        expect(second.changed.join('\n')).toContain('packages/cryptography/src/index.ts');
+        expect(
+          await readFile(join(second.directory, 'packages/cryptography/src/index.ts'), 'utf8'),
+        ).toBe(changedSource);
       });
     },
     endToEndTimeout,

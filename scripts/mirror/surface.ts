@@ -5,6 +5,7 @@ import {
   ManifestTransformError,
   planManifests,
   publicNameFor,
+  readExistingManifest,
   type ManifestPlan,
   type PlanOptions,
 } from './manifests.ts';
@@ -123,6 +124,11 @@ function serialize(manifest: JsonObject): string {
  * A `catalog:` value only survives in a target that has a workspace root to hold a catalog, which
  * is the same rule `manifests.ts` applies to corvidae's own specifiers; in the single-package weft
  * target it is inlined from corvidae's root catalog instead.
+ *
+ * A package the manifest already declares is left exactly as it is. This list exists to make sure
+ * the build's own imports resolve, which a dependency the target already pins does; overwriting
+ * the pin would retune the target's toolchain as a side effect of a build-input check, and
+ * `target-owned.json` gives third-party ranges to whichever manifest already declares them.
  */
 function applyToolchain(
   manifest: JsonObject,
@@ -137,6 +143,7 @@ function applyToolchain(
     : {};
   const merged: Record<string, string> = { ...existing };
   for (const [dependency, specifier] of Object.entries(toolchain)) {
+    if (dependency in merged) continue;
     if (specifier !== 'catalog:' || targetHasCatalog) {
       merged[dependency] = specifier;
       continue;
@@ -155,32 +162,46 @@ function applyToolchain(
 }
 
 /** The exports map the target already publishes, or `undefined` on a fresh target. */
-async function readTargetExports(
-  targetDirectory: string | undefined,
-  path: string,
-): Promise<SurfaceExportsMap | undefined> {
-  if (targetDirectory === undefined) return undefined;
-  const file = Bun.file(join(targetDirectory, path));
-  if (!(await file.exists())) return undefined;
-  const manifest = (await file.json()) as JsonObject;
-  const exports = manifest['exports'];
+function readExports(existing: JsonObject | undefined): SurfaceExportsMap | undefined {
+  const exports = existing?.['exports'];
   return isJsonObject(exports) ? (exports as SurfaceExportsMap) : undefined;
 }
 
+/**
+ * Write one package's published surface onto its manifest.
+ *
+ * Two classes of key, split by `target-owned.json`'s `insideFiles` rule and by where the value
+ * comes from. `exports`, `files`, `bin` and `sideEffects` are recomputed from corvidae's source
+ * every run and gated against the registry baseline, so they are written unconditionally. The
+ * rest — `manifestFields` and `peerDependencies` — are, by `package-surface.json`'s own account,
+ * ports of what the target publishes today; where the target still carries the key it holds the
+ * authoritative copy of the same fact, so they are supplied only as defaults. `existing` is the
+ * target's own manifest, `undefined` on a package the target does not have, where nothing can be
+ * preserved and every default applies.
+ *
+ * `build.scripts` merge rather than replace for the same reason: a build script is the transform's
+ * because it produces the artifact, and every other script in the block is the target's.
+ */
 function applySurfaceToManifest(
   manifest: JsonObject,
   entry: PackageSurfaceEntry,
   exports: SurfaceExportsMap,
   files: readonly string[],
+  existing: JsonObject | undefined,
 ): void {
-  for (const [key, value] of Object.entries(entry.manifestFields)) manifest[key] = value;
+  const supplies = (key: string): boolean => existing === undefined || !(key in existing);
+  for (const [key, value] of Object.entries(entry.manifestFields)) {
+    if (supplies(key)) manifest[key] = value;
+  }
   manifest['exports'] = exports;
   manifest['files'] = [...files];
   const scripts = isJsonObject(manifest['scripts'])
     ? (manifest['scripts'] as Record<string, string>)
     : {};
   manifest['scripts'] = { ...scripts, ...entry.build.scripts };
-  if (entry.peerDependencies) manifest['peerDependencies'] = { ...entry.peerDependencies };
+  if (entry.peerDependencies && supplies('peerDependencies')) {
+    manifest['peerDependencies'] = { ...entry.peerDependencies };
+  }
   if (entry.sideEffects !== undefined) manifest['sideEffects'] = entry.sideEffects;
   if (entry.bin !== undefined) manifest['bin'] = entry.bin;
 }
@@ -239,6 +260,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     emittedWorkspaces.push({ ...workspace, entry });
     const packageRoot = join(options.corvidaeRoot, workspace.corvidaeDirectory);
     const manifest = JSON.parse(serialized) as JsonObject;
+    const existing = await readExistingManifest(options.targetDirectory, path);
     const resolved = resolveSurface({
       entry,
       packageRoot,
@@ -246,10 +268,10 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
       // The target's own map, not the emitted one. The generator consults it only to preserve a
       // legacy flat subpath, and corvidae's `{".": "./src/index.ts"}` can never carry one — so
       // reading the emitted manifest here would make that pass permanently inert.
-      existingExports: await readTargetExports(options.targetDirectory, path),
+      existingExports: readExports(existing),
     });
 
-    applySurfaceToManifest(manifest, entry, resolved.exports, resolved.files);
+    applySurfaceToManifest(manifest, entry, resolved.exports, resolved.files, existing);
     applyToolchain(manifest, entry.build.toolchain, catalog, targetHasCatalog, workspace.workspace);
     files[path] = serialize(manifest);
 
@@ -279,6 +301,8 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
     workspaces: emittedWorkspaces,
+    targetDirectory: options.targetDirectory,
+    policy: options.policy,
   });
   assertTypeScriptEdgeClosed(manifestPlan.droppedEdges, typescript);
 

@@ -11,7 +11,7 @@ import {
   loadLayoutMap,
   targetDirectoryFor,
 } from './layout-map.ts';
-import { applyPreservedFields } from './manifests.ts';
+import { composeManifest } from './manifests.ts';
 import { loadTargetOwnedPolicy } from './target-owned.ts';
 
 const corvidaeRoot = join(import.meta.dir, '..', '..');
@@ -111,27 +111,31 @@ describe('the table itself', () => {
   });
 });
 
-describe('the field the remap makes reachable', () => {
+describe('the manifest the remap makes reachable', () => {
   /**
-   * `target-owned.json` carries a `fields` entry keyed to `packages/components/package.json`,
-   * preserving cinder's `"prepare": "cd ../.. && husky"`. That key could never match while the
-   * transform emitted `@corvidae/cinder` at corvidae's own `components/cinder`, so the entry was
-   * enumerated but inert. This is the pairing: the table sends the workspace to the path the
-   * entry names, and the entry then fires.
+   * Cinder's husky `prepare` is not at its root: `packages/components/package.json` carries
+   * `"prepare": "cd ../.. && husky"`. Nothing could preserve it while the transform emitted
+   * `@corvidae/cinder` at corvidae's own `components/cinder`, because the composition never saw
+   * the target's manifest at all. This is the pairing: the table sends the workspace to the path
+   * the target keeps it at, and the target's own manifest is then what gets composed against.
+   *
+   * COR-1223 is why the assertion is about the whole block rather than one key. The old rule
+   * preserved an enumerated `/scripts/prepare` pointer and dropped every sibling; the inverted one
+   * has no list of scripts to get wrong.
    */
-  test('cinder’s husky prepare survives a rewrite of packages/components/package.json', async () => {
+  test('cinder’s whole scripts block survives a rewrite of packages/components/package.json', async () => {
     const policy = await loadTargetOwnedPolicy();
     const file = `${await targetDirectoryFor('@corvidae/cinder')}/package.json`;
     expect(file).toBe('packages/components/package.json');
-    expect(
-      policy.fields.entries.some((entry) => entry.file === file),
-      'the enumeration still names this file',
-    ).toBe(true);
 
-    const emitted: Record<string, unknown> = { name: '@lostgradient/cinder', scripts: {} };
-    applyPreservedFields(policy, 'cinder', file, emitted, {
-      scripts: { prepare: 'cd ../.. && husky', build: 'bun run scripts/build.ts' },
+    const scripts = { prepare: 'cd ../.. && husky', build: 'bun run scripts/build.ts' };
+    const { manifest } = composeManifest({
+      policy,
+      target: 'cinder',
+      emitted: { name: '@lostgradient/cinder', scripts: {} },
+      existing: { name: '@lostgradient/cinder', scripts },
+      mirrorPackages: new Set(),
     });
-    expect(emitted['scripts']).toEqual({ prepare: 'cd ../.. && husky' });
+    expect(manifest['scripts']).toEqual(scripts);
   });
 });

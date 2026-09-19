@@ -1,10 +1,12 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import typescript from 'typescript';
 
 import { targetDirectoryFor } from './layout-map.ts';
 import { publicNameFor, targetFor, type MirrorTarget } from './manifests.ts';
 import { dispositionFor } from './package-map.ts';
 import type { EmittedWorkspace } from './source.ts';
+import { keysFor, loadTargetOwnedPolicy, type TargetOwnedPolicy } from './target-owned.ts';
 
 /**
  * How `@corvidae/typescript` reaches each target.
@@ -109,6 +111,57 @@ export interface TypeScriptPlanOptions {
    * the configuration is read from corvidae's directory and emitted into the target's.
    */
   workspaces: readonly Pick<EmittedWorkspace, 'corvidaeDirectory' | 'targetDirectory'>[];
+  /** A clone of the target, read for the keys `target-owned.json` says the target owns. */
+  targetDirectory?: string | undefined;
+  policy?: TargetOwnedPolicy | undefined;
+}
+
+/**
+ * Read one `tsconfig*.json` the way TypeScript itself reads it.
+ *
+ * `JSON.parse` is wrong for this file and the weft target proves it: its `tsconfig.json` carries
+ * eleven `//` section comments, so a plain parse throws on the first one and takes the whole sync
+ * with it. A tsconfig is JSON with comments and trailing commas by definition, and the compiler's
+ * own reader is the only thing guaranteed to agree with `tsc` about what the file says.
+ */
+function parseConfiguration(path: string, text: string): JsonObject {
+  const { config, error } = typescript.parseConfigFileTextToJson(path, text);
+  if (error) {
+    throw new TypeScriptConfigurationError(
+      `The target's ${path} is not readable as a TypeScript configuration: ${typescript.flattenDiagnosticMessageText(error.messageText, ' ')}`,
+    );
+  }
+  return (config ?? {}) as JsonObject;
+}
+
+/**
+ * Read the target's own answers for the keys it owns back into an emitted configuration.
+ *
+ * Only `include` and `exclude` today, and only where the target already has a configuration at
+ * this path. Which trees a repository type-checks is a decision about its own working directories:
+ * weft checks `src` plus five named `scripts/*.ts` files, corvidae checks `src`, `tests`,
+ * `scripts` and `examples`, and emitting corvidae's pulled weft's `examples/` into a compilation
+ * where they import the package by its public name and resolve to a `dist/` that does not exist
+ * yet. A key the target does not carry is removed rather than left at corvidae's value, for the
+ * same reason it is in a manifest.
+ */
+async function applyTargetOwnedKeys(
+  configuration: JsonObject,
+  policy: TargetOwnedPolicy,
+  target: MirrorTarget,
+  targetDirectory: string | undefined,
+  path: string,
+): Promise<JsonObject> {
+  if (targetDirectory === undefined) return configuration;
+  const file = Bun.file(join(targetDirectory, path));
+  if (!(await file.exists())) return configuration;
+  const existing = parseConfiguration(path, await file.text());
+  const composed = { ...configuration };
+  for (const key of keysFor(policy.insideFiles.typeScriptTargetOwned, target)) {
+    if (key in existing) composed[key] = existing[key];
+    else delete composed[key];
+  }
+  return composed;
 }
 
 export interface TypeScriptPlan {
@@ -130,7 +183,10 @@ export async function planTypeScriptConfiguration({
   corvidaeRoot,
   target,
   workspaces,
+  targetDirectory,
+  policy,
 }: TypeScriptPlanOptions): Promise<TypeScriptPlan> {
+  const resolvedPolicy = policy ?? (await loadTargetOwnedPolicy());
   const vendor = vendorsConfiguration(target);
   const publicName = publicNameFor(
     configurationWorkspace,
@@ -140,21 +196,29 @@ export async function planTypeScriptConfiguration({
   const files: Record<string, string> = {};
   const vendoredInto: string[] = [];
 
-  for (const { corvidaeDirectory, targetDirectory } of workspaces) {
-    const workspaceDirectory = join(corvidaeRoot, corvidaeDirectory);
+  for (const workspace of workspaces) {
+    const emittedDirectory = workspace.targetDirectory;
+    const workspaceDirectory = join(corvidaeRoot, workspace.corvidaeDirectory);
     const names = await discoverConfigurations(workspaceDirectory);
     if (names.length === 0) continue;
     for (const name of names) {
       const parsed = (await Bun.file(join(workspaceDirectory, name)).json()) as JsonObject;
-      files[`${targetDirectory}/${name}`] = serialize(
-        rewriteExtendsField(parsed, publicName, vendor),
+      const path = `${emittedDirectory}/${name}`;
+      files[path] = serialize(
+        await applyTargetOwnedKeys(
+          rewriteExtendsField(parsed, publicName, vendor),
+          resolvedPolicy,
+          target,
+          targetDirectory,
+          path,
+        ),
       );
     }
     if (!vendor) continue;
-    vendoredInto.push(targetDirectory);
+    vendoredInto.push(emittedDirectory);
     for (const file of configurationFiles) {
       const source = join(corvidaeRoot, 'internal', 'typescript', file);
-      files[`${targetDirectory}/${vendoredDirectory}/${file}`] = await Bun.file(source).text();
+      files[`${emittedDirectory}/${vendoredDirectory}/${file}`] = await Bun.file(source).text();
     }
   }
 

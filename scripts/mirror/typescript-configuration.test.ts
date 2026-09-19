@@ -116,6 +116,78 @@ describe('planTypeScriptConfiguration', () => {
     );
   });
 
+  test('the target’s own include and exclude survive, while extends stays the transform’s', async () => {
+    await withTree(
+      {
+        'packages/weft/tsconfig.json': JSON.stringify({
+          extends: `${configurationWorkspace}/library.json`,
+          include: ['src', 'tests', 'scripts', 'examples'],
+          exclude: ['node_modules', '**/*.test-d.ts'],
+        }),
+      },
+      async (root) => {
+        // The target checks `src` plus five named scripts, and deliberately never checks its
+        // `examples/`: they import the package by its public name, which resolves through
+        // `exports` to a `dist/` that does not exist when `typecheck` runs. Emitting corvidae's
+        // widened `include` over that is what produced TS2307 across every example file.
+        const include = ['src', 'scripts/build.ts'];
+        const clone = await mkdtemp(join(tmpdir(), 'mirror-tsconfig-target-'));
+        try {
+          await Bun.write(
+            join(clone, 'packages/weft/tsconfig.json'),
+            JSON.stringify({ compilerOptions: { strict: true }, include }),
+          );
+          const plan = await planTypeScriptConfiguration({
+            corvidaeRoot: root,
+            target: 'weft',
+            workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
+            targetDirectory: clone,
+          });
+          const emitted = JSON.parse(plan.files['packages/weft/tsconfig.json'] ?? '{}') as {
+            extends?: string;
+            include?: string[];
+            exclude?: string[];
+          };
+          expect(emitted.include).toEqual(include);
+          // The target carries no `exclude`, and "the target owns this key" and "the target chose
+          // not to set it" are the same statement, so corvidae's is dropped rather than kept.
+          expect('exclude' in emitted).toBe(false);
+          expect(emitted.extends).toBe(`./${vendoredDirectory}/library.json`);
+        } finally {
+          await rm(clone, { recursive: true, force: true });
+        }
+      },
+    );
+  });
+
+  test('a target with no configuration at that path gets corvidae’s whole', async () => {
+    await withTree(
+      {
+        'packages/weft/tsconfig.json': JSON.stringify({
+          extends: `${configurationWorkspace}/library.json`,
+          include: ['src', 'tests'],
+        }),
+      },
+      async (root) => {
+        const clone = await mkdtemp(join(tmpdir(), 'mirror-tsconfig-fresh-'));
+        try {
+          const plan = await planTypeScriptConfiguration({
+            corvidaeRoot: root,
+            target: 'weft',
+            workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
+            targetDirectory: clone,
+          });
+          const emitted = JSON.parse(plan.files['packages/weft/tsconfig.json'] ?? '{}') as {
+            include?: string[];
+          };
+          expect(emitted.include).toEqual(['src', 'tests']);
+        } finally {
+          await rm(clone, { recursive: true, force: true });
+        }
+      },
+    );
+  });
+
   test('keeps the configuration a workspace in the cinder target', async () => {
     await withTree(
       {

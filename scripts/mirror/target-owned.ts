@@ -27,9 +27,14 @@ const pathEntrySchema = z.object({
   targets: z.array(targetName).min(1).optional(),
 });
 
-const fieldEntrySchema = z.object({
-  file: z.string().min(1),
-  pointer: z.string().startsWith('/'),
+/**
+ * One key the transform owns, or leaves to the target, inside a structured file it does write.
+ *
+ * A bare key rather than a JSON Pointer: under COR-1223's inversion the target owns everything
+ * nobody listed, so no rule here ever has to reach inside a key to preserve part of it.
+ */
+const keyEntrySchema = z.object({
+  key: z.string().min(1),
   reason: z.string().min(1),
   targets: z.array(targetName).min(1).optional(),
 });
@@ -48,7 +53,18 @@ const policySchema = z.object({
   documentation: z.string().min(1),
   targets: z.array(targetName).min(1),
   paths: z.array(pathEntrySchema).min(1),
-  fields: z.object({ policy: z.string().min(1), entries: z.array(fieldEntrySchema) }),
+  insideFiles: z.object({
+    policy: z.string().min(1),
+    /** Manifest keys written from the transform's value, replacing whatever the target had. */
+    manifestKeys: z.array(keyEntrySchema).min(1),
+    /** Manifest keys the transform supplies only where the target carries none of its own. */
+    manifestDefaults: z.array(keyEntrySchema).min(1),
+    dependencies: z.object({ policy: z.string().min(1) }),
+    /** Keys in an emitted `tsconfig*.json` that come from the transform. */
+    typeScriptKeys: z.array(keyEntrySchema).min(1),
+    /** Keys in an emitted `tsconfig*.json` read back out of the target's own. */
+    typeScriptTargetOwned: z.array(keyEntrySchema).min(1),
+  }),
   exceptions: z.object({ policy: z.string().min(1), entries: z.array(exceptionEntrySchema) }),
   openQuestions: z.array(z.string().min(1)),
 });
@@ -139,6 +155,14 @@ function appliesToTarget(
   target: string,
 ): boolean {
   return entry.targets === undefined || entry.targets.includes(target);
+}
+
+/** The keys one `insideFiles` list contributes for a target, in enumeration order. */
+export function keysFor(
+  entries: readonly { key: string; targets?: readonly string[] | undefined }[],
+  target: string,
+): string[] {
+  return entries.filter((entry) => appliesToTarget(entry, target)).map((entry) => entry.key);
 }
 
 function startOfDay(now: Date): number {
