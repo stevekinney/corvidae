@@ -1,5 +1,6 @@
 import {
   appendStreamingMessage,
+  cancelStreamingMessage,
   finalizeStreamingMessage,
   updateStreamingMessage,
 } from '@corvidae/conversationalist';
@@ -86,7 +87,7 @@ export async function consumeSessionEvents(dependencies: SessionEventDependencie
         // Only the step that is actually open: a late or duplicated
         // completion for a step already closed must not finalize the row the
         // NEXT step is streaming into.
-        if (event.step === state.currentStep) finalizeCurrentRow(dependencies);
+        if (event.step === state.currentStep) settleCurrentRow(dependencies);
         break;
       case 'run.error':
       case 'run.tripwire':
@@ -180,8 +181,24 @@ function applyToolResult(
   }
 }
 
-function finalizeCurrentRow({ state, options, update }: SessionEventDependencies): void {
-  update(finalizeStreamingMessage(options.getConversation(), state.currentAssistantMessageId));
+/**
+ * Settles the row the current step was streaming into.
+ *
+ * An EMPTY row is cancelled rather than finalized, the same rule the end of a
+ * turn applies. A step that only called a tool — the model reaching for
+ * `remember_note` without saying anything first — owns no prose, so it owns
+ * no row; finalizing it would leave an empty assistant bubble above the tool
+ * activity that nothing will ever fill.
+ */
+function settleCurrentRow({ state, options, update }: SessionEventDependencies): void {
+  const conversation = options.getConversation();
+  if (state.currentAssistantText) {
+    update(finalizeStreamingMessage(conversation, state.currentAssistantMessageId));
+    return;
+  }
+  update(cancelStreamingMessage(conversation, state.currentAssistantMessageId));
+  // The row is gone, so a terminal snapshot has nothing to replace here.
+  state.provisionalIds.delete(state.currentAssistantMessageId);
 }
 
 /**
@@ -201,7 +218,7 @@ function applyStepStarted(
 ): void {
   const { state, options, update } = dependencies;
   if (state.currentStep !== -1 && state.currentStep !== step) {
-    finalizeCurrentRow(dependencies);
+    settleCurrentRow(dependencies);
     const next = appendStreamingMessage(options.getConversation(), 'assistant');
     update(next.conversation);
     state.currentAssistantMessageId = next.messageId;

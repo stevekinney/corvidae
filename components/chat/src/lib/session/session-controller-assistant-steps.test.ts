@@ -106,6 +106,47 @@ describe('assistant step boundaries', () => {
     expect(contentOf(conversation, 'host-only')).toBe('Hello.');
   });
 
+  test('a tool-only first step leaves no empty assistant bubble behind', async () => {
+    let conversation = createConversationHistory({ id: 'tool-only-step' });
+    const controller = createChatSessionController({
+      executionOwner: 'server',
+      getConversation: () => conversation,
+      setConversation: (next) => {
+        conversation = next;
+      },
+      transport: async () =>
+        events([
+          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 1, sequence: 0 },
+          {
+            type: 'tool_call',
+            id: 'call-1',
+            name: 'remember_note',
+            arguments: {},
+            wireVersion: 1,
+            sequence: 1,
+          },
+          {
+            type: 'tool_result',
+            callId: 'call-1',
+            outcome: 'success',
+            content: 'ok',
+            wireVersion: 1,
+            sequence: 2,
+          },
+          { type: 'assistant.step.completed', step: 0, messageId: 'host-0', wireVersion: 1, sequence: 3 },
+          { type: 'assistant.step.started', step: 1, messageId: 'host-1', wireVersion: 1, sequence: 4 },
+          { type: 'text', text: 'Saved that note.', wireVersion: 1, sequence: 5 },
+          { type: 'run.aborted', wireVersion: 1, sequence: 6 },
+        ]),
+    });
+    await controller.adapter.sendMessage({ role: 'user', content: 'remember this' }, []);
+    // The model called the tool without saying anything first. That step owns
+    // no prose, so it owns no row — an empty finalized bubble above the tool
+    // activity is a row nothing will ever fill.
+    expect(rolesOf(conversation)).toEqual(['user', 'tool-call', 'tool-result', 'assistant']);
+    expect(contentOf(conversation, 'host-1')).toBe('Saved that note.');
+  });
+
   test('a repeated step boundary for the same step does not open another row', async () => {
     let conversation = createConversationHistory({ id: 'repeat-step' });
     const controller = createChatSessionController({
