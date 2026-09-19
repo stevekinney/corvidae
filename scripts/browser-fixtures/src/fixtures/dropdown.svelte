@@ -29,3 +29,27 @@
     </Dropdown.Menu>
   </Dropdown>
 </div>
+
+<Dropdown id="row-regression-dropdown" open>
+  <Dropdown.Trigger>Row regression</Dropdown.Trigger>
+  <Dropdown.Menu>
+    <Dropdown.Group ariaLabelledby="row-regression-group-one">
+      <Dropdown.Label id="row-regression-group-one">First group</Dropdown.Label>
+      <Dropdown.Item>First</Dropdown.Item>
+      {#if false}<Dropdown.Item>Omitted middle</Dropdown.Item>{/if}
+      <Dropdown.Item hidden>Hidden terminal</Dropdown.Item>
+    </Dropdown.Group>
+    <Dropdown.Separator />
+    <Dropdown.Group ariaLabelledby="row-regression-group-two">
+      <Dropdown.Label id="row-regression-group-two">Nested group</Dropdown.Label>
+      <Dropdown.Item>Nested first</Dropdown.Item>
+      <Dropdown.Item>Nested terminal</Dropdown.Item>
+    </Dropdown.Group>
+    <Dropdown.Separator />
+    <Dropdown.Group ariaLabelledby="row-regression-group-three">
+      <Dropdown.Label id="row-regression-group-three">Third group</Dropdown.Label>
+      <Dropdown.Item>Third first</Dropdown.Item>
+      <Dropdown.Item>Third terminal</Dropdown.Item>
+    </Dropdown.Group>
+  </Dropdown.Menu>
+</Dropdown>
