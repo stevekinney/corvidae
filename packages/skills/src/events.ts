@@ -94,13 +94,22 @@ export class SkillDeactivatedEvent extends Event {
  * detail belongs in the privileged, separately-redacted surface, not in a
  * general lifecycle event.
  *
- * `'ownership-policy'` is deliberately absent. COR-752 has not defined the
- * ownership gate or given a denying rule any identity to correlate to, and
- * inventing one here would be guessing at its contract. Adding that member
- * when COR-752 lands is additive and breaks no consumer that handles the two
- * reasons below.
+ * `'ownership-policy'` was added once COR-752 defined the gate: Bureau's
+ * `skillPolicy` is an admission decision, not merely a catalog filter, and a
+ * denial names which of its two rules refused the skill.
  */
-export type SkillRejectionReason = 'disabled' | 'guardrail-blocked';
+export type SkillRejectionReason = 'disabled' | 'guardrail-blocked' | 'ownership-policy';
+
+/**
+ * Which rule of the admission policy refused an activation. Carried only on an
+ * `'ownership-policy'` rejection, and deliberately an identity rather than the
+ * policy's contents: a consumer can branch on which rule fired without the
+ * event disclosing the configured allow or deny lists.
+ *
+ * `'allow-list'` — an allow list is configured and the skill is not on it.
+ * `'deny-list'` — the skill appears on the deny list.
+ */
+export type SkillAdmissionRule = 'allow-list' | 'deny-list';
 
 /**
  * An activation attempt was refused before the skill entered context.
@@ -111,16 +120,24 @@ export class SkillRejectedEvent extends Event {
   static readonly type = 'skill.rejected' as const;
   readonly skillName: string;
   readonly reason: SkillRejectionReason;
+  /**
+   * The admission rule that refused the skill. Set only when `reason` is
+   * `'ownership-policy'`; undefined for every other reason, which have no rule
+   * to name.
+   */
+  readonly rule: SkillAdmissionRule | undefined;
   readonly correlation: SkillEventCorrelation;
   constructor(
     skillName: string,
     reason: SkillRejectionReason,
     correlation: SkillEventCorrelation = {},
+    rule?: SkillAdmissionRule,
   ) {
     super(SkillRejectedEvent.type);
     this.skillName = skillName;
     this.reason = reason;
     this.correlation = correlation;
+    this.rule = rule;
   }
   override get type(): typeof SkillRejectedEvent.type {
     return SkillRejectedEvent.type;

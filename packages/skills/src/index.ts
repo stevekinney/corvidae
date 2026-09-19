@@ -33,6 +33,7 @@ export {
   SkillRejectedEvent,
 } from './events';
 export type {
+  SkillAdmissionRule,
   SkillEventClassMap,
   SkillEventCorrelation,
   SkillEventMap,

@@ -1174,7 +1174,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     emitter.dispatch(new SkillDeactivatedEvent(event.skillName, event.correlation));
   });
   runtime.skillEvents.addEventListener(SkillRejectedEvent.type, (event) => {
-    emitter.dispatch(new SkillRejectedEvent(event.skillName, event.reason, event.correlation));
+    emitter.dispatch(
+      new SkillRejectedEvent(event.skillName, event.reason, event.correlation, event.rule),
+    );
   });
   runtime.skillEvents.addEventListener(SkillFailedEvent.type, (event) => {
     emitter.dispatch(new SkillFailedEvent(event.skillName, event.correlation));
