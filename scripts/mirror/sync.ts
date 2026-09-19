@@ -89,7 +89,7 @@ const mirrorIdentity = {
  * template or hooks path cannot change what a sync produces, and the identity is supplied
  * explicitly rather than inherited: a mirror commit is authored by the mirror.
  */
-function gitEnvironment(): Record<string, string | undefined> {
+export function gitEnvironment(): Record<string, string | undefined> {
   const mirrorEnvironment: Record<string, string | undefined> = {
     ...Bun.env,
     GIT_AUTHOR_NAME: mirrorIdentity.name,
