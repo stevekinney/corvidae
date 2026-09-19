@@ -12,6 +12,7 @@ import { resolveStorage } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { ImplementedSteeringCommand } from './steering';
+import type { PersistedSteeringCommand } from './steering-durability';
 import {
   createSteeringMailbox,
   persistSteeringCommand,
@@ -49,7 +50,8 @@ describe('durable steering', () => {
       // mailbox that shares nothing in memory with the first.
       const storageAfter = await resolveStorage(fixture.configuration);
       const mailboxAfter = createSteeringMailbox(storageAfter, 'session-1');
-      const recovered = await recoverSteeringCommands(mailboxAfter);
+      const recovered: PersistedSteeringCommand[] = [];
+      await recoverSteeringCommands(mailboxAfter, (command) => recovered.push(command));
 
       expect(recovered).toHaveLength(1);
       expect(recovered[0]?.id).toBe('cmd-1');
@@ -87,7 +89,8 @@ describe('durable steering', () => {
 
       const storageAfter = await resolveStorage(fixture.configuration);
       const mailboxAfter = createSteeringMailbox(storageAfter, 'session-1');
-      const recovered = await recoverSteeringCommands(mailboxAfter);
+      const recovered: PersistedSteeringCommand[] = [];
+      await recoverSteeringCommands(mailboxAfter, (command) => recovered.push(command));
 
       expect(recovered.map((command) => command.id)).toEqual(['cmd-1', 'cmd-2']);
 
@@ -115,7 +118,8 @@ describe('durable steering', () => {
         expect(second.commandId).toBe(first.commandId);
       }
 
-      const recovered = await recoverSteeringCommands(mailbox);
+      const recovered: PersistedSteeringCommand[] = [];
+      await recoverSteeringCommands(mailbox, (command) => recovered.push(command));
       expect(recovered).toHaveLength(1);
 
       mailbox.dispose();
@@ -135,8 +139,8 @@ describe('durable steering', () => {
       const mailbox = createSteeringMailbox(storage, 'session-1');
       await persistSteeringCommand(mailbox, steeringCommand());
 
-      expect(await recoverSteeringCommands(mailbox)).toHaveLength(1);
-      expect(await recoverSteeringCommands(mailbox)).toHaveLength(0);
+      expect(await recoverSteeringCommands(mailbox, () => {})).toBe(1);
+      expect(await recoverSteeringCommands(mailbox, () => {})).toBe(0);
 
       mailbox.dispose();
       storage[Symbol.dispose]();
@@ -156,11 +160,47 @@ describe('durable steering', () => {
       const second = createSteeringMailbox(storage, 'session-2');
       await persistSteeringCommand(first, steeringCommand({ sessionId: 'session-1' }));
 
-      expect(await recoverSteeringCommands(second)).toHaveLength(0);
-      expect(await recoverSteeringCommands(first)).toHaveLength(1);
+      expect(await recoverSteeringCommands(second, () => {})).toBe(0);
+      expect(await recoverSteeringCommands(first, () => {})).toBe(1);
 
       first.dispose();
       second.dispose();
+      storage[Symbol.dispose]();
+    } finally {
+      await fixture.dispose();
+    }
+  });
+});
+
+describe('durable steering crash safety', () => {
+  it('leaves a command recoverable when the replay throws before acknowledgement', async () => {
+    // The defect this pins: an earlier version acknowledged every command
+    // as it drained and let the caller admit the batch afterwards, so a
+    // crash between the two lost the command from both sides at once —
+    // durably forgotten, never applied. Apply now runs per command,
+    // before its acknowledgement, so a failure leaves the command
+    // claimed; its lease expires and the next pass replays it.
+    const runtime = createManualRuntimeServices();
+    const fixture = createSqliteStorageFixture({ runtime });
+    try {
+      const storage = await resolveStorage(fixture.configuration);
+      const mailbox = createSteeringMailbox(storage, 'session-1');
+      await persistSteeringCommand(mailbox, steeringCommand());
+
+      await expect(
+        recoverSteeringCommands(mailbox, () => {
+          throw new Error('replay failed');
+        }),
+      ).rejects.toThrow('replay failed');
+
+      // Not acknowledged, so still durably present. `claim()` reports the
+      // command as held rather than gone — the record survived the failed
+      // replay, which is the whole guarantee.
+      const receipts = await mailbox.list();
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]?.state).not.toBe('acknowledged');
+
+      mailbox.dispose();
       storage[Symbol.dispose]();
     } finally {
       await fixture.dispose();

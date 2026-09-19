@@ -118,29 +118,46 @@ export async function persistSteeringCommand(
  * correct semantic rather than a workaround: recovery genuinely *consumes*
  * each command into desired state, and acknowledging says so.
  *
- * A crash midway is safe by construction. A claimed-but-unacknowledged
- * command's visibility lease expires and it returns to the queue head, so
- * the next boot replays it. The cost of that safety is at-least-once
- * replay, which is harmless here precisely because replay is idempotent:
- * re-applying "desired model is X" yields the same desired state, and the
- * gate's own value-idempotency check declines to advance `configVersion`
- * for a value already in force.
+ * A crash midway is safe by construction, but only because `apply` runs
+ * before the acknowledgement for each command individually. A
+ * claimed-but-unacknowledged command's visibility lease expires and it
+ * returns to the queue head, so the next boot replays it. The cost of
+ * that safety is at-least-once replay, which is harmless here precisely
+ * because replay is idempotent: re-applying "desired model is X" yields
+ * the same desired state, and the gate's own value-idempotency check
+ * declines to advance `configVersion` for a value already in force.
  *
  * `maximumCommands` bounds one drain so a pathological backlog cannot
  * stall boot indefinitely; the remainder stays durable for the next pass.
  */
 export async function recoverSteeringCommands(
   mailbox: Mailbox,
+  apply: (command: PersistedSteeringCommand) => void,
   maximumCommands = 1000,
-): Promise<readonly PersistedSteeringCommand[]> {
-  const recovered: PersistedSteeringCommand[] = [];
+): Promise<number> {
+  let applied = 0;
   for (let drained = 0; drained < maximumCommands; drained += 1) {
     const result = await mailbox.claim();
     if (result.status !== 'claimed') break;
     const { claim } = result;
     const command = readInlinePayload(claim.payload);
     if (command !== undefined) {
-      recovered.push(command);
+      // Apply BEFORE acknowledging, per command. `apply` is the caller's
+      // replay into the in-memory gate, and acknowledging is what durably
+      // forgets the command — so acknowledging first would open a window
+      // where a crash loses it from both sides at once: already forgotten
+      // durably, never applied in memory.
+      //
+      // An earlier version of this function collected the whole batch,
+      // acknowledging as it went, and let the caller admit afterwards.
+      // That contradicted this function's own crash-safety claim, and the
+      // window was up to `maximumCommands` wide.
+      //
+      // `apply` is synchronous by contract for the same reason: an async
+      // replay would reintroduce an await between the gate write and the
+      // acknowledgement.
+      apply(command);
+      applied += 1;
       await mailbox.acknowledge({
         commandId: claim.receipt.commandId,
         attemptToken: claim.attemptToken,
@@ -158,7 +175,7 @@ export async function recoverSteeringCommands(
       });
     }
   }
-  return recovered;
+  return applied;
 }
 
 function readInlinePayload(payload: {

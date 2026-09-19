@@ -612,10 +612,53 @@ export function createSteeringGate(
    * `pendingIdentityKey` treatment above, kept per target because steering
    * `model` must not supersede a pending `effort`.
    */
+  /**
+   * Every not-yet-terminal command per configuration target, not merely
+   * the most recent one.
+   *
+   * A set rather than a single key, for the same reason `runPauseOwners`
+   * is a set: the value-idempotency short-circuit below admits a
+   * duplicate command at the CURRENT `configVersion` without bumping it,
+   * so more than one command can legitimately be `accepted` against one
+   * desired value. Tracking only the latest would orphan the others —
+   * a later, different-value command would supersede the tracked one and
+   * leave its duplicates sitting `accepted` forever, and `recordApplied`'s
+   * `configVersion <= observed` test would then mark them `applied` for a
+   * value no boundary ever applied. That is precisely the defect PR #430
+   * fixed for pause and this path had reintroduced.
+   */
   const pendingConfigurationKeys = new Map<
     ConfigurationTargetKind,
-    { principal: string; id: string }
+    Array<{ principal: string; id: string }>
   >();
+
+  /** Marks every pending command for `target` superseded by `successorId`. */
+  function clearConfigurationOwners(
+    target: ConfigurationTargetKind,
+    now: string,
+    successorId: string,
+  ): void {
+    for (const key of pendingConfigurationKeys.get(target) ?? []) {
+      if (key.id === successorId) continue;
+      const prior = ledgerGet(key.principal, key.id);
+      if (prior && prior.state === 'accepted') {
+        prior.state = 'superseded';
+        prior.failure = { failedAt: now, reason: 'superseded-by', supersededBy: successorId };
+      }
+    }
+    pendingConfigurationKeys.set(target, []);
+  }
+
+  /** Records one more pending owner of `target`'s current desired value. */
+  function addConfigurationOwner(
+    target: ConfigurationTargetKind,
+    principal: string,
+    id: string,
+  ): void {
+    const owners = pendingConfigurationKeys.get(target);
+    if (owners === undefined) pendingConfigurationKeys.set(target, [{ principal, id }]);
+    else owners.push({ principal, id });
+  }
   /**
    * The highest `configVersion` any configuration-target command has
    * reached. Session-wide by design — see `runVisibleVersion`, which folds
@@ -1136,6 +1179,12 @@ export function createSteeringGate(
         // version and invalidate every other caller's `expectedRevision`.
         if (desiredConfiguration[target] === requested) {
           const stored = record(command, undefined, effectiveConfigVersion, context.now);
+          // A distinct command re-requesting the value already in force is
+          // a genuine additional owner of it, and must be swept by the
+          // next supersession like any other — see
+          // `pendingConfigurationKeys`' doc comment for what leaving it
+          // untracked would cause.
+          addConfigurationOwner(target, command.principal, command.id);
           return { outcome: 'accepted', command: snapshotOf(stored) };
         }
         const version = bump();
@@ -1144,25 +1193,14 @@ export function createSteeringGate(
         // live run on this session reaches without restarting.
         effectiveConfigVersion = version;
         lastConfigurationVersion = version;
-        const priorKey = pendingConfigurationKeys.get(target);
-        if (priorKey !== undefined) {
-          const prior = ledgerGet(priorKey.principal, priorKey.id);
-          if (prior && prior.state === 'accepted') {
-            prior.state = 'superseded';
-            prior.failure = {
-              failedAt: context.now,
-              reason: 'superseded-by',
-              supersededBy: command.id,
-            };
-          }
-        }
+        clearConfigurationOwners(target, context.now, command.id);
         if (target === 'effort') {
           desiredConfiguration.effort = requested as Effort;
         } else {
           desiredConfiguration[target] = requested;
         }
         const stored = record(command, undefined, version, context.now);
-        pendingConfigurationKeys.set(target, { principal: command.principal, id: command.id });
+        addConfigurationOwner(target, command.principal, command.id);
         return { outcome: 'accepted', command: snapshotOf(stored) };
       }
 

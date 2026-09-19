@@ -32,6 +32,27 @@ import type { SelectionPlan } from './providers/selection';
  * attempt two genuinely changed what the model sees, and the second
  * attempt's epoch says so.
  *
+ * ## What "attempt" does and does not count
+ *
+ * `firstConsumedBy.attempt` is `run-step-generation.ts`'s `stepRetryCount`:
+ * it counts error-recovery iterations, an `onError` hook returning
+ * `'retry'` and re-entering the `do…while (shouldRetryStep)` loop. Two
+ * neighbouring things are deliberately not counted, and a reader
+ * reconstructing a turn needs to know which:
+ *
+ * - A **schema retry** is not an attempt. `run-step-finalization.ts`
+ *   appends its correction message and lets the step complete; the
+ *   re-generation happens in the next `runStep` call, so it seals a new
+ *   epoch as a new *step*.
+ * - A **provider-level retry inside `callGenerateWithRetry`** is not an
+ *   attempt either, and this is a genuine gap rather than a definition.
+ *   That loop can issue several real `generate()` calls under one seal,
+ *   and a configured `retry.mutate` can change the request between them.
+ *   Those mutations are invisible to the epoch: the seal happens once,
+ *   before the call. Closing it means either sealing inside that loop or
+ *   recording the mutation as its own source; neither is done here, and
+ *   an epoch should not be read as covering provider-retry mutations.
+ *
  * An attempt that never reaches a provider call seals nothing. A
  * `prepareStep` hook may short-circuit by returning a response outright —
  * which is how the input guardrail's `block` action works — and on that

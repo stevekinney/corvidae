@@ -1447,7 +1447,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     liveRunIds: readonly string[],
   ): Promise<void> {
     const now = runtimeServices.clock.nowISO();
-    for (const recovered of await recoverSteeringCommands(mailbox)) {
+    // The replay is handed to `recoverSteeringCommands` as a callback so
+    // each command reaches the gate BEFORE its mailbox acknowledgement.
+    // Collecting the batch first and admitting afterwards would leave a
+    // window where a crash loses a command from both sides: durably
+    // acknowledged, never applied.
+    await recoverSteeringCommands(mailbox, (recovered) => {
       // Replayed through the gate's ordinary admission, not a private
       // back door, so a recovered command is subject to every invariant
       // a live one is. A pause bound to a run this process no longer has
@@ -1468,7 +1473,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         },
         { liveRunIds, now },
       );
-    }
+    });
   }
   // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
   // every session's gate shares (see `steering.ts`'s `createSteeringGate`
@@ -6065,6 +6070,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       steeringGateForAbort?.settleForDeletion(runtimeServices.clock.nowISO());
       steeringGateForAbort?.purgeFromLedger();
       steeringGates.delete(id);
+      // AB-200: the durable side needs the same treatment the gate and
+      // ledger just got, and for the identical reason — a reused session
+      // id must not inherit a deleted session's command history. The
+      // mailbox is keyed by `sessionId` as its Weft `resourceId`, so a
+      // cached instance left behind here would hand a new session the old
+      // one's undrained commands on its first `ensureSteeringGate` call.
+      // Dropping the recovery promise alongside it keeps the two in step;
+      // a future session under this id recovers from the durable log
+      // rather than from a resolved promise about a session that is gone.
+      steeringMailboxes.get(id)?.dispose();
+      steeringMailboxes.delete(id);
+      steeringRecoveries.delete(id);
 
       await Promise.allSettled(runTerminals);
 
@@ -7762,10 +7779,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           }
         } finally {
           try {
-            runtime.disposeStorage?.();
+            // AB-200: every steering mailbox holds process-local state
+            // over the shared backend, so they are released before the
+            // backend itself is. Disposing a mailbox does not delete its
+            // durable log — the commands stay recoverable by the next
+            // process, which is the whole point of persisting them.
+            for (const mailbox of steeringMailboxes.values()) mailbox.dispose();
+            steeringMailboxes.clear();
+            steeringRecoveries.clear();
           } finally {
-            if (ownsStore) {
-              store.dispose();
+            try {
+              runtime.disposeStorage?.();
+            } finally {
+              if (ownsStore) {
+                store.dispose();
+              }
             }
           }
         }
