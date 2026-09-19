@@ -15,6 +15,13 @@ import type {
   SessionSavedEvent,
   SteeringAcceptedEvent,
 } from '@corvidae/operative';
+import type {
+  SkillActivatedEvent,
+  SkillDeactivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from '@corvidae/skills';
 
 /**
  * Fired when the store records an action from a run.
@@ -353,6 +360,13 @@ export interface BureauEventMap extends EventMap {
   'schedule.completed': ScheduleCompletedEvent;
   'schedule.attempted': ScheduleAttemptedEvent;
   'schedule.skipped': ScheduleSkippedEvent;
+  // Skill lifecycle (COR-767), dispatched by the `@corvidae/skills` tools and
+  // forwarded onto this emitter by `create-bureau.ts`.
+  'skill.loaded': SkillLoadedEvent;
+  'skill.activated': SkillActivatedEvent;
+  'skill.deactivated': SkillDeactivatedEvent;
+  'skill.rejected': SkillRejectedEvent;
+  'skill.failed': SkillFailedEvent;
   'session.created': SessionCreatedEvent;
   'session.saved': SessionSavedEvent;
   'session.deleted': SessionDeletedEvent;

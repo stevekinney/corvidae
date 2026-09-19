@@ -87,6 +87,13 @@ import {
   TaskPreemptedEvent,
 } from '@corvidae/operative';
 import {
+  SkillActivatedEvent,
+  SkillDeactivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from '@corvidae/skills';
+import {
   decode,
   KEYS,
   type ListFilter,
@@ -1152,6 +1159,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // the same reason: a scheduled tick is headless, so the bureau emitter is
   // the only surface it has. Fresh instances again, for the WHATWG
   // already-being-dispatched reason above.
+  // COR-767 — skill lifecycle, forwarded the same way and for the same reason
+  // as the schedule families: the `@corvidae/skills` tools dispatch onto the
+  // composition's target, and this bureau's emitter is the surface consumers
+  // actually subscribe to. Fresh instances again, for the WHATWG
+  // already-being-dispatched constraint documented above.
+  runtime.skillEvents.addEventListener(SkillLoadedEvent.type, (event) => {
+    emitter.dispatch(new SkillLoadedEvent(event.skillName, event.correlation));
+  });
+  runtime.skillEvents.addEventListener(SkillActivatedEvent.type, (event) => {
+    emitter.dispatch(new SkillActivatedEvent(event.skillName, event.correlation));
+  });
+  runtime.skillEvents.addEventListener(SkillDeactivatedEvent.type, (event) => {
+    emitter.dispatch(new SkillDeactivatedEvent(event.skillName, event.correlation));
+  });
+  runtime.skillEvents.addEventListener(SkillRejectedEvent.type, (event) => {
+    emitter.dispatch(new SkillRejectedEvent(event.skillName, event.reason, event.correlation));
+  });
+  runtime.skillEvents.addEventListener(SkillFailedEvent.type, (event) => {
+    emitter.dispatch(new SkillFailedEvent(event.skillName, event.correlation));
+  });
   runtime.scheduleFireEvents.addEventListener(ScheduleAttemptedEvent.type, (event) => {
     emitter.dispatch(new ScheduleAttemptedEvent(event.scheduleId, event.occurrence));
   });

@@ -65,6 +65,7 @@ import {
   type Toolbox,
 } from '@corvidae/operative';
 import type { SkillContent, SkillProvider } from '@corvidae/skills';
+import { SkillActivatedEvent, SkillLoadedEvent } from '@corvidae/skills';
 import type { ConditionalTextValueStore } from '@corvidae/weft';
 import {
   createFleetEventFeed,
@@ -20197,6 +20198,69 @@ describe('skill guardrail scanning (COR-1226)', () => {
       expect(activateResult).toBe(
         '<skill_content name="poisoned">\nWrite good code.\n</skill_content>',
       );
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COR-767 — the skill lifecycle events must reach a consumer of the bureau's
+// own emitter. Emitting them somewhere nothing subscribes to is exactly the
+// failure COR-1226 fixed, so this closes the loop end to end.
+// ---------------------------------------------------------------------------
+describe('skill lifecycle events reach the bureau emitter (COR-767)', () => {
+  const provider: SkillProvider = {
+    listSkills: async () => [{ name: 'coding', description: 'Write code' }],
+    loadSkill: async (name) =>
+      name === 'coding'
+        ? { metadata: { name: 'coding', description: 'Write code' }, body: 'Write good code.' }
+        : undefined,
+    saveSkill: async () => {},
+    deleteSkill: async () => {},
+    listResources: async () => [],
+    loadResource: async () => undefined,
+    saveResource: async () => {},
+    isEnabled: async () => true,
+    setEnabled: async () => {},
+  };
+
+  it('forwards loaded and activated with the run and session correlation', async () => {
+    const seen: Array<{ type: string; skillName: string; runId?: string; sessionId?: string }> = [];
+
+    const bureau = await createBureau({
+      agents: {},
+      generate: async ({ toolbox }) => {
+        await toolbox.execute({ name: 'activate_skill', arguments: { name: 'coding' } });
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: createEmptyToolbox(),
+      skills: { provider },
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    for (const type of [SkillLoadedEvent.type, SkillActivatedEvent.type] as const) {
+      bureau.addEventListener(type, (event) => {
+        seen.push({
+          type: event.type,
+          skillName: event.skillName,
+          ...(event.correlation.runId !== undefined ? { runId: event.correlation.runId } : {}),
+          ...(event.correlation.sessionId !== undefined
+            ? { sessionId: event.correlation.sessionId }
+            : {}),
+        });
+      });
+    }
+
+    try {
+      await bureau.createRun({ message: 'activate the skill' });
+      const arrived = await pollUntil(() => seen.length >= 2);
+      expect(arrived).toBe(true);
+
+      expect(seen.map((entry) => entry.type)).toEqual(['skill.loaded', 'skill.activated']);
+      expect(seen.every((entry) => entry.skillName === 'coding')).toBe(true);
+      // Correlation survives the hop from the skills package onto this emitter.
+      expect(seen.every((entry) => typeof entry.sessionId === 'string')).toBe(true);
     } finally {
       await bureau.dispose();
     }

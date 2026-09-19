@@ -24,6 +24,22 @@ export { createSkillSession } from './skill-session';
 // ── Catalog Hook ─────────────────────────────────────────────────────
 export { createSkillCatalogHook, escapeXml } from './create-skill-catalog-hook';
 
+// ── Events ───────────────────────────────────────────────────────────
+export {
+  SkillActivatedEvent,
+  SkillDeactivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from './events';
+export type {
+  SkillEventClassMap,
+  SkillEventCorrelation,
+  SkillEventMap,
+  SkillEventType,
+  SkillRejectionReason,
+} from './events';
+
 // ── Tools ────────────────────────────────────────────────────────────
 export {
   createActivateSkillTool,

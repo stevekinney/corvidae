@@ -82,6 +82,7 @@ import {
   WorkflowVersionMismatchEvent,
 } from '@corvidae/operative';
 import type {
+  SkillEventMap,
   SkillGuardrailOptions,
   SkillSession,
   SkillProvider as SkillsPackageProvider,
@@ -1412,6 +1413,14 @@ export interface RuntimeComposition {
    */
   scheduleFireEvents: TypedEventTarget<ScheduleFireEventMap>;
   /**
+   * Skill lifecycle events (COR-767), dispatched by the `@corvidae/skills`
+   * tool factories each run's toolbox is built from. One bureau-level target
+   * rather than one per run, matching `scheduleFireEvents`: each event carries
+   * its own `runId`/`sessionId` correlation, so a shared target loses nothing
+   * and `createBureau` forwards from exactly one place.
+   */
+  skillEvents: TypedEventTarget<SkillEventMap>;
+  /**
    * Run ids the durable engine flagged, during boot recovery, as resuming
    * under a DIFFERENT workflow version than the one they were checkpointed
    * with (AB-10 — workflow versioning for in-flight durable runs). Populated
@@ -1658,6 +1667,7 @@ export async function createRuntimeComposition(
   // state.
   const catalogRunRecoveryCache = new Map<string, CatalogRunRecoveryRecord>();
   const scheduleFireEvents = new TypedEventTarget<ScheduleFireEventMap>();
+  const skillEvents = new TypedEventTarget<SkillEventMap>();
 
   // Resolve the `persistence` option into its components. The three forms are:
   // - PersistenceOptions { store, history?, observability?, onLog? }
@@ -2212,6 +2222,13 @@ export async function createRuntimeComposition(
           provider: resolvedSkillProvider,
           session: skillSession,
           ...(skillGuardrail !== undefined ? { guardrail: skillGuardrail } : {}),
+          // COR-767 — the tools have no view of the owning run or session, so
+          // the correlation is stamped here, where both are in scope.
+          events: skillEvents,
+          correlation: {
+            ...(request.runId !== undefined ? { runId: request.runId } : {}),
+            sessionId: request.sessionId,
+          },
         });
         const skillToolbox = createToolbox([
           skillTools.activateSkill,
@@ -3198,6 +3215,7 @@ export async function createRuntimeComposition(
     durable,
     workflowVersionMismatches,
     scheduleFireEvents,
+    skillEvents,
     disposeStorage:
       durableStorage && ownsDurableStorage ? () => durableStorage[Symbol.dispose]() : undefined,
     durableStorage,
