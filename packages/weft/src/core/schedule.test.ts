@@ -308,6 +308,7 @@ function createScheduleState(overrides: Partial<ScheduleState> = {}): ScheduleSt
     backfill: false,
     revisionPolicy: 'active-at-fire',
     missedFireCount: 0,
+    skippedCount: 0,
     queuedRuns: [],
     updatedAt: 1,
     workflowType: 'workflow',
@@ -858,6 +859,7 @@ describe('recurring schedules', () => {
     expect(skippedDescription).toMatchObject({
       lastMissedFireAt: firstFireAt + 120_000,
       missedFireCount: 3,
+      skippedCount: 0,
       nextFireAt: firstFireAt + 180_000,
     });
     expect(skippedDescription.lastFireAt).toBeUndefined();
@@ -1756,6 +1758,66 @@ describe('recurring schedules', () => {
 
     await releaseRunningWorkflows(engine);
     engine[Symbol.dispose]();
+  });
+
+  it('records a dropped occurrence on the durable schedule record, not only as a live event (COR-1224)', async () => {
+    const clock = { now: Date.UTC(2026, 0, 1, 0, 0, 0) };
+    const storage = new MemoryStorage();
+    const engine = createEngine(clock, storage);
+
+    registerWorkflow(engine, 'durable-skip-count', async function* (ctx: WorkflowContext) {
+      yield* ctx.waitForSignal('release');
+      return 'released';
+    });
+
+    const schedule = await engine.schedule('durable-skip-count', null, '* * * * *', {
+      id: 'durable-skip-count-schedule',
+      overlap: 'skip',
+    });
+
+    // A fresh schedule has never skipped.
+    const initial = await schedule.describe();
+    expect(initial.skippedCount).toBe(0);
+    expect(initial.lastSkippedAt).toBeUndefined();
+
+    await tickEngine(engine, clock, requireNextFireAt(initial));
+    const [blockingWorkflowId] = await listRunningWorkflowIds(engine);
+    expect(blockingWorkflowId).toBeDefined();
+
+    // A fire is not a skip.
+    const afterFire = await schedule.describe();
+    expect(afterFire.skippedCount).toBe(0);
+
+    const collision = requireNextFireAt(afterFire);
+    await tickEngine(engine, clock, collision);
+
+    const afterSkip = await schedule.describe();
+    expect(afterSkip.skippedCount).toBe(1);
+    expect(afterSkip.lastSkippedAt).toBe(collision);
+
+    // A second collision accumulates rather than replacing.
+    const secondCollision = requireNextFireAt(afterSkip);
+    await tickEngine(engine, clock, secondCollision);
+
+    const afterSecondSkip = await schedule.describe();
+    expect(afterSecondSkip.skippedCount).toBe(2);
+    expect(afterSecondSkip.lastSkippedAt).toBe(secondCollision);
+
+    // The count is on the persisted record, so it survives losing the engine
+    // that observed the collisions — which is the whole point of recording it
+    // durably rather than trusting a live listener to have been present.
+    await releaseRunningWorkflows(engine);
+    engine[Symbol.dispose]();
+
+    const recoveredEngine = createEngine(clock, storage);
+    registerWorkflow(recoveredEngine, 'durable-skip-count', async function* () {
+      return 'done';
+    });
+    const recovered = await recoveredEngine.getSchedule('durable-skip-count-schedule');
+    expect(recovered?.skippedCount).toBe(2);
+    expect(recovered?.lastSkippedAt).toBe(secondCollision);
+
+    recoveredEngine[Symbol.dispose]();
   });
 
   it('dispatches schedule:attempted with no schedule:skipped when a tick has no collision to block (WFT-136)', async () => {
@@ -2990,6 +3052,7 @@ describe('recurring schedules', () => {
         updatedAt: clock.now,
         nextFireAt: clock.now + 60_000,
         missedFireCount: 0,
+        skippedCount: 0,
         queuedRuns: [],
       }),
     );

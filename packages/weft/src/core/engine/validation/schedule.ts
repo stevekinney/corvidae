@@ -235,6 +235,8 @@ type ScheduleRuntimeFields = Pick<
   | 'nextFireAt'
   | 'currentWorkflowId'
   | 'missedFireCount'
+  | 'skippedCount'
+  | 'lastSkippedAt'
   | 'queuedRuns'
 >;
 
@@ -395,6 +397,32 @@ function decodeScheduleMissedFireCount(
   return missedFireCount;
 }
 
+function decodeScheduleSkipFields(
+  decoded: Record<string, unknown>,
+  scheduleId: string,
+): { skippedCount: number; lastSkippedAt?: number } | null {
+  // Absent on records written before COR-1224; treated as zero rather than
+  // rejected, so an existing schedule keeps decoding.
+  const rawCount = decoded['skippedCount'];
+  let skippedCount = 0;
+  if (rawCount !== undefined) {
+    if (typeof rawCount !== 'number' || !Number.isSafeInteger(rawCount) || rawCount < 0) {
+      return rejectInvalidScheduleRecord(scheduleId, 'with invalid skippedCount');
+    }
+    skippedCount = rawCount;
+  }
+
+  const lastSkippedAt = decoded['lastSkippedAt'];
+  if (lastSkippedAt !== undefined && !isValidScheduleTimestamp(lastSkippedAt)) {
+    return rejectInvalidScheduleRecord(scheduleId, 'with invalid lastSkippedAt');
+  }
+
+  return {
+    skippedCount,
+    ...(lastSkippedAt !== undefined && { lastSkippedAt }),
+  };
+}
+
 function decodeScheduleQueueFields(
   decoded: Record<string, unknown>,
   scheduleId: string,
@@ -446,6 +474,9 @@ export function decodeScheduleRuntimeFields(
 
   const queueFields = decodeScheduleQueueFields(decoded, scheduleId);
   if (queueFields === null) return null;
+
+  const skipFields = decodeScheduleSkipFields(decoded, scheduleId);
+  if (skipFields === null) return null;
   if (
     currentWorkflow.value !== undefined &&
     queueFields.queuedRuns.some((queuedRun) => queuedRun.workflowId === currentWorkflow.value)
@@ -459,6 +490,7 @@ export function decodeScheduleRuntimeFields(
     nextFireAt: nextFireAt.value,
     ...(currentWorkflow.value !== undefined && { currentWorkflowId: currentWorkflow.value }),
     ...queueFields,
+    ...skipFields,
   };
 }
 

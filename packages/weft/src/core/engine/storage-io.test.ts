@@ -61,6 +61,7 @@ function createScheduleState(overrides: Partial<ScheduleState> = {}): ScheduleSt
     input: null,
     intervalMs: 1_000,
     missedFireCount: 0,
+    skippedCount: 0,
     nextFireAt: 2_000,
     overlap: 'skip',
     queuedRuns: [],

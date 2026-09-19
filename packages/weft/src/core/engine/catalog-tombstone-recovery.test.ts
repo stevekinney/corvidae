@@ -142,6 +142,7 @@ describe('resolveOrphanedCatalogTombstones', () => {
       updatedAt: 1,
       nextFireAt: 60_000,
       missedFireCount: 0,
+      skippedCount: 0,
       queuedRuns: [],
     };
     await storage.put(KEYS.schedule(scheduleState.id), encode(scheduleState));
