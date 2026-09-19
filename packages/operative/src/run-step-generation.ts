@@ -194,6 +194,29 @@ export async function executeGeneration(
         );
         const generateStart = deps.runtime.monotonic.now();
         let durationMilliseconds: number;
+        // COR-581: a provider-level retry whose mutator changed the
+        // request seals a successor epoch, referenced from
+        // `generate.retry`. Without this the mutation would be invisible —
+        // the seal above happens once, before the call, and a mutated
+        // retry sends the model something the epoch does not describe.
+        const sealMutatedEpoch =
+          deps.contextEpoch === undefined
+            ? undefined
+            : (mutatedContext: GenerateContext, providerAttempt: number): string =>
+                deps.contextEpoch!.seal({
+                  conversation: mutatedContext.conversation,
+                  steering: steeringDesiredState,
+                  plan: deps.selection?.getPlan(),
+                  toolNames: mutatedContext.toolbox.tools().map((tool) => tool.name),
+                  consumer: {
+                    runId: deps.runId,
+                    step,
+                    // Offset past the error-recovery attempt index so a
+                    // provider retry and an error-recovery retry of the
+                    // same step are never reported as the same attempt.
+                    attempt: stepRetryCount + providerAttempt,
+                  },
+                }).epochId;
         try {
           response =
             deps.parentContext !== undefined && deps.withTraceContext !== undefined
@@ -204,6 +227,7 @@ export async function executeGeneration(
                     deps.retry,
                     emitter,
                     deps.runtime,
+                    sealMutatedEpoch,
                   ),
                 )
               : await callGenerateWithRetry(
@@ -212,6 +236,7 @@ export async function executeGeneration(
                   deps.retry,
                   emitter,
                   deps.runtime,
+                  sealMutatedEpoch,
                 );
           durationMilliseconds = deps.runtime.monotonic.now() - generateStart;
         } catch (generateError) {

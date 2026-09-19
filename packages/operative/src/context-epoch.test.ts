@@ -228,3 +228,85 @@ describe('epochSourcesUnchanged', () => {
     expect(epochSourcesUnchanged(a, b)).toBe(false);
   });
 });
+
+describe('provider-retry mutation (COR-581 gap closure)', () => {
+  it('seals a successor epoch when a retry mutator changes the request', async () => {
+    // The gap this closes: `callGenerateWithRetry` can issue several real
+    // generate() calls under one seal, and a RetryMutator can change the
+    // request between them. Those mutations used to be invisible to the
+    // epoch, so the recorded context described something the model was
+    // never sent on the retried attempt.
+    const { callGenerateWithRetry } = await import('./run-step-utilities.ts');
+    const { createDefaultRuntimeServices } = await import('@corvidae/lifecycle');
+
+    const conversation = conversationWith([['user', 'original']]);
+    const sealer = createContextEpochSealer({ newEpochId: sequentialEpochIds() });
+    const sealed: string[] = [];
+
+    let calls = 0;
+    const generate = async (context: { conversation: Conversation }) => {
+      calls += 1;
+      if (calls === 1) throw new Error('transient');
+      return { content: context.conversation.getMessages().length.toString(), toolCalls: [] };
+    };
+
+    await callGenerateWithRetry(
+      generate as never,
+      { conversation, step: 0, toolbox: { tools: () => [] } } as never,
+      {
+        attempts: 2,
+        delay: 0,
+        mutate: (context: { conversation: Conversation }) => {
+          context.conversation.appendUserMessage('mutated in');
+          return context as never;
+        },
+      } as never,
+      undefined,
+      createDefaultRuntimeServices(),
+      (mutatedContext, attempt) => {
+        const epoch = sealer.seal({
+          conversation: mutatedContext.conversation,
+          consumer: { runId: 'r', step: 0, attempt },
+        });
+        sealed.push(epoch.epochId);
+        return epoch.epochId;
+      },
+    );
+
+    // The mutator ran once, so exactly one successor epoch was sealed.
+    expect(sealed).toEqual(['epoch-1']);
+    expect(calls).toBe(2);
+  });
+
+  it('seals nothing when a retry is not mutated', async () => {
+    // An unmutated retry re-issues the identical request and correctly
+    // consumes the epoch sealed before `generate.started`. Minting a
+    // successor would claim a context change that did not happen.
+    const { callGenerateWithRetry } = await import('./run-step-utilities.ts');
+    const { createDefaultRuntimeServices } = await import('@corvidae/lifecycle');
+
+    const conversation = conversationWith([['user', 'original']]);
+    const sealed: string[] = [];
+    let calls = 0;
+    const generate = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('transient');
+      return { content: 'ok', toolCalls: [] };
+    };
+
+    await callGenerateWithRetry(
+      generate as never,
+      { conversation, step: 0, toolbox: { tools: () => [] } } as never,
+      { attempts: 2, delay: 0 } as never,
+      undefined,
+      createDefaultRuntimeServices(),
+      () => {
+        sealed.push('should-not-happen');
+        return 'x';
+      },
+    );
+
+    expect(sealed).toEqual([]);
+    expect(calls).toBe(2);
+  });
+});

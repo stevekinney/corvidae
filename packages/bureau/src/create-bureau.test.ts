@@ -6507,6 +6507,147 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     }
   });
 
+  it('resolves a model policyRef through the named policy profile (COR-1227)', async () => {
+    // A policyRef names a key of BureauModelPolicyOptions.users. The
+    // resolved coordinate — not the reference — is what gets admitted, so
+    // the stored command records what was actually chosen rather than a
+    // reference a later reader would re-resolve against configuration
+    // that may since have changed.
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
+    const bureau = await createBureau({
+      agents: { steered },
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      modelPolicy: {
+        policyRevision: 1,
+        users: { 'fast-tier': { exactOverride: { model: 'claude-sonnet-5' } } },
+      },
+    });
+    try {
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'fast-tier' },
+      });
+
+      expect(outcome.outcome).toBe('accepted');
+      if (outcome.outcome !== 'accepted') throw new Error('expected accepted');
+      expect(outcome.command.requestedValue).toEqual({
+        target: 'model',
+        override: 'claude-sonnet-5',
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('rejects an unknown policyRef distinctly from a profile that omits the coordinate (COR-1227)', async () => {
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
+    const bureau = await createBureau({
+      agents: { steered },
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      modelPolicy: {
+        policyRevision: 1,
+        // Exists, but says nothing about `model`.
+        users: { 'effort-only': { defaultEffort: 'low' } },
+      },
+    });
+    try {
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const unknown = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'no-such-policy' },
+      });
+      expect(unknown.outcome).toBe('rejected');
+
+      const silentOnModel = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'effort-only' },
+      });
+      expect(silentOnModel.outcome).toBe('rejected');
+
+      // The same profile DOES specify an effort, so that target resolves.
+      const effort = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'effort', policyRef: 'effort-only' },
+      });
+      expect(effort.outcome).toBe('accepted');
+      if (effort.outcome !== 'accepted') throw new Error('expected accepted');
+      expect(effort.command.requestedValue).toEqual({ target: 'effort', override: 'low' });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('a policyRef cannot admit a coordinate an override could not (COR-1227)', async () => {
+    // The authority guarantee: a resolved policy value goes through the
+    // identical catalog check the override path uses, so a misconfigured
+    // profile cannot smuggle in a model the deployment cannot run.
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
+    const bureau = await createBureau({
+      agents: { steered },
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      modelPolicy: {
+        policyRevision: 1,
+        users: { 'bad-tier': { exactOverride: { model: 'not-a-real-model' } } },
+      },
+    });
+    try {
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'bad-tier' },
+      });
+
+      expect(outcome.outcome).toBe('rejected');
+      if (outcome.outcome !== 'rejected') throw new Error('expected rejected');
+      expect(outcome.failure.reason).toBe('policy-denied');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('rejects a model override outside the catalog with policy-denied (AB-200)', async () => {
     // The rollback trigger this guards: a steering command silently
     // bypassing the catalog check and recording a model the deployment

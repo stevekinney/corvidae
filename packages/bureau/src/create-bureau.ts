@@ -6361,7 +6361,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // TypeScript cannot carry that narrowing across the intervening
     // statements because the checks are separate early returns rather than
     // one discriminating switch.
-    const resolvedRequestedValue =
+    let resolvedRequestedValue =
       request.requestedValue as ImplementedSteeringCommand['requestedValue'];
     if (isConfigurationTarget(steeringTarget)) {
       // Narrowing `steeringTarget` does not narrow `request.requestedValue`:
@@ -6372,14 +6372,66 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         SteeringRequestedValue,
         { target: 'route' | 'model' | 'provider' | 'effort' }
       >;
+
+      // COR-1227 — resolve a `policyRef` to a concrete coordinate.
+      //
+      // A policyRef names a key of `BureauModelPolicyOptions.users`, whose
+      // own doc comment fixes that meaning: "Named policy profiles are keys
+      // of `users`". Resolution reads that profile's coordinate for this
+      // target and admits the concrete value, so the stored command records
+      // what was actually chosen rather than an unresolved reference a
+      // later reader would have to re-resolve against possibly-changed
+      // configuration.
+      //
+      // Not through `planSelection`, for the reason the override path below
+      // documents: `composePolicy`'s exact-override test needs provider and
+      // model together and rejects routes outright, so a single-coordinate
+      // request can never satisfy it.
+      let override: string | Effort | undefined = configurationRequest.override;
       if (configurationRequest.policyRef !== undefined) {
-        // A policyRef names a pre-approved policy. Resolving one to a
-        // concrete coordinate is the selector's job and needs a full
-        // selection request, not a catalog membership test — deferred for
-        // the same reason agent-identity's policyRef is.
-        return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
+        const profile = options.modelPolicy?.users?.[configurationRequest.policyRef];
+        if (profile === undefined) {
+          // Unknown policy name. Distinct from the case below, and the
+          // caller is entitled to tell them apart: one is a typo or a
+          // decommissioned profile, the other is a profile that simply
+          // says nothing about this coordinate.
+          return {
+            outcome: 'rejected',
+            failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+          };
+        }
+        override =
+          steeringTarget === 'model'
+            ? profile.exactOverride?.model
+            : steeringTarget === 'provider'
+              ? profile.exactOverride?.provider
+              : steeringTarget === 'route'
+                ? profile.exactOverride?.route
+                : // `effort` has a dedicated profile field beside the
+                  // override, and it is the more natural place for a policy
+                  // to express one — `exactOverride.effort` still wins when
+                  // both are set, matching the override's name.
+                  (profile.exactOverride?.effort ?? profile.defaultEffort);
+        if (override === undefined) {
+          // The profile exists but specifies nothing for this coordinate.
+          // Admitting anything here would be inventing a value the policy
+          // never stated.
+          return {
+            outcome: 'rejected',
+            failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+          };
+        }
+        // The resolved value is admitted, not the reference. It still falls
+        // through to the identical catalog check the `override` path uses
+        // below, so a policy cannot admit a coordinate an override could
+        // not — that is the authority guarantee, and it needs no second
+        // mechanism.
+        resolvedRequestedValue = (
+          steeringTarget === 'effort'
+            ? { target: 'effort', override: override as Effort }
+            : { target: steeringTarget, override: override as string }
+        ) satisfies ImplementedSteeringCommand['requestedValue'];
       }
-      const override = configurationRequest.override;
       const { descriptors } = modelCatalog.catalog();
       const known =
         steeringTarget === 'model'

@@ -366,12 +366,27 @@ export class GenerateRetryEvent extends Event {
   readonly mutated: boolean;
   /** Human-readable description of the mutation, if any. */
   readonly mutationDescription?: string | undefined;
+  /**
+   * COR-581 — the successor effective-context epoch this retry will be
+   * issued under, present exactly when `mutated` is true.
+   *
+   * A provider-level retry re-issues the request built before
+   * `generate.started` fired, so it normally consumes that same epoch and
+   * carries nothing here. A `RetryMutator` genuinely changes the request,
+   * though, and the epoch contract requires a change to what the model
+   * sees to produce a successor rather than being absorbed silently. That
+   * successor is referenced here rather than on a second
+   * `generate.started`, which would change that event's cardinality for
+   * every existing consumer.
+   */
+  readonly contextEpochId?: string | undefined;
   constructor(
     step: number,
     attempt: number,
     error: unknown,
     mutated = false,
     mutationDescription?: string,
+    contextEpochId?: string,
   ) {
     super(GenerateRetryEvent.type);
     this.step = step;
@@ -379,6 +394,7 @@ export class GenerateRetryEvent extends Event {
     this.error = error;
     this.mutated = mutated;
     this.mutationDescription = mutationDescription;
+    this.contextEpochId = contextEpochId;
   }
 }
 
