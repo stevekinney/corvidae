@@ -46,7 +46,7 @@
 
   import './prosemirror.css';
   import { classNames } from '../../utilities/class-names.ts';
-  import { Segment, SegmentedControl, FileCode, Pencil } from '@corvidae/cinder';
+  import { Segment, SegmentedControl, FileCode, Pencil, Textarea } from '@corvidae/cinder';
   import EditorSkeleton from './editor-skeleton.svelte';
   import { EditorToolbar, LinkPopover } from './editor-toolbar/index.ts';
   import type { LinkPopoverMode } from './editor-toolbar/link-popover.svelte';
@@ -813,16 +813,18 @@
           {@attach editorAttachment}
         ></div>
       {:else}
-        <textarea
+        <Textarea
           {id}
-          class="markdown-editor surface source-mode"
           bind:value
+          variant="code"
+          class="markdown-editor surface source-mode"
           oninput={(e) => onchange?.(e.currentTarget.value)}
           {placeholder}
           readonly={readonly || undefined}
           aria-label={accessibleEditorLabel}
           aria-describedby={ariaDescribedby}
-          aria-multiline="true"></textarea>
+          aria-multiline="true"
+        />
       {/if}
     {:else}
       <EditorSkeleton class="markdown-editor" />
@@ -947,18 +949,40 @@
     background: var(--cinder-surface-raised);
   }
 
-  /* Source mode (raw markdown textarea) */
-  textarea.markdown-editor.source-mode {
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-sm);
-    line-height: 1.6;
-    padding: var(--cinder-space-4);
-    resize: none;
-    width: 100%;
+  /*
+   * Source mode composes Textarea's `variant="code"` for font-family,
+   * font-size, line-height, tab-size, background, text color, focus ring
+   * color, and the disabled/read-only surface (CIN-340) — only layout and
+   * chrome stay local here. `textarea.markdown-editor.source-mode` is now
+   * rendered by the Textarea component, so it no longer carries this file's
+   * Svelte scoping class and needs :global() to keep reaching it.
+   * `.cinder-textarea-field` is Textarea's own field wrapper (rendered
+   * because no ambient FormFieldContext exists here); it has no consumer
+   * `class` hook, so it's targeted by its fixed class name. Scoped to a
+   * DIRECT child of `.markdown-editor-layout` — not just to source mode —
+   * so it can only ever match this one Textarea, never a consumer-rendered
+   * Textarea nested inside `toolbarActions`/`toolbarLeading` while source
+   * mode happens to also be active.
+   */
+  .markdown-editor-layout > :global(.cinder-textarea-field) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .markdown-editor-wrapper :global(textarea.markdown-editor.source-mode) {
     /* Use flex: 1 instead of height: 100% for consistent sizing with WYSIWYG mode */
     flex: 1;
-    color: var(--cinder-text-default);
+    overflow: auto;
+    position: relative;
+    padding: var(--cinder-space-4);
+    resize: none;
     min-height: var(--editor-source-min-height);
+    border: none;
+    border-radius: 0;
+    /* Textarea's code variant opts into `field-sizing: content` where
+       supported, which auto-grows the control to fit its value and fights
+       the flex-fill sizing this embedded surface relies on. */
+    field-sizing: fixed;
   }
 
   @container cinder-markdown-editor (max-width: 42rem) {
@@ -969,15 +993,6 @@
     .toolbar-mode-toggle {
       margin-inline-start: 0;
     }
-  }
-
-  textarea.markdown-editor.source-mode::placeholder {
-    color: var(--cinder-text-muted);
-  }
-
-  textarea.markdown-editor.source-mode:focus {
-    outline: none;
-    /* Border is on the wrapper; no own border to update */
   }
 
   /* ProseMirror content area */
@@ -1007,15 +1022,24 @@
      render an explicit focus ring. The blinking caret only appears after the
      user starts typing — without this, keyboard users can't see where focus
      landed. Inset offset keeps the ring inside the wrapper's border and uses
-     the shared ring-width token so weight matches sibling controls. */
-  .markdown-editor.surface:focus-visible {
+     the shared ring-width token so weight matches sibling controls.
+
+     Source mode's textarea shares this same inset treatment rather than
+     Textarea's own default `variant="code"` focus ring (an outer box-shadow
+     with `border-color: transparent`) — deliberately: this control is
+     embedded inside a card that already turns its own border accent-colored
+     on `:focus-within` (above), so the outer ring would double up with it.
+     Recorded as a deliberate embedding difference in markdown-editor.a11y.md. */
+  .markdown-editor.surface:focus-visible,
+  .markdown-editor-wrapper :global(textarea.markdown-editor.source-mode:focus-visible) {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: inset 0 0 0 var(--cinder-ring-width)
       var(--_cinder-markdown-editor-surface-ring, var(--cinder-ring-color));
   }
 
   @media (forced-colors: active) {
-    .markdown-editor.surface:focus-visible {
+    .markdown-editor.surface:focus-visible,
+    .markdown-editor-wrapper :global(textarea.markdown-editor.source-mode:focus-visible) {
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: calc(var(--cinder-ring-width) * -1);
     }
