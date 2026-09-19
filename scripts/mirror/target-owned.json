@@ -21,15 +21,15 @@
     },
     {
       "glob": "CODE_OF_CONDUCT.md",
-      "reason": "Policy document a public repository may add at any time without a corvidae counterpart."
+      "reason": "Anticipatory, not evidence-backed: absent from both targets today. Included under the 'policy documents the target adds' class, because a public repository can add one at any time and corvidae will never have a counterpart."
     },
     {
       "glob": "GOVERNANCE.md",
-      "reason": "Policy document a public repository may add at any time without a corvidae counterpart."
+      "reason": "Anticipatory, not evidence-backed: absent from both targets today. Same class as CODE_OF_CONDUCT.md."
     },
     {
       "glob": "NOTICE",
-      "reason": "Attribution notice that accompanies a root license; target-owned for the same reason as the root LICENSE."
+      "reason": "Anticipatory, not evidence-backed: absent from both targets today. Attribution notices accompany a root license, so this is target-owned for the same reason the root LICENSE is."
     },
     {
       "glob": "ROADMAP.md",
@@ -62,7 +62,7 @@
     },
     {
       "glob": "**/.gitignore",
-      "reason": "Ignore rules cover target-local build artifacts and tooling output (`dist`, `.turbo`, `.vercel`, `coverage`) whose layout is decided downstream."
+      "reason": "Ignore rules cover target-local build artifacts and tooling output (`dist`, `.turbo`, `.vercel`, `coverage`) whose layout is decided downstream. Evidence: the two targets carry thirteen `.gitignore` files between them, including per-consumer-fixture ones under cinder's `packages/components/fixtures/`, while corvidae carries exactly one, at its root. Every downstream `.gitignore` is therefore target-authored. If corvidae ever adds a workspace-level `.gitignore` as source, narrow this entry to the root rather than deleting it."
     },
     {
       "glob": ".worktreeinclude",
@@ -99,7 +99,7 @@
     },
     {
       "glob": "**/coverage-ratchet.json",
-      "reason": "Coverage floors are target CI state, raised by the target's own runs. Present in cinder's chat, components and editor packages."
+      "reason": "Coverage floors are target CI state, raised by the target's own runs. This entry is load-bearing rather than defensive: corvidae carries its own `components/chat/coverage-ratchet.json`, `components/cinder/coverage-ratchet.json` and `components/editor/coverage-ratchet.json`, so without it the transform would overwrite cinder's floors with corvidae's numbers on every single sync and the porcelain check would never be empty."
     },
     {
       "glob": "AUDIT-BACKLOG.md",
