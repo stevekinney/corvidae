@@ -109,7 +109,7 @@ function createSettlementLog(expected: number) {
 function errorCode(settlement: SettlementRecord | undefined): string | undefined {
   const error = settlement?.error;
   if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
-  const code = (error as { code: unknown }).code;
+  const { code } = error;
   return typeof code === 'string' ? code : undefined;
 }
 
@@ -127,7 +127,9 @@ describe('approval issuance settlement ordering', () => {
     const toolbox = createToolbox([tool], { approvalSecret, approvalStateStore: store });
     const log = createSettlementLog(1);
     const starts: (string | undefined)[] = [];
-    toolbox.addEventListener('execute-start', (event) => starts.push(event.executionId));
+    toolbox.addEventListener('execute-start', (event) => {
+      starts.push(event.executionId);
+    });
     toolbox.addEventListener('settled', (event) => log.record(event));
     const call = createToolCall(tool.name, {}, 'issuance-paused-call');
 
