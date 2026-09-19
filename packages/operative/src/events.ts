@@ -1466,6 +1466,73 @@ export class ScheduleCompletedEvent extends Event {
   }
 }
 
+/**
+ * Emitted once per scheduled occurrence, before the schedule's overlap policy
+ * decides whether to start, queue, replace, or drop the tick. Sourced from
+ * Weft's engine-level `schedule:attempted` (COR-105) and forwarded onto the
+ * bureau emitter by `create-bureau.ts`, the same sink the definition-level and
+ * fire-terminal schedule events use.
+ *
+ * This is the signal that separates "the schedule is ticking and choosing not
+ * to run" from "the schedule stopped ticking": `schedule.completed`/
+ * `schedule.failed` only ever describe fires that actually launched, so a
+ * schedule whose every occurrence collides is silent without this.
+ *
+ * Ephemeral, not durable. One per tick per schedule is a liveness pulse in
+ * AB-87's matrix terms, not a durable transition, so it is deliberately absent
+ * from the audit trail and the durable event history — a durable cursor must
+ * not be advanced by a pulse.
+ */
+export class ScheduleAttemptedEvent extends Event {
+  static readonly type = 'schedule.attempted' as const;
+  readonly scheduleId: string;
+  /**
+   * The scheduled grid timestamp the occurrence was due, as Weft reports it.
+   * Undefined only when an occurrence was applied without one.
+   */
+  readonly occurrence: number | undefined;
+  constructor(scheduleId: string, occurrence?: number) {
+    super(ScheduleAttemptedEvent.type);
+    this.scheduleId = scheduleId;
+    this.occurrence = occurrence;
+  }
+}
+
+/**
+ * Emitted when a scheduled occurrence is dropped because the schedule's
+ * overlap policy blocks it while a prior fire is still running — in practice
+ * `overlap: 'skip'`, the only policy that discards an occurrence outright
+ * (`'queue'` buffers it, `'cancel-running'` replaces the active run). Sourced
+ * from Weft's engine-level `schedule:skipped` (COR-105).
+ *
+ * Exactly one `schedule.attempted` precedes each of these. Distinct from a
+ * missed fire, which is a window the engine's timer never evaluated at all.
+ *
+ * Ephemeral for the same reason as {@link ScheduleAttemptedEvent}: it reports
+ * that nothing durable happened.
+ */
+export class ScheduleSkippedEvent extends Event {
+  static readonly type = 'schedule.skipped' as const;
+  readonly scheduleId: string;
+  /** The scheduled grid timestamp the dropped occurrence was due. */
+  readonly occurrence: number | undefined;
+  /**
+   * The still-running scheduled fire that occupied the slot. A scheduled
+   * fire's Weft workflow id is its AgentRun id, the same correlation
+   * {@link ScheduleFailedEvent.runId} carries.
+   */
+  readonly blockingRunId: string | undefined;
+  /** The overlap policy that produced the decision, as Weft reports it. */
+  readonly policy: string;
+  constructor(scheduleId: string, policy: string, occurrence?: number, blockingRunId?: string) {
+    super(ScheduleSkippedEvent.type);
+    this.scheduleId = scheduleId;
+    this.policy = policy;
+    this.occurrence = occurrence;
+    this.blockingRunId = blockingRunId;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Workflow versioning (AB-10). Emitted, NOT through the per-run
 // `CombinedOperativeEventMap` emitter (a recovered run's dependencies —
@@ -1767,6 +1834,9 @@ export interface OperativeEventClassMap {
   [ScheduleCancelledEvent.type]: ScheduleCancelledEvent;
   [ScheduleFailedEvent.type]: ScheduleFailedEvent;
   [ScheduleCompletedEvent.type]: ScheduleCompletedEvent;
+  // Schedule tick observation (COR-660, sourced from Weft's COR-105 signals)
+  [ScheduleAttemptedEvent.type]: ScheduleAttemptedEvent;
+  [ScheduleSkippedEvent.type]: ScheduleSkippedEvent;
   // session.monitor loop events (D7)
   [SessionMonitorTickEvent.type]: SessionMonitorTickEvent;
   [SessionMonitorDoneEvent.type]: SessionMonitorDoneEvent;
@@ -1855,6 +1925,8 @@ export const OPERATIVE_EVENT_TYPES = [
   ScheduleCancelledEvent.type,
   ScheduleFailedEvent.type,
   ScheduleCompletedEvent.type,
+  ScheduleAttemptedEvent.type,
+  ScheduleSkippedEvent.type,
   SessionMonitorTickEvent.type,
   SessionMonitorDoneEvent.type,
   ChildWorkflowStartedEvent.type,

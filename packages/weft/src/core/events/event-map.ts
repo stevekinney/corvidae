@@ -14,7 +14,12 @@ import type {
   WorkflowRevisionInstalledEvent,
   WorkflowRevisionRemovedEvent,
 } from './catalog-events.ts';
-import type { ScheduleFiredEvent, ScheduleMissedFireEvent } from './schedule-events.ts';
+import type {
+  ScheduleAttemptedEvent,
+  ScheduleFiredEvent,
+  ScheduleMissedFireEvent,
+  ScheduleSkippedEvent,
+} from './schedule-events.ts';
 import type { SignalDeliveredEvent, SignalReceivedEvent } from './signal-events.ts';
 import type {
   AlertFiredEvent,
@@ -87,6 +92,8 @@ export type WeftEventMap = {
   'human-review:completed': ReviewCompletedEvent;
   'attributes:changed': AttributesChangedEvent;
   'schedule:missed-fire': ScheduleMissedFireEvent;
+  'schedule:attempted': ScheduleAttemptedEvent;
+  'schedule:skipped': ScheduleSkippedEvent;
   'update:received': UpdateReceivedEvent;
   'update:completed': UpdateCompletedEvent;
   'checkpoint:size-warning': CheckpointSizeWarningEvent;

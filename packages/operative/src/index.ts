@@ -229,11 +229,13 @@ export { DurableCapabilityUnavailableError } from './durable/durable-capability-
 export * from './durable/schedule-agent';
 export {
   AgentScheduledEvent,
+  ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
   ScheduleFailedEvent,
   SchedulePausedEvent,
   ScheduleResumedEvent,
+  ScheduleSkippedEvent,
   WakeupScheduledEvent,
 } from './events';
 // AB-10 — workflow versioning for in-flight durable runs

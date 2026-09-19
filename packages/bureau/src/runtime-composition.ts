@@ -70,10 +70,12 @@ import {
   DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD,
   isAgentRunWorkflowInput,
   isScheduledAgentRunInput,
+  ScheduleAttemptedEvent,
   ScheduleCompletedEvent,
   ScheduleFailedEvent,
   SCHEDULER_ORIGIN_TAG,
   SCHEDULER_RUN_ID_PREFIX,
+  ScheduleSkippedEvent,
   withCache,
   withEnhancedStreaming,
   withMinimumTripwireConfidence,
@@ -1470,12 +1472,17 @@ export interface DurableComposition {
 }
 
 /**
- * The two fire-terminal events a scheduled fire's AgentRun can dispatch onto
- * {@link RuntimeComposition.scheduleFireEvents} (AB-223).
+ * The schedule-fire events dispatched onto
+ * {@link RuntimeComposition.scheduleFireEvents}: the two fire-terminal
+ * outcomes (AB-223) and the two per-tick observation signals (COR-660) that
+ * report an occurrence the overlap policy attempted and, when it collided,
+ * dropped.
  */
 export interface ScheduleFireEventMap extends EventMap {
   [ScheduleCompletedEvent.type]: ScheduleCompletedEvent;
   [ScheduleFailedEvent.type]: ScheduleFailedEvent;
+  [ScheduleAttemptedEvent.type]: ScheduleAttemptedEvent;
+  [ScheduleSkippedEvent.type]: ScheduleSkippedEvent;
 }
 
 export interface RuntimeComposition {
@@ -1928,6 +1935,31 @@ export async function createRuntimeComposition(
     // it leaks for the lifetime of the engine.
     durable.engine.addEventListener(WorkflowCancelledEvent.type, (event) => {
       scheduledFireScheduleIds.delete(event.workflowId);
+    });
+
+    // COR-660: the tick observation point Weft's COR-105 exposes. Unlike the
+    // terminal pair above, these arrive already keyed by scheduleId, so there
+    // is no `scheduledFireScheduleIds` correlation to do and nothing to
+    // filter: every schedule on this engine is one the bureau created
+    // (`createSchedule`, `createAgentScheduler`, or a durable heartbeat), the
+    // engine being bureau-owned. A tick that collides emits `attempted` then
+    // `skipped`; a tick that launches emits `attempted` and later one of the
+    // terminal pair.
+    durable.engine.addEventListener('schedule:attempted', (event) => {
+      scheduleFireEvents.dispatch(new ScheduleAttemptedEvent(event.scheduleId, event.occurrence));
+    });
+    durable.engine.addEventListener('schedule:skipped', (event) => {
+      scheduleFireEvents.dispatch(
+        new ScheduleSkippedEvent(
+          event.scheduleId,
+          event.policy,
+          event.occurrence,
+          // A scheduled fire's Weft workflow id IS its AgentRun id — the same
+          // identity `ScheduleFailedEvent`/`ScheduleCompletedEvent` carry as
+          // `runId` from `event.workflowId`.
+          event.blockingWorkflowId,
+        ),
+      );
     });
   }
 

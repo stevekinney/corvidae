@@ -1,3 +1,4 @@
+import { ScheduleSkippedEvent } from '../events.ts';
 import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
@@ -46,6 +47,20 @@ export async function applyBlockedScheduleOccurrence(
     };
   }
 
+  // WFT-136/COR-105: the blocked fallthrough. `'allow'` returns before
+  // `applyBlockedScheduleOccurrence` is ever reached and the two branches above
+  // consume `'queue'` and `'cancel-running'`, so in practice this is
+  // `overlap: 'skip'` dropping the occurrence — the policy travels on the event
+  // rather than being asserted here, so a future blocked policy stays truthful.
+  internals.engine.dispatchEvent(
+    new ScheduleSkippedEvent(
+      state.id,
+      internals.options.getNow(),
+      state.overlap,
+      occurrence,
+      state.currentWorkflowId,
+    ),
+  );
   return state;
 }
 
