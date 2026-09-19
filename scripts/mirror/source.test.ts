@@ -94,11 +94,62 @@ describe('what counts as source', () => {
     );
   });
 
+  test('a declared file lands at the same workspace-relative path in the target', async () => {
+    await withTree(
+      {
+        'packages/armorer/src/compose.test.ts':
+          "import { settles } from '../test/helpers/async-assertions';\n",
+        'packages/armorer/test/helpers/async-assertions.ts': 'export const settles = true;\n',
+        'packages/armorer/test/registry.test.ts': 'export const undeclared = true;\n',
+      },
+      async (root) => {
+        const plan = await planSource(root, [
+          {
+            workspace: '@corvidae/armorer',
+            corvidaeDirectory: 'packages/armorer',
+            targetDirectory: 'packages/armorer',
+          },
+        ]);
+        // The relative layout is preserved, which is the whole point: `../test/helpers/…` only
+        // resolves in the target if the file sits the same distance from `src/` there. The
+        // ninety other files under `test/` stay where they are, because only this one is declared.
+        expect(Object.keys(plan.files).toSorted()).toEqual([
+          'packages/armorer/src/compose.test.ts',
+          'packages/armorer/test/helpers/async-assertions.ts',
+        ]);
+      },
+    );
+  });
+
+  test('a declared file corvidae no longer carries is a refusal, not a silent skip', async () => {
+    await withTree(
+      { 'packages/armorer/src/compose.test.ts': 'export const composed = true;\n' },
+      async (root) => {
+        const plan = planSource(root, [
+          {
+            workspace: '@corvidae/armorer',
+            corvidaeDirectory: 'packages/armorer',
+            targetDirectory: 'packages/armorer',
+          },
+        ]);
+        await expect(plan).rejects.toThrow(SourceEmissionError);
+        await expect(plan).rejects.toThrow('test/helpers/async-assertions.ts');
+      },
+    );
+  });
+
   test('the executable bit is carried, because two of corvidae’s entry points have one', async () => {
     await withTree(
       {
         'packages/weft/src/cli-main.ts': '#!/usr/bin/env bun\nexport const main = true;\n',
         'packages/weft/src/library.ts': 'export const library = true;\n',
+        // `@corvidae/weft` declares three files beyond `src/`, and a declared file corvidae does
+        // not carry is a refusal rather than a skip, so the fixture carries them.
+        'packages/weft/scripts/lib/workflow-visibility-backfill.ts': 'export const backfill = 1;\n',
+        'packages/weft/scripts/benchmarks/benchmark-environment.ts':
+          'export const environment = 1;\n',
+        'packages/weft/scripts/benchmarks/environment-configuration.ts':
+          'export const configuration = 1;\n',
       },
       async (root) => {
         await chmod(join(root, 'packages/weft/src/cli-main.ts'), 0o755);
