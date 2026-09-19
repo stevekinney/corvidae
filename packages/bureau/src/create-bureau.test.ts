@@ -48,10 +48,12 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   RunAbortedEvent,
   type RunnableAgent,
+  ScheduleAttemptedEvent,
   type ScheduledAgentRunInput,
   SCHEDULER_ORIGIN_TAG,
   SchedulerTaskCompletedEvent,
   SchedulerTaskFailedEvent,
+  ScheduleSkippedEvent,
   startDurableRunResult,
   StepCompletedEvent,
   stopWhen,
@@ -19754,6 +19756,97 @@ describe('AB-390 — outbox claim lease', () => {
       await runtime.advance(120_000);
       expect(diagnostics).not.toContainEqual(expect.stringContaining('closed database'));
     } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COR-660 — schedule tick observation. Weft exposes `schedule:attempted` and
+// `schedule:skipped` (COR-105); these prove Bureau maps them onto its own
+// `schedule.attempted`/`schedule.skipped` with the correlation AB-87's matrix
+// fixes. Driven deterministically: `durableBackgroundTasks: 'manual'` disarms
+// the scheduler poller, and `bureau.runDurableMaintenance(now)` ticks Weft's
+// scheduler at an explicit timestamp, so no assertion here depends on real
+// elapsed time.
+// ---------------------------------------------------------------------------
+describe('createBureau schedule tick observation (COR-660)', () => {
+  it('maps every tick to one schedule.attempted and an overlap collision to exactly one schedule.skipped', async () => {
+    const released = Promise.withResolvers<void>();
+    let fireCount = 0;
+    const generate: GenerateFunction = async () => {
+      fireCount += 1;
+      // The first fire parks until the test releases it, so the second tick
+      // lands while the slot is still occupied. Later fires return promptly.
+      if (fireCount === 1) await released.promise;
+      return { content: 'acknowledged', toolCalls: [] };
+    };
+
+    const attempted: ScheduleAttemptedEvent[] = [];
+    const skipped: ScheduleSkippedEvent[] = [];
+
+    const bureau = await createBureau({
+      agents: {},
+      generate,
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      durableBackgroundTasks: 'manual',
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    bureau.addEventListener(ScheduleAttemptedEvent.type, (event) => attempted.push(event));
+    bureau.addEventListener(ScheduleSkippedEvent.type, (event) => skipped.push(event));
+
+    try {
+      const summary = await bureau.createSchedule({
+        agentName: 'researcher',
+        input: 'observed tick prompt',
+        spec: '1m',
+        overlap: 'skip',
+      });
+      expect(summary).toBeDefined();
+      const scheduleId = summary!.id;
+
+      // Nothing observed until a tick is issued — the poller is disarmed, so
+      // these events cannot arrive by a real-time race.
+      expect(attempted).toEqual([]);
+
+      // First tick: the slot is free, so the occurrence launches a fire.
+      const firstOccurrence = Date.now() + 60_000;
+      await pollUntil(async () => {
+        await bureau.runDurableMaintenance(firstOccurrence);
+        return fireCount >= 1;
+      });
+      expect(attempted).toHaveLength(1);
+      expect(skipped).toEqual([]);
+
+      // Second tick, while the first fire is still parked: the skip policy
+      // drops the occurrence, and only the attempted/skipped pair reports it.
+      const secondOccurrence = firstOccurrence + 60_000;
+      await pollUntil(async () => {
+        await bureau.runDurableMaintenance(secondOccurrence);
+        return skipped.length >= 1;
+      });
+
+      expect(skipped).toHaveLength(1);
+      expect(skipped[0]).toMatchObject({
+        scheduleId,
+        policy: 'skip',
+      });
+      // The dropped occurrence names the still-running fire that blocked it.
+      expect(typeof skipped[0]!.blockingRunId).toBe('string');
+      expect(skipped[0]!.blockingRunId).not.toBe('');
+      // The collision started no second fire.
+      expect(fireCount).toBe(1);
+      // Every tick reported an attempt, and each skip is preceded by one.
+      expect(attempted.length).toBeGreaterThanOrEqual(2);
+      expect(attempted.every((event) => event.scheduleId === scheduleId)).toBe(true);
+
+      await bureau.cancelSchedule(scheduleId);
+      released.resolve();
+    } finally {
+      released.resolve();
       await bureau.dispose();
     }
   });

@@ -3,11 +3,13 @@ import type {
   Action,
   AgentScheduledEvent,
   LivenessLeaseEvidence,
+  ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
   ScheduleFailedEvent,
   SchedulePausedEvent,
   ScheduleResumedEvent,
+  ScheduleSkippedEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
   SessionSavedEvent,
@@ -348,6 +350,8 @@ export interface BureauEventMap extends EventMap {
   'schedule.cancelled': ScheduleCancelledEvent;
   'schedule.failed': ScheduleFailedEvent;
   'schedule.completed': ScheduleCompletedEvent;
+  'schedule.attempted': ScheduleAttemptedEvent;
+  'schedule.skipped': ScheduleSkippedEvent;
   'session.created': SessionCreatedEvent;
   'session.saved': SessionSavedEvent;
   'session.deleted': SessionDeletedEvent;
