@@ -1360,7 +1360,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * and a concurrent second pass could interleave two replays of the same
    * command into one gate.
    */
-  const steeringRecovered = new Set<string>();
+  const steeringRecoveries = new Map<string, Promise<void>>();
 
   /** `undefined` for a non-durable bureau — nothing to persist against. */
   function getSteeringMailbox(sessionId: string): Mailbox | undefined {
@@ -1388,40 +1388,68 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     sessionId: string,
     liveRunIds: readonly string[],
   ): Promise<BureauSteeringGate> {
-    const existing = steeringGates.get(sessionId);
-    if (existing) return existing;
-
-    const gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
-    steeringGates.set(sessionId, gate);
+    let gate = steeringGates.get(sessionId);
+    if (gate === undefined) {
+      gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
+      steeringGates.set(sessionId, gate);
+    }
 
     const mailbox = getSteeringMailbox(sessionId);
-    if (mailbox !== undefined && !steeringRecovered.has(sessionId)) {
-      steeringRecovered.add(sessionId);
-      const now = runtimeServices.clock.nowISO();
-      for (const recovered of await recoverSteeringCommands(mailbox)) {
-        // Replayed through the gate's ordinary admission, not a private
-        // back door, so a recovered command is subject to every invariant
-        // a live one is. A pause bound to a run this process no longer has
-        // is correctly rejected `run-terminal` — the run genuinely ended.
-        gate.admit(
-          {
-            id: recovered.id,
-            idOrigin: 'caller',
-            sessionId: recovered.sessionId,
-            principal: recovered.principal,
-            requestedValue: recovered.requestedValue,
-            requestedAt: recovered.requestedAt,
-            ...(recovered.expectedRevision !== undefined
-              ? { expectedRevision: recovered.expectedRevision }
-              : {}),
-            ...(recovered.deadline !== undefined ? { deadline: recovered.deadline } : {}),
-            ...(recovered.runId !== undefined ? { runId: recovered.runId } : {}),
-          },
-          { liveRunIds, now },
-        );
-      }
+    if (mailbox === undefined) return gate;
+
+    // Every caller awaits the SAME recovery promise, including one that
+    // found the gate already in the map. Publishing the gate and then
+    // awaiting recovery without this would let a concurrent
+    // `submitSteeringCommand` observe the gate mid-replay and admit its
+    // own command ahead of commands that were durably admitted earlier —
+    // the recovered ones would then supersede the newer one, inverting
+    // the order the mailbox exists to preserve.
+    let recovery = steeringRecoveries.get(sessionId);
+    if (recovery === undefined) {
+      recovery = replaySteeringLog(gate, mailbox, liveRunIds).catch((error: unknown) => {
+        // A failed recovery must not be cached as done: a transient
+        // storage fault would otherwise leave this session permanently
+        // unrecoverable for the life of the process. Clearing lets the
+        // next caller retry, and rethrowing fails this one closed rather
+        // than admitting into a gate whose durable history is unknown.
+        steeringRecoveries.delete(sessionId);
+        throw error;
+      });
+      steeringRecoveries.set(sessionId, recovery);
     }
+    await recovery;
     return gate;
+  }
+
+  /** Drains one session's durable steering log into its gate, in order. */
+  async function replaySteeringLog(
+    gate: BureauSteeringGate,
+    mailbox: Mailbox,
+    liveRunIds: readonly string[],
+  ): Promise<void> {
+    const now = runtimeServices.clock.nowISO();
+    for (const recovered of await recoverSteeringCommands(mailbox)) {
+      // Replayed through the gate's ordinary admission, not a private
+      // back door, so a recovered command is subject to every invariant
+      // a live one is. A pause bound to a run this process no longer has
+      // is correctly rejected `run-terminal` — the run genuinely ended.
+      gate.admit(
+        {
+          id: recovered.id,
+          idOrigin: 'caller',
+          sessionId: recovered.sessionId,
+          principal: recovered.principal,
+          requestedValue: recovered.requestedValue,
+          requestedAt: recovered.requestedAt,
+          ...(recovered.expectedRevision !== undefined
+            ? { expectedRevision: recovered.expectedRevision }
+            : {}),
+          ...(recovered.deadline !== undefined ? { deadline: recovered.deadline } : {}),
+          ...(recovered.runId !== undefined ? { runId: recovered.runId } : {}),
+        },
+        { liveRunIds, now },
+      );
+    }
   }
   // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
   // every session's gate shares (see `steering.ts`'s `createSteeringGate`
@@ -2797,17 +2825,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // `promoteForNewRun()` promotes any agent-identity bump a prior run
       // deferred (AB-199's coordinator amendments, 2026-09-02 addendum); a
       // no-op when nothing was pending.
-      let steeringGate: BureauSteeringGate | undefined;
-      if (!runtime.durable) {
-        steeringGate = steeringGates.get(sessionId);
-        if (!steeringGate) {
-          steeringGate = createSteeringGate(
-            sessionId,
-            steeringCommandLedger,
-            runtimeServices.clock,
-          );
-          steeringGates.set(sessionId, steeringGate);
-        }
+      // AB-200: durable runs get a steering gate too. They were excluded
+      // while `submitSteeringCommand` refused every durable command —
+      // attaching a gate nothing could ever write to was pointless. Now
+      // that durable steering persists and recovers, excluding them would
+      // be the actual bug: a command admitted and durably recovered would
+      // never reach the run it was meant to steer.
+      let steeringGate = steeringGates.get(sessionId);
+      if (!steeringGate) {
+        steeringGate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
+        steeringGates.set(sessionId, steeringGate);
+      }
+      // A durable run starting after a restart must see the recovered
+      // desired state at its own step 0, not merely at the next steering
+      // call, so the log is drained before the run begins.
+      const steeringMailboxForRun = getSteeringMailbox(sessionId);
+      if (steeringMailboxForRun !== undefined) {
+        await ensureSteeringGate(sessionId, [runId]);
       }
       steeringGate?.promoteForNewRun(runId, runtimeServices.clock.nowISO());
       // AB-67/AB-199 — a per-run VIEW of the shared session gate (see
