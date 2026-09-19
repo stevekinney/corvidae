@@ -260,6 +260,7 @@
   }
 
   .comment-composer-textarea {
+    display: block;
     width: 100%;
     min-height: 4.5rem;
     padding: var(--cinder-space-2);

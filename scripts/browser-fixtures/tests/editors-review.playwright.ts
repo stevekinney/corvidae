@@ -31,6 +31,24 @@ type PopoverReadinessSample = {
   pointerEvents: string;
   left: string;
   top: string;
+  inert: boolean;
+  containsFocus: boolean;
+  hasInlinePosition: boolean;
+};
+
+type ReadyPopoverMetrics = {
+  ready: string | null;
+  visibility: string;
+  pointerEvents: string;
+  inert: boolean;
+  left: string;
+  top: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  viewportWidth: number;
+  viewportHeight: number;
   hasInlinePosition: boolean;
 };
 
@@ -156,6 +174,13 @@ test.describe('review comments toggle', () => {
     });
     await firstTextRowOpen.click();
     await expect(firstTextRowOpen).toHaveAttribute('aria-current', 'true');
+    const architecturePopover = page.getByRole('dialog');
+    await expect(architecturePopover).toHaveAttribute('data-position-ready', 'true');
+    const architectureDraft = architecturePopover.getByLabel('Comment');
+    await architectureDraft.fill('Keep this draft.');
+    await firstTextRowOpen.click();
+    await expect(architecturePopover).toHaveCount(1);
+    await expect(architectureDraft).toHaveValue('Keep this draft.');
 
     await declinedRemove.click();
     await expect(declinedRemove).toBeFocused();
@@ -212,6 +237,9 @@ test.describe('review comments toggle', () => {
           pointerEvents: computed.pointerEvents,
           left: computed.left,
           top: computed.top,
+          inert: element.inert,
+          containsFocus:
+            document.activeElement !== null && element.contains(document.activeElement),
           hasInlinePosition: element.style.left.length > 0 && element.style.top.length > 0,
         });
       }
@@ -242,14 +270,50 @@ test.describe('review comments toggle', () => {
       state.__reviewPopoverObserver?.disconnect();
       return state.__reviewPopoverReadinessSamples?.[0] ?? null;
     });
-    expect(firstPaint).toEqual({
+    expect(firstPaint).toMatchObject({
       ready: 'false',
       visibility: 'hidden',
       pointerEvents: 'none',
-      left: 'auto',
-      top: 'auto',
+      inert: true,
+      containsFocus: false,
       hasInlinePosition: false,
     });
+
+    const readyMetrics = await readyPopover.evaluate((element): ReadyPopoverMetrics => {
+      if (!(element instanceof HTMLElement)) throw new Error('Expected a ready popover.');
+      const computed = getComputedStyle(element);
+      const bounds = element.getBoundingClientRect();
+      return {
+        ready: element.getAttribute('data-position-ready'),
+        visibility: computed.visibility,
+        pointerEvents: computed.pointerEvents,
+        inert: element.inert,
+        left: element.style.left,
+        top: element.style.top,
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        hasInlinePosition: element.style.left.length > 0 && element.style.top.length > 0,
+      };
+    });
+    expect(readyMetrics).toMatchObject({
+      ready: 'true',
+      visibility: 'visible',
+      inert: false,
+      hasInlinePosition: true,
+    });
+    expect(readyMetrics.pointerEvents).not.toBe('none');
+    expect(Number.parseFloat(readyMetrics.left)).toBeGreaterThanOrEqual(0);
+    expect(Number.parseFloat(readyMetrics.top)).toBeGreaterThanOrEqual(0);
+    expect(readyMetrics.x).toBeGreaterThanOrEqual(0);
+    expect(readyMetrics.y).toBeGreaterThanOrEqual(0);
+    expect(readyMetrics.width).toBeGreaterThan(0);
+    expect(readyMetrics.height).toBeGreaterThan(0);
+    expect(readyMetrics.x + readyMetrics.width).toBeLessThanOrEqual(readyMetrics.viewportWidth);
+    expect(readyMetrics.y + readyMetrics.height).toBeLessThanOrEqual(readyMetrics.viewportHeight);
   });
 
   test('comment metadata and composer actions keep their spacing', async ({ page }) => {

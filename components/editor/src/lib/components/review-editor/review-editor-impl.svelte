@@ -187,6 +187,11 @@
     diff: `${id}-diff-panel`,
     summary: `${id}-summary-panel`,
   });
+  const sidebarRemoveControlRefs = $derived(
+    threads.map(
+      (thread) => () => document.getElementById(`${id}-sidebar-thread-remove-${thread.id}`),
+    ),
+  );
 
   // =========================================================================
   // View Switching State (DEP-47)
@@ -1106,8 +1111,9 @@
     return (
       document
         .getElementById(`${id}-sidebar`)
-        ?.querySelector<HTMLElement>(`#${CSS.escape(`${id}-thread-open-${activeThreadId}`)}`) ??
-      null
+        ?.querySelector<HTMLElement>(
+          `#${CSS.escape(`${id}-sidebar-thread-open-${activeThreadId}`)}`,
+        ) ?? null
     );
   }
 
@@ -2150,7 +2156,7 @@
       {mode}
       position={popoverPosition}
       restoreFallbackId={`${id}-sidebar-toggle`}
-      ignoreClickOutsideRef={activeSidebarRowElement}
+      ignoreClickOutsideRefs={[activeSidebarRowElement, ...sidebarRemoveControlRefs]}
       onclose={handlePopoverClose}
       ondelete={handlePopoverDelete}
       oncommentcreate={handlePopoverCommentCreate}

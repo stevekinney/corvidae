@@ -122,10 +122,15 @@
 
   async function handleThreadDelete(threadId: string): Promise<void> {
     const displayedIndex = visibleThreads.findIndex((thread) => thread.id === threadId);
+    const selectedThreadId = activeThreadId;
     onthreaddelete?.(threadId);
     await tick();
 
     if (visibleThreads.some((thread) => thread.id === threadId)) {
+      if (selectedThreadId && visibleThreads.some((thread) => thread.id === selectedThreadId)) {
+        onthreadselect?.(selectedThreadId, { openPopover: false });
+        await tick();
+      }
       document.getElementById(`${id}-thread-remove-${threadId}`)?.focus();
       return;
     }
