@@ -207,7 +207,7 @@ for (const theme of THEMES) {
       await assertRows(page, '.cinder-dropdown-item');
     });
 
-    test(`command-menu dividers appear only between visible items ${theme}-${width}`, async ({
+    test(`dropdown dividers appear only between visible items: command-menu ${theme}-${width}`, async ({
       componentPage,
     }) => {
       const page = await openAssertionFixture(componentPage, 'command-menu', theme, width);
@@ -223,7 +223,7 @@ for (const theme of THEMES) {
       await assertRows(page, '.cinder-command-item');
     });
 
-    test(`side-navigation dividers appear only between visible items ${theme}-${width}`, async ({
+    test(`dropdown dividers appear only between visible items: side-navigation ${theme}-${width}`, async ({
       componentPage,
     }) => {
       const page = await openAssertionFixture(componentPage, 'side-navigation', theme, width);
@@ -232,13 +232,22 @@ for (const theme of THEMES) {
       await first.press('Tab');
       const projects = page.getByRole('button', { name: 'Projects' });
       await projects.click();
-      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(2);
+      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(4);
       await projects.click();
-      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(5);
+      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(7);
+      const standalone = page.getByRole('navigation', { name: 'Standalone entries' });
+      const standaloneRows = standalone.locator('.cinder-navigation-item');
+      await expect(standaloneRows).toHaveCount(3);
+      await expect(
+        standaloneRows.nth(0).evaluate((row) => getComputedStyle(row, '::after').content),
+      ).not.toBe('none');
+      await expect(
+        standaloneRows.nth(1).evaluate((row) => getComputedStyle(row, '::after').content),
+      ).toBe('none');
       await assertRows(page, '.cinder-navigation-item');
     });
 
-    test(`combobox dividers appear only between visible items ${theme}-${width}`, async ({
+    test(`dropdown dividers appear only between visible items: combobox ${theme}-${width}`, async ({
       componentPage,
     }) => {
       const page = await openAssertionFixture(componentPage, 'combobox', theme, width);
@@ -254,7 +263,7 @@ for (const theme of THEMES) {
       await assertRows(page, '.cinder-combobox__option');
     });
 
-    test(`native select keyboard behavior is preserved ${theme}-${width}`, async ({
+    test(`dropdown dividers appear only between visible items: native select keyboard behavior ${theme}-${width}`, async ({
       componentPage,
     }) => {
       const page = await openAssertionFixture(componentPage, 'select', theme, width);

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SideNavigation } from '@corvidae/cinder';
+  import { NavigationItem, SideNavigation } from '@corvidae/cinder';
 
   type FixtureProps = {
     active?: string;
@@ -32,6 +32,14 @@
       <SideNavigation.Item href="/settings/billing" hidden>Billing</SideNavigation.Item>
     </SideNavigation.Group>
   </SideNavigation>
+
+  <nav aria-label="Standalone entries">
+    <NavigationItem href="/standalone/first">Standalone first</NavigationItem>
+    {#if projectsExpanded}
+      <NavigationItem href="/standalone/second">Standalone second</NavigationItem>
+    {/if}
+    <NavigationItem href="/standalone/hidden" hidden>Standalone hidden</NavigationItem>
+  </nav>
 </div>
 
 <style>
