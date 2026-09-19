@@ -234,6 +234,10 @@
     max-block-size: 24rem;
   }
 
+  .message-attachments[data-count='1'] .message-attachment {
+    min-block-size: 0;
+  }
+
   .message-attachment-maximize {
     position: absolute;
     inset-block-start: var(--cinder-space-2);

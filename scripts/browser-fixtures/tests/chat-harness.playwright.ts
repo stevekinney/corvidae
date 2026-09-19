@@ -41,9 +41,10 @@ async function openHarness(
     hasTouch?: boolean;
   },
 ): Promise<{ page: Page; harness: Locator; dispose: () => Promise<void> }> {
+  const colorScheme = options?.colorScheme ?? 'dark';
   const context = await browser.newContext({
     baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
-    colorScheme: options?.colorScheme ?? 'dark',
+    colorScheme,
     reducedMotion: options?.reducedMotion ?? 'reduce',
     viewport: options?.viewport ?? { width: 1280, height: 900 },
     hasTouch: options?.hasTouch ?? false,
@@ -57,7 +58,7 @@ async function openHarness(
       ([key, value]) => {
         localStorage.setItem(key, value);
       },
-      [THEME_STORAGE_KEY, 'dark'] as const,
+      [THEME_STORAGE_KEY, colorScheme] as const,
     );
     const page = await context.newPage();
     const diagnostics: string[] = [];
@@ -73,6 +74,15 @@ async function openHarness(
     await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
     const harness = page.locator(HARNESS);
     await harness.waitFor({ state: 'visible', timeout: 20_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          theme: document.documentElement.dataset['theme'],
+          cinderTheme: document.documentElement.dataset['cinderTheme'],
+          colorScheme: getComputedStyle(document.documentElement).colorScheme,
+        })),
+      )
+      .toEqual({ theme: colorScheme, cinderTheme: colorScheme, colorScheme });
     return {
       page,
       harness,
@@ -150,17 +160,103 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBeLessThanOrEqual(1);
 }
 
+async function expectNoInternalHorizontalOverflow(locator: Locator, label: string): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        locator.evaluate((element) =>
+          Math.ceil(element.scrollWidth - (element as HTMLElement).clientWidth),
+        ),
+      { message: `${label} must not hide horizontal overflow` },
+    )
+    .toBeLessThanOrEqual(1);
+}
+
+function expectContainedWithin(
+  child: NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>,
+  parent: NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>,
+  label: string,
+): void {
+  expect(child.x, `${label} left edge must stay inside its parent`).toBeGreaterThanOrEqual(
+    parent.x - 1,
+  );
+  expect(child.y, `${label} top edge must stay inside its parent`).toBeGreaterThanOrEqual(
+    parent.y - 1,
+  );
+  expect(
+    child.x + child.width,
+    `${label} right edge must stay inside its parent`,
+  ).toBeLessThanOrEqual(parent.x + parent.width + 1);
+  expect(
+    child.y + child.height,
+    `${label} bottom edge must stay inside its parent`,
+  ).toBeLessThanOrEqual(parent.y + parent.height + 1);
+}
+
 async function expectSingleImageGeometry(
-  figure: Locator,
+  locators: {
+    bubble: Locator;
+    attachments: Locator;
+    figure: Locator;
+    button: Locator;
+    image: Locator;
+  },
   expected: { maxWidth: number; maxHeight: number; ratio: number },
 ): Promise<void> {
-  const box = await figure.boundingBox();
-  expect(box, 'single image must have a rendered box').not.toBeNull();
-  expect(box?.width ?? 0).toBeGreaterThan(0);
-  expect(box?.height ?? 0).toBeGreaterThan(0);
-  expect(box?.width ?? 0).toBeLessThanOrEqual(expected.maxWidth);
-  expect(box?.height ?? 0).toBeLessThanOrEqual(expected.maxHeight);
-  expect(Math.abs((box?.width ?? 0) / (box?.height ?? 1) - expected.ratio)).toBeLessThan(0.06);
+  const [bubbleBox, attachmentsBox, figureBox, buttonBox, imageBox] = await Promise.all([
+    locators.bubble.boundingBox(),
+    locators.attachments.boundingBox(),
+    locators.figure.boundingBox(),
+    locators.button.boundingBox(),
+    locators.image.boundingBox(),
+  ]);
+  expect(bubbleBox, 'message bubble must have a rendered box').not.toBeNull();
+  expect(attachmentsBox, 'attachment group must have a rendered box').not.toBeNull();
+  expect(figureBox, 'single image figure must have a rendered box').not.toBeNull();
+  expect(buttonBox, 'single image lightbox button must have a rendered box').not.toBeNull();
+  expect(imageBox, 'single image must have a rendered box').not.toBeNull();
+  if (
+    bubbleBox === null ||
+    attachmentsBox === null ||
+    figureBox === null ||
+    buttonBox === null ||
+    imageBox === null
+  ) {
+    return;
+  }
+
+  expect(figureBox.width).toBeGreaterThan(0);
+  expect(figureBox.height).toBeGreaterThan(0);
+  expect(figureBox.width).toBeLessThanOrEqual(expected.maxWidth);
+  expect(figureBox.height).toBeLessThanOrEqual(expected.maxHeight);
+  expect(Math.abs(figureBox.width / figureBox.height - expected.ratio)).toBeLessThan(0.06);
+
+  expectContainedWithin(attachmentsBox, bubbleBox, 'attachment group');
+  expectContainedWithin(figureBox, attachmentsBox, 'single image figure');
+  expectContainedWithin(buttonBox, figureBox, 'single image button');
+  expectContainedWithin(imageBox, buttonBox, 'single image');
+
+  await Promise.all([
+    expectNoInternalHorizontalOverflow(locators.bubble, 'message bubble'),
+    expectNoInternalHorizontalOverflow(locators.attachments, 'attachment group'),
+    expectNoInternalHorizontalOverflow(locators.figure, 'single image figure'),
+    expectNoInternalHorizontalOverflow(locators.button, 'single image button'),
+  ]);
+
+  await expect
+    .poll(() =>
+      locators.image.evaluate((node) => {
+        const image = node as HTMLImageElement;
+        return image.naturalWidth > 0 && image.naturalHeight > 0;
+      }),
+    )
+    .toBe(true);
+  const naturalSize = await locators.image.evaluate((node) => ({
+    naturalWidth: (node as HTMLImageElement).naturalWidth,
+    naturalHeight: (node as HTMLImageElement).naturalHeight,
+  }));
+  expect(naturalSize.naturalWidth).toBeGreaterThan(0);
+  expect(naturalSize.naturalHeight).toBeGreaterThan(0);
 }
 
 test.describe('chat harness — mounts cleanly', () => {
@@ -1459,10 +1555,19 @@ test.describe('chat harness — composer acceptance matrix', () => {
       });
       try {
         await appendHarnessImages(page, [imageCase.image]);
-        const attachments = harness.locator('[data-role="user"] .message-attachments').last();
+        const message = harness.locator('[data-role="user"]').last();
+        const bubble = message.locator('.chat-message');
+        const attachments = message.locator('.message-attachments').last();
+        const figure = attachments.locator('.message-attachment').first();
         await expect(attachments).toHaveAttribute('data-count', '1');
         await expectSingleImageGeometry(
-          attachments.locator('.message-attachment').first(),
+          {
+            bubble,
+            attachments,
+            figure,
+            button: figure.locator('.message-attachment-button'),
+            image: figure.locator('.message-attachment-image'),
+          },
           imageCase.expected,
         );
         await expectNoHorizontalOverflow(page);
@@ -1680,6 +1785,15 @@ test.describe('chat harness — composer acceptance matrix', () => {
           reducedMotion: 'reduce',
         });
         try {
+          await expect
+            .poll(() =>
+              harness.evaluate(() => ({
+                theme: document.documentElement.dataset['theme'],
+                cinderTheme: document.documentElement.dataset['cinderTheme'],
+                colorScheme: getComputedStyle(document.documentElement).colorScheme,
+              })),
+            )
+            .toEqual({ theme: colorScheme, cinderTheme: colorScheme, colorScheme });
           const footer = harness.locator('#harness-chat .chat-input-footer');
           const left = await footer.locator('.chat-input-footer-left').boundingBox();
           const right = await footer.locator('.chat-input-footer-right').boundingBox();
