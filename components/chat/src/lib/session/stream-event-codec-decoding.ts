@@ -2,11 +2,7 @@ import { isJSONValue, isToolResult } from '../components/chat/builders.ts';
 import { decodeStreamEvent } from './stream-event-codec-decoding-stream.ts';
 import { decodeRunEvent, decodeToolEvent } from './stream-event-codec-decoding-tool-run.ts';
 import { projectPlainJSON } from './stream-event-codec-encoding-projection.ts';
-import type {
-  ChatStreamEvent,
-  V2WireEnvelope,
-  WireEnvelope,
-} from './stream-event-codec-types.ts';
+import type { ChatStreamEvent, V2WireEnvelope, WireEnvelope } from './stream-event-codec-types.ts';
 import {
   isNonNegativeSafeInteger,
   isRecord,

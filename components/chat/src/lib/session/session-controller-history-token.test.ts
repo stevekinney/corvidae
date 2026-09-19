@@ -249,10 +249,7 @@ describe('cancelling a run still settles its row', () => {
       getConversation: () => conversation,
       setConversation: (next) => {
         conversation = next;
-        if (
-          next.ids.some((id) => next.messages[id]?.content === 'partial')
-        )
-          sawPartial();
+        if (next.ids.some((id) => next.messages[id]?.content === 'partial')) sawPartial();
       },
       transport: async () =>
         (async function* (): AsyncGenerator<ChatStreamEvent> {

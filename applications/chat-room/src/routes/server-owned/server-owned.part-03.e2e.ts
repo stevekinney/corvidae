@@ -20,9 +20,9 @@ import {
  * the controller reconciles the transcript against it the moment the stream
  * closes — with this fixture that lands in the same paint as the reply itself,
  * so a DOM snapshot taken at any reachable instant already shows the
- * reconciled order and would pass whether or not the frames that produce it
+ * reconciled order, and would pass whether or not the frames that produce the
  * live ordering were ever emitted. Measured: a snapshot polled every animation
- * frame from before the approval reports `data-streaming="false"` already.
+ * frame from before the approval already reports `data-streaming="false"`.
  *
  * The wire is where the claim is checkable, and checking it there is exact
  * rather than timing-dependent.
@@ -101,8 +101,13 @@ test('a person approves the note in the browser and the turn completes', async (
   await composer.fill(fixtureMarker('approval', marker));
   await composer.press('Enter');
 
-  await expect(question).toContainText('Save this note?');
-  await expect(question).toContainText('remember_note');
+  // THE WHOLE SENTENCE, not two substrings of it. The tool name is now
+  // appended conditionally — it arrives from the side channel rather than from
+  // the frame that raises the question — and a conditional block in Svelte
+  // trims the whitespace at its edges. Two `toContainText` calls would both
+  // pass against `Save this note?The assistant wants to run remember_note.`,
+  // which is what made this worth pinning exactly.
+  await expect(question).toHaveText('Save this note? The assistant wants to run remember_note.');
 
   // The MODEL'S own argument, so the person approves a specific note — in its
   // own disclosure rather than inside the announcement. A note has no length

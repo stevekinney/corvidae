@@ -34,7 +34,13 @@ describe('assistant step boundaries', () => {
       },
       transport: async () =>
         events([
-          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 0 },
+          {
+            type: 'assistant.step.started',
+            step: 0,
+            messageId: 'host-0',
+            wireVersion: 2,
+            sequence: 0,
+          },
           { type: 'text', text: 'Saving that.', wireVersion: 2, sequence: 1 },
           {
             type: 'tool_call',
@@ -52,10 +58,28 @@ describe('assistant step boundaries', () => {
             wireVersion: 2,
             sequence: 3,
           },
-          { type: 'assistant.step.completed', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 4 },
-          { type: 'assistant.step.started', step: 1, messageId: 'host-1', wireVersion: 2, sequence: 5 },
+          {
+            type: 'assistant.step.completed',
+            step: 0,
+            messageId: 'host-0',
+            wireVersion: 2,
+            sequence: 4,
+          },
+          {
+            type: 'assistant.step.started',
+            step: 1,
+            messageId: 'host-1',
+            wireVersion: 2,
+            sequence: 5,
+          },
           { type: 'text', text: 'Saved that note.', wireVersion: 2, sequence: 6 },
-          { type: 'assistant.step.completed', step: 1, messageId: 'host-1', wireVersion: 2, sequence: 7 },
+          {
+            type: 'assistant.step.completed',
+            step: 1,
+            messageId: 'host-1',
+            wireVersion: 2,
+            sequence: 7,
+          },
           { type: 'run.aborted', wireVersion: 2, sequence: 8 },
         ]),
     });
@@ -95,9 +119,21 @@ describe('assistant step boundaries', () => {
       },
       transport: async () =>
         events([
-          { type: 'assistant.step.started', step: 0, messageId: 'host-only', wireVersion: 2, sequence: 0 },
+          {
+            type: 'assistant.step.started',
+            step: 0,
+            messageId: 'host-only',
+            wireVersion: 2,
+            sequence: 0,
+          },
           { type: 'text', text: 'Hello.', wireVersion: 2, sequence: 1 },
-          { type: 'assistant.step.completed', step: 0, messageId: 'host-only', wireVersion: 2, sequence: 2 },
+          {
+            type: 'assistant.step.completed',
+            step: 0,
+            messageId: 'host-only',
+            wireVersion: 2,
+            sequence: 2,
+          },
           { type: 'run.aborted', wireVersion: 2, sequence: 3 },
         ]),
     });
@@ -116,7 +152,13 @@ describe('assistant step boundaries', () => {
       },
       transport: async () =>
         events([
-          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 0 },
+          {
+            type: 'assistant.step.started',
+            step: 0,
+            messageId: 'host-0',
+            wireVersion: 2,
+            sequence: 0,
+          },
           {
             type: 'tool_call',
             id: 'call-1',
@@ -133,8 +175,20 @@ describe('assistant step boundaries', () => {
             wireVersion: 2,
             sequence: 2,
           },
-          { type: 'assistant.step.completed', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 3 },
-          { type: 'assistant.step.started', step: 1, messageId: 'host-1', wireVersion: 2, sequence: 4 },
+          {
+            type: 'assistant.step.completed',
+            step: 0,
+            messageId: 'host-0',
+            wireVersion: 2,
+            sequence: 3,
+          },
+          {
+            type: 'assistant.step.started',
+            step: 1,
+            messageId: 'host-1',
+            wireVersion: 2,
+            sequence: 4,
+          },
           { type: 'text', text: 'Saved that note.', wireVersion: 2, sequence: 5 },
           { type: 'run.aborted', wireVersion: 2, sequence: 6 },
         ]),
@@ -157,8 +211,20 @@ describe('assistant step boundaries', () => {
       },
       transport: async () =>
         events([
-          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 0 },
-          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 1 },
+          {
+            type: 'assistant.step.started',
+            step: 0,
+            messageId: 'host-0',
+            wireVersion: 2,
+            sequence: 0,
+          },
+          {
+            type: 'assistant.step.started',
+            step: 0,
+            messageId: 'host-0',
+            wireVersion: 2,
+            sequence: 1,
+          },
           { type: 'text', text: 'Once.', wireVersion: 2, sequence: 2 },
           { type: 'run.aborted', wireVersion: 2, sequence: 3 },
         ]),
@@ -191,7 +257,9 @@ describe('legacy and rich projections of the same content', () => {
         ]),
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []);
-    const assistant = conversation.ids.find((id) => conversation.messages[id]?.role === 'assistant');
+    const assistant = conversation.ids.find(
+      (id) => conversation.messages[id]?.role === 'assistant',
+    );
     expect(assistant).toBeDefined();
     expect(contentOf(conversation, assistant ?? '')).toBe('rich');
   });
@@ -218,7 +286,9 @@ describe('legacy and rich projections of the same content', () => {
         ]),
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []);
-    const assistant = conversation.ids.find((id) => conversation.messages[id]?.role === 'assistant');
+    const assistant = conversation.ids.find(
+      (id) => conversation.messages[id]?.role === 'assistant',
+    );
     expect(contentOf(conversation, assistant ?? '')).toBe('legacy');
   });
 

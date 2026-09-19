@@ -373,8 +373,7 @@
     tabindex="-1"
   >
     {#if pending}
-      {pending.message}{#if pending.toolName}
-        The assistant wants to run {pending.toolName}.{/if}
+      {pending.message}{#if pending.toolName}{' '}The assistant wants to run {pending.toolName}.{/if}
     {/if}
   </p>
   {#if pending?.arguments && pending.toolName}
