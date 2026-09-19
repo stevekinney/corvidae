@@ -1,6 +1,6 @@
 # Project guidance
 
-This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are private source packages; applications own their executable toolchains. Do not add publishing, CI/CD, deployment infrastructure, or Git-hook installation.
+This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are private source packages; applications own their executable toolchains. Do not add publishing, CI/CD, deployment infrastructure, or Git-hook installation. The single exception is the public mirror tooling: `scripts/mirror/` and the sync workflow at `.github/workflows/mirror-sync.yaml`, which transform this workspace's source into the public mirror repositories that build, bundle, and publish it. Those two paths are the whole of the exception—the prohibition is otherwise unchanged, and publishing, CI/CD, deployment infrastructure, and Git-hook installation remain prohibited everywhere else in this workspace, including in any other workflow file.
 
 ## Workflow
 
