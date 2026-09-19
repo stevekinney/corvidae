@@ -88,6 +88,8 @@ curl -sN -X POST http://localhost:4791/api/server-owned/conversations/$ID/stream
 {"type":"stream:block-delta","block":{…,"content":"Streaming first half. ","complete":false},…}
 ```
 
+That dump was recorded before wire version 2, and the frames it shows are still the ones this scenario produces. What it no longer shows is the opening frame: this route builds its run options through `createChatRunOptions`, which wraps the generate call in `withAssistantStepFrames`, so the stream now opens with an `assistant.step.started` frame ahead of everything above. Nothing else about the observed behaviour changes—the turn still parks after the first chunk, which is the only property this step is establishing.
+
 Kill the server. `kill -9`, not a graceful stop: a SIGTERM runs the shutdown handler, which drains and marks runs aborted on the way out. A crash is what this exercise is about.
 
 ```sh
