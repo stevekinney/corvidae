@@ -93,6 +93,19 @@ function applyToolchain(
   );
 }
 
+/** The exports map the target already publishes, or `undefined` on a fresh target. */
+async function readTargetExports(
+  targetDirectory: string | undefined,
+  path: string,
+): Promise<SurfaceExportsMap | undefined> {
+  if (targetDirectory === undefined) return undefined;
+  const file = Bun.file(join(targetDirectory, path));
+  if (!(await file.exists())) return undefined;
+  const manifest = (await file.json()) as JsonObject;
+  const exports = manifest['exports'];
+  return isJsonObject(exports) ? (exports as SurfaceExportsMap) : undefined;
+}
+
 function applySurfaceToManifest(
   manifest: JsonObject,
   entry: PackageSurfaceEntry,
@@ -159,9 +172,10 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
       entry,
       packageRoot,
       components,
-      existingExports: isJsonObject(manifest['exports'])
-        ? (manifest['exports'] as SurfaceExportsMap)
-        : undefined,
+      // The target's own map, not the emitted one. The generator consults it only to preserve a
+      // legacy flat subpath, and corvidae's `{".": "./src/index.ts"}` can never carry one — so
+      // reading the emitted manifest here would make that pass permanently inert.
+      existingExports: await readTargetExports(options.targetDirectory, path),
     });
 
     applySurfaceToManifest(manifest, entry, resolved.exports, resolved.files);
