@@ -82,7 +82,7 @@ That's the core loop: `workflow({ name })` is a **chained builder** that co-loca
 
 Passing an explicitly empty workflow map is the same default-registry boot shape as omitting `workflows`: `Engine.create({ workflows: {} })` recovers after registration and returns an engine whose TypeScript type is compatible with default-registry consumers such as `serve({ engine })`. Use a non-empty `workflows` map when you want TypeScript to narrow `engine.start(...)` to the registered names.
 
-Serverless hosts that cannot keep process-local intervals alive can set `backgroundTasks: 'manual'` and call `await engine.runMaintenance()` from an alarm or Cron wake-up to drive timers, scheduled starts, update-response cleanup, retention, and alert evaluation. Await each maintenance cycle before starting another one so host-driven ticks do not overlap.
+Serverless hosts that cannot keep process-local intervals alive can set `backgroundTasks: 'manual'` and call `await engine.runMaintenance(now)` from an alarm or Cron wake-up to drive timers, delayed starts, update-response cleanup, retention, and alert evaluation. This is also the deterministic drive for `engine.schedule()`'s recurring cron/interval poller—`runMaintenance(now)` fires any schedule due at `now` exactly the way a real-time process would, so a manual-clock test or a `backgroundTasks: 'manual'` host never needs a separate mechanism to advance recurring schedules. Await each maintenance cycle before starting another one so host-driven ticks do not overlap.
 
 If you'd rather wire things up by hand—useful for tests, isolating engines onto separate storage scopes via `ScopedStorage`, or adding new workflows after the engine starts up—`new Engine({ storage })`, `engine.register(workflow)` or `engine.registerWorkflows({ ... })`, and `await engine.recoverAll()` are the underlying primitives. Each `engine.register(workflow)` call returns the engine with that workflow's name and types baked in, so `engine.start('welcome', ...)` autocompletes immediately.
 
@@ -194,6 +194,33 @@ const quorum = workflow({ name: 'quorum' })
     return reached ? 'accepted' : 'expired';
   });
 ```
+
+### Recurring Schedules
+
+`engine.schedule(type, input, spec, options?)` creates a durable cron or fixed-interval schedule and returns a `ScheduleHandle` with `pause()`, `resume()`, `cancel()`, `update(spec, options?)`, and `describe()`. Under `backgroundTasks: 'manual'`, recurring schedules fire through the exact same drive as durable timers: `engine.runMaintenance(now)` evaluates due schedules against `now`, so a serverless host or a manual-clock test advances a schedule the same way it advances a `ctx.sleep`—no separate mechanism is needed.
+
+`handle.pause()`, `handle.resume()`, and `handle.cancel()`—and their `Engine.pauseSchedule()`/`resumeSchedule()`/`cancelSchedule()` equivalents—accept an optional second argument of caller-supplied operations that commit atomically with the schedule's status transition. This is for a consumer keeping its own durable projection (a search index, an audit log, a mirrored record in another store) in step with the engine's schedule state: without it, the consumer's own write is fire-and-forget after the engine's commit, and a crash or a rejected write between the two leaves them observably out of sync.
+
+```typescript
+const handle = await engine.schedule('daily-report', null, '0 9 * * *', { id: 'daily-report' });
+const projectionKey = 'app:reports:daily-report:paused';
+
+await handle.pause({
+  // Put/delete operations against the CALLER's OWN keys, committed in the
+  // same storage batch as the schedule's `status: 'paused'` write.
+  additionalOperations: [
+    { type: 'put', key: projectionKey, value: new TextEncoder().encode('true') },
+  ],
+  // Optional expected-value guards, also on the caller's own keys. If any
+  // condition no longer holds, the ENTIRE commit—the caller's operations AND
+  // the schedule state transition—is rejected, and neither lands.
+  extraConditions: [{ key: projectionKey, expectedValue: null }],
+  // Optional: distinguish "my own guard went stale" from any other failure.
+  onExtraConditionsLost: () => new Error('daily-report projection guard was stale'),
+});
+```
+
+`additionalOperations` and `extraConditions` are the same `BatchOperation`/`ConditionalBatchCondition` shapes storage backends use elsewhere, so no new vocabulary is needed to reach for this. Keep caller keys outside Weft's reserved prefixes (see `WEFT_RESERVED_KEY_PREFIXES`)—an `app:`-prefixed namespace, as in the example, is the documented convention.
 
 ### Live Workflow Events
 

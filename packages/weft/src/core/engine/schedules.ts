@@ -1,4 +1,4 @@
-import type { BatchOperation } from '../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { decode } from '../codec.ts';
 import { ScheduleAttemptedEvent } from '../events.ts';
@@ -9,6 +9,7 @@ import type {
   ScheduleSpec,
   ScheduleState,
   ScheduleSummary,
+  ScheduleTransitionOptions,
   ScheduleUpdateOptions,
   WorkflowState,
 } from '../types.ts';
@@ -215,7 +216,45 @@ export function toScheduleSummary(state: ScheduleState): ScheduleSummary {
   return projectedSummary;
 }
 
-export async function pauseSchedule(internals: EngineInternals, scheduleId: string): Promise<void> {
+/**
+ * Project a caller-supplied {@link ScheduleTransitionOptions} onto the subset
+ * of {@link writeScheduleState}'s options it forwards to. Built with
+ * conditional spreads — rather than `{ additionalOperations:
+ * options?.additionalOperations, ... }` — because `exactOptionalPropertyTypes`
+ * forbids assigning an explicit `undefined` to an optional property whose type
+ * does not itself include `undefined`; omitting an absent key entirely is the
+ * only way to pass an "unset" option through untyped.
+ */
+function scheduleTransitionWriteOptions(options: ScheduleTransitionOptions | undefined): {
+  additionalOperations?: BatchOperation[];
+  extraConditions?: ConditionalBatchCondition[];
+  onExtraConditionsLost?: () => Error;
+} {
+  return {
+    ...(options?.additionalOperations !== undefined && {
+      additionalOperations: options.additionalOperations,
+    }),
+    ...(options?.extraConditions !== undefined && {
+      extraConditions: options.extraConditions,
+    }),
+    ...(options?.onExtraConditionsLost !== undefined && {
+      onExtraConditionsLost: options.onExtraConditionsLost,
+    }),
+  };
+}
+
+/**
+ * `options` (COR-67) lets a caller keeping its own durable projection in step
+ * with the engine's schedule state fold `additionalOperations`/`extraConditions`
+ * into this SAME storage commit — see {@link ScheduleTransitionOptions}. Every
+ * existing caller passes neither and gets byte-for-byte the pre-COR-67 commit
+ * shape.
+ */
+export async function pauseSchedule(
+  internals: EngineInternals,
+  scheduleId: string,
+  options?: ScheduleTransitionOptions,
+): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const state = await requireScheduleState(internals, normalizedScheduleId);
   if (state.status !== 'active') return;
@@ -231,12 +270,17 @@ export async function pauseSchedule(internals: EngineInternals, scheduleId: stri
     nextFireAt: getNextScheduleOccurrence(state, now),
     queuedRuns: [],
   };
-  await writeScheduleState(internals, updatedState, { includeTimer: false });
+  await writeScheduleState(internals, updatedState, {
+    includeTimer: false,
+    ...scheduleTransitionWriteOptions(options),
+  });
 }
 
+/** `options` (COR-67) — see {@link pauseSchedule}'s doc comment. */
 export async function resumeSchedule(
   internals: EngineInternals,
   scheduleId: string,
+  options?: ScheduleTransitionOptions,
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const state = await requireScheduleState(internals, normalizedScheduleId);
@@ -251,12 +295,16 @@ export async function resumeSchedule(
     updatedAt: now,
     nextFireAt: getNextScheduleOccurrence(state, now),
   };
-  await writeScheduleState(internals, updatedState);
+  await writeScheduleState(internals, updatedState, {
+    ...scheduleTransitionWriteOptions(options),
+  });
 }
 
+/** `options` (COR-67) — see {@link pauseSchedule}'s doc comment. */
 export async function cancelSchedule(
   internals: EngineInternals,
   scheduleId: string,
+  options?: ScheduleTransitionOptions,
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const state = await requireScheduleState(internals, normalizedScheduleId);
@@ -273,7 +321,10 @@ export async function cancelSchedule(
     nextFireAt: null,
     queuedRuns: [],
   };
-  await writeScheduleState(internals, updatedState, { includeTimer: false });
+  await writeScheduleState(internals, updatedState, {
+    includeTimer: false,
+    ...scheduleTransitionWriteOptions(options),
+  });
 }
 
 export async function updateSchedule(

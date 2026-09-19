@@ -112,6 +112,7 @@ export type {
   ScheduleState,
   ScheduleStatus,
   ScheduleSummary,
+  ScheduleTransitionOptions,
   ScheduleUpdateOptions,
   SearchAttributeDefinition,
   SearchAttributeHandle,

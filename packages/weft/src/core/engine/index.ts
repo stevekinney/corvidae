@@ -66,6 +66,7 @@ import {
   type ScheduleOptions,
   type ScheduleSpec,
   type ScheduleSummary,
+  type ScheduleTransitionOptions,
   type ScheduleUpdateOptions,
   type SearchAttributeValue,
   type SignalDefinition,
@@ -2141,29 +2142,29 @@ export class Engine<
   async listSchedules(filter?: ScheduleFilter): Promise<PaginatedResult<ScheduleSummary>> {
     return listSchedulesFromInternals(getInternals(this), filter);
   }
-  async pauseSchedule(scheduleId: string): Promise<void> {
+  async pauseSchedule(scheduleId: string, options?: ScheduleTransitionOptions): Promise<void> {
     const internals = getInternals(this);
     assertLeaseHeldForEngineWork(internals);
     if (!isWorkflowCatalogReady(this as unknown as Engine)) {
       await ensureWorkflowCatalogReady(this as unknown as Engine);
     }
-    return pauseScheduleFromInternals(internals, scheduleId);
+    return pauseScheduleFromInternals(internals, scheduleId, options);
   }
-  async resumeSchedule(scheduleId: string): Promise<void> {
+  async resumeSchedule(scheduleId: string, options?: ScheduleTransitionOptions): Promise<void> {
     const internals = getInternals(this);
     assertLeaseHeldForEngineWork(internals);
     if (!isWorkflowCatalogReady(this as unknown as Engine)) {
       await ensureWorkflowCatalogReady(this as unknown as Engine);
     }
-    return resumeScheduleFromInternals(internals, scheduleId);
+    return resumeScheduleFromInternals(internals, scheduleId, options);
   }
-  async cancelSchedule(scheduleId: string): Promise<void> {
+  async cancelSchedule(scheduleId: string, options?: ScheduleTransitionOptions): Promise<void> {
     const internals = getInternals(this);
     assertLeaseHeldForEngineWork(internals);
     if (!isWorkflowCatalogReady(this as unknown as Engine)) {
       await ensureWorkflowCatalogReady(this as unknown as Engine);
     }
-    return cancelScheduleFromInternals(internals, scheduleId);
+    return cancelScheduleFromInternals(internals, scheduleId, options);
   }
   async updateSchedule(
     scheduleId: string,
