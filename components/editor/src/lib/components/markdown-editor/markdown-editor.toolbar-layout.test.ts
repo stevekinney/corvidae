@@ -89,6 +89,10 @@ describe('MarkdownEditor toolbar layout CSS ownership', () => {
     expectDeclaration(modeToggleBlock, 'justify-content', 'flex-end');
     expect(markdownEditorSource).toContain('aria-label="Rich editor"');
     expect(markdownEditorSource).toContain('aria-label="Raw Markdown"');
+    expect(markdownEditorSource).toContain('<Pencil class="cinder-icon-xs" aria-hidden="true" />');
+    expect(markdownEditorSource).toContain(
+      '<FileCode class="cinder-icon-xs" aria-hidden="true" />',
+    );
     expect(editorToolbarSource).toContain('label="More formatting"');
     expect(editorToolbarSource).toContain('focusManagement="panel"');
     expect(editorToolbarSource).toContain('aria-label="Additional formatting"');

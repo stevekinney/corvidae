@@ -179,3 +179,70 @@ test('MarkdownEditor names its ProseMirror textbox before accessibility checks r
   const editorTextbox = page.locator('.markdown-editor .ProseMirror[role="textbox"]').first();
   await expect(editorTextbox).toHaveAttribute('aria-label', /\S/);
 });
+
+for (const theme of THEMES) {
+  for (const width of [320, 512, 848]) {
+    test(`MarkdownEditor toolbar stays reachable at ${width}px in ${theme}`, async ({
+      componentPage,
+    }) => {
+      const page = await componentPage.open({
+        entry: markdownEditorEntry,
+        theme,
+        viewport: VIEWPORTS.find((viewport) => viewport.name === 'desktop')!,
+        fixtureName: 'assertion',
+      });
+      const editorWrapper = page.locator('#example-mount-basic .markdown-editor-wrapper');
+      await expect(editorWrapper).toBeVisible();
+      await editorWrapper.evaluate((element, inlineSize) => {
+        (element as HTMLElement).style.inlineSize = `${inlineSize}px`;
+        (element as HTMLElement).style.maxInlineSize = `${inlineSize}px`;
+      }, width);
+
+      const toolbarWrapper = editorWrapper.locator('.editor-toolbar-wrapper');
+      const toolbar = toolbarWrapper.locator('.editor-toolbar');
+      const modeToggle = toolbarWrapper.getByRole('radiogroup', { name: 'Editor mode' });
+      await expect(toolbar).toBeVisible();
+      await expect(modeToggle).toBeVisible();
+
+      const metrics = await toolbarWrapper.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          left: rect.left,
+          right: rect.right,
+          scrollWidth: element.scrollWidth,
+          clientWidth: element.clientWidth,
+        };
+      });
+      expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+
+      const toolbarBox = requireBox(await toolbar.boundingBox(), 'Toolbar');
+      const modeToggleBox = requireBox(await modeToggle.boundingBox(), 'Mode toggle');
+      expectInsideContentBox(toolbarBox, metrics);
+      expectInsideContentBox(modeToggleBox, metrics);
+
+      const actions = await toolbar.locator('button').evaluateAll((buttons) =>
+        buttons
+          .map((button) => {
+            const rect = button.getBoundingClientRect();
+            const styles = getComputedStyle(button);
+            return {
+              left: rect.left,
+              right: rect.right,
+              top: rect.top,
+              bottom: rect.bottom,
+              visible: styles.display !== 'none' && styles.visibility !== 'hidden',
+            };
+          })
+          .filter((rect) => rect.visible && rect.right > rect.left && rect.bottom > rect.top),
+      );
+      for (let index = 1; index < actions.length; index += 1) {
+        const previous = actions[index - 1];
+        const current = actions[index];
+        expect(
+          current.left,
+          `button ${index} must not overlap its predecessor`,
+        ).toBeGreaterThanOrEqual(previous.right - 1);
+      }
+    });
+  }
+}

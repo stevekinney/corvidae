@@ -20,8 +20,10 @@
  *      contract: `data-cinder-size="sm"`, `data-cinder-density="toolbar"`.
  */
 
-import { loadManifest } from '@corvidae/testing';
-import { expect, test, type Page } from '@playwright/test';
+import { loadManifest, THEMES, VIEWPORTS } from '@corvidae/testing';
+import { type Locator, type Page } from '@playwright/test';
+import { expect, test } from './component-page-fixture.ts';
+import { fixtureEntry } from './editor-fixture.ts';
 
 const manifest = loadManifest();
 function fixtureRoute(slug: string): string {
@@ -32,6 +34,9 @@ function fixtureRoute(slug: string): string {
 }
 const SIZING_ROUTE = fixtureRoute('segmented-control');
 const REVIEW_EDITOR_ROUTE = fixtureRoute('review-editor');
+const reviewEditorEntry = fixtureEntry('review-editor');
+const ARTIFACT_ROOT =
+  '/Users/stevekinney/.codex/artifacts/chef-corvidae-ui-01a0b754-7538-7491-8f63-3a00c2a66ed0';
 
 // Match Playwright's bounding box / padding numerics within a sub-pixel
 // tolerance. Browsers can return fractional pixel values for box metrics.
@@ -68,6 +73,25 @@ type OptionMetrics = {
   height: number;
 };
 
+type Box = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+type ReviewToolbarMetrics = {
+  row: Box;
+  leading: Box;
+  trailing: Box;
+  scrollWidth: number;
+  clientWidth: number;
+};
+
+type ReviewView = 'editor' | 'diff' | 'summary';
+
 async function optionMetrics(page: Page, selector: string): Promise<OptionMetrics> {
   return page.evaluate((sel) => {
     const element = document.querySelector(sel);
@@ -86,6 +110,73 @@ async function optionMetrics(page: Page, selector: string): Promise<OptionMetric
       height: rect.height,
     };
   }, selector);
+}
+
+function expectBoxesAligned(actual: number, expected: number, label: string) {
+  expect(Math.abs(actual - expected), label).toBeLessThanOrEqual(1);
+}
+
+async function reviewToolbarMetrics(reviewEditor: Locator): Promise<ReviewToolbarMetrics> {
+  return reviewEditor.locator('.review-editor-controls').evaluate((element) => {
+    const boxFrom = (target: Element): Box => {
+      const rect = target.getBoundingClientRect();
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    const leading = element.querySelector('.controls-leading');
+    const trailing = element.querySelector('.controls-trailing');
+    if (!(leading instanceof HTMLElement) || !(trailing instanceof HTMLElement)) {
+      throw new Error('ReviewEditor toolbar clusters must be present.');
+    }
+    return {
+      row: boxFrom(element),
+      leading: boxFrom(leading),
+      trailing: boxFrom(trailing),
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+    };
+  });
+}
+
+async function switchReviewView(reviewEditor: Locator, view: ReviewView) {
+  await reviewEditor.getByRole('tab', { name: viewLabel(view), exact: true }).click();
+  await expect(reviewEditor).toHaveAttribute('data-view', view);
+}
+
+function viewLabel(view: ReviewView): string {
+  if (view === 'editor') return 'Editor';
+  if (view === 'diff') return 'Diff';
+  return 'Summary';
+}
+
+async function assertReviewToolbarActionAccess(reviewEditor: Locator, width: number) {
+  const formattingToolbar = reviewEditor.getByRole('toolbar', { name: 'Formatting toolbar' });
+  const overflowTrigger = reviewEditor.getByRole('button', { name: 'More formatting' });
+  const visibleOverflowTrigger =
+    (await overflowTrigger.count()) > 0 && (await overflowTrigger.isVisible());
+
+  if (width === 848) {
+    for (const name of ['Bold', 'Italic', 'Inline Code', 'Insert Link']) {
+      await expect(formattingToolbar.getByRole('button', { name })).toBeVisible();
+    }
+  }
+
+  if (!visibleOverflowTrigger) return;
+
+  await overflowTrigger.focus();
+  await expect(overflowTrigger).toBeFocused();
+  await overflowTrigger.press('Enter');
+  const overflowPanel = reviewEditor.page().getByRole('group', { name: 'Additional formatting' });
+  await expect(overflowPanel).toBeVisible();
+  await overflowPanel.page().keyboard.press('Escape');
+  await expect(overflowPanel).toBeHidden();
+  await expect(overflowTrigger).toBeFocused();
 }
 
 test.describe('SegmentedControl — sizing and density', () => {
@@ -270,4 +361,84 @@ test.describe('SegmentedControl — sizing and density', () => {
     await expect(tablist).toHaveAttribute('data-cinder-size', 'sm');
     await expect(tablist).toHaveAttribute('data-cinder-density', 'toolbar');
   });
+
+  test('single-view ReviewEditor does not expose a lone Editor tab', async ({ page }) => {
+    await page.goto(REVIEW_EDITOR_ROUTE, { waitUntil: 'load' });
+    await page.waitForLoadState('networkidle');
+    const reviewEditor = page.locator('#review-editor-single-view [data-testid="review-editor"]');
+    await expect(reviewEditor).toBeVisible();
+    await expect(reviewEditor.locator('[role="tablist"]')).toHaveCount(0);
+    await expect(reviewEditor.locator('[role="tab"]')).toHaveCount(0);
+  });
+
+  for (const theme of THEMES) {
+    for (const width of [320, 512, 848]) {
+      test(`ReviewEditor controls preserve row geometry at ${width}px in ${theme}`, async ({
+        componentPage,
+      }) => {
+        const page = await componentPage.open({
+          entry: reviewEditorEntry,
+          theme,
+          viewport: VIEWPORTS.find((viewport) => viewport.name === 'desktop')!,
+          fixtureName: 'assertion',
+        });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+
+        const host = page.locator('#review-editor-geometry');
+        await expect(host).toBeVisible();
+        await host.evaluate((element, inlineSize) => {
+          (element as HTMLElement).style.inlineSize = `${inlineSize}px`;
+          (element as HTMLElement).style.maxInlineSize = `${inlineSize}px`;
+        }, width);
+
+        const reviewEditor = host.locator('[data-testid="review-editor"]');
+        await expect(reviewEditor).toHaveAttribute('data-ready', 'true');
+
+        const measurements: Partial<Record<ReviewView, ReviewToolbarMetrics>> = {};
+        for (const view of ['editor', 'diff', 'summary'] as const) {
+          if (view !== 'editor') await switchReviewView(reviewEditor, view);
+          const metrics = await reviewToolbarMetrics(reviewEditor);
+          measurements[view] = metrics;
+
+          expect(
+            metrics.scrollWidth,
+            `${view}: toolbar must not clip horizontally`,
+          ).toBeLessThanOrEqual(metrics.clientWidth + 1);
+          expect(
+            metrics.leading.left,
+            `${view}: leading cluster starts inside row`,
+          ).toBeGreaterThanOrEqual(metrics.row.left - 1);
+          expect(
+            metrics.trailing.right,
+            `${view}: trailing cluster ends inside row`,
+          ).toBeLessThanOrEqual(metrics.row.right + 1);
+          expect(metrics.leading.right, `${view}: clusters must not overlap`).toBeLessThanOrEqual(
+            metrics.trailing.left + 1,
+          );
+
+          await page.screenshot({
+            path: `${ARTIFACT_ROOT}/editor-toolbar-review-${theme}-${width}-${view}.png`,
+            fullPage: true,
+          });
+        }
+
+        const editor = measurements.editor;
+        if (editor === undefined) throw new Error('Editor toolbar metrics were not recorded.');
+        for (const view of ['diff', 'summary'] as const) {
+          const metrics = measurements[view];
+          if (metrics === undefined) throw new Error(`${view} toolbar metrics were not recorded.`);
+          expectBoxesAligned(metrics.row.height, editor.row.height, `${view}: row height`);
+          expectBoxesAligned(metrics.leading.left, editor.leading.left, `${view}: leading edge`);
+          expectBoxesAligned(
+            metrics.trailing.right,
+            editor.trailing.right,
+            `${view}: trailing edge`,
+          );
+        }
+
+        await switchReviewView(reviewEditor, 'editor');
+        await assertReviewToolbarActionAccess(reviewEditor, width);
+      });
+    }
+  }
 });

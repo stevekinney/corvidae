@@ -48,6 +48,17 @@ describe('ReviewEditorControls — comments toggle identity', () => {
   });
 });
 
+describe('ReviewEditorControls — single-view accessibility', () => {
+  test('does not render a tablist or lone Editor tab when diff tabs are unavailable', () => {
+    const { container } = render(ReviewEditorControls, {
+      props: { ...BASE_PROPS, showDiffTabs: false },
+    });
+
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    expect(container.querySelector('[role="tab"]')).toBeNull();
+  });
+});
+
 describe('ReviewEditorControls — comments toggle ARIA attributes', () => {
   test('toggle has aria-expanded reflecting sidebarOpen=false', () => {
     const { container } = render(ReviewEditorControls, {

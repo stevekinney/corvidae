@@ -782,10 +782,14 @@
                 labelVisible={false}
               >
                 <Segment value="wysiwyg" aria-label="Rich editor"
-                  ><Pencil aria-hidden="true" /><span class="cinder-sr-only">Rich</span></Segment
+                  ><Pencil class="cinder-icon-xs" aria-hidden="true" /><span class="cinder-sr-only"
+                    >Rich</span
+                  ></Segment
                 >
                 <Segment value="source" aria-label="Raw Markdown"
-                  ><FileCode aria-hidden="true" /><span class="cinder-sr-only">Raw</span></Segment
+                  ><FileCode class="cinder-icon-xs" aria-hidden="true" /><span
+                    class="cinder-sr-only">Raw</span
+                  ></Segment
                 >
               </SegmentedControl>
             </div>
