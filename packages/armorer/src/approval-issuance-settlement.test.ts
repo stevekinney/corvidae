@@ -1,10 +1,12 @@
+import { getEventListeners } from 'node:events';
+
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { type ApprovalStateStore, createProcessLocalApprovalStateStore } from './approval-binding';
 import { createTool, createToolCall } from './create-tool';
 import { createToolbox } from './create-toolbox';
-import type { ToolPolicyDecision } from './is-tool';
+import type { Tool, ToolPolicyDecision } from './is-tool';
 import type { ToolboxExecuteOptions } from './toolbox-contracts';
 import type { ToolboxSettledEvent } from './toolbox-lifecycle-events';
 import type { SignedPendingToolApproval } from './types';
@@ -105,6 +107,39 @@ function createSettlementLog(expected: number) {
       if (records.length >= expected) reached.resolve();
     },
   };
+}
+
+const bubbledEventTypes = ['execute-start', 'settled', 'progress', 'policy-denied'] as const;
+
+/**
+ * `subscribeToolEvents` attaches one bubble listener per tool event type to the
+ * tool's own emitter and releases them through the invocation's `cleanup`
+ * array, so the tool emitter is where a skipped cleanup shows up.
+ */
+function captureToolEventTarget(tool: { addEventListener: Tool['addEventListener'] }): EventTarget {
+  let target: EventTarget | undefined;
+  const originalAddEventListener = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, listener, options) {
+    // The temporary wrapper is the narrow capture needed to inspect the actual emitter.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    target ??= this;
+    if (listener === null) return;
+    return originalAddEventListener.call(this, type, listener, options);
+  };
+  try {
+    const unsubscribe = tool.addEventListener('settled', () => {});
+    unsubscribe();
+  } finally {
+    EventTarget.prototype.addEventListener = originalAddEventListener;
+  }
+  if (!target) throw new Error('failed to capture tool EventTarget');
+  return target;
+}
+
+function bubbledListenerCounts(target: EventTarget): Record<string, number> {
+  return Object.fromEntries(
+    bubbledEventTypes.map((type) => [type, getEventListeners(target, type).length]),
+  );
 }
 
 function errorCode(settlement: SettlementRecord | undefined): string | undefined {
@@ -370,6 +405,92 @@ describe('approval issuance settlement ordering', () => {
     expect(log.records).toHaveLength(1);
     expect(log.records[0]?.status).toBe('error');
     expect(errorCode(log.records[0])).toBe('TIMEOUT');
+  });
+
+  it('returns bubbled tool listeners to baseline after repeated cancelled issuance', async () => {
+    const pendingIssuance: Array<() => void> = [];
+    const { store } = createProbeStore({
+      beforeIssue: () =>
+        new Promise<void>((resolve) => {
+          pendingIssuance.push(resolve);
+        }),
+    });
+    const { tool, callbacks } = createGatedTool('issuance-listener-drain');
+    const toolbox = createToolbox([tool], { approvalSecret, approvalStateStore: store });
+    const registeredTool = toolbox.tools()[0]!;
+    const target = captureToolEventTarget(registeredTool);
+    const baseline = bubbledListenerCounts(target);
+    expect(baseline).toEqual({
+      'execute-start': 0,
+      settled: 0,
+      progress: 0,
+      'policy-denied': 0,
+    });
+
+    for (const round of [1, 2, 3]) {
+      const controller = new AbortController();
+      const execution = toolbox.execute(createToolCall(tool.name, {}, `drain-call-${round}`), {
+        ownerId,
+        requestContext: createRequestContext(),
+        signal: controller.signal,
+      });
+      while (pendingIssuance.length === 0) await Promise.resolve();
+      controller.abort('cancelled by test');
+      pendingIssuance.pop()?.();
+      const result = await execution;
+
+      expect(result.outcome).toBe('error');
+      expect(result.error?.code).toBe('CANCELLED');
+      expect(bubbledListenerCounts(target)).toEqual(baseline);
+    }
+
+    expect(callbacks.count).toBe(0);
+  });
+
+  it('terminates the child execution of a batch call interrupted during issuance', async () => {
+    const pendingIssuance: Array<() => void> = [];
+    const { store } = createProbeStore({
+      beforeIssue: () =>
+        new Promise<void>((resolve) => {
+          pendingIssuance.push(resolve);
+        }),
+    });
+    const first = createGatedTool('issuance-batch-interrupt-a');
+    const second = createGatedTool('issuance-batch-interrupt-b');
+    const toolbox = createToolbox([first.tool, second.tool], {
+      approvalSecret,
+      approvalStateStore: store,
+    });
+    const target = captureToolEventTarget(toolbox.tools()[0]!);
+    const baseline = bubbledListenerCounts(target);
+    const log = createSettlementLog(2);
+    toolbox.addEventListener('settled', (event) => log.record(event));
+    const controller = new AbortController();
+
+    const execution = toolbox.execute(
+      [
+        createToolCall(first.tool.name, {}, 'batch-interrupt-a'),
+        createToolCall(second.tool.name, {}, 'batch-interrupt-b'),
+      ],
+      { ownerId, requestContext: createRequestContext(), signal: controller.signal },
+    );
+    while (pendingIssuance.length < 2) await Promise.resolve();
+    controller.abort('cancelled by test');
+    while (pendingIssuance.length > 0) pendingIssuance.pop()?.();
+    const results = await execution;
+    await log.reached;
+
+    expect(results.map((result) => result.outcome)).toEqual(['error', 'error']);
+    expect(first.callbacks.count).toBe(0);
+    expect(second.callbacks.count).toBe(0);
+    expect(log.records).toHaveLength(2);
+    expect(log.records.every((record) => record.status === 'error')).toBe(true);
+    expect(bubbledListenerCounts(target)).toEqual(baseline);
+    const childStates = toolbox.executions
+      .inspect()
+      .filter((snapshot) => snapshot.parentExecutionId !== undefined)
+      .map((snapshot) => snapshot.state);
+    expect(childStates.every((state) => state === 'terminal')).toBe(true);
   });
 
   it('settles paused after issuance and success after an approved resume', async () => {

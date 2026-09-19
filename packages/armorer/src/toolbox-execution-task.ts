@@ -207,6 +207,14 @@ async function runToolInvocation(
         result: undefined,
         error: interruptedApproval.error,
       });
+      // COR-45: this exit used to return without releasing the bubbled tool
+      // event subscriptions or terminating the child execution, so every
+      // gated call interrupted during issuance leaked one tool listener per
+      // bubbled event type and left its child handle unsettled. The tool
+      // callback never ran on this path, so settling here cannot report a
+      // completion while real work is still in flight.
+      cleanup.forEach((fn) => fn());
+      settleChildExecution(interruptedApproval);
       return interruptedApproval;
     }
     deferredSettlement.flush({ status: 'paused', result: undefined, error: undefined });
