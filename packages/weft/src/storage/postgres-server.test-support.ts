@@ -62,8 +62,39 @@ export async function createPostgresTestServer(): Promise<{
   }
 }
 
+/**
+ * Build the child environment for `initdb` and `pg_ctl`.
+ *
+ * PostgreSQL 18 aborts startup with `postmaster became multithreaded during startup`
+ * whenever the postmaster gains a thread before it forks, and on macOS the locale
+ * lookup does exactly that when `LC_ALL` is unset. Pinning `LC_ALL` to `C` keeps the
+ * postmaster single-threaded and matches the `initdb --no-locale` cluster this harness
+ * already creates.
+ *
+ * `Bun.spawn` replaces the child environment rather than merging it, so the ambient
+ * environment is forwarded: `initdb` and `pg_ctl` locate the `postgres` binary through
+ * `PATH`, and `HOME` and `TMPDIR` carry the rest of their per-user state. Every `PG*`
+ * variable is dropped instead: the cluster names its data directory, host, port, socket
+ * directory, and superuser as explicit flags, so an ambient `PGDATA`, `PGHOST`,
+ * `PGPORT`, `PGUSER`, or `PGPASSWORD` could only redirect the disposable cluster or the
+ * `pg_ctl -w` readiness probe at a developer's own server.
+ */
+export function postgresCommandEnvironment(
+  environment: Readonly<Record<string, string | undefined>> = Bun.env,
+): Record<string, string | undefined> {
+  const childEnvironment: Record<string, string | undefined> = { ...environment, LC_ALL: 'C' };
+  for (const name of Object.keys(childEnvironment)) {
+    if (name.startsWith('PG')) delete childEnvironment[name];
+  }
+  return childEnvironment;
+}
+
 async function runPostgresCommand(command: string[]): Promise<void> {
-  const child = Bun.spawn(command, { stdout: 'pipe', stderr: 'pipe' });
+  const child = Bun.spawn(command, {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: postgresCommandEnvironment(),
+  });
   const [status, output, error] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),
