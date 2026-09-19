@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { type ApprovalStateStore, createProcessLocalApprovalStateStore } from './approval-binding';
 import { createTool, createToolCall } from './create-tool';
 import { createToolbox } from './create-toolbox';
+import type { ToolPolicyDecision } from './is-tool';
 import type { ToolboxExecuteOptions } from './toolbox-contracts';
 import type { ToolboxSettledEvent } from './toolbox-lifecycle-events';
 import type { SignedPendingToolApproval } from './types';
@@ -218,6 +219,51 @@ describe('approval issuance settlement ordering', () => {
     expect(callbacks.count).toBe(0);
     expect(log.records).toHaveLength(1);
     expect(log.records[0]?.status).toBe('error');
+    expect(log.records[0]?.error).toEqual(result.error);
+  });
+
+  it('settles error when the pending approval cannot be signed', async () => {
+    const callbacks = { count: 0 };
+    const tool = createTool({
+      name: 'issuance-unsignable',
+      version: '1.0.0',
+      description: 'Approval issuance settlement test tool',
+      input: z.object({}),
+      policy: {
+        // `ToolAction.message` is declared `string`, and unlike `action.schema`
+        // it never passes through `normalizeToolContent`, so a policy that
+        // violates that declaration reaches `signPendingApproval` intact and
+        // makes its `JSON.stringify` throw.
+        beforeExecute: () =>
+          ({
+            status: 'needs_approval',
+            reason: 'Approve this call',
+            action: { message: 1n },
+          }) as unknown as ToolPolicyDecision,
+      },
+      execute: async () => {
+        callbacks.count += 1;
+        return 'must not execute';
+      },
+    });
+    const { store, probe } = createProbeStore();
+    const toolbox = createToolbox([tool], { approvalSecret, approvalStateStore: store });
+    const log = createSettlementLog(1);
+    toolbox.addEventListener('settled', (event) => log.record(event));
+    const call = createToolCall(tool.name, {}, 'issuance-unsignable-call');
+
+    const result = await toolbox.execute(call, {
+      ownerId,
+      requestContext: createRequestContext(),
+    });
+
+    expect(result.outcome).toBe('error');
+    expect(callbacks.count).toBe(0);
+    expect(probe.issueCalls).toBe(0);
+    expect(log.records).toHaveLength(1);
+    expect(log.records[0]?.status).toBe('error');
+    expect(log.records[0]?.callId).toBe(call.id);
+    expect(log.records[0]?.result).toBeUndefined();
     expect(log.records[0]?.error).toEqual(result.error);
   });
 
