@@ -28,7 +28,7 @@ Assets are settled and they are fine. Every stylesheet the playground serves com
 - `src/documentation-styles.ts` assembles the `/playground-styles/*.css` bundles from a virtual entrypoint whose `@import` list is built by joining `PLAYGROUND_ROOT/../components/src/...`, then runs it through `Bun.build`.
 - `handlePackageComponentStyleRoute` reads `componentSource.componentsRoot`, which is each peer package's `src/lib/components`.
 
-Not one of these paths contains `dist`. The only `dist` mention anywhere in the playground's non-test source is a doc comment in `src/playground-server.test.ts`.
+Not one of these paths contains `dist`. Across all of `src/` and `scripts/`, the only `dist/` mention at all is a doc comment inside a test file, `src/playground-server.test.ts`.
 
 Code imports are the broken half. Corvidae's libraries export `{".": "./src/index.ts"}` and nothing else, so every subpath specifier the playground uses fails to resolve. The playground uses roughly 180 distinct ones, `@lostgradient/cinder/button` alone appearing 94 times, and they are not confined to example files: `src/playground-server.ts:40` imports `@lostgradient/markdown/rendering` at module scope, and `src/depict-highlighter.ts` imports `@lostgradient/cinder/highlighters/shiki/curated`. This is a direct consequence of COR-1186, not a challenge to it, and it is recorded below as the finding that blocks COR-1200's acceptance criteria.
 
@@ -95,20 +95,54 @@ Scanning every `.css` file under `components/*/src` and `packages/markdown/src`:
 
 Notably, corvidae's chat component stylesheets carry no `@import '@lostgradient/cinder/<name>/styles'` lines at all, where the upstream copies of `chat-conversation-header.css` and `chat-composer-popover.css` each carry one. `src/static-assets.ts`'s `rewritePackageComponentStyleImports`, which exists to rewrite exactly those specifiers into playground URLs, is therefore a no-op against corvidae's tree. It is harmless to keep and pointless to keep.
 
+### The cross-package reaches, probed
+
+`ls` against each target in corvidae, exit read from `$?`:
+
+| Target                                                    | Exit |
+| --------------------------------------------------------- | ---- |
+| `components/cinder/tsconfig.json`                         | 0    |
+| `components/cinder/scripts/lib/visual-fixtures/loader.ts` | 0    |
+| `components/cinder/scripts/svelte-plugin.ts`              | 2    |
+| `components/cinder/src/test/happy-dom.ts`                 | 2    |
+| `components/cinder/scripts/lib/visual-fixtures/schema.ts` | 2    |
+| `components/cinder/scripts/lib/strip-example-harness.ts`  | 2    |
+| `packages/testing/scripts/source-fingerprint.ts`          | 2    |
+| `tsconfig.base.json`                                      | 2    |
+
+`find` across the workspace locates no `svelte-plugin.ts` or `happy-dom.ts` under `components/cinder` at any depth, and no file named `strip-example-harness` or `source-fingerprint` anywhere. Importing the `@corvidae/testing` barrel under `browser` plus `svelte` conditions exits 0 and reports `sveltePlugin` and `setupHappyDom` both present, which is where the first two moved.
+
 ### `vercel-build` and `validate` inherit `dev`'s answer
 
 `scripts/static-export.ts` does not re-implement asset serving. It imports `handleRequest` from `src/playground-server.ts` and drives the same route table, writing each response body to `public/`. `src/validate-playground.ts` contains no CSS or `dist` reference whatsoever. Neither script can need something the dev server does not.
 
 ## Named replacement mechanism
 
-Asset delivery keeps its current mechanism. The routes stay; their roots move. These are the constants COR-1200 must repoint, and they constitute binary acceptance criteria for it:
+Asset delivery keeps its current mechanism. The routes stay; their roots move.
 
-- `src/component-sources.ts`: `PACKAGES_ROOT`, and the three roots derived from it. `cinderPackageRoot = join(PACKAGES_ROOT, 'components')` becomes `components/cinder`; `chatPackageRoot` becomes `components/chat`; `editorPackageRoot` becomes `components/editor`. Markdown is the asymmetric one, living under `packages/markdown` rather than `components/`, so a single shared parent no longer serves all four.
-- `src/component-sources.ts`: each `ComponentSource`'s `repositoryComponentsRoot`, which spells out `packages/components/src/components`, `packages/chat/src/lib/components`, and `packages/editor/src/lib/components` as literal strings.
+The package roots that drive every CSS route live in two files:
+
+- `src/component-sources.ts`: `PACKAGES_ROOT` and the three roots derived from it. `cinderPackageRoot = join(PACKAGES_ROOT, 'components')` becomes `components/cinder`; `chatPackageRoot` becomes `components/chat`; `editorPackageRoot` becomes `components/editor`. Markdown is the asymmetric one, living under `packages/markdown` rather than `components/`, so a single shared parent no longer serves all four. Each `ComponentSource`'s `repositoryComponentsRoot` also spells out `packages/components/src/components`, `packages/chat/src/lib/components`, and `packages/editor/src/lib/components` as literal strings.
 - `src/documentation-styles.ts`: `stylesheetEntry`'s hardcoded `join(PLAYGROUND_ROOT, '..', 'components', 'src')`.
-- `scripts/preload.ts`: the two relative reaches out of the package, `../../components/scripts/svelte-plugin.ts` and `../../components/src/test/happy-dom.ts`. Corvidae has no `components/scripts/` sibling at that depth, so both need a real target chosen, not merely a rewritten path.
 
-`src/static-assets.ts` needs no change of its own, because its roots are derived from `CINDER_COMPONENT_SOURCE.packageRoot`.
+`src/static-assets.ts` needs no change of its own, because its roots derive from `CINDER_COMPONENT_SOURCE.packageRoot`.
+
+### Every reach out of the playground package
+
+Those two files are not the whole surface. Regenerate the full list with `grep -rn --include='*.ts' --include='*.svelte' --include='*.json' "\.\./\.\./" src scripts tsconfig.json` from the playground root: 20 non-test hits, of which the `../../src/...` ones are self-relative strings inside bundler entrypoints and need nothing. The genuine cross-package reaches, each probed for existence in corvidae, are these:
+
+| Reach | Sites | In corvidae |
+| --- | --- | --- |
+| `../../components/scripts/svelte-plugin.ts` | `preload.ts`, `build-artifacts-shared.ts`, `featured-example-server-worker.ts`, `ssr-renderer.ts` | absent at that path; exported as `sveltePlugin` from the `@corvidae/testing` barrel |
+| `../../components/src/test/happy-dom.ts` | `preload.ts` | absent at that path; exported as `setupHappyDom` from the `@corvidae/testing` barrel |
+| `../../components/scripts/lib/visual-fixtures/loader.ts` | `playground-server.ts` | present at `components/cinder/scripts/lib/visual-fixtures/loader.ts` |
+| `../../components/scripts/lib/visual-fixtures/schema.ts` | `playground-server.ts`, `fixture-bundle.ts` | absent; `packages/testing/src/visual-fixtures.ts` is re-exported from the same barrel |
+| `../../components/tsconfig.json` | `analyze.ts` | present at `components/cinder/tsconfig.json` |
+| `../../components/scripts/lib/strip-example-harness.ts` | `playground-server.ts` | absent from the whole workspace |
+| `../../testing/scripts/source-fingerprint.ts` | `playground-server.ts` | absent from the whole workspace |
+| `../../tsconfig.base.json` | `tsconfig.json` `extends` | absent; corvidae's equivalents are `internal/typescript/{browser,library}.json` |
+
+Of the eight, two are a plain path rewrite, three collapse into a single `@corvidae/testing` barrel import (which resolves cleanly and exports both `sveltePlugin` and `setupHappyDom`, as the evidence above records), and one swaps cinder's root `tsconfig.base.json` for corvidae's `internal/typescript` configurations. The remaining two, `strip-example-harness.ts` and `source-fingerprint.ts`, exist nowhere in corvidae and must be ported or replaced. That last pair is real work COR-1200 has to scope, not a rename.
 
 ## Unresolved: the subpath specifiers, which block COR-1200
 
@@ -120,7 +154,7 @@ This is the real work the prefix was hiding, and it is not settled by this deter
 - **Peer-package subpaths**: eight across chat and editor, enumerated in `CHAT_IMPORT_PATHS` and `EDITOR_IMPORT_PATHS`.
 - **Markdown rendering subpaths**: `/rendering`, `/rendering/highlighter`, `/rendering/types`, one of them imported at module scope by the dev server itself.
 
-The coupling that makes this more than a find-and-replace: `src/component-sources.ts` **parses** these specifiers as text to decide which CSS to link. `CINDER_COMPONENT_IMPORT` matches `from '@lostgradient/cinder/<name>'` in example sources, and `implementationDependencies` follows a component's own Svelte implementation looking for the same pattern. Under corvidae's barrel-only convention that regex matches nothing, and the entire dependency walk falls to `CINDER_ROOT_BARREL_IMPORT`, which maps export names to component ids through `components.json`. That manifest exists here with all 200 entries carrying `exportName`, so the barrel path is workable, but whichever import form COR-1200 picks changes the asset-delivery walk as well as the imports. Picking the import form and re-establishing the CSS dependency walk are one decision, not two.
+The coupling that makes this more than a find-and-replace: `src/component-sources.ts` _parses_ these specifiers as text to decide which CSS to link. `CINDER_COMPONENT_IMPORT` matches `from '@lostgradient/cinder/<name>'` in example sources, and `implementationDependencies` follows a component's own Svelte implementation looking for the same pattern. Under corvidae's barrel-only convention that regex matches nothing, and the entire dependency walk falls to `CINDER_ROOT_BARREL_IMPORT`, which maps export names to component ids through `components.json`. That manifest exists here with all 200 entries carrying `exportName`, so the barrel path is workable, but whichever import form COR-1200 picks changes the asset-delivery walk as well as the imports. Picking the import form and re-establishing the CSS dependency walk are one decision, not two.
 
 Related, and small: `resolveEditorStylesheetUrl` decides whether an editor component has a CSS sidecar by testing `exportKeys.has('./<name>/styles')` against editor's real `exports` map. In corvidae that map has one key, so the set is empty and every editor component silently loses its sidecar link. The failure is quiet rather than loud, which is what makes it worth naming here.
 
@@ -132,6 +166,6 @@ The prefix comes off `vercel-build` for the same reason it comes off the other f
 
 The issue states that removing the build need for code imports is "certain" and that CSS and asset delivery "may still require a build step, or may need a different mechanism entirely." Both halves are wrong in the same direction.
 
-Asset delivery never required a build and requires no new mechanism. It requires four source roots to be repointed at corvidae's directory layout.
+Asset delivery never required a build and requires no new mechanism. It requires the four package roots to be repointed at corvidae's directory layout.
 
 Code imports are not certain. Corvidae's source exports fix resolution for the four package barrels and break it for every one of the roughly 180 subpaths the playground actually imports, including two inside the dev server's own module graph. That is the open question COR-1200 inherits, and it is larger than the one this issue was split out to answer.
