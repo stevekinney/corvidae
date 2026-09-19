@@ -62,7 +62,7 @@
     type SelectionAnchorPosition,
   } from './review-editor-selection-geometry.ts';
   import DiffViewer from '../diff-viewer/diff-viewer.svelte';
-  import { SelectionPopover } from '@corvidae/cinder';
+  import { Button, Callout, SelectionPopover } from '@corvidae/cinder';
   import { createReviewEditorExportActions } from './review-editor-exports.ts';
   import type {
     MarkdownSummaryOptions,
@@ -73,6 +73,7 @@
 
   // Shared reduced-motion preference (OVERLAY-POLICY: use the shared hook, not inline matchMedia).
   const reducedMotion = useReducedMotion();
+  const frontMatterParseWarning = 'Front matter could not be parsed; showing as plain text.';
 
   let {
     id,
@@ -119,6 +120,9 @@
 
   // Reference to LiveRegion for screen reader announcements (DEP-47)
   let liveRegionRef: LiveRegion | undefined = $state();
+  let malformedFrontMatterDismissed = $state(false);
+  let lastMalformedFrontMatterId = $state('');
+  let lastMalformedFrontMatterAnnouncementKey = $state('');
 
   // Track when editor view is ready (for effects that need to wait for async editor creation)
   let editorViewReady = $state(false);
@@ -182,6 +186,9 @@
 
   const currentDocument = $derived(parseReviewEditorFrontMatter(value));
   const editorValue = $derived(currentDocument.body);
+  const hasMalformedFrontMatter = $derived(
+    currentDocument.fencePresent && !currentDocument.hasFrontMatter,
+  );
   const viewPanelIds = $derived({
     editor: `${id}-editor-panel`,
     diff: `${id}-diff-panel`,
@@ -365,6 +372,44 @@
    */
   function announce(message: string, priority: 'polite' | 'assertive' = 'polite'): void {
     liveRegionRef?.announce(message, priority);
+  }
+
+  $effect(() => {
+    if (id !== lastMalformedFrontMatterId) {
+      malformedFrontMatterDismissed = false;
+      lastMalformedFrontMatterAnnouncementKey = '';
+      lastMalformedFrontMatterId = id;
+    }
+  });
+
+  $effect(() => {
+    if (!hasMalformedFrontMatter) {
+      malformedFrontMatterDismissed = false;
+      lastMalformedFrontMatterAnnouncementKey = '';
+      return;
+    }
+
+    const announcementKey = `${id}:${value}`;
+    if (announcementKey === lastMalformedFrontMatterAnnouncementKey) return;
+    lastMalformedFrontMatterAnnouncementKey = announcementKey;
+
+    void tick().then(() => {
+      if (!hasMalformedFrontMatter || lastMalformedFrontMatterAnnouncementKey !== announcementKey) {
+        return undefined;
+      }
+
+      announce(frontMatterParseWarning);
+      return undefined;
+    });
+  });
+
+  async function focusMalformedFrontMatterSource(): Promise<void> {
+    await tick();
+    const textarea = document.getElementById(id);
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 0);
   }
 
   // Get the popover thread
@@ -2061,6 +2106,22 @@
         role="tabpanel"
         aria-label="Editor view"
       >
+        {#if hasMalformedFrontMatter && !malformedFrontMatterDismissed}
+          <Callout
+            semantic="note"
+            variant="warning"
+            title="Front matter warning"
+            class="review-editor-front-matter-warning"
+          >
+            <p>{frontMatterParseWarning}</p>
+            <div class="review-editor-front-matter-warning__actions">
+              <Button onclick={focusMalformedFrontMatterSource}>Edit as plain text</Button>
+              <Button variant="ghost" onclick={() => (malformedFrontMatterDismissed = true)}>
+                Dismiss front matter warning
+              </Button>
+            </div>
+          </Callout>
+        {/if}
         {#if currentDocument.hasFrontMatter}
           <FrontMatterFields
             id={`${id}-front-matter`}
@@ -2070,25 +2131,44 @@
             onchange={handleFrontMatterChange}
           />
         {/if}
-        <MarkdownEditor
-          {id}
-          bind:this={editorRef}
-          value={editorValue}
-          mode="wysiwyg"
-          readonly={isReadonly}
-          {placeholder}
-          plugins={[anchorPlugin]}
-          {snapshotMode}
-          showToolbar={false}
-          ontoolbarcontextchange={(context) => (editorToolbarContext = context)}
-          onchange={handleEditorBodyChange}
-          onready={() => {
-            if (!editorViewReady) {
-              editorViewReady = true;
-            }
-          }}
-          onselectionchange={handleSelectionChange}
-        />
+        {#if hasMalformedFrontMatter}
+          <MarkdownEditor
+            {id}
+            bind:this={editorRef}
+            {value}
+            mode="source"
+            readonly={isReadonly}
+            {placeholder}
+            {snapshotMode}
+            showToolbar={false}
+            onchange={handleChange}
+            onready={() => {
+              if (!editorViewReady) {
+                editorViewReady = true;
+              }
+            }}
+          />
+        {:else}
+          <MarkdownEditor
+            {id}
+            bind:this={editorRef}
+            value={editorValue}
+            mode="wysiwyg"
+            readonly={isReadonly}
+            {placeholder}
+            plugins={[anchorPlugin]}
+            {snapshotMode}
+            showToolbar={false}
+            ontoolbarcontextchange={(context) => (editorToolbarContext = context)}
+            onchange={handleEditorBodyChange}
+            onready={() => {
+              if (!editorViewReady) {
+                editorViewReady = true;
+              }
+            }}
+            onselectionchange={handleSelectionChange}
+          />
+        {/if}
       </div>
     {:else if activeView === 'diff'}
       <!-- Diff view content -->

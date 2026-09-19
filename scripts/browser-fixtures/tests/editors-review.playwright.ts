@@ -52,14 +52,24 @@ type ReadyPopoverMetrics = {
   hasInlinePosition: boolean;
 };
 
-const reviewCommentsScreenshotsDirectory =
-  '/Users/stevekinney/.codex/artifacts/chef-corvidae-ui-01a0b754-7538-7491-8f63-3a00c2a66ed0/review-comments-screenshots';
-
 async function openReviewCommentsFixture(page: import('@playwright/test').Page, theme = 'light') {
   await page.addInitScript((selectedTheme) => {
     localStorage.setItem('browser-fixture-theme', selectedTheme);
   }, theme);
   await page.goto('/page/review-editor-comments?snapshot=1', { waitUntil: 'load' });
+  await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+  await page.waitForFunction(() =>
+    Array.from(document.querySelectorAll('.markdown-editor-wrapper[data-mode="wysiwyg"]')).every(
+      (editor) => editor.getAttribute('data-ready') === 'true',
+    ),
+  );
+}
+
+async function openReviewEditorFixture(page: import('@playwright/test').Page, theme = 'light') {
+  await page.addInitScript((selectedTheme) => {
+    localStorage.setItem('browser-fixture-theme', selectedTheme);
+  }, theme);
+  await page.goto('/page/review-editor?snapshot=1', { waitUntil: 'load' });
   await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll('.markdown-editor-wrapper[data-mode="wysiwyg"]')).every(
@@ -86,6 +96,179 @@ async function openCommentsFixtureSidebar(page: import('@playwright/test').Page)
   await expect(sidebar).toBeVisible();
   return sidebar;
 }
+
+test.describe('review editor front matter', () => {
+  test('front matter collapses locally and preserves the document body', async ({
+    page,
+  }, testInfo) => {
+    for (const theme of ['light', 'dark'] as const) {
+      for (const width of [320, 512, 848] as const) {
+        await page.setViewportSize({ width: Math.max(width + 80, 420), height: 920 });
+        await openReviewEditorFixture(page, theme);
+
+        const mount = page.locator('#review-editor-front-matter');
+        await mount.evaluate((element, inlineSize) => {
+          if (!(element instanceof HTMLElement)) throw new Error('Expected fixture mount.');
+          element.style.inlineSize = `${inlineSize}px`;
+          element.style.maxInlineSize = `${inlineSize}px`;
+        }, width);
+
+        const frontMatterToggle = mount.getByRole('button', { name: /Front matter/ }).first();
+        await expect(frontMatterToggle).toBeVisible();
+        await expect(frontMatterToggle).toHaveAttribute('aria-expanded', 'true');
+        const controlledId = await frontMatterToggle.getAttribute('aria-controls');
+        if (!controlledId) throw new Error('Front matter button must control the field body.');
+
+        const controlledBody = mount.locator(`[id="${controlledId}"]`);
+        await expect(controlledBody).toBeVisible();
+        await expect(mount.getByLabel('title')).toBeVisible();
+        await expect(mount.getByText('The document body remains available')).toBeVisible();
+
+        await frontMatterToggle.click();
+        await expect(frontMatterToggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(controlledBody).toBeHidden();
+        await expect(mount.getByText('The document body remains available')).toBeVisible();
+
+        const independentMount = page.locator('#review-editor-front-matter-independent');
+        await expect(
+          independentMount.getByRole('button', { name: /Front matter/ }).first(),
+        ).toHaveAttribute('aria-expanded', 'true');
+
+        await mount.getByRole('button', { name: 'Change front matter id' }).click();
+        await expect(mount.getByRole('button', { name: /Front matter/ }).first()).toHaveAttribute(
+          'aria-expanded',
+          'true',
+        );
+
+        const metrics = await mount.evaluate(() => {
+          const region = document.querySelector('#review-editor-front-matter');
+          if (!(region instanceof HTMLElement)) throw new Error('Front matter mount missing.');
+          const parent = region.getBoundingClientRect();
+          const children = Array.from(region.querySelectorAll<HTMLElement>('button, input'));
+          return children.map((child) => {
+            const rect = child.getBoundingClientRect();
+            return {
+              left: Math.round(rect.left - parent.left),
+              right: Math.round(rect.right - parent.left),
+              width: Math.round(rect.width),
+              parentWidth: Math.round(parent.width),
+              text: child.textContent?.trim() ?? child.getAttribute('aria-label') ?? '',
+            };
+          });
+        });
+        for (const metric of metrics) {
+          expect(metric.width).toBeGreaterThan(0);
+          expect(metric.left).toBeGreaterThanOrEqual(0);
+          expect(metric.right).toBeLessThanOrEqual(metric.parentWidth + 1);
+        }
+
+        const screenshotTarget = requireBox(await mount.boundingBox(), 'front matter fixture');
+        await page.screenshot({
+          path: testInfo.outputPath(`front-matter-collapse-${theme}-${width}.png`),
+          clip: {
+            x: Math.floor(screenshotTarget.x),
+            y: Math.floor(screenshotTarget.y),
+            width: Math.ceil(screenshotTarget.width),
+            height: Math.ceil(Math.min(screenshotTarget.height, 680)),
+          },
+        });
+      }
+    }
+  });
+
+  test('front matter uses chips and structured editors for typed values', async ({
+    page,
+  }, testInfo) => {
+    for (const theme of ['light', 'dark'] as const) {
+      for (const width of [320, 512, 848] as const) {
+        await page.setViewportSize({ width: Math.max(width + 80, 420), height: 940 });
+        await openReviewEditorFixture(page, theme);
+
+        const mount = page.locator('#review-editor-front-matter-typed');
+        await mount.evaluate((element, inlineSize) => {
+          if (!(element instanceof HTMLElement)) throw new Error('Expected fixture mount.');
+          element.style.inlineSize = `${inlineSize}px`;
+          element.style.maxInlineSize = `${inlineSize}px`;
+        }, width);
+
+        const priority = mount.getByLabel('priority');
+        await expect(priority).toBeVisible();
+        await priority.fill('5');
+        await priority.blur();
+        await expect(page.getByTestId('typed-front-matter-value')).toContainText('priority: 5');
+
+        const tags = mount.getByLabel('tags');
+        await expect(tags).toBeVisible();
+        await expect(mount.getByRole('button', { name: 'Remove alpha' }).first()).toBeVisible();
+        await tags.fill('gamma');
+        await tags.press('Enter');
+        await expect(page.getByTestId('typed-front-matter-value')).toContainText('- gamma');
+
+        const metadata = mount.getByLabel('metadata');
+        await expect(metadata).toBeVisible();
+        await metadata.fill('{"owner":"docs","nested":{"count":3}}');
+        await expect(page.getByTestId('typed-front-matter-value')).toContainText('owner: docs');
+        await expect(page.getByTestId('typed-front-matter-value')).toContainText('count: 3');
+
+        await metadata.fill('{"owner":');
+        await expect(page.getByTestId('typed-front-matter-value')).toContainText('owner: docs');
+        await expect(metadata).toHaveAttribute('aria-invalid', 'true');
+
+        const optional = mount.getByLabel('optional');
+        await optional.fill('ready');
+        await expect(page.getByTestId('typed-front-matter-value')).toContainText('optional: ready');
+        await expect(page.getByTestId('typed-front-matter-value')).toContainText('title: Launch');
+        await expect(page.getByTestId('typed-front-matter-value')).toContainText(
+          'published: false',
+        );
+
+        const readonlyMount = page.locator('#review-editor-front-matter-readonly');
+        await expect(readonlyMount.getByText('alpha').first()).toBeVisible();
+        await expect(readonlyMount.getByText('owner').first()).toBeVisible();
+        await expect(readonlyMount.locator('input:disabled, textarea:disabled')).toHaveCount(0);
+
+        const metrics = await mount.evaluate(() => {
+          const parent = document
+            .querySelector('#review-editor-front-matter-typed')
+            ?.getBoundingClientRect();
+          if (!parent) throw new Error('Typed front matter mount missing.');
+          return Array.from(
+            document.querySelectorAll<HTMLElement>(
+              '#review-editor-front-matter-typed input, #review-editor-front-matter-typed textarea, #review-editor-front-matter-typed button',
+            ),
+          ).map((child) => {
+            const rect = child.getBoundingClientRect();
+            return {
+              left: Math.round(rect.left - parent.left),
+              right: Math.round(rect.right - parent.left),
+              width: Math.round(rect.width),
+              parentWidth: Math.round(parent.width),
+            };
+          });
+        });
+        for (const metric of metrics) {
+          expect(metric.width).toBeGreaterThan(0);
+          expect(metric.left).toBeGreaterThanOrEqual(0);
+          expect(metric.right).toBeLessThanOrEqual(metric.parentWidth + 1);
+        }
+
+        const screenshotTarget = requireBox(
+          await mount.boundingBox(),
+          'typed front matter fixture',
+        );
+        await page.screenshot({
+          path: testInfo.outputPath(`front-matter-typed-${theme}-${width}.png`),
+          clip: {
+            x: Math.floor(screenshotTarget.x),
+            y: Math.floor(screenshotTarget.y),
+            width: Math.ceil(screenshotTarget.width),
+            height: Math.ceil(Math.min(screenshotTarget.height, 760)),
+          },
+        });
+      }
+    }
+  });
+});
 
 test.describe('review comments toggle', () => {
   test('comments toggle contains a badge with the count and remains keyboard focusable', async ({
@@ -325,7 +508,7 @@ test.describe('review comments toggle', () => {
     await expect(sidebar.getByRole('button', { name: 'Add document comment' })).toBeFocused();
   });
 
-  test('comment metadata and composer actions keep their spacing', async ({ page }) => {
+  test('comment metadata and composer actions keep their spacing', async ({ page }, testInfo) => {
     for (const theme of ['light', 'dark'] as const) {
       for (const width of [320, 512, 848] as const) {
         await page.setViewportSize({ width: Math.max(width + 80, 420), height: 900 });
@@ -427,7 +610,7 @@ test.describe('review comments toggle', () => {
           'review comments fixture',
         );
         await page.screenshot({
-          path: `${reviewCommentsScreenshotsDirectory}/red-or-green-${theme}-${width}.png`,
+          path: testInfo.outputPath(`review-comments-red-or-green-${theme}-${width}.png`),
           clip: {
             x: Math.floor(screenshotTarget.x),
             y: Math.floor(screenshotTarget.y),
