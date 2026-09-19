@@ -10,7 +10,7 @@ import {
   encode,
   readWriteStorageOptions,
   request,
-} from './storage-test-support.ts';
+} from './storage.test-support.ts';
 
 function responseError(value: unknown): string {
   if (typeof value !== 'object' || value === null || !('error' in value)) {

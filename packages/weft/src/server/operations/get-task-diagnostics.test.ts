@@ -16,7 +16,7 @@ import {
   queuedFixture,
   runDiagnostics,
   terminalFixture,
-} from './get-task-diagnostics-test-support.ts';
+} from './get-task-diagnostics.test-support.ts';
 
 describe('weft.tasks.diagnostics', () => {
   it('identifies stuck queued tasks, stale inflight tasks, retry storms, and capacity saturation', async () => {
