@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import {
   appendStreamingMessage,
@@ -30,5 +32,18 @@ describe('public chat streaming builders', () => {
 
     const cancelled = cancelStreamingMessage(started.conversation, started.messageId, environment);
     expect(cancelled.ids).toEqual([]);
+  });
+
+  test('private harness uses the public streaming lifecycle for content-driven streams', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, 'chat-private-harness.fixture.svelte'),
+      'utf8',
+    );
+
+    expect(source).toContain("appendStreamingMessage(conversation, 'assistant')");
+    expect(source).toContain('updateStreamingMessage(conversation, streamingMessageId');
+    expect(source).toContain('finalizeStreamingMessage(conversation, streamingMessageId');
+    expect(source).toContain('cancelStreamingMessage(conversation, streamingMessageId');
+    expect(source).not.toContain("appendAssistantMessage(conversation, '')");
   });
 });

@@ -13,8 +13,11 @@
     Chat,
     appendAssistantMessage,
     appendMessages,
+    appendStreamingMessage,
     appendUserMessage,
+    cancelStreamingMessage,
     createConversation,
+    finalizeStreamingMessage,
     type ChatAdapter,
     type ChatPushHandlers,
     type ChatReadReceiptEvent,
@@ -26,6 +29,7 @@
     type MultiModalContent,
     type ReadReceipt,
     type TypingParticipant,
+    updateStreamingMessage,
     type ToolErrorCategory,
   } from '@corvidae/chat';
   import {
@@ -157,9 +161,10 @@
 
     if (streamingMessageId) {
       if (mode === 'preservePartial') {
-        conversation = replaceMessageContent(conversation, streamingMessageId, streamingPartial);
+        conversation = updateStreamingMessage(conversation, streamingMessageId, streamingPartial);
+        conversation = finalizeStreamingMessage(conversation, streamingMessageId);
       } else {
-        conversation = removeMessage(conversation, streamingMessageId);
+        conversation = cancelStreamingMessage(conversation, streamingMessageId);
       }
       chat?.endStreaming();
     }
@@ -169,7 +174,7 @@
     streamingStatus = '';
   }
 
-  // --- Immutable message helpers (replace/remove by id) ---
+  // --- Immutable message helpers ---
   function replaceMessageContent(
     current: ConversationHistory,
     id: string,
@@ -182,22 +187,6 @@
       messages: { ...current.messages, [id]: { ...existing, content } },
       updatedAt: new Date().toISOString(),
     };
-  }
-
-  function removeMessage(current: ConversationHistory, id: string): ConversationHistory {
-    if (!current.messages[id]) return current;
-    const messages = { ...current.messages };
-    delete messages[id];
-    return {
-      ...current,
-      ids: current.ids.filter((existing) => existing !== id),
-      messages,
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  function lastMessageId(current: ConversationHistory): string {
-    return current.ids[current.ids.length - 1] ?? '';
   }
 
   function prependHistoryMessages(current: ConversationHistory): ConversationHistory {
@@ -260,9 +249,10 @@
       return;
     }
 
-    // streaming: append one empty assistant message, then grow ITS content.
-    conversation = appendAssistantMessage(conversation, '');
-    const messageId = lastMessageId(conversation);
+    // streaming: append one streaming assistant message, then grow ITS content.
+    const started = appendStreamingMessage(conversation, 'assistant');
+    conversation = started.conversation;
+    const messageId = started.messageId;
     streamingMessageId = messageId;
     streamingPartial = '';
     // `streaming` drives the composer's Stop affordance for BOTH mechanisms;
@@ -294,12 +284,13 @@
     if (operation !== activeOperation) return;
 
     if (index >= chunks.length) {
-      // Commit the final content into the message, then end the stream.
-      conversation = replaceMessageContent(
+      // Commit the final content into the message, then clear the streaming flag.
+      conversation = updateStreamingMessage(
         conversation,
         streamingMessageId ?? '',
         streamingPartial,
       );
+      conversation = finalizeStreamingMessage(conversation, streamingMessageId ?? '');
       if (streamMechanism === 'imperative') chat?.endStreaming();
       streamingMessageId = null;
       streaming = false;
@@ -308,14 +299,9 @@
     }
     const chunk = chunks[index] ?? '';
     streamingPartial += chunk;
+    conversation = updateStreamingMessage(conversation, streamingMessageId ?? '', streamingPartial);
     if (streamMechanism === 'imperative') {
       chat?.pushToken(chunk);
-    } else {
-      conversation = replaceMessageContent(
-        conversation,
-        streamingMessageId ?? '',
-        streamingPartial,
-      );
     }
     later(() => streamChunk(chunks, index + 1, operation), 120);
   }
