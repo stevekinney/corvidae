@@ -204,12 +204,33 @@ export interface SealContextEpochInput {
  */
 function conversationTrustVector(conversation: Conversation): string {
   const counts = { operator: 0, agent: 0, retrieved: 0 };
+  // Ordered tier sequence, not only totals. Counts alone would report two
+  // transcripts with the same mix but a different order as identical,
+  // which is a weaker signal than a `reference-only` source's digest is
+  // supposed to carry: the epoch promises integrity evidence about a
+  // source it deliberately does not quote, so that evidence has to
+  // distinguish arrangements it cannot show. The sequence is digested
+  // rather than inlined so the vector stays a fixed size on a long
+  // conversation.
+  const sequence: string[] = [];
   for (const message of conversation.getMessages()) {
-    if (message.toolResult !== undefined) counts.retrieved += 1;
-    else if (message.role === 'assistant') counts.agent += 1;
-    else counts.operator += 1;
+    let tier: 'o' | 'a' | 'r';
+    if (message.toolResult !== undefined) {
+      tier = 'r';
+      counts.retrieved += 1;
+    } else if (message.role === 'assistant') {
+      tier = 'a';
+      counts.agent += 1;
+    } else {
+      tier = 'o';
+      counts.operator += 1;
+    }
+    sequence.push(tier);
   }
-  return `operator=${counts.operator},agent=${counts.agent},retrieved=${counts.retrieved}`;
+  return (
+    `operator=${counts.operator},agent=${counts.agent},retrieved=${counts.retrieved}` +
+    `,order=${digestText(sequence.join(''))}`
+  );
 }
 
 const INCLUDED: ContextSourceDisposition = { kind: 'included' };

@@ -4,6 +4,7 @@
  * Pure and synchronous: no sleeps, no timers, no provider call. Epoch ids
  * are injected so every assertion names the exact chain it is about.
  */
+import { createTestToolbox } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
@@ -76,8 +77,10 @@ describe('sealContextEpoch', () => {
     const conversation = epoch.sources.find((source) => source.sourceId === 'conversation');
     expect(conversation?.trust).toBe('per-message');
     expect(conversation?.redaction).toBe('reference-only');
-    // The vector separates operator-authored from agent-authored turns.
-    expect(conversation?.digest).toBe('operator=1,agent=1,retrieved=0');
+    // The vector separates operator-authored from agent-authored turns,
+    // and carries an order digest so two transcripts with the same mix in
+    // a different arrangement do not look identical.
+    expect(conversation?.digest).toMatch(/^operator=1,agent=1,retrieved=0,order=[0-9a-f]{16}$/);
   });
 
   it('records the steering configVersion without redacting it', () => {
@@ -226,5 +229,114 @@ describe('epochSourcesUnchanged', () => {
     });
 
     expect(epochSourcesUnchanged(a, b)).toBe(false);
+  });
+});
+
+describe('provider-retry mutation (COR-581 gap closure)', () => {
+  it('seals a successor epoch when a retry mutator changes the request', async () => {
+    // The gap this closes: `callGenerateWithRetry` can issue several real
+    // generate() calls under one seal, and a RetryMutator can change the
+    // request between them. Those mutations used to be invisible to the
+    // epoch, so the recorded context described something the model was
+    // never sent on the retried attempt.
+    const { callGenerateWithRetry } = await import('./run-step-utilities.ts');
+    const { createDefaultRuntimeServices } = await import('@corvidae/lifecycle');
+
+    const conversation = conversationWith([['user', 'original']]);
+    const sealer = createContextEpochSealer({ newEpochId: sequentialEpochIds() });
+    const sealed: string[] = [];
+
+    let calls = 0;
+    const generate = async (context: { conversation: Conversation }) => {
+      calls += 1;
+      if (calls === 1) throw new Error('transient');
+      return { content: context.conversation.getMessages().length.toString(), toolCalls: [] };
+    };
+
+    await callGenerateWithRetry(
+      generate,
+      { conversation, step: 0, toolbox: createTestToolbox([]) },
+      {
+        attempts: 2,
+        delay: 0,
+        mutate: (context) => {
+          context.conversation.appendUserMessage('mutated in');
+          return context;
+        },
+      },
+      undefined,
+      createDefaultRuntimeServices(),
+      (mutatedContext, attempt) => {
+        const epoch = sealer.seal({
+          conversation: mutatedContext.conversation,
+          consumer: { runId: 'r', step: 0, attempt },
+        });
+        sealed.push(epoch.epochId);
+        return epoch.epochId;
+      },
+    );
+
+    // The mutator ran once, so exactly one successor epoch was sealed.
+    expect(sealed).toEqual(['epoch-1']);
+    expect(calls).toBe(2);
+  });
+
+  it('seals nothing when a retry is not mutated', async () => {
+    // An unmutated retry re-issues the identical request and correctly
+    // consumes the epoch sealed before `generate.started`. Minting a
+    // successor would claim a context change that did not happen.
+    const { callGenerateWithRetry } = await import('./run-step-utilities.ts');
+    const { createDefaultRuntimeServices } = await import('@corvidae/lifecycle');
+
+    const conversation = conversationWith([['user', 'original']]);
+    const sealed: string[] = [];
+    let calls = 0;
+    const generate = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('transient');
+      return { content: 'ok', toolCalls: [] };
+    };
+
+    await callGenerateWithRetry(
+      generate,
+      { conversation, step: 0, toolbox: createTestToolbox([]) },
+      { attempts: 2, delay: 0 },
+      undefined,
+      createDefaultRuntimeServices(),
+      () => {
+        sealed.push('should-not-happen');
+        return 'x';
+      },
+    );
+
+    expect(sealed).toEqual([]);
+    expect(calls).toBe(2);
+  });
+});
+
+describe('conversation source digest ordering', () => {
+  it('distinguishes two transcripts with the same tier mix in a different order', () => {
+    // Counts alone reported these as identical, which is weaker evidence
+    // than a `reference-only` source's digest is supposed to carry.
+    const userFirst = sealContextEpoch({
+      epochId: 'a',
+      conversation: conversationWith([
+        ['user', 'one'],
+        ['assistant', 'two'],
+      ]),
+      consumer: CONSUMER,
+    });
+    const assistantFirst = sealContextEpoch({
+      epochId: 'b',
+      conversation: conversationWith([
+        ['assistant', 'two'],
+        ['user', 'one'],
+      ]),
+      consumer: CONSUMER,
+    });
+
+    const digestOf = (epoch: typeof userFirst) =>
+      epoch.sources.find((source) => source.sourceId === 'conversation')?.digest;
+    expect(digestOf(userFirst)).not.toBe(digestOf(assistantFirst));
   });
 });

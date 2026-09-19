@@ -197,7 +197,13 @@ export function createActiveRun(
 
   if (durable) {
     return createDurableActiveRun(
-      { engine: durable.engine, checkpointStore: durable.checkpointStore },
+      {
+        engine: durable.engine,
+        checkpointStore: durable.checkpointStore,
+        // COR-625: forwarded from the routing options so a composer's
+        // terminal-cleanup step reaches `closed()` on this path too.
+        ...(durable.terminalCleanup ? { terminalCleanup: durable.terminalCleanup } : {}),
+      },
       {
         runId: durable.runId,
         sessionId: durable.sessionId ?? durable.runId,

@@ -1,7 +1,7 @@
 import { Conversation, isConversation } from '@corvidae/conversationalist';
 import { CompletableEventTarget, createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
-import { createClosedAcknowledgement } from '../closed-acknowledgement';
+import { createClosedAcknowledgement, foldTerminalCleanup } from '../closed-acknowledgement';
 import type { ActiveRun } from '../create-run';
 import { toAgentRunError } from '../errors';
 import type { CombinedOperativeEventMap } from '../events';
@@ -316,6 +316,15 @@ export function createDurableActiveRun(
     cleanups.push(() => combinedSignal.removeEventListener('abort', onCombinedSignalAbort));
   }
 
+  // COR-625: the composer's terminal-cleanup step, folded in only on the
+  // paths that would otherwise report `completed`. An `unresolved` or
+  // `unreachable` run never reached a truthful terminal state, so there is
+  // nothing for a retention step to act on and no acknowledgement of its own
+  // to fold.
+  const terminalCleanupStep = context.terminalCleanup
+    ? (): Promise<CleanupAcknowledgement> => context.terminalCleanup!(runId)
+    : undefined;
+
   async function resolveDurableOutcome(): Promise<CleanupAcknowledgement> {
     if (reachability.unreachable) return { status: 'unresolved', reason: 'unreachable' };
     if (!cancelRequested && !combinedSignal.aborted) {
@@ -323,14 +332,14 @@ export function createDurableActiveRun(
         Promise.allSettled(pendingHookPromises),
         childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
       ]);
-      return { status: 'completed' };
+      return foldTerminalCleanup({ status: 'completed' }, terminalCleanupStep);
     }
     if (neverLaunched.value) {
       await Promise.all([
         Promise.allSettled(pendingHookPromises),
         childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
       ]);
-      return { status: 'completed' };
+      return foldTerminalCleanup({ status: 'completed' }, terminalCleanupStep);
     }
     await cancelSettled;
     try {
@@ -342,7 +351,7 @@ export function createDurableActiveRun(
         Promise.allSettled(pendingHookPromises),
         childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
       ]);
-      return { status: 'completed' };
+      return foldTerminalCleanup({ status: 'completed' }, terminalCleanupStep);
     } catch (error) {
       return { status: 'unresolved', reason: 'persistence-failed', error };
     }
@@ -353,7 +362,16 @@ export function createDurableActiveRun(
   const closed = createClosedAcknowledgement({
     result: closedGate,
     disqualifiesFastPath: () =>
-      cancelRequested || combinedSignal.aborted || reachability.unreachable,
+      cancelRequested ||
+      combinedSignal.aborted ||
+      reachability.unreachable ||
+      // COR-625: a registered terminal-cleanup step means this run genuinely
+      // DOES have cleanup left to do, which is precisely what the
+      // `not-required` fast path asserts is false. Taking the fast path here
+      // would skip `resolveOutcome` — and with it the step — so `closed()`
+      // would report `not-required` for a run whose retention step had not
+      // run, or had failed. A composer that registers no step is unaffected.
+      terminalCleanupStep !== undefined,
     hasInFlightWork: () => inFlightTools > 0 || (childRegistry?.children().length ?? 0) > 0,
     resolveOutcome: resolveDurableOutcome,
   });

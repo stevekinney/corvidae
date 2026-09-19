@@ -154,6 +154,12 @@ export const AUDIT_EVENT_TYPES = [
   'run.error',
   'run.aborted',
   'run.tripwire',
+  // COR-625 — the terminal-run checkpoint-retention step's own
+  // acknowledgement, written out-of-band by `create-bureau.ts`'s
+  // `runTerminalCheckpointCleanup` once per durable run. Distinct from the
+  // `run.*` transitions above: those say how the run ENDED, this says
+  // whether the cleanup that followed it actually finished.
+  'run.cleanup-settled',
   // Step lifecycle
   'step.completed',
   // AB-228 — session lifecycle beyond creation (dispatched via a dedicated
@@ -189,6 +195,26 @@ export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
  * floor still protects.
  */
 export type AuditRetentionOption = 'forever' | { olderThan: number };
+
+/**
+ * COR-625: per-bureau checkpoint-retention policy applied by the
+ * terminal-run cleanup step. `'keep-all'` (the default) retains every
+ * checkpoint — today's behavior, unchanged until an operator opts in — and
+ * makes the step a no-op that still records `not-required`.
+ *
+ * `{ keepLast }` retains the newest `keepLast` checkpoint history entries of
+ * a terminal durable run through weft's public
+ * `Engine.pruneCheckpoints` (COR-11) and discards the rest.
+ *
+ * `timeoutMilliseconds` bounds one step. Weft exposes no engine-wide
+ * operation timeout to inherit, so a caller who needs `unresolved`/
+ * `'timed-out'` to be reachable sets it explicitly; omitted, the step is
+ * unbounded and a caller bounds its own wait through `closed({ signal })`.
+ * The bound ABORTS the prune rather than merely abandoning the wait, so a
+ * timed-out step never leaves unowned deletes running.
+ */
+export type CheckpointRetentionOption =
+  'keep-all' | { keepLast: number; timeoutMilliseconds?: number };
 
 /** The outcome of one {@link AuditTrail.prune} pass. */
 export interface AuditPruneResult {

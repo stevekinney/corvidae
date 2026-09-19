@@ -6,7 +6,7 @@ import {
   readAppPrivateKey,
   type FetchImplementation,
 } from './github-app.ts';
-import { runCommand, type CommandOptions, type CommandResult } from './packaging.ts';
+import { runCommand, type CommandRunner } from './packaging.ts';
 import { assertScratchName, type ScratchRepositoryFacts } from './scratch-repository.ts';
 
 /**
@@ -295,11 +295,6 @@ export function createGitHubApi({
     },
   };
 }
-
-export type CommandRunner = (
-  command: readonly string[],
-  options: CommandOptions,
-) => Promise<CommandResult>;
 
 /**
  * The account credential, from the environment when a workflow supplies one and from the `gh`

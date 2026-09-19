@@ -6,10 +6,8 @@ import { join } from 'node:path';
 import {
   assertInstallationCoverage,
   deleteScratchRepository,
-  DryRunError,
   ensureScratchRepository,
   InstallationCoverageError,
-  proveNpmPublishDryRun,
   runDryRun,
   runDryRunCommand,
   seedScratchRepository,
@@ -17,13 +15,13 @@ import {
   type StageTransform,
 } from './dry-run.ts';
 import type {
-  CommandRunner,
   CreatePullRequestInput,
   CreateRepositoryInput,
   GitHubApi,
   RepositoryRecord,
 } from './github-api.ts';
-import { runCommand, type CommandResult } from './packaging.ts';
+import { runCommand, type CommandResult, type CommandRunner } from './packaging.ts';
+import type { proveNpmPublishDryRun, PublishProbe } from './publish-rehearsal.ts';
 import {
   scratchDescription,
   ScratchGuardError,
@@ -322,7 +320,7 @@ interface RunnerHarness {
   environments: (Record<string, string | undefined> | undefined)[];
 }
 
-function fakeRunner(overrides: { npmExitCode?: number } = {}): RunnerHarness {
+function fakeRunner(): RunnerHarness {
   const commands: string[][] = [];
   const environments: (Record<string, string | undefined> | undefined)[] = [];
   const run: CommandRunner = async (command, options): Promise<CommandResult> => {
@@ -333,12 +331,53 @@ function fakeRunner(overrides: { npmExitCode?: number } = {}): RunnerHarness {
     if (joined.includes('status --porcelain')) {
       return { ...base, exitCode: 0, stdout: ' M packages/cryptography/src/index.ts\n' };
     }
-    if (command[0] === 'npm') {
-      return { ...base, exitCode: overrides.npmExitCode ?? 0, stdout: '+ package@1.0.0\n' };
-    }
     return { ...base, exitCode: 0 };
   };
   return { run, commands, environments };
+}
+
+interface ProbeHarness {
+  probe: typeof proveNpmPublishDryRun;
+  calls: {
+    workDirectory: string;
+    scratchDirectory: string;
+    published: string[];
+    version: string | undefined;
+  }[];
+}
+
+/**
+ * A stand-in for the publish probe that records what the driver handed it.
+ *
+ * The probe itself builds, packs and lints a real package; that is
+ * `publish-rehearsal.test.ts`'s subject. What matters here is that the driver runs it against the
+ * tree the transform just staged, with a tarball destination outside that tree, and only after
+ * the pull request exists.
+ */
+function fakeProbe(): ProbeHarness {
+  const calls: ProbeHarness['calls'] = [];
+  const probe: typeof proveNpmPublishDryRun = async (options) => {
+    calls.push({
+      workDirectory: options.workDirectory,
+      scratchDirectory: options.scratchDirectory,
+      published: options.outcome.plan.published.map((entry) => entry.publicName),
+      version: options.version,
+    });
+    return {
+      publicName: '@lostgradient/cryptography',
+      version: options.version ?? '1.0.0',
+      treeVersion: '1.0.0',
+      command: 'npm publish --dry-run --ignore-scripts --tag latest --json',
+      exitCode: 0,
+      tarball: join(options.scratchDirectory, 'tarballs', 'cryptography-1.0.0.tgz'),
+      buildExitCode: 0,
+      publintExitCode: 0,
+      typeResolutionExitCode: 0,
+      entries: ['dist/index.js', 'package.json'],
+      entryPoints: ['dist/index.js'],
+    } satisfies PublishProbe;
+  };
+  return { probe, calls };
 }
 
 /**
@@ -377,6 +416,7 @@ describe('runDryRun', () => {
   test('checks installation coverage before creating anything', async () => {
     const { api, calls } = fakeGitHub({ reachable: ['stevekinney/corvidae'] });
     const harness = fakeRunner();
+    const probes = fakeProbe();
     await withWorkDirectory(async (workDirectory) => {
       await expect(
         runDryRun({
@@ -384,10 +424,12 @@ describe('runDryRun', () => {
           corvidaeRoot: workDirectory,
           target: 'weft',
           workDirectory: join(workDirectory, 'clone'),
+          scratchDirectory: join(workDirectory, 'scratch'),
           corvidaeCommit: 'abc123',
           scratchRepository: validName,
           run: harness.run,
           stage: fakeStage('1.0.0'),
+          probe: probes.probe,
         }),
       ).rejects.toThrow(InstallationCoverageError);
     });
@@ -400,16 +442,19 @@ describe('runDryRun', () => {
   test('runs the whole round trip in order and deletes the scratch repository', async () => {
     const { api, calls } = fakeGitHub();
     const harness = fakeRunner();
+    const probes = fakeProbe();
     const report = await withWorkDirectory((workDirectory) =>
       runDryRun({
         api,
         corvidaeRoot: workDirectory,
         target: 'weft',
         workDirectory: join(workDirectory, 'clone'),
+        scratchDirectory: join(workDirectory, 'scratch'),
         corvidaeCommit: 'abc123',
         scratchRepository: validName,
         run: harness.run,
         stage: fakeStage('1.0.0'),
+        probe: probes.probe,
       }),
     );
 
@@ -438,21 +483,40 @@ describe('runDryRun', () => {
     expect(joined).toContain('git push origin HEAD:refs/heads/main');
     expect(joined).toContain('git checkout -b mirror-dry-run-20260919');
     expect(joined).toContain('git push origin HEAD:refs/heads/mirror-dry-run-20260919');
+
+    // The probe is handed the staged clone and a tarball destination outside it. A destination
+    // inside the clone would put a `.tgz` in `git status` on the next run, and a probe pointed
+    // anywhere but the staged tree would prove a publish of something the transform did not make.
+    expect(probes.calls).toEqual([
+      {
+        workDirectory: expect.stringContaining('clone'),
+        scratchDirectory: expect.stringContaining('scratch'),
+        published: ['@lostgradient/cryptography'],
+        version: undefined,
+      },
+    ]);
+    expect(probes.calls[0]?.scratchDirectory.startsWith(`${probes.calls[0]?.workDirectory}/`)).toBe(
+      false,
+    );
+    expect(report.publish.entries).toEqual(['dist/index.js', 'package.json']);
   });
 
   test('pushes as the App, with the credential in the environment and never in a command', async () => {
     const { api } = fakeGitHub();
     const harness = fakeRunner();
+    const probes = fakeProbe();
     await withWorkDirectory((workDirectory) =>
       runDryRun({
         api,
         corvidaeRoot: workDirectory,
         target: 'weft',
         workDirectory: join(workDirectory, 'clone'),
+        scratchDirectory: join(workDirectory, 'scratch'),
         corvidaeCommit: 'abc123',
         scratchRepository: validName,
         run: harness.run,
         stage: fakeStage('1.0.0'),
+        probe: probes.probe,
       }),
     );
     const pushes = harness.commands
@@ -480,17 +544,20 @@ describe('runDryRun', () => {
   test('keeps the scratch repository when asked, so a human can look at the pull request', async () => {
     const { api, calls } = fakeGitHub();
     const harness = fakeRunner();
+    const probes = fakeProbe();
     const report = await withWorkDirectory((workDirectory) =>
       runDryRun({
         api,
         corvidaeRoot: workDirectory,
         target: 'weft',
         workDirectory: join(workDirectory, 'clone'),
+        scratchDirectory: join(workDirectory, 'scratch'),
         corvidaeCommit: 'abc123',
         scratchRepository: validName,
         keep: true,
         run: harness.run,
         stage: fakeStage('1.0.0'),
+        probe: probes.probe,
       }),
     );
     expect(report.deleted).toBe(false);
@@ -506,69 +573,17 @@ describe('runDryRun', () => {
           corvidaeRoot: workDirectory,
           target: 'weft',
           workDirectory: join(workDirectory, 'clone'),
+          scratchDirectory: join(workDirectory, 'scratch'),
           corvidaeCommit: 'abc123',
           scratchRepository: 'stevekinney/weft',
           run: fakeRunner().run,
           stage: fakeStage('1.0.0'),
+          probe: fakeProbe().probe,
         }),
       ).rejects.toThrow(ScratchGuardError);
     });
     expect(calls.coverageReads).toBe(0);
     expect(calls.created).toEqual([]);
-  });
-});
-
-describe('proveNpmPublishDryRun', () => {
-  async function probe(version: string, overrides: { npmExitCode?: number } = {}) {
-    const harness = fakeRunner(overrides);
-    const result = await withWorkDirectory(async (workDirectory) => {
-      const outcome = await fakeStage(version)({
-        corvidaeRoot: workDirectory,
-        target: 'weft',
-        directory: workDirectory,
-      });
-      const report = await proveNpmPublishDryRun({
-        run: harness.run,
-        workDirectory,
-        outcome,
-      }).catch((error: unknown) => error);
-      return report;
-    });
-    return { result, harness };
-  }
-
-  test('runs npm publish --dry-run with scripts ignored and judges it by exit code', async () => {
-    const { result, harness } = await probe('1.4.0');
-    expect(result).toMatchObject({
-      publicName: '@lostgradient/cryptography',
-      version: '1.4.0',
-      exitCode: 0,
-    });
-    expect(harness.commands.at(-1)).toEqual([
-      'npm',
-      'publish',
-      '--dry-run',
-      '--ignore-scripts',
-      '--tag',
-      'latest',
-    ]);
-  });
-
-  test('names a tag for a prerelease version, which npm refuses to publish without one', async () => {
-    const { harness } = await probe('2.0.0-rc.1');
-    expect(harness.commands.at(-1)).toEqual([
-      'npm',
-      'publish',
-      '--dry-run',
-      '--ignore-scripts',
-      '--tag',
-      'next',
-    ]);
-  });
-
-  test('fails when npm exits non-zero', async () => {
-    const { result } = await probe('1.4.0', { npmExitCode: 1 });
-    expect(result).toBeInstanceOf(DryRunError);
   });
 });
 

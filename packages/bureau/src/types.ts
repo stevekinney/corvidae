@@ -70,7 +70,7 @@ import type {
   AgentRunForName,
   BureauAgentCatalog,
 } from './agent-catalog';
-import type { AuditRetentionOption, AuditTrail } from './audit-trail';
+import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type {
   DurableEventHistoryPageOptions,
   DurableEventHistorySubscribeOptions,
@@ -411,6 +411,31 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * record already used.
    */
   auditRetention?: AuditRetentionOption;
+  /**
+   * COR-625: checkpoint-retention policy applied by the terminal-run cleanup
+   * step. Defaults to `'keep-all'` — unbounded, exactly today's behavior —
+   * so a long-lived deployment must opt in before any checkpoint history is
+   * ever pruned.
+   *
+   * `{ keepLast }` must be a positive integer, and `timeoutMilliseconds`, when
+   * supplied, a finite non-negative number; otherwise `createBureau` throws
+   * `BureauError(..., 'BAD_REQUEST')`.
+   *
+   * On every terminal transition of a durable run — completion, error, abort,
+   * or {@link Bureau.cancelDurableRun} — bureau runs exactly ONE cleanup step
+   * for that run, however many of those triggers fire. The step re-reads the
+   * run's durable record first and prunes only once the engine reports a
+   * terminal status, so a checkpoint can never be pruned ahead of the
+   * transition it belongs to.
+   *
+   * The step's own acknowledgement is written to the audit trail as one
+   * `run.cleanup-settled` record. It also folds into the run's `closed()`,
+   * but only ever DOWNGRADES it: a step that prunes cleanly (or has nothing
+   * to prune) leaves a `completed` run `completed`, while a step that fails
+   * or cannot be resolved surfaces in its place. Has effect only when a
+   * durable engine is composed.
+   */
+  checkpointRetention?: CheckpointRetentionOption;
   memory?: CreateMemoryOptions | Memory;
   cache?: CacheConfiguration;
   /**

@@ -6510,6 +6510,147 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     }
   });
 
+  it('resolves a model policyRef through the named policy profile (COR-1227)', async () => {
+    // A policyRef names a key of BureauModelPolicyOptions.users. The
+    // resolved coordinate — not the reference — is what gets admitted, so
+    // the stored command records what was actually chosen rather than a
+    // reference a later reader would re-resolve against configuration
+    // that may since have changed.
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
+    const bureau = await createBureau({
+      agents: { steered },
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      modelPolicy: {
+        policyRevision: 1,
+        users: { 'fast-tier': { exactOverride: { model: 'claude-sonnet-5' } } },
+      },
+    });
+    try {
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'fast-tier' },
+      });
+
+      expect(outcome.outcome).toBe('accepted');
+      if (outcome.outcome !== 'accepted') throw new Error('expected accepted');
+      expect(outcome.command.requestedValue).toEqual({
+        target: 'model',
+        override: 'claude-sonnet-5',
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('rejects an unknown policyRef distinctly from a profile that omits the coordinate (COR-1227)', async () => {
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
+    const bureau = await createBureau({
+      agents: { steered },
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      modelPolicy: {
+        policyRevision: 1,
+        // Exists, but says nothing about `model`.
+        users: { 'effort-only': { defaultEffort: 'low' } },
+      },
+    });
+    try {
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const unknown = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'no-such-policy' },
+      });
+      expect(unknown.outcome).toBe('rejected');
+
+      const silentOnModel = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'effort-only' },
+      });
+      expect(silentOnModel.outcome).toBe('rejected');
+
+      // The same profile DOES specify an effort, so that target resolves.
+      const effort = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'effort', policyRef: 'effort-only' },
+      });
+      expect(effort.outcome).toBe('accepted');
+      if (effort.outcome !== 'accepted') throw new Error('expected accepted');
+      expect(effort.command.requestedValue).toEqual({ target: 'effort', override: 'low' });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('a policyRef cannot admit a coordinate an override could not (COR-1227)', async () => {
+    // The authority guarantee: a resolved policy value goes through the
+    // identical catalog check the override path uses, so a misconfigured
+    // profile cannot smuggle in a model the deployment cannot run.
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
+    const bureau = await createBureau({
+      agents: { steered },
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      modelPolicy: {
+        policyRevision: 1,
+        users: { 'bad-tier': { exactOverride: { model: 'not-a-real-model' } } },
+      },
+    });
+    try {
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'bad-tier' },
+      });
+
+      expect(outcome.outcome).toBe('rejected');
+      if (outcome.outcome !== 'rejected') throw new Error('expected rejected');
+      expect(outcome.failure.reason).toBe('policy-denied');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('rejects a model override outside the catalog with policy-denied (AB-200)', async () => {
     // The rollback trigger this guards: a steering command silently
     // bypassing the catalog check and recording a model the deployment
@@ -20003,6 +20144,521 @@ describe('AB-390 — outbox claim lease', () => {
       expect(diagnostics).not.toContainEqual(expect.stringContaining('closed database'));
     } finally {
       await bureau.dispose();
+    }
+  });
+});
+
+/**
+ * COR-625 — checkpoint retention and terminal-run cleanup.
+ *
+ * Every test here drives a REAL durable memory bureau, so the prune under
+ * test is weft's own public `Engine.pruneCheckpoints` (COR-11) against real
+ * checkpoint history, not a reimplementation. Failure and timing paths are
+ * injected at the engine prototype — the same `spyOn(enginePrototype, ...)`
+ * seam the recovery tests above already use — rather than by faking the
+ * cleanup step itself, so what each test proves is how the step CLASSIFIES a
+ * real engine outcome.
+ */
+describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
+  type RetentionOverrides = Partial<Parameters<typeof createBureau>[0]>;
+
+  /**
+   * A durable memory bureau whose runs take two tool-calling steps before
+   * stopping, so each run leaves several checkpoint history entries for
+   * retention to act on. `checkpointHistory` must be enabled explicitly —
+   * without it the engine writes no history entries at all and every prune
+   * is a vacuous no-op that would make a `keepLast` assertion meaningless.
+   */
+  async function createRetentionBureau(overrides: RetentionOverrides = {}) {
+    let step = 0;
+    return createBureau({
+      agents: {},
+      generate: async () => {
+        step += 1;
+        return step < 3
+          ? { content: `step ${step}`, toolCalls: [{ name: 'next', arguments: {} }] }
+          : { content: 'done', toolCalls: [] };
+      },
+      toolbox: createToolbox([createNextTool()]),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      durableGuardrails: { checkpointHistory: 20 },
+      stopWhen: stopWhen.noToolCalls(),
+      ...overrides,
+    });
+  }
+
+  /** Every `run.cleanup-settled` record this bureau holds for one run. */
+  async function cleanupRecordsFor(bureau: Bureau, runId: string): Promise<AuditRecord[]> {
+    const records = (await bureau.auditTrail?.query({ runId })) ?? [];
+    return records.filter((record) => record.type === 'run.cleanup-settled');
+  }
+
+  /** Waits for the one cleanup record this run's step writes, then returns it. */
+  async function awaitCleanupRecord(bureau: Bureau, runId: string): Promise<AuditRecord> {
+    await waitForCondition(async () => {
+      const pending = await cleanupRecordsFor(bureau, runId);
+      return pending.length >= 1;
+    }, `Run ${runId} never recorded a run.cleanup-settled entry`);
+    const records = await cleanupRecordsFor(bureau, runId);
+    return records[0]!;
+  }
+
+  /**
+   * The engine prototype this bureau's durable engine is built from — the
+   * injection point for `pruneCheckpoints` doubles. Taken through a throwaway
+   * composition so the bureau under test is never itself disposed early,
+   * matching the recovery tests' identical `createRuntimeComposition` probe.
+   */
+  async function resolveEnginePrototype(): Promise<{
+    pruneCheckpoints: (
+      workflowId: string,
+      options: { keepLast: number; signal?: AbortSignal },
+    ) => Promise<{ removed: number; retained: number }>;
+  }> {
+    const probe = await createRuntimeComposition({
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    const prototype = Object.getPrototypeOf(probe.durable!.engine) as {
+      pruneCheckpoints: (
+        workflowId: string,
+        options: { keepLast: number; signal?: AbortSignal },
+      ) => Promise<{ removed: number; retained: number }>;
+    };
+    probe.durable!.engine[Symbol.dispose]?.();
+    probe.disposeStorage?.();
+    return prototype;
+  }
+
+  it('rejects a keepLast that is not a positive integer at construction', async () => {
+    // Zero is rejected even though weft's own prune accepts it: retaining
+    // nothing discards the newest checkpoint a postmortem needs, which is
+    // never what an operator configuring RETENTION is asking for.
+    for (const keepLast of [0, -1, 1.5, Number.NaN]) {
+      await expect(createRetentionBureau({ checkpointRetention: { keepLast } })).rejects.toThrow(
+        /"options\.checkpointRetention\.keepLast" must be a positive integer/,
+      );
+    }
+  });
+
+  it('rejects a non-finite or negative timeoutMilliseconds at construction', async () => {
+    for (const timeoutMilliseconds of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(
+        createRetentionBureau({ checkpointRetention: { keepLast: 1, timeoutMilliseconds } }),
+      ).rejects.toThrow(
+        /"options\.checkpointRetention\.timeoutMilliseconds" must be a finite, non-negative number/,
+      );
+    }
+  });
+
+  it('accepts keep-all and a valid keepLast', async () => {
+    for (const checkpointRetention of [
+      'keep-all' as const,
+      { keepLast: 1 },
+      { keepLast: 5, timeoutMilliseconds: 0 },
+    ]) {
+      const bureau = await createRetentionBureau({ checkpointRetention });
+      bureau.dispose();
+    }
+  });
+
+  it('is a no-op under the default keep-all policy, and still records not-required', async () => {
+    const prototype = await resolveEnginePrototype();
+    const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
+    const bureau = await createRetentionBureau();
+    try {
+      const run = await bureau.createRun({ message: 'keep-all' });
+      await waitForRunState(bureau.store, run.id);
+
+      const record = await awaitCleanupRecord(bureau, run.id);
+      expect(record.detail).toEqual({ acknowledgement: { status: 'not-required' } });
+      // `not-required` is an assertion about the STEP, so it has to be the
+      // step genuinely declining to prune — not a prune that happened to
+      // find nothing. The engine is never asked.
+      expect(pruneSpy).not.toHaveBeenCalled();
+    } finally {
+      pruneSpy.mockRestore();
+      bureau.dispose();
+    }
+  });
+
+  it('prunes a terminal run to keepLast through the engine and records completed', async () => {
+    const prototype = await resolveEnginePrototype();
+    const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
+    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    try {
+      const run = await bureau.createRun({ message: 'prune me' });
+      await waitForRunState(bureau.store, run.id);
+
+      const record = await awaitCleanupRecord(bureau, run.id);
+      expect(record.detail).toEqual({ acknowledgement: { status: 'completed' } });
+      expect(pruneSpy).toHaveBeenCalledTimes(1);
+      expect(pruneSpy.mock.calls[0]?.[0]).toBe(run.id);
+      expect(pruneSpy.mock.calls[0]?.[1]?.keepLast).toBe(1);
+      // The run genuinely had history to discard, so `completed` here is a
+      // real prune rather than an empty one dressed up as success.
+      const result = (await pruneSpy.mock.results[0]?.value) as {
+        removed: number;
+        retained: number;
+      };
+      expect(result.removed).toBeGreaterThan(0);
+      expect(result.retained).toBe(1);
+    } finally {
+      pruneSpy.mockRestore();
+      bureau.dispose();
+    }
+  });
+
+  it('records unresolved/persistence-failed when the store rejects the prune, never a silent success', async () => {
+    const prototype = await resolveEnginePrototype();
+    const rejection = new Error('conditionalBatch rejected the delete');
+    const pruneSpy = spyOn(prototype, 'pruneCheckpoints').mockRejectedValue(rejection);
+    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    try {
+      const run = await bureau.createRun({ message: 'store rejects' });
+      await waitForRunState(bureau.store, run.id);
+
+      const record = await awaitCleanupRecord(bureau, run.id);
+      expect(record.detail).toMatchObject({
+        acknowledgement: { status: 'unresolved', reason: 'persistence-failed' },
+      });
+    } finally {
+      pruneSpy.mockRestore();
+      bureau.dispose();
+    }
+  });
+
+  it('refuses to prune a run the engine does not report as terminal, and says so as persistence-failed', async () => {
+    // The bureau terminal listener fires on operative's emitter, which is not
+    // proof the engine's own final write committed — and weft's prune rejects
+    // on a compare-and-swap race with a concurrent write, so pruning on the
+    // event alone would both risk this issue's named rollback trigger
+    // (checkpoints pruned BEFORE the terminal transition) and manufacture
+    // spurious failures out of a race that is really just "too early".
+    const prototype = (await resolveEnginePrototype()) as {
+      pruneCheckpoints: (
+        workflowId: string,
+        options: { keepLast: number; signal?: AbortSignal },
+      ) => Promise<{ removed: number; retained: number }>;
+      get: (workflowId: string) => Promise<{ status: string } | null>;
+    };
+    const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
+    // The engine insists the run is still running, however settled operative's
+    // own event surface says it is.
+    const getSpy = spyOn(prototype, 'get').mockResolvedValue({ status: 'running' });
+    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    try {
+      const run = await bureau.createRun({ message: 'not terminal yet' });
+      await waitForRunState(bureau.store, run.id);
+
+      const record = await awaitCleanupRecord(bureau, run.id);
+      const detail = record.detail as { acknowledgement: { status: string; reason?: string } };
+      expect(detail.acknowledgement.status).toBe('unresolved');
+      expect(detail.acknowledgement.reason).toBe('persistence-failed');
+      // The decisive assertion: no delete was ever issued for a run the
+      // engine had not yet reported terminal.
+      expect(pruneSpy).not.toHaveBeenCalled();
+    } finally {
+      getSpy.mockRestore();
+      pruneSpy.mockRestore();
+      bureau.dispose();
+    }
+  });
+
+  it('never reaches the cleanup step for a cancelDurableRun that did not commit a cancellation', async () => {
+    const prototype = await resolveEnginePrototype();
+    const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
+    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    try {
+      // `'not-found'` describes a run this call never genuinely terminated;
+      // only `'requested'` proves a committed cancellation.
+      const outcome = await bureau.cancelDurableRun('no-such-run');
+      expect(outcome.status).toBe('not-found');
+      expect(pruneSpy).not.toHaveBeenCalled();
+      expect(await cleanupRecordsFor(bureau, 'no-such-run')).toHaveLength(0);
+    } finally {
+      pruneSpy.mockRestore();
+      bureau.dispose();
+    }
+  });
+
+  it('aborts the prune rather than abandoning it when the configured bound elapses, and records timed-out', async () => {
+    const prototype = await resolveEnginePrototype();
+    let observedSignal: AbortSignal | undefined;
+    let releasePrune: (() => void) | undefined;
+    const pruneSpy = spyOn(prototype, 'pruneCheckpoints').mockImplementation(
+      async (_workflowId, options) => {
+        observedSignal = options.signal;
+        await new Promise<void>((resolve) => {
+          releasePrune = resolve;
+        });
+        options.signal?.throwIfAborted();
+        return { removed: 0, retained: 0 };
+      },
+    );
+
+    // The bound sleeps on `shutdownTimeoutSleep`, so injecting that option is
+    // what makes this deterministic — no real timer, no clock advance.
+    let elapseBound: (() => void) | undefined;
+    const bureau = await createRetentionBureau({
+      checkpointRetention: { keepLast: 1, timeoutMilliseconds: 50 },
+      shutdownTimeoutSleep: () =>
+        new Promise<void>((resolve) => {
+          elapseBound = resolve;
+        }),
+    });
+
+    try {
+      const run = await bureau.createRun({ message: 'slow prune' });
+      await waitForRunState(bureau.store, run.id);
+      await waitForCondition(
+        () => observedSignal !== undefined,
+        'the cleanup step never reached the engine prune',
+      );
+
+      // Nothing recorded yet: the step is genuinely still waiting.
+      expect(await cleanupRecordsFor(bureau, run.id)).toHaveLength(0);
+      expect(observedSignal?.aborted).toBe(false);
+
+      elapseBound?.();
+
+      const record = await awaitCleanupRecord(bureau, run.id);
+      expect(record.detail).toEqual({
+        acknowledgement: { status: 'unresolved', reason: 'timed-out' },
+      });
+      // The signal handed to weft actually fired. Abandoning only the wait
+      // would leave unowned deletes running behind a cached `timed-out`.
+      expect(observedSignal?.aborted).toBe(true);
+    } finally {
+      releasePrune?.();
+      pruneSpy.mockRestore();
+      bureau.dispose();
+    }
+  });
+
+  it('runs exactly one cleanup step for a cancelDurableRun followed by its terminal transition', async () => {
+    const prototype = await resolveEnginePrototype();
+    const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
+    const { generate, resolve } = createBlockingGenerate();
+    const bureau = await createRetentionBureau({
+      generate,
+      checkpointRetention: { keepLast: 1 },
+    });
+    try {
+      const run = await bureau.createRun({ message: 'cancel then settle' });
+      await waitForCondition(
+        () => bureau.store.getRun(run.id)?.status === 'running',
+        'the run never started',
+      );
+
+      const outcome = await bureau.cancelDurableRun(run.id);
+      expect(outcome.status).toBe('requested');
+      // Release the parked generate so the run's OWN terminal listener also
+      // fires — the second trigger for the same run id.
+      resolve({ content: 'released', toolCalls: [] });
+      await waitForRunState(bureau.store, run.id);
+
+      // Both triggers reached the memoized step; only one ran.
+      const records = await cleanupRecordsFor(bureau, run.id);
+      expect(records).toHaveLength(1);
+      expect(pruneSpy.mock.calls.filter((call) => call[0] === run.id)).toHaveLength(1);
+    } finally {
+      pruneSpy.mockRestore();
+      bureau.dispose();
+    }
+  });
+
+  it('never rejects when an injected shutdownTimeoutSleep rejects, and still stops the prune', async () => {
+    // `shutdownTimeoutSleep` is a public, caller-injectable seam, so it can
+    // reject even though the default never does. `cancelDurableRun` AWAITS
+    // the cleanup step while promising it never rejects, and the terminal
+    // listeners fire it as `void ...` where a rejection would become an
+    // unhandled rejection — the same hazard `shutdown()` already fences with
+    // `settleNeverRejecting` for this exact seam.
+    const prototype = await resolveEnginePrototype();
+    let observedSignal: AbortSignal | undefined;
+    let releasePrune: (() => void) | undefined;
+    const pruneSpy = spyOn(prototype, 'pruneCheckpoints').mockImplementation(
+      async (_workflowId, options) => {
+        observedSignal = options.signal;
+        await new Promise<void>((resolve) => {
+          releasePrune = resolve;
+        });
+        options.signal?.throwIfAborted();
+        return { removed: 0, retained: 0 };
+      },
+    );
+
+    let failBound: ((error: Error) => void) | undefined;
+    const diagnostics: BureauDiagnostic[] = [];
+    const bureau = await createRetentionBureau({
+      checkpointRetention: { keepLast: 1, timeoutMilliseconds: 50 },
+      onDiagnostic: (diagnostic: BureauDiagnostic) => diagnostics.push(diagnostic),
+      shutdownTimeoutSleep: () =>
+        new Promise<void>((_resolve, reject) => {
+          failBound = reject;
+        }),
+    });
+
+    try {
+      const run = await bureau.createRun({ message: 'the bound itself fails' });
+      await waitForRunState(bureau.store, run.id);
+      await waitForCondition(
+        () => observedSignal !== undefined,
+        'the cleanup step never reached the engine prune',
+      );
+
+      failBound?.(new Error('injected shutdownTimeoutSleep failure'));
+
+      // The step still settled, and settled into a recorded acknowledgement
+      // rather than an escaping rejection.
+      const record = await awaitCleanupRecord(bureau, run.id);
+      const detail = record.detail as { acknowledgement: { status: string; reason?: string } };
+      expect(detail.acknowledgement.status).toBe('unresolved');
+      expect(detail.acknowledgement.reason).toBe('timed-out');
+      // A bound that could not be applied still stops the prune: leaving it
+      // running behind an answer nobody owns is what the bound prevents.
+      expect(observedSignal?.aborted).toBe(true);
+
+      // And `cancelDurableRun`, which awaits the step, keeps its own
+      // documented "never rejects" contract.
+      await expect(bureau.cancelDurableRun(run.id)).resolves.toBeDefined();
+    } finally {
+      releasePrune?.();
+      pruneSpy.mockRestore();
+      bureau.dispose();
+    }
+  });
+
+  it('still records a cleanup acknowledgement for a recovered run whose result rejects and fires no terminal event', async () => {
+    // A reattached run whose stored result fails its schema-version check
+    // rejects `result` and dispatches NO terminal event, so neither terminal
+    // listener fires — and `closed()`'s own fold is skipped too, because
+    // `createClosedAcknowledgement` classifies a rejected `result` as
+    // `failed` without ever consulting `resolveOutcome`. Without a fallback
+    // the run reaches a dead end with no `run.cleanup-settled` record at
+    // all, which is the "cleanup failure that is invisible" this feature
+    // exists to prevent.
+    const storage = await resolveStorage({ type: 'memory' });
+    const runId = 'cor-625-version-skew-run';
+    const sessionId = 'cor-625-version-skew-session';
+    const sessionStore = createSessionStore(textValueStore(storage));
+    await sessionStore.save(
+      createAgentSession({
+        id: sessionId,
+        agentName: 'bureau',
+        conversationHistory: createConversationHistory({ id: sessionId }),
+        metadata: { lastRunId: runId, lastRunStatus: 'running' },
+      }),
+    );
+
+    const probe = await createRuntimeComposition({
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
+      recoverAll: (options: {
+        onRecoveredWorkflow: (info: unknown) => Promise<void>;
+      }) => Promise<unknown[]>;
+    };
+    probe.durable!.engine[Symbol.dispose]?.();
+    probe.disposeStorage?.();
+
+    const input = { runId, sessionId, agentName: 'bureau' };
+    const handle = {
+      id: runId,
+      getLaunchMetadata: async () => ({ input }),
+      // A schema version far past anything this build accepts — the exact
+      // shape `driveReattachedRun` rethrows
+      // `UnsupportedRunResultVersionError` for. Hardcoded rather than
+      // derived from operative's own constant, which is module-private and
+      // not on its public barrel.
+      result: async () => ({
+        schemaVersion: 9999,
+        runId,
+        steps: 0,
+        content: 'from a newer build',
+        finishReason: 'stop-condition',
+      }),
+    };
+    const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockImplementation(
+      async ({ onRecoveredWorkflow }) => {
+        await onRecoveredWorkflow({
+          workflowId: runId,
+          workflowType: 'agentRun',
+          input,
+          handle,
+          launchOptions: {},
+          // Minimal reconstructed services: reattachment refuses a recovered
+          // run without them, and this test needs the reattach to happen so
+          // its `result` can reject.
+          services: {
+            options: {
+              generate: createMockGenerate(),
+              toolbox: createEmptyToolbox(),
+              conversation: createConversationHistory({ id: sessionId }),
+              stopWhen: stopWhen.noToolCalls(),
+            },
+            toolbox: createEmptyToolbox(),
+          },
+        });
+        return [handle];
+      },
+    );
+
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+      storage,
+      durableExecution: true,
+      checkpointRetention: { keepLast: 1 },
+    });
+    try {
+      await bureau.waitForRecovery?.();
+
+      const record = await awaitCleanupRecord(bureau, runId);
+      const detail = record.detail as { acknowledgement: { status: string; reason?: string } };
+      // The engine never reports this run terminal, so the step refuses to
+      // prune and says so — an honest unresolved, not a fabricated success.
+      expect(detail.acknowledgement.status).toBe('unresolved');
+      expect(detail.acknowledgement.reason).toBe('persistence-failed');
+    } finally {
+      recoverAllSpy.mockRestore();
+      await bureau.dispose();
+    }
+  });
+
+  it('surfaces a deposed engine as unresolved/persistence-failed rather than a silent success', async () => {
+    // Weft already fences the prune itself: `checkpoint-prune.ts` commits
+    // through `commitFencedEngineWrite`, so an engine that no longer owns a
+    // run loses the compare-and-swap. Bureau's obligation is that the
+    // rejection SURFACES — as an acknowledgement and an audit record — not
+    // that bureau invents a second fence of its own.
+    const prototype = await resolveEnginePrototype();
+    const deposed = new Error(
+      'pruneCheckpoints for workflow "x" lost its CAS race against a concurrent write.',
+    );
+    const pruneSpy = spyOn(prototype, 'pruneCheckpoints').mockRejectedValue(deposed);
+    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    try {
+      const run = await bureau.createRun({ message: 'deposed' });
+      await waitForRunState(bureau.store, run.id);
+
+      const record = await awaitCleanupRecord(bureau, run.id);
+      const detail = record.detail as { acknowledgement: { status: string; reason?: string } };
+      expect(detail.acknowledgement.status).toBe('unresolved');
+      expect(detail.acknowledgement.reason).toBe('persistence-failed');
+    } finally {
+      pruneSpy.mockRestore();
+      bureau.dispose();
     }
   });
 });
