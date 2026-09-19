@@ -69,6 +69,7 @@ import {
   SessionSavedEvent,
   type SessionStore,
   type SessionSummary,
+  SteeringAcceptedEvent,
   SteeringAppliedEvent,
   type StepRecord,
   type Store,
@@ -6130,11 +6131,48 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (isSessionRunTerminal(session.metadata) && liveRunIds.length === 0) {
       return { outcome: 'session-terminal', sessionId };
     }
-    if (request.requestedValue.target !== 'pause' && request.requestedValue.target !== 'resume') {
+    // AB-200/AB-68: `agent-identity` joins `pause`/`resume` on the admitted
+    // path. The gate has always accepted it (see `ImplementedSteeringCommand`),
+    // and what was missing was this verb's own catalog validation — the one
+    // piece `ImplementedSteeringCommand`'s doc comment names as still owed.
+    // `route`/`model`/`provider`/`effort` remain unreachable: the gate is
+    // type-narrowed against them on purpose, and widening it is the
+    // separate state-machine slice that owns per-target desired-state
+    // writes and per-run `configVersion` accounting.
+    const steeringTarget = request.requestedValue.target;
+    const isPauseOrResume = steeringTarget === 'pause' || steeringTarget === 'resume';
+    if (!isPauseOrResume && steeringTarget !== 'agent-identity') {
+      return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
+    }
+    // A `policyRef` names a pre-approved policy only the AB-66 selector can
+    // resolve into a concrete agent name. Until that resolution path exists
+    // here, a `policyRef`-carrying command is unsupported rather than
+    // guessed at — validating an unresolved reference against the agents
+    // map would reject every legitimate policy name.
+    if (steeringTarget === 'agent-identity' && request.requestedValue.policyRef !== undefined) {
       return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
     }
     if (runtime.durable) {
       return { outcome: 'unsupported-capability', reason: 'durable-steering-unavailable' };
+    }
+    // `SteeringRequestedValue`'s own contract: an agent-identity `override`
+    // "must be a key of Bureau<D>'s agents map". Validated against the
+    // construction-time snapshot every other agent lookup in this module
+    // uses, so a name this Bureau cannot run is refused at admission rather
+    // than surfacing as an unresolvable agent at the next run's step 0.
+    //
+    // `policy-denied` rather than a new failure reason: this deployment's
+    // own catalog is what refuses the change, which is what that reason
+    // already means. Widening the exported `SteeringCommandFailure` union
+    // is a contract change owned by the steering-types issue, not this one.
+    if (
+      steeringTarget === 'agent-identity' &&
+      agentsSnapshot[request.requestedValue.override] === undefined
+    ) {
+      return {
+        outcome: 'rejected',
+        failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+      };
     }
 
     let gate = steeringGates.get(sessionId);
@@ -6150,9 +6188,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       idOrigin: request.id !== undefined ? 'caller' : 'generated',
       sessionId,
       principal: request.principal,
-      // Narrowed by the `target !== 'pause' && target !== 'resume'` early
-      // return above — TypeScript tracks this back through `request.requestedValue`
-      // without a cast because `request` is never reassigned.
+      // Narrowed by the target early returns above — TypeScript tracks
+      // this back through `request.requestedValue` without a cast because
+      // `request` is never reassigned.
       requestedValue: request.requestedValue,
       requestedAt: now,
       ...(request.expectedRevision !== undefined
@@ -6162,7 +6200,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...(request.runId !== undefined ? { runId: request.runId } : {}),
     };
 
-    return gate.admit(command, { liveRunIds, now });
+    const outcome = gate.admit(command, { liveRunIds, now });
+    // AB-68: give `steering.accepted` its first production dispatch site.
+    // Only the `accepted` transition is dispatched here, and deliberately:
+    // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
+    // are documented as `accepted → X` transitions, so a PRE-admission
+    // rejection (an unknown agent name, an ambiguous run) never reached
+    // `accepted` and must not be reported as having left it. Those three
+    // belong to the gate's own post-admission transitions.
+    if (outcome.outcome === 'accepted') {
+      emitter.dispatch(
+        new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
+      );
+    }
+    return outcome;
   }
 
   function listPendingReviews(): PendingReview[] {

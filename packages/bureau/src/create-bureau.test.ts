@@ -6442,7 +6442,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     }
   });
 
-  it('returns unsupported-capability/selector-unavailable for every target other than pause/resume', async () => {
+  it('returns unsupported-capability/selector-unavailable for the four targets the gate does not implement', async () => {
+    // AB-68 narrowed this from "every target other than pause/resume":
+    // `agent-identity` is now admitted (see the tests below). The gate
+    // stays type-narrowed against route/model/provider/effort, so those
+    // four remain unreachable through this verb.
     const bureau = await createBureau({
       agents: {},
       generate: () => new Promise<never>(() => {}),
@@ -6461,7 +6465,6 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         { target: 'model', override: 'm1' },
         { target: 'provider', override: 'p1' },
         { target: 'effort', override: 'high' },
-        { target: 'agent-identity', override: 'reviewer' },
       ] as const) {
         const outcome = await bureau.submitSteeringCommand(run.sessionId, {
           principal: 'alice',
@@ -6472,6 +6475,69 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
           reason: 'selector-unavailable',
         });
       }
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('rejects an agent-identity override naming an agent outside the Bureau catalog (AB-68)', async () => {
+    // `SteeringRequestedValue`'s own contract: an agent-identity override
+    // "must be a key of Bureau<D>'s agents map". The rollback trigger this
+    // guards is an unknown name being silently accepted and only failing
+    // later, at the next run's step 0, with no admission-time signal.
+    const bureau = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+    });
+    try {
+      const run = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'agent-identity', override: 'nonexistent-agent' },
+      });
+
+      expect(outcome.outcome).toBe('rejected');
+      if (outcome.outcome !== 'rejected') throw new Error('expected a rejected outcome');
+      expect(outcome.failure.reason).toBe('policy-denied');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('returns unsupported-capability/selector-unavailable for an agent-identity policyRef (AB-68)', async () => {
+    // A policyRef names a pre-approved policy only the AB-66 selector can
+    // resolve. Validating an unresolved reference against the agents map
+    // would reject every legitimate policy name, so it stays unsupported
+    // rather than being guessed at.
+    const bureau = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+    });
+    try {
+      const run = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'agent-identity', policyRef: 'fast-tier' },
+      });
+
+      expect(outcome).toEqual({
+        outcome: 'unsupported-capability',
+        reason: 'selector-unavailable',
+      });
     } finally {
       await bureau.dispose();
     }
