@@ -350,10 +350,11 @@ describe('emitted source', () => {
         false,
       ]);
     }
+    // Only the two development-only workspaces. bureau, memory and skills were excluded from
+    // the mirror entirely by the repository owner once it was clear that `private-workspace`
+    // still ships source to the *public* mirror repository, which would have made three
+    // never-published packages public for the first time.
     expect(plan.privateWorkspaces.map((entry) => entry.publicName).toSorted()).toEqual([
-      '@lostgradient/bureau',
-      '@lostgradient/memory',
-      '@lostgradient/skills',
       '@lostgradient/testing',
       '@lostgradient/typescript',
     ]);

@@ -13,7 +13,7 @@
       "name": "@lostgradient/weft-ui",
       "basis": "settled",
       "lastPublishedVersion": null,
-      "reason": "Name is settled, but `npm view @lostgradient/weft-ui` returns 404 — the manifest carries 0.1.0 and no `private` flag, yet it was never published. COR-1194 records that its trusted-publisher registration was never completed. Treat the first monorepo release as a first publish, not a re-publish."
+      "reason": "Name is settled, but `npm view @lostgradient/weft-ui` returns 404 \u2014 the manifest carries 0.1.0 and no `private` flag, yet it was never published. COR-1194 records that its trusted-publisher registration was never completed. Treat the first monorepo release as a first publish, not a re-publish."
     },
     "@corvidae/operative": {
       "disposition": "publish-as",
@@ -64,7 +64,6 @@
       "lastPublishedVersion": "1.2.0",
       "reason": "Keeps its unscoped name deliberately. Roughly 53,608 installs a month, the most-installed package in the graph."
     },
-
     "@corvidae/cryptography": {
       "disposition": "publish-as",
       "name": "@lostgradient/cryptography",
@@ -95,13 +94,12 @@
       "basis": "runtime-closure-forced",
       "lastPublishedVersion": null,
       "requiredBy": ["armorer", "conversationalist", "operative", "chat"],
-      "reason": "Inside the runtime dependency closure of four published packages, reached both directly and through tool-protocol. Never published — agent-bureau's manifest is `private: true` at 0.0.1. The unscoped name `lifecycle` belongs to an unrelated third party (kmalakoff, 1.0.4, 2015) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
+      "reason": "Inside the runtime dependency closure of four published packages, reached both directly and through tool-protocol. Never published \u2014 agent-bureau's manifest is `private: true` at 0.0.1. The unscoped name `lifecycle` belongs to an unrelated third party (kmalakoff, 1.0.4, 2015) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
     },
-
     "@corvidae/typescript": {
       "disposition": "private-workspace",
       "basis": "development-only",
-      "reason": "Every published package extends it, but only through devDependencies — it appears in no runtime `dependencies` edge anywhere. Must remain in the repository because dropping it breaks typecheck and build for every workspace. COR-1189 vendors it to a local path for the single-package weft target and keeps it workspace-native for the monorepo."
+      "reason": "Every published package extends it, but only through devDependencies \u2014 it appears in no runtime `dependencies` edge anywhere. Must remain in the repository because dropping it breaks typecheck and build for every workspace. COR-1189 vendors it to a local path for the single-package weft target and keeps it workspace-native for the monorepo."
     },
     "@corvidae/testing": {
       "disposition": "private-workspace",
@@ -113,21 +111,20 @@
       "basis": "application",
       "reason": "A deployable application rather than a library. No workspace declares it as a dependency."
     },
-
     "@corvidae/bureau": {
-      "disposition": "private-workspace",
-      "basis": "optional-conservative-default",
-      "reason": "Not reachable in any published package's runtime closure, so publishing is genuinely optional and declining breaks nobody. Never published — agent-bureau's manifest is `private: true` at 0.0.8, and the unscoped name `bureau` belongs to an unrelated third party (merrihew, 0.0.0, 2014). Left private as the reversible default; `@lostgradient/bureau` is unregistered and available if this is revisited."
+      "disposition": "exclude",
+      "basis": "owner-excluded-from-public-mirror",
+      "reason": "Excluded from the mirror by the repository owner, 2026-09-19. Never published and never public: agent-bureau's manifest is `private: true`, and the identically-named public npm package belongs to an unrelated third party. `private-workspace` would still ship the source to the public mirror repository, which would make it public for the first time; `exclude` keeps it in corvidae only. Nothing outside the bureau/memory/skills cluster depends on it, so excluding all three breaks no other workspace. Reversible: promote to `publish-as` or `private-workspace` if it should become public later."
     },
     "@corvidae/memory": {
-      "disposition": "private-workspace",
-      "basis": "optional-conservative-default",
-      "reason": "Not reachable in any published package's runtime closure. Never published — `private: true` at 0.0.1, and the unscoped name `memory` belongs to an unrelated third party (edwardhotchkiss, 0.0.3, 2011). Left private as the reversible default; `@lostgradient/memory` is unregistered and available."
+      "disposition": "exclude",
+      "basis": "owner-excluded-from-public-mirror",
+      "reason": "Excluded from the mirror by the repository owner, 2026-09-19. Never published and never public: agent-bureau's manifest is `private: true`, and the identically-named public npm package belongs to an unrelated third party. `private-workspace` would still ship the source to the public mirror repository, which would make it public for the first time; `exclude` keeps it in corvidae only. Nothing outside the bureau/memory/skills cluster depends on it, so excluding all three breaks no other workspace. Reversible: promote to `publish-as` or `private-workspace` if it should become public later."
     },
     "@corvidae/skills": {
-      "disposition": "private-workspace",
-      "basis": "optional-conservative-default",
-      "reason": "Not reachable in any published package's runtime closure. Never published — `private: true` at 0.0.1. The unscoped name `skills` is Vercel Labs' actively maintained package (1.7.0, modified 2026-09-17) and is categorically unavailable. Left private as the reversible default; `@lostgradient/skills` is unregistered and available."
+      "disposition": "exclude",
+      "basis": "owner-excluded-from-public-mirror",
+      "reason": "Excluded from the mirror by the repository owner, 2026-09-19. Never published and never public: agent-bureau's manifest is `private: true`, and the identically-named public npm package belongs to an unrelated third party. `private-workspace` would still ship the source to the public mirror repository, which would make it public for the first time; `exclude` keeps it in corvidae only. Nothing outside the bureau/memory/skills cluster depends on it, so excluding all three breaks no other workspace. Reversible: promote to `publish-as` or `private-workspace` if it should become public later."
     }
   },
   "publishedOnly": {
@@ -191,7 +188,7 @@
     ]
   },
   "openQuestions": [
-    "@corvidae/bureau, @corvidae/memory, and @corvidae/skills are set to private-workspace as the reversible default rather than a positive decision to keep them unpublished. Each has an available @lostgradient/* name if that changes.",
+    "@corvidae/bureau, @corvidae/memory and @corvidae/skills are excluded from the mirror entirely, ruled by the repository owner 2026-09-19 once it was clear that `private-workspace` still ships source to the public mirror repository. They stay in corvidae. Each has an available @lostgradient/* name if that changes.",
     "@lostgradient/cinder-mcp is left untouched rather than deprecated. It has no corvidae source and therefore no maintenance path through this pipeline; whether it should be deprecated, re-homed, or given source is unresolved.",
     "COR-1189's surface-parity gate fetches each published package's last subpath set from the registry. The four packages newly marked publish-as here have no published predecessor, so that gate has no baseline for them and must treat a missing predecessor as a first publish rather than a parity failure."
   ]
