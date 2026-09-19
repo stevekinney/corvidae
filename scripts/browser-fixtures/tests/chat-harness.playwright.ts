@@ -353,6 +353,47 @@ function expectContainedWithin(
   ).toBeLessThanOrEqual(parent.y + parent.height + 1);
 }
 
+async function expectNarrowConversationLayoutStacks(layout: Locator): Promise<void> {
+  const metrics = await layout.evaluate((element) => {
+    const sidebar = element.querySelector<HTMLElement>('.chat-layout-fixture__sidebar');
+    const main = element.querySelector<HTMLElement>('.chat-layout-fixture__main');
+    if (!sidebar || !main) throw new Error('Missing conversation layout regions');
+
+    const style = getComputedStyle(element);
+    const layoutBox = element.getBoundingClientRect();
+    const sidebarBox = sidebar.getBoundingClientRect();
+    const mainBox = main.getBoundingClientRect();
+    const borderInlineStart = Number.parseFloat(style.borderInlineStartWidth);
+    const borderInlineEnd = Number.parseFloat(style.borderInlineEndWidth);
+
+    return {
+      contentX: layoutBox.x + borderInlineStart,
+      contentWidth: layoutBox.width - borderInlineStart - borderInlineEnd,
+      sidebar: {
+        bottom: sidebarBox.bottom,
+      },
+      main: {
+        x: mainBox.x,
+        y: mainBox.y,
+        width: mainBox.width,
+      },
+    };
+  });
+
+  expect(
+    metrics.main.y,
+    'narrow conversation main pane should stack below the sidebar',
+  ).toBeGreaterThanOrEqual(metrics.sidebar.bottom - 1);
+  expect(metrics.main.x, 'narrow conversation main pane should start at content edge').toBeCloseTo(
+    metrics.contentX,
+    1,
+  );
+  expect(
+    metrics.main.width,
+    'narrow conversation main pane should fill available width',
+  ).toBeCloseTo(metrics.contentWidth, 1);
+}
+
 test('selected conversations and transcript boundaries use one flat divider system', async ({
   browser,
 }, testInfo) => {
@@ -364,6 +405,7 @@ test('selected conversations and transcript boundaries use one flat divider syst
       });
       try {
         const layout = page.getByTestId('chat-conversation-layout');
+        if (width === 320) await expectNarrowConversationLayoutStacks(layout);
         const selectedConversation = layout.locator('[data-cinder-conversation-selected]').first();
         const inactiveConversation = layout
           .locator('[data-cinder-conversation-item]:not([data-cinder-conversation-selected])')

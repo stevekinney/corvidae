@@ -275,28 +275,30 @@
     />
   </div>
 
-  <section class="chat-layout-fixture" data-testid="chat-conversation-layout">
-    <aside class="chat-layout-fixture__sidebar">
-      <ChatConversationList
-        conversations={conversationSummaries}
-        {activeConversationId}
-        onSelectConversation={(conversationId) => (activeConversationId = conversationId)}
-      />
-    </aside>
+  <div class="chat-layout-fixture-container">
+    <section class="chat-layout-fixture" data-testid="chat-conversation-layout">
+      <aside class="chat-layout-fixture__sidebar">
+        <ChatConversationList
+          conversations={conversationSummaries}
+          {activeConversationId}
+          onSelectConversation={(conversationId) => (activeConversationId = conversationId)}
+        />
+      </aside>
 
-    <div class="chat-layout-fixture__main">
-      <Chat
-        id="fixture-conversation-layout-chat"
-        conversation={activeConversation}
-        capabilities={{ attachments: false }}
-        onsubmit={handleSubmit}
-      >
-        {#snippet header()}
-          <ChatConversationHeader conversation={activeConversation} />
-        {/snippet}
-      </Chat>
-    </div>
-  </section>
+      <div class="chat-layout-fixture__main">
+        <Chat
+          id="fixture-conversation-layout-chat"
+          conversation={activeConversation}
+          capabilities={{ attachments: false }}
+          onsubmit={handleSubmit}
+        >
+          {#snippet header()}
+            <ChatConversationHeader conversation={activeConversation} />
+          {/snippet}
+        </Chat>
+      </div>
+    </section>
+  </div>
 
   <div style="height: 34rem;" data-testid="chat-default-artifact-layout">
     <Chat
@@ -391,6 +393,10 @@
   .chat-fixture-stack {
     display: grid;
     gap: 1rem;
+  }
+
+  .chat-layout-fixture-container {
+    container-type: inline-size;
   }
 
   .chat-layout-fixture {
