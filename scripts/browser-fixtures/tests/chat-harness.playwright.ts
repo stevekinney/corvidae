@@ -1377,6 +1377,43 @@ test.describe('chat harness — composer acceptance matrix', () => {
     }
   });
 
+  test('keeps the stop tooltip highest priority and dismisses it on blur', async ({ browser }) => {
+    const { harness, page, dispose } = await openHarness(browser);
+    try {
+      await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
+      await harness.locator('[data-testid="send-reply"]').click();
+      const stop = harness.locator('.chat-input-send[data-stop]');
+      await expect(stop).toBeVisible();
+      await stop.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Stop generating');
+      await stop.focus();
+      await stop.blur();
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+      await stop.click();
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('does not use a coarse-touch shortcut for the disabled trigger tooltip', async ({
+    browser,
+  }) => {
+    const { harness, page, dispose } = await openHarness(browser, {
+      hasTouch: true,
+      viewport: { width: 320, height: 900 },
+    });
+    try {
+      const send = harness.locator('.chat-input-send');
+      await expect(send).toBeDisabled();
+      await send.hover();
+      await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
+      await send.focus({ force: true });
+      await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+
   for (const width of [320, 512, 848]) {
     test(`centers footer controls at ${width}px in dark reduced-motion mode`, async ({
       browser,
