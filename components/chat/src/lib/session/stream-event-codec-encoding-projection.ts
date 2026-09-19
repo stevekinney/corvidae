@@ -67,6 +67,31 @@ function ownFields<T>(value: T): T {
   return isRecord(value) ? { ...value } : value;
 }
 
+/**
+ * Whitelists exactly `ToolAction`'s declared fields.
+ *
+ * Shared by `tool_result`'s own `action` and by `elicitation.requested`,
+ * which carries the same descriptor: an approval prompt and an input prompt
+ * are the distinction both members draw, and two projections of one shape
+ * would be two places for it to drift.
+ *
+ * The STRUCTURAL check still happens where it always did — at the end of
+ * `projectChatToolResult`, against `isToolResult` over the whole projection,
+ * and for the elicitation member through the decoder's `toChatToolAction`,
+ * which is that same guard. This function's job is the field whitelist and
+ * the JSON assertion on `schema`.
+ */
+export function projectChatToolAction(
+  rawAction: NonNullable<ChatToolResult['action']>,
+): Record<string, unknown> {
+  const action = ownFields(rawAction);
+  const projected: Record<string, unknown> = { type: action.type };
+  if (action.message !== undefined) projected['message'] = action.message;
+  if (action.schema !== undefined)
+    projected['schema'] = assertFiniteJSONValue(action.schema, 'tool result action.schema');
+  return projected;
+}
+
 export function projectChatToolResult(rawResult: ChatToolResult): Record<string, unknown> {
   const result = ownFields(rawResult);
   const projected: Record<string, unknown> = {
@@ -86,14 +111,7 @@ export function projectChatToolResult(rawResult: ChatToolResult): Record<string,
       projectedError['details'] = assertFiniteJSONValue(error.details, 'tool result error.details');
     projected['error'] = projectedError;
   }
-  if (result.action !== undefined) {
-    const action = ownFields(result.action);
-    const projectedAction: Record<string, unknown> = { type: action.type };
-    if (action.message !== undefined) projectedAction['message'] = action.message;
-    if (action.schema !== undefined)
-      projectedAction['schema'] = assertFiniteJSONValue(action.schema, 'tool result action.schema');
-    projected['action'] = projectedAction;
-  }
+  if (result.action !== undefined) projected['action'] = projectChatToolAction(result.action);
   if (result.inputDigest !== undefined) projected['inputDigest'] = result.inputDigest;
   if (result.outputDigest !== undefined) projected['outputDigest'] = result.outputDigest;
   if (result.pendingApproval !== undefined)

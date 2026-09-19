@@ -236,4 +236,44 @@ export type ChatStreamEvent =
   // the client minted, because then the client would be reconciling its own
   // guess against the server's history rather than being told.
   | ({ type: 'assistant.step.started'; step: number; messageId: string } & V2WireEnvelope)
-  | ({ type: 'assistant.step.completed'; step: number; messageId: string } & V2WireEnvelope);
+  | ({ type: 'assistant.step.completed'; step: number; messageId: string } & V2WireEnvelope)
+  // Elicitation: a question the run is waiting on, and the human's answer.
+  //
+  // `elicitation.resolved` REPORTS THE HUMAN'S RESPONSE — it is not tool
+  // settlement, and conflating the two is the defect this vocabulary exists
+  // to avoid. A denied call still settles afterwards, through its own
+  // `tool.settled`/`tool_result` frames saying the tool did not run; a client
+  // that read a resolution as a settlement would close the call's row on an
+  // answer rather than on a result, and would have nothing at all to show for
+  // a question answered while its tool was still executing.
+  //
+  // REQUEST IDENTITY IS IMMUTABLE. `requestId` is the host's own identifier
+  // for the question, minted once when it is asked and repeated verbatim on
+  // the resolution. It is what lets a client tell "the question I am showing
+  // was answered" from "some question was answered" — which is the whole
+  // difference between clearing the right prompt and clearing a replacement
+  // the person has not read yet. It is required on both members for that
+  // reason: a resolution nobody can correlate is not a resolution.
+  //
+  // `toolCallId` is OPTIONAL because elicitation is not exclusively a tool
+  // affordance — a host may ask a question between steps, with no call to
+  // attribute it to. When it is present it names the call the question is
+  // about.
+  //
+  // `action` reuses `ChatToolResult['action']` — the same descriptor
+  // `tool_result` already carries and validates — because "approval" versus
+  // "input" is exactly the distinction it draws, and a second parallel
+  // vocabulary for it would be two things to keep in step.
+  | ({
+      type: 'elicitation.requested';
+      requestId: string;
+      toolCallId?: string;
+      message: string;
+      action?: ChatToolResult['action'];
+    } & V2WireEnvelope)
+  | ({
+      type: 'elicitation.resolved';
+      requestId: string;
+      toolCallId?: string;
+      accepted: boolean;
+    } & V2WireEnvelope);

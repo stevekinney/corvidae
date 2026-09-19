@@ -1,5 +1,5 @@
-import type { TokenUsage } from '@corvidae/conversationalist';
-import { isTokenUsage } from '../components/chat/builders.ts';
+import type { TokenUsage, ToolAction } from '@corvidae/conversationalist';
+import { isTokenUsage, isToolResult } from '../components/chat/builders.ts';
 import {
   isSupportedWireVersion,
   type ChatAgentRunErrorCode,
@@ -74,6 +74,32 @@ export function requireV2Envelope(envelope: Partial<WireEnvelope>): V2WireEnvelo
   const required = requireWireEnvelope(envelope);
   if (required.wireVersion !== 2) throw new Error('Invalid chat stream event');
   return { wireVersion: 2, sequence: required.sequence };
+}
+
+/**
+ * Validates a `ChatToolResult['action']`-shaped value THROUGH THE GUARD
+ * `tool_result` ALREADY USES, by handing `isToolResult` a minimal carrier
+ * whose only interesting field is the action.
+ *
+ * Reusing the guard rather than hand-rolling a second one is the point.
+ * `isToolResult` is conversationalist's strict schema, which owns the
+ * `'approval' | 'input'` list, the optional `message`, the `schema` JSON
+ * check, and the rejection of unknown keys. A parallel guard here would be a
+ * copy of that list to keep in step — and the first thing to drift would be
+ * a new action type that `tool_result` accepts and `elicitation.requested`
+ * silently refuses, for no reason a reader could find.
+ *
+ * `undefined` for a malformed descriptor, which every caller turns into a
+ * rejection. A malformed action is NOT quietly dropped to "no action": the
+ * producer said something about this question, and a client that renders an
+ * approval prompt differently from an input prompt would be shown the wrong
+ * one.
+ */
+export function toChatToolAction(value: unknown): ToolAction | undefined {
+  if (!isRecord(value) || Array.isArray(value)) return undefined;
+  const carrier = { callId: '', outcome: 'action_required', content: null, action: value };
+  if (!isToolResult(carrier)) return undefined;
+  return carrier.action;
 }
 
 export function isChatStreamBlockType(value: unknown): value is ChatStreamBlockType {
