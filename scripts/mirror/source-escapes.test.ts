@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { committedPlans } from './committed-plans.ts';
 import type { MirrorTarget } from './manifests.ts';
 import {
   assertNoSourceEscapes,
@@ -11,9 +12,6 @@ import {
   SourceEscapeError,
 } from './source-escapes.ts';
 import { planSource } from './source.ts';
-import { planSurface, type SurfacePlan } from './surface.ts';
-
-const corvidaeRoot = join(import.meta.dir, '..', '..');
 
 /** Stand up a throwaway tree, hand it to the body, and remove it however the body ends. */
 async function withTree(
@@ -262,36 +260,24 @@ describe('a declared additional source root', () => {
 
 describe('the committed workspaces', () => {
   /**
-   * One plan per target, shared across this block. Planning the cinder target reads and parses
-   * five and a half thousand files; building it once per assertion would triple that for no
-   * additional coverage.
-   */
-  const plans = new Map<MirrorTarget, SurfacePlan>();
-
-  async function planFor(target: MirrorTarget): Promise<SurfacePlan> {
-    const existing = plans.get(target);
-    if (existing) return existing;
-    const plan = await planSurface({ corvidaeRoot, target });
-    plans.set(target, plan);
-    return plan;
-  }
-
-  /**
    * The gate against the real tree rather than a fixture, for both targets, because what it
    * asserts is a property of the real workspaces. `planSurface` already refuses a plan with an
    * escape; this states the same result as a finding so a failure reads as the list of escapes
    * rather than as an unrelated test blowing up.
+   *
+   * The plan and its scan are both `committed-plans.ts`'s, built once for the process when this
+   * file loads. Neither belongs on a test's clock: the cinder plan is seconds of work and so is
+   * rescanning its five and a half thousand emitted files.
    */
   test.each<MirrorTarget>(['cinder', 'weft'])(
     'the %s plan emits nothing that escapes',
-    async (target) => {
-      const plan = await planFor(target);
-      expect(findSourceEscapes(plan.files)).toEqual([]);
+    (target) => {
+      expect(committedPlans[target].escapes).toEqual([]);
     },
   );
 
-  test('the cinder binary and the published knowledge subpath resolve in the target', async () => {
-    const plan = await planFor('cinder');
+  test('the cinder binary and the published knowledge subpath resolve in the target', () => {
+    const { plan } = committedPlans.cinder;
     // COR-1189 restored these two shims and COR-1221's emission rule left what they re-export
     // behind. Both now land, which is what makes `dist/cli/index.js` buildable and
     // `@lostgradient/cinder/knowledge` resolvable for `@lostgradient/cinder-mcp`.
