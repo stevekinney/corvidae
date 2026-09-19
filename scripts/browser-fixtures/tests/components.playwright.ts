@@ -215,6 +215,11 @@ for (const theme of THEMES) {
       await notes.fill('/');
       await expect(page.locator('.cinder-command-item').first()).toBeVisible();
       await page.locator('.cinder-command-item').first().press('ArrowDown');
+      await notes.fill('/summary');
+      await expect(page.locator('.cinder-command-item:visible')).toHaveCount(1);
+      await assertRows(page, '.cinder-command-item');
+      await notes.fill('/');
+      await expect(page.locator('.cinder-command-item:visible')).toHaveCount(4);
       await assertRows(page, '.cinder-command-item');
     });
 
@@ -225,6 +230,11 @@ for (const theme of THEMES) {
       const first = page.locator('.cinder-navigation-item').first();
       await first.focus();
       await first.press('Tab');
+      const projects = page.getByRole('button', { name: 'Projects' });
+      await projects.click();
+      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(2);
+      await projects.click();
+      await expect(page.locator('.cinder-navigation-item:visible')).toHaveCount(5);
       await assertRows(page, '.cinder-navigation-item');
     });
 
@@ -236,6 +246,11 @@ for (const theme of THEMES) {
       await input.click();
       await expect(page.locator('.cinder-combobox__option').first()).toBeVisible();
       await input.press('ArrowDown');
+      await input.fill('apple');
+      await expect(page.locator('.cinder-combobox__option:visible')).toHaveCount(1);
+      await assertRows(page, '.cinder-combobox__option');
+      await input.fill('');
+      await expect(page.locator('.cinder-combobox__option:visible')).toHaveCount(10);
       await assertRows(page, '.cinder-combobox__option');
     });
 
