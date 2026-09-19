@@ -94,12 +94,17 @@ function toolMessage(
 }
 
 function region(container: HTMLElement, level: 'polite' | 'assertive'): HTMLElement {
-  const result = Array.from(
-    container.querySelectorAll<HTMLElement>(`.cinder-sr-only[aria-live="${level}"]`),
-  ).find(
-    (element) => element.getAttribute('aria-atomic') === 'true' && !element.closest('.chat-input'),
-  );
-  if (!result) throw new Error(`Missing ${level} ChatStatusAnnouncer region`);
+  const log = container.querySelector<HTMLElement>('[role="log"][aria-describedby]');
+  const statusId = log?.getAttribute('aria-describedby');
+  const status = statusId ? container.querySelector<HTMLElement>(`#${CSS.escape(statusId)}`) : null;
+  const polite = status?.nextElementSibling;
+  const assertive = polite?.nextElementSibling;
+  const result = level === 'polite' ? polite : assertive;
+  if (!(result instanceof HTMLElement)) {
+    throw new Error(`Missing ${level} ChatStatusAnnouncer region`);
+  }
+  expect(result.getAttribute('aria-live')).toBe(level);
+  expect(result.getAttribute('aria-atomic')).toBe('true');
   return result;
 }
 

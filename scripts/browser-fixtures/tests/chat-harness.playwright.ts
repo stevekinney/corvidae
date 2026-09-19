@@ -1099,12 +1099,271 @@ test.describe('chat harness — streaming presentation', () => {
 });
 
 test.describe('chat harness — tool calls', () => {
+  async function appendToolScenario(page: Page, scenario: string): Promise<void> {
+    await page.evaluate((name) => {
+      const appendScenario = (
+        window as typeof window & {
+          corvidaeChatHarnessAppendToolScenario?: (scenario: string) => void;
+        }
+      ).corvidaeChatHarnessAppendToolScenario;
+      if (!appendScenario) throw new Error('Chat harness tool scenario hook is unavailable.');
+      appendScenario(name);
+    }, scenario);
+  }
+
+  async function setHarnessCustomMessageSnippets(page: Page, enabled: boolean): Promise<void> {
+    await page.evaluate((nextEnabled) => {
+      const setCustomMessageSnippets = (
+        window as typeof window & {
+          corvidaeChatHarnessSetCustomMessageSnippets?: (enabled: boolean) => void;
+        }
+      ).corvidaeChatHarnessSetCustomMessageSnippets;
+      if (!setCustomMessageSnippets) {
+        throw new Error('Chat harness custom message snippet hook is unavailable.');
+      }
+      setCustomMessageSnippets(nextEnabled);
+    }, enabled);
+  }
+
+  async function enableHarnessAdapter(page: Page): Promise<void> {
+    await page.evaluate(() => {
+      const useAdapter = (
+        window as typeof window & {
+          corvidaeChatHarnessUseAdapter?: () => void;
+        }
+      ).corvidaeChatHarnessUseAdapter;
+      if (!useAdapter) throw new Error('Chat harness adapter hook is unavailable.');
+      useAdapter();
+    });
+  }
+
+  async function activeNavigationRow(page: Page): Promise<{
+    id: string;
+    role: string | null;
+    toolCallCount: string | null;
+    text: string;
+    isTimeline: boolean;
+  } | null> {
+    return page.evaluate(() => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement)) return null;
+      return {
+        id: active.id,
+        role: active.dataset['messageRole'] ?? null,
+        toolCallCount: active.dataset['cinderToolCallCount'] ?? null,
+        text: active.textContent?.trim() ?? '',
+        isTimeline: active.classList.contains('chat-tool-call-timeline'),
+      };
+    });
+  }
+
+  async function expectNoPageOverflow(page: Page): Promise<void> {
+    await expect
+      .poll(() =>
+        page.evaluate(() => Math.ceil(document.documentElement.scrollWidth - window.innerWidth)),
+      )
+      .toBeLessThanOrEqual(1);
+  }
+
+  async function expectHeaderCentersAligned(step: Locator): Promise<void> {
+    const centers = await step.locator('.cinder-run-step-timeline__header').evaluate((header) => {
+      const icon = header.querySelector<HTMLElement>('.cinder-run-step-timeline__icon');
+      const label = header.querySelector<HTMLElement>('.cinder-run-step-timeline__label');
+      const status = header.querySelector<HTMLElement>('.cinder-run-step-timeline__status');
+      if (!label || !status) throw new Error('Header label/status missing.');
+      const center = (element: Element) => {
+        const box = element.getBoundingClientRect();
+        return box.top + box.height / 2;
+      };
+      return {
+        icon: icon ? center(icon) : null,
+        label: center(label),
+        status: center(status),
+      };
+    });
+    expect(Math.abs(centers.label - centers.status)).toBeLessThanOrEqual(2);
+    if (centers.icon !== null)
+      expect(Math.abs(centers.icon - centers.label)).toBeLessThanOrEqual(2);
+  }
+
+  async function expectContainerThreshold(activity: Locator, width: number): Promise<void> {
+    const metrics = await activity.evaluate((element) => {
+      let current: HTMLElement | null = element.parentElement;
+      while (current) {
+        const style = getComputedStyle(current);
+        if (style.containerType !== 'normal') {
+          const box = current.getBoundingClientRect();
+          return {
+            containerWidth: box.width,
+            containerType: style.containerType,
+            minInlineSize: getComputedStyle(element).minInlineSize,
+          };
+        }
+        current = current.parentElement;
+      }
+      return {
+        containerWidth: null,
+        containerType: 'none',
+        minInlineSize: getComputedStyle(element).minInlineSize,
+      };
+    });
+    expect(metrics.containerType).not.toBe('none');
+    if (width === 320) {
+      expect(metrics.containerWidth ?? 0).toBeLessThan(352);
+      expect(metrics.minInlineSize).toBe('0px');
+    } else {
+      expect(metrics.containerWidth ?? 0).toBeGreaterThanOrEqual(352);
+      expect(metrics.minInlineSize).toBe('320px');
+    }
+  }
+
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const width of [320, 512, 848] as const) {
+      test(`tool activity uses one compact syntax-highlighted detail surface (${colorScheme}, ${width}px)`, async ({
+        browser,
+      }, testInfo) => {
+        const { page, harness, dispose } = await openHarness(browser, {
+          colorScheme,
+          viewport: { width, height: 1000 },
+        });
+        try {
+          for (const { outcome, argumentsText, status, expectedText } of [
+            {
+              outcome: 'success',
+              argumentsText:
+                '{"package":"@corvidae/cinder","checks":["exports","types"],"long":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
+              status: 'succeeded',
+              expectedText: '@corvidae/cinder',
+            },
+            {
+              outcome: 'error',
+              argumentsText: '["exports","runtime",null]',
+              status: 'failed',
+              expectedText: 'exports',
+            },
+            {
+              outcome: 'action_required',
+              argumentsText: 'null',
+              status: 'waiting_approval',
+              expectedText: 'null',
+            },
+          ] as const) {
+            await harness.locator('[data-testid="tool-arguments"]').fill(argumentsText);
+            await harness.locator('#harness-tool-outcome').selectOption(outcome);
+            await harness.locator('[data-testid="inject-tool"]').click();
+
+            const activity = harness.locator('.chat-tool-call-timeline').last();
+            await expect(activity).toBeVisible();
+            await expect(activity.locator('.tool-call-group')).toHaveCount(0);
+            await expect(activity).toHaveAttribute('data-cinder-tool-call-count', '1');
+            await expect(activity).toContainText('exports_check');
+            await expectContainerThreshold(activity, width);
+
+            const step = activity.locator('.cinder-run-step-timeline__item').last();
+            await expect(step).toHaveAttribute('data-cinder-status', status);
+            await expect(step.locator('.cinder-run-step-timeline__header')).toBeVisible();
+            await expectHeaderCentersAligned(step);
+
+            const disclosure = step.getByRole('button', { name: 'Arguments' });
+            await disclosure.focus();
+            await expect(disclosure).toBeFocused();
+            await page.keyboard.press('Enter');
+
+            const details = step.locator('.cinder-run-step-timeline__details');
+            await expect(details).toBeVisible();
+            await expect(details.locator('.tool-call-section-title')).toHaveCount(0);
+
+            const codeBlock = details.locator('.cinder-code-block').first();
+            await expect(codeBlock).toBeVisible();
+            await expect(codeBlock.locator('.cinder-code-block__language')).toHaveCount(0);
+            const codePre = codeBlock.locator('pre').first();
+            await expect(codePre).toContainText(expectedText);
+            const codePadding = await codeBlock.evaluate((element) => {
+              const probe = document.createElement('div');
+              probe.style.padding = 'var(--cinder-code-block-padding)';
+              element.append(probe);
+              const style = getComputedStyle(probe);
+              const padding = Math.max(
+                Number.parseFloat(style.paddingTop),
+                Number.parseFloat(style.paddingRight),
+                Number.parseFloat(style.paddingBottom),
+                Number.parseFloat(style.paddingLeft),
+              );
+              probe.remove();
+              return padding;
+            });
+            expect(codePadding).toBeLessThanOrEqual(12);
+
+            await expectNoPageOverflow(page);
+          }
+
+          await appendToolScenario(page, 'pending');
+          const pending = harness.locator('.chat-tool-call-timeline').last();
+          await expect(pending).toBeVisible();
+          await expect(pending.locator('.cinder-run-step-timeline__item')).toHaveAttribute(
+            'data-cinder-status',
+            'pending',
+          );
+          await expect(pending.locator('.cinder-run-step-timeline__icon')).toHaveCount(0);
+          await expectHeaderCentersAligned(pending.locator('.cinder-run-step-timeline__item'));
+
+          await appendToolScenario(page, 'text-success');
+          const textActivity = harness.locator('.chat-tool-call-timeline').last();
+          await expect(textActivity).toBeVisible();
+          await textActivity.getByRole('button', { name: 'Result' }).click();
+          await expect(
+            textActivity.locator('.cinder-run-step-timeline__detail-content'),
+          ).toContainText('plain text result from the tool');
+          await expect(textActivity.locator('.cinder-code-block')).toHaveCount(1);
+
+          await enableHarnessAdapter(page);
+          await appendToolScenario(page, 'json-success');
+          const presentationActivity = harness.locator('.chat-tool-call-timeline').last();
+          await expect(presentationActivity).toBeVisible();
+          await expect(
+            presentationActivity.locator('.cinder-run-step-timeline__icon'),
+          ).toBeVisible();
+          await expect(
+            presentationActivity.locator('[data-cinder-tool-activity-active]'),
+          ).toHaveCount(0);
+          await expect(
+            presentationActivity.locator('.cinder-run-step-timeline__label'),
+          ).toContainText('Checked exports_check');
+          await expectHeaderCentersAligned(
+            presentationActivity.locator('.cinder-run-step-timeline__item'),
+          );
+
+          await setHarnessCustomMessageSnippets(page, false);
+          await harness.locator('[data-testid="clear"]').click();
+          await expect(harness.locator('.chat-tool-call-timeline')).toHaveCount(0);
+          await appendToolScenario(page, 'grouped');
+          const grouped = harness.locator('.chat-tool-call-timeline').last();
+          await expect(grouped).toBeVisible();
+          await expect(harness.locator('[data-testid="harness-message-action"]')).toHaveCount(0);
+          await expect(harness.locator('[data-testid="harness-message-status"]')).toHaveCount(0);
+          await expect(grouped).toHaveAttribute('data-cinder-tool-call-count', '2');
+          await expect(grouped.locator('.cinder-run-step-timeline__item')).toHaveCount(2);
+          await grouped.getByRole('button', { name: 'Error' }).click();
+          await expect(grouped).toContainText('Type check failed for the chat package.');
+
+          await captureHarnessScreenshot(
+            page,
+            testInfo,
+            `chat-tool-activity-detail-surface-${colorScheme}-${width}`,
+          );
+        } finally {
+          await dispose();
+        }
+      });
+    }
+  }
+
   for (const { outcome, status } of [
-    { outcome: 'success', status: 'success' },
-    { outcome: 'error', status: 'error' },
-    { outcome: 'action_required', status: 'action-required' },
+    { outcome: 'success', status: 'succeeded' },
+    { outcome: 'error', status: 'failed' },
+    { outcome: 'action_required', status: 'waiting_approval' },
   ] as const) {
-    test(`injects a ${outcome} tool call rendering data-status="${status}"`, async ({
+    test(`injects a ${outcome} tool call rendering data-cinder-status="${status}"`, async ({
       browser,
     }) => {
       const { harness, dispose } = await openHarness(browser);
@@ -1112,10 +1371,15 @@ test.describe('chat harness — tool calls', () => {
         await harness.locator('#harness-tool-outcome').selectOption(outcome);
         await harness.locator('[data-testid="inject-tool"]').click();
 
-        const group = harness.locator(`.tool-call-group[data-status="${status}"]`);
-        await expect(group).toBeVisible();
-        await expect(harness.locator('.tool-call-name')).toContainText('exports_check');
-        // Never the [object Object] bug for the error branch.
+        const activity = harness.locator('.chat-tool-call-timeline').last();
+        await expect(activity).toBeVisible();
+        await expect(activity.locator('.cinder-run-step-timeline__item')).toHaveAttribute(
+          'data-cinder-status',
+          status,
+        );
+        await expect(activity.locator('.cinder-run-step-timeline__label')).toContainText(
+          'exports_check',
+        );
         await expect(harness.locator('#harness-chat')).not.toContainText('[object Object]');
       } finally {
         await dispose();
@@ -1142,22 +1406,94 @@ test.describe('chat harness — tool calls', () => {
     try {
       await harness.locator('[data-testid="inject-tool"]').click();
 
-      const activity = harness.locator('.tool-call-group').last();
+      const activity = harness.locator('.chat-tool-call-timeline').last();
       await expect(activity).toBeVisible();
-      await expect(activity).toHaveAttribute('data-status', 'success');
-      await expect(activity.locator('.tool-call-name')).toContainText('exports_check');
+      await expect(activity.locator('.cinder-run-step-timeline__item')).toHaveAttribute(
+        'data-cinder-status',
+        'succeeded',
+      );
+      await expect(activity.locator('.cinder-run-step-timeline__label')).toContainText(
+        'exports_check',
+      );
 
-      // The grouped activity row is a transcript navigation target. A keyboard
-      // user must be able to reach its disclosure without a pointer-only path.
-      const header = activity.locator('.tool-call-header');
-      await expect(header).toBeVisible();
-      await header.focus();
-      await expect(header).toBeFocused();
+      const disclosure = activity.getByRole('button', { name: 'Arguments' });
+      await expect(disclosure).toBeVisible();
+      await disclosure.focus();
+      await expect(disclosure).toBeFocused();
       await page.keyboard.press('Enter');
-      await expect(activity.locator('.tool-call-details')).toBeVisible();
-      await expect(activity.locator('.tool-call-details')).toContainText('@corvidae/cinder');
+      const argumentsPanel = activity.getByRole('region', { name: 'Arguments' });
+      await expect(argumentsPanel).toBeVisible();
+      await expect(argumentsPanel).toContainText('@corvidae/cinder');
       await page.keyboard.press('Enter');
-      await expect(activity.locator('.tool-call-details')).toHaveCount(0);
+      await expect(argumentsPanel).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('keeps standalone tool activity IDs unique and preserves one keyboard stop per row', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser);
+    try {
+      await appendToolScenario(page, 'duplicate-call-id');
+
+      const standaloneTimelines = harness.locator('.chat-message .chat-tool-call-timeline');
+      await expect(standaloneTimelines).toHaveCount(2);
+      const timelineIdentities = await standaloneTimelines.evaluateAll((elements) =>
+        elements.map((element) => ({
+          id: element.id,
+          labelledBy: element.getAttribute('aria-labelledby'),
+          headingId: element.querySelector('h3')?.id ?? '',
+        })),
+      );
+      expect(new Set(timelineIdentities.map(({ id }) => id)).size).toBe(timelineIdentities.length);
+      expect(new Set(timelineIdentities.map(({ headingId }) => headingId)).size).toBe(
+        timelineIdentities.length,
+      );
+      for (const identity of timelineIdentities) {
+        expect(identity.id).toContain('duplicate-occurrence-');
+        expect(identity.labelledBy).toBe(identity.headingId);
+      }
+
+      await appendToolScenario(page, 'standalone-navigation');
+      const beforeStandalone = harness
+        .locator('.chat-message')
+        .filter({ hasText: 'Before standalone tool activity.' });
+      await beforeStandalone.focus();
+      await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(() => activeNavigationRow(page))
+        .toMatchObject({
+          role: 'tool-call',
+          isTimeline: false,
+        });
+      await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(() => activeNavigationRow(page))
+        .toMatchObject({
+          role: 'assistant',
+        });
+
+      await setHarnessCustomMessageSnippets(page, false);
+      await appendToolScenario(page, 'grouped-navigation');
+      const beforeGrouped = harness
+        .locator('.chat-message')
+        .filter({ hasText: 'Before grouped tool activity.' });
+      await beforeGrouped.focus();
+      await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(() => activeNavigationRow(page))
+        .toMatchObject({
+          isTimeline: true,
+          toolCallCount: '2',
+        });
+      await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(() => activeNavigationRow(page))
+        .toMatchObject({
+          role: 'assistant',
+        });
     } finally {
       await dispose();
     }

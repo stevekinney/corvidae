@@ -37,7 +37,7 @@ function createViewport(): {
   const messages = ['first', 'second', 'third'].map((id) => {
     const element = document.createElement('article');
     element.id = id;
-    element.className = 'chat-message';
+    element.className = 'chat-message chat-navigation-row';
     element.tabIndex = -1;
     element.scrollIntoView = () => {
       scrollIntoViewCalls.push(id);
@@ -162,6 +162,42 @@ describe('useChatKeyboardNav', () => {
     expect(up.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(messages[1]!);
     expect(scrollIntoViewCalls).toEqual(['third', 'second']);
+  });
+
+  test('Arrow keys skip nested tool timelines but keep top-level grouped timelines reachable', () => {
+    const { messages, scrollIntoViewCalls, viewport } = createViewport();
+    const nestedTimeline = document.createElement('section');
+    nestedTimeline.id = 'message-second-tool-call-shared';
+    nestedTimeline.className = 'chat-tool-call-timeline chat-navigation-row';
+    nestedTimeline.tabIndex = -1;
+    messages[1]!.append(nestedTimeline);
+
+    const groupedTimeline = document.createElement('section');
+    groupedTimeline.id = 'message-grouped-tool-call';
+    groupedTimeline.className = 'chat-tool-call-timeline chat-navigation-row';
+    groupedTimeline.tabIndex = -1;
+    groupedTimeline.scrollIntoView = () => {
+      scrollIntoViewCalls.push('grouped');
+    };
+    viewport.insertBefore(groupedTimeline, messages[2]!);
+
+    const nav = useChatKeyboardNav({
+      onJumpToLatest: () => {},
+      getScrollBehavior: () => 'auto',
+    });
+
+    messages[1]!.focus();
+    const down = keyEvent('ArrowDown');
+    nav.handleKeyDown(down, viewport);
+
+    expect(down.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(groupedTimeline);
+    expect(document.activeElement).not.toBe(nestedTimeline);
+
+    const next = keyEvent('ArrowDown');
+    nav.handleKeyDown(next, viewport);
+    expect(document.activeElement).toBe(messages[2]!);
+    expect(scrollIntoViewCalls).toEqual(['grouped', 'third']);
   });
 
   test('arrow nav is suppressed when focus is inside a child element (not the message article itself)', () => {

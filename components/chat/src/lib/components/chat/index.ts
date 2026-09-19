@@ -177,7 +177,6 @@ export {
   ChatMessage,
   MessageAttachments,
   MessageContent,
-  ToolCallGroup,
 } from './message/index.ts';
 
 // Container — internal implementation utilities. The inner `Chat`

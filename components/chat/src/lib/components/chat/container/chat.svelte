@@ -1074,6 +1074,19 @@
     return element.id.slice('message-'.length);
   }
 
+  function isRenderedNavigationRow(element: HTMLElement): boolean {
+    if (!element.matches('.chat-navigation-row')) return false;
+    const owningMessage = element.closest('.chat-message');
+    return owningMessage === null || owningMessage === element;
+  }
+
+  function renderedNavigationRows(): HTMLElement[] {
+    if (!viewport) return [];
+    return Array.from(viewport.querySelectorAll<HTMLElement>('.chat-navigation-row')).filter(
+      isRenderedNavigationRow,
+    );
+  }
+
   function renderedMessageById(messageId: string): HTMLElement | null {
     return viewport?.querySelector<HTMLElement>(`#message-${CSS.escape(messageId)}`) ?? null;
   }
@@ -1082,9 +1095,7 @@
     if (!viewport) return null;
 
     const viewportRect = viewport.getBoundingClientRect();
-    for (const message of viewport.querySelectorAll<HTMLElement>(
-      '.chat-message, .chat-tool-call-timeline',
-    )) {
+    for (const message of renderedNavigationRows()) {
       const messageId = messageIdFromElement(message);
       if (!messageId) continue;
 
@@ -1125,7 +1136,7 @@
     if (!isVirtualized || !viewport) return false;
     const activeElement =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (!activeElement?.matches('.chat-message, .chat-tool-call-timeline')) return false;
+    if (!activeElement || !isRenderedNavigationRow(activeElement)) return false;
 
     const currentMessageId = messageIdFromElement(activeElement);
     if (!currentMessageId) return false;

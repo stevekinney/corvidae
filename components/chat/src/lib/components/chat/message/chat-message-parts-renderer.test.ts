@@ -158,7 +158,7 @@ describe('renderer — per-part rendering', () => {
     expect(container.querySelector('[data-cinder-unhandled-part]')).not.toBeNull();
   });
 
-  test('renders a tool-call part through the tool-call group', () => {
+  test('renders a tool-call part through the tool-call timeline', () => {
     const { container } = render(ChatMessagePartsRenderer, {
       props: {
         parts: [
@@ -170,7 +170,7 @@ describe('renderer — per-part rendering', () => {
         ],
       },
     });
-    expect(container.querySelector('.tool-call-group')).not.toBeNull();
+    expect(container.querySelector('.chat-tool-call-timeline')).not.toBeNull();
     expect(container.textContent).toContain('lookup');
   });
 
@@ -479,7 +479,7 @@ describe('renderer — stable DOM identity', () => {
       props: { initialParts: [{ type: 'tool-call', key: 'm:tool-call:c1', pair }] },
     }) as FixtureInstance;
 
-    const before = target.querySelector('.tool-call-group')!;
+    const before = target.querySelector('.chat-tool-call-timeline')!;
     expect(before).not.toBeNull();
     before.setAttribute('data-identity-probe', 'kept');
 
@@ -493,7 +493,7 @@ describe('renderer — stable DOM identity', () => {
     ]);
     flushSync();
 
-    const after = target.querySelector('.tool-call-group');
+    const after = target.querySelector('.chat-tool-call-timeline');
     expect(after?.getAttribute('data-identity-probe')).toBe('kept');
     expect(after).toBe(before);
 

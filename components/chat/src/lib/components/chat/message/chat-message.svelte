@@ -425,6 +425,7 @@
              of this body div, matching the historical structure. -->
         <ChatMessagePartsRenderer
           parts={bodyParts}
+          messageId={message.id}
           {messagePart}
           {markdownNode}
           expanded={toolCallExpanded}
@@ -450,7 +451,7 @@
     {#if imageParts.length > 0}
       <!-- Images render through the grouped default path (the attachment grid
            lays out by total count); they do not flow through `messagePart`. -->
-      <ChatMessagePartsRenderer parts={imageParts} />
+      <ChatMessagePartsRenderer parts={imageParts} messageId={message.id} />
     {/if}
 
     {#if isFailed && onretry}
@@ -680,7 +681,7 @@
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
-  /* When a tool-call has a paired result, ToolCallGroup is the canonical card.
+  /* When a tool-call has a paired result, ToolCallTimeline is the canonical card.
    * Strip the outer bubble shell (background, border, padding, role label, footer)
    * so the unified card is the only visible boundary. The wrapper expands
    * within the same readability cap as regular bubbles — chat bubbles hug

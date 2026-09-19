@@ -1,7 +1,7 @@
 /**
  * Regression guards for how `ChatMessage` renders tool-call messages through
  * the parts spine. The contract that matters: a tool-call message renders a
- * `ToolCallGroup` card ONLY when a resolved pair is supplied (mirroring the
+ * `ToolCallTimeline` card when a resolved pair is supplied (mirroring the
  * original `isToolCall && toolPair` guard). A standalone `<ChatMessage>` given
  * an empty `toolCallPairs` must fall through to the plain text body — NOT a
  * pending card — exactly as before the parts refactor.
@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { createRawSnippet, tick } from 'svelte';
 
 import { setupHappyDom } from '@corvidae/testing';
+import { injectStyles } from '../../../test/css.ts';
 import type { Message, ToolCallPair } from '../conversation-model.ts';
 import type { ToolCallPresentation } from '../utilities/types.ts';
 
@@ -23,10 +24,9 @@ const { render, cleanup, fireEvent } = await import('@testing-library/svelte');
 const { default: ChatMessage } = await import('./chat-message.svelte');
 const { default: ToolCallTimeline } = await import('./tool-call-timeline.svelte');
 
-afterEach(() => {
-  cleanup();
-  document.body.replaceChildren();
-});
+const cinderSrOnlyCss = await Bun.file(
+  new URL('../../../../../../cinder/src/styles/utilities.css', import.meta.url),
+).text();
 
 function toolCallMessage(): Message {
   return {
@@ -54,31 +54,25 @@ function userMessage(overrides?: Partial<Message>): Message {
   };
 }
 
+function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
+  const button = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+    (candidate) => candidate.textContent?.includes(text),
+  );
+  expect(button).toBeDefined();
+  return button!;
+}
+
 async function clickAndFlush(element: HTMLElement): Promise<void> {
-  element.click();
+  await fireEvent.click(element);
   await tick();
 }
 
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+});
+
 describe('ChatMessage — tool-call rendering', () => {
-  test('uses the warning foreground token for action-required status text', () => {
-    const source = readFileSync(join(import.meta.dir, 'tool-call-group.svelte'), 'utf8');
-    expect(source).toMatch(
-      /\.tool-call-action\s*\{[\s\S]*?color:\s*var\(--cinder-status-warning-text\);/u,
-    );
-  });
-
-  test('activity icons animate only while active and stop under reduced motion', () => {
-    const source = readFileSync(join(import.meta.dir, 'tool-call-group.svelte'), 'utf8');
-    expect(source).toMatch(/\.tool-call-activity-icon\[data-active\][\s\S]*?animation:/u);
-    expect(source).toMatch(/prefers-reduced-motion:\s*reduce[\s\S]*?animation:\s*none/u);
-  });
-
-  test('activity icons require the owning stream to remain active', () => {
-    const source = readFileSync(join(import.meta.dir, 'tool-call-group.svelte'), 'utf8');
-    expect(source).toContain('activityActive?: boolean');
-    expect(source).toContain("activityActive && presentation?.tense === 'present'");
-  });
-
   test('threads owning stream activity through message tool rendering', () => {
     const messageSource = readFileSync(join(import.meta.dir, 'chat-message.svelte'), 'utf8');
     const rendererSource = readFileSync(
@@ -91,13 +85,13 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(messageSource).toContain('{toolActivityActive}');
     expect(rendererSource).toContain('activityActive={toolActivityActive}');
     expect(partSource).toContain('{activityActive}');
+    expect(partSource).toContain('{onToggle}');
   });
 
-  test('keys repeated presented tool disclosure state by row occurrence', () => {
+  test('tool activity renders through the retained timeline, not the obsolete group component', () => {
     const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
-    expect(source).toContain('expandedCalls.has(`${index}:${pair.call.id}`)');
-    expect(source).toContain('toggleCall(`${index}:${pair.call.id}`)');
-    expect(source).toContain('occurrenceKey={`${navigationMessageId}-${index}-${pair.call.id}`}');
+    expect(source).toContain('<RunStepTimeline {steps} label={callsLabel} />');
+    expect(source).not.toContain('tool-call-group');
   });
 
   test('renders custom message status inside the semantic article while timestamps stay below the bubble', () => {
@@ -164,7 +158,7 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(save?.getAttribute('aria-label')).toBe('Save & Resend');
   });
 
-  test('renders the ToolCallGroup card when a resolved pair is supplied', () => {
+  test('renders the ToolCallTimeline card when a resolved pair is supplied', () => {
     const message = toolCallMessage();
     const { container } = render(ChatMessage, {
       props: {
@@ -172,12 +166,14 @@ describe('ChatMessage — tool-call rendering', () => {
         toolCallPairs: [{ call: message.toolCall! }],
       },
     });
-    expect(container.querySelector('.tool-call-group')).not.toBeNull();
-    expect(container.querySelector('.tool-call-name')?.textContent).toBe('lookup');
-    expect(container.querySelector('.tool-call-header')?.getAttribute('aria-label')).toContain(
+    expect(container.querySelector('.chat-tool-call-timeline')).not.toBeNull();
+    expect(container.querySelector('.cinder-run-step-timeline__label')?.textContent).toBe('lookup');
+    expect(
+      container.querySelector('[aria-live="polite"][aria-atomic="true"]')?.textContent,
+    ).toContain('lookup: Pending');
+    expect(container.querySelector('.cinder-run-step-timeline__status')?.textContent).toContain(
       'Pending',
     );
-    expect(container.textContent).toContain('lookup');
   });
 
   test('announces standalone tool status transitions', async () => {
@@ -205,9 +201,69 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(liveRegion?.textContent).toContain('lookup: Complete');
   });
 
+  test('presentation metadata changes the label and active icon without changing renderer', () => {
+    const pair: ToolCallPair = { call: { id: 'search-1', name: 'search_web', arguments: {} } };
+    const describeToolCall = (): ToolCallPresentation => ({
+      verb: 'Searching',
+      tense: 'present',
+      detail: 'records',
+      kind: 'search',
+    });
+    const active = render(ToolCallTimeline, {
+      props: { pairs: [pair], describeToolCall, activityActive: true },
+    });
+    expect(active.container.querySelector('.chat-tool-call-timeline')).not.toBeNull();
+    expect(active.container.querySelector('.cinder-run-step-timeline__label')?.textContent).toBe(
+      'Searching records',
+    );
+    expect(active.container.querySelector('[data-cinder-tool-activity-active]')).not.toBeNull();
+    cleanup();
+
+    const inactive = render(ToolCallTimeline, {
+      props: { pairs: [pair], describeToolCall, activityActive: false },
+    });
+    expect(inactive.container.querySelector('[data-cinder-tool-activity-active]')).toBeNull();
+  });
+
+  test('result payloads keep ordinary strings as text and structured JSON as code', async () => {
+    const textResult = render(ToolCallTimeline, {
+      props: {
+        pairs: [
+          {
+            call: { id: 'string-result', name: 'read_file', arguments: {} },
+            result: { callId: 'string-result', outcome: 'success', content: 'plain file contents' },
+          },
+        ],
+      },
+    });
+    await clickAndFlush(buttonByText(textResult.container, 'Result'));
+    expect(
+      textResult.container.querySelector('.cinder-run-step-timeline__detail-content'),
+    ).not.toBeNull();
+    expect(textResult.container.querySelector('.cinder-code-block')).toBeNull();
+    expect(textResult.container.textContent).toContain('plain file contents');
+    cleanup();
+
+    const jsonResult = render(ToolCallTimeline, {
+      props: {
+        pairs: [
+          {
+            call: { id: 'json-result', name: 'lookup', arguments: {} },
+            result: { callId: 'json-result', outcome: 'success', content: { ok: true } },
+          },
+        ],
+      },
+    });
+    await clickAndFlush(buttonByText(jsonResult.container, 'Result'));
+    expect(jsonResult.container.querySelector('.cinder-code-block')).not.toBeNull();
+    expect(jsonResult.container.querySelector('.cinder-code-block__language')).toBeNull();
+    expect(jsonResult.container.textContent).toContain('"ok"');
+  });
+
   test('grouped repeated call ids remain unique and preserve structured error details', async () => {
     const { container } = render(ToolCallTimeline, {
       props: {
+        messageId: 'grouped-tools',
         describeToolCall: (pair: ToolCallPair) => ({
           verb: 'Checking',
           tense: 'present',
@@ -234,25 +290,24 @@ describe('ChatMessage — tool-call rendering', () => {
       },
     });
 
-    const steps = container.querySelectorAll('[role="listitem"]');
-    const timeline = container.querySelector('section');
+    expect(container.querySelectorAll('.cinder-run-step-timeline__item')).toHaveLength(2);
+    const disclosureButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'));
+    expect(disclosureButtons.map((button) => button.textContent?.trim())).toEqual([
+      'Arguments',
+      'Arguments',
+      'Error',
+    ]);
+    for (const button of disclosureButtons) await clickAndFlush(button);
+    const controls = disclosureButtons.map((button) => button.getAttribute('aria-controls'));
+    expect(new Set(controls).size).toBe(disclosureButtons.length);
+    expect(controls.every((id) => id?.includes('grouped-tools'))).toBe(true);
     const heading = container.querySelector('h3');
-    expect(steps).toHaveLength(2);
-    const headers = container.querySelectorAll('.tool-call-header');
-    for (const header of headers) await fireEvent.click(header);
-    expect(new Set([...headers].map((header) => header.getAttribute('aria-controls'))).size).toBe(
-      2,
-    );
-    expect(timeline?.getAttribute('aria-labelledby')).toBe(heading?.id);
+    expect(container.querySelector('section')?.getAttribute('aria-labelledby')).toBe(heading?.id);
     expect(heading?.textContent).toContain('Called 2 tools');
     expect(container.textContent).toContain('Network unavailable');
   });
 
   describe('counted strings agree with the count', () => {
-    // A single delegation is the ordinary case for a subagent tool, not an
-    // edge case, and the heading is in the document outline while the list label
-    // is an accessible name, so both are read aloud. Both used to say "1 tools" /
-    // "1 consecutive tool calls".
     const pair: ToolCallPair = { call: { id: 'only', name: 'lookup', arguments: {} } };
     const second: ToolCallPair = { call: { id: 'other', name: 'fetch', arguments: {} } };
     const describeToolCall = (): ToolCallPresentation => ({
@@ -267,7 +322,6 @@ describe('ChatMessage — tool-call rendering', () => {
         props: { pairs: [pair], messageId: 'count-one', describeToolCall },
       });
       expect(one.container.querySelector('h3')?.textContent).toContain('Called 1 tool');
-      // Not merely "contains 1 tool" — that is also true of "1 tools".
       expect(one.container.querySelector('h3')?.textContent).not.toContain('1 tools');
       cleanup();
 
@@ -281,16 +335,16 @@ describe('ChatMessage — tool-call rendering', () => {
       const one = render(ToolCallTimeline, {
         props: { pairs: [pair], messageId: 'label-one', describeToolCall },
       });
-      const list = one.container.querySelector('[role="list"]');
+      const list = one.container.querySelector('ol.cinder-run-step-timeline');
       expect(list?.getAttribute('aria-label')).toBe('1 consecutive tool call');
       cleanup();
 
       const two = render(ToolCallTimeline, {
         props: { pairs: [pair, second], messageId: 'label-two', describeToolCall },
       });
-      expect(two.container.querySelector('[role="list"]')?.getAttribute('aria-label')).toBe(
-        '2 consecutive tool calls',
-      );
+      expect(
+        two.container.querySelector('ol.cinder-run-step-timeline')?.getAttribute('aria-label'),
+      ).toBe('2 consecutive tool calls');
     });
   });
 
@@ -308,15 +362,21 @@ describe('ChatMessage — tool-call rendering', () => {
     const second = render(ToolCallTimeline, {
       props: { pairs: [pair], messageId: 'timeline-two', describeToolCall },
     });
-    const firstHeader = first.container.querySelector<HTMLElement>('.tool-call-header')!;
-    const secondHeader = second.container.querySelector<HTMLElement>('.tool-call-header')!;
-    await fireEvent.click(firstHeader);
-    await fireEvent.click(secondHeader);
-    const firstControls = firstHeader.getAttribute('aria-controls');
-    const secondControls = secondHeader.getAttribute('aria-controls');
-    expect(firstControls).toBe('tool-call-details-timeline-one-0-reused-panel');
-    expect(secondControls).toBe('tool-call-details-timeline-two-0-reused-panel');
+    const firstButton = buttonByText(first.container, 'Arguments');
+    const secondButton = buttonByText(second.container, 'Arguments');
+    await clickAndFlush(firstButton);
+    await clickAndFlush(secondButton);
+    const firstControls = firstButton.getAttribute('aria-controls');
+    const secondControls = secondButton.getAttribute('aria-controls');
+    expect(firstControls).toContain('timeline-one-0-reused-arguments-panel');
+    expect(secondControls).toContain('timeline-two-0-reused-arguments-panel');
     expect(firstControls).not.toBe(secondControls);
+    expect(
+      firstControls ? first.container.ownerDocument.getElementById(firstControls) : null,
+    ).not.toBeNull();
+    expect(
+      secondControls ? second.container.ownerDocument.getElementById(secondControls) : null,
+    ).not.toBeNull();
   });
 
   test('grouped action-required results render null payloads explicitly', async () => {
@@ -331,15 +391,11 @@ describe('ChatMessage — tool-call rendering', () => {
       },
     });
 
-    await fireEvent.click(
-      Array.from(container.querySelectorAll('button')).find((button) =>
-        button.textContent?.includes('Result'),
-      )!,
-    );
+    await clickAndFlush(buttonByText(container, 'Result'));
     expect(container.textContent).toContain('null');
   });
 
-  test('tool-call card is collapsed by default (arguments hidden)', () => {
+  test('tool-call card is collapsed by default (payload bodies hidden)', () => {
     const message = toolCallMessage();
     const { container } = render(ChatMessage, {
       props: {
@@ -352,20 +408,13 @@ describe('ChatMessage — tool-call rendering', () => {
         ],
       },
     });
-    // The card and its header render, but the disclosed details region does not
-    // until the card is expanded — so a large payload never dominates the
-    // transcript on first render.
-    expect(container.querySelector('.tool-call-group')).not.toBeNull();
-    expect(container.querySelector('.tool-call-details')).toBeNull();
-    expect(container.textContent).not.toContain('Arguments');
-    const header = container.querySelector('.tool-call-header');
-    expect(header?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('.chat-tool-call-timeline')).not.toBeNull();
+    expect(container.querySelector('.cinder-collapsible__panel')).toBeNull();
+    expect(container.textContent).not.toContain('"ok"');
+    expect(buttonByText(container, 'Arguments').getAttribute('aria-expanded')).toBe('false');
   });
 
   test('tool-call disclosure is decoupled from markdown truncation (long text stays full)', () => {
-    // A long assistant message keeps its full markdown body by default even
-    // though tool-call cards default to collapsed — the two disclosures are
-    // independent. `expanded` (markdown "Show more/less") still defaults true.
     const longText = 'x'.repeat(2000);
     const message: Message = {
       id: 'assistant-1',
@@ -378,17 +427,11 @@ describe('ChatMessage — tool-call rendering', () => {
     };
     const { container } = render(ChatMessage, { props: { message } });
     expect(container.textContent).toContain(longText);
-    // The collapse control offers "Show less" (i.e. currently expanded), not
-    // "Show more" — markdown truncation was untouched by the tool-call change.
     const control = container.querySelector('.chat-message-expand');
     expect(control?.textContent?.trim()).toBe('Show less');
   });
 
-  test('a standalone ChatMessage (no ontoolcalltoggle) can still expand its tool-call card', async () => {
-    // ChatMessage is exported and usable outside <Chat>. Before this fix,
-    // toolCallExpanded/ontoolcalltoggle had no internal fallback, so a
-    // standalone consumer's click on the header called a no-op and the card
-    // could never be opened — regression guard for that.
+  test('a standalone ChatMessage (no ontoolcalltoggle) can still expand its tool-call details', async () => {
     const message = toolCallMessage();
     const { container } = render(ChatMessage, {
       props: {
@@ -396,18 +439,14 @@ describe('ChatMessage — tool-call rendering', () => {
         toolCallPairs: [{ call: message.toolCall! }],
       },
     });
-    const header = container.querySelector<HTMLButtonElement>('.tool-call-header');
-    expect(header?.getAttribute('aria-expanded')).toBe('false');
-    await clickAndFlush(header!);
-    expect(header?.getAttribute('aria-expanded')).toBe('true');
-    expect(container.querySelector('.tool-call-details')).not.toBeNull();
+    const button = buttonByText(container, 'Arguments');
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    await clickAndFlush(button);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('.cinder-collapsible__panel')).not.toBeNull();
   });
 
-  test('toggling a tool-call card fires onExpandedChange, matching the pre-split contract', async () => {
-    // Before tool-call disclosure was split out from the unified `expanded`
-    // state, toggling ANY disclosure on the message fired onExpandedChange.
-    // Regression guard: that contract must hold for tool-call cards too, not
-    // just markdown truncation.
+  test('toggling a tool-call detail fires onExpandedChange, matching the pre-split contract', async () => {
     const message = toolCallMessage();
     const changes: boolean[] = [];
     const { container } = render(ChatMessage, {
@@ -417,9 +456,34 @@ describe('ChatMessage — tool-call rendering', () => {
         onExpandedChange: (expanded: boolean) => changes.push(expanded),
       },
     });
-    const header = container.querySelector<HTMLButtonElement>('.tool-call-header');
-    await fireEvent.click(header!);
+    await clickAndFlush(buttonByText(container, 'Arguments'));
     expect(changes).toEqual([true]);
+  });
+
+  test('status announcer keeps the transferred cinder-sr-only clipping contract', () => {
+    const removeStyles = injectStyles(cinderSrOnlyCss);
+    try {
+      const { container } = render(ToolCallTimeline, {
+        props: { pairs: [{ call: { id: 'note-1', name: 'remember_note', arguments: {} } }] },
+      });
+      const announcer = container.querySelector('[aria-live="polite"]');
+      expect(announcer).not.toBeNull();
+      expect(announcer?.textContent).toContain('remember_note');
+      expect(announcer?.classList.contains('cinder-sr-only')).toBe(true);
+      expect(announcer?.classList.contains('sr-only')).toBe(false);
+
+      const computed = getComputedStyle(announcer as Element);
+      expect(computed.display).not.toBe('none');
+      expect(computed.visibility).not.toBe('hidden');
+      expect(computed.position).toBe('absolute');
+      expect(computed.width).toBe('1px');
+      expect(computed.height).toBe('1px');
+      expect(computed.overflow).toBe('hidden');
+      expect(computed.clip).toBe('rect(0, 0, 0, 0)');
+      expect(computed.whiteSpace).toBe('nowrap');
+    } finally {
+      removeStyles();
+    }
   });
 
   test('falls through to the text body when no pair is supplied (regression guard)', () => {
@@ -427,9 +491,7 @@ describe('ChatMessage — tool-call rendering', () => {
     const { container } = render(ChatMessage, {
       props: { message, toolCallPairs: [] },
     });
-    // No card — the original behavior for an unpaired tool-call message was the
-    // plain text body, not a pending ToolCallGroup.
-    expect(container.querySelector('.tool-call-group')).toBeNull();
+    expect(container.querySelector('.chat-tool-call-timeline')).toBeNull();
     expect(container.querySelector('.message-content')).not.toBeNull();
     expect(container.textContent).toContain('raw tool-call text body');
   });

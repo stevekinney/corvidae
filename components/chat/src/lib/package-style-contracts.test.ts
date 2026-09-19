@@ -33,7 +33,7 @@ describe('Chat package style contracts', () => {
     const auditedFiles = [
       join(componentsRoot, 'chat', 'input', 'chat-input.svelte'),
       join(componentsRoot, 'chat', 'message', 'chat-message.svelte'),
-      join(componentsRoot, 'chat', 'message', 'tool-call-group.svelte'),
+      join(componentsRoot, 'chat', 'message', 'tool-call-timeline.svelte'),
     ];
     const forbiddenStatusMixPattern =
       /color-mix\((?:(?!;).|\r|\n)*?var\(\s*--cinder-(info|success|warning|danger)\s*(?:[,)\s])/m;

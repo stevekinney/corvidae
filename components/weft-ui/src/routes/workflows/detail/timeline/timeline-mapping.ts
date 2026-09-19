@@ -197,13 +197,19 @@ export function stepNumberFromRunStepId(id: string): number | null {
 
 function buildDetails(entry: WorkflowTimelineEntry): RunStepDetail[] {
   const details: RunStepDetail[] = [
-    { id: `${timelineStepId(entry.step)}-input`, label: 'Input', content: entry.inputSummary },
+    {
+      id: `${timelineStepId(entry.step)}-input`,
+      label: 'Input',
+      type: 'text',
+      content: entry.inputSummary,
+    },
   ];
 
   if (entry.outputSummary !== undefined) {
     details.push({
       id: `${timelineStepId(entry.step)}-output`,
       label: entry.status === 'failed' || entry.status === 'timed-out' ? 'Error' : 'Output',
+      type: 'text',
       content: entry.outputSummary,
     });
   }
@@ -212,6 +218,7 @@ function buildDetails(entry: WorkflowTimelineEntry): RunStepDetail[] {
     details.push({
       id: `${timelineStepId(entry.step)}-coordination-note`,
       label: 'About this step',
+      type: 'text',
       content: 'The timeline API did not include per-branch detail for this coordinated operation.',
     });
   }
@@ -236,11 +243,16 @@ function branchStepDetails(
 ): RunStepDetail[] {
   const id = `${timelineStepId(entry.step)}-branch-${String(detail.index)}`;
   const details: RunStepDetail[] = [
-    { id: `${id}-operation-id`, label: 'Operation ID', content: detail.operationId },
-    { id: `${id}-operation-type`, label: 'Operation type', content: detail.operationType },
+    { id: `${id}-operation-id`, label: 'Operation ID', type: 'text', content: detail.operationId },
+    {
+      id: `${id}-operation-type`,
+      label: 'Operation type',
+      type: 'text',
+      content: detail.operationType,
+    },
   ];
   if (detail.errorSummary !== undefined) {
-    details.push({ id: `${id}-error`, label: 'Error', content: detail.errorSummary });
+    details.push({ id: `${id}-error`, label: 'Error', type: 'text', content: detail.errorSummary });
   }
   return details;
 }

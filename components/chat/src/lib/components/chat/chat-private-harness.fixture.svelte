@@ -51,8 +51,9 @@
   // mirrors of behavior the wired callbacks already surface).
 
   // --- Chat instance (for the imperative streaming + scroll API) ---
-  // Plain `let`: only read via `chat?.method()` calls, never reactively.
-  let chat: ReturnType<typeof Chat> | undefined;
+  // `$state` avoids Svelte's non-reactive bind:this warning while this remains
+  // read only by imperative `chat?.method()` calls.
+  let chat = $state<ReturnType<typeof Chat> | undefined>();
 
   // --- Conversation state (immutable snapshots via the cinder/chat builders) ---
   let conversation = $state<ConversationHistory>(createConversation({ id: 'harness' }));
@@ -75,6 +76,7 @@
   let readReceipts = $state<Map<string, ReadReceipt> | undefined>(undefined);
   let directTypingParticipants = $state<TypingParticipant[] | undefined>(undefined);
   let adapterEnabled = $state(false);
+  let customMessageSnippets = $state(true);
   let adapterHandlers: ChatPushHandlers | undefined;
 
   // --- Reply controls ---
@@ -454,8 +456,19 @@
     width?: number;
     height?: number;
   };
+  type ToolScenario =
+    | 'pending'
+    | 'text-success'
+    | 'json-success'
+    | 'grouped'
+    | 'duplicate-call-id'
+    | 'standalone-navigation'
+    | 'grouped-navigation';
+
   type ChatHarnessWindow = Window & {
     corvidaeChatHarnessAppendImages?: (images: HarnessImageContent[]) => void;
+    corvidaeChatHarnessAppendToolScenario?: (scenario: ToolScenario) => void;
+    corvidaeChatHarnessSetCustomMessageSnippets?: (enabled: boolean) => void;
     corvidaeChatHarnessUseAdapter?: () => void;
     corvidaeChatHarnessHoldNextFirstStreamToken?: () => void;
     corvidaeChatHarnessPushTypingSnapshot?: (participants: TypingParticipant[]) => void;
@@ -466,6 +479,12 @@
 
   const harnessAdapter: ChatAdapter = {
     sendMessage: async () => {},
+    describeToolCall: (toolCall, result) => ({
+      verb: result?.outcome === 'success' ? 'Checked' : 'Checking',
+      tense: result?.outcome === 'success' ? 'past' : 'present',
+      detail: toolCall.name,
+      kind: 'search',
+    }),
     subscribe: (_conversationId, handlers) => {
       adapterHandlers = handlers;
       return () => {
@@ -485,6 +504,182 @@
     };
   }
 
+  function appendToolScenario(scenario: ToolScenario): void {
+    cancelPending('discard');
+
+    if (scenario === 'duplicate-call-id') {
+      const createdAt = '2026-01-01T12:00:00.000Z';
+      const sharedToolCallId = 'shared-occurrence-call';
+      const first: Message = {
+        id: 'duplicate-occurrence-one',
+        role: 'tool-call',
+        content: '',
+        position: 0,
+        createdAt,
+        metadata: {},
+        hidden: false,
+        toolCall: {
+          id: sharedToolCallId,
+          name: 'shared_identity_check',
+          arguments: { occurrence: 'first' },
+        },
+      };
+      const second: Message = {
+        ...first,
+        id: 'duplicate-occurrence-two',
+        position: 1,
+        toolCall: {
+          id: sharedToolCallId,
+          name: 'shared_identity_check',
+          arguments: { occurrence: 'second' },
+        },
+      };
+      conversation = {
+        schemaVersion: 4,
+        id: 'duplicate-tool-call-occurrences',
+        status: 'active',
+        metadata: {},
+        ids: [first.id, second.id],
+        messages: { [first.id]: first, [second.id]: second },
+        createdAt,
+        updatedAt: createdAt,
+      };
+      return;
+    }
+
+    if (scenario === 'standalone-navigation') {
+      conversation = appendMessages(
+        createConversation({ id: 'standalone-tool-navigation' }),
+        { role: 'user', content: 'Before standalone tool activity.' },
+        {
+          role: 'tool-call',
+          content: '',
+          toolCall: {
+            id: `navigation-standalone-${crypto.randomUUID()}`,
+            name: 'standalone_navigation_check',
+            arguments: { step: 'standalone' },
+          },
+        },
+        { role: 'assistant', content: 'After standalone tool activity.' },
+      );
+      return;
+    }
+
+    if (scenario === 'grouped-navigation') {
+      const firstCallId = `navigation-grouped-first-${crypto.randomUUID()}`;
+      const secondCallId = `navigation-grouped-second-${crypto.randomUUID()}`;
+      conversation = appendMessages(
+        createConversation({ id: 'grouped-tool-navigation' }),
+        { role: 'user', content: 'Before grouped tool activity.' },
+        {
+          role: 'tool-call',
+          content: '',
+          toolCall: {
+            id: firstCallId,
+            name: 'grouped_navigation_one',
+            arguments: { step: 1 },
+          },
+        },
+        {
+          role: 'tool-call',
+          content: '',
+          toolCall: {
+            id: secondCallId,
+            name: 'grouped_navigation_two',
+            arguments: { step: 2 },
+          },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: { callId: firstCallId, outcome: 'success', content: { status: 'ok' } },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: { callId: secondCallId, outcome: 'success', content: { status: 'ok' } },
+        },
+        { role: 'assistant', content: 'After grouped tool activity.' },
+      );
+      return;
+    }
+
+    const firstCallId = `scenario-${scenario}-${crypto.randomUUID()}`;
+    const firstCall = {
+      role: 'tool-call' as const,
+      content: '',
+      toolCall: {
+        id: firstCallId,
+        name: scenario === 'pending' ? 'pending_check' : 'exports_check',
+        arguments:
+          scenario === 'pending'
+            ? { package: '@corvidae/pending', phase: 'queued' }
+            : { package: '@corvidae/cinder', checks: ['exports', 'types'] },
+      },
+    };
+
+    if (scenario === 'pending') {
+      conversation = appendMessages(conversation, firstCall);
+      return;
+    }
+
+    if (scenario === 'text-success') {
+      conversation = appendMessages(conversation, firstCall, {
+        role: 'tool-result',
+        content: '',
+        toolResult: {
+          callId: firstCallId,
+          outcome: 'success' as const,
+          content: 'plain text result from the tool',
+        },
+      });
+      return;
+    }
+
+    const firstResult = {
+      role: 'tool-result' as const,
+      content: '',
+      toolResult: {
+        callId: firstCallId,
+        outcome: 'success' as const,
+        content: { status: 'ok', package: '@corvidae/cinder' },
+      },
+    };
+
+    if (scenario === 'json-success') {
+      conversation = appendMessages(conversation, firstCall, firstResult);
+      return;
+    }
+
+    const secondCallId = `scenario-${scenario}-${crypto.randomUUID()}`;
+    const secondCall = {
+      role: 'tool-call' as const,
+      content: '',
+      toolCall: {
+        id: secondCallId,
+        name: 'type_check',
+        arguments: ['components/chat', null],
+      },
+    };
+    const secondResult = {
+      role: 'tool-result' as const,
+      content: '',
+      toolResult: {
+        callId: secondCallId,
+        outcome: 'error' as const,
+        content: null,
+        error: {
+          code: 'typecheck_failed',
+          category: 'internal' as ToolErrorCategory,
+          retryable: false,
+          message: 'Type check failed for the chat package.',
+        },
+      },
+    };
+
+    conversation = appendMessages(conversation, firstCall, secondCall, firstResult, secondResult);
+  }
+
   function revokeSubmittedImageUrls(): void {
     for (const url of submittedImageUrls) URL.revokeObjectURL(url);
     submittedImageUrls.clear();
@@ -497,6 +692,10 @@
         role: 'user',
         content: images,
       });
+    };
+    harnessWindow.corvidaeChatHarnessAppendToolScenario = appendToolScenario;
+    harnessWindow.corvidaeChatHarnessSetCustomMessageSnippets = (enabled) => {
+      customMessageSnippets = enabled;
     };
     harnessWindow.corvidaeChatHarnessUseAdapter = () => {
       adapterEnabled = true;
@@ -513,6 +712,8 @@
     };
     return () => {
       delete harnessWindow.corvidaeChatHarnessAppendImages;
+      delete harnessWindow.corvidaeChatHarnessAppendToolScenario;
+      delete harnessWindow.corvidaeChatHarnessSetCustomMessageSnippets;
       delete harnessWindow.corvidaeChatHarnessUseAdapter;
       delete harnessWindow.corvidaeChatHarnessHoldNextFirstStreamToken;
       delete harnessWindow.corvidaeChatHarnessPushTypingSnapshot;
@@ -815,63 +1016,108 @@
        viewport-relative height keep it usable even when wrapped below the
        controls on a narrow viewport. -->
   <div style="flex: 3 1 24rem; min-width: 0; height: min(70vh, 42rem); min-height: 26rem;">
-    <Chat
-      bind:this={chat}
-      id="harness-chat"
-      {conversation}
-      {streaming}
-      {streamingStatus}
-      capabilities={{ attachments, search, copy, editing, retry }}
-      {surfaceMode}
-      {virtualized}
-      virtualizationEstimatedRowHeight={72}
-      virtualizationInitialHeight={480}
-      virtualizationOverscan={2}
-      {...emptyPromptsProp}
-      {...historyProps}
-      {...readReceiptProps}
-      typingParticipants={directTypingParticipants}
-      {...adapterProps}
-      onsubmit={handleSubmit}
-      onedit={handleEdit}
-      onretry={(messageId: string) => record('onretry', messageId)}
-      onstopgenerating={handleStopGenerating}
-      onjumptolatest={() => record('onjumptolatest')}
-      onscrollstatechange={(event: { atBottom: boolean }) =>
-        record('onscrollstatechange', { atBottom: event.atBottom })}
-      onunreadindicatorchange={(event: {
-        unreadCount: number;
-        newMessageIndicatorVisible: boolean;
-      }) => record('onunreadindicatorchange', event)}
-      onExpandedChange={(expanded: boolean) => record('onExpandedChange', { expanded })}
-      onattachmentadd={(attachment: { id: string }) => record('onattachmentadd', attachment.id)}
-      onattachmentremove={(attachment: { id: string }) =>
-        record('onattachmentremove', attachment.id)}
-      onattachmentfailure={(_file: File, error: string) => record('onattachmentfailure', error)}
-    >
-      {#snippet header()}
-        <div
-          data-testid="harness-header"
-          style="padding: 0.5rem 0.75rem; font-weight: var(--cinder-font-semibold);"
-        >
-          Harness conversation
-        </div>
-      {/snippet}
-      {#snippet messageActions({ message }: ChatRowContext)}
-        <Button
-          iconOnly={true}
-          label="Message action"
-          size="xs"
-          variant="ghost"
-          data-testid="harness-message-action"
-          data-message-id={message.id}
-        >
-          ★
-        </Button>
-      {/snippet}
-      {#snippet messageStatus({ message }: ChatRowContext)}
-        <span data-testid="harness-message-status" data-message-id={message.id}>·</span>
-      {/snippet}
-    </Chat>
+    {#if customMessageSnippets}
+      <Chat
+        bind:this={chat}
+        id="harness-chat"
+        {conversation}
+        {streaming}
+        {streamingStatus}
+        capabilities={{ attachments, search, copy, editing, retry }}
+        {surfaceMode}
+        {virtualized}
+        virtualizationEstimatedRowHeight={72}
+        virtualizationInitialHeight={480}
+        virtualizationOverscan={2}
+        {...emptyPromptsProp}
+        {...historyProps}
+        {...readReceiptProps}
+        typingParticipants={directTypingParticipants}
+        {...adapterProps}
+        onsubmit={handleSubmit}
+        onedit={handleEdit}
+        onretry={(messageId: string) => record('onretry', messageId)}
+        onstopgenerating={handleStopGenerating}
+        onjumptolatest={() => record('onjumptolatest')}
+        onscrollstatechange={(event: { atBottom: boolean }) =>
+          record('onscrollstatechange', { atBottom: event.atBottom })}
+        onunreadindicatorchange={(event: {
+          unreadCount: number;
+          newMessageIndicatorVisible: boolean;
+        }) => record('onunreadindicatorchange', event)}
+        onExpandedChange={(expanded: boolean) => record('onExpandedChange', { expanded })}
+        onattachmentadd={(attachment: { id: string }) => record('onattachmentadd', attachment.id)}
+        onattachmentremove={(attachment: { id: string }) =>
+          record('onattachmentremove', attachment.id)}
+        onattachmentfailure={(_file: File, error: string) => record('onattachmentfailure', error)}
+      >
+        {#snippet header()}
+          <div
+            data-testid="harness-header"
+            style="padding: 0.5rem 0.75rem; font-weight: var(--cinder-font-semibold);"
+          >
+            Harness conversation
+          </div>
+        {/snippet}
+        {#snippet messageActions({ message }: ChatRowContext)}
+          <Button
+            iconOnly={true}
+            label="Message action"
+            size="xs"
+            variant="ghost"
+            data-testid="harness-message-action"
+            data-message-id={message.id}
+          >
+            ★
+          </Button>
+        {/snippet}
+        {#snippet messageStatus({ message }: ChatRowContext)}
+          <span data-testid="harness-message-status" data-message-id={message.id}>·</span>
+        {/snippet}
+      </Chat>
+    {:else}
+      <Chat
+        bind:this={chat}
+        id="harness-chat"
+        {conversation}
+        {streaming}
+        {streamingStatus}
+        capabilities={{ attachments, search, copy, editing, retry }}
+        {surfaceMode}
+        {virtualized}
+        virtualizationEstimatedRowHeight={72}
+        virtualizationInitialHeight={480}
+        virtualizationOverscan={2}
+        {...emptyPromptsProp}
+        {...historyProps}
+        {...readReceiptProps}
+        typingParticipants={directTypingParticipants}
+        {...adapterProps}
+        onsubmit={handleSubmit}
+        onedit={handleEdit}
+        onretry={(messageId: string) => record('onretry', messageId)}
+        onstopgenerating={handleStopGenerating}
+        onjumptolatest={() => record('onjumptolatest')}
+        onscrollstatechange={(event: { atBottom: boolean }) =>
+          record('onscrollstatechange', { atBottom: event.atBottom })}
+        onunreadindicatorchange={(event: {
+          unreadCount: number;
+          newMessageIndicatorVisible: boolean;
+        }) => record('onunreadindicatorchange', event)}
+        onattachmentadd={(attachment: { id: string }) => record('onattachmentadd', attachment.id)}
+        onattachmentremove={(attachment: { id: string }) =>
+          record('onattachmentremove', attachment.id)}
+        onattachmentfailure={(_file: File, error: string) => record('onattachmentfailure', error)}
+      >
+        {#snippet header()}
+          <div
+            data-testid="harness-header"
+            style="padding: 0.5rem 0.75rem; font-weight: var(--cinder-font-semibold);"
+          >
+            Harness conversation
+          </div>
+        {/snippet}
+      </Chat>
+    {/if}
   </div>
 </div>

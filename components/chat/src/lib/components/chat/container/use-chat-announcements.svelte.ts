@@ -23,11 +23,15 @@ type ToolStatus = { name: string; status: string };
 const CONSUMER_ANNOUNCEMENT_CLEAR_DELAY_MS = 1000;
 
 function visibleToolCallIds(renderRows: readonly ChatRenderRow[]): Set<string> {
-  return new Set(
-    renderRows.flatMap((row) =>
-      row.type === 'tool-call-group' ? row.messages.map((message) => message.id) : [],
-    ),
-  );
+  const ids = new Set<string>();
+  for (const row of renderRows) {
+    if (row.type === 'tool-call-group') {
+      for (const message of row.messages) ids.add(message.id);
+    } else if (row.type === 'message' && row.message.role === 'tool-call') {
+      ids.add(row.message.id);
+    }
+  }
+  return ids;
 }
 
 function recordToolCall(

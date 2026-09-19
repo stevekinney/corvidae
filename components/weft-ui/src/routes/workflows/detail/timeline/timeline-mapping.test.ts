@@ -202,7 +202,9 @@ describe('mapTimelineToSteps', () => {
     const noteDetail = asStep(steps[0]).details?.find(
       (detail) => detail.label === 'About this step',
     );
-    expect(noteDetail?.content).toContain('did not include per-branch detail');
+    expect(noteDetail).toMatchObject({ type: 'text' });
+    if (noteDetail?.type !== 'text') throw new Error('Expected explanatory detail to be text.');
+    expect(noteDetail.content).toContain('did not include per-branch detail');
   });
 
   test('maps race branch keys, winner emphasis, loser settlement, and errors', () => {
@@ -253,6 +255,7 @@ describe('mapTimelineToSteps', () => {
     expect(branch.lanes[1]?.steps[0]?.details).toContainEqual({
       id: 'step-1-branch-1-error',
       label: 'Error',
+      type: 'text',
       content: '[REDACTED]',
     });
   });

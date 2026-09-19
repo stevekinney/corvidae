@@ -63,6 +63,14 @@ export type ChatMessagePartsRendererProps = {
   /** The ordered render parts for one message. */
   parts: ChatMessagePart[];
   /**
+   * Owning message identity for occurrence-scoped child IDs.
+   *
+   * Tool call IDs can be reused by separate message occurrences. The renderer
+   * forwards this ID to nested tool activity so its section/heading IDs stay
+   * unique without making the nested card a separate transcript navigation row.
+   */
+  messageId?: string | undefined;
+  /**
    * Optional per-part override. Applies to body parts (markdown, tool-call,
    * tool-result, tool-approval, reasoning). Image parts, step parts, and
    * suggestion parts always render through the grouped default paths; they are

@@ -218,9 +218,13 @@ children     RunStep[]        optional  Nested child-workflow steps rendered as 
 ### RunStepDetail shape
 
 ```
-id       string  required  Stable identity for this detail panel.
-label    string  required  Trigger label on the Collapsible header.
-content  string  required  Pre-formatted content shown inside the panel.
+id       string              required  Stable identity for this detail panel.
+label    string              required  Trigger label on the Collapsible header.
+type     "text" | "code"  required  Selects the detail renderer.
+content  string              required for text details. Pre-formatted content shown inside the panel.
+code     string              required for code details. CodeBlock content shown inside the panel.
+language string              optional  CodeBlock language for code details.
+languageLabelVisible boolean optional  Whether the CodeBlock language label is visible.
 ```
 
 ### RunStepLink shape

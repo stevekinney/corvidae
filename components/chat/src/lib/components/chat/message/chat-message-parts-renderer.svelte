@@ -17,6 +17,7 @@
 
   let {
     parts,
+    messageId,
     messagePart,
     markdownNode,
     expanded = false,
@@ -83,7 +84,7 @@
   {#if part.type === 'markdown'}
     <MarkdownPart {part} {markdownNode} />
   {:else if part.type === 'tool-call'}
-    <ToolCallPart {part} {expanded} {onToggle} activityActive={toolActivityActive} />
+    <ToolCallPart {part} {messageId} {expanded} {onToggle} activityActive={toolActivityActive} />
   {:else if part.type === 'tool-result'}
     <ToolResultPart {part} />
   {:else if part.type === 'tool-approval'}

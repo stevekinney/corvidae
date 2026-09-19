@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { formatGenerated } from './component-artifact-operations.ts';
@@ -86,5 +87,66 @@ describe('formatGenerated prettier resolution', () => {
       // expected
     }
     expect(result).toBeUndefined();
+  });
+
+  test('resolves prettier overrides per generated file in one component directory', async () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), 'cinder-format-generated-'));
+    const scriptPath = join(temporaryDirectory, 'probe.ts');
+    const operationsPath = join(
+      repositoryRoot,
+      'components/cinder/scripts/component-artifact-operations.ts',
+    );
+    const componentDirectory = join(
+      repositoryRoot,
+      'components/cinder/src/components/run-step-timeline',
+    );
+    const markdownInput =
+      '| Name | Description |\n' +
+      '| --- | --- |\n' +
+      '| `RunStepDetail` | A detail with enough prose to make Prettier want to wrap the table cell when proseWrap is not never. |\n';
+
+    writeFileSync(
+      scriptPath,
+      [
+        "import * as prettier from 'prettier';",
+        `import { formatGenerated } from ${JSON.stringify(operationsPath)};`,
+        `const componentDirectory = ${JSON.stringify(componentDirectory)};`,
+        `const markdownInput = ${JSON.stringify(markdownInput)};`,
+        'const jsonPath = `${componentDirectory}/run-step-timeline.schema.json`;',
+        'const markdownPath = `${componentDirectory}/README.md`;',
+        'await formatGenerated(\'{"b":2,"a":1}\', jsonPath);',
+        'const formattedMarkdown = await formatGenerated(markdownInput, markdownPath);',
+        'const markdownOptions = await prettier.resolveConfig(markdownPath);',
+        'const freshMarkdown = await prettier.format(markdownInput, { ...markdownOptions, filepath: markdownPath });',
+        'console.log(JSON.stringify({ formattedMarkdown, freshMarkdown }));',
+      ].join('\n'),
+    );
+
+    try {
+      const subprocess = Bun.spawn({
+        cmd: [process.execPath, scriptPath],
+        cwd: repositoryRoot,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: process.env,
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(subprocess.stdout).text(),
+        new Response(subprocess.stderr).text(),
+        subprocess.exited,
+      ]);
+
+      expect(stderr).toBe('');
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(stdout) as {
+        formattedMarkdown: string;
+        freshMarkdown: string;
+      };
+      expect(parsed.formattedMarkdown).toBe(parsed.freshMarkdown);
+      expect(parsed.formattedMarkdown).toContain('| Name | Description |');
+      expect(parsed.formattedMarkdown).not.toContain('| Name            |');
+    } finally {
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
   });
 });

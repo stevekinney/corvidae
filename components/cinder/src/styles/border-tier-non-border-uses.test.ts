@@ -193,6 +193,9 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/chat/src/lib/components/chat/message/parts/tool-approval-part.svelte': [
     { declaration: '--cinder-chat-tool-approval-border: var(--cinder-border);', category: 'alias' },
   ],
+  'components/chat/src/lib/components/chat/artifact/artifact-panel.svelte': [
+    { declaration: 'box-shadow: inset 0 -1px 0 var(--cinder-border-muted);', category: 'hairline' },
+  ],
   'components/cinder/src/components/button-group/button-group.css': [
     { declaration: 'background: var(--cinder-border);', category: 'hairline' },
   ],
