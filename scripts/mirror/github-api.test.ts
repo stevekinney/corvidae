@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { createGitHubApi, GitHubApiError, type GitHubApi } from './github-api.ts';
 import type { FetchImplementation } from './github-app.ts';
+import { ScratchGuardError } from './scratch-repository.ts';
 
 /**
  * The live GitHub implementation, driven against a `fetch` that answers from memory.
@@ -193,6 +194,18 @@ describe('deleteRepository', () => {
       method: 'DELETE',
       authorization: 'Bearer user-credential',
     });
+  });
+
+  test('refuses a name outside the pinned pattern before sending anything', async () => {
+    // The driver's guard is the primary one, but this function is what issues the request, so it
+    // carries the name check itself: no edit to a caller can aim it at a real repository.
+    const { api, seen } = harness([{ status: 204 }]);
+    await expect(api.deleteRepository('stevekinney/weft')).rejects.toThrow(ScratchGuardError);
+    await expect(api.deleteRepository('')).rejects.toThrow(ScratchGuardError);
+    await expect(api.deleteRepository('stevekinney/mirror-dryrun-20260919 ')).rejects.toThrow(
+      ScratchGuardError,
+    );
+    expect(seen).toEqual([]);
   });
 
   test('fails loudly when GitHub refuses the delete', async () => {

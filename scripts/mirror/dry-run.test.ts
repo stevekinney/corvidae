@@ -11,9 +11,9 @@ import {
   InstallationCoverageError,
   proveNpmPublishDryRun,
   runDryRun,
-  scratchDescription,
-  ScratchGuardError,
-  scratchRepositoryName,
+  runDryRunCommand,
+  seedScratchRepository,
+  waitForCheckRuns,
   type StageTransform,
 } from './dry-run.ts';
 import type {
@@ -23,7 +23,12 @@ import type {
   GitHubApi,
   RepositoryRecord,
 } from './github-api.ts';
-import type { CommandResult } from './packaging.ts';
+import { runCommand, type CommandResult } from './packaging.ts';
+import {
+  scratchDescription,
+  ScratchGuardError,
+  scratchRepositoryName,
+} from './scratch-repository.ts';
 import type { StageOutcome } from './sync.ts';
 
 /**
@@ -547,5 +552,167 @@ describe('proveNpmPublishDryRun', () => {
   test('fails when npm exits non-zero', async () => {
     const { result } = await probe('1.4.0', { npmExitCode: 1 });
     expect(result).toBeInstanceOf(DryRunError);
+  });
+});
+
+describe('waitForCheckRuns', () => {
+  test('polls until every check run is completed', async () => {
+    const answers = [
+      [],
+      [{ name: 'build', status: 'queued', conclusion: null }],
+      [{ name: 'build', status: 'completed', conclusion: 'success' }],
+    ];
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const polling: GitHubApi = {
+      ...api,
+      async readCheckRuns() {
+        const answer = answers[Math.min(reads, answers.length - 1)] ?? [];
+        reads += 1;
+        return answer;
+      },
+    };
+    const checkRuns = await waitForCheckRuns({
+      api: polling,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      sleep: async () => {},
+    });
+    expect(reads).toBe(3);
+    expect(checkRuns).toEqual([{ name: 'build', status: 'completed', conclusion: 'success' }]);
+  });
+
+  test('gives up after five attempts and reports what it has', async () => {
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const stuck: GitHubApi = {
+      ...api,
+      async readCheckRuns() {
+        reads += 1;
+        return [{ name: 'build', status: 'in_progress', conclusion: null }];
+      },
+    };
+    const checkRuns = await waitForCheckRuns({
+      api: stuck,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      sleep: async () => {},
+    });
+    expect(reads).toBe(5);
+    expect(checkRuns).toEqual([{ name: 'build', status: 'in_progress', conclusion: null }]);
+  });
+});
+
+describe('seedScratchRepository', () => {
+  /**
+   * The seed step against real git, because this is the one part of the live path a fake runner
+   * hides. A shallow tip cannot be pushed to a remote that lacks its parent — GitHub answers
+   * `shallow update not allowed` — so the orphan commit is load-bearing and only real git can say
+   * whether it works.
+   *
+   * The push cannot reach GitHub. `pushEnvironment` rewrites the scratch URL onto a local bare
+   * repository, and it also restricts git to the `file` transport, so an https push is refused
+   * outright rather than attempted.
+   */
+  test('pushes the seeded tree to the base branch without a shallow update', async () => {
+    await withWorkDirectory(async (root) => {
+      const source = join(root, 'source');
+      const remote = join(root, 'remote.git');
+      const work = join(root, 'work');
+      const environment = {
+        ...Bun.env,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_SYSTEM: '/dev/null',
+        GIT_AUTHOR_NAME: 'Fixture',
+        GIT_AUTHOR_EMAIL: 'fixture@corvidae.invalid',
+        GIT_COMMITTER_NAME: 'Fixture',
+        GIT_COMMITTER_EMAIL: 'fixture@corvidae.invalid',
+      };
+      await Bun.write(join(source, 'scripts/build.ts'), 'export {};\n');
+      for (const command of [
+        ['git', 'init', '--quiet', source],
+        ['git', '-C', source, 'add', '--all'],
+        ['git', '-C', source, 'commit', '--quiet', '--message', 'target-owned build input'],
+        ['git', 'init', '--quiet', '--bare', remote],
+      ]) {
+        const result = await runCommand(command, { cwd: root, env: environment });
+        expect(result.exitCode).toBe(0);
+      }
+
+      const { api } = fakeGitHub();
+      const localOnly: GitHubApi = {
+        ...api,
+        async pushEnvironment() {
+          return {
+            GIT_CONFIG_COUNT: '1',
+            GIT_CONFIG_KEY_0: `url.${remote}.insteadOf`,
+            GIT_CONFIG_VALUE_0: `https://github.com/${validName}.git`,
+            GIT_ALLOW_PROTOCOL: 'file',
+            GIT_TERMINAL_PROMPT: '0',
+          };
+        },
+      };
+
+      await seedScratchRepository({
+        run: runCommand,
+        api: localOnly,
+        target: 'weft',
+        seedRemote: `file://${source}`,
+        scratchRepository: validName,
+        workDirectory: work,
+      });
+
+      const log = await runCommand(['git', '-C', remote, 'log', '--format=%s %P', 'main'], {
+        cwd: root,
+        env: environment,
+      });
+      expect(log.exitCode).toBe(0);
+      // One commit, and no parent: an orphan is what makes the push complete.
+      expect(log.stdout.trim()).toBe(`Seed weft from file://${source}`);
+      const tree = await runCommand(['git', '-C', remote, 'ls-tree', '-r', '--name-only', 'main'], {
+        cwd: root,
+        env: environment,
+      });
+      expect(tree.stdout.trim()).toBe('scripts/build.ts');
+    });
+  });
+});
+
+describe('runDryRunCommand', () => {
+  test('refuses a delete aimed at a real repository and exits 1', async () => {
+    const { api, calls } = fakeGitHub({ repositories: { 'stevekinney/weft': scratchRecord() } });
+    const code = await runDryRunCommand(
+      ['--phase', 'delete', '--scratch-repository', 'stevekinney/weft'],
+      api,
+    );
+    expect(code).toBe(1);
+    expect(calls.deleted).toEqual([]);
+  });
+
+  test('deletes the scratch repository when the phase is pointed at it', async () => {
+    const { api, calls } = fakeGitHub({ repositories: { [validName]: scratchRecord() } });
+    const code = await runDryRunCommand(
+      ['--phase', 'delete', '--scratch-repository', validName],
+      api,
+    );
+    expect(code).toBe(0);
+    expect(calls.deleted).toEqual([validName]);
+  });
+
+  test('reports the coverage refusal from the preflight phase', async () => {
+    const { api, calls } = fakeGitHub({ reachable: ['stevekinney/corvidae'] });
+    const code = await runDryRunCommand(
+      ['--phase', 'preflight', '--scratch-repository', validName],
+      api,
+    );
+    expect(code).toBe(1);
+    expect(calls.created).toEqual([]);
+  });
+
+  test('rejects an unknown phase without touching GitHub', async () => {
+    const { api, calls } = fakeGitHub();
+    expect(await runDryRunCommand(['--phase', 'nuke'], api)).toBe(1);
+    expect(calls.deleted).toEqual([]);
+    expect(calls.created).toEqual([]);
   });
 });

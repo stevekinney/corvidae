@@ -16,6 +16,15 @@ import { installationSettingsUrl, mirrorAppId, mirrorInstallationId } from './gi
 import { mirrorTargets, type MirrorTarget } from './manifests.ts';
 import { runCommand, type CommandResult } from './packaging.ts';
 import {
+  assertScratchName,
+  assertScratchRepository,
+  scratchDescription,
+  ScratchGuardError,
+  scratchOwner,
+  scratchRepositoryName,
+  scratchStamp,
+} from './scratch-repository.ts';
+import {
   assertNoForeignCommits,
   gitEnvironment,
   provenanceTrailer,
@@ -42,105 +51,14 @@ import {
 
 export class DryRunError extends Error {}
 
-/** A refusal to create or delete something that is not provably the scratch repository. */
-export class ScratchGuardError extends DryRunError {}
-
 /** A refusal to proceed because the App installation cannot reach the scratch repository. */
 export class InstallationCoverageError extends DryRunError {}
-
-/** The account the scratch repository is created under, and the only one the guard accepts. */
-export const scratchOwner = 'stevekinney';
-
-/**
- * The description the guard matches, byte for byte.
- *
- * It is the second of the two independent facts a delete requires, and the stronger one: a name
- * can be made to match by typing it, whereas this has to have been written into the repository
- * by a run of this driver.
- */
-export const scratchDescription = 'mirror dry run, safe to delete';
-
-/**
- * The pinned name.
- *
- * Anchored at both ends, so a string that merely *contains* a scratch name — a real repository
- * with a matching suffix, a copy-paste that kept a prefix, a trailing newline off a shell — does
- * not match. Nothing is trimmed first: trimming normalizes a name that did not match into one
- * that does, and the whole purpose here is to refuse anything that is not exactly right.
- */
-const scratchNamePattern = /^stevekinney\/mirror-dryrun-(\d{4})(\d{2})(\d{2})$/;
 
 /** The base branch of the scratch repository. */
 const baseBranch = 'main';
 
-function twoDigits(value: number): string {
-  return value.toString().padStart(2, '0');
-}
-
-/** `stevekinney/mirror-dryrun-YYYYMMDD` for the given instant, in UTC. */
-export function scratchRepositoryName(now: Date = new Date()): string {
-  const stamp = `${now.getUTCFullYear()}${twoDigits(now.getUTCMonth() + 1)}${twoDigits(now.getUTCDate())}`;
-  return `${scratchOwner}/mirror-dryrun-${stamp}`;
-}
-
-/** The date stamp out of a name the guard has already accepted. */
-function scratchStamp(target: string): string {
-  const [, year = '', month = '', day = ''] = scratchNamePattern.exec(target) ?? [];
-  return `${year}${month}${day}`;
-}
-
-/**
- * The name half of the guard: the pinned pattern, plus a real calendar date.
- *
- * The date check is what makes this "a name this driver could have produced" rather than "a name
- * shaped like one". `\d{8}` alone accepts `mirror-dryrun-00000000` and `mirror-dryrun-99999999`,
- * which no run ever generates, so accepting them would only ever mean accepting a typo.
- */
-export function assertScratchName(target: string): void {
-  const matched = scratchNamePattern.exec(target);
-  if (!matched) {
-    throw new ScratchGuardError(
-      `Refusing to act on ${JSON.stringify(target)}: a scratch repository is named ${scratchOwner}/mirror-dryrun-YYYYMMDD and nothing else.`,
-    );
-  }
-  const [, year = '', month = '', day = ''] = matched;
-  const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-  const roundTrips =
-    parsed.getUTCFullYear() === Number(year) &&
-    parsed.getUTCMonth() === Number(month) - 1 &&
-    parsed.getUTCDate() === Number(day);
-  if (!roundTrips) {
-    throw new ScratchGuardError(
-      `Refusing to act on ${JSON.stringify(target)}: ${year}${month}${day} is not a calendar date, so no run of this driver produced that name.`,
-    );
-  }
-}
-
-/**
- * The repository half of the guard, against the record GitHub returned for the requested name.
- *
- * `fullName` is compared because GitHub follows a rename: ask for a repository that was renamed
- * and the API answers with the repository it became, under its new name. Without this, a scratch
- * name that once existed and was renamed onto something real would resolve to that real
- * repository and pass every other check on its behalf.
- */
-export function assertScratchRepository(target: string, repository: RepositoryRecord): void {
-  if (repository.fullName !== target) {
-    throw new ScratchGuardError(
-      `Refusing to act on ${target}: GitHub answered with ${JSON.stringify(repository.fullName)} instead, so that name now redirects to a different repository.`,
-    );
-  }
-  if (repository.description !== scratchDescription) {
-    throw new ScratchGuardError(
-      `Refusing to act on ${target}: its description is ${JSON.stringify(repository.description)}, not ${JSON.stringify(scratchDescription)}.`,
-    );
-  }
-  if (repository.private) {
-    throw new ScratchGuardError(
-      `Refusing to act on ${target}: it is private, and the scratch repository is public by construction, so this is a different repository.`,
-    );
-  }
-}
+/** The orphan branch the seed commit is made on, which is pushed as the base branch. */
+const seedBranch = 'mirror-dry-run-seed';
 
 /**
  * Delete the scratch repository, or refuse loudly.
@@ -244,6 +162,10 @@ export interface DryRunOptions {
   run?: CommandRunner;
   stage?: StageTransform;
   installArguments?: readonly string[];
+  /** How many times the check runs are polled before the report takes what it has. */
+  checkRunAttempts?: number;
+  /** How the poll waits between attempts. */
+  sleep?: (milliseconds: number) => Promise<void>;
 }
 
 export interface PublishProbe {
@@ -293,12 +215,19 @@ async function runGit(
  * build script, the bundler configuration — so a transform into an empty repository fails on the
  * first gate and proves nothing about the ones after it. A depth-one clone of the real mirror
  * gives the scratch repository exactly the tree the transform will meet in production, without
- * copying a history nobody needs, and the push that plants it is the first thing the App
- * credential does.
+ * copying a history nobody needs.
+ *
+ * The shallow tip is then re-committed as an orphan before it is pushed, and that is not
+ * cosmetic. Pushing a shallow tip asks the receiving side to accept a commit whose parent it does
+ * not have, which needs `receive.shallowUpdate`, and GitHub leaves that off: the push is rejected
+ * with `shallow update not allowed`. An orphan commit of the same tree has no parent to be
+ * missing, so the push carries a complete object graph. It also carries no provenance trailer,
+ * which keeps the foreign-commit guard on its first-sync path rather than tripping it.
  */
 export async function seedScratchRepository(options: {
   run: CommandRunner;
   api: GitHubApi;
+  target: MirrorTarget;
   seedRemote: string;
   scratchRepository: string;
   workDirectory: string;
@@ -325,6 +254,17 @@ export async function seedScratchRepository(options: {
     'set-url',
     'origin',
     scratchRemoteUrl(options.scratchRepository),
+  );
+  await runGit(run, workDirectory, environment, 'checkout', '--quiet', '--orphan', seedBranch);
+  await runGit(run, workDirectory, environment, 'add', '--all');
+  await runGit(
+    run,
+    workDirectory,
+    environment,
+    'commit',
+    '--quiet',
+    '--message',
+    `Seed ${options.target} from ${options.seedRemote}`,
   );
   const pushEnvironment = { ...environment, ...(await options.api.pushEnvironment()) };
   await runGit(
@@ -359,6 +299,9 @@ export async function transformAndOpenPullRequest(options: {
 }): Promise<TransformOutcome> {
   const { run, workDirectory, branch } = options;
   const environment = gitEnvironment();
+  // The existing guard, reused rather than restated, which means accepting that it runs git
+  // itself instead of through the injected runner. On a freshly seeded tree it reads one orphan
+  // commit with no provenance trailer and reports nothing foreign.
   await assertNoForeignCommits(workDirectory);
   await runGit(run, workDirectory, environment, 'checkout', '-b', branch);
   const outcome = await options.stage({
@@ -463,6 +406,35 @@ export async function proveNpmPublishDryRun(options: {
   };
 }
 
+/**
+ * Wait for the target's CI to say something about the head commit.
+ *
+ * A pull request opened a second ago has no check runs yet, so reading once and reporting
+ * "none" would let a run claim CI was exercised when nothing had started. The poll is bounded at
+ * five attempts and then reports whatever it has: a check that is still queued after five rounds
+ * is a fact worth printing, not a reason to keep waiting.
+ */
+export async function waitForCheckRuns(options: {
+  api: GitHubApi;
+  scratchRepository: string;
+  ref: string;
+  attempts?: number;
+  delayMilliseconds?: number;
+  sleep?: (milliseconds: number) => Promise<void>;
+}): Promise<readonly CheckRunRecord[]> {
+  const attempts = options.attempts ?? 5;
+  const delay = options.delayMilliseconds ?? 10_000;
+  const sleep = options.sleep ?? ((milliseconds) => Bun.sleep(milliseconds));
+  let latest: readonly CheckRunRecord[] = [];
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    latest = await options.api.readCheckRuns(options.scratchRepository, options.ref);
+    const settled = latest.length > 0 && latest.every((check) => check.status === 'completed');
+    if (settled) return latest;
+    if (attempt < attempts) await sleep(delay);
+  }
+  return latest;
+}
+
 /** The whole round trip, in the order the guards require. */
 export async function runDryRun(options: DryRunOptions): Promise<DryRunReport> {
   const run = options.run ?? runCommand;
@@ -477,6 +449,7 @@ export async function runDryRun(options: DryRunOptions): Promise<DryRunReport> {
   await seedScratchRepository({
     run,
     api: options.api,
+    target: options.target,
     seedRemote,
     scratchRepository,
     workDirectory: options.workDirectory,
@@ -493,10 +466,13 @@ export async function runDryRun(options: DryRunOptions): Promise<DryRunReport> {
     branch: `mirror-dry-run-${scratchStamp(scratchRepository)}`,
     ...(options.installArguments ? { installArguments: options.installArguments } : {}),
   });
-  const checkRuns = await options.api.readCheckRuns(
+  const checkRuns = await waitForCheckRuns({
+    api: options.api,
     scratchRepository,
-    transformed.pullRequest.headSha,
-  );
+    ref: transformed.pullRequest.headSha,
+    ...(options.checkRunAttempts === undefined ? {} : { attempts: options.checkRunAttempts }),
+    ...(options.sleep ? { sleep: options.sleep } : {}),
+  });
   const publish = await proveNpmPublishDryRun({
     run,
     workDirectory: options.workDirectory,

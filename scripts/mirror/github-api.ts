@@ -7,6 +7,7 @@ import {
   type FetchImplementation,
 } from './github-app.ts';
 import { runCommand, type CommandOptions, type CommandResult } from './packaging.ts';
+import { assertScratchName, type ScratchRepositoryFacts } from './scratch-repository.ts';
 
 /**
  * The GitHub surface the dry run is allowed to touch, as one injectable port.
@@ -25,11 +26,7 @@ import { runCommand, type CommandOptions, type CommandResult } from './packaging
 
 export class GitHubApiError extends Error {}
 
-export interface RepositoryRecord {
-  /** `owner/name` as GitHub reports it, which is not always what was asked for. */
-  fullName: string;
-  description: string | null;
-  private: boolean;
+export interface RepositoryRecord extends ScratchRepositoryFacts {
   htmlUrl: string;
   defaultBranch: string;
 }
@@ -250,6 +247,11 @@ export function createGitHubApi({
     },
 
     async deleteRepository(fullName: string): Promise<void> {
+      // The second layer. `deleteScratchRepository` is the full guard and is where a delete is
+      // supposed to come from, but this function is what actually issues the request, so it
+      // refuses a name outside the pinned pattern on its own account. Nothing that reaches this
+      // line with a real repository's name gets to send it.
+      assertScratchName(fullName);
       const response = await request(`/repos/${fullName}`, {
         method: 'DELETE',
         token: await userToken(),
