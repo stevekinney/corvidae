@@ -1,10 +1,10 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import type { SignedPendingToolApproval } from '@corvidae/armorer';
-import type { RequestEvent } from '@sveltejs/kit';
+import type { SignedPendingToolApproval, ToolExecutionResult } from '@corvidae/armorer';
 import { updatePendingApproval } from '../../../lib/pending-approval.ts';
 import { requestContext, toolbox } from '../../../lib/toolbox.ts';
+import type { RequestEvent } from './resume/$types';
 import { POST } from './resume/+server.ts';
 
 const resumeSource = readFileSync(new URL('./resume/+server.ts', import.meta.url), 'utf8');
@@ -22,20 +22,25 @@ const streamSource = readFileSync(
   'utf8',
 );
 
-function requestEvent(request: Request): RequestEvent {
-  const span = {
+function createSpan(): RequestEvent['tracing']['root'] {
+  const span: RequestEvent['tracing']['root'] = {
     spanContext: () => ({ traceId: '0'.repeat(32), spanId: '0'.repeat(16), traceFlags: 0 }),
-    setAttribute: (..._arguments: never[]) => span,
-    setAttributes: (..._arguments: never[]) => span,
-    addEvent: (..._arguments: never[]) => span,
-    addLink: (..._arguments: never[]) => span,
-    addLinks: (..._arguments: never[]) => span,
-    setStatus: (..._arguments: never[]) => span,
-    updateName: (..._arguments: never[]) => span,
+    setAttribute: () => span,
+    setAttributes: () => span,
+    addEvent: () => span,
+    addLink: () => span,
+    addLinks: () => span,
+    setStatus: () => span,
+    updateName: () => span,
     end: () => undefined,
     isRecording: () => false,
     recordException: () => undefined,
-  } satisfies RequestEvent['tracing']['root'];
+  };
+  return span;
+}
+
+function requestEvent(request: Request): RequestEvent {
+  const span = createSpan();
   return {
     cookies: {
       get: () => undefined,
@@ -60,8 +65,8 @@ function requestEvent(request: Request): RequestEvent {
   };
 }
 
-function post(body: unknown): Promise<Response> {
-  return POST(
+async function post(body: unknown): Promise<Response> {
+  return await POST(
     requestEvent(
       new Request('http://localhost/api/chat/resume', {
         method: 'POST',
@@ -69,6 +74,18 @@ function post(body: unknown): Promise<Response> {
         headers: { 'content-type': 'application/json' },
       }),
     ),
+  );
+}
+
+function hasSignedPendingApproval(result: {
+  pendingApproval?: unknown;
+}): result is { pendingApproval: SignedPendingToolApproval } {
+  const approval = result.pendingApproval;
+  return (
+    typeof approval === 'object' &&
+    approval !== null &&
+    'approvalToken' in approval &&
+    typeof approval.approvalToken === 'string'
   );
 }
 
@@ -213,10 +230,13 @@ describe('chat approval continuation response', () => {
       reason: 'updated note',
       remember: true,
     };
-    const result = {
+    const result: ToolExecutionResult = {
       callId: approval.callId,
-      outcome: 'action_required' as const,
+      outcome: 'action_required',
       content: null,
+      toolCallId: approval.callId,
+      toolName: approval.toolName,
+      result: undefined,
       action: approval.action,
       pendingApproval: { ...approval, approvalToken: 'token-2' },
     };
@@ -226,7 +246,13 @@ describe('chat approval continuation response', () => {
       const response = await post({ approval, resolution });
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual(result);
+      expect(await response.json()).toEqual({
+        callId: result.callId,
+        outcome: result.outcome,
+        content: result.content,
+        action: result.action,
+        pendingApproval: result.pendingApproval,
+      });
       expect(resolveApproval).toHaveBeenCalledWith(approval, resolution, {
         requestContext: expect.any(Object),
       });
@@ -279,10 +305,13 @@ describe('chat approval continuation response', () => {
       approvalToken: 'token-negative',
     } satisfies SignedPendingToolApproval;
     const resolveApproval = spyOn(toolbox, 'resolveApproval').mockImplementation(
-      async (_approval, resolution) => ({
+      async (_approval, resolution): Promise<ToolExecutionResult> => ({
         callId: approval.callId,
         outcome: 'error',
         content: null,
+        toolCallId: approval.callId,
+        toolName: approval.toolName,
+        result: undefined,
         error: {
           code: resolution.decision === 'cancel' ? 'CANCELLED' : 'denied',
           category: resolution.decision === 'cancel' ? 'cancelled' : 'permission',
@@ -322,7 +351,7 @@ describe('chat approval continuation response', () => {
         { requestContext },
       );
       expect(result.outcome).toBe('action_required');
-      if (!result.pendingApproval) throw new Error('Expected a signed pending approval.');
+      if (!hasSignedPendingApproval(result)) throw new Error('Expected a signed pending approval.');
       return result.pendingApproval;
     }
 

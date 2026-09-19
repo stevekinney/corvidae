@@ -7,6 +7,8 @@ import { requestContext, toolbox } from '../../../../lib/toolbox.ts';
 import type { SignedPendingToolApproval } from '@corvidae/armorer';
 import type { RequestHandler } from './$types';
 
+type ApprovalResolution = Parameters<typeof toolbox.resolveApproval>[1];
+
 const policyPauseTierSchema = z.enum(['capability', 'registry', 'tool']);
 
 const approvalSchema = z
@@ -39,19 +41,28 @@ function isSignedPendingToolApproval(value: unknown): value is SignedPendingTool
   return isRecord(value) && typeof value['approvalToken'] === 'string';
 }
 
-const resolutionSchema = z.object({
-  decision: z.enum(['approve', 'approve_with_edits', 'deny', 'cancel']),
-  editedArgs: z.unknown().optional(),
-  reason: z.string().optional(),
-  remember: z.boolean(),
-});
+const resolutionSchema = z
+  .object({
+    decision: z.enum(['approve', 'approve_with_edits', 'deny', 'cancel']),
+    editedArgs: z.unknown().optional(),
+    reason: z.string().optional(),
+    remember: z.boolean(),
+  })
+  .transform((resolution): ApprovalResolution => ({
+    decision: resolution.decision,
+    ...(Object.prototype.hasOwnProperty.call(resolution, 'editedArgs')
+      ? { editedArgs: resolution.editedArgs }
+      : {}),
+    ...(resolution.reason !== undefined ? { reason: resolution.reason } : {}),
+    remember: resolution.remember,
+  }));
 
 const requestSchema = z.object({
   approval: approvalSchema,
   resolution: resolutionSchema,
 });
 
-const resumeRequest: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request }) => {
   let body: unknown;
 
   try {
@@ -82,6 +93,4 @@ const resumeRequest: RequestHandler = async ({ request }) => {
     ...(result.pendingApproval ? { pendingApproval: result.pendingApproval } : {}),
     ...(result.error ? { error: result.error } : {}),
   });
-}
-
-export const POST = resumeRequest;
+};
