@@ -82,6 +82,7 @@ import {
   WorkflowVersionMismatchEvent,
 } from '@corvidae/operative';
 import type {
+  SkillGuardrailOptions,
   SkillSession,
   SkillProvider as SkillsPackageProvider,
   ToolPolicy,
@@ -89,8 +90,8 @@ import type {
 import {
   createSkillCatalogHook,
   createSkillSession,
+  createSkillToolbox,
   createStorageSkillProvider,
-  escapeXml,
 } from '@corvidae/skills';
 import {
   type ConditionalTextValueStore,
@@ -109,7 +110,6 @@ import {
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
 } from '@corvidae/weft';
-import { z } from 'zod';
 
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import type {
@@ -121,8 +121,6 @@ import type {
   RedactedProviderConfiguration,
   RedactedProviderRouteConfiguration,
   RoutingConfiguration,
-  SkillCatalogEntry,
-  SkillProvider,
   ToolSummary,
 } from './types';
 
@@ -1342,103 +1340,6 @@ function createSkillStateSnapshotHook(
   };
 }
 
-function createSkillManagementToolbox(provider: SkillProvider, session: SkillSession): AnyToolbox {
-  return createToolbox([
-    createTool({
-      name: 'activate_skill',
-      description:
-        'Activate a skill by name. Returns the skill instructions and available resources.',
-      input: z.object({
-        name: z.string().describe('The skill name to activate'),
-      }),
-      async execute(params) {
-        if (session.isActive(params.name)) {
-          return { alreadyActive: true, name: params.name };
-        }
-
-        const enabled = await provider.isEnabled(params.name);
-        if (!enabled) {
-          return { error: 'Skill is disabled', name: params.name };
-        }
-
-        const skill = await provider.loadSkill(params.name);
-        if (!skill) {
-          return { error: 'Skill not found', name: params.name };
-        }
-
-        const resources = await provider.listResources(params.name);
-        session.activate(params.name, skill.metadata.toolPolicy);
-
-        const escapedName = escapeXml(params.name);
-        let xml = `<skill_content name="${escapedName}">\n${skill.body}`;
-
-        if (resources.length > 0) {
-          const resourceElements = resources
-            .map((path) => `  <file>${escapeXml(path)}</file>`)
-            .join('\n');
-          xml += `\n\nSkill resources:\n<skill_resources>\n${resourceElements}\n</skill_resources>`;
-        }
-
-        xml += '\n</skill_content>';
-        return xml;
-      },
-    }),
-    createTool({
-      name: 'load_skill_resource',
-      description: 'Load a resource file from an active skill.',
-      input: z.object({
-        skillName: z.string().describe('The skill name'),
-        path: z.string().describe('The resource path within the skill'),
-      }),
-      async execute(params) {
-        if (!session.isActive(params.skillName)) {
-          return { error: 'Skill is not active', skillName: params.skillName };
-        }
-
-        const content = await provider.loadResource(params.skillName, params.path);
-        if (content === undefined) {
-          return {
-            error: 'Resource not found',
-            skillName: params.skillName,
-            path: params.path,
-          };
-        }
-
-        return { content };
-      },
-    }),
-    createTool({
-      name: 'deactivate_skill',
-      description: 'Deactivate a skill and remove it from the active set.',
-      input: z.object({
-        name: z.string().describe('The skill name to deactivate'),
-      }),
-      execute(params) {
-        const deactivated = session.isActive(params.name);
-        if (deactivated) {
-          session.deactivate(params.name);
-        }
-
-        return Promise.resolve({ deactivated, name: params.name });
-      },
-    }),
-    createTool({
-      name: 'list_skills',
-      description: 'List available skills and whether they are active.',
-      input: z.object({}),
-      async execute() {
-        const entries = await provider.listSkills();
-        return {
-          skills: entries.map((entry: SkillCatalogEntry) => ({
-            ...entry,
-            active: session.isActive(entry.name),
-          })),
-        };
-      },
-    }),
-  ]);
-}
-
 function createUnavailableToolbox(): BureauToolbox {
   const emptyToolbox = createToolbox([], { context: {} });
   const execute = ((
@@ -2193,6 +2094,54 @@ export async function createRuntimeComposition(
       onStep.push(createMemoryPersistHook(memory, request.sessionId, request.runId));
     }
 
+    // COR-1226 — resolved here rather than at the hook-push site below, because
+    // the skill toolbox needs the same detectors and the same session taint
+    // tracker, and it is constructed before that point. `createGuardrails` is a
+    // pure function of its options, so moving the call earlier changes nothing
+    // about what it returns.
+    //
+    // AB-40 — `undefined` (not configured) wires the enabled-by-default
+    // preset; `false` opts out entirely; anything else replaces the preset.
+    const resolvedGuardrailsConfig = usingDefaultGuardrailsPreset
+      ? defaultGuardrailsPreset()
+      : options.guardrails;
+    // `false` is the explicit opt-out; narrow it away so the skill guardrail
+    // below sees only a real configuration or nothing.
+    const guardrailsConfig =
+      resolvedGuardrailsConfig === false ? undefined : resolvedGuardrailsConfig;
+    const guardrails = guardrailsConfig ? createGuardrails(guardrailsConfig) : undefined;
+
+    // COR-1226 — skill bodies and skill resources are untrusted instruction
+    // input and must pass the same detector pipeline as anything else entering
+    // context. `GuardrailHooks.taint`'s own doc comment names skill resources
+    // as one of the retrieval surfaces that cannot reach the model through
+    // `prepareStep`/`validateResponse` and so must scan directly and fold its
+    // detections back into the session-wide taint state. The taint wiring below
+    // mirrors `create-guardrails.ts`'s own input-guardrail wiring, including its
+    // confidence threshold check.
+    const skillGuardrail: SkillGuardrailOptions | undefined =
+      guardrails && guardrailsConfig?.input
+        ? {
+            detectors: guardrailsConfig.input.detectors,
+            ...(guardrailsConfig.input.action !== undefined
+              ? { action: guardrailsConfig.input.action === 'warn' ? 'warn' : 'block' }
+              : {}),
+            getSessionTainted: () => guardrails.taint.isTainted(),
+            onTriggered: (event) => {
+              if (event.confidence >= (guardrailsConfig.taint?.taintThreshold ?? 0.8)) {
+                guardrails.taint.taint({
+                  reason: event.detail ?? `Detection by ${event.detector}`,
+                  detector: event.detector,
+                  confidence: event.confidence,
+                  step: 0,
+                  provenance: event.provenance,
+                });
+              }
+              guardrailsConfig.input?.onTriggered?.(event);
+            },
+          }
+        : undefined;
+
     if (options.skills && resolvedSkillProvider) {
       // Use a policy-tracking session so getActiveEntries() can reconstruct the
       // per-skill policy for the durable snapshot hook (see createTrackedSkillSession).
@@ -2240,7 +2189,20 @@ export async function createRuntimeComposition(
           }
         });
 
-        const skillToolbox = createSkillManagementToolbox(resolvedSkillProvider, skillSession);
+        // COR-1226 — the `@corvidae/skills` factories, not a second inline copy.
+        // The previous inline implementation produced byte-identical results for
+        // every path except the guardrail scan, which it omitted entirely.
+        const skillTools = createSkillToolbox({
+          provider: resolvedSkillProvider,
+          session: skillSession,
+          ...(skillGuardrail !== undefined ? { guardrail: skillGuardrail } : {}),
+        });
+        const skillToolbox = createToolbox([
+          skillTools.activateSkill,
+          skillTools.loadSkillResource,
+          skillTools.deactivateSkill,
+          skillTools.listSkills,
+        ]) as AnyToolbox;
         toolbox = combineToolboxes(toolbox, skillToolbox);
       }
 
@@ -2262,11 +2224,7 @@ export async function createRuntimeComposition(
 
     // AB-40 — `undefined` (not configured) wires the enabled-by-default
     // preset; `false` opts out entirely; anything else replaces the preset.
-    const guardrailsConfig = usingDefaultGuardrailsPreset
-      ? defaultGuardrailsPreset()
-      : options.guardrails;
-    if (guardrailsConfig) {
-      const guardrails = createGuardrails(guardrailsConfig);
+    if (guardrails) {
       prepareStep.push(guardrails.prepareStep);
       validateResponse.push(guardrails.validateResponse);
     }
