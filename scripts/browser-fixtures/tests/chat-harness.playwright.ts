@@ -1403,11 +1403,15 @@ test.describe('chat harness — composer acceptance matrix', () => {
       viewport: { width: 320, height: 900 },
     });
     try {
-      const send = harness.locator('.chat-input-send');
-      await expect(send).toBeDisabled();
-      await send.hover();
-      await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
-      await send.focus({ force: true });
+      const chat = harness.locator('#harness-chat');
+      const send = chat.locator('.chat-input-send');
+      await chat.locator('input[type="file"]').setInputFiles({
+        name: 'touch-submit.svg',
+        mimeType: 'image/svg+xml',
+        buffer: Buffer.from(wideImage),
+      });
+      await expect(send).toBeEnabled();
+      await send.click();
       await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
     } finally {
       await dispose();

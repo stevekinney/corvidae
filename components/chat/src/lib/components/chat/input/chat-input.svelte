@@ -1122,8 +1122,11 @@
   }
 
   @media (pointer: coarse) {
-    :global(.chat-input-tooltip.cinder-tooltip) {
-      display: none;
+    /* Wrapping Tooltip portals its panel to body, where the consumer class is
+     * not retained. Scope the coarse-pointer suppression to pages containing
+     * this composer while leaving the trigger itself usable. */
+    :global(body:has(.chat-input-tooltip) .cinder-tooltip) {
+      display: none !important;
     }
   }
 
