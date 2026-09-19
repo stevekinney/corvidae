@@ -1,5 +1,7 @@
 <script lang="ts">
   import { Dropdown } from '@corvidae/cinder';
+
+  let { showOmittedMiddle = false }: { showOmittedMiddle?: boolean } = $props();
 </script>
 
 <div id="example-mount-basic">
@@ -30,13 +32,13 @@
   </Dropdown>
 </div>
 
-<Dropdown id="row-regression-dropdown" open>
+<Dropdown id="row-regression-dropdown">
   <Dropdown.Trigger>Row regression</Dropdown.Trigger>
   <Dropdown.Menu>
     <Dropdown.Group ariaLabelledby="row-regression-group-one">
       <Dropdown.Label id="row-regression-group-one">First group</Dropdown.Label>
       <Dropdown.Item>First</Dropdown.Item>
-      {#if false}<Dropdown.Item>Omitted middle</Dropdown.Item>{/if}
+      {#if showOmittedMiddle}<Dropdown.Item>Omitted middle</Dropdown.Item>{/if}
       <Dropdown.Item hidden>Hidden terminal</Dropdown.Item>
     </Dropdown.Group>
     <Dropdown.Separator />
