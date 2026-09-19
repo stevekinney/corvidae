@@ -137,6 +137,7 @@ export class ToolExecuteErrorEvent extends Event {
 
 export class ToolSettledEvent extends Event {
   static readonly type = 'settled' as const;
+  readonly status: ToolFinishedEvent['status'];
   readonly result: unknown;
   readonly error: unknown;
   readonly toolCall: ToolCall;
@@ -155,6 +156,7 @@ export class ToolSettledEvent extends Event {
   readonly ownerId: string | undefined;
   constructor(
     detail: {
+      status?: ToolFinishedEvent['status'];
       result?: unknown;
       error?: unknown;
       callbackCompletion?: Promise<ExecutionSnapshot>;
@@ -162,6 +164,7 @@ export class ToolSettledEvent extends Event {
       ToolExecutionIdentity,
   ) {
     super(ToolSettledEvent.type);
+    this.status = detail.status ?? (detail.error !== undefined ? 'error' : 'success');
     this.result = detail.result;
     this.error = detail.error;
     this.toolCall = detail.toolCall;

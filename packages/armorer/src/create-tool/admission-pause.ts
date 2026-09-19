@@ -43,6 +43,12 @@ export async function handlePolicyPause<TInput>(
     parsedState.parsedDetail,
   );
   input.finishTelemetry('paused', { reason: pause.reason });
+  input.emit('settled', {
+    ...parsedState.parsedDetail,
+    status: 'paused',
+    result: undefined,
+    callbackCompletion: input.options.executionHandle?.whenSettled(),
+  });
   return { kind: 'result', result: actionRequiredResult(input, parsedState, policyState, pause) };
 }
 

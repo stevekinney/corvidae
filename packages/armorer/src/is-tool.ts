@@ -243,6 +243,7 @@ export type DefaultToolEvents = {
   'execute-success': { result: unknown } & ToolEventDetailContext;
   'execute-error': { error: unknown } & ToolEventDetailContext;
   settled: {
+    status?: 'success' | 'error' | 'denied' | 'cancelled' | 'paused';
     result?: unknown;
     error?: unknown;
     /**
