@@ -803,6 +803,8 @@ test.describe('chat harness — message metadata', () => {
           await expect.poll(() => computedOpacity(timestamp)).toBe(0);
           await wrapper.locator('.chat-message').hover();
           await expect.poll(() => computedOpacity(timestamp)).toBe(1);
+          await page.mouse.move(0, 0);
+          await expect.poll(() => computedOpacity(timestamp)).toBe(0);
           await wrapper.locator('.chat-message').focus();
           await expect.poll(() => computedOpacity(timestamp)).toBe(1);
         } else {
