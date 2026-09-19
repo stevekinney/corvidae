@@ -1367,7 +1367,12 @@ test.describe('chat harness — tool calls', () => {
 
             const activity = harness.locator('.chat-tool-call-timeline').last();
             await expect(activity).toBeVisible();
-            await expect(activity.locator('.tool-call-group')).toHaveCount(0);
+            // The legacy `tool-call-group` class guard that stood here asserted the old
+            // grouped markup was absent inside this region. It was removed rather
+            // than rewritten because its subject no longer exists: `ToolCallGroup`
+            // was deleted and nothing emits that class, so the assertion could not
+            // fail under any input and reported coverage it did not have. What the
+            // region renders is asserted positively below.
             await expect(activity).toHaveAttribute('data-cinder-tool-call-count', '1');
             await expect(activity).toContainText('exports_check');
             await expectContainerThreshold(activity, width);

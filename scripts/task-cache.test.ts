@@ -73,6 +73,51 @@ test('application hosts and tests receive only their owned configuration', async
   }
 });
 
+test('an inherited TURBO_FORCE cannot make a fixture re-execute instead of restoring', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-force-isolation-'));
+  try {
+    await createWorkspace(directory);
+    // `executions.txt` is gitignored so it is not hashed as an input; a counted
+    // execution must not be what invalidates the next lookup.
+    await Bun.write(join(directory, '.gitignore'), 'node_modules/\nexecutions.txt\n');
+    const packageDirectory = join(directory, 'packages/base');
+    await Bun.write(
+      join(packageDirectory, 'package.json'),
+      JSON.stringify({
+        name: '@fixture/base',
+        private: true,
+        scripts: { test: 'bun generate.ts' },
+        devDependencies: { '@fixture/typescript': 'workspace:*' },
+      }),
+    );
+    await Bun.write(
+      join(packageDirectory, 'generate.ts'),
+      `const file = Bun.file('executions.txt');
+await Bun.write(file, String((await file.exists() ? Number(await file.text()) : 0) + 1));
+`,
+    );
+    await run(directory, [process.execPath, 'install']);
+    const command = [
+      join(root, 'node_modules/.bin/turbo'),
+      'run',
+      'test',
+      '--filter=@fixture/base',
+    ];
+    const executions = Bun.file(join(packageDirectory, 'executions.txt'));
+    // Injected the way the remote-cache isolation test at the top of this file
+    // injects the variables it expects to be scrubbed, so this asserts the
+    // scrub rather than whatever happens to be in the ambient shell.
+    const forcedEnvironment = { ...process.env, TURBO_FORCE: 'true' };
+
+    await run(directory, command, forcedEnvironment);
+    expect(await executions.text()).toBe('1');
+    await run(directory, command, forcedEnvironment);
+    expect(await executions.text()).toBe('1');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 async function run(
   directory: string,
   command: string[],
@@ -85,11 +130,24 @@ async function run(
     : command;
   const fixtureEnvironment = { ...environment };
   if (isTurbo) {
-    delete fixtureEnvironment['TURBO_API'];
-    delete fixtureEnvironment['TURBO_TOKEN'];
-    delete fixtureEnvironment['TURBO_TEAM'];
-    delete fixtureEnvironment['TURBO_TEAMID'];
-    delete fixtureEnvironment['TURBO_CACHE'];
+    // Every inherited `TURBO_*` variable goes, rather than a named few.
+    //
+    // This replaced a list of five cache-configuration variables — `TURBO_API`,
+    // `TURBO_TOKEN`, `TURBO_TEAM`, `TURBO_TEAMID`, `TURBO_CACHE` — that missed
+    // `TURBO_FORCE`, which defeats these fixtures more directly than any of
+    // them: it makes turbo re-execute instead of restore, so the restoration
+    // tests below count a second execution and fail against a repository that
+    // is fine. Setting it to bypass a stale cache is an ordinary thing to do.
+    //
+    // A denylist has to stay right about every variable turbo will ever add,
+    // and enumerating the ones that perturb execution-versus-restore is a
+    // guess maintained by hand. Removing the whole prefix is right by
+    // construction, and costs nothing here: a fixture needs no `TURBO_*`
+    // variable of its own, because its cache mode and directory arrive as the
+    // explicit CLI flags above.
+    for (const key of Object.keys(fixtureEnvironment)) {
+      if (key.startsWith('TURBO_')) delete fixtureEnvironment[key];
+    }
   }
   const child = Bun.spawn(fixtureCommand, {
     cwd: directory,
