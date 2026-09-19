@@ -112,6 +112,7 @@ export function replaceFrontMatterData(
     originalRaw: frontMatter.raw,
     originalData: frontMatter.data,
     preserveEmptyFrontMatter: true,
+    sortKeys: false,
   });
 }
 

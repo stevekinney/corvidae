@@ -265,6 +265,39 @@ describe('stringifyFrontMatter', () => {
     expect(keyOrder).toEqual(['apple', 'mango', 'zebra']);
   });
 
+  test('keeps sorted key output as the default when raw YAML cannot be preserved', () => {
+    const data = { zebra: 'last', apple: 'first', mango: 'middle' };
+    const body = 'Content';
+
+    expect(stringifyFrontMatter(data, body)).toBe(
+      '---\napple: first\nmango: middle\nzebra: last\n---\nContent',
+    );
+  });
+
+  test('can serialize mappings in insertion order while quoting key names that need it', () => {
+    const data = {
+      first: 'one',
+      'tag: group #1': ['alpha', 'beta'],
+      'quoted "key"': 'value',
+      second: 'two',
+      obj: {
+        'nested: key #2': true,
+        apple: 'first',
+      },
+    };
+    const body = '\n# Content';
+
+    const result = stringifyFrontMatter(data, body, {
+      preserveRaw: false,
+      sortKeys: false,
+    });
+
+    expect(result).toBe(
+      '---\nfirst: one\n"tag: group #1": [alpha, beta]\n"quoted \\"key\\"": value\nsecond: two\nobj:\n  apple: first\n  "nested: key #2": true\n---\n\n# Content',
+    );
+    expect(parseFrontMatter(result).data).toEqual(data);
+  });
+
   test('preserves original raw when data unchanged', () => {
     const originalRaw = 'zebra: last\napple: first';
     const data = { zebra: 'last', apple: 'first' };
@@ -277,6 +310,21 @@ describe('stringifyFrontMatter', () => {
     });
 
     expect(result).toContain(originalRaw);
+  });
+
+  test('preserves unchanged raw comments and quoted keys before considering insertion order', () => {
+    const originalRaw = '# keep me\n"tag: group #1": [alpha]\nsecond: two';
+    const data = { 'tag: group #1': ['alpha'], second: 'two' };
+    const body = '\n# Content';
+
+    const result = stringifyFrontMatter(data, body, {
+      preserveRaw: true,
+      originalRaw,
+      originalData: data,
+      sortKeys: false,
+    });
+
+    expect(result).toBe(`---\n${originalRaw}\n---\n\n# Content`);
   });
 
   test('handles arrays', () => {

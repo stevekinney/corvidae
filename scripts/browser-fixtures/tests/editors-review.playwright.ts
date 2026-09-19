@@ -1,3 +1,4 @@
+import { parseFrontMatter } from '../../../packages/markdown/src/pipeline/frontmatter.ts';
 import { expect, test } from './review-editor-browser-errors.ts';
 
 type Box = {
@@ -97,6 +98,16 @@ async function openCommentsFixtureSidebar(page: import('@playwright/test').Page)
   return sidebar;
 }
 
+async function expectTypedFrontMatterData(
+  page: import('@playwright/test').Page,
+  expected: Record<string, unknown>,
+) {
+  const value = await page.getByTestId('typed-front-matter-value').textContent();
+  if (!value) throw new Error('Typed front matter value was empty.');
+
+  expect(parseFrontMatter(value).data).toMatchObject(expected);
+}
+
 test.describe('review editor front matter', () => {
   test('front matter collapses locally and preserves the document body', async ({
     page,
@@ -145,17 +156,21 @@ test.describe('review editor front matter', () => {
           if (!(region instanceof HTMLElement)) throw new Error('Front matter mount missing.');
           const parent = region.getBoundingClientRect();
           const children = Array.from(region.querySelectorAll<HTMLElement>('button, input'));
-          return children.map((child) => {
-            const rect = child.getBoundingClientRect();
-            return {
-              left: Math.round(rect.left - parent.left),
-              right: Math.round(rect.right - parent.left),
-              width: Math.round(rect.width),
-              parentWidth: Math.round(parent.width),
-              text: child.textContent?.trim() ?? child.getAttribute('aria-label') ?? '',
-            };
-          });
+          return children
+            .map((child) => {
+              const rect = child.getBoundingClientRect();
+              return {
+                height: Math.round(rect.height),
+                left: Math.round(rect.left - parent.left),
+                right: Math.round(rect.right - parent.left),
+                width: Math.round(rect.width),
+                parentWidth: Math.round(parent.width),
+                text: child.textContent?.trim() ?? child.getAttribute('aria-label') ?? '',
+              };
+            })
+            .filter((metric) => metric.width > 0 && metric.height > 0);
         });
+        expect(metrics.length).toBeGreaterThan(0);
         for (const metric of metrics) {
           expect(metric.width).toBeGreaterThan(0);
           expect(metric.left).toBeGreaterThanOrEqual(0);
@@ -191,36 +206,39 @@ test.describe('review editor front matter', () => {
           element.style.maxInlineSize = `${inlineSize}px`;
         }, width);
 
-        const priority = mount.getByLabel('priority');
+        const priority = mount.getByRole('spinbutton', { name: 'priority' });
         await expect(priority).toBeVisible();
         await priority.fill('5');
         await priority.blur();
-        await expect(page.getByTestId('typed-front-matter-value')).toContainText('priority: 5');
+        await expectTypedFrontMatterData(page, { priority: 5 });
 
-        const tags = mount.getByLabel('tags');
+        const tags = mount.getByRole('textbox', { name: 'tags' });
         await expect(tags).toBeVisible();
         await expect(mount.getByRole('button', { name: 'Remove alpha' }).first()).toBeVisible();
         await tags.fill('gamma');
         await tags.press('Enter');
-        await expect(page.getByTestId('typed-front-matter-value')).toContainText('- gamma');
+        await expectTypedFrontMatterData(page, { tags: ['alpha', 'alpha', 'beta', 'gamma'] });
 
-        const metadata = mount.getByLabel('metadata');
+        const metadata = mount.getByRole('textbox', { name: 'metadata' });
         await expect(metadata).toBeVisible();
         await metadata.fill('{"owner":"docs","nested":{"count":3}}');
-        await expect(page.getByTestId('typed-front-matter-value')).toContainText('owner: docs');
-        await expect(page.getByTestId('typed-front-matter-value')).toContainText('count: 3');
+        await expectTypedFrontMatterData(page, {
+          metadata: { owner: 'docs', nested: { count: 3 } },
+        });
 
         await metadata.fill('{"owner":');
-        await expect(page.getByTestId('typed-front-matter-value')).toContainText('owner: docs');
+        await expectTypedFrontMatterData(page, {
+          metadata: { owner: 'docs', nested: { count: 3 } },
+        });
         await expect(metadata).toHaveAttribute('aria-invalid', 'true');
 
-        const optional = mount.getByLabel('optional');
+        const optional = mount.getByRole('textbox', { name: 'optional' });
         await optional.fill('ready');
-        await expect(page.getByTestId('typed-front-matter-value')).toContainText('optional: ready');
-        await expect(page.getByTestId('typed-front-matter-value')).toContainText('title: Launch');
-        await expect(page.getByTestId('typed-front-matter-value')).toContainText(
-          'published: false',
-        );
+        await expectTypedFrontMatterData(page, {
+          optional: 'ready',
+          published: false,
+          title: 'Launch notes',
+        });
 
         const readonlyMount = page.locator('#review-editor-front-matter-readonly');
         await expect(readonlyMount.getByText('alpha').first()).toBeVisible();
@@ -236,22 +254,27 @@ test.describe('review editor front matter', () => {
             document.querySelectorAll<HTMLElement>(
               '#review-editor-front-matter-typed input, #review-editor-front-matter-typed textarea, #review-editor-front-matter-typed button',
             ),
-          ).map((child) => {
-            const rect = child.getBoundingClientRect();
-            return {
-              left: Math.round(rect.left - parent.left),
-              right: Math.round(rect.right - parent.left),
-              width: Math.round(rect.width),
-              parentWidth: Math.round(parent.width),
-            };
-          });
+          )
+            .map((child) => {
+              const rect = child.getBoundingClientRect();
+              return {
+                height: Math.round(rect.height),
+                left: Math.round(rect.left - parent.left),
+                right: Math.round(rect.right - parent.left),
+                width: Math.round(rect.width),
+                parentWidth: Math.round(parent.width),
+              };
+            })
+            .filter((metric) => metric.width > 0 && metric.height > 0);
         });
+        expect(metrics.length).toBeGreaterThan(0);
         for (const metric of metrics) {
           expect(metric.width).toBeGreaterThan(0);
           expect(metric.left).toBeGreaterThanOrEqual(0);
           expect(metric.right).toBeLessThanOrEqual(metric.parentWidth + 1);
         }
 
+        await mount.scrollIntoViewIfNeeded();
         const screenshotTarget = requireBox(
           await mount.boundingBox(),
           'typed front matter fixture',

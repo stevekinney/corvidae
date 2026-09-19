@@ -1,5 +1,9 @@
-import { sortKeys } from '../utilities/sort-keys.js';
+import { sortKeys as sortObjectKeys } from '../utilities/sort-keys.js';
 import type { FrontMatterSerializeOptions } from './types.js';
+
+type YamlSerializeOptions = Pick<FrontMatterSerializeOptions, 'sortKeys'>;
+
+const sortedKeyOptions: YamlSerializeOptions = { sortKeys: true };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -33,6 +37,7 @@ export function stringifyFrontMatter(
     originalRaw,
     originalData,
     preserveEmptyFrontMatter = false,
+    sortKeys = true,
   } = options;
 
   // If no data, handle based on preserveEmptyFrontMatter option
@@ -51,8 +56,9 @@ export function stringifyFrontMatter(
     // Data unchanged, preserve original formatting
     yamlContent = originalRaw;
   } else {
-    // Generate new YAML with deterministic key ordering
-    yamlContent = serializeYaml(data);
+    // Generate new YAML. Deterministic top-level key ordering remains the
+    // default; edit flows can opt into the parsed mapping's insertion order.
+    yamlContent = serializeYaml(data, { sortKeys });
   }
 
   // Combine front matter and body
@@ -71,8 +77,9 @@ function canPreserveRaw(
 }
 
 /**
- * Serialize data to YAML with deterministic key ordering.
- * Keys are sorted alphabetically for consistent output.
+ * Serialize data to YAML.
+ * Top-level keys are sorted alphabetically by default for consistent output.
+ * Nested object keys keep the serializer's existing sorted behavior.
  *
  * @param data - The data object to serialize
  * @returns The YAML string (without delimiters)
@@ -83,11 +90,14 @@ function canPreserveRaw(
  * // "tags: [a, b]\ntitle: Hello"
  * ```
  */
-export function serializeYaml(data: Record<string, unknown>): string {
+export function serializeYaml(
+  data: Record<string, unknown>,
+  options: YamlSerializeOptions = {},
+): string {
   const lines: string[] = [];
-  const sortedKeys = Object.keys(data).toSorted();
+  const keys = getOrderedKeys(data, options);
 
-  for (const key of sortedKeys) {
+  for (const key of keys) {
     const value = data[key];
     lines.push(formatYamlLine(key, value));
   }
@@ -100,28 +110,30 @@ export function serializeYaml(data: Record<string, unknown>): string {
  * Handles common value types with appropriate formatting.
  */
 function formatYamlLine(key: string, value: unknown): string {
+  const yamlKey = formatYamlKey(key);
+
   if (value === null || value === undefined) {
-    return `${key}: null`;
+    return `${yamlKey}: null`;
   }
 
   if (typeof value === 'boolean' || typeof value === 'number') {
-    return `${key}: ${value}`;
+    return `${yamlKey}: ${value}`;
   }
 
   if (typeof value === 'string') {
     // Use quotes for strings that contain special characters or look like other types
     if (needsQuoting(value)) {
-      return `${key}: "${escapeString(value)}"`;
+      return `${yamlKey}: "${escapeString(value)}"`;
     }
-    return `${key}: ${value}`;
+    return `${yamlKey}: ${value}`;
   }
 
   if (Array.isArray(value)) {
     const formatted = formatYamlArray(value);
-    return `${key}:${formatted.startsWith('\n') ? formatted : ` ${formatted}`}`;
+    return `${yamlKey}:${formatted.startsWith('\n') ? formatted : ` ${formatted}`}`;
   }
-  if (isRecord(value)) return `${key}:${formatYamlValue(value)}`;
-  return `${key}: ${formatValue(value)}`;
+  if (isRecord(value)) return `${yamlKey}:${formatYamlValue(value)}`;
+  return `${yamlKey}: ${formatValue(value)}`;
 }
 
 function formatYamlValue(value: unknown): string {
@@ -144,15 +156,16 @@ function formatYamlArray(value: unknown[]): string {
 function serializeNestedObject(obj: Record<string, unknown>, indent: number): string {
   const spaces = ' '.repeat(indent);
   const lines: string[] = [];
-  const sortedKeys = Object.keys(obj).toSorted();
+  const keys = getOrderedKeys(obj, sortedKeyOptions);
 
-  for (const key of sortedKeys) {
+  for (const key of keys) {
     const value = obj[key];
+    const yamlKey = formatYamlKey(key);
     if (isRecord(value)) {
-      lines.push(`${spaces}${key}:`);
+      lines.push(`${spaces}${yamlKey}:`);
       lines.push(serializeNestedObject(value, indent + 2));
     } else {
-      lines.push(`${spaces}${key}: ${formatValue(value)}`);
+      lines.push(`${spaces}${yamlKey}: ${formatValue(value)}`);
     }
   }
 
@@ -176,17 +189,26 @@ function formatValue(value: unknown): string {
     return value;
   }
   if (Array.isArray(value)) {
-    return `[${value.map(formatValue).join(', ')}]`;
+    return `[${value.map((item) => formatValue(item)).join(', ')}]`;
   }
   if (isRecord(value)) {
     // Serialize objects in YAML flow style: {key: value, key2: value2}
-    const pairs = Object.keys(value)
-      .toSorted()
-      .map((k) => `${k}: ${formatValue(value[k])}`);
+    const pairs = getOrderedKeys(value, sortedKeyOptions).map(
+      (key) => `${formatYamlKey(key)}: ${formatValue(value[key])}`,
+    );
     return `{${pairs.join(', ')}}`;
   }
 
   return JSON.stringify(value) ?? 'null';
+}
+
+function getOrderedKeys(data: Record<string, unknown>, options: YamlSerializeOptions): string[] {
+  const keys = Object.keys(data);
+  return options.sortKeys === false ? keys : keys.toSorted();
+}
+
+function formatYamlKey(key: string): string {
+  return needsQuoting(key) ? `"${escapeString(key)}"` : key;
 }
 
 /**
@@ -230,5 +252,5 @@ function escapeString(value: string): string {
  * Used to determine if original raw YAML can be preserved.
  */
 function dataEquals(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-  return JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
+  return JSON.stringify(sortObjectKeys(a)) === JSON.stringify(sortObjectKeys(b));
 }
