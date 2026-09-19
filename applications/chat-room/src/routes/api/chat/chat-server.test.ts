@@ -1,8 +1,10 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import type { SignedPendingToolApproval } from '@corvidae/armorer';
 import { updatePendingApproval } from '../../../lib/pending-approval.ts';
+import { toolbox } from '../../../lib/toolbox.ts';
+import { handleResumeRequest } from './resume/+server.ts';
 
 const resumeSource = readFileSync(new URL('./resume/+server.ts', import.meta.url), 'utf8');
 /**
@@ -108,6 +110,163 @@ describe('chat stream cancellation guard', () => {
 });
 
 describe('chat approval continuation response', () => {
+  test('accepts the unified resolution endpoint contract', () => {
+    expect(resumeSource).toContain(
+      "import { toolActionSchema } from '@corvidae/conversationalist';",
+    );
+    expect(resumeSource).toContain('resolutionSchema');
+    expect(resumeSource).toContain(
+      'toolbox.resolveApproval(approval, resolution, { requestContext })',
+    );
+    expect(resumeSource).not.toContain("decision: z.enum(['approve', 'deny'])");
+    expect(resumeSource).not.toContain("if (decision === 'deny')");
+  });
+
+  test('forwards the complete approval and resolution unchanged', async () => {
+    const approval = {
+      callId: 'call-1',
+      toolName: 'remember_note',
+      arguments: { text: 'before' },
+      action: {
+        type: 'approval' as const,
+        message: 'Save this note?',
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        sandbox: { provider: 'bun', name: 'chat', workingDir: '/tmp/chat' },
+        env: ['A=1'],
+        snapshotId: 'snapshot-1',
+        expiresAt: '2099-01-02T03:04:05Z',
+        editableArgs: true,
+        policyVersion: 'policy-1',
+        idempotencyKey: 'idempotency-1',
+      },
+      metadata: { signed: true },
+      satisfiedPolicyPauses: [
+        {
+          action: {
+            type: 'approval' as const,
+            risk: 'low' as const,
+            operation: { kind: 'other' as const },
+            policyVersion: 'policy-1',
+            idempotencyKey: 'nested-1',
+          },
+          reason: 'already satisfied',
+          tier: 'registry' as const,
+        },
+      ],
+      approvalToken: 'token-1',
+    } satisfies SignedPendingToolApproval;
+    const resolution = {
+      decision: 'approve_with_edits' as const,
+      editedArgs: { text: 'after' },
+      reason: 'updated note',
+      remember: true,
+    };
+    const result = {
+      callId: approval.callId,
+      outcome: 'action_required' as const,
+      content: null,
+      action: approval.action,
+      pendingApproval: { ...approval, approvalToken: 'token-2' },
+    };
+    const resolveApproval = spyOn(toolbox, 'resolveApproval').mockResolvedValue(result);
+
+    try {
+      const response = await handleResumeRequest(
+        new Request('http://localhost/api/chat/resume', {
+          method: 'POST',
+          body: JSON.stringify({ approval, resolution }),
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(result);
+      expect(resolveApproval).toHaveBeenCalledWith(approval, resolution, {
+        requestContext: expect.any(Object),
+      });
+    } finally {
+      resolveApproval.mockRestore();
+    }
+  });
+
+  test('rejects legacy and malformed resolution bodies before the toolbox', async () => {
+    const resolveApproval = spyOn(toolbox, 'resolveApproval');
+    try {
+      for (const body of [
+        { approval: {}, decision: 'deny' },
+        { approval: {}, resolution: { decision: 'deny' } },
+      ]) {
+        const response = await handleResumeRequest(
+          new Request('http://localhost/api/chat/resume', {
+            method: 'POST',
+            body: JSON.stringify(body),
+          }),
+        );
+        expect(response.status).toBe(400);
+      }
+      expect(resolveApproval).not.toHaveBeenCalled();
+    } finally {
+      resolveApproval.mockRestore();
+    }
+  });
+
+  test('forwards negative decisions without fabricating a denial result', async () => {
+    const approval = {
+      callId: 'call-negative',
+      toolName: 'remember_note',
+      arguments: { text: 'before' },
+      action: {
+        type: 'approval' as const,
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        policyVersion: 'policy-1',
+        idempotencyKey: 'negative-1',
+      },
+      approvalToken: 'token-negative',
+    } satisfies SignedPendingToolApproval;
+    const resolveApproval = spyOn(toolbox, 'resolveApproval').mockImplementation(
+      async (_approval, resolution) => ({
+        callId: approval.callId,
+        outcome: 'error',
+        content: null,
+        error: {
+          code: resolution.decision === 'cancel' ? 'CANCELLED' : 'denied',
+          category: resolution.decision === 'cancel' ? 'cancelled' : 'permission',
+          retryable: false,
+          message: resolution.reason ?? 'authoritative result',
+        },
+      }),
+    );
+
+    try {
+      for (const decision of ['deny', 'cancel'] as const) {
+        const resolution = { decision, reason: `${decision} reason`, remember: false };
+        const response = await handleResumeRequest(
+          new Request('http://localhost/api/chat/resume', {
+            method: 'POST',
+            body: JSON.stringify({ approval, resolution }),
+          }),
+        );
+        expect(await response.json()).toMatchObject({
+          callId: approval.callId,
+          outcome: 'error',
+          error: {
+            code: decision === 'cancel' ? 'CANCELLED' : 'denied',
+            message: resolution.reason,
+          },
+        });
+      }
+      expect(resolveApproval).toHaveBeenCalledTimes(2);
+      expect(resolveApproval.mock.calls.map((call) => call[1])).toEqual([
+        { decision: 'deny', reason: 'deny reason', remember: false },
+        { decision: 'cancel', reason: 'cancel reason', remember: false },
+      ]);
+    } finally {
+      resolveApproval.mockRestore();
+    }
+  });
+
   test('forwards another pending approval stage to the client', () => {
     expect(resumeSource).toContain('...(result.action ? { action: result.action } : {})');
     expect(resumeSource).toContain(
