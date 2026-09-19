@@ -2,10 +2,9 @@ import { join } from 'node:path';
 
 import { discoverComponents } from '../../components/cinder/scripts/lib/discover-components.ts';
 import {
-  discoverWorkspaces,
   ManifestTransformError,
   planManifests,
-  targetFor,
+  publicNameFor,
   type ManifestPlan,
   type PlanOptions,
 } from './manifests.ts';
@@ -19,6 +18,7 @@ import {
   type SurfaceExportsMap,
 } from './package-surface.ts';
 import { checkParity, loadRegistryBaseline, type ParityResult } from './registry-baseline.ts';
+import { assertSingleOwner, planSource, type EmittedWorkspace, type SourcePlan } from './source.ts';
 import {
   assertTypeScriptEdgeClosed,
   planTypeScriptConfiguration,
@@ -33,6 +33,12 @@ import {
  * those three, plus the TypeScript configuration each target needs, and runs the two gates that
  * decide whether the result is publishable: surface parity against the registry baseline, and
  * whether every exports target names something the package can actually ship.
+ *
+ * COR-1221 added the part none of that covered: the source itself. `planSource` reads each
+ * emitted workspace's `src/` tree and this composes it with the manifests and the TypeScript
+ * configuration, which is also where the three producers' claims on the plan's keys are checked
+ * against each other. The merge is a spread, so an overlap would otherwise be a silent
+ * last-writer-wins on a file one half of the transform thought it owned.
  *
  * Nothing here writes. `stageTarget` in `manifests.ts` is still what puts a plan on disk, and the
  * target-owned guard still runs over the whole file set before any of it lands.
@@ -60,7 +66,30 @@ export interface PublishedPackage {
   files: string[];
 }
 
-export interface SurfacePlan extends ManifestPlan {
+/**
+ * A workspace that ships to the target but never to the registry.
+ *
+ * Recorded because its source ships now. Before COR-1221 a private workspace was a manifest and a
+ * tsconfig, so there was nothing in it to check; now it is code, and code nothing type-checks is
+ * code the mirror publishes to a repository without knowing whether it compiles.
+ */
+export interface PrivateWorkspace {
+  workspace: string;
+  /** Target-relative directory, the same one the manifest was written to. */
+  directory: string;
+  publicName: string;
+  /** Whether the emitted manifest declares a `typecheck` script. */
+  typechecks: boolean;
+  /** Whether the emitted source includes TypeScript, which is what makes a typecheck meaningful. */
+  emitsTypeScript: boolean;
+}
+
+export interface SurfacePlan extends Omit<ManifestPlan, 'files'> {
+  /**
+   * Target-relative path to file contents. Bytes as well as text since COR-1221: the source half
+   * emits whatever a workspace's `src/` tree holds, including one PNG baseline fixture.
+   */
+  files: Record<string, string | Uint8Array>;
   /** One result per published package, including the ones with no published predecessor. */
   parity: ParityResult[];
   /** Every exports target that cannot be shipped or has no source. Empty is the goal, not a given. */
@@ -68,6 +97,9 @@ export interface SurfacePlan extends ManifestPlan {
   typescript: TypeScriptPlan;
   /** The packages this target publishes, in discovery order. Private workspaces are absent. */
   published: PublishedPackage[];
+  /** The workspaces this target receives but never publishes, in discovery order. */
+  privateWorkspaces: PrivateWorkspace[];
+  source: SourcePlan;
 }
 
 function isJsonObject(value: unknown): value is JsonObject {
@@ -161,35 +193,44 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   const catalog = isJsonObject(root['catalog']) ? (root['catalog'] as Record<string, string>) : {};
   const targetHasCatalog = options.target === 'cinder';
 
-  const workspaces = await discoverWorkspaces(options.corvidaeRoot);
-  const emitted = workspaces.filter((workspace) => targetFor(workspace.name) === options.target);
   const components = await discoverComponents();
 
   const parity: ParityResult[] = [];
   const coverage: CoverageFinding[] = [];
   const published: PublishedPackage[] = [];
+  const privateWorkspaces: PrivateWorkspace[] = [];
   const files = { ...manifestPlan.files };
-  const directories: string[] = [];
+  const emittedWorkspaces: EmittedWorkspace[] = [];
 
-  for (const workspace of emitted) {
-    const disposition = await dispositionFor(workspace.name);
+  for (const workspace of manifestPlan.emitted) {
+    const disposition = await dispositionFor(workspace.workspace);
     if (disposition.disposition === 'exclude') continue;
-    directories.push(workspace.directory);
 
-    const path = `${workspace.directory}/package.json`;
+    const path = `${workspace.targetDirectory}/package.json`;
     const serialized = files[path];
     if (serialized === undefined) continue;
 
-    const entry = surface.packages[workspace.name];
+    const entry = surface.packages[workspace.workspace];
     if (entry === undefined) {
       // A private workspace never reaches a tarball, so it keeps corvidae's source `exports`.
-      if (disposition.disposition === 'private-workspace') continue;
+      if (disposition.disposition === 'private-workspace') {
+        emittedWorkspaces.push(workspace);
+        privateWorkspaces.push({
+          workspace: workspace.workspace,
+          directory: workspace.targetDirectory,
+          publicName: publicNameFor(workspace.workspace, disposition),
+          typechecks: hasTypecheckScript(JSON.parse(serialized) as JsonObject),
+          emitsTypeScript: false,
+        });
+        continue;
+      }
       throw new ManifestTransformError(
-        `${workspace.name} publishes as ${disposition.name} but package-surface.json carries no exports, files or build for it`,
+        `${workspace.workspace} publishes as ${disposition.name} but package-surface.json carries no exports, files or build for it`,
       );
     }
 
-    const packageRoot = join(options.corvidaeRoot, workspace.directory);
+    emittedWorkspaces.push({ ...workspace, entry });
+    const packageRoot = join(options.corvidaeRoot, workspace.corvidaeDirectory);
     const manifest = JSON.parse(serialized) as JsonObject;
     const resolved = resolveSurface({
       entry,
@@ -202,12 +243,12 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     });
 
     applySurfaceToManifest(manifest, entry, resolved.exports, resolved.files);
-    applyToolchain(manifest, entry.build.toolchain, catalog, targetHasCatalog, workspace.name);
+    applyToolchain(manifest, entry.build.toolchain, catalog, targetHasCatalog, workspace.workspace);
     files[path] = serialize(manifest);
 
     published.push({
-      workspace: workspace.name,
-      directory: workspace.directory,
+      workspace: workspace.workspace,
+      directory: workspace.targetDirectory,
       publicName: resolved.publicName,
       entry,
       exports: resolved.exports,
@@ -230,18 +271,36 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   const typescript = await planTypeScriptConfiguration({
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
-    workspaceDirectories: directories,
+    workspaces: emittedWorkspaces,
   });
   assertTypeScriptEdgeClosed(manifestPlan.droppedEdges, typescript);
 
+  const source = await planSource(options.corvidaeRoot, emittedWorkspaces);
+  for (const entry of privateWorkspaces) {
+    entry.emitsTypeScript = source.typeScriptWorkspaces.includes(entry.workspace);
+  }
+  assertSingleOwner([
+    { owner: 'manifests', paths: Object.keys(files) },
+    { owner: 'typescript-configuration', paths: Object.keys(typescript.files) },
+    { owner: 'source', paths: Object.keys(source.files) },
+  ]);
+
   return {
     ...manifestPlan,
-    files: { ...files, ...typescript.files },
+    files: { ...files, ...typescript.files, ...source.files },
     parity,
     coverage,
     typescript,
     published,
+    privateWorkspaces,
+    source,
   };
+}
+
+/** Whether an emitted manifest declares the script `verifyTarget` runs over a private workspace. */
+function hasTypecheckScript(manifest: JsonObject): boolean {
+  const scripts = manifest['scripts'];
+  return isJsonObject(scripts) && typeof scripts['typecheck'] === 'string';
 }
 
 /**

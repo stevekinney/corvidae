@@ -101,7 +101,7 @@ describe('planTypeScriptConfiguration', () => {
         const plan = await planTypeScriptConfiguration({
           corvidaeRoot: root,
           target: 'weft',
-          workspaceDirectories: ['packages/weft'],
+          workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
         });
         expect(plan.vendoredInto).toEqual(['packages/weft']);
         for (const file of configurationFiles) {
@@ -127,10 +127,12 @@ describe('planTypeScriptConfiguration', () => {
         const plan = await planTypeScriptConfiguration({
           corvidaeRoot: root,
           target: 'cinder',
-          workspaceDirectories: ['components/cinder'],
+          workspaces: [
+            { corvidaeDirectory: 'components/cinder', targetDirectory: 'packages/components' },
+          ],
         });
         expect(plan.vendoredInto).toEqual([]);
-        const emitted = JSON.parse(plan.files['components/cinder/tsconfig.json'] ?? '{}') as {
+        const emitted = JSON.parse(plan.files['packages/components/tsconfig.json'] ?? '{}') as {
           extends?: string;
         };
         expect(emitted.extends).toBe('@lostgradient/typescript/browser.json');
@@ -150,9 +152,11 @@ describe('planTypeScriptConfiguration', () => {
         const plan = await planTypeScriptConfiguration({
           corvidaeRoot: root,
           target: 'cinder',
-          workspaceDirectories: ['applications/chat-room'],
+          workspaces: [
+            { corvidaeDirectory: 'applications/chat-room', targetDirectory: 'labs/chat-room' },
+          ],
         });
-        const emitted = JSON.parse(plan.files['applications/chat-room/tsconfig.json'] ?? '{}') as {
+        const emitted = JSON.parse(plan.files['labs/chat-room/tsconfig.json'] ?? '{}') as {
           extends?: string[];
         };
         expect(emitted.extends).toEqual([
@@ -167,7 +171,7 @@ describe('planTypeScriptConfiguration', () => {
     const plan = await planTypeScriptConfiguration({
       corvidaeRoot,
       target: 'weft',
-      workspaceDirectories: ['packages/weft'],
+      workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
     });
     const emitted = JSON.parse(plan.files['packages/weft/tsconfig.json'] ?? '{}') as {
       extends?: string;

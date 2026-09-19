@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { chmod, mkdir, rm } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, relative, sep } from 'node:path';
 import { z } from 'zod';
 
@@ -67,21 +67,31 @@ export type TargetOwnedMatch = {
   issue?: string;
 };
 
+/** Whether the refused plan would have written the path or removed it. */
+export type GuardedAction = 'write' | 'delete';
+
 export class TargetOwnedViolation extends Error {
   readonly matches: readonly TargetOwnedMatch[];
   readonly expired: readonly TargetOwnedExceptionEntry[];
+  readonly action: GuardedAction;
 
-  constructor(matches: readonly TargetOwnedMatch[], expired: readonly TargetOwnedExceptionEntry[]) {
-    super(describeViolation(matches, expired));
+  constructor(
+    matches: readonly TargetOwnedMatch[],
+    expired: readonly TargetOwnedExceptionEntry[],
+    action: GuardedAction = 'write',
+  ) {
+    super(describeViolation(matches, expired, action));
     this.name = 'TargetOwnedViolation';
     this.matches = matches;
     this.expired = expired;
+    this.action = action;
   }
 }
 
 function describeViolation(
   matches: readonly TargetOwnedMatch[],
   expired: readonly TargetOwnedExceptionEntry[],
+  action: GuardedAction,
 ): string {
   const lines: string[] = [];
   if (expired.length > 0) {
@@ -93,7 +103,11 @@ function describeViolation(
     }
   }
   if (matches.length > 0) {
-    lines.push('The mirror transform must not write these target-owned paths:');
+    lines.push(
+      action === 'delete'
+        ? 'The mirror transform must not delete these target-owned paths:'
+        : 'The mirror transform must not write these target-owned paths:',
+    );
     for (const match of matches) {
       const suffix = match.expires ? ` [temporary until ${match.expires}, ${match.issue}]` : '';
       lines.push(`  ${match.path} matches ${match.glob}${suffix}`);
@@ -178,6 +192,8 @@ export type GuardOptions = {
   target: string;
   paths: Iterable<string>;
   now?: Date;
+  /** What the refused plan would have done. Writes are the default and the original case. */
+  action?: GuardedAction;
 };
 
 /** Throws `TargetOwnedViolation` when any path is target-owned or any exception has expired. */
@@ -186,6 +202,7 @@ export function assertWritablePaths({
   target,
   paths,
   now = new Date(),
+  action = 'write',
 }: GuardOptions): void {
   if (!policy.targets.includes(target)) {
     throw new Error(
@@ -198,40 +215,106 @@ export function assertWritablePaths({
     const match = findTargetOwner(policy, path, target, now);
     if (match) matches.push(match);
   }
-  if (matches.length > 0 || expired.length > 0) throw new TargetOwnedViolation(matches, expired);
+  if (matches.length > 0 || expired.length > 0) {
+    throw new TargetOwnedViolation(matches, expired, action);
+  }
 }
+
+/**
+ * Throws `TargetOwnedViolation` when a plan would delete a path the target owns.
+ *
+ * COR-1221 gave the transform a deletion: a file corvidae no longer carries is removed from the
+ * target so the two trees stay the same tree. The enumeration had only ever stopped writes — its
+ * own `openQuestions` said so — and a deletion is the more destructive of the two, so it is
+ * checked by the same list, before anything is removed.
+ */
+export function assertDeletablePaths(options: Omit<GuardOptions, 'action'>): void {
+  assertWritablePaths({ ...options, action: 'delete' });
+}
+
+/**
+ * Plan contents, as text or as bytes.
+ *
+ * Bytes because the source half of the transform emits whatever a workspace's `src/` tree holds,
+ * and one of corvidae's holds a PNG baseline fixture.
+ */
+export type TransformFiles = Readonly<Record<string, string | Uint8Array>>;
 
 export type TransformOutput = {
   policy: TargetOwnedPolicy;
   target: string;
   directory: string;
   /** Target-relative path to file contents. */
-  files: Readonly<Record<string, string>>;
+  files: TransformFiles;
+  /** Target-relative paths to remove, which the guard checks exactly as it checks a write. */
+  deletions?: Iterable<string> | undefined;
+  /** Target-relative written paths whose corvidae counterpart carries the executable bit. */
+  executable?: Iterable<string> | undefined;
   now?: Date;
 };
 
+export interface TransformWriteResult {
+  written: string[];
+  deleted: string[];
+}
+
 /**
- * Writes transform output into a target clone, but only after the whole plan clears the guard.
- * Checking every path up front is what makes a refusal leave the target byte-identical: a
- * per-file check would already have written the files preceding the offending one.
+ * Writes transform output into a target clone, and removes the paths the plan retires, but only
+ * after the whole plan clears the guard. Checking every path up front is what makes a refusal
+ * leave the target byte-identical: a per-file check would already have written the files
+ * preceding the offending one, and with deletions in the plan it would already have removed some.
+ *
+ * A directory the deletions empty is left in place. Git tracks files, so an empty directory is
+ * not a change to the target and removing it would be tidiness the mirror cannot verify.
  */
 export async function writeTransformOutput({
   policy,
   target,
   directory,
   files,
+  deletions = [],
+  executable = [],
   now = new Date(),
-}: TransformOutput): Promise<string[]> {
+}: TransformOutput): Promise<TransformWriteResult> {
   const entries = Object.entries(files);
+  const removals = [...deletions].map((path) => normalizeTargetPath(path));
   assertWritablePaths({ policy, target, paths: entries.map(([path]) => path), now });
+  assertDeletablePaths({ policy, target, paths: removals, now });
+
+  const executablePaths = new Set([...executable].map((path) => normalizeTargetPath(path)));
   const written: string[] = [];
   for (const [path, contents] of entries) {
-    const destination = join(directory, normalizeTargetPath(path));
+    const normalized = normalizeTargetPath(path);
+    const destination = join(directory, normalized);
     await mkdir(dirname(destination), { recursive: true });
     await Bun.write(destination, contents);
+    if (executablePaths.has(normalized)) await chmod(destination, 0o755);
     written.push(relative(directory, destination).split(sep).join('/'));
   }
-  return written;
+
+  const deleted: string[] = [];
+  for (const path of removals) {
+    await rm(join(directory, path), { force: true });
+    deleted.push(path);
+  }
+  return { written, deleted };
+}
+
+/**
+ * A plan file on disk, whose values are text or base64-wrapped bytes.
+ *
+ * JSON has no byte string, so a binary plan entry names its encoding rather than being guessed at
+ * from its contents. The in-process type is `string | Uint8Array`; this is the same union in the
+ * one place it has to survive a round trip through a file.
+ */
+const planSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.object({ base64: z.string().min(1) })]),
+);
+
+function decodePlanContents(contents: string | { base64: string }): string | Uint8Array {
+  if (typeof contents === 'string') return contents;
+  return Uint8Array.from(atob(contents.base64), (character) => character.charCodeAt(0));
 }
 
 function readOption(argv: readonly string[], name: string): string {
@@ -246,10 +329,15 @@ export async function runGuard(argv: readonly string[]): Promise<number> {
     const policy = await loadTargetOwnedPolicy();
     const target = readOption(argv, 'target');
     const directory = readOption(argv, 'directory');
-    const plan = z
-      .record(z.string(), z.string())
-      .parse(JSON.parse(await Bun.file(readOption(argv, 'plan')).text()));
-    const written = await writeTransformOutput({ policy, target, directory, files: plan });
+    const plan = planSchema.parse(JSON.parse(await Bun.file(readOption(argv, 'plan')).text()));
+    const { written } = await writeTransformOutput({
+      policy,
+      target,
+      directory,
+      files: Object.fromEntries(
+        Object.entries(plan).map(([path, contents]) => [path, decodePlanContents(contents)]),
+      ),
+    });
     process.stdout.write(`Wrote ${written.length} file(s) to ${directory}\n`);
     return 0;
   } catch (error) {

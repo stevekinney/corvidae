@@ -1,8 +1,10 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { targetDirectoryFor } from './layout-map.ts';
 import { publicNameFor, targetFor, type MirrorTarget } from './manifests.ts';
 import { dispositionFor } from './package-map.ts';
+import type { EmittedWorkspace } from './source.ts';
 
 /**
  * How `@corvidae/typescript` reaches each target.
@@ -102,8 +104,11 @@ export async function discoverConfigurations(workspaceDirectory: string): Promis
 export interface TypeScriptPlanOptions {
   corvidaeRoot: string;
   target: MirrorTarget;
-  /** Corvidae-relative directories, one per workspace the target receives. */
-  workspaceDirectories: readonly string[];
+  /**
+   * One entry per workspace the target receives. Both directories are needed and they differ:
+   * the configuration is read from corvidae's directory and emitted into the target's.
+   */
+  workspaces: readonly Pick<EmittedWorkspace, 'corvidaeDirectory' | 'targetDirectory'>[];
 }
 
 export interface TypeScriptPlan {
@@ -124,7 +129,7 @@ function serialize(document: unknown): string {
 export async function planTypeScriptConfiguration({
   corvidaeRoot,
   target,
-  workspaceDirectories,
+  workspaces,
 }: TypeScriptPlanOptions): Promise<TypeScriptPlan> {
   const vendor = vendorsConfiguration(target);
   const publicName = publicNameFor(
@@ -135,27 +140,31 @@ export async function planTypeScriptConfiguration({
   const files: Record<string, string> = {};
   const vendoredInto: string[] = [];
 
-  for (const directory of workspaceDirectories) {
-    const workspaceDirectory = join(corvidaeRoot, directory);
+  for (const { corvidaeDirectory, targetDirectory } of workspaces) {
+    const workspaceDirectory = join(corvidaeRoot, corvidaeDirectory);
     const names = await discoverConfigurations(workspaceDirectory);
     if (names.length === 0) continue;
     for (const name of names) {
       const parsed = (await Bun.file(join(workspaceDirectory, name)).json()) as JsonObject;
-      files[`${directory}/${name}`] = serialize(rewriteExtendsField(parsed, publicName, vendor));
+      files[`${targetDirectory}/${name}`] = serialize(
+        rewriteExtendsField(parsed, publicName, vendor),
+      );
     }
     if (!vendor) continue;
-    vendoredInto.push(directory);
+    vendoredInto.push(targetDirectory);
     for (const file of configurationFiles) {
       const source = join(corvidaeRoot, 'internal', 'typescript', file);
-      files[`${directory}/${vendoredDirectory}/${file}`] = await Bun.file(source).text();
+      files[`${targetDirectory}/${vendoredDirectory}/${file}`] = await Bun.file(source).text();
     }
   }
 
   if (!vendor) {
-    // The target keeps the package, so its own files ship as an ordinary workspace.
+    // The target keeps the package, so its own files ship as an ordinary workspace, at whatever
+    // directory `layout-map.json` places it in rather than at corvidae's own path.
+    const configurationDirectory = await targetDirectoryFor(configurationWorkspace);
     for (const file of configurationFiles) {
       const source = join(corvidaeRoot, 'internal', 'typescript', file);
-      files[`internal/typescript/${file}`] = await Bun.file(source).text();
+      files[`${configurationDirectory}/${file}`] = await Bun.file(source).text();
     }
   }
 
