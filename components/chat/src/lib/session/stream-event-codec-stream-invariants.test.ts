@@ -171,6 +171,71 @@ describe('decodeChatStreamEvents stream-level invariants (CIN-507)', () => {
       'Invalid chat stream event',
     );
   });
+
+  // A stream commits to ONE wire version, the same way it commits to one
+  // envelope mode. The two versions are not interchangeable — version 2 adds
+  // vocabulary version 1 has no frame for — so a consumer that read the first
+  // frame as version 1 and is handed a version 2 frame partway through has
+  // been told two different things about what it is reading. Per-frame decode
+  // cannot see this; only the stream guard can.
+  test('rejects a version 2 frame following a version 1 frame in the same stream', async () => {
+    const ndjson =
+      encodeChatStreamEvent({
+        type: 'stream:text-delta',
+        content: 'h',
+        accumulated: 'h',
+        wireVersion: 1,
+        sequence: 0,
+      }) +
+      encodeChatStreamEvent({
+        type: 'assistant.step.started',
+        step: 0,
+        messageId: 'host-0',
+        wireVersion: 2,
+        sequence: 1,
+      });
+    await expectRejected(
+      Array.fromAsync(decodeChatStreamEvents(ndjson)),
+      'Invalid chat stream event: wire version changed mid-stream',
+    );
+  });
+
+  test('rejects a version 1 frame following a version 2 frame in the same stream', async () => {
+    const ndjson =
+      encodeChatStreamEvent({
+        type: 'assistant.step.started',
+        step: 0,
+        messageId: 'host-0',
+        wireVersion: 2,
+        sequence: 0,
+      }) +
+      encodeChatStreamEvent({
+        type: 'stream:text-delta',
+        content: 'h',
+        accumulated: 'h',
+        wireVersion: 1,
+        sequence: 1,
+      });
+    await expectRejected(
+      Array.fromAsync(decodeChatStreamEvents(ndjson)),
+      'Invalid chat stream event: wire version changed mid-stream',
+    );
+  });
+
+  test('accepts a wholly version 2 stream', async () => {
+    const ndjson =
+      encodeChatStreamEvent({
+        type: 'assistant.step.started',
+        step: 0,
+        messageId: 'host-0',
+        wireVersion: 2,
+        sequence: 0,
+      }) +
+      encodeChatStreamEvent({ type: 'text', text: 'hi', wireVersion: 2, sequence: 1 }) +
+      encodeChatStreamEvent({ type: 'run.aborted', wireVersion: 2, sequence: 2 });
+    const events = await Array.fromAsync(decodeChatStreamEvents(ndjson));
+    expect(events).toHaveLength(3);
+  });
 });
 
 // Every case below was raised on review. They share a theme worth naming: the

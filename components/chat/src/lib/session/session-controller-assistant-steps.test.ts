@@ -34,14 +34,14 @@ describe('assistant step boundaries', () => {
       },
       transport: async () =>
         events([
-          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 1, sequence: 0 },
-          { type: 'text', text: 'Saving that.', wireVersion: 1, sequence: 1 },
+          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 0 },
+          { type: 'text', text: 'Saving that.', wireVersion: 2, sequence: 1 },
           {
             type: 'tool_call',
             id: 'call-1',
             name: 'remember_note',
             arguments: {},
-            wireVersion: 1,
+            wireVersion: 2,
             sequence: 2,
           },
           {
@@ -49,14 +49,14 @@ describe('assistant step boundaries', () => {
             callId: 'call-1',
             outcome: 'success',
             content: 'ok',
-            wireVersion: 1,
+            wireVersion: 2,
             sequence: 3,
           },
-          { type: 'assistant.step.completed', step: 0, messageId: 'host-0', wireVersion: 1, sequence: 4 },
-          { type: 'assistant.step.started', step: 1, messageId: 'host-1', wireVersion: 1, sequence: 5 },
-          { type: 'text', text: 'Saved that note.', wireVersion: 1, sequence: 6 },
-          { type: 'assistant.step.completed', step: 1, messageId: 'host-1', wireVersion: 1, sequence: 7 },
-          { type: 'run.aborted', wireVersion: 1, sequence: 8 },
+          { type: 'assistant.step.completed', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 4 },
+          { type: 'assistant.step.started', step: 1, messageId: 'host-1', wireVersion: 2, sequence: 5 },
+          { type: 'text', text: 'Saved that note.', wireVersion: 2, sequence: 6 },
+          { type: 'assistant.step.completed', step: 1, messageId: 'host-1', wireVersion: 2, sequence: 7 },
+          { type: 'run.aborted', wireVersion: 2, sequence: 8 },
         ]),
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'remember this' }, []);
@@ -95,10 +95,10 @@ describe('assistant step boundaries', () => {
       },
       transport: async () =>
         events([
-          { type: 'assistant.step.started', step: 0, messageId: 'host-only', wireVersion: 1, sequence: 0 },
-          { type: 'text', text: 'Hello.', wireVersion: 1, sequence: 1 },
-          { type: 'assistant.step.completed', step: 0, messageId: 'host-only', wireVersion: 1, sequence: 2 },
-          { type: 'run.aborted', wireVersion: 1, sequence: 3 },
+          { type: 'assistant.step.started', step: 0, messageId: 'host-only', wireVersion: 2, sequence: 0 },
+          { type: 'text', text: 'Hello.', wireVersion: 2, sequence: 1 },
+          { type: 'assistant.step.completed', step: 0, messageId: 'host-only', wireVersion: 2, sequence: 2 },
+          { type: 'run.aborted', wireVersion: 2, sequence: 3 },
         ]),
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []);
@@ -116,13 +116,13 @@ describe('assistant step boundaries', () => {
       },
       transport: async () =>
         events([
-          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 1, sequence: 0 },
+          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 0 },
           {
             type: 'tool_call',
             id: 'call-1',
             name: 'remember_note',
             arguments: {},
-            wireVersion: 1,
+            wireVersion: 2,
             sequence: 1,
           },
           {
@@ -130,13 +130,13 @@ describe('assistant step boundaries', () => {
             callId: 'call-1',
             outcome: 'success',
             content: 'ok',
-            wireVersion: 1,
+            wireVersion: 2,
             sequence: 2,
           },
-          { type: 'assistant.step.completed', step: 0, messageId: 'host-0', wireVersion: 1, sequence: 3 },
-          { type: 'assistant.step.started', step: 1, messageId: 'host-1', wireVersion: 1, sequence: 4 },
-          { type: 'text', text: 'Saved that note.', wireVersion: 1, sequence: 5 },
-          { type: 'run.aborted', wireVersion: 1, sequence: 6 },
+          { type: 'assistant.step.completed', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 3 },
+          { type: 'assistant.step.started', step: 1, messageId: 'host-1', wireVersion: 2, sequence: 4 },
+          { type: 'text', text: 'Saved that note.', wireVersion: 2, sequence: 5 },
+          { type: 'run.aborted', wireVersion: 2, sequence: 6 },
         ]),
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'remember this' }, []);
@@ -157,10 +157,10 @@ describe('assistant step boundaries', () => {
       },
       transport: async () =>
         events([
-          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 1, sequence: 0 },
-          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 1, sequence: 1 },
-          { type: 'text', text: 'Once.', wireVersion: 1, sequence: 2 },
-          { type: 'run.aborted', wireVersion: 1, sequence: 3 },
+          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 0 },
+          { type: 'assistant.step.started', step: 0, messageId: 'host-0', wireVersion: 2, sequence: 1 },
+          { type: 'text', text: 'Once.', wireVersion: 2, sequence: 2 },
+          { type: 'run.aborted', wireVersion: 2, sequence: 3 },
         ]),
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []);

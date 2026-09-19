@@ -3,7 +3,7 @@ import type { ChatToolResult } from '../components/chat/adapter/chat-adapter.ts'
 import { isJSONValue, isTokenUsage, isToolResult } from '../components/chat/builders.ts';
 import type { JSONValue } from '../components/chat/conversation-model.ts';
 import {
-  SUPPORTED_WIRE_VERSION,
+  isSupportedWireVersion,
   type ChatSerializedRunError,
   type ChatStreamBlock,
   type ChatStreamEvent,
@@ -40,12 +40,12 @@ export function projectWireEnvelope(event: ChatStreamEvent): Partial<WireEnvelop
   const sequence = hasSequence ? event.sequence : undefined;
   if (
     hasWireVersion !== hasSequence ||
-    wireVersion !== SUPPORTED_WIRE_VERSION ||
+    !isSupportedWireVersion(wireVersion) ||
     !isNonNegativeSafeInteger(sequence)
   ) {
     throw new Error('Invalid chat stream event: cannot encode a malformed wire envelope');
   }
-  return { wireVersion: SUPPORTED_WIRE_VERSION, sequence };
+  return { wireVersion, sequence };
 }
 
 /**
