@@ -36,6 +36,7 @@ import {
   type DurableEventOwner,
   type DurableEventPage,
   type DurableRunDeps,
+  type Effort,
   type FlowController,
   hasDefinitionResolver,
   HumanWaitParkedEvent,
@@ -71,7 +72,9 @@ import {
   SessionSavedEvent,
   type SessionStore,
   type SessionSummary,
+  SteeringAcceptedEvent,
   SteeringAppliedEvent,
+  type SteeringRequestedValue,
   type StepRecord,
   type Store,
   StoreActionEvent,
@@ -88,6 +91,7 @@ import {
   KEYS,
   type ListFilter,
   type ListOptions,
+  Mailbox,
   type RecoveredWorkflowInfo,
   type ScheduleSpec,
   type WorkflowState,
@@ -174,9 +178,15 @@ import {
   createSteeringCommandLedger,
   createSteeringGate,
   type ImplementedSteeringCommand,
+  isConfigurationTarget,
   type SteeringCommandAdmissionOutcome,
   type SteeringCommandRequest,
 } from './steering';
+import {
+  createSteeringMailbox,
+  persistSteeringCommand,
+  recoverSteeringCommands,
+} from './steering-durability';
 import type {
   AbortingRun,
   Bureau,
@@ -1355,6 +1365,116 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // `deleteSession` below) so a reused session id never inherits a deleted
   // session's pause state / command history / applied floor.
   const steeringGates = new Map<string, BureauSteeringGate>();
+  /**
+   * AB-200 — one steering mailbox per session, for a durably-configured
+   * bureau. Cached because a `Mailbox` holds its own storage-scoped state
+   * and constructing a second one for the same `(namespace, resourceId)`
+   * would defeat the FIFO ordering that is the point of using one.
+   */
+  const steeringMailboxes = new Map<string, Mailbox>();
+  /**
+   * Sessions whose durable steering log has already been drained into a
+   * gate in this process. Recovery is once per session per boot: the
+   * mailbox is consumed by draining, so a second pass would find nothing
+   * and a concurrent second pass could interleave two replays of the same
+   * command into one gate.
+   */
+  const steeringRecoveries = new Map<string, Promise<void>>();
+
+  /** `undefined` for a non-durable bureau — nothing to persist against. */
+  function getSteeringMailbox(sessionId: string): Mailbox | undefined {
+    const storage = runtime.durableStorage;
+    if (!runtime.durable || storage === undefined) return undefined;
+    let mailbox = steeringMailboxes.get(sessionId);
+    if (!mailbox) {
+      mailbox = createSteeringMailbox(storage, sessionId);
+      steeringMailboxes.set(sessionId, mailbox);
+    }
+    return mailbox;
+  }
+
+  /**
+   * Resolves this session's gate, replaying its durable steering log into
+   * a freshly-created one first.
+   *
+   * Recovery is lazy rather than a boot sweep, and deliberately: a bureau
+   * may hold thousands of sessions whose steering logs are empty, and
+   * draining every one at startup would pay for all of them to recover the
+   * few that need it. The first steering operation on a session after a
+   * restart is exactly when its log matters.
+   */
+  async function ensureSteeringGate(
+    sessionId: string,
+    liveRunIds: readonly string[],
+  ): Promise<BureauSteeringGate> {
+    let gate = steeringGates.get(sessionId);
+    if (gate === undefined) {
+      gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
+      steeringGates.set(sessionId, gate);
+    }
+
+    const mailbox = getSteeringMailbox(sessionId);
+    if (mailbox === undefined) return gate;
+
+    // Every caller awaits the SAME recovery promise, including one that
+    // found the gate already in the map. Publishing the gate and then
+    // awaiting recovery without this would let a concurrent
+    // `submitSteeringCommand` observe the gate mid-replay and admit its
+    // own command ahead of commands that were durably admitted earlier —
+    // the recovered ones would then supersede the newer one, inverting
+    // the order the mailbox exists to preserve.
+    let recovery = steeringRecoveries.get(sessionId);
+    if (recovery === undefined) {
+      recovery = replaySteeringLog(gate, mailbox, liveRunIds).catch((error: unknown) => {
+        // A failed recovery must not be cached as done: a transient
+        // storage fault would otherwise leave this session permanently
+        // unrecoverable for the life of the process. Clearing lets the
+        // next caller retry, and rethrowing fails this one closed rather
+        // than admitting into a gate whose durable history is unknown.
+        steeringRecoveries.delete(sessionId);
+        throw error;
+      });
+      steeringRecoveries.set(sessionId, recovery);
+    }
+    await recovery;
+    return gate;
+  }
+
+  /** Drains one session's durable steering log into its gate, in order. */
+  async function replaySteeringLog(
+    gate: BureauSteeringGate,
+    mailbox: Mailbox,
+    liveRunIds: readonly string[],
+  ): Promise<void> {
+    const now = runtimeServices.clock.nowISO();
+    // The replay is handed to `recoverSteeringCommands` as a callback so
+    // each command reaches the gate BEFORE its mailbox acknowledgement.
+    // Collecting the batch first and admitting afterwards would leave a
+    // window where a crash loses a command from both sides: durably
+    // acknowledged, never applied.
+    await recoverSteeringCommands(mailbox, (recovered) => {
+      // Replayed through the gate's ordinary admission, not a private
+      // back door, so a recovered command is subject to every invariant
+      // a live one is. A pause bound to a run this process no longer has
+      // is correctly rejected `run-terminal` — the run genuinely ended.
+      gate.admit(
+        {
+          id: recovered.id,
+          idOrigin: 'caller',
+          sessionId: recovered.sessionId,
+          principal: recovered.principal,
+          requestedValue: recovered.requestedValue,
+          requestedAt: recovered.requestedAt,
+          ...(recovered.expectedRevision !== undefined
+            ? { expectedRevision: recovered.expectedRevision }
+            : {}),
+          ...(recovered.deadline !== undefined ? { deadline: recovered.deadline } : {}),
+          ...(recovered.runId !== undefined ? { runId: recovered.runId } : {}),
+        },
+        { liveRunIds, now },
+      );
+    });
+  }
   // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
   // every session's gate shares (see `steering.ts`'s `createSteeringGate`
   // `ledger` parameter doc comment): a same-`(principal, id)` retry against
@@ -2729,17 +2849,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // `promoteForNewRun()` promotes any agent-identity bump a prior run
       // deferred (AB-199's coordinator amendments, 2026-09-02 addendum); a
       // no-op when nothing was pending.
-      let steeringGate: BureauSteeringGate | undefined;
-      if (!runtime.durable) {
-        steeringGate = steeringGates.get(sessionId);
-        if (!steeringGate) {
-          steeringGate = createSteeringGate(
-            sessionId,
-            steeringCommandLedger,
-            runtimeServices.clock,
-          );
-          steeringGates.set(sessionId, steeringGate);
-        }
+      // AB-200: durable runs get a steering gate too. They were excluded
+      // while `submitSteeringCommand` refused every durable command —
+      // attaching a gate nothing could ever write to was pointless. Now
+      // that durable steering persists and recovers, excluding them would
+      // be the actual bug: a command admitted and durably recovered would
+      // never reach the run it was meant to steer.
+      let steeringGate = steeringGates.get(sessionId);
+      if (!steeringGate) {
+        steeringGate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
+        steeringGates.set(sessionId, steeringGate);
+      }
+      // A durable run starting after a restart must see the recovered
+      // desired state at its own step 0, not merely at the next steering
+      // call, so the log is drained before the run begins.
+      const steeringMailboxForRun = getSteeringMailbox(sessionId);
+      if (steeringMailboxForRun !== undefined) {
+        await ensureSteeringGate(sessionId, [runId]);
       }
       steeringGate?.promoteForNewRun(runId, runtimeServices.clock.nowISO());
       // AB-67/AB-199 — a per-run VIEW of the shared session gate (see
@@ -5944,6 +6070,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       steeringGateForAbort?.settleForDeletion(runtimeServices.clock.nowISO());
       steeringGateForAbort?.purgeFromLedger();
       steeringGates.delete(id);
+      // AB-200: the durable side needs the same treatment the gate and
+      // ledger just got, and for the identical reason — a reused session
+      // id must not inherit a deleted session's command history. The
+      // mailbox is keyed by `sessionId` as its Weft `resourceId`, so a
+      // cached instance left behind here would hand a new session the old
+      // one's undrained commands on its first `ensureSteeringGate` call.
+      // Dropping the recovery promise alongside it keeps the two in step;
+      // a future session under this id recovers from the durable log
+      // rather than from a resolved promise about a session that is gone.
+      steeringMailboxes.get(id)?.dispose();
+      steeringMailboxes.delete(id);
+      steeringRecoveries.delete(id);
 
       await Promise.allSettled(runTerminals);
 
@@ -6149,18 +6287,127 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (isSessionRunTerminal(session.metadata) && liveRunIds.length === 0) {
       return { outcome: 'session-terminal', sessionId };
     }
-    if (request.requestedValue.target !== 'pause' && request.requestedValue.target !== 'resume') {
+    // AB-200/AB-68: `agent-identity` joins `pause`/`resume` on the admitted
+    // path. The gate has always accepted it (see `ImplementedSteeringCommand`),
+    // and what was missing was this verb's own catalog validation — the one
+    // piece `ImplementedSteeringCommand`'s doc comment names as still owed.
+    // `route`/`model`/`provider`/`effort` remain unreachable: the gate is
+    // type-narrowed against them on purpose, and widening it is the
+    // separate state-machine slice that owns per-target desired-state
+    // writes and per-run `configVersion` accounting.
+    const steeringTarget = request.requestedValue.target;
+    // A `policyRef` names a pre-approved policy only the AB-66 selector can
+    // resolve into a concrete agent name. Until that resolution path exists
+    // here, a `policyRef`-carrying command is unsupported rather than
+    // guessed at — validating an unresolved reference against the agents
+    // map would reject every legitimate policy name.
+    if (steeringTarget === 'agent-identity' && request.requestedValue.policyRef !== undefined) {
       return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
     }
-    if (runtime.durable) {
+    // A durably-configured bureau with no resolved storage backend cannot
+    // persist a command, and admitting one into the in-memory gate would
+    // silently lose it on restart — exactly what the durable contract
+    // exists to prevent. That combination is not reachable through normal
+    // composition (durable execution resolves ON only when a persistent
+    // backend is configured), so this stays a guard rather than a path.
+    if (runtime.durable && runtime.durableStorage === undefined) {
       return { outcome: 'unsupported-capability', reason: 'durable-steering-unavailable' };
     }
-
-    let gate = steeringGates.get(sessionId);
-    if (!gate) {
-      gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
-      steeringGates.set(sessionId, gate);
+    // `SteeringRequestedValue`'s own contract: an agent-identity `override`
+    // "must be a key of Bureau<D>'s agents map". Validated against the
+    // construction-time snapshot every other agent lookup in this module
+    // uses, so a name this Bureau cannot run is refused at admission rather
+    // than surfacing as an unresolvable agent at the next run's step 0.
+    //
+    // `policy-denied` rather than a new failure reason: this deployment's
+    // own catalog is what refuses the change, which is what that reason
+    // already means. Widening the exported `SteeringCommandFailure` union
+    // is a contract change owned by the steering-types issue, not this one.
+    if (
+      steeringTarget === 'agent-identity' &&
+      agentsSnapshot[request.requestedValue.override] === undefined
+    ) {
+      return {
+        outcome: 'rejected',
+        failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+      };
     }
+
+    // AB-200 — validate a configuration override against the live model
+    // catalog, coordinate by coordinate.
+    //
+    // NOT through `planSelection`, and the reason is a real constraint
+    // rather than a preference. `composePolicy`'s exact-override path
+    // (`providers/policy.ts`'s `matchesOverride`) requires provider AND
+    // model together — "a partially specified override cannot resolve to
+    // one candidate, so it matches nothing" — and rejects any override
+    // naming a `route`, because `route` is not a field `BackendDescriptor`
+    // carries. A steering command addresses exactly one coordinate, so it
+    // can never satisfy that path: routing every one of them through
+    // `planSelection` would reject every legitimate single-coordinate
+    // command as `no-candidate`. That is the catalog gap AB-65 names.
+    //
+    // What a steering override actually needs to answer is narrower: "is
+    // this coordinate one the deployment knows about?" The accumulated
+    // desired configuration is recomputed into a full plan at the runStep
+    // selection boundary anyway (AB-250's revalidation), which is where
+    // whole-backend coherence is decided. Admission's job is only to stop
+    // a value the catalog has never heard of.
+    //
+    // The one cast: every target the gate cannot admit has already
+    // returned above (the four configuration targets are admitted, and
+    // `agent-identity` with a `policyRef` returned at the policyRef check),
+    // so this value genuinely is one of the gate's accepted variants.
+    // TypeScript cannot carry that narrowing across the intervening
+    // statements because the checks are separate early returns rather than
+    // one discriminating switch.
+    const resolvedRequestedValue =
+      request.requestedValue as ImplementedSteeringCommand['requestedValue'];
+    if (isConfigurationTarget(steeringTarget)) {
+      // Narrowing `steeringTarget` does not narrow `request.requestedValue`:
+      // they are separate bindings, so the predicate above tells TypeScript
+      // nothing about the value's own discriminant. Bind the narrowed view
+      // once here rather than casting at each field access.
+      const configurationRequest = request.requestedValue as Extract<
+        SteeringRequestedValue,
+        { target: 'route' | 'model' | 'provider' | 'effort' }
+      >;
+      if (configurationRequest.policyRef !== undefined) {
+        // A policyRef names a pre-approved policy. Resolving one to a
+        // concrete coordinate is the selector's job and needs a full
+        // selection request, not a catalog membership test — deferred for
+        // the same reason agent-identity's policyRef is.
+        return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
+      }
+      const override = configurationRequest.override;
+      const { descriptors } = modelCatalog.catalog();
+      const known =
+        steeringTarget === 'model'
+          ? descriptors.some((descriptor) => descriptor.model === override)
+          : steeringTarget === 'provider'
+            ? descriptors.some((descriptor) => descriptor.provider === override)
+            : steeringTarget === 'effort'
+              ? descriptors.some((descriptor) =>
+                  descriptor.effort.portable.includes(override as Effort),
+                )
+              : // `route`: a routing entry is configured on the generate
+                // function (`RoutingOptions.routes`), not in the model
+                // catalog, and Bureau does not hold that table. There is
+                // nothing here to validate against, so admission accepts
+                // the name and the routing layer rejects an unknown route
+                // at generate time. Recorded rather than faked: a
+                // membership test against a catalog that structurally
+                // cannot contain routes would reject every valid route.
+                true;
+      if (!known) {
+        return {
+          outcome: 'rejected',
+          failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+        };
+      }
+    }
+
+    const gate = await ensureSteeringGate(sessionId, liveRunIds);
 
     const now = runtimeServices.clock.nowISO();
     const id = request.id ?? runtimeServices.identifiers.next('steering-command');
@@ -6169,10 +6416,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       idOrigin: request.id !== undefined ? 'caller' : 'generated',
       sessionId,
       principal: request.principal,
-      // Narrowed by the `target !== 'pause' && target !== 'resume'` early
-      // return above — TypeScript tracks this back through `request.requestedValue`
-      // without a cast because `request` is never reassigned.
-      requestedValue: request.requestedValue,
+      // For pause/resume/agent-identity this is `request.requestedValue`
+      // unchanged, narrowed by the target early returns above. For the four
+      // configuration targets it is the selector-resolved coordinate, so a
+      // `policyRef` is admitted as the concrete value the plan chose.
+      requestedValue: resolvedRequestedValue,
       requestedAt: now,
       ...(request.expectedRevision !== undefined
         ? { expectedRevision: request.expectedRevision }
@@ -6181,7 +6429,44 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...(request.runId !== undefined ? { runId: request.runId } : {}),
     };
 
-    return gate.admit(command, { liveRunIds, now });
+    // AB-200 durable steering: persist BEFORE admitting into desired
+    // state. A crash between the two then loses nothing — recovery finds
+    // the command still unconsumed and replays it. The reverse order
+    // would put a command into desired state that no restart could
+    // recover, which is precisely the failure the durable contract exists
+    // to rule out.
+    const steeringMailbox = getSteeringMailbox(sessionId);
+    if (steeringMailbox !== undefined) {
+      const persistence = await persistSteeringCommand(steeringMailbox, command);
+      if (!persistence.persisted && persistence.reason !== 'idempotency-identity-mismatch') {
+        // Backlog exhaustion: nothing was written, so nothing may enter
+        // desired state either.
+        return { outcome: 'unsupported-capability', reason: persistence.reason };
+      }
+      // A mailbox idempotency conflict deliberately falls through to the
+      // gate rather than returning here. The gate's ledger is the
+      // authority on conflict *shape* — only it holds the original
+      // command's snapshot, which `SteeringCommandConflict` requires — and
+      // after a restart that ledger is rebuilt by the recovery replay
+      // above, so it can still describe the original. The mailbox
+      // conflict and the gate conflict are the same fact seen twice; the
+      // gate reports it in the contract's own terms.
+    }
+
+    const outcome = gate.admit(command, { liveRunIds, now });
+    // AB-68: give `steering.accepted` its first production dispatch site.
+    // Only the `accepted` transition is dispatched here, and deliberately:
+    // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
+    // are documented as `accepted → X` transitions, so a PRE-admission
+    // rejection (an unknown agent name, an ambiguous run) never reached
+    // `accepted` and must not be reported as having left it. Those three
+    // belong to the gate's own post-admission transitions.
+    if (outcome.outcome === 'accepted') {
+      emitter.dispatch(
+        new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
+      );
+    }
+    return outcome;
   }
 
   function listPendingReviews(): PendingReview[] {
@@ -7494,10 +7779,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           }
         } finally {
           try {
-            runtime.disposeStorage?.();
+            // AB-200: every steering mailbox holds process-local state
+            // over the shared backend, so they are released before the
+            // backend itself is. Disposing a mailbox does not delete its
+            // durable log — the commands stay recoverable by the next
+            // process, which is the whole point of persisting them.
+            for (const mailbox of steeringMailboxes.values()) mailbox.dispose();
+            steeringMailboxes.clear();
+            steeringRecoveries.clear();
           } finally {
-            if (ownsStore) {
-              store.dispose();
+            try {
+              runtime.disposeStorage?.();
+            } finally {
+              if (ownsStore) {
+                store.dispose();
+              }
             }
           }
         }

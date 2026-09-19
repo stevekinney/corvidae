@@ -159,7 +159,26 @@ export {
   ToolSettledBubbleEvent,
   ToolStartedBubbleEvent,
 } from './events';
-export type { ToolEventStamp } from './events';
+export type {
+  GenerationBackendRecord,
+  GenerationDivergence,
+  GenerationSelectionRecord,
+  ToolEventStamp,
+} from './events';
+// COR-581 — effective-context epochs
+export { createContextEpochSealer, digestText, epochSourcesUnchanged } from './context-epoch';
+export type {
+  ContextEpochConsumer,
+  ContextEpochSealInput,
+  ContextEpochSealer,
+  ContextSourceAvailability,
+  ContextSourceDisposition,
+  ContextSourceRecord,
+  ContextSourceRedaction,
+  ContextSourceTrust,
+  CreateContextEpochSealerOptions,
+  EffectiveContextEpoch,
+} from './context-epoch';
 // C3 — session verb events
 export {
   SessionCancelEvent,

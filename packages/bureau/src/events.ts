@@ -13,6 +13,7 @@ import type {
   SessionCreatedEvent,
   SessionDeletedEvent,
   SessionSavedEvent,
+  SteeringAcceptedEvent,
 } from '@corvidae/operative';
 
 /**
@@ -362,4 +363,12 @@ export interface BureauEventMap extends EventMap {
   [ReviewRevokedEvent.type]: ReviewRevokedEvent;
   [ReviewCanceledEvent.type]: ReviewCanceledEvent;
   [ReviewSupersededEvent.type]: ReviewSupersededEvent;
+  /**
+   * AB-68. Only the `accepted` transition appears here: it is the one
+   * steering transition Bureau's own admission verb produces. The
+   * `rejected`/`superseded`/`failed` events are `accepted → X` transitions
+   * owned by the gate's post-admission state machine, and `applied` is
+   * dispatched by `runStep` onto the run emitter, not this one.
+   */
+  'steering.accepted': SteeringAcceptedEvent;
 }

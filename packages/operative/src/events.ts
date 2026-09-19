@@ -14,6 +14,8 @@ import { estimateCacheHitRate } from './cost-estimation';
 import type { SteeringCommandFailure, SteeringEffectiveState } from './durable/types';
 import { type AgentRunError, type AgentRunErrorKind, toAgentRunError } from './errors';
 import type { SemanticProgress } from './liveness';
+import type { SelectionOutcomeKind } from './providers/selection';
+import type { Effort } from './providers/types';
 import type { GenerateResponse, RunResult, StepResult, TokenUsage } from './types';
 
 // ---------------------------------------------------------------------------
@@ -235,12 +237,97 @@ export class StepAbortedEvent extends Event {
   }
 }
 
+/**
+ * One backend's four addressable coordinates, as `generate.started` records
+ * them. Every field is optional because a run with no selection gate and no
+ * steering gate genuinely knows none of them — the generate function owns
+ * its own defaults, and reporting a guess would be worse than reporting
+ * nothing.
+ */
+export interface GenerationBackendRecord {
+  readonly provider?: string | undefined;
+  readonly model?: string | undefined;
+  readonly route?: string | undefined;
+  readonly effort?: Effort | undefined;
+}
+
+/**
+ * One field where the configuration a generation is issued under differs
+ * from the one the selector planned (AB-68). `planned` and `effective` are
+ * the two values themselves, so a consumer never has to re-derive the
+ * difference from the two records to explain it.
+ */
+export interface GenerationDivergence {
+  readonly field: 'provider' | 'model' | 'route' | 'effort';
+  readonly reason: 'steering-override';
+  readonly planned?: string | undefined;
+  readonly effective?: string | undefined;
+}
+
+/**
+ * AB-68 — what `generate.started` records about the configuration one
+ * generation is issued under.
+ *
+ * `selected` is what AB-64's selector chose; `effective` is what this call
+ * is actually issued under, which is `selected` with the session's
+ * boundary-read `SteeringDesiredState` layered over it.
+ *
+ * `effective` is deliberately NOT the provider's post-call actual state.
+ * Operative's `generate` is caller-supplied and opaque: at the moment this
+ * event fires the request has not been issued, so the only honest claim is
+ * "this is the configuration the call is being made with". The provider's
+ * terminal state — and whether it honored any of this — is
+ * {@link import('./providers/selection').EffectiveGenerationResult}'s job,
+ * checked after the response returns. Reporting a pre-call value as the
+ * provider's effective state is exactly the divergence this record exists
+ * to make visible, so it must not itself commit that error.
+ */
+export interface GenerationSelectionRecord {
+  /** `SelectionPlan.planId`. Absent when the run has no selection gate. */
+  readonly planId?: string | undefined;
+  /** The plan's own outcome. Absent when the run has no selection gate. */
+  readonly planOutcome?: SelectionOutcomeKind | undefined;
+  /** What the selector chose. Absent when no plan reached `'selected'`. */
+  readonly selected?: GenerationBackendRecord | undefined;
+  /** The configuration this call is issued under. See the note above. */
+  readonly effective: GenerationBackendRecord;
+  /** AB-67's `SteeringDesiredState.configVersion`. Absent without a
+   *  steering gate. */
+  readonly configVersion?: number | undefined;
+  /** Every field where `effective` differs from `selected`. Empty when they
+   *  agree, or when there is no plan to diverge from. */
+  readonly divergence: readonly GenerationDivergence[];
+  /** The plan's ordered fallback backends, as recorded by the selector.
+   *  Empty when no `fallbackOrder` is configured. This is the fallback
+   *  the plan *authorizes*, not a fallback that has occurred — a route
+   *  failover happens inside the provider call, after this event. */
+  readonly fallbackPlan: readonly GenerationBackendRecord[];
+}
+
 export class GenerateStartedEvent extends Event {
   static readonly type = 'generate.started' as const;
   readonly step: number;
-  constructor(step: number) {
+  /**
+   * AB-68. Absent when the run has neither a selection gate nor a steering
+   * gate — an unconfigured run has nothing truthful to report, and an empty
+   * record would be indistinguishable from one whose every field resolved
+   * to `undefined`.
+   */
+  readonly selection?: GenerationSelectionRecord | undefined;
+  /**
+   * COR-581 — the effective-context epoch this generation was issued
+   * under, referenced by identity. The epoch itself is the authoritative
+   * record; carrying only its id here keeps the event small and keeps one
+   * epoch shared by every attempt that genuinely reused it.
+   *
+   * Absent when the run composes no context-epoch sealer.
+   */
+  readonly contextEpochId?: string | undefined;
+  constructor(step: number, selection?: GenerationSelectionRecord, contextEpochId?: string) {
     super(GenerateStartedEvent.type);
     this.step = step;
+    this.selection = selection;
+    this.contextEpochId = contextEpochId;
   }
 }
 

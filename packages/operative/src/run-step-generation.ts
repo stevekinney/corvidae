@@ -4,6 +4,7 @@ import { Conversation } from '@corvidae/conversationalist';
 import type { SteeringDesiredState } from './durable/types';
 import { GuardrailTripwireError } from './errors';
 import { GenerateErrorEvent, GenerateStartedEvent, RunErrorEvent } from './events';
+import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { createElicit } from './run-step-support';
@@ -161,7 +162,36 @@ export async function executeGeneration(
         });
         hookTracker?.(onLLMInputHookPromise);
 
-        emitter?.dispatch(new GenerateStartedEvent(step));
+        // COR-581: seal the effective-context epoch here, and nowhere
+        // else. This is the last point at which nothing further can change
+        // the request — the prepareStep hook waterfall above has run
+        // (identity, memory, guardrails), `beforeGenerate` has run, and
+        // the short-circuit path that would skip the provider call
+        // entirely has already returned. Sealing earlier would produce an
+        // epoch that omits sources the model genuinely saw.
+        //
+        // Inside the retry loop deliberately: a guardrail that sanitizes
+        // the user message between attempts changed what the model sees,
+        // so the next attempt seals its own epoch.
+        const sealedEpoch = deps.contextEpoch?.seal({
+          conversation: generateContext.conversation,
+          steering: steeringDesiredState,
+          plan: deps.selection?.getPlan(),
+          toolNames: generateContext.toolbox.tools().map((tool) => tool.name),
+          consumer: { runId: deps.runId, step, attempt: stepRetryCount },
+        });
+
+        // AB-68: record the configuration this call is issued under. Read
+        // from the gate rather than re-planning — `prepareStep` already
+        // revalidated it at this step's boundary, so `getPlan()` returns
+        // the exact plan this step acted on.
+        emitter?.dispatch(
+          new GenerateStartedEvent(
+            step,
+            composeGenerationSelectionRecord(deps.selection?.getPlan(), steeringDesiredState),
+            sealedEpoch?.epochId,
+          ),
+        );
         const generateStart = deps.runtime.monotonic.now();
         let durationMilliseconds: number;
         try {

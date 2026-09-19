@@ -145,11 +145,29 @@ The record and state-transition types describe the admission boundary; the curre
 
 ## Steering commands
 
-Bureau currently accepts `pause` and `resume` for authorized, non-terminal, in-memory sessions. Other targets return `unsupported-capability`; durable sessions also return it for pause and resume. The wider exported command contract describes these typed states: `accepted`, `applied`, `rejected`, `superseded`, or `failed`. The operative run-step boundary reads a `SteeringGate`; a paused run waits for `awaitResume()` or its abort signal before the next step. The requested value is one of `agent-identity`, `route`, `model`, `provider`, `effort`, `pause`, or `resume`. Configuration targets carry exactly one of `policyRef` or `override`; pause and resume carry neither.
+Bureau accepts `pause`, `resume`, `agent-identity`, `route`, `model`, `provider`, and `effort` for authorized, non-terminal sessions, on both in-memory and durable ones. The requested value carries exactly one of `policyRef` or `override` for every target but pause and resume, which carry neither. A `policyRef` still returns `unsupported-capability` with reason `selector-unavailable`: resolving a policy name needs the selector, and admitting an unresolved reference would accept a command that changes nothing.
+
+An `agent-identity` override is validated against the Bureau's own `agents` catalog. The four configuration coordinates are validated against the live model catalog, one coordinate at a time — not through `planSelection`, because `composePolicy`'s exact-override path requires provider and model together and rejects any override naming a route, so a single-coordinate steering command can never satisfy it. Whole-backend coherence is decided later, at the runStep selection boundary, where the accumulated desired configuration is recomputed into a plan. A `route` has nothing in the model catalog to validate against — routing entries live on the generate function — so admission accepts the name and the routing layer rejects an unknown route at generate time. An override the catalog does not know is rejected with `policy-denied`.
+
+The four configuration targets are session-scoped and effective at the next `runStep` boundary, so a run already in flight observes them. `agent-identity` is session-scoped but deferred to step 0 of the session's next run, because swapping the agent also changes the tool set and hook plan. `pause` and `resume` bind to one run.
+
+On a durably-configured bureau each admitted command is persisted into a per-session mailbox before it enters desired state, and a restart replays the log back into a fresh gate. The in-memory gate remains the authority for desired state; the mailbox is the durable log.
+
+The operative run-step boundary reads a `SteeringGate`; a paused run waits for `awaitResume()` or its abort signal before the next step. The wider exported command contract describes these typed states: `accepted`, `applied`, `rejected`, `superseded`, or `failed`.
 
 An exact retry of an idempotency identifier and equivalent requested value replays the existing command state. Reusing that identifier for a different requested value returns a typed conflict. A command that loses its target run to terminal completion fails with `run-terminal` rather than applying after the run has ended. `configVersion` increments exactly once on acceptance; the step boundary applies the desired state and stamps the effective state.
 
-The five steering event classes are exported and included in `OperativeEventMap`, but the current Operative runtime dispatches only `steering.applied` from `runStep`. `steering.accepted`, `steering.rejected`, `steering.superseded`, and `steering.failed` describe Bureau admission and termination, but currently have no production dispatch site. The run emitter has no external dispatch surface for Bureau to use.
+The five steering event classes are exported and included in `OperativeEventMap`. Operative dispatches `steering.applied` from `runStep`, and Bureau dispatches `steering.accepted` onto its own emitter at admission. `steering.rejected`, `steering.superseded`, and `steering.failed` describe `accepted → X` transitions owned by the gate's post-admission state machine and have no production dispatch site yet; a pre-admission rejection is deliberately not reported as one of them, because such a command never entered the state they describe leaving.
+
+## Effective context epochs
+
+Every generate attempt can seal one immutable effective-context epoch, recording which identified, versioned sources produced that provider turn. The epoch carries each source's identity, revision, trust tier, precedence, availability, redaction policy, and a digest — never the source's content, so provenance cannot turn protected values into logs. `generate.started` references the epoch by `epochId`.
+
+An epoch seals immediately before `generate.started`, once per generate attempt, which is the last point at which nothing further can change the request. The `prepareStep` hook waterfall — the identity hook, the memory bridge, the input guardrail — runs inside `executeGeneration`, after `prepareStep` itself returns, so an epoch sealed at that earlier boundary would omit them. Sealing per attempt rather than per step follows from the same place: a guardrail that sanitizes the user message between retry attempts seals a successor epoch. An attempt that short-circuits before the provider call seals nothing.
+
+A source change produces a successor epoch with its own id and a `supersedes` link rather than editing the original. Reuse is permitted when every bound source digest is unchanged, which in practice means a retry attempt where nothing moved — `conversation` is a bound source, so successive steps chain rather than reuse. A source the run never composed is recorded `absent-by-composition`, distinct from `excluded`, so a `required` source does not fail every step of an agent that has no Bureau, policy, or catalog.
+
+`RunOptions.contextEpoch` is `undefined` by default and is then a complete no-op.
 
 ## Bureau composition
 

@@ -6,6 +6,7 @@ import type { ZodType } from 'zod';
 
 import type { BackpressureStrategy } from './backpressure';
 import type { ChildRunRegistry } from './child-run';
+import type { ContextEpochSealer } from './context-epoch';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SteeringDesiredState } from './durable/types';
 import type { AgentRunErrorCode, AgentRunErrorKind } from './errors';
@@ -589,6 +590,18 @@ export interface RunOptionsBase {
    * `selection` carries no `runId` coupling — see {@link SelectionGate}.
    */
   selection?: SelectionGate | undefined;
+  /**
+   * COR-581 — the effective-context epoch sealer. When supplied, every
+   * generate attempt seals one epoch immediately before `generate.started`
+   * and that event carries its `epochId`, so a postmortem can reconstruct
+   * which identified, versioned sources produced the turn without the
+   * epoch itself carrying any of their content.
+   *
+   * `undefined` — the default — is a complete no-op: nothing is sealed and
+   * `generate.started` carries no epoch id, matching today's behavior
+   * exactly.
+   */
+  contextEpoch?: ContextEpochSealer | undefined;
   /**
    * AB-300 — this run's ALREADY-attenuated delegated-authority grant
    * (forwarded from `AgentRunContext.delegatedAuthority`, itself set by

@@ -14,9 +14,33 @@ interface RegisteredHandler {
 export class HookRegistry<M extends HookMap> {
   private readonly handlers = new Map<string, RegisteredHandler[]>();
   private readonly registryOptions: HookRegistryOptions;
+  #revision = 0;
 
   constructor(options?: HookRegistryOptions) {
     this.registryOptions = options ?? {};
+  }
+
+  /**
+   * Monotonic count of membership changes to this registry: every
+   * registration, every unregistration, and every `clear()` that actually
+   * removed something advances it by one. Never decrements, never resets.
+   *
+   * This exists so a caller can tell whether the hook plan it observed
+   * earlier is still the plan in force, without holding the handler list
+   * itself. The effective-context epoch (COR-581) needs exactly that: it
+   * records the hook plan as one versioned context source, and a registry
+   * with no version could only be digested by walking and hashing every
+   * registered handler, which is neither stable across identical closures
+   * nor cheap at every generate attempt.
+   *
+   * It counts membership, not behavior. Two registries at the same
+   * revision are not necessarily equivalent, and a handler whose captured
+   * state changes does not advance it — the revision answers "has the set
+   * of registered handlers changed since I last looked", which is the
+   * question a reconciliation boundary actually asks.
+   */
+  get revision(): number {
+    return this.#revision;
   }
 
   on<K extends keyof M & string>(
@@ -33,6 +57,7 @@ export class HookRegistry<M extends HookMap> {
       this.handlers.set(hookName, list);
     }
     list.push(entry);
+    this.#revision += 1;
 
     return () => {
       const current = this.handlers.get(hookName);
@@ -40,6 +65,10 @@ export class HookRegistry<M extends HookMap> {
       const index = current.indexOf(entry);
       if (index !== -1) {
         current.splice(index, 1);
+        // Only a removal that actually happened counts: calling the same
+        // unregister twice is idempotent and must not look like two
+        // distinct plan changes to a boundary comparing revisions.
+        this.#revision += 1;
       }
       if (current.length === 0) {
         this.handlers.delete(hookName);
@@ -97,9 +126,14 @@ export class HookRegistry<M extends HookMap> {
 
   clear(hookName?: keyof M & string): void {
     if (hookName !== undefined) {
-      this.handlers.delete(hookName);
+      // `delete` reports whether anything was there — clearing an absent
+      // hook name changes no membership and must not advance the revision.
+      if (this.handlers.delete(hookName)) this.#revision += 1;
     } else {
-      this.handlers.clear();
+      if (this.handlers.size > 0) {
+        this.handlers.clear();
+        this.#revision += 1;
+      }
     }
   }
 
