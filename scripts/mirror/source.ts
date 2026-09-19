@@ -74,6 +74,172 @@ export const nonSourceNames = [
 /** Release history, which the target generates from versions corvidae has no knowledge of. */
 export const nonSourcePrefixes = ['CHANGELOG'] as const;
 
+/** One cluster of declared files, with the single reason that puts all of them in the emission. */
+export interface DeclaredSourceFiles {
+  /** Workspace-relative paths, each naming one file. */
+  paths: readonly string[];
+  reason: string;
+}
+
+/**
+ * Source a workspace declares beyond its `src/` tree, keyed by `@corvidae/*` name.
+ *
+ * COR-1221 ruled that source is `src/**` plus declared inputs, and that a workspace needing more
+ * declares it rather than widening the rule. This is that declaration. It exists because a second,
+ * unrelated ruling — COR-1189's restore of nineteen published entry points — put shims *inside*
+ * `src/` that re-export from *outside* it, so the emitted tree imports modules the emission rule
+ * does not reach. `assertNoSourceEscapes` in `source-escapes.ts` is what makes that loud; this is
+ * what answers it.
+ *
+ * **Why files and not directories.** Every path here names one file, and the set is the transitive
+ * closure of what the emitted source imports, plus one type-declaration sibling that TypeScript
+ * finds by name rather than by specifier and that says so in its own reason. The alternatives were
+ * both worse. `components/cinder/scripts`
+ * is 236 files, which is the "emit the whole workspace" fork COR-1221 ruled against wearing a
+ * different name. Declaring the containing directories instead — `scripts/tokens` alone is 81
+ * files, `packages/armorer/test` is 91 for the one helper five tests import — lands at over a
+ * hundred files of fixtures, token schemas and unrelated suites, chosen by where something
+ * happens to sit rather than by whether anything emitted needs it.
+ *
+ * **Why a file root adds no prune scope.** `ownedPrefixes` is deletion authority, and a directory
+ * prefix here would hand the transform the right to delete target files under directories nobody
+ * has ruled on — `packages/components/scripts/` in the cinder target is the target's own. A
+ * declared file is written and never pruned, which is exactly how `readDeclaredBuildInputs`
+ * already treats `package-surface.json`'s build inputs.
+ *
+ * **Why the list is long rather than lenient.** Each entry is a real edge out of `src/`, and the
+ * gate fails on any edge that is not here. A new shim, or a new import in an existing one, adds a
+ * line with a reason; it cannot pass silently, which is the whole point of the pairing.
+ */
+export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
+  '@corvidae/cinder': [
+    {
+      paths: ['components.json'],
+      reason:
+        '`src/index.ts` re-exports `src/exports/metadata-manifest.ts`, which imports this manifest with `with { type: "json" }`. It is reached from the package’s main entry, so without it `@lostgradient/cinder` does not compile at all.',
+    },
+    {
+      paths: [
+        'scripts/knowledge/best-practices.ts',
+        'scripts/knowledge/index.ts',
+        'scripts/knowledge/knowledge-artifacts.ts',
+        'scripts/knowledge/knowledge-search.ts',
+        'scripts/knowledge/knowledge.ts',
+        'scripts/knowledge/manifest-validation.ts',
+        'scripts/knowledge/output.ts',
+        'scripts/knowledge/types.ts',
+      ],
+      reason:
+        'The published surface. `src/cli/index.ts` is the `cinder` binary and `src/cli/knowledge.ts` is the `@lostgradient/cinder/knowledge` subpath `@lostgradient/cinder-mcp` consumes; both are COR-1189 restore shims re-exporting from here, and the build bundles `dist/cli/*.js` from them. The four `*.test.ts` files beside these are not declared: nothing emitted imports them.',
+    },
+    {
+      paths: [
+        'scripts/lib/discover-components.ts',
+        'scripts/lib/prettier-resolution.ts',
+        'scripts/lib/read-json-file.ts',
+      ],
+      reason:
+        'Component discovery and its two helpers, imported by `src/styles/source-style-imports.test.ts` and by the declared convention and metadata scripts below.',
+    },
+    {
+      paths: [
+        'scripts/check-component-css.ts',
+        'scripts/check-virtual-list-dependency-free-graph.ts',
+        'scripts/check-virtual-list-dependency-free-parser.ts',
+        'scripts/check-virtual-list-dependency-free-policy.ts',
+        'scripts/check-virtual-list-dependency-free-test-utilities.ts',
+        'scripts/component-conventions-tests.ts',
+        'scripts/environment-configuration.ts',
+        'scripts/generate-component-metadata.ts',
+        'scripts/validation-utilities.ts',
+      ],
+      reason:
+        'The convention and policy checks that `src/` asserts against. `src/test/css.ts` is a test helper rather than a test and imports `check-component-css.ts` for its layer name; the rest are imported by suites under `src/styles/`, `src/components/` and `src/utilities/`. Those suites ship to the mirror repository and are type-checked there even though the `files` allowlist keeps them out of the tarball.',
+    },
+    {
+      paths: [
+        'scripts/stylelint/focus-ring-helpers.mjs',
+        'scripts/stylelint/focus-ring-helpers.d.mts',
+      ],
+      reason:
+        '`src/test/focus-ring-recipe.test.ts` imports the helper. The `.d.mts` beside it is declared with it because TypeScript finds a JavaScript module’s types by that name rather than by a specifier, so emitting the module alone would resolve but not type. The rest of `scripts/stylelint/` is the stylelint plugin set, which nothing emitted imports.',
+    },
+    {
+      paths: [
+        'scripts/tokens/corpus.ts',
+        'scripts/tokens/css-configuration.ts',
+        'scripts/tokens/css-generator.ts',
+        'scripts/tokens/css-preparation.ts',
+        'scripts/tokens/css-stylelint.ts',
+        'scripts/tokens/css-support.ts',
+        'scripts/tokens/css-validation.ts',
+        'scripts/tokens/generate.ts',
+        'scripts/tokens/generator-configuration.ts',
+        'scripts/tokens/load.ts',
+        'scripts/tokens/registry.ts',
+        'scripts/tokens/resolve.ts',
+        'scripts/tokens/resolved-contexts.ts',
+        'scripts/tokens/types.ts',
+        'scripts/tokens/validate-corpus.ts',
+        'scripts/tokens/validate-schema.ts',
+        'scripts/tokens/validate.ts',
+        'scripts/tokens/value-color.ts',
+        'scripts/tokens/value-entry.ts',
+        'scripts/tokens/value-formatters.ts',
+      ],
+      reason:
+        '`src/styles/tokens-doc-drift.test.ts` imports `generate.ts`, and this is its module closure. The directory holds 81 files; the 61 not declared are the generator’s own fixtures, docs sections and test, which nothing emitted imports.',
+    },
+  ],
+  '@corvidae/weft-ui': [
+    {
+      paths: ['tests/dom-test-support.ts'],
+      reason:
+        'The DOM harness twenty-six route suites under `src/routes/` import. It is the single largest escape in the workspace and the reason weft-ui belongs in this table at all.',
+    },
+    {
+      paths: [
+        'fixtures/async-activity.ts',
+        'fixtures/children.ts',
+        'fixtures/coordination.ts',
+        'fixtures/failures.ts',
+        'fixtures/finalizer.ts',
+        'fixtures/history.ts',
+        'fixtures/restart-lineage.ts',
+        'fixtures/reviews.ts',
+        'fixtures/saga.ts',
+        'fixtures/schedules.ts',
+        'fixtures/tagged.ts',
+        'fixtures/workflows.ts',
+      ],
+      reason:
+        'Workflow fixtures reached from `src/routes/` through `fixtures/workflows.ts`, which re-exports the rest. `fixtures/dynamic-sources.ts`, its test and `fixtures/dynamic-workflows/` are not declared: nothing emitted imports them.',
+    },
+  ],
+  '@corvidae/armorer': [
+    {
+      paths: ['test/helpers/async-assertions.ts'],
+      reason:
+        'Five `src/compose*.test.ts` suites import it without an extension. One file out of the 91 under `test/`, which is why this is declared as a file rather than as that directory.',
+    },
+  ],
+  '@corvidae/weft': [
+    {
+      paths: ['scripts/lib/workflow-visibility-backfill.ts'],
+      reason:
+        'Imported by `src/core/engine/list-candidate-resolution.test.ts` and `src/storage/bun-sql-workflow-visibility-backfill.test.ts`.',
+    },
+    {
+      paths: [
+        'scripts/benchmarks/benchmark-environment.ts',
+        'scripts/benchmarks/environment-configuration.ts',
+      ],
+      reason:
+        '`src/storage/bun-sql-benchmark.test.ts` imports the first, which imports the second. The other 21 files under `scripts/benchmarks/` are the benchmark suites themselves, which nothing emitted imports. Neither path is under `packages/weft/scripts/husky/`, which `target-owned.json` reserves to the target.',
+    },
+  ],
+};
+
 /**
  * Directory names never walked. An installed dependency tree is not source and cannot be, so a
  * stray one inside `src/` is skipped rather than mirrored a thousand files at a time.
@@ -140,7 +306,7 @@ async function readSourceTree(
   corvidaeRoot: string,
   workspace: EmittedWorkspace,
   plan: SourcePlan,
-): Promise<void> {
+): Promise<boolean> {
   const root = join(corvidaeRoot, workspace.corvidaeDirectory, sourceTree);
   let carriesTypeScript = false;
   for (const { absolute, relative: path } of await walkSourceFiles(root)) {
@@ -148,7 +314,7 @@ async function readSourceTree(
     await readInto(plan, absolute, target);
     if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
   }
-  if (carriesTypeScript) plan.typeScriptWorkspaces.push(workspace.workspace);
+  return carriesTypeScript;
 }
 
 /**
@@ -161,6 +327,35 @@ async function readInto(plan: SourcePlan, absolute: string, path: string): Promi
   plan.files[path] = new Uint8Array(await Bun.file(absolute).arrayBuffer());
   const metadata = await stat(absolute);
   if ((metadata.mode & 0o111) !== 0) plan.executable.push(path);
+}
+
+/**
+ * Every file a workspace declares beyond its `src/` tree.
+ *
+ * A declared path that corvidae does not carry is a refusal rather than a skip, which is the one
+ * place this differs from `readDeclaredBuildInputs`: a build input corvidae lacks is target-owned
+ * by definition, whereas a declared source file corvidae lacks means the declaration has gone
+ * stale against a file that moved or was deleted, and the escape it was written to close is back.
+ */
+async function readAdditionalSourceRoots(
+  corvidaeRoot: string,
+  workspace: EmittedWorkspace,
+  plan: SourcePlan,
+): Promise<boolean> {
+  let carriesTypeScript = false;
+  for (const declared of additionalSourceRoots[workspace.workspace] ?? []) {
+    for (const path of declared.paths) {
+      const absolute = join(corvidaeRoot, workspace.corvidaeDirectory, path);
+      if (!(await Bun.file(absolute).exists())) {
+        throw new SourceEmissionError(
+          `${workspace.workspace} declares ${path} as source beyond its ${sourceTree}/ tree, but corvidae has no file there. Either restore it or remove the declaration from additionalSourceRoots in source.ts.`,
+        );
+      }
+      await readInto(plan, absolute, `${workspace.targetDirectory}/${path}`);
+      if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
+    }
+  }
+  return carriesTypeScript;
 }
 
 /** Every build input the surface declares that corvidae actually carries, emitted with the source. */
@@ -195,7 +390,9 @@ export async function planSource(
   };
   for (const workspace of emitted) {
     plan.ownedPrefixes.push(`${workspace.targetDirectory}/${sourceTree}`);
-    await readSourceTree(corvidaeRoot, workspace, plan);
+    const inTree = await readSourceTree(corvidaeRoot, workspace, plan);
+    const declared = await readAdditionalSourceRoots(corvidaeRoot, workspace, plan);
+    if (inTree || declared) plan.typeScriptWorkspaces.push(workspace.workspace);
     await readDeclaredBuildInputs(corvidaeRoot, workspace, plan);
   }
   plan.ownedPrefixes.sort();
