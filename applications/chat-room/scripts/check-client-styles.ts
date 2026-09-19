@@ -17,6 +17,7 @@
 import { findMissingStyleMarkers, type StyleMarker } from '@corvidae/testing';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { buildOutputDirectory } from './build-output.ts';
 
 export { findMissingStyleMarkers };
 
@@ -39,7 +40,10 @@ export const REQUIRED_STYLE_MARKERS: readonly StyleMarker[] = [
   { marker: '.chat-sub-session-viewport', source: '@corvidae/chat chat-sub-session.css' },
 ];
 
-export const CLIENT_ASSETS_DIRECTORY = '.svelte-kit/output/client/_app/immutable/assets';
+export const CLIENT_ASSETS_DIRECTORY = join(
+  buildOutputDirectory(),
+  'output/client/_app/immutable/assets',
+);
 
 /** Reads every `.css` file in the client asset directory into one string per file. */
 export async function readClientStylesheets(assetsDirectory: string): Promise<Map<string, string>> {

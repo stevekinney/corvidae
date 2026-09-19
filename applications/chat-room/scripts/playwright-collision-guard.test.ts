@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import playwrightConfig from '../playwright.config.ts';
@@ -11,11 +13,11 @@ import playwrightConfig from '../playwright.config.ts';
  *
  * Two layers, because Playwright starts `webServer` entries in order and only
  * reaches a later entry's port after the earlier ones are up — a held dev port
- * (5175) is only checked after the preview has been built and started, which
+ * is only checked after the preview has been built and started, which
  * is seconds of work that has nothing to do with the property under test:
  *
  * 1. The MECHANISM is proven live against the first entry (the fixture on
- *    4599): a fake foreign server holds the port, Playwright is spawned with
+ *    its selected port): a fake foreign server holds the port, Playwright is spawned with
  *    `CI` cleared, and the run must refuse at startup naming the port.
  * 2. Every entry's `reuseExistingServer: false` is pinned by reading the config
  *    itself, so one entry drifting to the docs' recommended `!process.env.CI`
@@ -86,6 +88,7 @@ function listenOrExplain(server: Server, port: number): Promise<void> {
 }
 
 describe('chat-room Playwright refuses a web server it did not start', () => {
+  let outputDirectory: string | undefined;
   let fake: Server | undefined;
   let child: ReturnType<typeof Bun.spawn> | undefined;
 
@@ -94,6 +97,10 @@ describe('chat-room Playwright refuses a web server it did not start', () => {
       child.kill();
       await child.exited;
       child = undefined;
+    }
+    if (outputDirectory) {
+      await rm(outputDirectory, { recursive: true, force: true });
+      outputDirectory = undefined;
     }
     if (fake) {
       const server = fake;
@@ -105,10 +112,16 @@ describe('chat-room Playwright refuses a web server it did not start', () => {
   });
 
   test('every webServer entry sets reuseExistingServer to false', () => {
-    expect(WEB_SERVERS.map((entry) => entry.port)).toEqual([4599, 4173, 5175]);
+    expect(WEB_SERVERS).toHaveLength(3);
+    expect(new Set(WEB_SERVERS.map((entry) => entry.port)).size).toBe(3);
     for (const entry of WEB_SERVERS) {
       expect(entry.reuseExistingServer, `port ${entry.port}: ${entry.command}`).toBe(false);
     }
+  });
+
+  test('preview and development servers isolate browser build output', () => {
+    expect(WEB_SERVERS[1]?.env?.['CHAT_ROOM_BROWSER']).toBe('1');
+    expect(WEB_SERVERS[2]?.env?.['CHAT_ROOM_BROWSER']).toBe('1');
   });
 
   test('a held port fails the run at startup and names the port', async () => {
@@ -126,10 +139,22 @@ describe('chat-room Playwright refuses a web server it did not start', () => {
     });
     await listenOrExplain(fake, FIRST_PORT);
 
+    // A startup-only child must not clear a concurrent suite's test artifacts.
+    outputDirectory = await mkdtemp(join(tmpdir(), 'chat-room-collision-guard-'));
     const environment = { ...process.env };
     delete environment['CI'];
     child = Bun.spawn(
-      ['bunx', 'playwright', 'test', '--project=chromium', 'src/routes/page.svelte.e2e.ts'],
+      [
+        'bun',
+        '--bun',
+        'x',
+        'playwright',
+        'test',
+        '--project=chromium',
+        '--output',
+        outputDirectory,
+        'src/routes/page.svelte.e2e.ts',
+      ],
       { cwd: LAB_ROOT, env: environment, stdout: 'pipe', stderr: 'pipe' },
     );
     const stdoutPipe = child.stdout;

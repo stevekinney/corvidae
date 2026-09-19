@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { createFixtureServer } from '../src/server.ts';
 import { buildFixtures } from './build.ts';
+import { FIXTURE_PORT } from './fixture-port.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const repository = resolve(root, '../..');
@@ -12,7 +13,7 @@ const { values } = parseArgs({
   strict: true,
 });
 const preview = values.preview ?? false;
-const port = Number(values.port ?? (preview ? 5578 : 5577));
+const port = Number(values.port ?? FIXTURE_PORT);
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid fixture port.');
 const outputDirectory = resolve(root, 'build');
 if (!preview) await buildFixtures(true);

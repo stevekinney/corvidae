@@ -1,3 +1,4 @@
+import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
 /**
  * Comprehensive browser coverage for the Chat interactive harness example
  * (`playground/src/examples/chat/interactive-harness.example.svelte`).
@@ -54,7 +55,7 @@ async function openHarness(
 ): Promise<{ page: Page; harness: Locator; dispose: () => Promise<void> }> {
   const colorScheme = options?.colorScheme ?? 'dark';
   const contextOptions: BrowserContextOptions = {
-    baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+    baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
     colorScheme,
     reducedMotion: options?.reducedMotion ?? 'reduce',
     viewport: options?.viewport ?? { width: 1280, height: 900 },
@@ -230,7 +231,7 @@ async function openChatFixture(
   },
 ): Promise<{ page: Page; dispose: () => Promise<void> }> {
   const context = await browser.newContext({
-    baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+    baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
     colorScheme: options.colorScheme,
     reducedMotion: 'reduce',
     viewport: options.viewport,
@@ -2406,7 +2407,7 @@ test.describe('chat harness — imperative scroll + focus controls', () => {
     browser,
   }) => {
     const context = await browser.newContext({
-      baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+      baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
       colorScheme: 'dark',
       // Explicit, not defaulted: this test is only meaningful when
       // behavior: 'smooth' produces a real, interruptible animation. A
@@ -3039,7 +3040,7 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
   }) => {
     test.setTimeout(120_000);
     const context = await browser.newContext({
-      baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+      baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
       colorScheme: 'dark',
       reducedMotion: 'no-preference',
       viewport: { width: 1280, height: 900 },
@@ -3204,7 +3205,7 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
   }) => {
     test.setTimeout(120_000);
     const context = await browser.newContext({
-      baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+      baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
       colorScheme: 'dark',
       reducedMotion: 'no-preference',
       viewport: { width: 1280, height: 900 },

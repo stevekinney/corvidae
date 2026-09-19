@@ -1,3 +1,4 @@
+import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
 /// <reference lib="dom" />
 /** Browser proof for dense domain focus rings in the application-owned Chat fixture. */
 import { boxShadowLayerCount, THEME_STORAGE_KEY, waitForFocusStyleFrame } from '@corvidae/testing';
@@ -8,7 +9,7 @@ import { fixtureRoute } from './overlay-fixture.ts';
 
 const HARNESS = '[data-testid="chat-private-harness"]';
 const FIXTURE_ROUTE = fixtureRoute('chat', { fixtureName: 'private-harness' });
-const BASE_URL = environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577';
+const BASE_URL = environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN;
 
 type ChatHarnessPage = { page: Page; harness: Locator; dispose: () => Promise<void> };
 

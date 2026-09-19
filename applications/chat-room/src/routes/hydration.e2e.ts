@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { ports } from '../../scripts/browser-ports.ts';
 import { readCreatedConversation } from './server-owned/server-owned-test-helpers';
 
 // Hydration cleanliness can only be observed in a DEV build: Svelte strips the
@@ -7,9 +8,9 @@ import { readCreatedConversation } from './server-owned/server-owned-test-helper
 // unnoticed here through 91 passing tests — including SSR-sensitive ones —
 // while every Chat route emitted a mismatch on load.
 //
-// These tests drive the second `webServer` in playwright.config.ts (a dev
+// These tests drive the third `webServer` in playwright.config.ts (a dev
 // server on DEV_PORT) with absolute URLs, so they are unaffected by `baseURL`.
-const DEV_ORIGIN = 'http://localhost:5175';
+const DEV_ORIGIN = `http://localhost:${ports.CHAT_ROOM_DEV_PORT}`;
 
 // ROADMAP A11Y-1. This list is deliberately explicit: Playwright needs test
 // names at collection time, and a missing application route should be a
