@@ -39,7 +39,22 @@ const WEB_SERVERS = Array.isArray(playwrightConfig.webServer)
   : playwrightConfig.webServer
     ? [playwrightConfig.webServer]
     : [];
-const FIRST_PORT = WEB_SERVERS[0]?.port;
+/**
+ * The port an entry binds, whether it declares readiness as `port` or as a
+ * `url`. Reading `.port` alone was correct only while every entry used `port`:
+ * the dev entry now uses a `url` probe (see `playwright.config.ts`), and a bare
+ * `.port` read would have yielded `undefined` for it — which the distinctness
+ * assertion below would have counted as a third distinct value and passed on,
+ * while no longer checking anything about that server's port.
+ */
+function boundPort(entry: (typeof WEB_SERVERS)[number]): number | undefined {
+  if (entry.port !== undefined) return entry.port;
+  if (entry.url === undefined) return undefined;
+  const port = Number.parseInt(new URL(entry.url).port, 10);
+  return Number.isInteger(port) ? port : undefined;
+}
+
+const FIRST_PORT = boundPort(WEB_SERVERS[0]!);
 
 function matchesSpecification(
   path: string,
@@ -113,9 +128,13 @@ describe('chat-room Playwright refuses a web server it did not start', () => {
 
   test('every webServer entry sets reuseExistingServer to false', () => {
     expect(WEB_SERVERS).toHaveLength(3);
-    expect(new Set(WEB_SERVERS.map((entry) => entry.port)).size).toBe(3);
+    const boundPorts = WEB_SERVERS.map(boundPort);
+    // Asserted before distinctness, so a missing port fails as a missing port
+    // rather than silently supplying one more `undefined` to the set.
+    expect(boundPorts.every((port) => port !== undefined)).toBe(true);
+    expect(new Set(boundPorts).size).toBe(3);
     for (const entry of WEB_SERVERS) {
-      expect(entry.reuseExistingServer, `port ${entry.port}: ${entry.command}`).toBe(false);
+      expect(entry.reuseExistingServer, `port ${boundPort(entry)}: ${entry.command}`).toBe(false);
     }
   });
 

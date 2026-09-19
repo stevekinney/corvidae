@@ -140,9 +140,28 @@ export default defineConfig({
     //
     // One pair of servers regardless of project count — the webServer plugins
     // are built once from the top-level config in global setup, not per project.
+    //
+    // `url` rather than `port`, and this is the one entry where the difference
+    // is observable. A `port` probe resolves the moment something accepts a TCP
+    // connection; Vite binds immediately and only then transforms the
+    // application, on the first request that asks for it. So `port` here means
+    // "the dev server exists", not "the dev server can serve a page", and the
+    // first navigation in `hydration.e2e.ts` races that cold transform — which
+    // aborts in-flight requests when Vite discovers a dependency and restarts
+    // its optimizer. Observed as `net::ERR_ABORTED` on `page.goto` after the
+    // 30s TEST timeout, in a full-matrix run, against a spec that passes in
+    // isolation in 15.7s with 4.0s and 8.4s cold builds in this server's own
+    // output. The two entries above never show it because `bun run build &&
+    // bun run preview` does not bind until the build has finished.
+    //
+    // `url` waits for an actual HTTP response (2xx/3xx/400-403), so cold start
+    // is paid inside `webServer.timeout` where startup belongs, instead of
+    // inside a test's budget. Note what this deliberately is NOT: `retries`
+    // stays 0 and no timeout moves, because the failure was a real race and
+    // both of those would have hidden it rather than removed it.
     {
       command: `bun run dev -- --port ${ports.CHAT_ROOM_DEV_PORT} --strictPort`,
-      port: ports.CHAT_ROOM_DEV_PORT,
+      url: `http://localhost:${ports.CHAT_ROOM_DEV_PORT}/`,
       env: { CHAT_ROOM_BROWSER: '1' },
       reuseExistingServer: false,
     },
