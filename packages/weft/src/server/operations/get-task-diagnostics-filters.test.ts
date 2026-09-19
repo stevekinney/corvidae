@@ -15,7 +15,7 @@ import {
   runDiagnostics,
   terminalFixture,
   ThrowingScanStorage,
-} from './get-task-diagnostics-test-support.ts';
+} from './get-task-diagnostics.test-support.ts';
 import { createGetTaskDiagnosticsOperation } from './get-task-diagnostics.ts';
 
 describe('weft.tasks.diagnostics filters', () => {

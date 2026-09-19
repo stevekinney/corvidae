@@ -28,7 +28,7 @@ import {
 } from './operation-catalog.ts';
 import { defineOperation } from './operation-registry.ts';
 import { principalFromApiKey } from './principal.ts';
-import { jsonRecord, propertyRecord } from './protocol-test-support.ts';
+import { jsonRecord, propertyRecord } from './protocol.test-support.ts';
 import { createWorkflowEventFeed } from './workflow-event-feed.ts';
 
 const FIXTURE_DIR = new URL('./__fixtures__/subscription-wire/', import.meta.url).pathname;

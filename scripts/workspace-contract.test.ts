@@ -433,4 +433,28 @@ describe('internal workspace architecture', () => {
       await Bun.file(join(root, '.github/workflows/continuous-integration.yaml')).exists(),
     ).toBe(false);
   });
+
+  // The published Weft build classifies a module as test-only by filename suffix
+  // (`sourcePath.endsWith('.test-support.ts')` over `src/**/*.ts`), and the root
+  // lint policy keys its test-file override on the same `**/*.test-support.ts`
+  // glob. A helper named `thing-test-support.ts` satisfies neither, so it is
+  // linted as production source here and compiled into `dist/` downstream — the
+  // failure only surfaces when the helper happens to import `bun:test`, which
+  // leaves the quieter ones shipping silently. Assert the spelling rather than
+  // the one file that was caught, so the whole naming class stays closed.
+  test('Weft test-support helpers are named so the published build excludes them', async () => {
+    const offenders: string[] = [];
+    for await (const path of new Bun.Glob('**/*.ts').scan({
+      cwd: join(root, 'packages/weft/src'),
+      onlyFiles: true,
+    })) {
+      const basename = path.split('/').at(-1) ?? path;
+      if (!basename.includes('test-support')) continue;
+      if (basename.endsWith('.test-support.ts') || basename.endsWith('.test-support.test.ts')) {
+        continue;
+      }
+      offenders.push(`packages/weft/src/${path}`);
+    }
+    expect(offenders).toEqual([]);
+  });
 });

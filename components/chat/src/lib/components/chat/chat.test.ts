@@ -137,7 +137,14 @@ function appendActionRequiredMessage(
     callId: `call-${testMessageCounter}`,
     outcome: 'action_required',
     content: null,
-    action: { type: 'approval', message },
+    action: {
+      type: 'approval',
+      message,
+      risk: 'high',
+      operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+      policyVersion: 'test-policy',
+      idempotencyKey: 'test-approval',
+    },
   };
 
   return {

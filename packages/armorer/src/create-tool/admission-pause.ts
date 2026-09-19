@@ -13,22 +13,28 @@ import type {
 } from './admission';
 import { normalizeToolContent } from './content';
 import type { InternalToolExecuteOptions } from './execution-options';
-import { createToolAction, policyPauseMatchesSatisfiedPause } from './policy';
+import {
+  createToolAction,
+  policyPauseMatchesSatisfiedPause,
+  type ToolActionContext,
+} from './policy';
 
 export async function handlePolicyPause<TInput>(
   input: AdmitToolExecutionOptions<TInput>,
   parsedState: ParsedAdmissionState<TInput>,
   policyState: PolicyAdmissionState,
 ): Promise<PolicyAdmissionState | { kind: 'result'; result: ToolExecutionResult }> {
+  const actionContext = createToolActionContext(input, parsedState);
   const decision = resumedPauseDecision(
     input.options,
     policyState.decision,
     policyState.executedArgumentsEdited,
+    actionContext,
   );
   if (!isPauseDecision(decision)) {
     return { ...policyState, ...(decision !== undefined ? { decision } : {}) };
   }
-  const pause = createPauseState(parsedState.parsed, input.options, decision);
+  const pause = createPauseState(parsedState.parsed, input.options, decision, actionContext);
   if (pause.resumedApprovalIsSatisfied) {
     return { ...policyState, decision, resumedApprovalIsSatisfied: true };
   }
@@ -62,6 +68,7 @@ function resumedPauseDecision(
   options: InternalToolExecuteOptions,
   decision: ToolPolicyDecision | undefined,
   executedArgumentsEdited: boolean,
+  actionContext: ToolActionContext,
 ): ToolPolicyDecision | undefined {
   const policyPauseDecisions = decision?.[policyPauseDecisionsSymbol];
   const approvalResume = options[approvalResumeSymbol];
@@ -73,7 +80,7 @@ function resumedPauseDecision(
     return decision;
   }
   return (
-    firstUnsatisfiedPause(policyPauseDecisions, approvalResume.satisfiedPauses) ?? {
+    firstUnsatisfiedPause(policyPauseDecisions, approvalResume.satisfiedPauses, actionContext) ?? {
       allow: true,
       status: 'allow',
     }
@@ -85,13 +92,27 @@ function firstUnsatisfiedPause(
   satisfiedPauses: NonNullable<
     InternalToolExecuteOptions[typeof approvalResumeSymbol]
   >['satisfiedPauses'],
+  actionContext: ToolActionContext,
 ): ToolPolicyDecision | undefined {
   return decisions.find(
     (pauseDecision) =>
       !satisfiedPauses.some((satisfiedPause) =>
-        policyPauseMatchesSatisfiedPause(pauseDecision, satisfiedPause),
+        policyPauseMatchesSatisfiedPause(pauseDecision, satisfiedPause, actionContext),
       ),
   );
+}
+
+function createToolActionContext<TInput>(
+  input: AdmitToolExecutionOptions<TInput>,
+  parsedState: ParsedAdmissionState<TInput>,
+): ToolActionContext {
+  return {
+    arguments: parsedState.parsed,
+    callId: parsedState.typedToolCall.id,
+    policyVersion: input.options.effectiveContext?.revisions.policy,
+    toolDefinitionRevision: input.configuration.id,
+    toolName: input.name,
+  };
 }
 
 type PauseState = {
@@ -106,10 +127,11 @@ function createPauseState(
   parsed: unknown,
   options: InternalToolExecuteOptions,
   decision: ToolPolicyDecision & { status: 'needs_approval' | 'needs_input' },
+  actionContext: ToolActionContext,
 ): PauseState {
   const type = decision.status === 'needs_approval' ? 'approval' : 'input';
   const reason = decision.reason ?? `Tool execution requires ${type}`;
-  const action = createToolAction(type, decision, reason);
+  const action = createToolAction(type, decision, reason, actionContext);
   const approvalResume = options[approvalResumeSymbol];
   const resumedApprovalIsSatisfied =
     approvalResume !== undefined &&

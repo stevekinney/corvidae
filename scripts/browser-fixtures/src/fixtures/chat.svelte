@@ -16,6 +16,7 @@
     type ResolvedChatArtifact,
   } from '@corvidae/chat';
   import { Button } from '@corvidae/cinder';
+  import type { ApprovalResolution } from '@corvidae/cinder';
 
   const adapter: ChatAdapter = {
     sendMessage: async () => {},
@@ -58,7 +59,24 @@
         action: {
           type: 'approval',
           message: 'Approve running this tool before it executes?',
-          schema: { environment: 'production', version: '2.4.1', replicas: 3 },
+          risk: 'high',
+          operation: {
+            kind: 'command',
+            command: 'deploy_to_production --environment production --version 2.4.1',
+            filesTouched: ['applications/chat-room/deployments/production.json'],
+            argsPreview: { environment: 'production', version: '2.4.1', replicas: 3 },
+          },
+          sandbox: {
+            provider: 'Corvidae',
+            name: 'production-release',
+            workingDir: '/workspace/corvidae',
+          },
+          env: ['DEPLOY_TOKEN', 'RELEASE_CHANNEL'],
+          snapshotId: 'snapshot-deploy-prod',
+          expiresAt: '2999-01-01T00:00:00.000Z',
+          editableArgs: true,
+          policyVersion: 'approval-fixture-policy-v1',
+          idempotencyKey: 'fixture-call-deploy-prod',
         },
       },
     },
@@ -249,8 +267,16 @@
     activeConversationId === pairedConversation.id ? pairedConversation : basicConversation,
   );
 
+  let approvalResolutions = $state.raw<{ toolCallId: string; resolution: ApprovalResolution }[]>(
+    [],
+  );
+
   function handleSubmit(event: ChatSubmitEvent): void {
     basicConversation = appendUserMessage(basicConversation, event.message.content);
+  }
+
+  function handleApprovalResolve(toolCallId: string, resolution: ApprovalResolution): void {
+    approvalResolutions = [...approvalResolutions, { toolCallId, resolution }];
   }
 </script>
 
@@ -270,9 +296,9 @@
       conversation={approvalConversation}
       capabilities={{ attachments: false }}
       {adapter}
-      onapprove={() => {}}
-      ondeny={() => {}}
+      onapprovalresolve={handleApprovalResolve}
     />
+    <pre data-testid="approval-resolution-log">{JSON.stringify(approvalResolutions)}</pre>
   </div>
 
   <div class="chat-layout-fixture-container">

@@ -1,3 +1,4 @@
+import { toolActionSchema } from '@corvidae/conversationalist';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 
@@ -6,11 +7,7 @@ import { requestContext, toolbox } from '../../../../lib/toolbox.ts';
 import type { SignedPendingToolApproval } from '@corvidae/armorer';
 import type { RequestHandler } from './$types';
 
-const actionSchema = z.object({
-  type: z.enum(['approval', 'input']),
-  message: z.string().optional(),
-  schema: z.unknown().optional(),
-});
+type ApprovalResolution = Parameters<typeof toolbox.resolveApproval>[1];
 
 const policyPauseTierSchema = z.enum(['capability', 'registry', 'tool']);
 
@@ -19,14 +16,14 @@ const approvalSchema = z
     callId: z.string(),
     toolName: z.string(),
     arguments: z.unknown(),
-    action: actionSchema,
+    action: toolActionSchema,
     reason: z.string().optional(),
     metadata: z.unknown().optional(),
     policyPauseTier: policyPauseTierSchema.optional(),
     satisfiedPolicyPauses: z
       .array(
         z.object({
-          action: actionSchema,
+          action: toolActionSchema,
           reason: z.string().optional(),
           tier: policyPauseTierSchema.optional(),
         }),
@@ -44,9 +41,25 @@ function isSignedPendingToolApproval(value: unknown): value is SignedPendingTool
   return isRecord(value) && typeof value['approvalToken'] === 'string';
 }
 
+const resolutionSchema = z
+  .object({
+    decision: z.enum(['approve', 'approve_with_edits', 'deny', 'cancel']),
+    editedArgs: z.unknown().optional(),
+    reason: z.string().optional(),
+    remember: z.boolean(),
+  })
+  .transform((resolution): ApprovalResolution => ({
+    decision: resolution.decision,
+    ...(Object.prototype.hasOwnProperty.call(resolution, 'editedArgs')
+      ? { editedArgs: resolution.editedArgs }
+      : {}),
+    ...(resolution.reason !== undefined ? { reason: resolution.reason } : {}),
+    remember: resolution.remember,
+  }));
+
 const requestSchema = z.object({
   approval: approvalSchema,
-  decision: z.enum(['approve', 'deny']),
+  resolution: resolutionSchema,
 });
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -64,27 +77,13 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { approval, decision } = parsed.data;
+  const { approval, resolution } = parsed.data;
 
-  if (decision === 'deny') {
-    return json({
-      callId: approval.callId,
-      outcome: 'error',
-      content: null,
-      error: {
-        code: 'denied',
-        category: 'permission',
-        retryable: false,
-        message: 'The user denied this request.',
-      },
-    });
-  }
-
-  if (!isSignedPendingToolApproval(approval)) {
+  if (!isSignedPendingToolApproval(approval) || approval.action.type !== 'approval') {
     return json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const result = await toolbox.resumeApproval(approval, { requestContext });
+  const result = await toolbox.resolveApproval(approval, resolution, { requestContext });
 
   return json({
     callId: result.callId,

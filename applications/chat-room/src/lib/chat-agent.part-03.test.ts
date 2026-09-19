@@ -177,16 +177,51 @@ describe('pumpChatRun: roll_dice tool path', () => {
     // authoritative result only appears on `tools.executed` — so the frame
     // has to be sourced from there, and this pins that it is.
     const [settled] = ofType(frames, 'tool.settled');
+    const expectedAction = {
+      type: 'approval',
+      message: 'Save this note?',
+      risk: 'high',
+      operation: { kind: 'other', argsPreview: { text: 'milk' } },
+      policyVersion: 'policy:1',
+      idempotencyKey: expect.stringMatching(/^approval:/),
+    };
     expect(settled).toMatchObject({
       toolCallId: 'call-note',
       toolName: 'remember_note',
       result: {
         callId: 'call-note',
         outcome: 'action_required',
-        action: { type: 'approval', message: 'Save this note?' },
+        content: 'Save this note?',
+        action: expectedAction,
+        pendingApproval: {
+          callId: 'call-note',
+          toolName: 'remember_note',
+          arguments: { text: 'milk' },
+          reason: 'Save this note?',
+          policyPauseTier: 'tool',
+          approvalToken: expect.any(String),
+          approvalBinding: {
+            agentId: 'test-assistant',
+            ownerId: 'test-session',
+            principalId: 'test-user',
+            runId: 'test-run',
+            tenantId: 'test-tenant',
+            policyRevision: 'policy:1',
+            toolDefinitionRevision: 'default:remember_note@1.0.0',
+          },
+          action: expectedAction,
+        },
       },
     });
-    expect(settled?.result.pendingApproval).toBeDefined();
+    const pendingApproval = settled?.result.pendingApproval;
+    if (
+      typeof pendingApproval !== 'object' ||
+      pendingApproval === null ||
+      Array.isArray(pendingApproval)
+    ) {
+      throw new Error('Expected pending approval metadata to be an object.');
+    }
+    expect(Reflect.get(pendingApproval, 'action')).toEqual(settled?.result.action);
     expect(legacyFrames(frames).at(-1)).toMatchObject({
       type: 'tool_result',
       outcome: 'action_required',

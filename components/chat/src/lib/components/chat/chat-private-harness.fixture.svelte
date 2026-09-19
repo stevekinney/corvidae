@@ -31,6 +31,7 @@
     type TypingParticipant,
     updateStreamingMessage,
     type ToolErrorCategory,
+    type ToolResult,
   } from '@corvidae/chat';
   import {
     Button,
@@ -325,7 +326,7 @@
     // Unique per injection — deriving from logCounter would reuse the same id
     // for repeated injections that don't add a log entry, breaking pairing.
     const callId = `call-${crypto.randomUUID()}`;
-    const result =
+    const result: ToolResult =
       toolOutcome === 'error'
         ? {
             callId,
@@ -346,6 +347,14 @@
               action: {
                 type: 'approval' as const,
                 message: 'Approve running this tool before it executes?',
+                risk: 'high',
+                operation: {
+                  kind: 'command',
+                  command: 'echo approval',
+                  argsPreview: { ok: true },
+                },
+                policyVersion: 'test-policy',
+                idempotencyKey: 'test-approval',
               },
             }
           : { callId, outcome: 'success' as const, content: { status: 'ok' } };

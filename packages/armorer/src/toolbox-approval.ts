@@ -45,6 +45,17 @@ export function verifyPendingApproval(
   }
 }
 
+export function verifyAndSnapshotPendingApproval(
+  approval: SignedPendingToolApproval,
+  context: ApprovalTokenContext,
+): SignedPendingToolApproval {
+  const snapshot: unknown = JSON.parse(JSON.stringify(approval));
+  assertJsonValue(snapshot, 'approval');
+  const signedSnapshot = snapshot as SignedPendingToolApproval;
+  verifyPendingApproval(signedSnapshot, context);
+  return signedSnapshot;
+}
+
 function normalizePendingApprovalPayload(approval: PendingToolApproval): JsonValue {
   const { approvalToken: _approvalToken, ...payload } = approval;
   const parsed: unknown = JSON.parse(JSON.stringify(payload));

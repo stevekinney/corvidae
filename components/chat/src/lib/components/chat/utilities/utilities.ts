@@ -365,18 +365,18 @@ function deriveToolApprovalPart(
   result: ToolResult,
   context: MessagePartDerivationContext,
 ): ToolApprovalMessagePart {
-  const approved = context.approvedToolCallIds?.has(result.callId)
-    ? true
-    : context.deniedToolCallIds?.has(result.callId)
-      ? false
-      : undefined;
+  if (result.action?.type !== 'approval') {
+    throw new Error('Tool approval parts require an approval action.');
+  }
+
   return {
     type: 'tool-approval',
     key: `${messageId}:tool-approval:${result.callId}`,
     toolCallId: result.callId,
     toolName: context.toolCallPair?.call.name ?? result.callId,
-    action: result.action!,
-    approved,
+    action: result.action,
+    state: context.approvalStates?.get(result.callId) ?? 'pending',
+    resolutionInFlight: context.approvalResolutionInFlightIds?.has(result.callId) ?? false,
   };
 }
 
@@ -442,7 +442,7 @@ export function deriveMessageParts(
   if (message.role === 'tool-call' && message.toolCall && context.toolCallPair) {
     const result = context.toolCallPair.result;
     const approvalPart =
-      result && result.outcome === 'action_required' && result.action
+      result && result.outcome === 'action_required' && result.action?.type === 'approval'
         ? deriveToolApprovalPart(message.id, result, context)
         : undefined;
     const toolCallPart: ToolCallMessagePart = context.toolCallPresentation
@@ -470,7 +470,7 @@ export function deriveMessageParts(
   // for non-approval results.
   if (message.role === 'tool-result' && message.toolResult) {
     const result = message.toolResult;
-    if (result.outcome === 'action_required' && result.action) {
+    if (result.outcome === 'action_required' && result.action?.type === 'approval') {
       return [...entryParts, deriveToolApprovalPart(message.id, result, context), ...imageParts];
     }
     return [

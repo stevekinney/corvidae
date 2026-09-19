@@ -28,7 +28,10 @@ import {
   fixtureMarker,
 } from '../../streaming-fixture';
 
-function postedApproval(value: unknown): { approval: { approvalToken: string; toolName: string } } {
+function postedApproval(value: unknown): {
+  approval: { approvalToken: string; toolName: string };
+  resolution: Record<string, unknown>;
+} {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error('Expected approval payload to be an object.');
   }
@@ -41,7 +44,11 @@ function postedApproval(value: unknown): { approval: { approvalToken: string; to
   if (typeof approvalToken !== 'string' || typeof toolName !== 'string') {
     throw new Error('Expected approval token and tool name to be strings.');
   }
-  return { approval: { approvalToken, toolName } };
+  const resolution = Reflect.get(value, 'resolution');
+  if (typeof resolution !== 'object' || resolution === null || Array.isArray(resolution)) {
+    throw new Error('Expected approval payload to include a resolution object.');
+  }
+  return { approval: { approvalToken, toolName }, resolution: { ...resolution } };
 }
 
 /**
@@ -64,34 +71,19 @@ function tabOrderIncludesButtons(projectName: string): boolean {
  *
  * Reachability is the claim `locator.press()` cannot make: Playwright focuses
  * the matched element before dispatching the key, so a control carrying
- * `tabindex="-1"` would still pass. Starting from the disclosure — itself a
- * reachable control, and the thing a keyboard user lands on first — makes this
- * a real statement about the tab order on the engines that have one.
- *
- * The disclosure is expanded first when its controls are not already in the
- * DOM. Chromium renders the group open; Firefox and WebKit render it collapsed,
- * and a Tab walk cannot reach a control that has not been rendered yet — which
- * is what defeated an earlier version of this helper.
+ * `tabindex="-1"` would still pass. Starting from the approval form's reason textbox makes this
+ * a real statement about the tab order through Cinder's editable controls
+ * before the decision buttons.
  */
 async function focusDecisionControl(
   page: Page,
   projectName: string,
-  name: 'Approve' | 'Reject',
+  name: 'Approve' | 'Deny' | 'Dismiss',
 ): Promise<void> {
   const chat = page.locator('#chatroom-demo-chat');
-  // Matched on the tool name rather than on "Expand", so this keeps working if
-  // the group ever renders open by default and the label becomes "Collapse".
-  const disclosure = chat.getByRole('button', { name: /remember_note/ });
-  const target = chat.getByRole('button', { name });
+  const card = chat.getByRole('article', { name: 'Approval required for remember_note' });
+  const target = card.getByRole('button', { name });
 
-  if ((await disclosure.getAttribute('aria-expanded')) === 'true') {
-    // Already open. Pressing would close it — and focusing is enough, since
-    // the claim under test is that the DECISION controls are reachable from
-    // here, not that this button is.
-    await disclosure.focus();
-  } else {
-    await disclosure.press('Enter');
-  }
   await expect(target).toBeVisible();
 
   if (!tabOrderIncludesButtons(projectName)) {
@@ -101,7 +93,8 @@ async function focusDecisionControl(
     return;
   }
 
-  for (let press = 0; press < 12; press += 1) {
+  await card.getByRole('textbox', { name: 'Reason' }).focus();
+  for (let press = 0; press < 8; press += 1) {
     if (await target.evaluate((element) => element === document.activeElement)) return;
     await page.keyboard.press('Tab');
   }
@@ -110,7 +103,7 @@ async function focusDecisionControl(
       ? 'nothing'
       : `${document.activeElement.tagName}[${document.activeElement.ariaLabel ?? document.activeElement.textContent?.trim() ?? ''}]`,
   );
-  throw new Error(`Tab never reached ${name} from the disclosure; focus rested on ${focused}`);
+  throw new Error(`Tab never reached ${name} from the approval form; focus rested on ${focused}`);
 }
 
 /**
@@ -129,9 +122,9 @@ async function parkOnApproval(page: Page): Promise<string> {
     .fill(`Remember something ${fixtureMarker('approval', marker)}`);
   await page.getByRole('button', { name: 'Send message' }).click();
 
-  await expect(
-    page.locator('#chatroom-demo-chat').getByRole('button', { name: 'Approve' }),
-  ).toBeVisible();
+  const chat = page.locator('#chatroom-demo-chat');
+  await expect(chat.getByRole('button', { name: 'Approve' })).toBeVisible();
+  await expect(chat.getByRole('button', { name: 'Approve with edits' })).toHaveCount(0);
   // The cancel affordance only disappears once the response has closed, so
   // this is the settle signal — not a duration.
   await expect(page.getByRole('button', { name: 'Stop generating' })).toHaveCount(0);
@@ -162,19 +155,21 @@ test('surfaces the pending approval descriptor as tool activity', async ({ page 
   const marker = await parkOnApproval(page);
   const chat = page.locator('#chatroom-demo-chat');
 
-  // `action-required` is the descriptor reaching the client, not a spinner
-  // that happens to look similar: the group carries the status because a
-  // `pendingApproval` rode the tool result over the wire.
-  await expect(chat.locator('.tool-call-group')).toHaveAttribute('data-status', 'action-required');
+  // `Action required` is the descriptor reaching the client, not a spinner
+  // that happens to look similar: the Cinder timeline reports that state
+  // because a `pendingApproval` rode the tool result over the wire.
+  const toolActivity = chat.getByRole('region', { name: 'Called 1 tool' });
+  await expect(toolActivity).toContainText('remember_note: Action required');
+  await expect(toolActivity).toContainText('remember_note Waiting approval');
 
-  // The tool's own name rides that descriptor into the disclosure label, so
+  // The tool's own name rides into both the activity card and approval card, so
   // this fails if the prompt renders from a generic placeholder rather than
   // from what the run actually parked on.
   await expect(
-    chat.getByRole('button', { name: 'Expand remember_note, Action required' }),
+    chat.getByRole('article', { name: 'Approval required for remember_note' }),
   ).toBeVisible();
   await expect(chat.getByRole('button', { name: 'Approve' })).toBeVisible();
-  await expect(chat.getByRole('button', { name: 'Reject' })).toBeVisible();
+  await expect(chat.getByRole('button', { name: 'Deny' })).toBeVisible();
 
   expect(await fixtureRequestCount(marker)).toBe(1);
 });
@@ -185,6 +180,8 @@ test('approving resumes through the host-owned toolbox and the result rejoins th
   const marker = await parkOnApproval(page);
   const chat = page.locator('#chatroom-demo-chat');
 
+  await page.getByLabel('Reason').fill('ship it');
+  await page.getByLabel("Don't ask again for operations like this").check();
   const resumed = page.waitForResponse('**/api/chat/resume');
   await chat.getByRole('button', { name: 'Approve' }).click();
   const response = await resumed;
@@ -204,6 +201,7 @@ test('approving resumes through the host-owned toolbox and the result rejoins th
   const posted = postedApproval(JSON.parse(response.request().postData() ?? '{}'));
   expect(posted.approval.toolName).toBe('remember_note');
   expect(posted.approval.approvalToken).toMatch(/^[0-9a-f]{64}$/);
+  expect(posted.resolution).toEqual({ decision: 'approve', reason: 'ship it', remember: true });
 
   // The resolved result is visible to the model on the next turn: the
   // follow-up text only exists on the fixture's second attempt.
@@ -235,43 +233,85 @@ test('approves from the keyboard alone', async ({ page }, testInfo) => {
   expect(await fixtureRequestCount(marker)).toBe(2);
 });
 
-test('denying reaches a terminal state without resuming', async ({ page }, testInfo) => {
+test('denying resumes through the host-owned toolbox without executing the tool', async ({
+  page,
+}, testInfo) => {
   const marker = await parkOnApproval(page);
   const chat = page.locator('#chatroom-demo-chat');
 
-  // A resume request would mean the denial travelled to the server, which is
-  // the thing this path must not do — the decision is the client's and the
-  // signed approval is discarded locally.
-  let resumeRequests = 0;
-  await page.route('**/api/chat/resume', async (route) => {
-    resumeRequests += 1;
-    await route.continue();
+  await page.getByLabel('Reason').fill('policy says no');
+  await page.getByLabel("Don't ask again for operations like this").check();
+  await focusDecisionControl(page, testInfo.project.name, 'Deny');
+
+  const resumed = page.waitForResponse('**/api/chat/resume');
+  await page.keyboard.press('Enter');
+  const response = await resumed;
+
+  expect(response.status()).toBe(200);
+  const body = await response.json();
+  expect(body).toMatchObject({
+    outcome: 'error',
+    content: 'The user denied this request.',
+    error: { code: 'denied', category: 'permission' },
   });
 
-  // Labelled "Reject" in the UI; `denyToolCall` is the hook behind it.
-  // Reached and activated from the keyboard for the same reason the approve
-  // path is.
-  await focusDecisionControl(page, testInfo.project.name, 'Reject');
-  await page.keyboard.press('Enter');
+  const posted = postedApproval(JSON.parse(response.request().postData() ?? '{}'));
+  expect(posted.approval.toolName).toBe('remember_note');
+  expect(posted.approval.approvalToken).toMatch(/^[0-9a-f]{64}$/);
+  expect(posted.resolution).toEqual({
+    decision: 'deny',
+    reason: 'policy says no',
+    remember: true,
+  });
 
-  // The call settles as failed rather than lingering as a prompt nobody can
-  // answer. The action-required group is gone entirely — its controls with
-  // it — and what remains reads as a resolved, unsuccessful call.
   await expect(chat.locator('.tool-call-group')).toHaveCount(0);
   await expect(chat.getByRole('button', { name: 'Approve' })).toHaveCount(0);
-  await expect(chat.getByRole('button', { name: 'Reject' })).toHaveCount(0);
+  await expect(chat.getByRole('button', { name: 'Deny' })).toHaveCount(0);
   const settled = chat.getByRole('region', { name: 'Called 1 tool' });
   await expect(settled).toContainText('remember_note');
   await expect(settled).toContainText('Failed');
   await expect(page.getByTestId('demo-error')).toBeEmpty();
 
-  expect(resumeRequests).toBe(0);
+  await expect(page.getByRole('button', { name: 'Stop generating' })).toHaveCount(0);
+  expect(await fixtureRequestCount(marker)).toBe(2);
+});
 
-  // It is not silent, though, and that is deliberate rather than an oversight
-  // worth asserting around: the denial is a RESOLVED tool result, so the
-  // session controller's continuation loop takes one more turn carrying it,
-  // exactly as it would for any settled call. Two provider calls, both of
-  // them the client's doing — never the run continuing past its park.
+// The real `remember_note` producer does not set `editableArgs`, so the
+// application browser correctly has no approve-with-edits affordance. The
+// shared Cinder browser fixture and session/endpoint tests cover that full
+// payload shape without fabricating producer metadata here.
+test('dismissing resumes through the host-owned toolbox without executing the tool', async ({
+  page,
+}) => {
+  const marker = await parkOnApproval(page);
+  const chat = page.locator('#chatroom-demo-chat');
+
+  await page.getByLabel('Reason').fill('not now');
+  const resumed = page.waitForResponse('**/api/chat/resume');
+  await chat.getByRole('button', { name: 'Dismiss' }).click();
+  const response = await resumed;
+
+  expect(response.status()).toBe(200);
+  const body = await response.json();
+  expect(body).toMatchObject({
+    outcome: 'error',
+    content: 'The user cancelled this request.',
+    error: { code: 'CANCELLED', category: 'cancelled' },
+  });
+
+  const posted = postedApproval(JSON.parse(response.request().postData() ?? '{}'));
+  expect(posted.approval.toolName).toBe('remember_note');
+  expect(posted.approval.approvalToken).toMatch(/^[0-9a-f]{64}$/);
+  expect(posted.resolution).toEqual({ decision: 'cancel', reason: 'not now', remember: false });
+
+  await expect(chat.locator('.tool-call-group')).toHaveCount(0);
+  await expect(chat.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+  await expect(chat.getByRole('button', { name: 'Deny' })).toHaveCount(0);
+  const settled = chat.getByRole('region', { name: 'Called 1 tool' });
+  await expect(settled).toContainText('remember_note');
+  await expect(settled).toContainText('Failed');
+  await expect(page.getByTestId('demo-error')).toBeEmpty();
+
   await expect(page.getByRole('button', { name: 'Stop generating' })).toHaveCount(0);
   expect(await fixtureRequestCount(marker)).toBe(2);
 });

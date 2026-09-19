@@ -1,3 +1,4 @@
+import type { ApprovalResolution } from '@corvidae/cinder';
 import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { HTMLAttributes } from 'svelte/elements';
@@ -6,6 +7,7 @@ import type {
   ChatAdapter,
   ChatAdapterErrorEvent,
   ChatReadReceiptEvent,
+  ChatToolApprovalResolution,
 } from './adapter/chat-adapter.ts';
 import type { ResolvedChatArtifact } from './artifact/artifact-viewer.types.ts';
 import type {
@@ -257,19 +259,15 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   /** Commits a confirmed transcript rollback to immediately before the selected user message. */
   onrollback?: (messageId: string) => void;
   /**
-   * Called when the user approves an action-required tool call. The
-   * consumer is responsible for updating its transcript (e.g. calling
-   * conversationalist to unblock the pending tool) and triggering a new
-   * generation. When an adapter is also wired, Chat calls
-   * `adapter.approveToolCall(toolCallId)` first and then this callback.
+   * Called when the user resolves an action-required approval. The complete
+   * resolution payload is forwarded unchanged. When an adapter is also wired,
+   * Chat calls `adapter.resolveToolApproval(toolCallId, resolution)` first and
+   * uses this callback only when the adapter does not implement that method.
    */
-  onapprove?: (toolCallId: string) => void;
-  /**
-   * Called when the user denies an action-required tool call. When an
-   * adapter is also wired, Chat calls `adapter.denyToolCall(toolCallId)` first
-   * and then this callback.
-   */
-  ondeny?: (toolCallId: string) => void;
+  onapprovalresolve?: (
+    toolCallId: string,
+    resolution: ApprovalResolution,
+  ) => void | ChatToolApprovalResolution | Promise<void | ChatToolApprovalResolution>;
   /**
    * Override or supplement the reasoning text for a message. Called per-message;
    * return a non-empty string or `{ content, summary? }` to show one reasoning

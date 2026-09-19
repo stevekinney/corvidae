@@ -14,6 +14,7 @@
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
     "test": "bun test --path-ignore-patterns='scripts/benchmarks/activity-completions.test.ts' --path-ignore-patterns='scripts/benchmarks/cold-start.test.ts' --path-ignore-patterns='scripts/benchmarks/load-growth-memory.test.ts' --path-ignore-patterns='scripts/benchmarks/memory-per-workflow.test.ts' --path-ignore-patterns='scripts/benchmarks/recovery.test.ts' --path-ignore-patterns='scripts/benchmarks/token-stream-latency.test.ts' --path-ignore-patterns='scripts/benchmarks/worker-spawn.test.ts' --path-ignore-patterns='scripts/benchmarks/workflow-starts.test.ts'",
     "test:benchmarks": "bun test ./scripts/benchmarks ./src/storage/bun-sql-benchmark.test.ts ./scripts/benchmarks/speculation.bench.ts",
+    "test:browser": "WEFT_BROWSER_SMOKE=1 bun test ./src/storage/indexeddb-browser.test.ts ./src/storage/web-extension-browser.test.ts ./src/service-worker/service-worker-browser.test.ts",
     "typecheck": "tsc --noEmit && bun run typecheck:fixtures && bun ../../scripts/typecheck-contracts.ts",
     "typecheck:fixtures": "tsc --noEmit -p src/cli/__fixtures__/codegen/typecheck/tsconfig.json"
   },

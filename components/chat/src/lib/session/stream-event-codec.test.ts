@@ -1,10 +1,33 @@
 import { describe, expect, test } from 'bun:test';
-import { expectRejected } from './stream-event-codec-test-helpers.ts';
+import { expectRejected, hostileEvent } from './stream-event-codec-test-helpers.ts';
 import {
   decodeChatStreamEvent,
   decodeChatStreamEvents,
   encodeChatStreamEvent,
 } from './stream-event-codec.ts';
+
+const completeApprovalAction = {
+  type: 'approval' as const,
+  message: 'Approve workspace edits?',
+  risk: 'high' as const,
+  operation: {
+    kind: 'command' as const,
+    command: 'bun test',
+    filesTouched: ['components/chat/src/lib/session/stream-event-codec.test.ts'],
+    argsPreview: { filter: '@corvidae/chat', flags: ['--conditions', 'browser'] },
+  },
+  sandbox: {
+    provider: 'codex',
+    name: 'workspace-write',
+    workingDir: '/Users/stevekinney/Developer/corvidae',
+  },
+  env: ['TZ=UTC', 'LANG=en_US.UTF-8'],
+  snapshotId: 'snapshot-approval-1',
+  expiresAt: '2026-09-19T12:34:56-06:00',
+  editableArgs: true,
+  policyVersion: 'approval-policy:2026-09-19',
+  idempotencyKey: 'approval-codec-tool-result',
+};
 
 async function* splitChunks(): AsyncGenerator<string> {
   yield '{"type":"text","text":"hel';
@@ -39,13 +62,90 @@ describe('chat stream event codec', () => {
     expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual(event);
   });
 
+  test('preserves complete approval metadata on a top-level tool_result', () => {
+    const event = {
+      type: 'tool_result' as const,
+      callId: 'call-approval',
+      outcome: 'action_required' as const,
+      content: 'Approve workspace edits?',
+      action: completeApprovalAction,
+    };
+
+    expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual(event);
+  });
+
+  test.each([
+    {
+      name: 'filesTouched string',
+      operationPatch: { filesTouched: 'abc' },
+      error: /action\.operation\.filesTouched is not an array/,
+    },
+    {
+      name: 'filesTouched object',
+      operationPatch: { filesTouched: { 0: 'file.ts', length: 1 } },
+      error: /action\.operation\.filesTouched is not an array/,
+    },
+    {
+      name: 'filesTouched non-string item',
+      operationPatch: { filesTouched: ['file.ts', 42] },
+      error: /action\.operation\.filesTouched\[1\] must be a string/,
+    },
+    {
+      name: 'env string',
+      actionPatch: { env: 'TOKEN' },
+      error: /action\.env is not an array/,
+    },
+    {
+      name: 'env object',
+      actionPatch: { env: { 0: 'TOKEN=1', length: 1 } },
+      error: /action\.env is not an array/,
+    },
+    {
+      name: 'env non-string item',
+      actionPatch: { env: ['TZ=UTC', 7] },
+      error: /action\.env\[1\] must be a string/,
+    },
+  ])(
+    'rejects malformed approval array metadata before encoding: $name',
+    ({ actionPatch, operationPatch, error }) => {
+      const action = {
+        ...completeApprovalAction,
+        ...actionPatch,
+        operation: {
+          ...completeApprovalAction.operation,
+          ...operationPatch,
+        },
+      };
+      const event = hostileEvent({
+        type: 'tool_result',
+        callId: 'call-approval',
+        outcome: 'action_required',
+        content: 'Approve workspace edits?',
+        action,
+      });
+
+      expect(() => encodeChatStreamEvent(event)).toThrow(error);
+    },
+  );
+
   test('preserves a JSON-safe signed pending approval extension', () => {
     const event = {
       type: 'tool_result' as const,
       callId: 'call-approval',
       outcome: 'action_required' as const,
       content: 'Save this note?',
-      action: { type: 'approval' as const, message: 'Save this note?' },
+      action: {
+        type: 'approval' as const,
+        message: 'Save this note?',
+        risk: 'high' as const,
+        operation: {
+          kind: 'command' as const,
+          command: 'echo approval',
+          argsPreview: { ok: true },
+        },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
       pendingApproval: {
         callId: 'call-approval',
         toolName: 'remember_note',

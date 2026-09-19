@@ -22,7 +22,7 @@ import { createOperationRegistry } from './operation-catalog.ts';
 import type { ParameterizedAccessHint } from './operation-catalog/types.ts';
 import type { UnarySchemaOperationDefinition } from './operation-registry.ts';
 import { defineOperation } from './operation-registry.ts';
-import { isRecord } from './protocol-test-support.ts';
+import { isRecord } from './protocol.test-support.ts';
 
 function makeOp(overrides: {
   readonly name: string;

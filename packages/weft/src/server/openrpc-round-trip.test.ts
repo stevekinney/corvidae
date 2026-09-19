@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { records } from './protocol-test-support.ts';
+import { records } from './protocol.test-support.ts';
 
 import { OpenRpcDocumentSchema } from './openrpc-document-schema.ts';
 import { generateOpenRpcDocument } from './openrpc.ts';

@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { record, records } from './protocol-test-support.ts';
+import { record, records } from './protocol.test-support.ts';
 
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';

@@ -1,7 +1,7 @@
 import type { TokenUsage } from '@corvidae/conversationalist';
 import type { ChatToolResult } from '../components/chat/adapter/chat-adapter.ts';
 import { isJSONValue, isTokenUsage, isToolResult } from '../components/chat/builders.ts';
-import type { JSONValue } from '../components/chat/conversation-model.ts';
+import type { JSONValue, ToolAction } from '../components/chat/conversation-model.ts';
 import {
   isSupportedWireVersion,
   type ChatSerializedRunError,
@@ -81,14 +81,76 @@ function ownFields<T>(value: T): T {
  * which is that same guard. This function's job is the field whitelist and
  * the JSON assertion on `schema`.
  */
+function projectApprovalOperation(
+  operation: Extract<ToolAction, { type: 'approval' }>['operation'],
+): Record<string, unknown> {
+  const source = ownFields(operation);
+  const filesTouched = source.filesTouched;
+  const projected: Record<string, unknown> = { kind: source.kind };
+  if (filesTouched !== undefined)
+    projected['filesTouched'] = projectStringArray(filesTouched, 'action.operation.filesTouched');
+  if (source.argsPreview !== undefined) {
+    projected['argsPreview'] = assertFiniteJSONValue(
+      source.argsPreview,
+      'tool result action.operation.argsPreview',
+    );
+  }
+  if (source.kind === 'command') projected['command'] = source.command;
+  if (source.kind === 'patch') projected['diff'] = source.diff;
+  return projected;
+}
+
+function projectStringArray(value: unknown, context: string): string[] {
+  if (!Array.isArray(value))
+    throw new Error(`Invalid chat stream event: ${context} is not an array`);
+  const projected: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const item: unknown = value[index];
+    if (item === undefined || !Object.hasOwn(value, index))
+      throw new Error(`Invalid chat stream event: ${context}[${index}] is missing`);
+    if (typeof item !== 'string')
+      throw new Error(`Invalid chat stream event: ${context}[${index}] must be a string`);
+    projected.push(item);
+  }
+  return projected;
+}
+
+function projectApprovalSandbox(
+  sandbox: Extract<ToolAction, { type: 'approval' }>['sandbox'],
+): Record<string, unknown> | undefined {
+  if (sandbox === undefined) return undefined;
+  const source = ownFields(sandbox);
+  return {
+    provider: source.provider,
+    name: source.name,
+    workingDir: source.workingDir,
+  };
+}
+
 export function projectChatToolAction(
   rawAction: NonNullable<ChatToolResult['action']>,
 ): Record<string, unknown> {
   const action = ownFields(rawAction);
   const projected: Record<string, unknown> = { type: action.type };
   if (action.message !== undefined) projected['message'] = action.message;
-  if (action.schema !== undefined)
-    projected['schema'] = assertFiniteJSONValue(action.schema, 'tool result action.schema');
+
+  if (action.type === 'input') {
+    if (action.schema !== undefined)
+      projected['schema'] = assertFiniteJSONValue(action.schema, 'tool result action.schema');
+    return projected;
+  }
+
+  projected['risk'] = action.risk;
+  projected['operation'] = projectApprovalOperation(action.operation);
+  const sandbox = projectApprovalSandbox(action.sandbox);
+  if (sandbox !== undefined) projected['sandbox'] = sandbox;
+  const env = action.env;
+  if (env !== undefined) projected['env'] = projectStringArray(env, 'action.env');
+  if (action.snapshotId !== undefined) projected['snapshotId'] = action.snapshotId;
+  if (action.expiresAt !== undefined) projected['expiresAt'] = action.expiresAt;
+  if (action.editableArgs !== undefined) projected['editableArgs'] = action.editableArgs;
+  projected['policyVersion'] = action.policyVersion;
+  projected['idempotencyKey'] = action.idempotencyKey;
   return projected;
 }
 

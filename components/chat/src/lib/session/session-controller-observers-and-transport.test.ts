@@ -101,14 +101,23 @@ describe('chat session controller', () => {
             callId: 'call',
             outcome: 'action_required',
             content: null,
-            action: { type: 'approval', message: 'Approve this tool call' },
+            action: {
+              type: 'approval',
+              message: 'Approve this tool call',
+              risk: 'high',
+              operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+              policyVersion: 'test-policy',
+              idempotencyKey: 'test-approval',
+            },
           },
         ]),
-      hooks: { approveToolCall: async () => undefined },
+      hooks: { resolveToolApproval: async () => undefined },
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'write' }, []);
     await Promise.resolve(
-      expect(controller.adapter.approveToolCall?.('call')).rejects.toThrow('must return'),
+      expect(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
+      ).rejects.toThrow('must return'),
     );
   });
 

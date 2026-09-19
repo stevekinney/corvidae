@@ -83,18 +83,26 @@ describe('chat session controller', () => {
             callId: 'call',
             outcome: 'action_required',
             content: null,
-            action: { type: 'approval' },
+            action: {
+              type: 'approval',
+              risk: 'high',
+              operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+              policyVersion: 'test-policy',
+              idempotencyKey: 'test-approval',
+            },
           },
         ]),
       hooks: {
-        approveToolCall: async () => {
+        resolveToolApproval: async () => {
           throw new Error('approval unavailable');
         },
       },
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'write' }, []);
     await Promise.resolve(
-      expect(controller.adapter.approveToolCall?.('call')).rejects.toThrow('approval unavailable'),
+      expect(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
+      ).rejects.toThrow('approval unavailable'),
     );
     expect(Object.values(conversation.messages)[0]?.metadata['_deliveryStatus']).toBeUndefined();
   });
@@ -114,18 +122,26 @@ describe('chat session controller', () => {
             callId: 'call',
             outcome: 'action_required',
             content: null,
-            action: { type: 'approval' },
+            action: {
+              type: 'approval',
+              risk: 'high',
+              operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+              policyVersion: 'test-policy',
+              idempotencyKey: 'test-approval',
+            },
           },
         ]),
       hooks: {
-        denyToolCall: async () => {
+        resolveToolApproval: async () => {
           throw new Error('denial unavailable');
         },
       },
     });
     await controller.adapter.sendMessage({ role: 'user', content: 'write' }, []);
     await Promise.resolve(
-      expect(controller.adapter.denyToolCall?.('call')).rejects.toThrow('denial unavailable'),
+      expect(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'deny', remember: false }),
+      ).rejects.toThrow('denial unavailable'),
     );
     expect(Object.values(conversation.messages)[0]?.metadata['_deliveryStatus']).toBeUndefined();
   });
@@ -138,7 +154,7 @@ describe('chat session controller', () => {
         conversation = next;
       },
       transport: async () => events([{ type: 'text', text: 'unexpected' }]),
-      hooks: { approveToolCall: async () => undefined, denyToolCall: async () => undefined },
+      hooks: { resolveToolApproval: async () => undefined },
     });
     const original = conversation;
     controller.dispose();
@@ -156,10 +172,17 @@ describe('chat session controller', () => {
       ).rejects.toThrow('disposed'),
     );
     await Promise.resolve(
-      expect(controller.adapter.approveToolCall?.('missing')).rejects.toThrow('disposed'),
+      expect(
+        controller.adapter.resolveToolApproval?.('missing', {
+          decision: 'approve',
+          remember: false,
+        }),
+      ).rejects.toThrow('disposed'),
     );
     await Promise.resolve(
-      expect(controller.adapter.denyToolCall?.('missing')).rejects.toThrow('disposed'),
+      expect(
+        controller.adapter.resolveToolApproval?.('missing', { decision: 'deny', remember: false }),
+      ).rejects.toThrow('disposed'),
     );
     await Promise.resolve(
       expect(controller.adapter.stopGenerating?.('missing')).rejects.toThrow('disposed'),
