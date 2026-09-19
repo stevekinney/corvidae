@@ -1,5 +1,6 @@
 import { isConversationHistory } from '../components/chat/builders.ts';
 import {
+  isAssistantStepEvent,
   isBlockStreamEvent,
   isRunEvent,
   isStateStreamEvent,
@@ -19,7 +20,7 @@ import {
   requireString,
 } from './stream-event-codec-encoding-projection.ts';
 import type { ChatStreamEvent, WireEnvelope } from './stream-event-codec-types.ts';
-import { isRecord } from './stream-event-codec-validation.ts';
+import { isNonNegativeSafeInteger, isRecord } from './stream-event-codec-validation.ts';
 
 function isLegacyChatStreamEventType(
   type: ChatStreamEvent['type'],
@@ -74,6 +75,7 @@ export function projectChatStreamEventBody(
   if (isStreamEvent(event)) return projectStreamEvent(event, envelope);
   if (isToolEvent(event)) return projectToolEvent(event, envelope);
   if (isRunEvent(event)) return projectRunEvent(event, envelope);
+  if (isAssistantStepEvent(event)) return projectAssistantStepEvent(event, envelope);
   if (event.type === 'text' || event.type === 'tool_call' || event.type === 'tool_result')
     return projectLegacyEvent(event, envelope);
   return throwUnsupportedType(event);
@@ -83,6 +85,21 @@ type LegacyEvent = Extract<ChatStreamEvent, { type: 'text' | 'tool_call' | 'tool
 type StreamEvent = Extract<ChatStreamEvent, { type: `stream:${string}` }>;
 type ToolEvent = Extract<ChatStreamEvent, { type: `tool.${string}` }>;
 type RunEvent = Extract<ChatStreamEvent, { type: `run.${string}` }>;
+type AssistantStepEvent = Extract<ChatStreamEvent, { type: `assistant.step.${string}` }>;
+
+function projectAssistantStepEvent(
+  event: AssistantStepEvent,
+  envelope: Partial<WireEnvelope>,
+): ProjectedChatStreamEvent {
+  if (!isNonNegativeSafeInteger(event.step))
+    throw new Error('Invalid chat stream event: step must be a non-negative safe integer');
+  return {
+    type: event.type,
+    step: event.step,
+    messageId: requireString(event.messageId, 'messageId'),
+    ...envelope,
+  };
+}
 
 function projectLegacyEvent(
   event: LegacyEvent,

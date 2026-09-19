@@ -219,4 +219,14 @@ export type ChatStreamEvent =
     } & WireEnvelope)
   | ({ type: 'run.error'; error: ChatSerializedRunError } & WireEnvelope)
   | ({ type: 'run.tripwire'; error: ChatSerializedRunError } & WireEnvelope)
-  | ({ type: 'run.aborted'; reason?: string } & WireEnvelope);
+  | ({ type: 'run.aborted'; reason?: string } & WireEnvelope)
+  // Assistant step boundaries.
+  //
+  // `messageId` is the HOST'S identifier for the row this step's text
+  // belongs to, read from Operative's `StreamingHandle.messageId` before the
+  // provider emits anything. It is deliberately not a provider block id —
+  // those are per-block and per-provider — and deliberately not something
+  // the client minted, because then the client would be reconciling its own
+  // guess against the server's history rather than being told.
+  | ({ type: 'assistant.step.started'; step: number; messageId: string } & WireEnvelope)
+  | ({ type: 'assistant.step.completed'; step: number; messageId: string } & WireEnvelope);

@@ -4,6 +4,7 @@ import { decodeRunEvent, decodeToolEvent } from './stream-event-codec-decoding-t
 import { projectPlainJSON } from './stream-event-codec-encoding-projection.ts';
 import type { ChatStreamEvent, WireEnvelope } from './stream-event-codec-types.ts';
 import {
+  isNonNegativeSafeInteger,
   isRecord,
   readWireEnvelope,
   requireWireEnvelope,
@@ -24,6 +25,8 @@ function decodeVersionedEvent(
   parsed: Record<string, unknown>,
   required: WireEnvelope,
 ): ChatStreamEvent {
+  if (assistantStepEventTypes.includes(eventType))
+    return decodeAssistantStepEvent(eventType, parsed, required);
   if (streamEventTypes.includes(eventType)) return decodeStreamEvent(eventType, parsed, required);
   if (toolEventTypes.includes(eventType)) return decodeToolEvent(eventType, parsed, required);
   if (runEventTypes.includes(eventType)) return decodeRunEvent(eventType, parsed, required);
@@ -50,6 +53,21 @@ const toolEventTypes = [
   'tool.policy-denied',
 ];
 const runEventTypes = ['run.completed', 'run.error', 'run.tripwire', 'run.aborted'];
+const assistantStepEventTypes = ['assistant.step.started', 'assistant.step.completed'];
+
+function decodeAssistantStepEvent(
+  eventType: string,
+  parsed: Record<string, unknown>,
+  envelope: WireEnvelope,
+): ChatStreamEvent {
+  const step = parsed['step'];
+  const messageId = parsed['messageId'];
+  if (!isNonNegativeSafeInteger(step) || typeof messageId !== 'string')
+    throw new Error('Invalid chat stream event');
+  return eventType === 'assistant.step.started'
+    ? { type: 'assistant.step.started', step, messageId, ...envelope }
+    : { type: 'assistant.step.completed', step, messageId, ...envelope };
+}
 
 function decodeTextEvent(
   parsed: Record<string, unknown>,

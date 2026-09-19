@@ -12,6 +12,8 @@ export {
 export * from './components/chat/index.ts';
 export {
   ChatRunFailureError,
+  type ChatExecutionOwner,
+  type ChatHistoryToken,
   type ChatSessionController,
   type ChatSessionControllerOptions,
   type ChatSessionHooks,

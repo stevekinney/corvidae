@@ -20,12 +20,43 @@ export class ChatRunFailureError extends Error {
   }
 }
 
-/** Context supplied to each transport turn. */
+/**
+ * A holder's claim about how far the session had moved when it last looked.
+ *
+ * Carried by the host across an asynchronous fetch and handed back to
+ * `adoptHistory`, which refuses anything captured before a write it has since
+ * accepted. The shape is deliberately plain data so a host can put it in a
+ * request, a store, or a closure without the controller caring.
+ */
+export type ChatHistoryToken = Readonly<{
+  conversationId: string;
+  generation: number;
+  revision: number;
+}>;
+
+/**
+ * Context supplied to each transport turn.
+ *
+ * `submissionId` names the user-initiated turn, so a host can correlate a
+ * continuation with the submission that opened it. `historyToken` is the
+ * token to hand back when this request's response carries an authoritative
+ * snapshot. `isCurrent` is a LIVE reading, not a value: a long-lived
+ * transport calls it again after every await to find out whether the work it
+ * is about to do still has a reader.
+ *
+ * There is deliberately no `assistantMessageId` here. The authoritative
+ * identifier for an assistant step belongs to the host and travels on the
+ * `assistant.step.*` frames; a field on the request would invite a client to
+ * mint one and would make the wire's identifier the second opinion.
+ */
 export type ChatSessionRequest = {
   conversation: ConversationHistory;
   signal: AbortSignal;
   turn: number;
   attachments: ChatAttachment[];
+  submissionId: string;
+  historyToken: ChatHistoryToken;
+  isCurrent: () => boolean;
 };
 /** Supported transport return values, decoded lazily by the controller. */
 export type ChatSessionTransportResult =
@@ -34,6 +65,22 @@ export type ChatSessionTransportResult =
 export type ChatSessionTransport = (
   request: ChatSessionRequest,
 ) => ChatSessionTransportResult | Promise<ChatSessionTransportResult>;
+/**
+ * Which side drives a conversation's execution for one submission.
+ *
+ * `browser` is the historical behaviour and stays the default: the client
+ * owns the loop, so a turn that ended with every tool call resolved is the
+ * cue to submit the next step. `server` says the host ran the whole turn
+ * inside one response — every step already crossed the wire, so continuing
+ * would either duplicate the turn or ask for a step the host has nothing to
+ * answer with.
+ *
+ * Ownership is a property of the SUBMISSION, never of a frame. No terminal
+ * frame promotes or demotes it: a host that wants the browser to continue
+ * says so by being configured that way, not by what it happened to send.
+ */
+export type ChatExecutionOwner = 'browser' | 'server';
+
 /** Optional observers and approval handlers for controller lifecycle events. */
 export type ChatSessionHooks = {
   onToolResult?: (result: ChatToolResult) => void;
@@ -46,12 +93,34 @@ export type ChatSessionControllerOptions = {
   transport: ChatSessionTransport;
   getConversation: () => ConversationHistory;
   setConversation: (conversation: ConversationHistory) => void;
+  executionOwner?: ChatExecutionOwner;
   maxContinuationTurns?: number;
   hooks?: ChatSessionHooks;
 };
 export type ChatSessionController = {
   adapter: ChatAdapter;
   stop: () => Promise<void>;
+  /** The session's position right now, to carry across an asynchronous read. */
+  captureHistoryToken: () => ChatHistoryToken;
+  /** Whether a token still describes the session its holder last saw. */
+  isHistoryTokenCurrent: (token: ChatHistoryToken) => boolean;
+  /**
+   * Installs a full-session snapshot, or refuses it.
+   *
+   * Refused while a run is in flight, when the token has been retired, and
+   * when the snapshot belongs to another conversation. Returns whether it was
+   * installed, so a caller can tell "applied" from "silently dropped".
+   */
+  adoptHistory: (history: ConversationHistory, token: ChatHistoryToken) => boolean;
+  /**
+   * Retires every outstanding token and aborts work in flight.
+   *
+   * The host calls this when something it owns — a navigation, a surface
+   * teardown — means nothing already in flight should be allowed to land. The
+   * controller has no opinion about URLs, visibility or refresh cadence; this
+   * is the one seam through which those decisions reach it.
+   */
+  invalidate: () => void;
   dispose: () => void;
 };
 
