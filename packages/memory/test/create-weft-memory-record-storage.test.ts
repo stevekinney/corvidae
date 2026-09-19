@@ -1,5 +1,9 @@
-import { createManualRuntimeServices } from '@repo/lifecycle';
-import { encodeStorageKeyComponent, MemoryStorage, WEFT_RESERVED_KEY_PREFIXES } from '@repo/weft';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import {
+  encodeStorageKeyComponent,
+  MemoryStorage,
+  WEFT_RESERVED_KEY_PREFIXES,
+} from '@corvidae/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import {

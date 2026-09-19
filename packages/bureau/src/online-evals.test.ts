@@ -6,13 +6,13 @@
  * durable pipeline. Sampling is driven by an injected RNG so `sampleRate` is
  * exercised deterministically: no test depends on `Math.random`.
  */
-import { Conversation } from '@repo/conversationalist';
+import { Conversation } from '@corvidae/conversationalist';
 import {
   type Action,
   LIVENESS_POLICY_VERSION,
   type RunResult,
   type StallWatchdogClock,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import type { AuditTrail } from './audit-trail';

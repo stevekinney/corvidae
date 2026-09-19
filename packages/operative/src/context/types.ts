@@ -5,7 +5,7 @@
  * compaction strategies, and the top-level context engine options.
  */
 
-import type { Conversation, Message } from '@repo/conversationalist';
+import type { Conversation, Message } from '@corvidae/conversationalist';
 
 import type { TokenBudget } from './token-budget';
 

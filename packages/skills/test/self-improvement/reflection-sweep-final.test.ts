@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, it, mock } from 'bun:test';
 
 import type { IdentityProviderLike } from '../../src/self-improvement/proposals';

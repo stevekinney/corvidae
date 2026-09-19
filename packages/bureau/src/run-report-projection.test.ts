@@ -1,11 +1,11 @@
-import { createToolbox, type Tool } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createToolbox, type Tool } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import {
   AbortAgentRunError,
   createActiveRun,
   type GenerateFunction,
   stopWhen,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 
 import {

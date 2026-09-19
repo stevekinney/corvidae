@@ -1,9 +1,8 @@
-import { isStandardSchema } from '@repo/interoperability';
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 import { z } from 'zod';
 
 import type { ToolRisk } from '../core/risk';
-import { isZodSchema } from '../core/schema-utilities';
+import { isStandardSchema, isZodSchema } from '../core/schema-utilities';
 import { assertJsonValue } from '../core/serialization/json';
 import type { DefineToolOptions, ToolDefinition } from '../core/tool-definition';
 import { defineTool } from '../core/tool-definition';

@@ -1,5 +1,5 @@
-import type { StandardSchemaV1 } from '@repo/interoperability';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { DirectIdempotencyExecuteOptions } from '../../src/idempotency/with-idempotency';
 
 export const requestContext = {

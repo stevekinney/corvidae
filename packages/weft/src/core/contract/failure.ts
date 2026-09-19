@@ -13,7 +13,7 @@
  *
  * @example
  * ```ts
- * import type { WorkflowRevisionManifestRejectionReason } from '@repo/weft';
+ * import type { WorkflowRevisionManifestRejectionReason } from '@corvidae/weft';
  *
  * const counts = new Map<WorkflowRevisionManifestRejectionReason, number>();
  * counts.set('contract-hash-mismatch', 1);
@@ -35,7 +35,7 @@ export type WorkflowRevisionManifestRejectionReason =
  *
  * @example
  * ```ts
- * import { parseWorkflowRevisionManifest, type WorkflowRevisionManifestValidationFailure } from '@repo/weft';
+ * import { parseWorkflowRevisionManifest, type WorkflowRevisionManifestValidationFailure } from '@corvidae/weft';
  *
  * const result = await parseWorkflowRevisionManifest({ manifestVersion: 99 });
  * if (!result.ok) {
@@ -61,7 +61,7 @@ export type WorkflowRevisionManifestValidationFailure = Readonly<{
  *
  * @example
  * ```ts
- * import { workflowRevisionManifestFailure } from '@repo/weft';
+ * import { workflowRevisionManifestFailure } from '@corvidae/weft';
  *
  * const failure = workflowRevisionManifestFailure(
  *   'invalid-field',

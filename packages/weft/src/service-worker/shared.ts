@@ -15,7 +15,7 @@ const DEFAULT_PATH_PREFIX = '/weft/';
  *
  * @example
  * ```ts
- * import { DEFAULT_PERIODIC_SYNC_TAG } from '@repo/weft';
+ * import { DEFAULT_PERIODIC_SYNC_TAG } from '@corvidae/weft';
  * const tag: 'weft-timers' = DEFAULT_PERIODIC_SYNC_TAG;
  * void tag;
  * ```
@@ -29,8 +29,8 @@ export const DEFAULT_PERIODIC_SYNC_TAG = 'weft-timers';
  *
  * @example
  * ```ts
- * import { createFetchHandler, type MinimalFetchEvent } from '@repo/weft';
- * import { Engine, MemoryStorage } from '@repo/weft';
+ * import { createFetchHandler, type MinimalFetchEvent } from '@corvidae/weft';
+ * import { Engine, MemoryStorage } from '@corvidae/weft';
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const handler = createFetchHandler({ engine });
  * declare const event: MinimalFetchEvent;
@@ -48,7 +48,7 @@ export interface MinimalFetchEvent {
  *
  * @example
  * ```ts
- * import type { MinimalExtendableEvent } from '@repo/weft';
+ * import type { MinimalExtendableEvent } from '@corvidae/weft';
  * declare const event: MinimalExtendableEvent;
  * event.waitUntil(Promise.resolve());
  * ```
@@ -62,7 +62,7 @@ export interface MinimalExtendableEvent {
  *
  * @example
  * ```ts
- * import type { MinimalPeriodicSyncEvent } from '@repo/weft';
+ * import type { MinimalPeriodicSyncEvent } from '@corvidae/weft';
  * declare const event: MinimalPeriodicSyncEvent;
  * if (event.tag === 'weft-timers') event.waitUntil(Promise.resolve());
  * ```
@@ -77,7 +77,7 @@ export interface MinimalPeriodicSyncEvent extends MinimalExtendableEvent {
  *
  * @example
  * ```ts
- * import { normalizePathPrefix } from '@repo/weft';
+ * import { normalizePathPrefix } from '@corvidae/weft';
  * normalizePathPrefix('/weft'); // '/weft/'
  * normalizePathPrefix(undefined); // '/weft/'
  * ```
@@ -96,7 +96,7 @@ export function normalizePathPrefix(pathPrefix: string | undefined): string {
  *
  * @example
  * ```ts
- * import { buildDelegatedRequest, normalizePathPrefix } from '@repo/weft';
+ * import { buildDelegatedRequest, normalizePathPrefix } from '@corvidae/weft';
  * declare const event: { request: Request; respondWith(r: Response | Promise<Response>): void };
  * const delegated = buildDelegatedRequest(event, normalizePathPrefix('/weft/'));
  * void delegated;

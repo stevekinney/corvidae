@@ -38,7 +38,7 @@ type ContractEntityKind = 'workflow' | 'signal' | 'update' | 'query' | 'activity
  *
  * @example
  * ```ts
- * import { WorkflowContractConversionError } from '@repo/weft';
+ * import { WorkflowContractConversionError } from '@corvidae/weft';
  *
  * try {
  *   throw new WorkflowContractConversionError('activity', 'charge', 'inputSchema', new Error('boom'));
@@ -227,7 +227,7 @@ function applyMessageRecords(draft: ContractDraft, source: WorkflowContractSourc
  *
  * @example
  * ```ts
- * import { buildWorkflowContract } from '@repo/weft';
+ * import { buildWorkflowContract } from '@corvidae/weft';
  *
  * const contract = buildWorkflowContract({ name: 'checkout', version: '2.1.0' });
  * console.log(contract.name, contract.workflowVersion); // checkout 2.1.0

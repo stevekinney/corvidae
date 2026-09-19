@@ -1,7 +1,7 @@
-import type { AnyToolbox, ToolExecuteOptions, ToolExecutionResult } from '@repo/armorer';
-import type { Conversation, ConversationHistory, TokenUsage } from '@repo/conversationalist';
-import type { JSONValue, ToolCall, ToolCallInput } from '@repo/interoperability';
-import type { HookRegistry, RuntimeServices } from '@repo/lifecycle';
+import type { AnyToolbox, ToolExecuteOptions, ToolExecutionResult } from '@corvidae/armorer';
+import type { Conversation, ConversationHistory, TokenUsage } from '@corvidae/conversationalist';
+import type { HookRegistry, RuntimeServices } from '@corvidae/lifecycle';
+import type { JSONValue, ToolCall, ToolCallInput } from '@corvidae/tool-protocol';
 import type { ZodType } from 'zod';
 
 import type { BackpressureStrategy } from './backpressure';
@@ -16,9 +16,14 @@ import type { SelectionGate } from './selection-gate';
 import type { LiveStreamEvent } from './streaming/types';
 import type { ResponseFormat, ToolChoice } from './structured-output/types';
 
-export type { AnyToolbox, Toolbox, ToolExecuteOptions, ToolExecutionResult } from '@repo/armorer';
-export type { Conversation, ConversationHistory, TokenUsage } from '@repo/conversationalist';
-export type { JSONValue, ToolCall, ToolCallInput } from '@repo/interoperability';
+export type {
+  AnyToolbox,
+  Toolbox,
+  ToolExecuteOptions,
+  ToolExecutionResult,
+} from '@corvidae/armorer';
+export type { Conversation, ConversationHistory, TokenUsage } from '@corvidae/conversationalist';
+export type { JSONValue, ToolCall, ToolCallInput } from '@corvidae/tool-protocol';
 
 /**
  * Options passed to toolbox.execute() within the loop.
@@ -617,7 +622,7 @@ export interface RunOptionsBase {
    * back to a global. Unconfigured (the default), a run reads the real
    * globals via `createDefaultRuntimeServices()`; a test composes its own
    * deterministic instance with `createManualRuntimeServices()` from
-   * `@repo/operative`.
+   * `@corvidae/operative`.
    */
   runtime?: RuntimeServices | undefined;
 }

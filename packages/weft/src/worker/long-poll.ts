@@ -51,7 +51,7 @@ const DEFAULT_POLL_TIMEOUT = 30_000;
  *
  * @example
  * ```ts
- * import { LongPollWorker } from '@repo/weft';
+ * import { LongPollWorker } from '@corvidae/weft';
  *
  * using worker = new LongPollWorker({
  *   serverUrl: 'http://localhost:3000',

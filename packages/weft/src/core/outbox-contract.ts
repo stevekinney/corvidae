@@ -33,9 +33,9 @@ import type {
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import type { OutboxEventSink } from '@repo/weft';
- * import { createFleetEventFeed } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import type { OutboxEventSink } from '@corvidae/weft';
+ * import { createFleetEventFeed } from '@corvidae/weft';
  *
  * const events: OutboxEventSink = createFleetEventFeed(new MemoryStorage());
  * void events;
@@ -59,7 +59,7 @@ export type OutboxEventSink = ApplicationEventSink;
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryOutcome } from '@repo/weft';
+ * import type { ApplicationDeliveryOutcome } from '@corvidae/weft';
  *
  * const outcome: ApplicationDeliveryOutcome = { status: 'acknowledged', evidence: { id: 'msg-1' } };
  * console.log(outcome.status); // 'acknowledged'
@@ -96,7 +96,7 @@ export type ApplicationDeliveryOutcome =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliverySendRequest } from '@repo/weft';
+ * import type { ApplicationDeliverySendRequest } from '@corvidae/weft';
  *
  * declare const request: ApplicationDeliverySendRequest;
  * console.log(request.delivery.destinationRef, request.attemptToken);
@@ -122,7 +122,7 @@ export type ApplicationDeliverySendRequest = Readonly<{
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryAdapter } from '@repo/weft';
+ * import type { ApplicationDeliveryAdapter } from '@corvidae/weft';
  *
  * const adapter: ApplicationDeliveryAdapter = {
  *   async send(request) {
@@ -146,7 +146,7 @@ export type ApplicationDeliveryAdapter = {
  *
  * @example
  * ```ts
- * import { MemoryStorage, type OutboxOptions } from '@repo/weft';
+ * import { MemoryStorage, type OutboxOptions } from '@corvidae/weft';
  *
  * const options: OutboxOptions = {
  *   storage: new MemoryStorage(),
@@ -221,7 +221,7 @@ export type OutboxOptions = {
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryInput } from '@repo/weft';
+ * import type { ApplicationDeliveryInput } from '@corvidae/weft';
  *
  * const input: ApplicationDeliveryInput = {
  *   destinationRef: 'webhook:orders',
@@ -259,7 +259,7 @@ export type ApplicationDeliveryInput = {
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryAdmission } from '@repo/weft';
+ * import type { ApplicationDeliveryAdmission } from '@corvidae/weft';
  *
  * declare const admission: ApplicationDeliveryAdmission;
  * if (admission.status === 'enqueued') console.log(admission.receipt.deliveryId);
@@ -293,7 +293,7 @@ export type ApplicationDeliveryAdmission =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryReceipt } from '@repo/weft';
+ * import type { ApplicationDeliveryReceipt } from '@corvidae/weft';
  *
  * declare const receipt: ApplicationDeliveryReceipt;
  * console.log(receipt.state, receipt.attempt);
@@ -341,7 +341,7 @@ export type ApplicationDeliveryReceipt = Readonly<{
  *
  * @example
  * ```ts
- * import type { OutboxCapacity } from '@repo/weft';
+ * import type { OutboxCapacity } from '@corvidae/weft';
  *
  * declare const capacity: OutboxCapacity;
  * console.log(capacity.open, capacity.remaining, capacity.limit);
@@ -358,7 +358,7 @@ export type OutboxCapacity = Readonly<{
  *
  * @example
  * ```ts
- * import type { OutboxListOptions } from '@repo/weft';
+ * import type { OutboxListOptions } from '@corvidae/weft';
  *
  * const options: OutboxListOptions = { limit: 50, states: ['unknown-outcome'] };
  * console.log(options.limit); // 50

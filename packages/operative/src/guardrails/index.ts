@@ -8,12 +8,12 @@ export {
   createPromptInjectionDetector,
   createTopicBoundaryDetector,
   withMinimumTripwireConfidence,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 export type {
   InputLengthDetectorOptions,
   PromptInjectionDetectorOptions,
   TopicBoundaryDetectorOptions,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 export { createGuardrails } from './create-guardrails';
 export { createInputGuardrail } from './input-guardrail';
 export { createOutputGuardrail } from './output-guardrail';

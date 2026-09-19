@@ -19,7 +19,7 @@ import { WeftError } from '../weft-error.ts';
  *
  * @example
  * ```ts
- * import type { WorkflowSourceRejectionReason } from '@repo/weft';
+ * import type { WorkflowSourceRejectionReason } from '@corvidae/weft';
  *
  * const reasons: WorkflowSourceRejectionReason[] = ['missing-export', 'name-mismatch'];
  * console.log(reasons.join(', '));
@@ -44,7 +44,7 @@ export type WorkflowSourceRejectionReason =
  *
  * @example
  * ```ts
- * import { Engine, WorkflowSourceValidationError } from '@repo/weft';
+ * import { Engine, WorkflowSourceValidationError } from '@corvidae/weft';
  *
  * declare const engine: Engine;
  * try {

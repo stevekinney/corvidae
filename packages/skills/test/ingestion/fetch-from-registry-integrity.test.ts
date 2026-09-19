@@ -1,6 +1,6 @@
 import { generateKeyPairSync, sign as signEd25519 } from 'node:crypto';
 
-import { sha256HexSync } from '@repo/interoperability';
+import { sha256HexSync } from '@corvidae/cryptography';
 import { describe, expect, it } from 'bun:test';
 
 import type { FetchFunction } from '../../src/ingestion/fetch-from-registry';

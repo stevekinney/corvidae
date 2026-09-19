@@ -1,4 +1,4 @@
-import { sha256HexSync } from '@repo/interoperability';
+import { sha256HexSync } from '@corvidae/cryptography';
 
 import type { JsonValue } from '../core/serialization/json';
 import { assertJsonValue } from '../core/serialization/json';

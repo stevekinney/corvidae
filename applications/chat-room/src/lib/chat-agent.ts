@@ -6,7 +6,7 @@
  * function differs: the route wraps `createAnthropicProviderStream`, the
  * tests wrap a local fixture with no network or model calls.
  *
- * The wire is `@repo/chat`'s `ChatStreamEvent` vocabulary, encoded by
+ * The wire is `@corvidae/chat`'s `ChatStreamEvent` vocabulary, encoded by
  * its own `encodeChatStreamEvent` so this side can never emit a frame the
  * published decoder rejects. Every frame carries the `wireVersion: 1` +
  * `sequence` envelope, assigned by {@link createChatStreamWriter}; the three
@@ -14,7 +14,7 @@
  * pre-Operative shape underneath it, so a client that renders only those
  * (today's `session-controller.ts`) is unaffected by the wider vocabulary.
  */
-import { encodeChatStreamEvent, type ChatStreamEvent } from '@repo/chat';
+import { encodeChatStreamEvent, type ChatStreamEvent } from '@corvidae/chat';
 import {
   AgentRunError,
   classifyError,
@@ -32,9 +32,9 @@ import {
   type StreamBlock,
   type StreamEvent,
   type StreamingGenerateFunction,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
-import type { JSONValue, ToolRequestContext } from '@repo/armorer';
+import type { JSONValue, ToolRequestContext } from '@corvidae/armorer';
 import { toJSONValue } from './json-value.ts';
 
 /**
@@ -117,7 +117,7 @@ export type ChatRunEnvelope =
     };
 
 /**
- * Every error code `@repo/chat`'s wire contract admits, as a total
+ * Every error code `@corvidae/chat`'s wire contract admits, as a total
  * record so this list cannot silently fall behind that union: adding a member
  * to it makes this object fail to typecheck for the missing key.
  *
@@ -127,7 +127,7 @@ export type ChatRunEnvelope =
  * so forwarding a new Operative code verbatim does not deliver an unfamiliar
  * error, it drops the whole terminal frame and the client sees nothing at all.
  * Reporting `UNKNOWN`, which the wire does know, keeps the failure visible.
- * Admitting a new code into the contract is a `packages/chat` decision with a
+ * Admitting a new code into the contract is a `components/chat` decision with a
  * published release behind it, not something a lab widens on its own.
  */
 /** Projects an Operative error code onto the codes the chat wire accepts. */
@@ -155,14 +155,14 @@ export function toChatWireErrorCode(code: string): ChatSerializedRunError['code'
  * response. Without this, `stopWhen: [pendingApproval(), noToolCalls()]`
  * alone lets an ordinary (non-approval) tool call run to completion AND
  * generate its follow-up reply within one request — which collides with
- * `packages/chat`'s `createChatSessionController`, whose continuation loop
+ * `components/chat`'s `createChatSessionController`, whose continuation loop
  * (`session-controller.ts`, `while (++turn <= maxTurns)`) already re-POSTs
  * whenever it sees a resolved, non-approval tool result, regardless of
  * whether a follow-up reply also arrived in that same response. Two real
  * problems traced back to that same collision during review: a redundant
  * second (billed) turn after the answer had already streamed, and a message-
  * ordering bug on the client when a tool step and assistant text landed in
- * one response. `packages/chat` is out of scope for this change — this stop
+ * one response. `components/chat` is out of scope for this change — this stop
  * condition is the fix that belongs on this side of the boundary, and it
  * makes both problems moot by never producing that response shape.
  *
@@ -441,7 +441,7 @@ function withRetryability(error: unknown): { retryable?: boolean } {
  * provider response) straight onto the wire.
  *
  * Exported so `chat-agent.test.ts` can pin the `AgentRunError` shapes
- * `@repo/operative` documents directly — most usefully
+ * `@corvidae/operative` documents directly — most usefully
  * `OutputValidationError` (`kind: 'output'`, `code: 'INVALID_OUTPUT'`; it replaced
  * `StandardSchemaValidationError`, which 0.10.0 removed with no alias),
  * which this route never triggers live: `createChatAgent` sets no `output`

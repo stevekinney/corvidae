@@ -4,7 +4,7 @@
  * These are the wire types `packages/bureau/src/durable-event-history.ts`
  * exchanges with a caller. They deliberately do NOT re-export Weft's own
  * `Cursor`/`FleetEventEnvelope`/`FleetEventGapEnvelope` types
- * (`@repo/weft`'s server handler API) — Bureau's durable event history is
+ * (`@corvidae/weft`'s server handler API) — Bureau's durable event history is
  * a redacted, owner-scoped PROJECTION of the underlying fleet feed, not a
  * pass-through of Weft's own surface, so it gets its own stable public
  * shape independent of Weft's.
@@ -34,7 +34,7 @@ export interface DurableEventOwner {
 /**
  * One committed, owner-scoped durable event. A structurally redacted
  * subset/superset of Weft's `FleetEventEnvelope` (exported from
- * `@repo/weft`'s server handler API): `owner` replaces the raw
+ * `@corvidae/weft`'s server handler API): `owner` replaces the raw
  * `workflowId` string (encoded as `${owner.kind}:${owner.id}` for storage
  * — packages/bureau/src/durable-event-history.ts's owner-scoping
  * convention), and `schemaVersion` is new — Weft's own envelope carries no
@@ -70,7 +70,7 @@ export interface DurableEventPage {
  * distinguishable from an ordinary empty page (`{ events: [], hasMore:
  * false }`, which means "caller is caught up," not "history was lost").
  * Mirrors Weft's own `FleetEventGapEnvelope` payload shape (also exported
- * from `@repo/weft`'s server handler API).
+ * from `@corvidae/weft`'s server handler API).
  */
 export interface DurableEventGap {
   readonly outcome: 'gap';

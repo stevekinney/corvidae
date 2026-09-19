@@ -1,4 +1,4 @@
-import { sha256HexSync } from '@repo/interoperability';
+import { sha256HexSync } from '@corvidae/cryptography';
 
 export interface LoopDetectionOptions {
   /** Number of consecutive alternating calls to consider a ping-pong loop. Default: 10 */

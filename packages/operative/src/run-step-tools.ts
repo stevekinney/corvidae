@@ -1,6 +1,6 @@
-import type { AnyToolbox, ToolExecutionResult } from '@repo/armorer';
-import { Conversation, materializeToolCalls } from '@repo/conversationalist';
-import type { ToolCall } from '@repo/interoperability';
+import type { AnyToolbox, ToolExecutionResult } from '@corvidae/armorer';
+import { Conversation, materializeToolCalls } from '@corvidae/conversationalist';
+import type { ToolCall } from '@corvidae/tool-protocol';
 
 import { reclassifyToolError } from './errors';
 import {

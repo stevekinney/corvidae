@@ -164,7 +164,7 @@ test.describe('production streaming path', () => {
   // (how it runs here).
   //
   // `+server.ts` no longer talks to the Anthropic SDK directly (CIN-434
-  // migrated it onto `@repo/operative`'s `AgentRun`), so that specific
+  // migrated it onto `@corvidae/operative`'s `AgentRun`), so that specific
   // mechanism no longer applies — but the class of hazard is the same one
   // `pumpChatRun`'s try/catch and the route's one-shot `settled` guard now
   // guard against: an abort reaching `AgentRun.abort()` must never produce an

@@ -18,7 +18,7 @@ import {
   type ChildWorkflowHandle,
   type WeftErrorCode,
   type WorkflowHandle,
-} from '@repo/weft';
+} from '@corvidae/weft';
 
 interface PackageRootWelcomeInput {
   name: string;
@@ -38,7 +38,7 @@ interface PackageRootServices {
   };
 }
 
-declare module '@repo/weft' {
+declare module '@corvidae/weft' {
   interface WorkflowRegistry {
     // Module-augmented workflow name, distinct from any `engine.register(...)`
     // call site below so the builder's `WorkflowAlreadyRegistered` brand does

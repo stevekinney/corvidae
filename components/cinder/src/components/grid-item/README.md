@@ -1,0 +1,49 @@
+# GridItem
+
+GridItem is the optional `Grid.Item` placement leaf. Use it when a grid child needs to span tracks or start at a specific track.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { Grid } from '@corvidae/cinder';
+</script>
+
+<Grid columns={12}>
+  <Grid.Item span={6}>Half width</Grid.Item>
+  <Grid.Item span={6}>Half width</Grid.Item>
+</Grid>
+```
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `as` | `"object"` \| `"slot"` \| `"a"` \| `"abbr"` \| `"address"` \| `"article"` \| `"aside"` \| `"audio"` \| `"b"` \| `"bdi"` \| `"bdo"` \| `"blockquote"` \| `"button"` \| `"canvas"` \| `"caption"` \| `"cite"` \| `"code"` \| `"data"` \| `"datalist"` \| `"dd"` \| `"del"` \| `"details"` \| `"dfn"` \| `"dialog"` \| `"div"` \| `"dl"` \| `"dt"` \| `"em"` \| `"fieldset"` \| `"figcaption"` \| `"figure"` \| `"footer"` \| `"form"` \| `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"h6"` \| `"header"` \| `"hgroup"` \| `"i"` \| `"iframe"` \| `"ins"` \| `"kbd"` \| `"label"` \| `"legend"` \| `"li"` \| `"main"` \| `"map"` \| `"mark"` \| `"menu"` \| `"meter"` \| `"nav"` \| `"ol"` \| `"output"` \| `"p"` \| `"picture"` \| `"pre"` \| `"progress"` \| `"q"` \| `"rp"` \| `"rt"` \| `"ruby"` \| `"s"` \| `"samp"` \| `"search"` \| `"section"` \| `"select"` \| `"small"` \| `"span"` \| `"strong"` \| `"sub"` \| `"summary"` \| `"sup"` \| `"table"` \| `"tbody"` \| `"td"` \| `"template"` \| `"textarea"` \| `"tfoot"` \| `"th"` \| `"thead"` \| `"time"` \| `"tr"` \| `"u"` \| `"ul"` \| `"var"` \| `"video"` | no | — | Rendered HTML tag. |
+| `class` | `string` | no | — | Custom class merged with `.cinder-grid-item`. |
+| `columnEnd` | `string` \| `integer` | no | — | Explicit `grid-column-end` value. |
+| `columnStart` | `string` \| `integer` | no | — | Explicit `grid-column-start` value. |
+| `rowEnd` | `string` \| `integer` | no | — | Explicit `grid-row-end` value. Takes precedence over `rowSpan` when both are set. |
+| `rowSpan` | `string` \| `integer` | no | — | Number of rows this item spans. |
+| `rowStart` | `string` \| `integer` | no | — | Explicit `grid-row-start` value. |
+| `span` | `string` \| `integer` | no | — | Number of columns this item spans. |
+| `children` | `(opaque)` | yes | — | Grid item contents. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

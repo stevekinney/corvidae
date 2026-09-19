@@ -1,8 +1,8 @@
-import { createToolbox } from '@repo/armorer';
-import type { ConversationSnapshot } from '@repo/conversationalist';
-import { createConversationHistory } from '@repo/conversationalist';
-import { createManualRuntimeServices } from '@repo/lifecycle';
-import { activity, MemoryStorage, textValueStore, workflow } from '@repo/weft';
+import { createToolbox } from '@corvidae/armorer';
+import type { ConversationSnapshot } from '@corvidae/conversationalist';
+import { createConversationHistory } from '@corvidae/conversationalist';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { activity, MemoryStorage, textValueStore, workflow } from '@corvidae/weft';
 
 import { createAgentSession } from '../agent-session';
 import type { CheckpointStore } from '../durable/checkpoint-store';

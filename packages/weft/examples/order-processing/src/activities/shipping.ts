@@ -1,4 +1,4 @@
-import { activity } from '@repo/weft';
+import { activity } from '@corvidae/weft';
 
 import type { CancelStaleOrderInput, ShipmentInput, ShipmentResult } from '../model';
 

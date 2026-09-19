@@ -14,7 +14,7 @@ const DEFAULT_INTERVAL_MS = 10_000;
  *
  * @example
  * ```ts
- * import { HeartbeatManager } from '@repo/weft';
+ * import { HeartbeatManager } from '@corvidae/weft';
  *
  * let heartbeatFn = (details?: unknown) => {
  *   console.log('heartbeat', details);

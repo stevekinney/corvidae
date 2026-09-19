@@ -6,7 +6,7 @@ import {
   WorkflowStartedEvent,
   type WorkflowStatus,
   yieldToPortableEventLoop,
-} from '@repo/weft';
+} from '@corvidae/weft';
 
 import { createCheckpointStore } from '../durable/checkpoint-store';
 import { createRunEngine, type RunEngine } from '../durable/create-run-engine';
@@ -189,8 +189,8 @@ export interface CreateDurableMultiAgentHarnessOptions {
  *
  * @example
  * ```ts
- * import { workflow } from '@repo/weft';
- * import { createDurableMultiAgentHarness } from '@repo/operative';
+ * import { workflow } from '@corvidae/weft';
+ * import { createDurableMultiAgentHarness } from '@corvidae/operative';
  *
  * // A minimal HITL probe: parks until a 'human-response' signal arrives.
  * const hitlWorkflow = workflow({ name: 'agentRun' })

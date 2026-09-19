@@ -108,7 +108,7 @@ export class AsyncActivityDeferral extends Error {
  *
  * @example
  * ```ts
- * import { AsyncActivityTokenNotFoundError } from '@repo/weft';
+ * import { AsyncActivityTokenNotFoundError } from '@corvidae/weft';
  *
  * function isStaleCallbackToken(error: unknown): boolean {
  *   return error instanceof AsyncActivityTokenNotFoundError;

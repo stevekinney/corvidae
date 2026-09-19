@@ -53,7 +53,7 @@ import type {
  *
  * @example
  * ```ts
- * import { Engine, type WeftEventMap } from '@repo/weft';
+ * import { Engine, type WeftEventMap } from '@corvidae/weft';
  *
  * function listenAll(engine: Engine) {
  *   engine.addEventListener('workflow:completed', (event) => {
@@ -118,7 +118,7 @@ export type WeftEventMap = {
  *
  * @example
  * ```ts
- * import { Engine, type TypedEventTarget, type WeftEventMap } from '@repo/weft';
+ * import { Engine, type TypedEventTarget, type WeftEventMap } from '@corvidae/weft';
  *
  * function addTypedListener(target: TypedEventTarget<WeftEventMap>) {
  *   target.addEventListener('workflow:started', (e) => {

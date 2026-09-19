@@ -1,6 +1,6 @@
-import { createTool, createToolbox } from '@repo/armorer';
-import { Conversation, createConversationHistory } from '@repo/conversationalist';
-import { HookRegistry } from '@repo/lifecycle';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import {
   Engine,
   MemoryStorage,
@@ -9,7 +9,7 @@ import {
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
   yieldToPortableEventLoop,
-} from '@repo/weft';
+} from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

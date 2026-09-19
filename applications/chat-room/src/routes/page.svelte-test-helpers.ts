@@ -1,5 +1,5 @@
-import { appendUserMessage, createConversationHistory } from '@repo/conversationalist';
-import { gotoHydrated } from './exercises/hydration';
+import { appendUserMessage, createConversationHistory } from '@corvidae/conversationalist';
+import type { Page } from '@playwright/test';
 import {
   fixtureGateHeld,
   fixtureRequestCount,
@@ -36,10 +36,15 @@ export {
   fixtureGateHeld,
   fixtureMarker,
   fixtureRequestCount,
-  gotoHydrated,
   newFixtureMarker,
   releaseFixtureGate,
 };
+
+/** Navigate and wait until the root layout has finished hydrating. */
+export async function gotoHydrated(page: Page, path: string): Promise<void> {
+  await page.goto(path);
+  await page.locator('body[data-hydrated="true"]').waitFor();
+}
 
 /**
  * How long the in-page reader waits for the first `stream:tool-call-delta`

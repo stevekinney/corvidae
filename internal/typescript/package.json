@@ -1,0 +1,9 @@
+{
+  "name": "@corvidae/typescript",
+  "private": true,
+  "exports": {
+    "./library.json": "./library.json",
+    "./browser.json": "./browser.json"
+  },
+  "type": "module"
+}

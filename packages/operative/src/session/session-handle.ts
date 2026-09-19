@@ -1,6 +1,6 @@
-import type { ConversationHistory } from '@repo/conversationalist';
-import { createConversationHistory } from '@repo/conversationalist';
-import { createDefaultRuntimeServices, TypedEventTarget } from '@repo/lifecycle';
+import type { ConversationHistory } from '@corvidae/conversationalist';
+import { createConversationHistory } from '@corvidae/conversationalist';
+import { createDefaultRuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
 
 import type { AgentSession } from '../agent-session';
 import { createAgentSession } from '../agent-session';

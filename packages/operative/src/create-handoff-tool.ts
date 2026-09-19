@@ -1,5 +1,5 @@
-import { createTool } from '@repo/armorer';
-import type { TypedEventTarget } from '@repo/lifecycle';
+import { createTool } from '@corvidae/armorer';
+import type { TypedEventTarget } from '@corvidae/lifecycle';
 import { z } from 'zod';
 
 import type { OperativeEventMap } from './events';

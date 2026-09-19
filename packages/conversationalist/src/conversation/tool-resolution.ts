@@ -1,4 +1,4 @@
-import { materializeToolResult, materializeToolResultAsync } from '@repo/interoperability';
+import { materializeToolResult, materializeToolResultAsync } from '@corvidae/tool-protocol';
 import {
   type ConversationEnvironment,
   isConversationEnvironmentParameter,

@@ -1,5 +1,5 @@
-import type { RunState } from '@repo/operative';
-import { AgentRunError } from '@repo/operative';
+import type { RunState } from '@corvidae/operative';
+import { AgentRunError } from '@corvidae/operative';
 import { safeStringify, serializeAgentRunErrorForBureau, toJsonSafe } from './serialization-json';
 import { serializeLivenessSnapshot } from './serialization-liveness';
 

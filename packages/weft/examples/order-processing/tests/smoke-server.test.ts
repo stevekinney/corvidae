@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { BunSQLiteStorage, Engine, serve } from '@repo/weft';
+import { BunSQLiteStorage, Engine, serve } from '@corvidae/weft';
 
 import { createOrderProcessingEngine, orderProcessingSchedule } from '../src/registry';
 

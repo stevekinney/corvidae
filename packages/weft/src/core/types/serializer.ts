@@ -13,7 +13,7 @@
  *
  * @example
  * ```ts
- * import { Engine, type Serializer } from '@repo/weft';
+ * import { Engine, type Serializer } from '@corvidae/weft';
  *
  * const jsonSerializer: Serializer = {
  *   serialize(value) {

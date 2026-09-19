@@ -50,7 +50,7 @@ export interface UpdateRequestOptions {
  *
  * @example
  * ```ts
- * import { workflow, Engine, UpdateTimeoutError, update } from '@repo/weft';
+ * import { workflow, Engine, UpdateTimeoutError, update } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -86,7 +86,7 @@ export class UpdateTimeoutError extends WeftError<'UpdateTimeoutError'> {
  *
  * @example
  * ```ts
- * import { workflow, Engine, UpdateValidationError, update } from '@repo/weft';
+ * import { workflow, Engine, UpdateValidationError, update } from '@corvidae/weft';
  *
  * const setAge = update<{ age: number }, void>('setAge');
  * const engine = new Engine();
@@ -141,7 +141,7 @@ export class UpdateValidationError extends WeftError<'UpdateValidationError'> {
  *
  * @example
  * ```ts
- * import { workflow, Engine, WorkflowTerminalError, update } from '@repo/weft';
+ * import { workflow, Engine, WorkflowTerminalError, update } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'quick' }).execute(async function* () { return 'done'; }));
@@ -187,8 +187,8 @@ const DEFAULT_CLEANUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
  *
  * @example
  * ```ts
- * import { UpdateCoordinator } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { UpdateCoordinator } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  * const coordinator = new UpdateCoordinator(storage);

@@ -38,7 +38,7 @@ import { THRESHOLDS } from './types.ts';
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage, collectDiagnostics } from '@repo/weft';
+ * import { Engine, MemoryStorage, collectDiagnostics } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * const report = await collectDiagnostics(storage, ':memory:');

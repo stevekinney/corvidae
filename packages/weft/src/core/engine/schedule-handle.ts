@@ -25,7 +25,7 @@ export interface ScheduleHandleEngine {
  *
  * @example
  * ```ts
- * import { workflow, Engine, ScheduleHandle } from '@repo/weft';
+ * import { workflow, Engine, ScheduleHandle } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'daily-report' }).execute(async function* () { return 'ok'; }));

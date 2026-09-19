@@ -1,0 +1,5 @@
+{
+  "extends": "@corvidae/typescript/library.json",
+  "include": ["src", "test"],
+  "exclude": ["node_modules", "coverage"]
+}

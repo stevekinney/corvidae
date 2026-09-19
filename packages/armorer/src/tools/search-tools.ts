@@ -82,8 +82,8 @@ export interface SearchToolsInput {
  *
  * @example
  * ```typescript
- * import { createToolbox } from '@repo/armorer';
- * import { createSearchTool } from '@repo/armorer';
+ * import { createToolbox } from '@corvidae/armorer';
+ * import { createSearchTool } from '@corvidae/armorer';
  *
  * const toolbox = createToolbox();
  *
@@ -97,8 +97,8 @@ export interface SearchToolsInput {
  *
  * @example With embeddings for semantic search
  * ```typescript
- * import { createToolbox } from '@repo/armorer';
- * import { createSearchTool } from '@repo/armorer';
+ * import { createToolbox } from '@corvidae/armorer';
+ * import { createSearchTool } from '@corvidae/armorer';
  * import OpenAI from 'openai';
  *
  * const openai = new OpenAI();

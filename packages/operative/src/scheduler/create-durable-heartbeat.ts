@@ -1,4 +1,4 @@
-import { parseDuration, type ScheduleSpec, type ScheduleSummary } from '@repo/weft';
+import { parseDuration, type ScheduleSpec, type ScheduleSummary } from '@corvidae/weft';
 
 import type { RegistryAgnosticEngine } from '../durable/create-run-engine';
 import type {

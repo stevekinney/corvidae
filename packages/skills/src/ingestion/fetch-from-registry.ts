@@ -1,6 +1,6 @@
 import { createPublicKey, verify as verifyEd25519 } from 'node:crypto';
 
-import { sha256HexSync, timingSafeEqualHex } from '@repo/interoperability';
+import { sha256HexSync, timingSafeEqualHex } from '@corvidae/cryptography';
 
 import { parseSkillMarkdown, SkillParseError } from '../parse-skill-markdown';
 import type { SkillProvider } from '../types';

@@ -1,4 +1,4 @@
-import { createManualRuntimeServices, type Subscription } from '@repo/lifecycle';
+import { createManualRuntimeServices, type Subscription } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import type { ChildRunDescriptor, ChildRunRegistry } from '../child-run';

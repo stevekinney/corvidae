@@ -1,6 +1,6 @@
-import { createTestToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+import { createTestToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

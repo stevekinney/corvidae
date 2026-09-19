@@ -1,5 +1,5 @@
-import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { expectPromiseToReject } from './helpers/async-assertions';
@@ -14,7 +14,6 @@ import {
   createInMemoryMcpOAuthTokenStorage,
   createMcpOAuthProvider,
   fromMcpClientTools,
-  internalMcpOAuthTestUtilities,
   isMcpUnauthorizedError,
   McpAuthorizationIssuerValidationError,
   parseMcpAuthorizationCallback,
@@ -600,34 +599,5 @@ describe('MCP OAuth state and callback edges', () => {
           throw error;
         }).toThrow('missing the required `code`'),
     );
-  });
-
-  it('adds the optional dependency hint when the OAuth SDK loader throws a non-Error', async () => {
-    const storage = createInMemoryMcpOAuthTokenStorage();
-    const provider = createMcpOAuthProvider({
-      redirectUrl,
-      clientMetadata,
-      tokenStorage: storage,
-      onAuthorizationRequired: () => {},
-    });
-    internalMcpOAuthTestUtilities.setClientAuthLoader(() => {
-      throw 'sdk missing';
-    });
-
-    try {
-      await expectPromiseToReject(
-        completeMcpOAuthAuthorization(provider, {
-          serverUrl: 'https://mcp.example.com',
-          callbackUrl: `${redirectUrl}?code=code`,
-          tokenStorage: storage,
-        }),
-        (error) =>
-          expect(() => {
-            throw error;
-          }).toThrow('Install it to use armorer/mcp OAuth support'),
-      );
-    } finally {
-      internalMcpOAuthTestUtilities.resetModuleState();
-    }
   });
 });

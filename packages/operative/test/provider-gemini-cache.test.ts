@@ -27,9 +27,9 @@
  * exactly as the OpenAI provider does — and unconditionally, because Gemini
  * reports the field for its own implicit caching too.
  */
-import { createToolbox } from '@repo/armorer';
-import { Conversation, type Message } from '@repo/conversationalist';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createToolbox } from '@corvidae/armorer';
+import { Conversation, type Message } from '@corvidae/conversationalist';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { createContextAssembler } from '../src/context/assembly.ts';

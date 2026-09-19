@@ -1,5 +1,5 @@
-import { createTestToolbox, createTool, createToolbox, type Tool } from '@repo/armorer';
-import { type GenerateFunction, stopWhen, waitForCondition } from '@repo/operative';
+import { createTestToolbox, createTool, createToolbox, type Tool } from '@corvidae/armorer';
+import { type GenerateFunction, stopWhen, waitForCondition } from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -1,4 +1,4 @@
-import { isToolboxBudgetExceededToolError } from '@repo/armorer';
+import { isToolboxBudgetExceededToolError } from '@corvidae/armorer';
 import { type core, ZodError } from 'zod';
 
 import { isToolCallParseError } from './providers/errors.ts';

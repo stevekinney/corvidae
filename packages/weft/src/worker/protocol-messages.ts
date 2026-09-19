@@ -4,7 +4,7 @@
  * These types mirror the JSON Schema documents in `./protocol-schemas.ts`
  * field-for-field. The runtime parser guards in `./protocol.ts` enforce the
  * shapes described here at the trust boundary. They are re-exported from
- * `@repo/weft` (via `./protocol.ts`) so the public surface remains
+ * `@corvidae/weft` (via `./protocol.ts`) so the public surface remains
  * a single import path.
  *
  * @module worker/protocol-messages
@@ -17,7 +17,7 @@ import type { RemoteWorkerProtocolVersion } from './protocol-version.ts';
  *
  * @example
  * ```ts
- * import type { RemoteWorkerJsonValue } from '@repo/weft';
+ * import type { RemoteWorkerJsonValue } from '@corvidae/weft';
  *
  * const payload: RemoteWorkerJsonValue = { amount: 42, memo: null };
  * ```
@@ -35,7 +35,7 @@ export type RemoteWorkerJsonValue =
  *
  * @example
  * ```ts
- * import type { RemoteWorkerCapabilities } from '@repo/weft';
+ * import type { RemoteWorkerCapabilities } from '@corvidae/weft';
  *
  * const capabilities: RemoteWorkerCapabilities = { region: 'us-west', gpu: false };
  * ```
@@ -56,7 +56,7 @@ export type RemoteWorkerCapabilities = Readonly<Record<string, RemoteWorkerJsonV
  *
  * @example
  * ```ts
- * import type { RegisterMessage } from '@repo/weft';
+ * import type { RegisterMessage } from '@corvidae/weft';
  *
  * const message: RegisterMessage = {
  *   type: 'register',
@@ -80,7 +80,7 @@ export type RegisterMessage = {
  *
  * @example
  * ```ts
- * import type { HeartbeatMessage } from '@repo/weft';
+ * import type { HeartbeatMessage } from '@corvidae/weft';
  *
  * const message: HeartbeatMessage = { type: 'heartbeat', workerId: 'worker-1' };
  * ```
@@ -95,7 +95,7 @@ export type HeartbeatMessage = {
  *
  * @example
  * ```ts
- * import type { CompletedTaskResultMessage } from '@repo/weft';
+ * import type { CompletedTaskResultMessage } from '@corvidae/weft';
  *
  * const message: CompletedTaskResultMessage = {
  *   type: 'taskResult',
@@ -126,7 +126,7 @@ export type CompletedTaskResultMessage = {
  *
  * @example
  * ```ts
- * import type { FailedTaskResultMessage } from '@repo/weft';
+ * import type { FailedTaskResultMessage } from '@corvidae/weft';
  *
  * const message: FailedTaskResultMessage = {
  *   type: 'taskResult',
@@ -153,7 +153,7 @@ export type FailedTaskResultMessage = {
  *
  * @example
  * ```ts
- * import type { CancelledTaskResultMessage } from '@repo/weft';
+ * import type { CancelledTaskResultMessage } from '@corvidae/weft';
  *
  * const message: CancelledTaskResultMessage = {
  *   type: 'taskResult',
@@ -188,7 +188,7 @@ export type CancelledTaskResultMessage = {
  *
  * @example
  * ```ts
- * import type { RegisterAckMessage } from '@repo/weft';
+ * import type { RegisterAckMessage } from '@corvidae/weft';
  *
  * const message: RegisterAckMessage = {
  *   type: 'registerAck',
@@ -224,7 +224,7 @@ export type RegisterAckMessage = {
  *
  * @example
  * ```ts
- * import type { RegisterErrorMessage } from '@repo/weft';
+ * import type { RegisterErrorMessage } from '@corvidae/weft';
  *
  * const message: RegisterErrorMessage = {
  *   type: 'registerError',
@@ -252,7 +252,7 @@ export type RegisterErrorMessage = {
  *
  * @example
  * ```ts
- * import type { ProtocolErrorMessage } from '@repo/weft';
+ * import type { ProtocolErrorMessage } from '@corvidae/weft';
  *
  * const message: ProtocolErrorMessage = {
  *   type: 'protocolError',
@@ -273,7 +273,7 @@ export type ProtocolErrorMessage = {
  *
  * @example
  * ```ts
- * import type { TaskMessage } from '@repo/weft';
+ * import type { TaskMessage } from '@corvidae/weft';
  *
  * const message: TaskMessage = {
  *   type: 'task',
@@ -309,7 +309,7 @@ export type TaskMessage = {
  *
  * @example
  * ```ts
- * import type { CancelMessage } from '@repo/weft';
+ * import type { CancelMessage } from '@corvidae/weft';
  *
  * const message: CancelMessage = { type: 'cancel', operationId: 'op-1' };
  * ```
@@ -324,7 +324,7 @@ export type CancelMessage = {
  *
  * @example
  * ```ts
- * import type { ShutdownMessage } from '@repo/weft';
+ * import type { ShutdownMessage } from '@corvidae/weft';
  *
  * const message: ShutdownMessage = { type: 'shutdown' };
  * ```

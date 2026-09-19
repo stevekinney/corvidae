@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 import type {
   ActiveRun,
   AgentInput,
@@ -8,7 +8,7 @@ import type {
   DefinitionResolvingAgentWithResolver,
   RunnableAgent,
   RunOptions,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import {
   AgentContractError,
   createActiveRun,
@@ -17,7 +17,7 @@ import {
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   readGenerationProfile,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
 import type { RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';

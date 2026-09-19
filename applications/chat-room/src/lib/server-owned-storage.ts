@@ -1,5 +1,6 @@
-import type { Storage } from '@repo/weft';
-import { BunSQLiteStorage, MemoryStorage } from '@repo/weft';
+import type { Storage } from '@corvidae/weft';
+import { BunSQLiteStorage, MemoryStorage } from '@corvidae/weft';
+import { readServerOwnedStorageEnvironment } from './environment-configuration.ts';
 
 /**
  * Names the file the server-owned family keeps its sessions and checkpoints in.
@@ -70,7 +71,7 @@ export function serverOwnedStorage(): {
    */
   readonly release: () => void;
 } {
-  const path = process.env[DATABASE_VARIABLE];
+  const path = readServerOwnedStorageEnvironment().chatRoomServerOwnedDatabase;
 
   // An empty string is treated as unset. A shell that exports the variable
   // from an unset variable of its own (`export X="$Y"`) produces one, and

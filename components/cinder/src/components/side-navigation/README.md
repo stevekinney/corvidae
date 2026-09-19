@@ -1,0 +1,55 @@
+# SideNavigation
+
+Vertical navigation panel for secondary or hierarchical app destinations.
+
+See the [SideNavigation versus Sidebar decision](https://github.com/stevekinney/cinder/blob/main/docs/decisions/side-navigation-vs-sidebar.md) for the boundary between the accessibility-focused nav landmark here and the responsive shell in Sidebar.
+
+## Usage
+
+`SideNavigation` is a compound component. Import the parent and compose `SideNavigation.Group` and `SideNavigation.Item` via the namespace API.
+
+```svelte
+<script lang="ts">
+  import { SideNavigation } from '@corvidae/cinder';
+</script>
+
+<SideNavigation ariaLabel="Workspace">
+  <SideNavigation.Item href="/dashboard">Dashboard</SideNavigation.Item>
+  <SideNavigation.Group label="Projects">
+    <SideNavigation.Item href="/projects/phoenix" active>Phoenix</SideNavigation.Item>
+    <SideNavigation.Item href="/projects/atlas">Atlas</SideNavigation.Item>
+  </SideNavigation.Group>
+</SideNavigation>
+```
+
+The leaves remain importable individually for à-la-carte builds — see `@corvidae/cinder` and `@corvidae/cinder`.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `ariaLabel` | `string` | yes | — | Accessible name for the <nav> landmark. Required, non-empty, distinct from other navs on the page. |
+| `class` | `string` | no | — | Additional CSS class merged with `.cinder-side-navigation`. |
+| `style` | `string` | no | — | Inline style string applied to the `.cinder-side-navigation` root. |
+| `children` | `(opaque)` | yes | — | Must be <li> elements containing NavigationItem and/or SideNavigationGroup. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+- `--cinder-side-navigation-list-gap`
+
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+- `SideNavigation.Group` — a collapsible labelled section; see [`side-navigation-group`](../side-navigation-group/README.md).
+- `SideNavigation.Item` — a navigation link or button rendered inside the sidebar list; see [`side-navigation-item`](../side-navigation-item/README.md).
+
+<!-- generated:subcomponents:end -->

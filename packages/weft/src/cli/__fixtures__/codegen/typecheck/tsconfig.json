@@ -1,0 +1,4 @@
+{
+  "extends": "@corvidae/typescript/library.json",
+  "include": ["consumer.ts", "weft.generated.d.ts"]
+}

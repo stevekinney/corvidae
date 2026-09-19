@@ -1,10 +1,10 @@
-import type { GeminiPart } from '@repo/armorer';
-import { parseGeminiToolCalls } from '@repo/armorer';
-import type { ConversationHistory } from '@repo/conversationalist';
-import { toGeminiMessages } from '@repo/conversationalist';
-import { sha256HexSync } from '@repo/interoperability';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { GeminiPart } from '@corvidae/armorer';
+import { parseGeminiToolCalls } from '@corvidae/armorer';
+import type { ConversationHistory } from '@corvidae/conversationalist';
+import { toGeminiMessages } from '@corvidae/conversationalist';
+import { sha256HexSync } from '@corvidae/cryptography';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { ProviderError } from './errors.ts';

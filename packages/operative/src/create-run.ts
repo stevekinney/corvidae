@@ -1,11 +1,11 @@
-import type { AnyToolbox, ToolboxEventMap } from '@repo/armorer';
-import { Conversation, isConversation } from '@repo/conversationalist';
-import type { ObservableLike, Observer, Subscription } from '@repo/lifecycle';
+import type { AnyToolbox, ToolboxEventMap } from '@corvidae/armorer';
+import { Conversation, isConversation } from '@corvidae/conversationalist';
+import type { ObservableLike, Observer, Subscription } from '@corvidae/lifecycle';
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
   forwardEvents,
-} from '@repo/lifecycle';
+} from '@corvidae/lifecycle';
 
 import { createClosedAcknowledgement } from './closed-acknowledgement';
 import type { DurableActiveRunContext } from './durable/active-run-adapter';

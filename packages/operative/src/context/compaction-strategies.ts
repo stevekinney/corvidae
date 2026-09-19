@@ -5,7 +5,7 @@
  * built-in mutation methods (`compact`, `truncateFromPosition`, etc.).
  */
 
-import type { Conversation, Message } from '@repo/conversationalist';
+import type { Conversation, Message } from '@corvidae/conversationalist';
 
 import { getPendingToolCallIds } from './pending-tool-calls';
 import type { TokenBudget } from './token-budget';

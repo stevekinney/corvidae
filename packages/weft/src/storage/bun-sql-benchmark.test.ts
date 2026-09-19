@@ -5,7 +5,8 @@ import type { BatchOperation } from './interface.ts';
 import {
   isConstrainedCodexRunner,
   isGitHubActionsRunner,
-} from '../benchmarks/benchmark-environment.ts';
+} from '../../scripts/benchmarks/benchmark-environment.ts';
+import { readEnvironmentVariable } from '../runtime/environment-configuration.ts';
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,
@@ -26,7 +27,8 @@ function generateCheckpointValue(): Uint8Array {
  */
 const TARGET_WRITES_PER_SECOND =
   isConstrainedCodexRunner() || isGitHubActionsRunner() ? 5_000 : 20_000;
-const runArchitectureBenchmark = process.env['WEFT_SQLITE_ARCHITECTURE_BENCHMARK'] === '1';
+const runArchitectureBenchmark =
+  readEnvironmentVariable('WEFT_SQLITE_ARCHITECTURE_BENCHMARK') === '1';
 
 type SQLiteBenchmarkWorkload = {
   batchWriteBatchSize: number;

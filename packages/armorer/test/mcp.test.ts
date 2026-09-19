@@ -1,22 +1,11 @@
-import { PassThrough } from 'node:stream';
-import { expectPromiseToReject } from './helpers/async-assertions';
-
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import type { TaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
-import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { AnySchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
-import { ReadBuffer, serializeMessage } from '@modelcontextprotocol/sdk/shared/stdio.js';
-import {
-  type CallToolResult,
-  CallToolResultSchema,
-  CreateTaskResultSchema,
-  ElicitRequestSchema,
-  type JSONRPCMessage,
-} from '@modelcontextprotocol/sdk/types.js';
+import { Client } from '@modelcontextprotocol/client';
+import type { JSONRPCMessage } from '@modelcontextprotocol/server';
+import { InMemoryTransport, ReadBuffer, serializeMessage } from '@modelcontextprotocol/server';
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { describe, expect, it } from 'bun:test';
+import { PassThrough } from 'node:stream';
 import { z } from 'zod';
+import { expectPromiseToReject } from './helpers/async-assertions';
 
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
@@ -25,7 +14,6 @@ import {
   createMcpElicitationHandler,
   createMcpToolElicitationRequester,
   fromMcpTools,
-  internalMcpTestUtilities,
   toMcpTools,
 } from '../src/integrations/mcp';
 import type {
@@ -186,122 +174,6 @@ describe('createMCP', () => {
     }
   });
 
-  it('aborts and awaits an in-flight task during server shutdown', async () => {
-    const started = createDeferred<void>();
-    const aborted = createDeferred<void>();
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'shutdown-task',
-        description: 'task held open for shutdown',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute(_params, context) {
-          started.resolve();
-          return new Promise((_resolve, reject) => {
-            context.signal?.addEventListener('abort', () => {
-              aborted.resolve();
-              reject(context.signal?.reason ?? new Error('aborted'));
-            });
-          });
-        },
-      }),
-    );
-    const { client, server } = await connect(toolbox);
-    try {
-      await client.request(
-        { method: 'tools/call', params: { name: 'shutdown-task', arguments: {}, task: {} } },
-        CreateTaskResultSchema,
-      );
-      await started.promise;
-      const first = server.shutdown();
-      const second = server.shutdown();
-      expect(first).toBe(second);
-      await aborted.promise;
-      const report = await first;
-      expect(report.admissionClosed).toBe(true);
-      expect(report.snapshots).toHaveLength(1);
-      expect(report.terminal + report.unknownEffects).toBe(1);
-      expect(report.snapshots.every((snapshot) => snapshot.state !== 'active')).toBe(true);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('reports terminal task-store write failures in shutdown cleanup evidence', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'shutdown-store-failure',
-        description: 'task whose result cannot be stored',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute() {
-          return { ok: true };
-        },
-      }),
-    );
-    const taskStore = createDelegatingTaskStore({
-      async storeTaskResult() {
-        throw new Error('deterministic store failure');
-      },
-    });
-    const { client, server } = await connect(toolbox, { taskStore });
-    try {
-      await client.request(
-        {
-          method: 'tools/call',
-          params: { name: 'shutdown-store-failure', arguments: {}, task: {} },
-        },
-        CreateTaskResultSchema,
-      );
-      await flushMicrotasks(20);
-      const report = await server.shutdown();
-      expect(report.cleanupFailures).toBe(1);
-      expect(report.snapshots[0]?.cleanup?.status).toBe('failed');
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('reports task result formatting failures in shutdown cleanup evidence', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'shutdown-format-failure',
-        description: 'task whose result cannot be formatted',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute() {
-          return { ok: true };
-        },
-      }),
-    );
-    const { client, server } = await connect(toolbox, {
-      formatResult() {
-        throw new Error('deterministic format failure');
-      },
-    });
-    try {
-      await client.request(
-        {
-          method: 'tools/call',
-          params: { name: 'shutdown-format-failure', arguments: {}, task: {} },
-        },
-        CreateTaskResultSchema,
-      );
-      await flushMicrotasks(20);
-      const report = await server.shutdown();
-      expect(report.cleanupFailures).toBe(1);
-      expect(report.snapshots[0]?.cleanup?.status).toBe('failed');
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
   it('retains the plain-call error result in lifecycle inspection', async () => {
     let toolbox: AnyToolbox = createToolbox();
     toolbox = toolbox.extend(
@@ -349,95 +221,6 @@ describe('createMCP', () => {
     expect(result.outcome).toBe('error');
     expect(result.error?.category).toBe('cancelled');
     expect(result.error?.message).toBe('foreign cancellation');
-  });
-
-  it('checks task admission before persisting a task after shutdown', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'closed-task',
-        description: 'task rejected after shutdown',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute() {
-          return { reached: true };
-        },
-      }),
-    );
-    let createCount = 0;
-    const taskStore = createDelegatingTaskStore({
-      createTask: async (...args) => {
-        createCount += 1;
-        return new InMemoryTaskStore().createTask(...args);
-      },
-    });
-    const { client, server } = await connect(toolbox, { taskStore });
-    try {
-      await server.shutdown();
-      await expectPromiseToReject(
-        client.request(
-          { method: 'tools/call', params: { name: 'closed-task', arguments: {}, task: {} } },
-          CreateTaskResultSchema,
-        ),
-        (error) =>
-          expect(() => {
-            throw error;
-          }).toThrow(),
-      );
-      expect(createCount).toBe(0);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('rolls back a task when shutdown races with task persistence', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'racing-task',
-        description: 'task whose persistence races shutdown',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute() {
-          return { reached: true };
-        },
-      }),
-    );
-    let createCount = 0;
-    let admissionClosedInsideStore = false;
-    let createdTaskId: string | undefined;
-    const serverHolder: { current?: ConnectedMcp['server'] } = {};
-    const backingStore = new InMemoryTaskStore();
-    const taskStore = createDelegatingTaskStore({
-      createTask: async (...args) => {
-        createCount += 1;
-        serverHolder.current!.executionLifecycle.closeAdmission();
-        admissionClosedInsideStore = serverHolder.current!.executionLifecycle.admissionClosed;
-        const task = await backingStore.createTask(...args);
-        createdTaskId = task.taskId;
-        return task;
-      },
-      getTask: (...args) => backingStore.getTask(...args),
-      updateTaskStatus: (...args) => backingStore.updateTaskStatus(...args),
-    });
-    const connected = await connect(toolbox, { taskStore });
-    serverHolder.current = connected.server;
-    try {
-      const result = await connected.client.request(
-        { method: 'tools/call', params: { name: 'racing-task', arguments: {}, task: {} } },
-        CreateTaskResultSchema,
-      );
-      expect(createCount).toBe(1);
-      expect(admissionClosedInsideStore).toBe(true);
-      expect(createdTaskId).toBeDefined();
-      expect(result.task.status).toBe('cancelled');
-      const storedTask = await backingStore.getTask(createdTaskId!);
-      expect(storedTask!.status).toBe('cancelled');
-    } finally {
-      await connected.client.close();
-      await connected.server.close();
-    }
   });
 
   it('converts toolbox tools into MCP tool definitions', async () => {
@@ -830,36 +613,6 @@ describe('createMCP', () => {
     }
   });
 
-  it('accepts non-object input schemas via toolConfiguration without falling back', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'string-input',
-        description: 'accepts string input',
-        input: z.object({ fromTool: z.boolean() }),
-        async execute() {
-          return { ok: true };
-        },
-      }),
-    );
-
-    const { client, server } = await connect(toolbox, {
-      toolConfiguration: () => ({
-        schema: z.string(),
-      }),
-    });
-
-    try {
-      const tools = await client.listTools();
-      const tool = tools.tools.find((entry) => entry.name === 'string-input');
-      expect(tool?.inputSchema?.type).toBe('object');
-      expect(tool?.inputSchema?.properties).not.toHaveProperty('fromTool');
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
   it('executes tools and returns structured content when output is an object', async () => {
     let toolbox: AnyToolbox = createToolbox();
     toolbox = toolbox.extend(
@@ -1082,9 +835,12 @@ describe('createMCP', () => {
 
     try {
       const controller = new AbortController();
-      const call = client.callTool({ name: 'wait', arguments: {} }, undefined, {
-        signal: controller.signal,
-      });
+      const call = client.callTool(
+        { name: 'wait', arguments: {} },
+        {
+          signal: controller.signal,
+        },
+      );
       await Promise.resolve();
       controller.abort('stop');
       await expectPromiseToReject(call, (error) => expect(error).toBeDefined());
@@ -1111,7 +867,6 @@ describe('createMCP', () => {
     const { client, server } = await connect(toolbox, {
       toolConfiguration: () => ({
         annotations: { readOnlyHint: false },
-        execution: { taskSupport: 'optional' },
       }),
     });
 
@@ -1119,7 +874,6 @@ describe('createMCP', () => {
       const tools = await client.listTools();
       const tool = tools.tools.find((entry) => entry.name === 'readonly-override');
       expect(tool?.annotations?.readOnlyHint).toBe(false);
-      expect(tool?.execution).toBeDefined();
     } finally {
       await client.close();
       await server.close();
@@ -1554,17 +1308,17 @@ describe('createMCP', () => {
 
     const [unknownType] = toMcpTools([baseTool], {
       toolConfiguration: () => ({
-        schema: { type: 'mystery' } as unknown as AnySchema,
+        schema: { type: 'mystery' },
       }),
     });
     expect(unknownType?.inputSchema).toBe(baseTool.input);
 
     const [emptyEnum] = toMcpTools([baseTool], {
       toolConfiguration: () => ({
-        schema: { enum: [] } as unknown as AnySchema,
+        schema: { enum: [] },
       }),
     });
-    expect((emptyEnum!.inputSchema as z.ZodType).safeParse('value').success).toBe(false);
+    expect(emptyEnum!.inputSchema.safeParse('value').success).toBe(false);
   });
 
   it('stringifies primitive successful results for MCP tool responses', async () => {
@@ -1589,7 +1343,6 @@ describe('createMCP', () => {
       name: 'single-tool-like',
       description: 'single tool-like input',
       input: z.object({}),
-      metadata: { mcp: { execution: { taskSupport: 'optional' } } },
       tags: [],
       async executeWith(options: Record<string, unknown>) {
         receivedExecuteOptions = options;
@@ -1605,14 +1358,14 @@ describe('createMCP', () => {
 
     const [mcpTool = requiredValue<never>(undefined, 'MCP tool')] = toMcpTools(toolLike);
     expect(mcpTool?.name).toBe('single-tool-like');
-    expect(mcpTool?.execution).toEqual({ taskSupport: 'optional' });
     const controller = new AbortController();
     expect(
       await mcpTool.handler({}, {
-        requestId: 'single-tool-like-request',
-        signal: controller.signal,
-        sendRequest: async () => ({ action: 'accept', content: {} }),
-        sendNotification: async () => {},
+        mcpReq: {
+          id: 'single-tool-like-request',
+          signal: controller.signal,
+          elicitInput: async () => ({ action: 'accept', content: {} }),
+        },
       } as never),
     ).toMatchObject({
       structuredContent: { ok: true },
@@ -1700,7 +1453,7 @@ describe('MCP elicitation', () => {
       { name: 'elicitation-client', version: '0.0.0' },
       { capabilities: { elicitation: {} } },
     );
-    client.setRequestHandler(ElicitRequestSchema, createMcpElicitationHandler(respond));
+    client.setRequestHandler('elicitation/create', createMcpElicitationHandler(respond));
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     return { client, server };
@@ -1769,7 +1522,9 @@ describe('MCP elicitation', () => {
         arguments: { amount: 42 },
       });
       expect(result.isError).toBe(true);
-      expect(textContent(result.content)).toContain('did not match the requested schema');
+      expect(textContent(result.content)).toContain(
+        'Elicitation response content does not match requested schema',
+      );
     } finally {
       await client.close();
       await server.close();
@@ -1789,7 +1544,7 @@ describe('MCP elicitation', () => {
     try {
       const listed = await client.listTools();
       const [tool = requiredValue<never>(undefined, 'tool')] = fromMcpTools(listed.tools, {
-        callTool: (request) => client.callTool(request) as Promise<CallToolResult>,
+        callTool: (request) => client.callTool(request),
       });
 
       const result = await tool.execute({ amount: 10 });
@@ -1828,40 +1583,35 @@ describe('MCP elicitation', () => {
 
   it('propagates the tool call abort signal into the underlying elicitation request', async () => {
     const controller = new AbortController();
-    const sendRequestCalls: Array<{
-      request: unknown;
-      resultSchema: unknown;
-      options: unknown;
-    }> = [];
+    const elicitInputCalls: Array<{ params: unknown; options: unknown }> = [];
     const fakeExtra = {
-      signal: controller.signal,
-      sendRequest: async (request: unknown, resultSchema: unknown, options: unknown) => {
-        sendRequestCalls.push({ request, resultSchema, options });
-        return { action: 'accept', content: {} };
+      mcpReq: {
+        signal: controller.signal,
+        elicitInput: async (params: unknown, options: unknown) => {
+          elicitInputCalls.push({ params, options });
+          return { action: 'accept', content: {} };
+        },
       },
-      // Unused by createMcpToolElicitationRequester but present on the real type.
-      sendNotification: async () => {},
-      requestId: 'test-request-id',
     } as unknown as Parameters<typeof createMcpToolElicitationRequester>[0];
 
     const requester = createMcpToolElicitationRequester(fakeExtra);
     await requester({ message: 'Approve?', mode: 'form', schema: { type: 'object' } });
 
-    expect(sendRequestCalls).toHaveLength(1);
-    expect(sendRequestCalls[0]?.options).toEqual({ signal: controller.signal });
+    expect(elicitInputCalls).toHaveLength(1);
+    expect(elicitInputCalls[0]?.options).toEqual({ signal: controller.signal });
   });
 
   it('translates URL elicitation requests and decline/cancel responses', async () => {
     const requests: unknown[] = [];
     const responses = [{ action: 'decline' as const }, { action: 'cancel' as const }];
     const fakeExtra = {
-      signal: new AbortController().signal,
-      sendRequest: async (request: unknown) => {
-        requests.push(request);
-        return responses.shift();
+      mcpReq: {
+        signal: new AbortController().signal,
+        elicitInput: async (params: unknown) => {
+          requests.push(params);
+          return responses.shift();
+        },
       },
-      sendNotification: async () => {},
-      requestId: 'url-elicitation-request',
     } as unknown as Parameters<typeof createMcpToolElicitationRequester>[0];
     const requester = createMcpToolElicitationRequester(fakeExtra);
 
@@ -1883,12 +1633,9 @@ describe('MCP elicitation', () => {
       action: 'cancel',
     });
     expect(requests[0]).toMatchObject({
-      method: 'elicitation/create',
-      params: {
-        mode: 'url',
-        message: 'Open approval page',
-        url: 'https://app.example.com/approve',
-      },
+      mode: 'url',
+      message: 'Open approval page',
+      url: 'https://app.example.com/approve',
     });
 
     let translatedRequest: ToolElicitationRequest | undefined;
@@ -1925,739 +1672,3 @@ function createDeferred<T>() {
   });
   return { promise, resolve: deferredResolve, reject: deferredReject };
 }
-
-/**
- * Polls `tasks/get` until the task reaches a terminal status, yielding a
- * microtask between polls. Bounded so a genuine bug (e.g. a broken
- * `storeTaskResult` wiring) fails the test fast instead of hanging — this
- * does not wait on any real timer, only on the in-memory promise chain
- * started by `createTask` settling.
- */
-async function waitForTerminalTaskStatus(
-  client: Client,
-  taskId: string,
-  maxPolls = 50,
-): Promise<string> {
-  for (let attempt = 0; attempt < maxPolls; attempt += 1) {
-    const task = await client.experimental.tasks.getTask(taskId);
-    if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
-      return task.status;
-    }
-    await Promise.resolve();
-  }
-  throw new Error(`Task ${taskId} did not reach a terminal status within ${maxPolls} polls.`);
-}
-
-/** Yields the microtask queue a handful of times, without any real timer. */
-async function flushMicrotasks(times = 10): Promise<void> {
-  for (let i = 0; i < times; i += 1) {
-    await Promise.resolve();
-  }
-}
-
-/**
- * Builds a `TaskStore` that delegates every method to a fresh
- * `InMemoryTaskStore`, except for whichever methods are supplied as
- * overrides. Lets tests simulate a custom/session-scoped store that rejects
- * a specific operation (e.g. `updateTaskStatus`, `storeTaskResult`) while
- * everything else behaves like the real thing.
- */
-function createDelegatingTaskStore(overrides: Partial<TaskStore> = {}): TaskStore {
-  const inner = new InMemoryTaskStore();
-  return {
-    createTask: (...args) => inner.createTask(...args),
-    getTask: (...args) => inner.getTask(...args),
-    storeTaskResult: (...args) => inner.storeTaskResult(...args),
-    getTaskResult: (...args) => inner.getTaskResult(...args),
-    updateTaskStatus: (...args) => inner.updateTaskStatus(...args),
-    listTasks: (...args) => inner.listTasks(...args),
-    ...overrides,
-  };
-}
-
-describe('task-based tools (MCP Tasks extension)', () => {
-  it('exposes a long-running tool as a task: create, poll via tasks/get, retrieve via tasks/result', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    const deferred = createDeferred<{ done: true }>();
-
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'long-task',
-        description: 'a long-running task-based tool',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute() {
-          return deferred.promise;
-        },
-      }),
-    );
-
-    const { client, server } = await connect(toolbox);
-
-    try {
-      const createResult = await client.request(
-        { method: 'tools/call', params: { name: 'long-task', arguments: {}, task: {} } },
-        CreateTaskResultSchema,
-      );
-      const taskId = createResult.task.taskId;
-      expect(createResult.task.status).toBe('working');
-
-      const polledWhileWorking = await client.experimental.tasks.getTask(taskId);
-      expect(polledWhileWorking.status).toBe('working');
-
-      const listedTasks = await client.experimental.tasks.listTasks();
-      expect(listedTasks.tasks.some((task) => task.taskId === taskId)).toBe(true);
-
-      deferred.resolve({ done: true });
-
-      const finalStatus = await waitForTerminalTaskStatus(client, taskId);
-      expect(finalStatus).toBe('completed');
-
-      const taskResult = await client.experimental.tasks.getTaskResult(
-        taskId,
-        CallToolResultSchema,
-      );
-      expect(taskResult.isError).not.toBe(true);
-      expect(taskResult.structuredContent).toEqual({ done: true });
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('cancels a running task via tasks/cancel, aborting the tool AbortSignal', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    const started = createDeferred<void>();
-    let sawAbort = false;
-
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'cancellable-task',
-        description: 'a task-based tool that observes cancellation',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute(_params, context) {
-          started.resolve();
-          return new Promise((_resolve, reject) => {
-            context.signal?.addEventListener('abort', () => {
-              sawAbort = true;
-              reject(context.signal?.reason ?? new Error('aborted'));
-            });
-          });
-        },
-      }),
-    );
-
-    const { client, server } = await connect(toolbox);
-
-    try {
-      const createResult = await client.request(
-        {
-          method: 'tools/call',
-          params: { name: 'cancellable-task', arguments: {}, task: {} },
-        },
-        CreateTaskResultSchema,
-      );
-      const taskId = createResult.task.taskId;
-      await started.promise;
-
-      const cancelResult = await client.experimental.tasks.cancelTask(taskId);
-      expect(cancelResult.status).toBe('cancelled');
-
-      const finalStatus = await waitForTerminalTaskStatus(client, taskId);
-      expect(finalStatus).toBe('cancelled');
-      expect(sawAbort).toBe(true);
-
-      let taskResultError: unknown;
-      try {
-        await client.experimental.tasks.getTaskResult(taskId, CallToolResultSchema);
-      } catch (error) {
-        taskResultError = error;
-      }
-      expect(taskResultError).toBeDefined();
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('does not advertise the tasks capability when no tool opts into task support', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'plain-tool',
-        description: 'a regular, non-task tool',
-        input: z.object({}),
-        async execute() {
-          return { ok: true };
-        },
-      }),
-    );
-
-    const { client, server } = await connect(toolbox);
-
-    try {
-      expect(client.getServerCapabilities()?.tasks).toBeUndefined();
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('creates every task with a short poll interval so the SDK automatic-polling fallback does not stall', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'quick-task',
-        description: 'a task-based tool',
-        input: z.object({}),
-        metadata: {
-          mcp: { title: 'Quick Task', execution: { taskSupport: 'required' } },
-        },
-        async execute() {
-          return { ok: true };
-        },
-      }),
-    );
-
-    const { client, server } = await connect(toolbox);
-
-    try {
-      const tools = await client.listTools();
-      expect(tools.tools.find((tool) => tool.name === 'quick-task')?.title).toBe('Quick Task');
-
-      const createResult = await client.request(
-        { method: 'tools/call', params: { name: 'quick-task', arguments: {}, task: {} } },
-        CreateTaskResultSchema,
-      );
-      expect(createResult.task.pollInterval).toBe(250);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('automatically polls an optional task tool for a plain tools/call request', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'optional-task',
-        description: 'an optional task-backed tool',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'optional' } } },
-        async execute() {
-          return { completed: true };
-        },
-      }),
-    );
-    const { client, server } = await connect(toolbox);
-
-    try {
-      const result = await client.callTool({ name: 'optional-task', arguments: {} });
-      expect(result.structuredContent).toEqual({ completed: true });
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('runs task tools from a minimal toolbox through the tool executeWith fallback', async () => {
-    const successfulTool = createTool({
-      name: 'fallback-task',
-      description: 'a task that runs without toolbox execute/getTool methods',
-      input: z.object({ value: z.number() }),
-      metadata: { mcp: { execution: { taskSupport: 'required' } } },
-      async execute({ value }) {
-        return { doubled: value * 2 };
-      },
-    });
-    const failingTool = createTool({
-      name: 'failing-fallback-task',
-      description: 'a failing task that runs without toolbox execute/getTool methods',
-      input: z.object({}),
-      metadata: { mcp: { execution: { taskSupport: 'required' } } },
-      async execute() {
-        return { unreachable: true };
-      },
-    });
-    const primitiveFailingTool = createTool({
-      name: 'primitive-failing-fallback-task',
-      description: 'a task that rejects with a non-Error reason',
-      input: z.object({}),
-      metadata: { mcp: { execution: { taskSupport: 'required' } } },
-      async execute() {
-        return { unreachable: true };
-      },
-    });
-    const successConnection = await connect({ tools: () => [successfulTool] });
-
-    try {
-      const successfulCreate = await successConnection.client.request(
-        {
-          method: 'tools/call',
-          params: { name: 'fallback-task', arguments: { value: 4 }, task: {} },
-        },
-        CreateTaskResultSchema,
-      );
-      expect(
-        await waitForTerminalTaskStatus(successConnection.client, successfulCreate.task.taskId),
-      ).toBe('completed');
-      const successfulResult = await successConnection.client.experimental.tasks.getTaskResult(
-        successfulCreate.task.taskId,
-        CallToolResultSchema,
-      );
-      expect(successfulResult.structuredContent).toEqual({ doubled: 8 });
-    } finally {
-      await successConnection.client.close();
-      await successConnection.server.close();
-    }
-
-    const failingTools = [failingTool, primitiveFailingTool];
-    const failureConnection = await connect({
-      tools: () => failingTools,
-      getTool: (name) => failingTools.find((tool) => tool.name === name),
-      execute: (call) => {
-        if (call.name === failingTool.name) {
-          return Promise.reject(new Error('fallback task failed'));
-        }
-        if (call.name === primitiveFailingTool.name) {
-          return Promise.reject('primitive fallback task failed');
-        }
-        throw new Error(`Unexpected task tool: ${call.name}`);
-      },
-    });
-
-    try {
-      const failingCreate = await failureConnection.client.request(
-        {
-          method: 'tools/call',
-          params: { name: 'failing-fallback-task', arguments: {}, task: {} },
-        },
-        CreateTaskResultSchema,
-      );
-      expect(
-        await waitForTerminalTaskStatus(failureConnection.client, failingCreate.task.taskId),
-      ).toBe('failed');
-      const failingResult = await failureConnection.client.experimental.tasks.getTaskResult(
-        failingCreate.task.taskId,
-        CallToolResultSchema,
-      );
-      expect(failingResult).toMatchObject({
-        isError: true,
-        content: [{ type: 'text', text: 'fallback task failed' }],
-      });
-
-      const primitiveFailingCreate = await failureConnection.client.request(
-        {
-          method: 'tools/call',
-          params: { name: 'primitive-failing-fallback-task', arguments: {}, task: {} },
-        },
-        CreateTaskResultSchema,
-      );
-      expect(
-        await waitForTerminalTaskStatus(
-          failureConnection.client,
-          primitiveFailingCreate.task.taskId,
-        ),
-      ).toBe('failed');
-      const primitiveFailingResult =
-        await failureConnection.client.experimental.tasks.getTaskResult(
-          primitiveFailingCreate.task.taskId,
-          CallToolResultSchema,
-        );
-      expect(primitiveFailingResult).toMatchObject({
-        isError: true,
-        content: [{ type: 'text', text: 'primitive fallback task failed' }],
-      });
-    } finally {
-      await failureConnection.client.close();
-      await failureConnection.server.close();
-    }
-  });
-
-  it('keeps non-task execution metadata on the plain MCP registration path', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'forbidden-task',
-        description: 'a plain tool that explicitly forbids task augmentation',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'forbidden' } } },
-        async execute() {
-          return { ok: true };
-        },
-      }),
-    );
-    const { client, server } = await connect(toolbox);
-
-    try {
-      const tools = await client.listTools();
-      expect(tools.tools.find((tool) => tool.name === 'forbidden-task')?.execution).toEqual({
-        taskSupport: 'forbidden',
-      });
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('implements every SDK task-handler callback for request-scoped task stores', async () => {
-    type CapturedTaskHandler = {
-      createTask: (args: unknown, extra: never) => Promise<{ task: unknown }>;
-      getTask: (args: unknown, extra: never) => Promise<unknown>;
-      getTaskResult: (args: unknown, extra: never) => Promise<unknown>;
-    };
-
-    let capturedHandler: CapturedTaskHandler | undefined;
-    let capturedPlainHandler: ((args: unknown, extra?: unknown) => Promise<unknown>) | undefined;
-    class CapturingMcpServer {
-      readonly server = { getClientCapabilities: () => ({}) };
-      async close() {}
-      readonly experimental = {
-        tasks: {
-          registerToolTask: (
-            _name: string,
-            _configuration: unknown,
-            handler: CapturedTaskHandler,
-          ) => {
-            capturedHandler = handler;
-            return { remove() {} };
-          },
-        },
-      };
-
-      registerTool(
-        _name: string,
-        _configuration: unknown,
-        handler: (args: unknown, extra?: unknown) => Promise<unknown>,
-      ) {
-        capturedPlainHandler = handler;
-        return { remove() {} };
-      }
-    }
-
-    internalMcpTestUtilities.resetModuleState();
-    internalMcpTestUtilities.setModuleLoader(() => ({ McpServer: CapturingMcpServer }) as never);
-
-    try {
-      let toolbox: AnyToolbox = createToolbox();
-      toolbox = toolbox.extend(
-        createTool({
-          name: 'captured-task',
-          description: 'a task whose SDK handler contract is inspected',
-          input: z.object({}),
-          metadata: { mcp: { execution: { taskSupport: 'required' } } },
-          async execute() {
-            return { ok: true };
-          },
-        }),
-      );
-      toolbox = toolbox.extend(
-        createTool({
-          name: 'captured-plain-tool',
-          description: 'a plain tool whose SDK handler contract is inspected',
-          input: z.object({}),
-          metadata: { mcp: { execution: { taskSupport: 'forbidden' } } },
-          async execute() {
-            return { plain: true };
-          },
-        }),
-      );
-      await createMCP(toolbox);
-      if (!capturedHandler) throw new Error('Task handler was not registered.');
-      if (!capturedPlainHandler) throw new Error('Plain tool handler was not registered.');
-
-      expect(await capturedPlainHandler({}, undefined)).toMatchObject({
-        structuredContent: { plain: true },
-      });
-
-      const task = {
-        taskId: 'captured-task-id',
-        status: 'working' as const,
-        ttl: null,
-        createdAt: new Date(0).toISOString(),
-        lastUpdatedAt: new Date(0).toISOString(),
-      };
-      let storedResult: unknown = { content: [{ type: 'text', text: 'complete' }] };
-      const taskStore = {
-        async createTask() {
-          return task;
-        },
-        async getTask() {
-          return task;
-        },
-        async storeTaskResult() {},
-        async getTaskResult() {
-          return storedResult;
-        },
-        async updateTaskStatus() {},
-      };
-      const controller = new AbortController();
-      controller.abort(new Error('request already cancelled'));
-
-      const createResult = await capturedHandler.createTask({}, {
-        signal: controller.signal,
-        taskStore,
-      } as never);
-      expect(createResult.task).toEqual(task);
-      expect(
-        await capturedHandler.getTask({}, { taskId: task.taskId, taskStore } as never),
-      ).toEqual(task);
-      expect(
-        await capturedHandler.getTaskResult({}, { taskId: task.taskId, taskStore } as never),
-      ).toEqual(storedResult);
-
-      storedResult = { unexpected: true };
-      await expectPromiseToReject(
-        capturedHandler.getTaskResult({}, { taskId: task.taskId, taskStore } as never),
-        (error) =>
-          expect(() => {
-            throw error;
-          }).toThrow('Task result store returned a value that is not a CallToolResult.'),
-      );
-    } finally {
-      internalMcpTestUtilities.resetModuleState();
-    }
-  });
-
-  it('omits the task ttl when the client does not request one, letting the task store apply its own default', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'no-ttl-task',
-        description: 'a task-based tool',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute() {
-          return { ok: true };
-        },
-      }),
-    );
-
-    const recordedTtls: Array<number | null | undefined> = [];
-    const taskStore = createDelegatingTaskStore({
-      createTask: (params, requestId, request, sessionId) => {
-        recordedTtls.push(params.ttl);
-        return new InMemoryTaskStore().createTask(params, requestId, request, sessionId);
-      },
-    });
-
-    const { client, server } = await connect(toolbox, { taskStore });
-
-    try {
-      await client.request(
-        { method: 'tools/call', params: { name: 'no-ttl-task', arguments: {}, task: {} } },
-        CreateTaskResultSchema,
-      );
-      expect(recordedTtls).toEqual([undefined]);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('passes through a client-requested task ttl', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'ttl-task',
-        description: 'a task-based tool',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute() {
-          return { ok: true };
-        },
-      }),
-    );
-
-    const recordedTtls: Array<number | null | undefined> = [];
-    const taskStore = createDelegatingTaskStore({
-      createTask: (params, requestId, request, sessionId) => {
-        recordedTtls.push(params.ttl);
-        return new InMemoryTaskStore().createTask(params, requestId, request, sessionId);
-      },
-    });
-
-    const { client, server } = await connect(toolbox, { taskStore });
-
-    try {
-      await client.request(
-        {
-          method: 'tools/call',
-          params: { name: 'ttl-task', arguments: {}, task: { ttl: 60_000 } },
-        },
-        CreateTaskResultSchema,
-      );
-      expect(recordedTtls).toEqual([60_000]);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('does not abort the tool until the task store confirms the cancellation', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    const started = createDeferred<void>();
-    let sawAbort = false;
-
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'guarded-cancel-task',
-        description: 'a task-based tool cancelled through a store that rejects the update',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute(_params, context) {
-          started.resolve();
-          return new Promise((_resolve, reject) => {
-            context.signal?.addEventListener('abort', () => {
-              sawAbort = true;
-              reject(context.signal?.reason ?? new Error('aborted'));
-            });
-          });
-        },
-      }),
-    );
-
-    const taskStore = createDelegatingTaskStore({
-      async updateTaskStatus() {
-        throw new Error('session mismatch: not authorized to cancel this task');
-      },
-    });
-
-    const { client, server } = await connect(toolbox, { taskStore });
-
-    try {
-      const createResult = await client.request(
-        {
-          method: 'tools/call',
-          params: { name: 'guarded-cancel-task', arguments: {}, task: {} },
-        },
-        CreateTaskResultSchema,
-      );
-      const taskId = createResult.task.taskId;
-      await started.promise;
-
-      let cancelError: unknown;
-      try {
-        await client.experimental.tasks.cancelTask(taskId);
-      } catch (error) {
-        cancelError = error;
-      }
-      expect(cancelError).toBeDefined();
-
-      await flushMicrotasks();
-      expect(sawAbort).toBe(false);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('does not surface an unhandled rejection when storeTaskResult fails after the tool completes', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'unstorable-task',
-        description: 'a task-based tool whose result the store refuses to persist',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute() {
-          return { ok: true };
-        },
-      }),
-    );
-
-    const taskStore = createDelegatingTaskStore({
-      async storeTaskResult() {
-        throw new Error('write conflict: task result already finalized elsewhere');
-      },
-    });
-
-    const unhandledRejections: unknown[] = [];
-    const onUnhandledRejection = (reason: unknown) => {
-      unhandledRejections.push(reason);
-    };
-    process.on('unhandledRejection', onUnhandledRejection);
-
-    const { client, server } = await connect(toolbox, { taskStore });
-
-    try {
-      await client.request(
-        {
-          method: 'tools/call',
-          params: { name: 'unstorable-task', arguments: {}, task: {} },
-        },
-        CreateTaskResultSchema,
-      );
-
-      await flushMicrotasks(20);
-      expect(unhandledRejections).toEqual([]);
-    } finally {
-      process.off('unhandledRejection', onUnhandledRejection);
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it('passes the elicitation requester into a task-backed tool, mirroring the plain call path', async () => {
-    let toolbox: AnyToolbox = createToolbox();
-    toolbox = toolbox.extend(
-      createTool({
-        name: 'approve-task',
-        description: 'a task-based tool that requests approval',
-        input: z.object({}),
-        metadata: { mcp: { execution: { taskSupport: 'required' } } },
-        async execute(_params, context) {
-          if (!context.elicit) {
-            throw new Error('elicitation unavailable in this context');
-          }
-          const response = await context.elicit({
-            message: 'Approve?',
-            mode: 'form',
-            schema: {
-              type: 'object',
-              properties: { approved: { type: 'boolean' } },
-              required: ['approved'],
-            },
-          });
-          return {
-            approved: response.action === 'accept' && response.content?.['approved'] === true,
-          };
-        },
-      }),
-    );
-
-    const server = await createMCP(toolbox);
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const client = new Client(
-      { name: 'task-elicitation-client', version: '0.0.0' },
-      { capabilities: { elicitation: {} } },
-    );
-    client.setRequestHandler(
-      ElicitRequestSchema,
-      createMcpElicitationHandler(async () => ({ action: 'accept', content: { approved: true } })),
-    );
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-
-    try {
-      const createResult = await client.request(
-        { method: 'tools/call', params: { name: 'approve-task', arguments: {}, task: {} } },
-        CreateTaskResultSchema,
-      );
-      const taskId = createResult.task.taskId;
-
-      const finalStatus = await waitForTerminalTaskStatus(client, taskId);
-      expect(finalStatus).toBe('completed');
-
-      const taskResult = await client.experimental.tasks.getTaskResult(
-        taskId,
-        CallToolResultSchema,
-      );
-      expect(taskResult.structuredContent).toEqual({ approved: true });
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-});

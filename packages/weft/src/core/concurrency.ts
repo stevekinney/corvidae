@@ -51,8 +51,8 @@ export type { AcquireAttempt, LockHolder, LockRecord } from './concurrency-lock-
  *
  * @example
  * ```ts
- * import { AtomicState, type CasSlot, type LockRecord } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { AtomicState, type CasSlot, type LockRecord } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * // AtomicState satisfies CasSlot structurally (its methods return promises).
  * const slot: CasSlot<LockRecord, Promise<LockRecord>, Promise<LockRecord | undefined>> =
@@ -92,7 +92,7 @@ function assertValidLease(leaseMs: number): void {
  *
  * @example
  * ```ts
- * import { DurableSemaphore, type DurableSemaphoreOptions } from '@repo/weft';
+ * import { DurableSemaphore, type DurableSemaphoreOptions } from '@corvidae/weft';
  *
  * const options: DurableSemaphoreOptions = { permits: 3, leaseMs: 60_000 };
  * const semaphore = new DurableSemaphore(options);
@@ -135,12 +135,12 @@ const DEFAULT_LEASE_MS = 30_000;
  *
  * @example
  * ```ts
- * import { DurableSemaphore } from '@repo/weft';
- * import { AtomicState } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { DurableSemaphore } from '@corvidae/weft';
+ * import { AtomicState } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
- * const slot = new AtomicState<import('@repo/weft').LockRecord>(
+ * const slot = new AtomicState<import('@corvidae/weft').LockRecord>(
  *   storage,
  *   'state:workflow-scope:default:rate-limit:lock',
  *   { initial: { holders: [], waiters: [] } },
@@ -250,8 +250,8 @@ export class DurableSemaphore {
  *
  * @example
  * ```ts
- * import { DurableMutex } from '@repo/weft';
- * import { workflow, type WorkflowContext, type LockRecord } from '@repo/weft';
+ * import { DurableMutex } from '@corvidae/weft';
+ * import { workflow, type WorkflowContext, type LockRecord } from '@corvidae/weft';
  *
  * const transfer = workflow({ name: 'transfer' }).execute(async function* (ctx: WorkflowContext) {
  *   const slot = ctx.state.workflow<LockRecord>('account-42:lock', {
@@ -292,7 +292,7 @@ export class DurableMutex extends DurableSemaphore {
  *
  * @example
  * ```ts
- * import type { AcquireAttempt, AcquireWithSlot } from '@repo/weft';
+ * import type { AcquireAttempt, AcquireWithSlot } from '@corvidae/weft';
  *
  * type PromiseResult = AcquireWithSlot<Promise<unknown>>; // Promise<AcquireAttempt>
  * const result: PromiseResult = Promise.resolve<AcquireAttempt>({ acquired: true, position: -1 });
@@ -311,7 +311,7 @@ export type AcquireWithSlot<R> =
  *
  * @example
  * ```ts
- * import type { RenewWithSlot } from '@repo/weft';
+ * import type { RenewWithSlot } from '@corvidae/weft';
  *
  * type PromiseResult = RenewWithSlot<Promise<unknown>>; // Promise<boolean>
  * const result: PromiseResult = Promise.resolve(true);

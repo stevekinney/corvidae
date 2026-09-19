@@ -119,7 +119,7 @@
  *   compare against.
  */
 
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 
 import type { SteeringRequestedValue } from '../durable/types.ts';
 import type { BackendDescriptor, ModelCatalog } from './model-catalog.ts';

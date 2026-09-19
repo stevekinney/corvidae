@@ -27,7 +27,7 @@ import type {
  *
  * @example
  * ```ts
- * import type { TaskResultMessage } from '@repo/weft';
+ * import type { TaskResultMessage } from '@corvidae/weft';
  *
  * const message: TaskResultMessage = {
  *   type: 'taskResult', operationId: 'op-1', status: 'completed', value: { ok: true },

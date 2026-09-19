@@ -2,7 +2,7 @@ import {
   createDefaultRuntimeServices,
   type RuntimeServices,
   type Subscription,
-} from '@repo/lifecycle';
+} from '@corvidae/lifecycle';
 
 import type { ChildRunDescriptor, ChildRunRegistry } from '../child-run';
 import {

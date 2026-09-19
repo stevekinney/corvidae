@@ -41,8 +41,8 @@ export type {
  *
  * @example
  * ```ts
- * import { createFetchHandler, type ServiceWorkerOptions } from '@repo/weft';
- * import { Engine, MemoryStorage } from '@repo/weft';
+ * import { createFetchHandler, type ServiceWorkerOptions } from '@corvidae/weft';
+ * import { Engine, MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  * const engine = new Engine({ storage });
@@ -89,8 +89,8 @@ export interface ServiceWorkerOptions {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@repo/weft';
- * import { createFetchHandler } from '@repo/weft';
+ * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { createFetchHandler } from '@corvidae/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const handler = createFetchHandler({ engine, pathPrefix: '/weft/' });
@@ -128,8 +128,8 @@ export function createFetchHandler(
  *
  * @example
  * ```ts
- * import { ServiceWorkerScheduler, createPeriodicSyncHandler } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { ServiceWorkerScheduler, createPeriodicSyncHandler } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  *
@@ -174,7 +174,7 @@ export function createPeriodicSyncHandler(
  *
  * @example
  * ```ts
- * import { createLifecycleHandlers } from '@repo/weft';
+ * import { createLifecycleHandlers } from '@corvidae/weft';
  *
  * const { install, activate } = createLifecycleHandlers();
  *

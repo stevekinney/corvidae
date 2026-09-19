@@ -10,7 +10,7 @@ import {
   type RuntimeServices,
   type RuntimeTimeoutHandle,
   type Subscription,
-} from '@repo/lifecycle';
+} from '@corvidae/lifecycle';
 
 import type { ChunkingOptions } from './chunking';
 import { sha256Hex } from './hash';

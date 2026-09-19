@@ -1,10 +1,10 @@
-import { createTool, createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import {
   createDefaultRuntimeServices,
   createManualRuntimeServices,
   TypedEventTarget,
-} from '@repo/lifecycle';
+} from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -1,3 +1,0 @@
-[test]
-# Playwright owns browser specs; Bun runs the source integration tests.
-pathIgnorePatterns = ["tests/e2e/**"]

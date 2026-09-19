@@ -1,4 +1,4 @@
-import type { Conversation } from '@repo/conversationalist';
+import type { Conversation } from '@corvidae/conversationalist';
 
 /**
  * Cancels a streaming message if it is still the active streaming message on

@@ -1,6 +1,6 @@
-import { createTool, createToolbox } from '@repo/armorer';
-import { createManualRuntimeServices } from '@repo/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { z } from 'zod';
 

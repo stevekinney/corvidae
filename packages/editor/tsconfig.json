@@ -1,8 +1,0 @@
-{
-  "extends": "@repo/typescript-configuration/library.json",
-  "compilerOptions": {
-    "customConditions": ["svelte"]
-  },
-  "include": ["src", "scripts"],
-  "exclude": ["node_modules", "coverage", "**/.cinder-ssr-*", "**/.editor-ssr-*"]
-}

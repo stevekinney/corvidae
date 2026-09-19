@@ -3,7 +3,7 @@ import {
   createDefaultRuntimeServices,
   type Observer,
   type Subscription,
-} from '@repo/lifecycle';
+} from '@corvidae/lifecycle';
 
 import type { ActiveRun } from '../create-run';
 import type { RunResult, StepResult, TokenUsage } from '../types';

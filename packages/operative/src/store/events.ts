@@ -1,4 +1,4 @@
-import type { EventMap } from '@repo/lifecycle';
+import type { EventMap } from '@corvidae/lifecycle';
 
 import type { Action } from './types';
 

@@ -1,7 +1,7 @@
 /**
  * Declarative storage configuration types and the `ResolvedStorage` mapping.
  * Split out from `resolve.ts` so that module stays focused on the runtime
- * resolver/validator logic. The public `@repo/weft` entry point exposes
+ * resolver/validator logic. The public `@corvidae/weft` entry point exposes
  * these storage configuration types.
  *
  * @module storage/storage-configuration
@@ -26,7 +26,7 @@ export type SQLiteStorageInstance = BunSQLiteStorage | NodeSQLiteStorage;
  *
  * @example
  * ```ts
- * import { resolveStorage, type MemoryStorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type MemoryStorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: MemoryStorageConfiguration = { type: 'memory' };
  * const storage = await resolveStorage(configuration);
@@ -42,7 +42,7 @@ export type MemoryStorageConfiguration = {
  *
  * @example
  * ```ts
- * import { resolveStorage, type SQLiteStorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type SQLiteStorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: SQLiteStorageConfiguration = { type: 'sqlite', path: './weft.db' };
  * const storage = await resolveStorage(configuration);
@@ -59,7 +59,7 @@ export type SQLiteStorageConfiguration = {
  *
  * @example
  * ```ts
- * import { resolveStorage, type LMDBStorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type LMDBStorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: LMDBStorageConfiguration = { type: 'lmdb', path: './weft-data' };
  * const storage = await resolveStorage(configuration);
@@ -82,7 +82,7 @@ export type LMDBStorageConfiguration = {
  *
  * @example
  * ```ts
- * import { resolveStorage, type TursoStorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type TursoStorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: TursoStorageConfiguration = { type: 'turso', url: 'file:weft.db' };
  * const storage = await resolveStorage(configuration);
@@ -100,7 +100,7 @@ export type TursoStorageConfiguration = {
  *
  * @example
  * ```ts
- * import { resolveStorage, type NeonStorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type NeonStorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: NeonStorageConfiguration = {
  *   type: 'neon',
@@ -120,7 +120,7 @@ export type NeonStorageConfiguration = {
  *
  * @example
  * ```ts
- * import { resolveStorage, type IndexedDBStorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type IndexedDBStorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: IndexedDBStorageConfiguration = { type: 'indexeddb', databaseName: 'weft' };
  * const storage = await resolveStorage(configuration);
@@ -137,7 +137,7 @@ export type IndexedDBStorageConfiguration = {
  *
  * @example
  * ```ts
- * import { resolveStorage, type WebExtensionStorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type WebExtensionStorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: WebExtensionStorageConfiguration = { type: 'web-extension', area: 'local' };
  * const storage = await resolveStorage(configuration);
@@ -154,7 +154,7 @@ export type WebExtensionStorageConfiguration = {
  *
  * @example
  * ```ts
- * import { resolveStorage, type HTTPStorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type HTTPStorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: HTTPStorageConfiguration = { type: 'http', baseUrl: 'https://weft.example.com' };
  * const storage = await resolveStorage(configuration);
@@ -172,7 +172,7 @@ export type HTTPStorageConfiguration = {
  *
  * @example
  * ```ts
- * import { resolveStorage, type AutoStorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type AutoStorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: AutoStorageConfiguration = { type: 'auto' };
  * const storage = await resolveStorage(configuration);
@@ -188,7 +188,7 @@ export type AutoStorageConfiguration = {
  *
  * @example
  * ```ts
- * import { resolveStorage, type StorageConfiguration } from '@repo/weft';
+ * import { resolveStorage, type StorageConfiguration } from '@corvidae/weft';
  *
  * const configuration: StorageConfiguration = { type: 'memory' };
  * const storage = await resolveStorage(configuration);
@@ -213,7 +213,7 @@ export type StorageConfiguration =
  *
  * @example
  * ```ts
- * import { resolveStorage, type StorageConfigurationType } from '@repo/weft';
+ * import { resolveStorage, type StorageConfigurationType } from '@corvidae/weft';
  *
  * const kind: StorageConfigurationType = 'memory';
  * const storage = await resolveStorage({ type: kind });
@@ -230,7 +230,7 @@ export type StorageConfigurationType = StorageConfiguration['type'];
  *
  * @example
  * ```ts
- * import type { HTTPStorageConfiguration, ResolvedStorage } from '@repo/weft';
+ * import type { HTTPStorageConfiguration, ResolvedStorage } from '@corvidae/weft';
  *
  * type RemoteStorage = ResolvedStorage<HTTPStorageConfiguration>;
  * declare const storage: RemoteStorage;

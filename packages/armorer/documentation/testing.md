@@ -1,8 +1,8 @@
-# Testing helpers (`@repo/armorer`)
+# Testing helpers (`@corvidae/armorer`)
 
 ## Overview
 
-The `@repo/armorer` root entry provides helpers for testing tool execution and agent/toolbox workflows:
+The `@corvidae/armorer` root entry provides helpers for testing tool execution and agent/toolbox workflows:
 
 - `createMockTool(options)`
 - `createTestRegistry()`
@@ -10,7 +10,7 @@ The `@repo/armorer` root entry provides helpers for testing tool execution and a
 Import:
 
 ```typescript
-import { createMockTool, createTestRegistry } from '@repo/armorer';
+import { createMockTool, createTestRegistry } from '@corvidae/armorer';
 ```
 
 ## `createMockTool(options)`
@@ -32,7 +32,7 @@ Returned value:
 - `mockReset()`: clear call history and reset forced behavior
 
 ```typescript
-import { createMockTool } from '@repo/armorer';
+import { createMockTool } from '@corvidae/armorer';
 import { z } from 'zod';
 
 const weather = createMockTool({
@@ -60,7 +60,7 @@ Returned value (`TestRegistry`):
 `history` is populated from `tool.finished` events while tools execute through the registry.
 
 ```typescript
-import { createMockTool, createTestRegistry } from '@repo/armorer';
+import { createMockTool, createTestRegistry } from '@corvidae/armorer';
 
 const toolbox = createTestRegistry();
 const greet = createMockTool({ name: 'greet' });
@@ -78,7 +78,7 @@ console.log(toolbox.history[0]?.call.name); // 'greet'
 
 ```typescript
 import { describe, expect, it } from 'bun:test';
-import { createMockTool, createTestRegistry } from '@repo/armorer';
+import { createMockTool, createTestRegistry } from '@corvidae/armorer';
 
 describe('agent workflow', () => {
   it('records calls and results', async () => {

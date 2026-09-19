@@ -1,0 +1,472 @@
+/// <reference lib="dom" />
+import { afterEach, describe, expect, test } from 'bun:test';
+
+import { setupHappyDom } from '@corvidae/testing';
+
+setupHappyDom();
+
+const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
+const { default: AvatarGroup } = await import('./avatar-group.svelte');
+const { AvatarGroup: RootAvatarGroup } = await import('../../index.ts');
+
+const collaborators = [
+  { id: 'ada', name: 'Ada Lovelace', src: '/ada.png' },
+  { id: 'grace', name: 'Grace Hopper', src: '/grace.png' },
+  { id: 'katherine', name: 'Katherine Johnson', src: '/katherine.png' },
+  { id: 'dorothy', name: 'Dorothy Vaughan', src: '/dorothy.png' },
+  { id: 'mary', name: 'Mary Jackson', src: '/mary.png' },
+  { id: 'annie', name: 'Annie Easley', src: '/annie.png' },
+];
+
+function itemElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>('.cinder-avatar-group__item'));
+}
+
+function avatarItems(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      '.cinder-avatar-group__item:not(.cinder-avatar-group__overflow)',
+    ),
+  );
+}
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('AvatarGroup', () => {
+  test('renders five visible avatars and one overflow indicator by default', () => {
+    const { container, getByRole } = render(AvatarGroup, { avatars: collaborators });
+
+    expect(avatarItems(container)).toHaveLength(5);
+    expect(getByRole('listitem', { name: '1 more collaborators' }).textContent?.trim()).toBe('+1');
+  });
+
+  test('honors maxVisible and reports the hidden count', () => {
+    const { container, getByRole } = render(AvatarGroup, {
+      avatars: collaborators,
+      maxVisible: 3,
+    });
+
+    expect(avatarItems(container)).toHaveLength(3);
+    expect(getByRole('listitem', { name: '3 more collaborators' }).textContent?.trim()).toBe('+3');
+  });
+
+  test('renders only overflow when maxVisible normalizes to zero', () => {
+    const { container, getByRole } = render(AvatarGroup, {
+      avatars: collaborators,
+      maxVisible: 0,
+    });
+
+    expect(avatarItems(container)).toHaveLength(0);
+    expect(itemElements(container)).toHaveLength(1);
+    expect(getByRole('listitem', { name: '6 more collaborators' }).textContent?.trim()).toBe('+6');
+  });
+
+  test('falls back to default maxVisible for non-finite values', async () => {
+    const { container, rerender } = render(AvatarGroup, {
+      avatars: collaborators,
+      maxVisible: Number.NaN,
+    });
+
+    expect(avatarItems(container)).toHaveLength(5);
+    await rerender({ avatars: collaborators, maxVisible: Number.POSITIVE_INFINITY });
+    expect(avatarItems(container)).toHaveLength(5);
+  });
+
+  test('renders duplicate names without ids as distinct items and tooltips', async () => {
+    const { container } = render(AvatarGroup, {
+      avatars: [{ name: 'Alex Kim' }, { name: 'Alex Kim' }],
+    });
+
+    const triggers = container.querySelectorAll<HTMLElement>('.cinder-avatar-group__trigger');
+    const tooltips = document.body.querySelectorAll<HTMLElement>('[role="tooltip"]');
+    expect(triggers).toHaveLength(2);
+    expect(tooltips).toHaveLength(2);
+    expect(tooltips[0]?.id).not.toBe(tooltips[1]?.id);
+  });
+
+  test('renders duplicate ids as distinct keyed items', async () => {
+    const { container, rerender } = render(AvatarGroup, {
+      avatars: [
+        { id: 'duplicate', name: 'Alex Kim' },
+        { id: 'duplicate', name: 'Blair Chen' },
+      ],
+    });
+
+    expect(container.querySelectorAll<HTMLElement>('.cinder-avatar-group__trigger')).toHaveLength(
+      2,
+    );
+
+    await rerender({
+      avatars: [
+        { id: 'duplicate', name: 'Casey Jones' },
+        { id: 'duplicate', name: 'Devon Lee' },
+      ],
+    });
+
+    expect(
+      Array.from(container.querySelectorAll<HTMLElement>('.cinder-avatar-group__trigger')).map(
+        (trigger) => trigger.getAttribute('aria-label'),
+      ),
+    ).toEqual(['Casey Jones', 'Devon Lee']);
+  });
+
+  test('preserves node identity when uniquely keyed avatars reorder', async () => {
+    const { container, rerender } = render(AvatarGroup, {
+      avatars: [
+        { id: 'ada', name: 'Ada Lovelace' },
+        { id: 'grace', name: 'Grace Hopper' },
+      ],
+    });
+
+    const adaTrigger = container.querySelector<HTMLElement>('[aria-label="Ada Lovelace"]');
+    const graceTrigger = container.querySelector<HTMLElement>('[aria-label="Grace Hopper"]');
+
+    await rerender({
+      avatars: [
+        { id: 'grace', name: 'Grace Hopper' },
+        { id: 'ada', name: 'Ada Lovelace' },
+      ],
+    });
+
+    expect(container.querySelector<HTMLElement>('[aria-label="Ada Lovelace"]')).toBe(adaTrigger);
+    expect(container.querySelector<HTMLElement>('[aria-label="Grace Hopper"]')).toBe(graceTrigger);
+  });
+
+  test('forwards size and shape to the root and child avatars', () => {
+    const { container } = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 2),
+      size: 'lg',
+      shape: 'square',
+    });
+
+    const root = container.querySelector<HTMLElement>('.cinder-avatar-group');
+    const avatars = container.querySelectorAll<HTMLElement>('.cinder-avatar');
+    expect(root?.getAttribute('data-cinder-size')).toBe('lg');
+    expect(root?.getAttribute('data-cinder-shape')).toBe('square');
+    expect(avatars[0]?.getAttribute('data-cinder-size')).toBe('lg');
+    expect(avatars[0]?.getAttribute('data-cinder-shape')).toBe('square');
+  });
+
+  test('sets the overlap custom property while preserving caller styles', () => {
+    const { container } = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 2),
+      overlap: '0.75rem',
+      style: 'color: red;',
+    });
+
+    const root = container.querySelector<HTMLElement>('.cinder-avatar-group');
+    expect(root?.getAttribute('style')).toContain('--cinder-avatar-group-overlap: 0.75rem');
+    expect(root?.getAttribute('style')).toContain('color: red');
+  });
+
+  test('falls back to default overlap for invalid custom-property values', () => {
+    const { container } = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 2),
+      overlap: '1rem; color: red',
+    });
+
+    const root = container.querySelector<HTMLElement>('.cinder-avatar-group');
+    expect(root?.getAttribute('style')).toContain('--cinder-avatar-group-overlap: 0.75rem');
+    expect(root?.getAttribute('style')).not.toContain('color: red');
+  });
+
+  test('computes deterministic first-on-top and last-on-top z-index values', async () => {
+    const { container, rerender } = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 3),
+      zOrder: 'first-on-top',
+    });
+
+    expect(
+      avatarItems(container).map((item) =>
+        item.style.getPropertyValue('--cinder-avatar-group-index'),
+      ),
+    ).toEqual(['3', '2', '1']);
+
+    await rerender({ avatars: collaborators.slice(0, 3), zOrder: 'last-on-top' });
+    expect(
+      avatarItems(container).map((item) =>
+        item.style.getPropertyValue('--cinder-avatar-group-index'),
+      ),
+    ).toEqual(['1', '2', '3']);
+  });
+
+  test('uses terminal overflow stack value except for overflow-only mode', async () => {
+    const { container, rerender } = render(AvatarGroup, {
+      avatars: collaborators,
+      maxVisible: 3,
+    });
+
+    expect(
+      container
+        .querySelector<HTMLElement>('.cinder-avatar-group__overflow')
+        ?.style.getPropertyValue('--cinder-avatar-group-index'),
+    ).toBe('4');
+
+    await rerender({ avatars: collaborators, maxVisible: 0 });
+    expect(
+      container
+        .querySelector<HTMLElement>('.cinder-avatar-group__overflow')
+        ?.style.getPropertyValue('--cinder-avatar-group-index'),
+    ).toBe('0');
+  });
+
+  test('uses the lowest overflow stack value when the first avatar is on top', () => {
+    const { container } = render(AvatarGroup, {
+      avatars: collaborators,
+      maxVisible: 3,
+      zOrder: 'first-on-top',
+    });
+
+    expect(
+      container
+        .querySelector<HTMLElement>('.cinder-avatar-group__overflow')
+        ?.style.getPropertyValue('--cinder-avatar-group-index'),
+    ).toBe('0');
+  });
+
+  test('wires each named avatar trigger to a tooltip with the collaborator name', async () => {
+    const { container } = render(AvatarGroup, { avatars: collaborators.slice(0, 2) });
+
+    await waitFor(() => {
+      const triggers = container.querySelectorAll<HTMLElement>('.cinder-avatar-group__trigger');
+      const tooltips = document.body.querySelectorAll<HTMLElement>('[role="tooltip"]');
+
+      expect(triggers).toHaveLength(2);
+      expect(tooltips).toHaveLength(2);
+      triggers.forEach((trigger, index) => {
+        const tooltip = tooltips[index];
+        expect(tooltip?.getAttribute('role')).toBe('tooltip');
+        const tooltipText = tooltip?.textContent?.trim() ?? null;
+        expect(tooltipText).toBeTruthy();
+        expect(trigger.getAttribute('aria-label')).toBe(tooltipText);
+        expect(trigger.hasAttribute('aria-describedby')).toBe(false);
+      });
+    });
+  });
+
+  test('named avatar triggers are focusable tooltip buttons with accessible names', () => {
+    const { container } = render(AvatarGroup, { avatars: collaborators.slice(0, 2) });
+
+    const triggers = container.querySelectorAll<HTMLElement>('.cinder-avatar-group__trigger');
+    for (const trigger of triggers) {
+      expect(trigger.tagName).toBe('BUTTON');
+      expect(trigger.getAttribute('type')).toBe('button');
+      expect(trigger.getAttribute('aria-label')).toBeTruthy();
+    }
+  });
+
+  test('unnamed avatar triggers carry neither role nor aria-label (no unnamed control)', () => {
+    // An avatar with no name still renders a trigger span, but it is NOT
+    // keyboard focusable and carries no role="button"/aria-label pair — so there
+    // is no interactive control lacking an accessible name.
+    const { container } = render(AvatarGroup, {
+      avatars: [{ name: '', src: 'https://example.test/a.png' }],
+    });
+    const trigger = container.querySelector('.cinder-avatar-group__trigger');
+    expect(trigger).not.toBeNull();
+    expect(trigger?.getAttribute('role')).toBeNull();
+    expect(trigger?.getAttribute('aria-label')).toBeNull();
+    expect(trigger?.hasAttribute('tabindex')).toBe(false);
+  });
+
+  test('shows a named avatar tooltip on focus and hides it on Escape', async () => {
+    const unrelatedTooltip = document.createElement('span');
+    unrelatedTooltip.setAttribute('role', 'tooltip');
+    unrelatedTooltip.setAttribute('aria-hidden', 'true');
+    document.body.prepend(unrelatedTooltip);
+    const existingTooltips = new Set(document.body.querySelectorAll('[role="tooltip"]'));
+
+    try {
+      const { container } = render(AvatarGroup, { avatars: collaborators.slice(0, 1) });
+
+      const trigger = container.querySelector<HTMLElement>('.cinder-avatar-group__trigger');
+      expect(trigger).not.toBeNull();
+      trigger?.focus();
+      await fireEvent.focusIn(trigger!);
+
+      await waitFor(() => {
+        const ownedTooltips = Array.from(
+          document.body.querySelectorAll<HTMLElement>('[role="tooltip"]'),
+        ).filter((tooltip) => !existingTooltips.has(tooltip));
+        expect(ownedTooltips).toHaveLength(1);
+        expect(ownedTooltips[0]?.getAttribute('aria-hidden')).toBe('false');
+      });
+
+      await fireEvent.keyDown(document, { key: 'Escape' });
+      await waitFor(() => {
+        const ownedTooltips = Array.from(
+          document.body.querySelectorAll<HTMLElement>('[role="tooltip"]'),
+        ).filter((tooltip) => !existingTooltips.has(tooltip));
+        expect(ownedTooltips).toHaveLength(1);
+        expect(ownedTooltips[0]?.getAttribute('aria-hidden')).toBe('true');
+      });
+    } finally {
+      unrelatedTooltip.remove();
+    }
+  });
+
+  test('raises the focused item above overlapped siblings', async () => {
+    const css = await Bun.file(new URL('./avatar-group.css', import.meta.url)).text();
+
+    expect(css).toContain('.cinder-avatar-group__item:focus-within');
+    expect(css).toContain('z-index: calc(var(--cinder-avatar-group-index, 0) + 100);');
+  });
+
+  test('malformed runtime items without a name render without a tooltip', () => {
+    const malformedAvatar = { id: 'missing-name', name: '' };
+    Reflect.deleteProperty(malformedAvatar, 'name');
+    const { container } = render(AvatarGroup, { avatars: [malformedAvatar] });
+
+    const trigger = container.querySelector<HTMLElement>('.cinder-avatar-group__trigger');
+    expect(trigger).not.toBeNull();
+    expect(trigger?.hasAttribute('tabindex')).toBe(false);
+    expect(trigger?.hasAttribute('aria-label')).toBe(false);
+    expect(container.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  test('the list exposes exactly its avatars, each keeping its accessible name', () => {
+    // The announcement contract, pinned rather than left to a manual pass: the
+    // list owns one listitem per avatar and nothing else, each listitem exposes
+    // exactly one named element, and the tooltip contributes no accessible text
+    // to it (AvatarGroup passes describe={false} — the name comes from the
+    // trigger's own aria-label, and the tooltip is visual only).
+    const { container } = render(AvatarGroup, { avatars: collaborators.slice(0, 3) });
+    const list = container.querySelector<HTMLElement>('.cinder-avatar-group');
+
+    const listItems = Array.from(list?.children ?? []);
+    expect(listItems).toHaveLength(3);
+    expect(listItems.every((child) => child.getAttribute('role') === 'listitem')).toBe(true);
+
+    listItems.forEach((item, index) => {
+      // Exactly one named element per item, and it is the avatar trigger.
+      const named = item.querySelectorAll('[aria-label]');
+      expect(named).toHaveLength(1);
+      expect(named[0]?.getAttribute('aria-label')).toBe(collaborators[index]?.name);
+      expect(named[0]?.tagName).toBe('BUTTON');
+      // No tooltip text inside the item to pollute what the list announces.
+      expect(item.querySelector('[role="tooltip"]')).toBeNull();
+    });
+
+    // And no tooltip anywhere claims to describe a trigger, since describe=false.
+    for (const trigger of container.querySelectorAll('.cinder-avatar-group__trigger')) {
+      expect(trigger.hasAttribute('aria-describedby')).toBe(false);
+    }
+  });
+
+  test('keeps only listitems directly under the list while tooltips are portaled', () => {
+    const { container } = render(AvatarGroup, { avatars: collaborators.slice(0, 2) });
+
+    const list = container.querySelector<HTMLElement>('.cinder-avatar-group');
+    expect(list?.getAttribute('role')).toBe('list');
+    for (const child of Array.from(list?.children ?? [])) {
+      expect(child.getAttribute('role')).toBe('listitem');
+    }
+    for (const tooltip of document.body.querySelectorAll('[role="tooltip"]')) {
+      expect(tooltip.closest('[role="listitem"]')).toBeNull();
+    }
+  });
+
+  test('does not create a focusable tooltip trigger for an empty trimmed name', () => {
+    const { container } = render(AvatarGroup, { avatars: [{ name: '   ' }] });
+
+    const trigger = container.querySelector<HTMLElement>('.cinder-avatar-group__trigger');
+    expect(trigger?.hasAttribute('tabindex')).toBe(false);
+    expect(trigger?.hasAttribute('aria-label')).toBe(false);
+    expect(trigger?.hasAttribute('aria-describedby')).toBe(false);
+    expect(container.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  test('keeps exactly one accessible name on overflow indicators', () => {
+    const { getByRole } = render(AvatarGroup, {
+      avatars: collaborators,
+      maxVisible: 1,
+      overflowLabel: 'Hidden collaborators',
+    });
+
+    expect(getByRole('listitem', { name: 'Hidden collaborators' }).textContent?.trim()).toBe('+5');
+  });
+
+  test('merges custom class and prevents rest props from overriding fixed role', () => {
+    const { container } = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 1),
+      class: 'custom-avatar-group',
+      role: 'presentation',
+      'data-test-id': 'collaborators',
+    });
+
+    const root = container.querySelector<HTMLElement>('.cinder-avatar-group');
+    expect(root?.classList.contains('custom-avatar-group')).toBe(true);
+    expect(root?.getAttribute('role')).toBe('list');
+    expect(root?.getAttribute('data-test-id')).toBe('collaborators');
+  });
+
+  test('root barrel exports AvatarGroup', () => {
+    expect(RootAvatarGroup).toBe(AvatarGroup);
+  });
+});
+
+describe('AvatarGroup accessible name', () => {
+  test('root list carries aria-label defaulting to Collaborators', () => {
+    const { container } = render(AvatarGroup, { avatars: collaborators.slice(0, 2) });
+    const list = container.querySelector('[role="list"]');
+    expect(list?.getAttribute('aria-label')).toBe('Collaborators');
+  });
+
+  test('label prop overrides default accessible name', () => {
+    const { container } = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 2),
+      label: 'Team members',
+    });
+    const list = container.querySelector('[role="list"]');
+    expect(list?.getAttribute('aria-label')).toBe('Team members');
+  });
+
+  test('an explicit consumer aria-label wins over the label default', () => {
+    // ARIA passthrough must work: a consumer-provided aria-label is the
+    // accessible name, not silently clobbered by the 'Collaborators' default.
+    const { container } = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 1),
+      'aria-label': 'Project team',
+    });
+    const list = container.querySelector('[role="list"]');
+    expect(list?.getAttribute('aria-label')).toBe('Project team');
+  });
+
+  test('an explicit aria-label also wins over an explicit label prop', () => {
+    // When both are supplied, the consumer's raw ARIA value takes precedence —
+    // aria-label is the lower-level escape hatch and should not be overridable
+    // by the component's higher-level `label` convenience prop.
+    const { container } = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 1),
+      label: 'Team members',
+      'aria-label': 'Project team',
+    });
+    const list = container.querySelector('[role="list"]');
+    expect(list?.getAttribute('aria-label')).toBe('Project team');
+  });
+
+  // Regression: an empty or whitespace-only consumer aria-label must be treated
+  // as absent and fall back to `label`. Rendering aria-label="" suppresses the
+  // accessible-name computation (ARIA §4.3.2) without naming the region, leaving
+  // a nameless role="list".
+  test('an empty or whitespace-only aria-label falls back to the label', () => {
+    const empty = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 1),
+      'aria-label': '',
+    });
+    expect(empty.container.querySelector('[role="list"]')?.getAttribute('aria-label')).toBe(
+      'Collaborators',
+    );
+
+    const whitespace = render(AvatarGroup, {
+      avatars: collaborators.slice(0, 1),
+      label: 'Team members',
+      'aria-label': '   ',
+    });
+    expect(whitespace.container.querySelector('[role="list"]')?.getAttribute('aria-label')).toBe(
+      'Team members',
+    );
+  });
+});

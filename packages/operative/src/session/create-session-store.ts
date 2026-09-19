@@ -1,8 +1,8 @@
-import type { ConversationHistory } from '@repo/conversationalist';
-import type { JSONValue } from '@repo/interoperability';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices, TypedEventTarget } from '@repo/lifecycle';
-import type { ConditionalTextValueStore } from '@repo/weft';
+import type { ConversationHistory } from '@corvidae/conversationalist';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
+import type { JSONValue } from '@corvidae/tool-protocol';
+import type { ConditionalTextValueStore } from '@corvidae/weft';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';

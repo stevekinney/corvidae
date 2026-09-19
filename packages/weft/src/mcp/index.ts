@@ -2,7 +2,7 @@
  * MCP server support for Weft.
  *
  * This subpath is server/runtime-oriented. Browser-safe entry points remain
- * under `@repo/weft`, `@repo/weft`, and `@repo/weft`.
+ * under `@corvidae/weft`, `@corvidae/weft`, and `@corvidae/weft`.
  *
  * @module mcp
  */

@@ -1,7 +1,7 @@
-import type { Toolbox } from '@repo/armorer';
-import { createToolbox } from '@repo/armorer';
-import { createManualRuntimeServices } from '@repo/lifecycle';
-import { MemoryStorage, textValueStore } from '@repo/weft';
+import type { Toolbox } from '@corvidae/armorer';
+import { createToolbox } from '@corvidae/armorer';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { MemoryStorage, textValueStore } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { GenerateFunction } from '../types';

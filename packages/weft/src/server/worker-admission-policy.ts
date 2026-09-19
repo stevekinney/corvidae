@@ -20,7 +20,7 @@ import type { Principal } from './principal.ts';
  *
  * @example
  * ```ts
- * import type { WorkerAdmissionRequest } from '@repo/weft';
+ * import type { WorkerAdmissionRequest } from '@corvidae/weft';
  *
  * function summarize(request: WorkerAdmissionRequest): string {
  *   return `${request.workerId} -> ${request.manifest.deployment.name}`;
@@ -41,7 +41,7 @@ export type WorkerAdmissionRequest = Readonly<{
  *
  * @example
  * ```ts
- * import type { WorkerAdmissionDecision } from '@repo/weft';
+ * import type { WorkerAdmissionDecision } from '@corvidae/weft';
  *
  * const rejected: WorkerAdmissionDecision = { status: 'rejected', reason: 'unknown fleet' };
  * console.log(rejected.status); // 'rejected'
@@ -59,7 +59,7 @@ export type WorkerAdmissionDecision =
  *
  * @example
  * ```ts
- * import type { WorkerAdmissionPolicy } from '@repo/weft';
+ * import type { WorkerAdmissionPolicy } from '@corvidae/weft';
  *
  * const onlyBilling: WorkerAdmissionPolicy = ({ manifest }) =>
  *   manifest.deployment.name === 'billing'

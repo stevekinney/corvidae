@@ -1,6 +1,6 @@
-import { createTestToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import { createManualRuntimeServices, eventObservable } from '@repo/lifecycle';
+import { createTestToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import { createManualRuntimeServices, eventObservable } from '@corvidae/lifecycle';
 import { file } from 'bun';
 import { describe, expect, it } from 'bun:test';
 
@@ -361,7 +361,7 @@ describe('createResourceScope', () => {
 
     expect(specifiers.length).toBeGreaterThan(0);
     for (const specifier of specifiers) {
-      const allowed = specifier === '@repo/lifecycle' || specifier.startsWith('.');
+      const allowed = specifier === '@corvidae/lifecycle' || specifier.startsWith('.');
       expect(allowed).toBe(true);
     }
   });

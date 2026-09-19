@@ -1,0 +1,41 @@
+{
+  "name": "@corvidae/chat",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts"
+  },
+  "dependencies": {
+    "@corvidae/conversationalist": "workspace:*",
+    "decode-named-character-reference": "catalog:",
+    "micromark-util-decode-numeric-character-reference": "catalog:",
+    "zod": "catalog:",
+    "@corvidae/cinder": "workspace:*",
+    "@corvidae/markdown": "workspace:*",
+    "svelte": "catalog:"
+  },
+  "devDependencies": {
+    "@corvidae/testing": "workspace:*",
+    "@corvidae/typescript": "workspace:*",
+    "@testing-library/svelte": "catalog:",
+    "@types/bun": "catalog:",
+    "ajv": "catalog:",
+    "happy-dom": "catalog:",
+    "oxlint": "catalog:",
+    "postcss": "catalog:",
+    "prettier": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": [
+    "./src/index.ts",
+    "**/*.css",
+    "src/lib/components/*/index.ts"
+  ]
+}

@@ -10,7 +10,7 @@ import type { WebSocketFactory } from './event-stream-transport.ts';
  *
  * @example
  * ```ts
- * import { HttpClient, type HttpClientOptions } from '@repo/weft';
+ * import { HttpClient, type HttpClientOptions } from '@corvidae/weft';
  *
  * const options: HttpClientOptions = {
  *   baseUrl: 'http://localhost:3000',
@@ -93,7 +93,7 @@ export function resolveHttpClientConnection(options: HttpClientOptions): {
  *
  * @example
  * ```ts
- * import { HttpClient, HttpClientError } from '@repo/weft';
+ * import { HttpClient, HttpClientError } from '@corvidae/weft';
  *
  * const client = new HttpClient({ baseUrl: 'http://localhost:3000' });
  * try {

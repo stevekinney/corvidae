@@ -1,6 +1,6 @@
-import { createConversationHistory } from '@repo/conversationalist';
-import { TypedEventTarget } from '@repo/lifecycle';
-import { MemoryStorage, textValueStore, workflow, yieldToPortableEventLoop } from '@repo/weft';
+import { createConversationHistory } from '@corvidae/conversationalist';
+import { TypedEventTarget } from '@corvidae/lifecycle';
+import { MemoryStorage, textValueStore, workflow, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createAgentSession } from '../agent-session';

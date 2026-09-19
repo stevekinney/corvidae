@@ -3,7 +3,7 @@
 // `tsc --noEmit` only; it is not a runtime Bun test (see the convention
 // note in create-agent.test-d.ts).
 
-import type { ToolCallReturn } from '@repo/armorer';
+import type { ToolCallReturn } from '@corvidae/armorer';
 import { z } from 'zod';
 
 import type { SuccessfulRunResult } from './agent-run';

@@ -1,11 +1,11 @@
-import { createDefaultRuntimeServices, type RuntimeClock } from '@repo/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeClock } from '@corvidae/lifecycle';
 import type {
   SteeringCommand,
   SteeringCommandFailure,
   SteeringCommandState,
   SteeringGate,
   SteeringRequestedValue,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 /**
  * AB-199 — the caller-facing admission request for {@link Bureau.submitSteeringCommand}.

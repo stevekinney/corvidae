@@ -20,8 +20,8 @@ type TapEffect<TOutput> = (output: TOutput, context: ToolContext) => void | Prom
  *
  * @example Logging tool output
  * ```typescript
- * import { createTool } from '@repo/armorer';
- * import { tap } from '@repo/armorer';
+ * import { createTool } from '@corvidae/armorer';
+ * import { tap } from '@corvidae/armorer';
  * import { z } from 'zod';
  *
  * const fetchUser = createTool({

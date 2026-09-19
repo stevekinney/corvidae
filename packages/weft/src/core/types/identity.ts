@@ -10,7 +10,7 @@
  *
  * @example
  * ```ts
- * import { workflow, Engine, type WorkflowId } from '@repo/weft';
+ * import { workflow, Engine, type WorkflowId } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'ping' }).execute(async function* () { return 'pong'; }));
@@ -42,7 +42,7 @@ export type OperationId = string;
  *
  * @example
  * ```ts
- * import { Engine, type FailureCategory } from '@repo/weft';
+ * import { Engine, type FailureCategory } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * // Query all workflows that failed due to a timeout:

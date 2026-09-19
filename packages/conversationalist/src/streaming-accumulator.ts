@@ -189,7 +189,7 @@ function createBlockAccumulator(initial: BlockAccumulatorState): BlockAccumulato
  *
  * @example
  * ```ts
- * import { createStreamingAccumulator } from '@repo/conversationalist';
+ * import { createStreamingAccumulator } from '@corvidae/conversationalist';
  *
  * const acc = createStreamingAccumulator();
  *

@@ -3,7 +3,7 @@
  *
  * Split out of `interface.ts` so the ownership key builders can reuse them
  * without an import cycle: `interface.ts` re-exports everything here, so the
- * public surface (`@repo/weft`) is unchanged.
+ * public surface (`@corvidae/weft`) is unchanged.
  *
  * @module storage/key-encoding
  */
@@ -13,7 +13,7 @@
  *
  * @example
  * ```ts
- * import { encodeStorageKeyComponent } from '@repo/weft';
+ * import { encodeStorageKeyComponent } from '@corvidae/weft';
  *
  * const safe = encodeStorageKeyComponent('user:123/profile');
  * console.log(safe); // 'user%3A123%2Fprofile'
@@ -32,7 +32,7 @@ export function encodeStorageKeyComponent(value: string): string {
  *
  * @example
  * ```ts
- * import { encodeStorageKeyComponent, decodeStorageKeyComponent } from '@repo/weft';
+ * import { encodeStorageKeyComponent, decodeStorageKeyComponent } from '@corvidae/weft';
  *
  * const encoded = encodeStorageKeyComponent('user:123');
  * const decoded = decodeStorageKeyComponent(encoded);
@@ -49,7 +49,7 @@ export function decodeStorageKeyComponent(value: string): string {
  *
  * @example
  * ```ts
- * import { tryDecodeStorageKeyComponent } from '@repo/weft';
+ * import { tryDecodeStorageKeyComponent } from '@corvidae/weft';
  *
  * console.log(tryDecodeStorageKeyComponent('user%3A123')); // 'user:123'
  * console.log(tryDecodeStorageKeyComponent('%GG'));        // null
@@ -72,7 +72,7 @@ export function tryDecodeStorageKeyComponent(value: string): string | null {
  *
  * @example
  * ```ts
- * import { formatSortableStorageTimestamp } from '@repo/weft';
+ * import { formatSortableStorageTimestamp } from '@corvidae/weft';
  *
  * console.log(formatSortableStorageTimestamp(1700000000000)); // '0001700000000000'
  * ```

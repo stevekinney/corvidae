@@ -4,7 +4,7 @@
  *
  * @example
  * ```ts
- * import type { JSONPrimitive } from '@repo/weft';
+ * import type { JSONPrimitive } from '@corvidae/weft';
  *
  * const value: JSONPrimitive = 'ready';
  * ```
@@ -17,7 +17,7 @@ export type JSONPrimitive = string | number | boolean | null;
  *
  * @example
  * ```ts
- * import type { JSONValue } from '@repo/weft';
+ * import type { JSONValue } from '@corvidae/weft';
  *
  * const value: JSONValue = { count: 1, tags: ['ready'] };
  * ```
@@ -31,7 +31,7 @@ export type JSONValue = JSONPrimitive | ReadonlyArray<JSONValue> | { [key: strin
  *
  * @example
  * ```ts
- * import { isJSONValue } from '@repo/weft';
+ * import { isJSONValue } from '@corvidae/weft';
  *
  * isJSONValue({ count: 1, tags: ['ready'] }); // true
  * isJSONValue(new Date());                    // false
@@ -62,7 +62,7 @@ export function isJSONValue(value: unknown): value is JSONValue {
  *
  * @example
  * ```ts
- * import { normalizeJSONValue } from '@repo/weft';
+ * import { normalizeJSONValue } from '@corvidae/weft';
  *
  * normalizeJSONValue({ count: 1 });        // { count: 1 }
  * normalizeJSONValue(new Error('boom'));    // { name: 'Error', message: 'boom' }

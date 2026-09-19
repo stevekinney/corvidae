@@ -1,8 +1,8 @@
 // Type-level contract for AB-21. This file is checked by `tsc --noEmit`; it
 // is not a runtime Bun test.
 
-import { createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { z } from 'zod';
 
 import type { AgentRun } from './agent-run';

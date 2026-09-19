@@ -1,6 +1,6 @@
-import type { Conversation } from '@repo/conversationalist';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { Conversation } from '@corvidae/conversationalist';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import { estimateCost, getModelPricing } from './cost-estimation';
 import {

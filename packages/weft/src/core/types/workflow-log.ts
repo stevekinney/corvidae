@@ -13,7 +13,7 @@
  *
  * @example
  * ```ts
- * import type { WorkflowLogLevel } from '@repo/weft';
+ * import type { WorkflowLogLevel } from '@corvidae/weft';
  * const isError = (level: WorkflowLogLevel) => level === 'error';
  * ```
  */
@@ -30,7 +30,7 @@ export type WorkflowLogLevel = 'debug' | 'info' | 'warn' | 'error';
  *
  * @example
  * ```ts
- * import { Engine, type WorkflowLogRecord } from '@repo/weft';
+ * import { Engine, type WorkflowLogRecord } from '@corvidae/weft';
  * const engine = new Engine({ onLog: (r: WorkflowLogRecord) => console.log(r.level, r.message) });
  * ```
  */
@@ -76,7 +76,7 @@ export interface WorkflowLogRecord {
  *
  * @example
  * ```ts
- * import { workflow, type WorkflowContext, type WorkflowLogger } from '@repo/weft';
+ * import { workflow, type WorkflowContext, type WorkflowLogger } from '@corvidae/weft';
  *
  * const myWorkflow = workflow({ name: 'my-workflow' }).execute(async function* (
  *   ctx: WorkflowContext,

@@ -1,4 +1,4 @@
-import type { Conversation } from '@repo/conversationalist';
+import type { Conversation } from '@corvidae/conversationalist';
 
 import type { Scratchpad } from './create-scratchpad';
 import type { OnStepHook, PrepareStepHook, StepResult } from './types';

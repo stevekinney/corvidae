@@ -17,7 +17,7 @@ import {
  *
  * @example
  * ```ts
- * import { authContextToPrincipal } from '@repo/weft';
+ * import { authContextToPrincipal } from '@corvidae/weft';
  *
  * const principal = authContextToPrincipal({ method: 'api-key' });
  * console.log(principal.method); // 'api-key'

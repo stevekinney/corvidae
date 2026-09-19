@@ -1,4 +1,0 @@
-{
-  "extends": "@repo/typescript-configuration/library.json",
-  "include": ["consumer.ts", "weft.generated.d.ts"]
-}

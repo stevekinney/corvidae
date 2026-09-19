@@ -28,7 +28,7 @@
  *
  * @example
  * ```ts
- * import { type RateLimitConfig } from '@repo/weft';
+ * import { type RateLimitConfig } from '@corvidae/weft';
  *
  * const rateLimit: RateLimitConfig = {
  *   maxRequests: 100,
@@ -55,7 +55,7 @@ export type RateLimitConfig = {
  *
  * @example
  * ```ts
- * import { type RateLimitDecision } from '@repo/weft';
+ * import { type RateLimitDecision } from '@corvidae/weft';
  *
  * function describe(decision: RateLimitDecision): string {
  *   return decision.allowed ? 'ok' : `retry after ${decision.retryAfterSeconds}s`;
@@ -82,7 +82,7 @@ export type RateLimitDecision = {
  *
  * @example
  * ```ts
- * import { createRateLimiter, type RateLimiter } from '@repo/weft';
+ * import { createRateLimiter, type RateLimiter } from '@corvidae/weft';
  *
  * const limiter: RateLimiter = createRateLimiter({ maxRequests: 2, windowMs: 1_000 });
  * console.log(limiter.check('caller-1').allowed); // true
@@ -111,7 +111,7 @@ const DEFAULT_MAX_TRACKED_KEYS = 10_000;
  *
  * @example
  * ```ts
- * import { validateRateLimitConfig } from '@repo/weft';
+ * import { validateRateLimitConfig } from '@corvidae/weft';
  *
  * validateRateLimitConfig({ maxRequests: 100, windowMs: 60_000 });
  * console.log('config is valid');
@@ -139,7 +139,7 @@ export function validateRateLimitConfig(config: RateLimitConfig): void {
  *
  * @example
  * ```ts
- * import { createRateLimiter } from '@repo/weft';
+ * import { createRateLimiter } from '@corvidae/weft';
  *
  * let clock = 0;
  * const limiter = createRateLimiter({ maxRequests: 1, windowMs: 1_000 }, () => clock);

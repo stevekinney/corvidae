@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 import type { ApprovalAdmissionRollback } from './internal/approval-resume';
 import { approvalConsumeSymbol } from './internal/approval-resume';
 import { signPendingApproval } from './toolbox-approval';

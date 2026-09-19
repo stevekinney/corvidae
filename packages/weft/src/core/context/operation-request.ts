@@ -10,7 +10,7 @@ import type { OffloadReference, StreamSink } from './types.ts';
  *
  * @example
  * ```ts
- * import { activity, Context, type ContextOperationRequest } from '@repo/weft';
+ * import { activity, Context, type ContextOperationRequest } from '@corvidae/weft';
  *
  * const ping = activity({ name: 'ping', execute: async (input: unknown) => input });
  * const ctx = new Context({

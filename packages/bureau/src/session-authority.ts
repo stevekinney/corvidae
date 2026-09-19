@@ -1,4 +1,4 @@
-import type { JSONValue } from '@repo/operative';
+import type { JSONValue } from '@corvidae/operative';
 
 /**
  * Resolves what a session's metadata records about its most recent run's

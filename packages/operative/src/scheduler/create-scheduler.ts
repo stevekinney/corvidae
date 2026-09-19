@@ -1,5 +1,5 @@
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import type { ActiveRun } from '../create-run';
 import { createActiveRun } from '../create-run';
@@ -74,7 +74,7 @@ export interface CreateSchedulerOptions {
    * tracking. Resolved exactly once at construction — omitted, this
    * scheduler reads the real globals via `createDefaultRuntimeServices()`;
    * a test composes its own deterministic instance with
-   * `createManualRuntimeServices()` from `@repo/operative` so
+   * `createManualRuntimeServices()` from `@corvidae/operative` so
    * `sleep()`/idle-delay timing and task ids are fully time-controlled.
    */
   runtime?: RuntimeServices | undefined;

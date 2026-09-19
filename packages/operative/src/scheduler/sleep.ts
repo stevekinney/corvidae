@@ -1,5 +1,5 @@
-import type { RuntimeTimers } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { RuntimeTimers } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 // Resolved once, lazily, at module scope — not per call. `createDefaultRuntimeServices()`
 // also sets up identifier and deferred-work tracking state that a bare `timers` seam never

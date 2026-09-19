@@ -15,9 +15,9 @@
  * manually-resolved gate double (`createTestSteeringGate` below), never a
  * `setTimeout`.
  */
-import { createTestToolbox, createTool } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import { createManualRuntimeServices, HookRegistry } from '@repo/lifecycle';
+import { createTestToolbox, createTool } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import { createManualRuntimeServices, HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

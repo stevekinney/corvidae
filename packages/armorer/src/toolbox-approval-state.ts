@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 import type { ApprovalState, ApprovalStateStore } from './approval-binding';
 import type { ToolboxExecuteOptions } from './toolbox-contracts';
 import type { SignedPendingToolApproval, ToolExecutionResult } from './types';

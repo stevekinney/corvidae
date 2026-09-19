@@ -1,0 +1,9 @@
+{
+  "extends": "@corvidae/typescript/library.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src", "scripts", "tests", "playwright.config.ts", "fixtures"]
+}

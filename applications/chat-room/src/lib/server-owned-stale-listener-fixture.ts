@@ -19,12 +19,12 @@
  * Run as a child process, never imported by a route.
  */
 import { writeFileSync } from 'node:fs';
+import { readFixtureEnvironment } from './environment-configuration.ts';
 
 const SIGNALS_SLOT = Symbol.for('cinder.chat-room.server-owned.signals');
 const LISTENERS_SLOT = Symbol.for('cinder.chat-room.server-owned.signal-listeners');
 
-const staleMarker = process.env['STALE_MARKER'] ?? '';
-const teardownMarker = process.env['TEARDOWN_MARKER'] ?? '';
+const { staleMarker = '', teardownMarker = '' } = readFixtureEnvironment();
 
 const host = globalThis as Record<symbol, unknown>;
 

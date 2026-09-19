@@ -1,8 +1,8 @@
 /**
  * Stable, machine-readable discriminant for every Weft error class that is
- * part of the public API (re-exported from `@repo/weft`). Each value equals the
+ * part of the public API (re-exported from `@corvidae/weft`). Each value equals the
  * throwing class's name and is safe to `switch` on exhaustively. Errors not
- * exported from `@repo/weft` carry internal codes that are intentionally absent
+ * exported from `@corvidae/weft` carry internal codes that are intentionally absent
  * from this union and may change between releases.
  *
  * Prefer comparing `error.code` (or {@link isWeftErrorLike}) over `instanceof`
@@ -14,7 +14,7 @@
  *
  * @example
  * ```ts
- * import { isWeftErrorLike, type WeftErrorCode } from '@repo/weft';
+ * import { isWeftErrorLike, type WeftErrorCode } from '@corvidae/weft';
  *
  * function statusFor(error: unknown): number {
  *   if (isWeftErrorLike(error)) {
@@ -92,7 +92,7 @@ export type WeftErrorCode =
  *
  * @example
  * ```ts
- * import { WeftError } from '@repo/weft';
+ * import { WeftError } from '@corvidae/weft';
  *
  * function describe(error: unknown): string {
  *   return error instanceof WeftError ? `${error.code}: ${error.message}` : 'unknown';
@@ -184,7 +184,7 @@ const PUBLIC_WEFT_ERROR_CODES = new Set<string>(Object.keys(publicWeftErrorCodeM
  *
  * @example
  * ```ts
- * import { isWeftError } from '@repo/weft';
+ * import { isWeftError } from '@corvidae/weft';
  *
  * function logFrom(error: unknown): string {
  *   return isWeftError(error) ? `[${error.code}] ${error.message}` : 'non-weft error';
@@ -206,7 +206,7 @@ export function isWeftError(value: unknown): value is WeftError {
  *
  * @example
  * ```ts
- * import { isWeftErrorCode } from '@repo/weft';
+ * import { isWeftErrorCode } from '@corvidae/weft';
  *
  * function isPublicCode(code: string): boolean {
  *   return isWeftErrorCode(code);
@@ -237,7 +237,7 @@ export function isWeftErrorCode(value: unknown): value is WeftErrorCode {
  *
  * @example
  * ```ts
- * import { isWeftErrorLike } from '@repo/weft';
+ * import { isWeftErrorLike } from '@corvidae/weft';
  *
  * function statusFor(error: unknown): number {
  *   if (isWeftErrorLike(error)) {
@@ -286,7 +286,7 @@ export function isWeftErrorLike(value: unknown): value is { code: WeftErrorCode;
  *
  * @example
  * ```ts
- * import { isWeftFault } from '@repo/weft';
+ * import { isWeftFault } from '@corvidae/weft';
  *
  * // The same branch holds over LocalClient and HttpClient: a missing workflow
  * // is a no-op success ("nothing to tell"), not a failure to re-raise.

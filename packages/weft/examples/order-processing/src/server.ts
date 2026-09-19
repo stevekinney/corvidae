@@ -1,10 +1,12 @@
-import { BunSQLiteStorage, Engine, serve } from '@repo/weft';
+import { BunSQLiteStorage, Engine, serve } from '@corvidae/weft';
+import { resolveExampleEnvironment } from '../../environment-configuration.ts';
 
 import { createOrderProcessingEngine, orderProcessingSchedule } from './registry';
 
-const port = Number(Bun.env['PORT'] ?? 7321);
-const hostname = Bun.env['HOST'] ?? '127.0.0.1';
-const databasePath = Bun.env['WEFT_DATABASE_PATH'] ?? './order-processing.sqlite';
+const environment = resolveExampleEnvironment();
+const port = environment.port;
+const hostname = environment.host ?? '127.0.0.1';
+const databasePath = environment.weftDatabasePath ?? './order-processing.sqlite';
 
 if (import.meta.main) {
   using storage = new BunSQLiteStorage(databasePath);

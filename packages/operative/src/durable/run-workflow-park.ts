@@ -1,6 +1,6 @@
-import { Conversation } from '@repo/conversationalist';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
-import type { NormalizeActivities, WorkflowContext, WorkflowOperation } from '@repo/weft';
+import { Conversation } from '@corvidae/conversationalist';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { NormalizeActivities, WorkflowContext, WorkflowOperation } from '@corvidae/weft';
 
 import type { FinishReason } from '../types';
 import {

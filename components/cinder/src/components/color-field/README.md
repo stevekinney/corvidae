@@ -1,0 +1,97 @@
+# ColorField
+
+A text input that validates and normalizes hex, `rgb()`, `hsl()`, `hwb()`, and `oklch()` color strings into a canonical value emitted on blur — hex by default, or another CSS Color 4 format via `format`. Compose it with `FormField` for label and external-error display, and pair it with `ColorPicker` when users need both visual selection and exact entry.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { ColorField } from '@corvidae/cinder';
+  import { FormField } from '@corvidae/cinder';
+
+  let color = $state('#3366ff');
+</script>
+
+<FormField id="accent" label="Accent color">
+  <ColorField id="accent" value={color} onValueChange={(next) => (color = next)} />
+</FormField>
+```
+
+`value` is bindable. Use `bind:value` when parent state should track the committed canonical value, or pass `value` with `onValueChange` when you want to persist commits explicitly.
+
+## Behavior
+
+- **Validation happens on blur**, not on every keystroke, so users can type intermediate values like `#ab` without seeing the error flicker.
+- The emitted value's syntax is controlled by `format` (default `'hex'`; `'rgb'`, `'hsl'`, `'hwb'`, and `'oklch'` are also available). Hex output is always lowercase: `#rrggbb` unless `alpha={true}` and the parsed value has partial alpha — then it's `#rrggbbaa`. Every other format uses modern space-separated CSS Color 4 syntax with slash alpha (e.g. `oklch(l c h / a)`). Each format decides "opaque" using its own quantization, not literally alpha `=== 1`: hex omits the alpha byte once it rounds to `0xff` (any alpha `>= ~0.998`), while every other format omits `/ a` once alpha rounds to `1` at 4 decimal places (any alpha `>= 0.99995`). Opaque inputs never gain a spurious alpha suffix in any format.
+- `formats` (plural) gates _accepted input_ syntax independently of `format` (singular, output) — a consumer can accept `oklch()` input while still emitting hex, for example. The configured `format` is always an implicit member of the accepted-input set too, regardless of what `formats` lists — the field must be able to parse back the exact syntax it just emitted, so `formats={['hex']}` with `format="rgb"` still accepts user-entered `rgb()` values. Don't rely on `formats` to exclude the configured output format's syntax.
+- When `alpha={false}` (default), alpha-bearing input (`#RRGGBBAA`, `rgba()`, `hsla()`, or a translucent `oklch()`/`hwb()`) is parsed but alpha is stripped on emit, uniformly across every `format`.
+- The trailing color swatch reads `committedHex` only. It never reflects unparsed text, so a malformed string never paints arbitrary content into the DOM.
+- Pressing **Enter** commits the value. With `enterBehavior='commit-then-submit'` (default), the field then calls `form.requestSubmit()` on the associated form. With `enterBehavior='commit-only'`, submission is suppressed.
+
+## Value ownership
+
+- **Bindable state**: `bind:value` updates only after a successful commit. Intermediate keystrokes stay local so users can type partial values like `#ab` without pushing invalid state to the parent.
+- **Explicit commit handling**: `onValueChange` fires when a successful commit changes the committed value (in the configured `format`'s syntax). It is not forwarded to the inner native `<input>`.
+- **External updates**: setting `value` from the parent reconciles the visible text. Invalid external strings remain visible and raise the parse error instead of silently clearing.
+
+## Form participation
+
+The component renders a single sibling `<input type="hidden">` that serves two purposes. When `name` is set, that input carries the `name` attribute and mirrors the current committed value (in the configured `format`'s syntax) so it participates in native form submission. When `name` is not set, the same input still renders (without a `name`) and acts purely as the anchor used to attach a `reset` listener to the surrounding form. Either way, uncontrolled fields revert to `value` on form reset (no `onValueChange` is fired; reset is observable through native form events). Controlled fields do nothing on reset internally; the parent's reset handler updates `value` and the effect reconciles.
+
+Parse errors propagate to the visible `<input>` via `setCustomValidity`, so invalid text participates in HTML constraint validation whether the user pressed Enter or clicked a submit button.
+
+Moving the component across forms at runtime is not supported in v1.
+
+## Limitations
+
+- Intake accepts both legacy comma syntax (`rgb(r, g, b)`) and modern space-separated syntax with slash alpha (`rgb(r g b / a)`, `hsl(h s l / a)`) for every accepted format, including whatever the field's own `format` emits — round-tripping an emitted value back into the field always parses.
+- `rgb()` percent components are rounded to the nearest 0–255 byte.
+- `commit-then-submit` selects the first non-disabled `[type="submit"]` (or unmarked `<button>`) in document order, matching the common case but not every native browser nuance. Forms needing full fidelity should use `enterBehavior='commit-only'` and orchestrate `requestSubmit(submitter)` themselves.
+- The component contributes a form value only when `name` is set — just like a native `<input>` without `name`. Pressing Enter on a field without a `name` still commits and submits, but no color appears in `FormData`.
+- `oninput` is not exposed. The component owns the blur-time commit pipeline; intermediate keystrokes are intentionally not surfaced as a value callback.
+
+## Errors and accessibility
+
+- Parse errors are owned by `ColorField` and rendered by the inner `Input`. The native `<input>` carries `aria-invalid="true"` and an `aria-describedby` that references the inline error message.
+- When wrapped in a `FormField` with its own `error="..."`, both error texts render and both ids appear in `aria-describedby` without collision — the `Input` allocates a distinct id when its own error would collide with the context's error id.
+- The trailing swatch is decorative: it is `aria-hidden="true"`.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `alpha` | `boolean` | no | — | Accept and emit alpha when the parsed value has partial alpha. When `false` (default), alpha-bearing input (`#RRGGBBAA`, `rgba()`, `hsla()`, or a translucent `oklch()`/`hwb()`) is parsed but alpha is stripped on emit, uniformly across every `format` — not a hex-only concern. |
+| `aria-label` | `string` | no | — | Accessible label applied directly to the inner `<input>` when no `FormField` wraps it. |
+| `aria-labelledby` | `string` | no | — | Id of an external element that labels the inner `<input>`. |
+| `class` | `string` | no | — | Additional classes merged onto the **outer wrapper** root (`.cinder-color-field`). |
+| `disabled` | `boolean` | no | — | Disable the input. |
+| `enterBehavior` | `"commit-then-submit"` \| `"commit-only"` | no | — | Commit-on-Enter behavior. Default `'commit-then-submit'`: - `'commit-then-submit'`: Enter commits the value, then lets the form's native submission proceed via `requestSubmit`. - `'commit-only'`: Enter commits and `preventDefault()`s, suppressing form submission (useful in dialogs / multi-field flows where Enter must not submit). |
+| `errorMessage` | `string` | no | — | Override the default parse-failure error message. |
+| `format` | `"hex"` \| `"rgb"` \| `"hsl"` \| `"hwb"` \| `"oklch"` | no | — | Output color format for the committed/emitted value. Default `'hex'`. Purely additive — existing consumers relying on the hex default are unaffected. `value` stays a plain string regardless of format. `lab` is deliberately excluded. Implicitly widens the accepted _input_ set too — see `formats` above. |
+| `formats` | (`"hex"` \| `"rgb"` \| `"rgba"` \| `"hsl"` \| `"hsla"` \| `"hwb"` \| `"oklch"`)[] | no | — | Accepted _input_ formats. Defaults to `['hex', 'rgb', 'hsl', 'hwb']`; rgba/hsla aliases can be restricted independently. Add `'oklch'` to accept `oklch()` input strings. The configured `format` (below) is always an implicitly accepted input format too, regardless of what's listed here — the field must be able to parse back the exact syntax it just emitted, so e.g. `formats={['hex']}` with `format="rgb"` still accepts user-entered `rgb()` values. Don't rely on `formats` to exclude the configured output format's syntax. This implicit widening admits ONLY the configured format's own exact syntax, never a legacy alias — `formats={['hex']}` with `format="rgb"` still rejects `rgba()` input unless `'rgba'` (or `'rgb'`) is explicitly listed in `formats` too. |
+| `id` | `string` | yes | — | Inner `<input>` id. Required (mirrors Input). |
+| `name` | `string` | no | — | Form field name. When set, the hidden mirror input contributes the current committed value — in the configured `format`'s syntax — to native form submission. |
+| `placeholder` | `string` | no | — | Placeholder text for the inner `<input>`. |
+| `readonly` | `boolean` | no | — | Render the inner `<input>` as read-only. |
+| `required` | `boolean` | no | — | Mark the input as required for form submission and a11y. |
+| `value` | `string` | no | — | Bindable value, committed in the syntax the configured `format` prop selects (plain hex by default; modern CSS Color 4 syntax for the other formats — see `format`). Accepts any color string the configured `formats` allow when set externally, plus whatever syntax `format` itself uses (see `formats` below — the configured output format is always an implicitly accepted input format too). |
+| `onValueChange` | `(opaque)` | no | — | Fires on successful blur-time commit when the committed value — in the configured `format`'s syntax — actually changes. Value callback by repo convention — not forwarded to the inner native `<input>`. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

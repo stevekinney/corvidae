@@ -1,0 +1,457 @@
+/// <reference lib="dom" />
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { createRawSnippet, tick } from 'svelte';
+
+import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+
+setupHappyDom();
+
+const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
+const { default: FocusTrap } = await import('./focus-trap.svelte');
+
+const focusTrapChildren = createRawSnippet(() => ({
+  render: () => `
+    <div>
+      <button data-testid="first-button">First</button>
+      <button data-testid="last-button">Last</button>
+    </div>
+  `,
+}));
+
+const initialFocusChildren = createRawSnippet(() => ({
+  render: () => `
+    <div>
+      <button data-testid="first-button">First</button>
+      <button data-testid="initial-button">Initial</button>
+    </div>
+  `,
+}));
+
+const unfocusableInitialFocusChildren = createRawSnippet(() => ({
+  render: () => `
+    <div>
+      <div data-testid="unfocusable-target">Unfocusable</div>
+      <button data-testid="first-button">First</button>
+    </div>
+  `,
+}));
+
+const fallbackFocusChildren = createRawSnippet(() => ({
+  // Fallback targets need an explicit `tabindex` (commonly `-1`) so they can accept programmatic
+  // focus without entering the Tab order — `.focus()` is a no-op on a plain `<div>`.
+  render: () => '<div data-testid="fallback-target" tabindex="-1">Fallback</div>',
+}));
+
+// A `tabindex="-2"` element is programmatically focusable but NOT reachable via
+// sequential Tab. It is placed AFTER the real last button so that, if the trap
+// wrongly counted it as tabbable, it would become the "last" boundary element.
+const negativeTabindexChildren = createRawSnippet(() => ({
+  render: () => `
+    <div>
+      <button data-testid="first-button">First</button>
+      <button data-testid="last-button">Last</button>
+      <div data-testid="negative-tabindex" tabindex="-2">Not tabbable</div>
+    </div>
+  `,
+}));
+
+beforeEach(() => {
+  document.body.replaceChildren();
+});
+
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+});
+
+describe('FocusTrap', () => {
+  test('wraps Tab from the last element to the first', async () => {
+    const { getByTestId } = render(FocusTrap, {
+      props: { children: focusTrapChildren },
+    });
+
+    const first = requiredInstance(getByTestId('first-button'), HTMLButtonElement);
+    const last = requiredInstance(getByTestId('last-button'), HTMLButtonElement);
+    await tick();
+    last.focus();
+
+    await fireEvent.keyDown(last, { key: 'Tab' });
+
+    expect(document.activeElement).toBe(first);
+  });
+
+  test('wraps Shift+Tab from the first element to the last', async () => {
+    const { getByTestId } = render(FocusTrap, {
+      props: { children: focusTrapChildren },
+    });
+
+    const first = requiredInstance(getByTestId('first-button'), HTMLButtonElement);
+    const last = requiredInstance(getByTestId('last-button'), HTMLButtonElement);
+    await tick();
+    first.focus();
+
+    await fireEvent.keyDown(first, { key: 'Tab', shiftKey: true, bubbles: true });
+
+    expect(document.activeElement).toBe(last);
+  });
+
+  test('excludes negative tabindex (other than -1) from the tab-wrap boundary', async () => {
+    // Regression: the tabbable filter rejected only `tabindex="-1"`, so a
+    // `tabindex="-2"` element after the last button was counted as the "last"
+    // tabbable and corrupted the wrap boundary. Tab from the real last button
+    // must still wrap to first, and the negative-tabindex node never gets focus.
+    const { getByTestId } = render(FocusTrap, {
+      props: { children: negativeTabindexChildren },
+    });
+
+    const first = requiredInstance(getByTestId('first-button'), HTMLButtonElement);
+    const last = requiredInstance(getByTestId('last-button'), HTMLButtonElement);
+    await tick();
+    last.focus();
+
+    await fireEvent.keyDown(last, { key: 'Tab' });
+
+    expect(document.activeElement).toBe(first);
+    expect(document.activeElement).not.toBe(getByTestId('negative-tabindex'));
+  });
+
+  test('restores focus to the previously focused element on teardown', async () => {
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(FocusTrap, {
+      props: { children: focusTrapChildren },
+    });
+
+    await tick();
+    unmount();
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test('falls back when the element that opened the trap was removed while it was open', async () => {
+    // The overlay-outlives-its-opener case: a popover opened from a list item,
+    // and the action taken inside the popover deletes that item. `restoreFocusTo`
+    // correctly refuses to focus a disconnected node, so without a fallback
+    // focus lands on <body> — silence for a screen reader, and a keyboard user
+    // restarted at the top of the document.
+    const fallback = document.createElement('button');
+    fallback.setAttribute('data-testid', 'restore-fallback');
+    document.body.appendChild(fallback);
+
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(FocusTrap, {
+      props: {
+        restoreFallback: '[data-testid="restore-fallback"]',
+        children: focusTrapChildren,
+      },
+    });
+
+    await tick();
+
+    // The opener goes away while the trap is still open, exactly as deleting the
+    // item would remove it.
+    trigger.remove();
+    unmount();
+
+    expect(document.activeElement).toBe(fallback);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  test('does not use the fallback when the original element can still take focus back', async () => {
+    // Guards the direction of the change: supplying `restoreFallback` must never
+    // hijack a restore that would have worked. Without this, a fallback that
+    // fired unconditionally would pass the test above while breaking every
+    // ordinary open/close.
+    const fallback = document.createElement('button');
+    fallback.setAttribute('data-testid', 'restore-fallback');
+    document.body.appendChild(fallback);
+
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(FocusTrap, {
+      props: {
+        restoreFallback: '[data-testid="restore-fallback"]',
+        children: focusTrapChildren,
+      },
+    });
+
+    await tick();
+    unmount();
+
+    expect(document.activeElement).toBe(trigger);
+    expect(document.activeElement).not.toBe(fallback);
+  });
+
+  // NOT PINNED HERE, stated rather than quietly omitted: `deactivate()` also
+  // confirms `document.activeElement === candidate` before accepting a restore,
+  // because `restoreFocusTo` reports success whenever `.focus()` did not throw —
+  // which is also true for a still-connected element that has since become
+  // `disabled` or `inert` and cannot actually take focus.
+  //
+  // That branch is unreachable under this suite's DOM. happy-dom focuses every
+  // element handed to it: measured here, `.focus()` lands on a disabled button,
+  // a hidden button, an inert button, a plain `<div>`, and a `<div>` whose
+  // `tabindex` was removed — all five report `document.activeElement === el`,
+  // where a real browser refuses all five. A test written against any of them
+  // would be measuring happy-dom, not this code. See
+  // `components/cinder/src/test/happy-dom.ts` for the recorded limitation.
+  //
+  // The reachable half — a DISCONNECTED captured element — is pinned above, and
+  // is the case the bug was filed for.
+
+  test('prefers the fallback when the host says the captured element is on its way out', async () => {
+    // The asynchronous-removal window: a server-backed delete closes the overlay
+    // immediately while the item that opened it is still on screen awaiting the
+    // response. Ordinary restoration finds that item perfectly focusable, hands
+    // focus back, and then watches it unmount — landing on <body> after all,
+    // with the fallback never consulted.
+    const fallback = document.createElement('button');
+    fallback.setAttribute('data-testid', 'restore-fallback');
+    document.body.appendChild(fallback);
+
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(FocusTrap, {
+      props: {
+        restoreFallback: '[data-testid="restore-fallback"]',
+        preferRestoreFallback: true,
+        children: focusTrapChildren,
+      },
+    });
+
+    await tick();
+    unmount();
+
+    // The trigger is STILL CONNECTED here, which is the whole point: without the
+    // preference this restores to it and the fallback is never reached.
+    expect(trigger.isConnected).toBe(true);
+    expect(document.activeElement).toBe(fallback);
+  });
+
+  test('still restores to the captured element when a preferred fallback cannot take focus', async () => {
+    // Preference reorders the candidates; it does not discard one. A fallback
+    // that has gone missing must not cost the restore that would have worked.
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(FocusTrap, {
+      props: {
+        restoreFallback: '[data-testid="not-in-the-document"]',
+        preferRestoreFallback: true,
+        children: focusTrapChildren,
+      },
+    });
+
+    await tick();
+    unmount();
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test('ignores a fallback that cannot accept focus, rather than reporting success', async () => {
+    // `restoreFallback` is resolved through the same programmatic-focusability
+    // check as the other targets: focusing a plain <div> is a silent no-op, so
+    // accepting one would leave focus on <body> while looking like it worked.
+    const unfocusable = document.createElement('div');
+    unfocusable.setAttribute('data-testid', 'unfocusable-fallback');
+    document.body.appendChild(unfocusable);
+
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(FocusTrap, {
+      props: {
+        restoreFallback: '[data-testid="unfocusable-fallback"]',
+        children: focusTrapChildren,
+      },
+    });
+
+    await tick();
+    trigger.remove();
+    unmount();
+
+    expect(document.activeElement).not.toBe(unfocusable);
+  });
+
+  test('focuses the requested initial focus target on mount', async () => {
+    const { getByTestId } = render(FocusTrap, {
+      props: {
+        initialFocus: '[data-testid="initial-button"]',
+        children: initialFocusChildren,
+      },
+    });
+
+    await tick();
+
+    expect(document.activeElement).toBe(getByTestId('initial-button'));
+  });
+
+  test('falls back when initialFocus points at an unfocusable element', async () => {
+    // Regression for Bugbot finding on PR #150: `isProgrammaticallyFocusable` previously only
+    // filtered hidden/disabled — a plain `<div>` or `<h2>` (no tabindex, no native focus) passed
+    // the check, but `.focus()` is a no-op on it in real browsers, silently leaving focus outside
+    // the trap. The check now requires a tabindex attribute, a natively focusable tag, or
+    // contenteditable, so unfocusable elements fall through to tabbable descendants.
+    const { getByTestId } = render(FocusTrap, {
+      props: {
+        initialFocus: '[data-testid="unfocusable-target"]',
+        children: unfocusableInitialFocusChildren,
+      },
+    });
+
+    await tick();
+
+    expect(document.activeElement).toBe(getByTestId('first-button'));
+  });
+
+  test('uses fallbackFocus when no tabbable descendants exist', async () => {
+    const { getByTestId } = render(FocusTrap, {
+      props: {
+        fallbackFocus: '[data-testid="fallback-target"]',
+        children: fallbackFocusChildren,
+      },
+    });
+
+    await tick();
+
+    expect(document.activeElement).toBe(getByTestId('fallback-target'));
+  });
+
+  test('ignores invalid selector targets and falls back to tabbable content', async () => {
+    const { getByTestId } = render(FocusTrap, {
+      props: {
+        initialFocus: '[',
+        children: focusTrapChildren,
+      },
+    });
+
+    await tick();
+
+    expect(document.activeElement).toBe(getByTestId('first-button'));
+  });
+
+  test('restores focus to the previously focused element even if active is false at unmount', async () => {
+    // Regression for Codex round 1 finding: previously the cleanup branch checked the *current*
+    // `isActive()` value, so deactivating the trap before unmount silently skipped focus
+    // restoration. Activation-time captured state now drives restoration on unmount regardless.
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { rerender, unmount } = render(FocusTrap, {
+      props: { active: true, children: focusTrapChildren },
+    });
+
+    await tick();
+    await rerender({ active: false, children: focusTrapChildren });
+    await tick();
+    unmount();
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test('does not steal focus when deactivated before the deferred focus microtask drains', async () => {
+    // Regression for a focus-restore race: `activate()` defers `focusTrapTarget` via
+    // `queueMicrotask`. If the trap deactivates before that microtask drains, `deactivate()`
+    // restores focus to the previously-focused element — but the stale, still-queued
+    // `focusTrapTarget` would then fire and steal focus back into the now-deactivated trap.
+    // The deferred body is guarded by the `activated` flag and an activation generation, so a
+    // deactivation that lands before the microtask drains makes the queued focus a no-op.
+    //
+    // Activate then deactivate within the same microtask turn: `render` mounts and runs the
+    // activation `$effect` synchronously (queuing the focus microtask), and `rerender` flips
+    // `active` to false synchronously (running `deactivate()` and restoring focus) — all before
+    // the first `await` lets the microtask queue drain. The node stays mounted, so a missing
+    // guard would let the queued `focusTrapTarget` find the (still-present) tabbable buttons and
+    // steal focus back in.
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { rerender } = render(FocusTrap, {
+      props: { active: true, children: focusTrapChildren },
+    });
+    // No `await` between mount and deactivation: the deferred `focusTrapTarget` is still queued.
+    await rerender({ active: false, children: focusTrapChildren });
+
+    // Drain microtasks: the stale `focusTrapTarget` must be a no-op now that the trap is inactive.
+    await tick();
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test('restores focus on reactive deactivation, before unmount', async () => {
+    // Regression for Codex round 2 finding: the `activated` flag alone did not handle the case
+    // where `active` flipped false while the component remained mounted. The nested `$effect` now
+    // runs `deactivate()` as soon as the getter returns false, restoring focus immediately.
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { rerender } = render(FocusTrap, {
+      props: { active: true, children: focusTrapChildren },
+    });
+
+    await tick();
+    // While active, focus should have moved into the trap.
+    expect(document.activeElement).not.toBe(trigger);
+
+    await rerender({ active: false, children: focusTrapChildren });
+    await tick();
+
+    // Without unmounting, deactivation alone restores focus to the trigger.
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test('a later-activated nested trap takes priority, then hands control back on deactivation', async () => {
+    // Regression coverage for `isTopTrap`: with the outer trap mounted and a nested inner trap
+    // toggled active/inactive via reactive `active` (no unmount), Tab-wrap ownership over their
+    // shared boundary element (`inner-last`, the last tabbable descendant of the OUTER trap's own
+    // subtree, since the inner trap's content is a literal DOM descendant, not portaled) must hand
+    // off correctly as the trap stack changes.
+    const { default: NestedFixture } = await import('./nested-focus-trap.fixture.svelte');
+    const { getByTestId } = render(NestedFixture);
+    await tick();
+
+    const outerFirst = requiredInstance(getByTestId('outer-first'), HTMLButtonElement);
+    const innerFirst = requiredInstance(getByTestId('inner-first'), HTMLButtonElement);
+    const innerLast = requiredInstance(getByTestId('inner-last'), HTMLButtonElement);
+    const toggle = requiredInstance(getByTestId('toggle-inner'), HTMLButtonElement);
+
+    // Before the inner trap ever activates, the outer trap is the only entry on the trap stack: it
+    // owns Tab-wrapping across its entire flattened tabbable set, including the still-mounted (but
+    // inactive) inner trap's own buttons.
+    innerLast.focus();
+    await fireEvent.keyDown(innerLast, { key: 'Tab' });
+    expect(document.activeElement).toBe(outerFirst);
+
+    // Activating the inner trap pushes it on top of the trap stack. It now wraps Tab within its
+    // OWN scoped tabbable set (inner-first/inner-last only), and the outer trap's handler sees
+    // `isTopTrap` return false and stays out of the way.
+    await fireEvent.click(toggle);
+    await tick();
+    innerLast.focus();
+    await fireEvent.keyDown(innerLast, { key: 'Tab' });
+    expect(document.activeElement).toBe(innerFirst);
+
+    // Deactivating the inner trap (the reactive `$effect` in `focus-trap.utilities.svelte.ts`
+    // calls `deactivate()`, popping it off `trapStack` — no unmount involved) hands real
+    // Tab-wrapping back to the outer trap over the same boundary element.
+    await fireEvent.click(toggle);
+    await tick();
+    innerLast.focus();
+    await fireEvent.keyDown(innerLast, { key: 'Tab' });
+    expect(document.activeElement).toBe(outerFirst);
+  });
+});

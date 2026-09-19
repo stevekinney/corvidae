@@ -18,9 +18,9 @@
  *     at most once.
  */
 
-import { Conversation } from '@repo/conversationalist';
-import type { RuntimeServices, Subscription } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import { Conversation } from '@corvidae/conversationalist';
+import type { RuntimeServices, Subscription } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import type { AgentRun, RunEvent, UnwrappedValue } from './agent-run';
 import { CompletedRunIterationError } from './agent-run';

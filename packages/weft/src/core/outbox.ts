@@ -107,7 +107,7 @@ function requireOutboxStorage(storage: OutboxOptions['storage']): void {
  *
  * @example
  * ```ts
- * import { Outbox, MemoryStorage } from '@repo/weft';
+ * import { Outbox, MemoryStorage } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * using outbox = new Outbox({

@@ -1,11 +1,11 @@
-import type { ToolCall } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import type { ToolCall } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import {
   LIVENESS_POLICY_VERSION,
   type ActiveRun,
   type RunState,
   type StepResult,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 export function requireRecord(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new Error('Expected a serialized record');

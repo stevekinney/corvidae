@@ -1,5 +1,5 @@
-import type { RunEngine } from '@repo/operative';
-import { createCheckpointStore, createRunEngine, createRunWorkflow } from '@repo/operative';
+import type { RunEngine } from '@corvidae/operative';
+import { createCheckpointStore, createRunEngine, createRunWorkflow } from '@corvidae/operative';
 import type { ServerOwnedRuntime } from './server-owned-runtime.ts';
 import { SHUTDOWN_FAILURE, serverOwnedRuntime } from './server-owned-runtime.ts';
 export type DurableRuntime = RunEngine;

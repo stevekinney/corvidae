@@ -1,4 +1,4 @@
-import { Conversation } from '@repo/conversationalist';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { mergeSubagentResult, prepareSubagentContext } from './subagent-context';

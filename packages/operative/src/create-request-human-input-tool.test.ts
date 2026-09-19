@@ -1,5 +1,5 @@
-import { createTool, createToolbox, createToolCall } from '@repo/armorer';
-import { CompletableEventTarget } from '@repo/lifecycle';
+import { createTool, createToolbox, createToolCall } from '@corvidae/armorer';
+import { CompletableEventTarget } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import type { RequestHumanInputContext } from './create-request-human-input-tool';

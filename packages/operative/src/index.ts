@@ -137,9 +137,9 @@ export * from './generation-profile';
 export * from './runnable-agent';
 export * from './selection-gate';
 // RuntimeServices is part of this package's public execution contract.
-// Its implementation and types have one source owner: @repo/lifecycle.
+// Its implementation and types have one source owner: @corvidae/lifecycle.
 // Deterministic callers can use createManualRuntimeServices from that workspace.
-export { createDefaultRuntimeServices } from '@repo/lifecycle';
+export { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 export type {
   DeferredDrainReport,
   RuntimeClock,
@@ -150,7 +150,7 @@ export type {
   RuntimeServices,
   RuntimeTimeoutHandle,
   RuntimeTimers,
-} from '@repo/lifecycle';
+} from '@corvidae/lifecycle';
 // C3 — curated tool.* bubble events
 export {
   ToolErrorBubbleEvent,

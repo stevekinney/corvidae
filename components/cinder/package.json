@@ -1,0 +1,72 @@
+{
+  "name": "@corvidae/cinder",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src scripts",
+    "tokens:check": "bun scripts/tokens/validate-corpus.ts && bun scripts/tokens/generate-artifacts.ts --check",
+    "tokens:generate": "bun scripts/tokens/generate-artifacts.ts",
+    "components:check": "bun scripts/generate-component-artifacts.ts --check",
+    "components:generate": "bun scripts/generate-component-artifacts.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
+    "knowledge": "bun scripts/knowledge/index.ts"
+  },
+  "dependencies": {
+    "@floating-ui/dom": "catalog:",
+    "@corvidae/markdown": "workspace:*",
+    "@shikijs/engine-oniguruma": "catalog:",
+    "@shikijs/types": "catalog:",
+    "@tanstack/virtual-core": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
+    "culori": "catalog:",
+    "esm-env": "catalog:",
+    "libphonenumber-js": "catalog:",
+    "lucide-svelte": "catalog:",
+    "qrcode": "catalog:",
+    "shiki": "catalog:",
+    "svelte": "catalog:",
+    "zod": "catalog:",
+    "@shikijs/langs": "catalog:",
+    "@shikijs/themes": "catalog:"
+  },
+  "devDependencies": {
+    "@corvidae/typescript": "workspace:*",
+    "@corvidae/testing": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/svelte": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/culori": "catalog:",
+    "@types/js-yaml": "catalog:",
+    "@types/qrcode": "catalog:",
+    "chalk": "catalog:",
+    "change-case": "catalog:",
+    "happy-dom": "catalog:",
+    "js-yaml": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "postcss": "catalog:",
+    "postcss-selector-parser": "catalog:",
+    "postcss-value-parser": "catalog:",
+    "prettier": "catalog:",
+    "prettier-plugin-organize-imports": "catalog:",
+    "prettier-plugin-svelte": "catalog:",
+    "svelte-check": "catalog:",
+    "stylelint": "catalog:",
+    "svelte2tsx": "catalog:",
+    "ts-morph": "catalog:",
+    "typescript": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@lostgradient/environmentalist": "catalog:"
+  },
+  "sideEffects": [
+    "./src/index.ts",
+    "**/*.css"
+  ]
+}

@@ -1,4 +1,4 @@
-import { createIncrementalHash } from '@repo/interoperability';
+import { createIncrementalHash } from '@corvidae/cryptography';
 
 import type { ToolErrorCategory } from '../core/errors';
 import type { ToolExecutionIdentity } from '../event-types';

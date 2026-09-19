@@ -1,6 +1,6 @@
 /**
  * The accessibility gate for the broad component sweep
- * (`applications/cinder-browser-fixtures/tests/component-sweep.ts`).
+ * (`scripts/browser-fixtures/tests/component-sweep.ts`).
  *
  * The sweep runs `runAxe()` across every component in two themes × three
  * viewports and buckets violations by impact. This module decides which of

@@ -1,4 +1,4 @@
-import type { EventMap } from '@repo/lifecycle';
+import type { EventMap } from '@corvidae/lifecycle';
 import type {
   Action,
   AgentScheduledEvent,
@@ -11,7 +11,7 @@ import type {
   SessionCreatedEvent,
   SessionDeletedEvent,
   SessionSavedEvent,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 /**
  * Fired when the store records an action from a run.
@@ -306,7 +306,7 @@ export class ReviewSupersededEvent extends ReviewLifecycleEvent {
  * Maps event type strings to their corresponding Event subclasses.
  *
  * `schedule.created`/`paused`/`resumed`/`cancelled`/`failed`/`completed`
- * (AB-223/AB-298) are defined in `@repo/operative` (alongside
+ * (AB-223/AB-298) are defined in `@corvidae/operative` (alongside
  * `schedule.wakeup`) rather than here, but dispatched on THIS bureau-level
  * emitter — not a per-run operative emitter — because a schedule
  * create/pause/resume/cancel and a scheduled fire's terminal outcome are
@@ -327,7 +327,7 @@ export class ReviewSupersededEvent extends ReviewLifecycleEvent {
  *
  * `session.created`/`session.saved` (`SessionCreatedEvent`/
  * `SessionSavedEvent`, AB-384) reach this emitter differently again:
- * `@repo/operative`'s `SessionStore` dispatches them on its OWN
+ * `@corvidae/operative`'s `SessionStore` dispatches them on its OWN
  * `events` target as `save()`/`update()` commits succeed, and
  * `create-bureau.ts` forwards each onto this bureau-level emitter (fresh
  * instances, the same forwarding shape `scheduleFireEvents` above uses) —

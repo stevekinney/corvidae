@@ -1,5 +1,5 @@
-import type { RuntimeServices, RuntimeTimeoutHandle } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices, RuntimeTimeoutHandle } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 /**
  * AB-92/AB-252: this pre-existing declared-but-unwired timer seam is now an

@@ -24,7 +24,7 @@ import type { WorkflowContract } from './types.ts';
  *
  * @example
  * ```ts
- * import { deriveWorkflowRevision } from '@repo/weft';
+ * import { deriveWorkflowRevision } from '@corvidae/weft';
  *
  * const revision = await deriveWorkflowRevision({ name: 'checkout', workflowVersion: '2.1.0' });
  * console.log(revision.startsWith('sha256:')); // true

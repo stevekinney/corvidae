@@ -1,5 +1,5 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
 // The adjacent streamable-HTTP test exercises Armorer's createMCP adapter. This child fixture
@@ -10,7 +10,7 @@ mcp.registerTool(
   'sum',
   {
     description: 'adds two numbers',
-    inputSchema: { a: z.number(), b: z.number() },
+    inputSchema: z.object({ a: z.number(), b: z.number() }),
   },
   async ({ a, b }) => ({ content: [{ type: 'text', text: String(a + b) }] }),
 );

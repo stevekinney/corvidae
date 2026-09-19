@@ -1,7 +1,8 @@
-import { isStandardSchema, type StandardSchemaV1 } from '@repo/interoperability';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 
 import {
+  isStandardSchema,
   isWrappedStandardSchema,
   isZodObjectSchema,
   isZodSchema,

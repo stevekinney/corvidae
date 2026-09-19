@@ -1,5 +1,5 @@
-import type { Embedder, EmbeddingVector } from '@repo/interoperability';
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { Embedder, EmbeddingVector } from '@corvidae/embeddings';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 
 import type {
   MemoryRecord,

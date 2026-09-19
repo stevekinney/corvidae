@@ -110,7 +110,7 @@ export interface WorkflowState {
  *
  * @example
  * ```ts
- * import type { RestartLineage } from '@repo/weft';
+ * import type { RestartLineage } from '@corvidae/weft';
  *
  * const lineage: RestartLineage = {
  *   workflowId: 'nightly-reconciliation',
@@ -148,7 +148,7 @@ export type WorkflowTimelineStatus = 'running' | 'completed' | 'failed' | 'cance
  *
  * @example
  * ```ts
- * import type { WorkflowTimelineOperationDetail } from '@repo/weft';
+ * import type { WorkflowTimelineOperationDetail } from '@corvidae/weft';
  *
  * const winner: WorkflowTimelineOperationDetail = {
  *   index: 0,
@@ -254,7 +254,7 @@ export interface WorkflowSessionState<T> {
  *
  * @example
  * ```ts
- * import type { WorkflowAtomicStateOptions } from '@repo/weft';
+ * import type { WorkflowAtomicStateOptions } from '@corvidae/weft';
  *
  * const options: WorkflowAtomicStateOptions<number> = {
  *   initial: 0,
@@ -271,7 +271,7 @@ export type WorkflowAtomicStateOptions<T> = Pick<AtomicStateOptions<T>, 'initial
  *
  * @example
  * ```ts
- * import type { WorkflowAtomicState } from '@repo/weft';
+ * import type { WorkflowAtomicState } from '@corvidae/weft';
  *
  * declare const counter: WorkflowAtomicState<number>;
  * const operation = counter.increment();
@@ -301,7 +301,7 @@ export interface WorkflowAtomicState<T> {
  *
  * @example
  * ```ts
- * import type { WorkflowStateNamespace } from '@repo/weft';
+ * import type { WorkflowStateNamespace } from '@corvidae/weft';
  *
  * declare const state: WorkflowStateNamespace;
  * const session = state.session<number>('attempts', { initial: 0 });

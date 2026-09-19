@@ -16,7 +16,7 @@ import type { RequestHandler } from './$types';
  * OUT OF BAND, and that is forced rather than chosen. The run lives on the
  * server and its stream is a one-way response body, so a question raised mid-run
  * cannot be asked over the connection that is delivering the answer tokens —
- * and `@repo/chat`'s wire vocabulary is a closed union with no frame
+ * and `@corvidae/chat`'s wire vocabulary is a closed union with no frame
  * for it, which this issue's delivery boundary (`labs/chat-room` only) puts out
  * of reach. upstream: CIN-615 tracks replacing this side channel rather than using a `tool.progress`
  * frame carrying a question, which would have been a lie about what that frame

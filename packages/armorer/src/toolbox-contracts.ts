@@ -1,8 +1,8 @@
+import type { RuntimeServices } from '@corvidae/lifecycle';
 import type {
   Context as OpenTelemetryContext,
   Link as OpenTelemetrySpanLink,
 } from '@opentelemetry/api';
-import type { RuntimeServices } from '@repo/lifecycle';
 import type { ApprovalStateStore, GrantStateStore } from './approval-binding';
 import type { ApprovalPolicyConfiguration } from './approval-policy';
 import type { ToolErrorCategory } from './core/errors';

@@ -1,6 +1,6 @@
-import type { AnyToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { AnyToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 import type { ZodType } from 'zod';
 
 import type { AgentRunErrorKind } from './errors';

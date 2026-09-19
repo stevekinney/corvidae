@@ -6,7 +6,7 @@
  *
  * @example Route review notifications to a webhook
  * ```ts
- * import { ReviewRequestedEvent, type TypedEventTarget, type WeftReviewEventMap } from '@repo/weft';
+ * import { ReviewRequestedEvent, type TypedEventTarget, type WeftReviewEventMap } from '@corvidae/weft';
  *
  * declare const target: TypedEventTarget<WeftReviewEventMap>;
  *
@@ -40,7 +40,7 @@ export class ReviewRequestedEvent extends Event {
  *
  * @example Record review decisions in an audit log
  * ```ts
- * import { ReviewCompletedEvent, type TypedEventTarget, type WeftReviewEventMap } from '@repo/weft';
+ * import { ReviewCompletedEvent, type TypedEventTarget, type WeftReviewEventMap } from '@corvidae/weft';
  *
  * declare const target: TypedEventTarget<WeftReviewEventMap>;
  *
@@ -80,7 +80,7 @@ export class ReviewCompletedEvent extends Event {
  *
  * @example
  * ```ts
- * import type { TypedEventTarget, WeftReviewEventMap } from '@repo/weft';
+ * import type { TypedEventTarget, WeftReviewEventMap } from '@corvidae/weft';
  *
  * declare const target: TypedEventTarget<WeftReviewEventMap>;
  * target.addEventListener('human-review:requested', (event) => {

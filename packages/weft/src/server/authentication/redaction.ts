@@ -46,7 +46,7 @@ const EMPTY_REDACTION = '<redacted:empty>';
  *
  * @example
  * ```ts
- * import { redactCredential } from '@repo/weft';
+ * import { redactCredential } from '@corvidae/weft';
  *
  * const masked = redactCredential('weft_key_super_secret_value');
  * console.log(masked.startsWith('<redacted:')); // true
@@ -89,7 +89,7 @@ function fingerprintToken(token: string): string {
  *
  * @example
  * ```ts
- * import { redactHeaders } from '@repo/weft';
+ * import { redactHeaders } from '@corvidae/weft';
  *
  * const request = new Request('http://localhost/v1/workflows', {
  *   headers: { Authorization: 'Bearer secret-token', 'X-Trace-Id': 'abc' },
@@ -113,7 +113,7 @@ export function redactHeaders(headers: Headers): Record<string, string> {
  *
  * @example
  * ```ts
- * import { isSensitiveHeader } from '@repo/weft';
+ * import { isSensitiveHeader } from '@corvidae/weft';
  *
  * console.log(isSensitiveHeader('Authorization')); // true
  * console.log(isSensitiveHeader('X-Trace-Id')); // false

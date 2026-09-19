@@ -41,7 +41,7 @@ export type BatchOperation =
  *
  * @example
  * ```ts
- * import { MAX_BATCH_OPERATIONS } from '@repo/weft';
+ * import { MAX_BATCH_OPERATIONS } from '@corvidae/weft';
  *
  * console.log(MAX_BATCH_OPERATIONS); // 10000
  * ```
@@ -53,7 +53,7 @@ export const MAX_BATCH_OPERATIONS = 10_000;
  *
  * @example
  * ```ts
- * import { MAX_SCAN_LIMIT } from '@repo/weft';
+ * import { MAX_SCAN_LIMIT } from '@corvidae/weft';
  *
  * console.log(MAX_SCAN_LIMIT); // 10000
  * ```
@@ -65,7 +65,7 @@ export const MAX_SCAN_LIMIT = 10_000;
  *
  * @example
  * ```ts
- * import type { StorageBatchOperationLimitTarget } from '@repo/weft';
+ * import type { StorageBatchOperationLimitTarget } from '@corvidae/weft';
  *
  * const target: StorageBatchOperationLimitTarget = 'batch operations';
  * void target;
@@ -79,7 +79,7 @@ export type StorageBatchOperationLimitTarget =
  *
  * @example
  * ```ts
- * import { StorageBatchOperationLimitExceededError } from '@repo/weft';
+ * import { StorageBatchOperationLimitExceededError } from '@corvidae/weft';
  *
  * const error = new StorageBatchOperationLimitExceededError('batch operations', 10001);
  * console.log(error.cap); // 10000
@@ -104,7 +104,7 @@ export class StorageBatchOperationLimitExceededError extends Error {
  *
  * @example
  * ```ts
- * import { assertStorageBatchOperationCount } from '@repo/weft';
+ * import { assertStorageBatchOperationCount } from '@corvidae/weft';
  *
  * assertStorageBatchOperationCount('batch operations', 1);
  * ```
@@ -134,7 +134,7 @@ export interface ConditionalBatchCondition {
  *
  * @example
  * ```ts
- * import { MemoryStorage, type ScanOptions } from '@repo/weft';
+ * import { MemoryStorage, type ScanOptions } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * const options: ScanOptions = { limit: 10, reverse: true };
@@ -160,14 +160,14 @@ export interface ScanOptions {
  * `keys`, `count`, `scoped`, and `query`. Adapters that omit optional methods
  * get generic fallbacks via `storageHas`, `storageKeys`, `storageCount`,
  * `storageDeletePrefix`, and `storageConditionalBatch` (all from this module),
- * plus `storageDeleteRange` (exported from `@repo/weft` / `@repo/weft`, defined in
+ * plus `storageDeleteRange` (exported from `@corvidae/weft` / `@corvidae/weft`, defined in
  * `storage/delete-range.ts`). Callers should use those wrappers rather than
  * calling optional methods directly.
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import type { Storage } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import type { Storage } from '@corvidae/weft';
  *
  * await using storage: Storage = new MemoryStorage();
  * const encoded = new TextEncoder().encode('hello');
@@ -210,7 +210,7 @@ export interface Storage extends Disposable {
  *
  * @example
  * ```ts
- * import { resolvePrefixRangeEnd } from '@repo/weft';
+ * import { resolvePrefixRangeEnd } from '@corvidae/weft';
  *
  * const end = resolvePrefixRangeEnd('wf:');
  * console.log(end); // 'wf;'
@@ -228,7 +228,7 @@ export function resolvePrefixRangeEnd(prefix: string): string {
  *
  * @example
  * ```ts
- * import { matchesScanOptions } from '@repo/weft';
+ * import { matchesScanOptions } from '@corvidae/weft';
  *
  * console.log(matchesScanOptions('wf:b', { gt: 'wf:a', lt: 'wf:c' })); // true
  * console.log(matchesScanOptions('wf:a', { gt: 'wf:a' }));              // false
@@ -259,7 +259,7 @@ export function matchesScanOptions(key: string, options: ScanOptions = {}): bool
  *
  * @example
  * ```ts
- * import { storageValuesEqual } from '@repo/weft';
+ * import { storageValuesEqual } from '@corvidae/weft';
  *
  * const a = new Uint8Array([1, 2, 3]);
  * const b = new Uint8Array([1, 2, 3]);
@@ -290,8 +290,8 @@ export function storageValuesEqual(left: Uint8Array | null, right: Uint8Array | 
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { storageHas } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { storageHas } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * await storage.put('my-key', new Uint8Array([1]));
@@ -312,8 +312,8 @@ export async function storageHas(storage: Storage, key: string): Promise<boolean
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { storageKeys } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { storageKeys } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * for await (const key of storageKeys(storage, 'wf:')) {
@@ -338,8 +338,8 @@ export function storageKeys(
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { storageCount } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { storageCount } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * await storage.put('wf:1', new Uint8Array([1]));
@@ -360,8 +360,8 @@ export async function storageCount(storage: Storage, prefix: string): Promise<nu
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { storageDeletePrefix } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { storageDeletePrefix } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * await storage.put('wf:a', new Uint8Array([1]));
@@ -383,7 +383,7 @@ export async function storageDeletePrefix(storage: Storage, prefix: string): Pro
  *
  * @example
  * ```ts
- * import { MemoryStorage, storageBatch } from '@repo/weft';
+ * import { MemoryStorage, storageBatch } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * await storageBatch(storage, []);
@@ -404,8 +404,8 @@ export async function storageBatch(storage: Storage, operations: BatchOperation[
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { storageConditionalBatch } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { storageConditionalBatch } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * const key = 'my-key';
@@ -467,7 +467,7 @@ export {
  *
  * @example
  * ```ts
- * import { KEYS } from '@repo/weft';
+ * import { KEYS } from '@corvidae/weft';
  * KEYS.workflow('workflow-id');
  * ```
  */

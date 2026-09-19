@@ -1,5 +1,5 @@
-import { parseAnthropicToolCalls } from '@repo/armorer';
-import { toAnthropicMessages } from '@repo/conversationalist';
+import { parseAnthropicToolCalls } from '@corvidae/armorer';
+import { toAnthropicMessages } from '@corvidae/conversationalist';
 
 import { createAnthropicSdkClient, isAnthropicClient } from './anthropic-sdk.ts';
 import {

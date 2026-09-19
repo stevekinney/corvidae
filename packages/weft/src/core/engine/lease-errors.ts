@@ -16,7 +16,7 @@ import type { FencingOwnershipMode } from './workflow-claim-codec.ts';
  *
  * @example
  * ```ts
- * import { EngineLeaseAcquisitionTimeoutError } from '@repo/weft';
+ * import { EngineLeaseAcquisitionTimeoutError } from '@corvidae/weft';
  *
  * function isLeaseHandoffStuck(error: unknown): boolean {
  *   return error instanceof EngineLeaseAcquisitionTimeoutError;
@@ -57,7 +57,7 @@ export class EngineLeaseAcquisitionTimeoutError extends WeftError<'EngineLeaseAc
  *
  * @example
  * ```ts
- * import { EngineLeaseCorruptedError } from '@repo/weft';
+ * import { EngineLeaseCorruptedError } from '@corvidae/weft';
  *
  * function isLeaseCorrupted(error: unknown): boolean {
  *   return error instanceof EngineLeaseCorruptedError;
@@ -88,7 +88,7 @@ export class EngineLeaseCorruptedError extends WeftError<'EngineLeaseCorruptedEr
  *
  * @example
  * ```ts
- * import { Engine, EngineLeaseNotHeldError } from '@repo/weft';
+ * import { Engine, EngineLeaseNotHeldError } from '@corvidae/weft';
  *
  * const engine = new Engine({ ownership: 'lease' });
  * try {
@@ -164,7 +164,7 @@ export class EngineDeposedError extends WeftError<'EngineDeposedError'> {
  *
  * @example
  * ```ts
- * import { WorkflowClaimUnavailableError } from '@repo/weft';
+ * import { WorkflowClaimUnavailableError } from '@corvidae/weft';
  *
  * function isClaimContested(error: unknown): boolean {
  *   return error instanceof WorkflowClaimUnavailableError;
@@ -206,7 +206,7 @@ export class WorkflowClaimUnavailableError extends WeftError<'WorkflowClaimUnava
  *
  * @example
  * ```ts
- * import { OwnershipModeMismatchError } from '@repo/weft';
+ * import { OwnershipModeMismatchError } from '@corvidae/weft';
  *
  * function describeMismatch(error: OwnershipModeMismatchError): string {
  *   return `configured "${error.configuredMode}" but store is "${error.storedMode}" ` +

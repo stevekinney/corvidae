@@ -1,6 +1,6 @@
 import type { APIResponse, Locator } from '@playwright/test';
-import { gotoHydrated } from '../exercises/hydration';
 import { newFixtureMarker } from '../fixture-probe';
+import { gotoHydrated } from '../page.svelte-test-helpers';
 import { APPROVAL_FOLLOW_UP_TEXT, APPROVAL_NOTE_TEXT, fixtureMarker } from '../streaming-fixture';
 
 export {

@@ -23,7 +23,7 @@
     "test": {
       "outputs": [],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI"]
+      "env": ["CODEX_CI", "NODE_ENV"]
     },
     "clean": {
       "cache": false
@@ -35,7 +35,16 @@
     "transit": {
       "dependsOn": ["^transit"]
     },
-    "@repo/chat-room#lint": {
+    "@corvidae/chat-room#lint": {
+      "dependsOn": ["sync", "transit"],
+      "outputs": [
+        ".svelte-kit/*.json",
+        ".svelte-kit/*.d.ts",
+        ".svelte-kit/types/**",
+        ".svelte-kit/generated/**"
+      ]
+    },
+    "@corvidae/chat-room#sync": {
       "dependsOn": ["transit"],
       "outputs": [
         ".svelte-kit/*.json",
@@ -44,8 +53,8 @@
         ".svelte-kit/generated/**"
       ]
     },
-    "@repo/chat-room#typecheck": {
-      "dependsOn": ["transit"],
+    "@corvidae/chat-room#typecheck": {
+      "dependsOn": ["sync", "transit"],
       "outputs": [
         ".svelte-kit/*.json",
         ".svelte-kit/*.d.ts",
@@ -53,14 +62,71 @@
         ".svelte-kit/generated/**"
       ]
     },
-    "@repo/cinder-browser-fixtures#test": {
-      "dependsOn": ["transit"],
-      "env": ["CODEX_CI"],
-      "outputs": [".playwright/manifest.json"]
+    "@corvidae/chat-room#build": {
+      "dependsOn": ["typecheck", "transit"]
     },
-    "@repo/cinder-browser-fixtures#build": {
-      "dependsOn": ["transit"],
-      "outputs": ["build/**", ".playwright/manifest.json"]
+    "//#test:browser-fixtures": {
+      "dependsOn": ["^transit"],
+      "env": ["CODEX_CI", "TMPDIR"],
+      "outputs": [
+        "scripts/browser-fixtures/.playwright/manifest.json",
+        "scripts/browser-fixtures/.playwright/fixture-modules.ts"
+      ]
+    },
+    "//#dev:browser-fixtures": {
+      "persistent": true,
+      "cache": false
+    },
+    "dev:browser": {
+      "persistent": true,
+      "cache": false
+    },
+    "dev:server": {
+      "persistent": true,
+      "cache": false
+    },
+    "@corvidae/chat-room#dev": {
+      "persistent": true,
+      "cache": false,
+      "passThroughEnv": [
+        "NODE_ENV",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_BASE_URL",
+        "CHAT_ROOM_SERVER_OWNED_DATABASE"
+      ]
+    },
+    "@corvidae/chat-room#preview": {
+      "persistent": true,
+      "cache": false,
+      "passThroughEnv": [
+        "NODE_ENV",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_BASE_URL",
+        "CHAT_ROOM_SERVER_OWNED_DATABASE"
+      ]
+    },
+    "@corvidae/weft-ui#dev:browser": {
+      "persistent": true,
+      "cache": false,
+      "passThroughEnv": ["WEFT_UI_PORT", "WEFT_API_BASE_URL"]
+    },
+    "@corvidae/weft#test": {
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "CI",
+        "GITHUB_ACTIONS",
+        "WEFT_STRICT_FAULTS",
+        "WEFT_SQLITE_ARCHITECTURE_BENCHMARK",
+        "WEFT_SEARCH_ATTRIBUTES_ARCHITECTURE_BENCHMARK",
+        "WEFT_EVENT_DISPATCH_ARCHITECTURE_BENCHMARK",
+        "WEFT_COVERAGE_MODE",
+        "NODE_V8_COVERAGE",
+        "WEFT_KEEP_DURABILITY_FIXTURES"
+      ]
+    },
+    "@corvidae/cinder#test": {
+      "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"]
     }
   },
   "globalDependencies": [

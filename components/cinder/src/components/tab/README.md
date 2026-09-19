@@ -1,0 +1,38 @@
+# Tab
+
+Individual tab trigger within a tab list for switching between labelled content panels.
+
+## Usage
+
+`Tab` is a compose-only leaf of [`Tabs`](../tabs/README.md). The idiomatic API is `Tabs.Trigger`, reached through the parent namespace — see the [tabs README](../tabs/README.md#usage) for the composed snippet. The flat `@corvidae/cinder` subpath remains exported for à-la-carte builds that import the leaf directly.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `class` | `string` | no | — | Additional class names merged with `.cinder-tab`. |
+| `controls` | `string` | no | — | Optional non-empty `aria-controls` target for caller-owned panels. Empty or whitespace-only strings are treated as omitted. By default, Cinder points at the matching TabPanel id (`${baseId}-panel-${value}`). |
+| `disabled` | `boolean` | no | `false` | Disables this single tab and removes it from keyboard activation. |
+| `id` | `string` | no | — | Optional explicit id override; auto-generated otherwise for ARIA wiring. |
+| `value` | `string` | yes | — | Stable identifier used for tab selection; matches TabPanel in the default pattern. |
+| `children` | `(opaque)` | yes | — | Tab label content. Not expressible in JSON Schema; see the component types for the signature. |
+| `trailing` | `(opaque)` | no | — | Decorative content rendered inside an `aria-hidden` span (badges, kbd hints, counters). Do NOT use for interactive controls like close buttons — `aria-hidden` removes the content from the accessibility tree, making any interactive child unreachable by keyboard and invisible to screen readers. For a closeable tab, render a separate `<button>` immediately after the `<Tab>` in the DOM (as a sibling within the tab strip) and associate it with the tab via `aria-label="Close [tab name]"`. The close button must live outside the `<Tab>` element entirely. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

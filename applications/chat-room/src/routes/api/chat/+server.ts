@@ -1,10 +1,10 @@
-import { env } from '$env/dynamic/private';
-import { conversationSchema } from '@repo/conversationalist';
-import { createAnthropicProviderStream } from '@repo/operative';
+import { conversationSchema } from '@corvidae/conversationalist';
+import { createAnthropicProviderStream } from '@corvidae/operative';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { createChatAgent, startChatRun } from '../../../lib/chat-agent.ts';
 import { chatRunResponse } from '../../../lib/chat-run-response.ts';
+import { readEnvironmentConfiguration } from '../../../lib/server/environment-configuration.ts';
 import { requestContext, toolbox } from '../../../lib/toolbox.ts';
 import type { RequestHandler } from './$types';
 const MODEL = 'claude-sonnet-5';
@@ -21,8 +21,7 @@ export const POST: RequestHandler = async ({ request }) => {
   if (!parsed.success) {
     return json({ error: 'Invalid request body' }, { status: 400 });
   }
-  const apiKey = env['ANTHROPIC_API_KEY'];
-  const baseURL = env['ANTHROPIC_BASE_URL'];
+  const { anthropicApiKey: apiKey, anthropicBaseUrl: baseURL } = readEnvironmentConfiguration();
   if (!apiKey) {
     return json({ error: 'ANTHROPIC_API_KEY is not configured' }, { status: 503 });
   }

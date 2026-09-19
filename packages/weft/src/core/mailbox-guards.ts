@@ -54,7 +54,7 @@ export const MAX_CANCELLATION_REASON_BYTES = 2048;
  *
  * @example
  * ```ts
- * import { ApplicationCommandValidationError } from '@repo/weft';
+ * import { ApplicationCommandValidationError } from '@corvidae/weft';
  *
  * const error = new ApplicationCommandValidationError('caller must be a non-empty string.');
  * console.log(error.code); // 'ApplicationCommandValidationError'

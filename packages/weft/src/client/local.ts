@@ -87,7 +87,7 @@ import type { KnownWorkflowName, UnknownNameWhenRegistryEmpty } from './workflow
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, LocalClient, type WorkflowContext } from '@repo/weft';
+ * import { workflow, Engine, MemoryStorage, LocalClient, type WorkflowContext } from '@corvidae/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * engine.register(
@@ -120,7 +120,7 @@ export class LocalClient<
    *
    * @example
    * ```ts
-   * import { Engine, LocalClient } from '@repo/weft';
+   * import { Engine, LocalClient } from '@corvidae/weft';
    *
    * const engine = new Engine();
    * const client = new LocalClient(engine);

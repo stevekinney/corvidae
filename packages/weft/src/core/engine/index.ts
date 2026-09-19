@@ -460,7 +460,7 @@ export const SLEEP_RESOLVER_READY_WAIT_TIMEOUT_MS_FOR_TESTING = 3_000;
  *
  * @example
  * ```ts
- * import { ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME } from '@repo/weft';
+ * import { ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME } from '@corvidae/weft';
  *
  * process.on('warning', (warning) => {
  *   if (warning.name === ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME) {
@@ -508,7 +508,7 @@ function scheduleDefinitionFromInternals(
  *
  * @example Run a workflow with an activity
  * ```ts
- * import { workflow, activity, Engine, type Context, type WorkflowContext } from '@repo/weft';
+ * import { workflow, activity, Engine, type Context, type WorkflowContext } from '@corvidae/weft';
  * const fetchUser = activity({
  *   name: 'fetchUser',
  *   execute: async (input: unknown) => ({ name: 'Alice' }),
@@ -526,8 +526,8 @@ function scheduleDefinitionFromInternals(
  *
  * @example With a SQLite backend
  * ```ts
- * import { Engine } from '@repo/weft';
- * import { BunSQLiteStorage } from '@repo/weft';
+ * import { Engine } from '@corvidae/weft';
+ * import { BunSQLiteStorage } from '@corvidae/weft';
  * await using storage = new BunSQLiteStorage('./weft.db');
  * await using engine = new Engine({ storage });
  * await engine.recoverAll();
@@ -552,7 +552,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { activity, Engine, workflow } from '@repo/weft';
+   * import { activity, Engine, workflow } from '@corvidae/weft';
    *
    * const greet = activity({ name: 'greet', execute: async (name: string) => `Hi ${name}` });
    * const welcome = workflow({ name: 'welcome' }).execute(async function* (ctx, input: string) {
@@ -1518,7 +1518,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine, workflow, type WorkflowContext } from '@repo/weft';
+   * import { Engine, workflow, type WorkflowContext } from '@corvidae/weft';
    *
    * const engine = new Engine();
    * engine.register(
@@ -1589,10 +1589,10 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine, workflowSource } from '@repo/weft';
+   * import { Engine, workflowSource } from '@corvidae/weft';
    *
    * declare const loadCheckout: () => Promise<{
-   *   checkout: import('@repo/weft').WorkflowDefinition<unknown, unknown, 'checkout'>;
+   *   checkout: import('@corvidae/weft').WorkflowDefinition<unknown, unknown, 'checkout'>;
    * }>;
    * const engine = new Engine();
    * engine.registerSource(
@@ -1615,7 +1615,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine } from '@repo/weft';
+   * import { Engine } from '@corvidae/weft';
    *
    * declare const engine: Engine;
    * const record = await engine.resolveWorkflowSource('checkout', 'r1');
@@ -1640,7 +1640,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine, workflow } from '@repo/weft';
+   * import { Engine, workflow } from '@corvidae/weft';
    *
    * const welcome = workflow({ name: 'welcome' })
    *   .execute(async function* (_ctx, name: string) {
@@ -2091,7 +2091,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { workflow, Engine } from '@repo/weft';
+   * import { workflow, Engine } from '@corvidae/weft';
    *
    * const engine = new Engine();
    * engine.register(workflow({ name: 'sweep' }).execute(async function* () { return 'ok'; }));
@@ -2344,7 +2344,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine } from '@repo/weft';
+   * import { Engine } from '@corvidae/weft';
    *
    * async function readReport(engine: Engine, workflowId: string): Promise<unknown> {
    *   // `null` when the workflow offloaded nothing under this key, or after a
@@ -2895,8 +2895,8 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine } from '@repo/weft';
-   * declare const externalEntry: import('@repo/weft').TimerEntry;
+   * import { Engine } from '@corvidae/weft';
+   * declare const externalEntry: import('@corvidae/weft').TimerEntry;
    * const engine = new Engine();
    * await engine.fireTimer(externalEntry);
    * ```
@@ -2953,7 +2953,7 @@ export class Engine<
  *   MemoryStorage,
  *   workflow,
  *   type RegistryAgnosticEngine,
- * } from '@repo/weft';
+ * } from '@corvidae/weft';
  *
  * const greeting = workflow({ name: 'greeting' }).execute(async function* () {
  *   return 'hello';

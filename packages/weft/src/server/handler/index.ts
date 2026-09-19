@@ -214,7 +214,7 @@ async function dispatchMatchedRouteBoundary(
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, handleRequest } from '@repo/weft';
+ * import { workflow, Engine, MemoryStorage, handleRequest } from '@corvidae/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * engine.register(workflow({ name: 'ping' }).execute(async function* () { return 'pong'; }));

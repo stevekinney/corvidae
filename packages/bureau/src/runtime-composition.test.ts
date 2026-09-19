@@ -2,10 +2,10 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createTool, createToolbox, type ToolRequestContext } from '@repo/armorer';
-import { Conversation, createConversationHistory, getMessages } from '@repo/conversationalist';
-import { createManualRuntimeServices, TypedEventTarget } from '@repo/lifecycle';
-import type { Memory } from '@repo/memory';
+import { createTool, createToolbox, type ToolRequestContext } from '@corvidae/armorer';
+import { Conversation, createConversationHistory, getMessages } from '@corvidae/conversationalist';
+import { createManualRuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
+import type { Memory } from '@corvidae/memory';
 import {
   createAgentSession,
   createDurableActiveRun,
@@ -21,8 +21,8 @@ import {
   type StepRecord,
   stopWhen,
   type StreamEventMap,
-} from '@repo/operative';
-import type { SkillProvider } from '@repo/skills';
+} from '@corvidae/operative';
+import type { SkillProvider } from '@corvidae/skills';
 import {
   createCheckpoint,
   encode,
@@ -34,7 +34,7 @@ import {
   WorkflowCompletedEvent,
   WorkflowFailedEvent,
   yieldToPortableEventLoop,
-} from '@repo/weft';
+} from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -532,7 +532,7 @@ describe('createRuntimeComposition', () => {
   });
 
   it('maps configured toolbox tools into public tool summaries', async () => {
-    const { createTool } = await import('@repo/armorer');
+    const { createTool } = await import('@corvidae/armorer');
     const { z } = await import('zod');
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
@@ -5387,7 +5387,7 @@ describe('createRunRuntime toolbox isolation', () => {
   });
 
   it('does not deliver tool events from one run to another concurrent run', async () => {
-    const { createTool, createToolbox: makeToolbox } = await import('@repo/armorer');
+    const { createTool, createToolbox: makeToolbox } = await import('@corvidae/armorer');
     const { z } = await import('zod');
 
     // Deferred resolve so we can keep run A's tool call in-flight while run B

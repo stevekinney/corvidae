@@ -5,8 +5,8 @@
  * a pluggable `RoutingStrategy<D>`, and synthesizes their results.
  */
 
-import { CompletableEventTarget } from '@repo/lifecycle';
-import type { AgentRunContext, RunResult } from '@repo/operative';
+import { CompletableEventTarget } from '@corvidae/lifecycle';
+import type { AgentRunContext, RunResult } from '@corvidae/operative';
 
 import type { AgentDefinitions, AgentNames, BureauAgentCatalog } from './agent-catalog';
 import type {

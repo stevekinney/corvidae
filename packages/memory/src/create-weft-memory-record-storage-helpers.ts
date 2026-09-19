@@ -5,7 +5,7 @@ import {
   storageDeletePrefix,
   storageKeys,
   WEFT_RESERVED_KEY_PREFIXES,
-} from '@repo/weft';
+} from '@corvidae/weft';
 
 import type { MemoryRecord, MemoryRecordScope } from './memory-record-storage';
 

@@ -17,7 +17,7 @@
  *
  * @example
  * ```ts
- * import type { SqlStorageValue } from '@repo/weft';
+ * import type { SqlStorageValue } from '@corvidae/weft';
  *
  * const bound: SqlStorageValue = 'a bound query parameter';
  * void bound;
@@ -42,7 +42,7 @@ export type SqlStorageValue = ArrayBuffer | string | number | null;
  *
  * @example
  * ```ts
- * import type { Sql, SqlStorageCursor } from '@repo/weft';
+ * import type { Sql, SqlStorageCursor } from '@corvidae/weft';
  *
  * declare const sql: Sql;
  * const cursor: SqlStorageCursor<{ key: string }> = sql.exec('SELECT key FROM kv');
@@ -64,7 +64,7 @@ export type SqlStorageCursor<T = Record<string, SqlStorageValue>> = Iterable<T>;
  *
  * @example
  * ```ts
- * import { CloudflareDurableObjectSQLiteStorage, type Sql } from '@repo/weft';
+ * import { CloudflareDurableObjectSQLiteStorage, type Sql } from '@corvidae/weft';
  *
  * // Injected by the Durable Object runtime: `ctx.storage.sql` inside a
  * // `DurableObject` subclass.

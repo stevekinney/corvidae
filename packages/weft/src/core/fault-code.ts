@@ -32,7 +32,7 @@ import type { FailureCategory } from './types/identity.ts';
  *
  * @example
  * ```ts
- * import { HttpClientError, type FaultCode } from '@repo/weft';
+ * import { HttpClientError, type FaultCode } from '@corvidae/weft';
  *
  * function describe(error: HttpClientError): string {
  *   const code: FaultCode | undefined = error.faultCode;
@@ -68,7 +68,7 @@ export type FaultCode =
  *
  * @example
  * ```ts
- * import { FAULT_CODE_TO_FAILURE_CATEGORY } from '@repo/weft';
+ * import { FAULT_CODE_TO_FAILURE_CATEGORY } from '@corvidae/weft';
  *
  * FAULT_CODE_TO_FAILURE_CATEGORY.Timeout; // 'timeout'
  * ```
@@ -101,7 +101,7 @@ const faultCodes = new Set<unknown>(Object.keys(FAULT_CODE_TO_FAILURE_CATEGORY))
  *
  * @example
  * ```ts
- * import { isFaultCode } from '@repo/weft';
+ * import { isFaultCode } from '@corvidae/weft';
  *
  * isFaultCode('NotFound'); // true
  * isFaultCode('teapot'); // false
@@ -116,7 +116,7 @@ export function isFaultCode(value: unknown): value is FaultCode {
  *
  * @example
  * ```ts
- * import { failureCategoryForFaultCode } from '@repo/weft';
+ * import { failureCategoryForFaultCode } from '@corvidae/weft';
  *
  * failureCategoryForFaultCode('Timeout'); // 'timeout'
  * failureCategoryForFaultCode('EngineFailure'); // 'system'

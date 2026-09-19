@@ -1,10 +1,10 @@
 # Operative
 
-`@repo/operative` is the provider-agnostic agent runtime for Agent Bureau. It owns the loop that assembles context, calls a generate function, executes tools, records steps, handles stop conditions, emits events, manages sessions, and coordinates advanced runtime behavior.
+`@corvidae/operative` is the provider-agnostic agent runtime for Agent Bureau. It owns the loop that assembles context, calls a generate function, executes tools, records steps, handles stop conditions, emits events, manages sessions, and coordinates advanced runtime behavior.
 
 ## Workspace usage
 
-Declare `"@repo/operative": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@repo/operative`; the consumer compiles it. Shared external versions come from the root Bun catalog.
+Declare `"@corvidae/operative": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@corvidae/operative`; the consumer compiles it. Shared external versions come from the root Bun catalog.
 
 ## What It Does
 
@@ -19,19 +19,19 @@ Declare `"@repo/operative": "workspace:*"` in the consuming workspace's dependen
 
 The core loop starts with an agent definition, a conversation, tools, and a `GenerateFunction`. For each step, it prepares context, calls the generate function, validates the response, executes requested tools, appends tool results back to the conversation, emits typed events, and evaluates stop conditions.
 
-Provider factories such as `createAnthropicProvider`, `createOpenAIProvider`, and `createGeminiProvider` are exported from `@repo/operative`, alongside fallover, routing, and embedding helpers. Callers can also supply any function that satisfies `GenerateFunction`. Durable execution, scheduler tasks, and session persistence build on the same loop so product surfaces can recover or resume runs without changing agent code.
+Provider factories such as `createAnthropicProvider`, `createOpenAIProvider`, and `createGeminiProvider` are exported from `@corvidae/operative`, alongside fallover, routing, and embedding helpers. Callers can also supply any function that satisfies `GenerateFunction`. Durable execution, scheduler tasks, and session persistence build on the same loop so product surfaces can recover or resume runs without changing agent code.
 
 ## Project Role
 
-`@repo/bureau` composes Operative runs and scheduler tasks. `@repo/memory` and `@repo/skills` attach through hooks and tools, `@repo/armorer` supplies validated actions, and `@repo/conversationalist` supplies the conversation model. Applications own request handling and other runtime composition.
+`@corvidae/bureau` composes Operative runs and scheduler tasks. `@corvidae/memory` and `@corvidae/skills` attach through hooks and tools, `@corvidae/armorer` supplies validated actions, and `@corvidae/conversationalist` supplies the conversation model. Applications own request handling and other runtime composition.
 
 ## Quick Start
 
 Create an agent with a stub generate function and run it to completion:
 
 ```typescript
-import { createAgent } from '@repo/operative';
-import type { GenerateFunction } from '@repo/operative';
+import { createAgent } from '@corvidae/operative';
+import type { GenerateFunction } from '@corvidae/operative';
 
 // Minimal inline generate function—swap for a real provider in production.
 const generate: GenerateFunction = async ({ conversation }) => {
@@ -66,8 +66,8 @@ console.log(result.finishReason); // "stop-condition"
 `result()` resolves for an ordinary completed, errored, or cancelled run and carries the classification in `finishReason`; `abort()` is therefore observed as `finishReason: 'aborted'`. A persistence or infrastructure failure rejects `result()` so a caller cannot mistake an uncommitted terminal run for success. The promise remains cached, including after rejection. `abort()` is synchronous request signaling; await `result()` when the caller needs the terminal outcome.
 
 ```typescript
-import { Conversation } from '@repo/conversationalist';
-import { createActiveRun, stopWhen } from '@repo/operative';
+import { Conversation } from '@corvidae/conversationalist';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
 
 const conversation = new Conversation();
 conversation.appendUserMessage('Summarize the docs.');
@@ -104,7 +104,7 @@ The main import surface for defining agents, running loops, managing sessions, b
 The documented public factory for a standalone, bureau-less agent. `generate` is required—there's no bureau to inherit a provider from. Runs are in-memory and ephemeral by default (no durability, no session, no shared memory) unless you inject your own `Toolbox` and `ConversationHistory`, as below.
 
 ```typescript
-import { createAgent } from '@repo/operative';
+import { createAgent } from '@corvidae/operative';
 
 const agent = createAgent({
   generate: myProvider, // GenerateFunction—required
@@ -146,12 +146,12 @@ A host with a browser- or client-owned conversation and an approval-gated toolbo
 2. **Request-scoped authority**, not authority stored on the toolbox: pass the authenticated request's `requestContext` through `executeOptions`. On resume, construct a fresh context for the approval request while preserving every identity and revision field bound into the approval. Do not reuse ephemeral controls such as the original request's absolute `deadline`.
 3. **Versioned tools**, not anonymous mutable definitions: every tool that can produce a resumable approval needs a stable `version`. Armorer binds that version into the approval and rejects unversioned or changed definitions.
 4. **A pre-built `Toolbox`**, not a freshly composed one: pass `toolbox` instead of `tools`. Reuse the same instance across requests, or configure every instance with the same secret and durable approval state store, so a later request can validate and consume the issued approval.
-5. **Park-on-approval**, not headless denial: `stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()]` (from `@repo/operative`) stops the run cleanly after a step whose tool results include a pending approval—no further `generate` call happens, and the pending approval stays reachable on the final `RunResult`'s last step. `noToolCalls()` has to be combined in: `pendingApproval()` alone never fires on a normal, no-tool-call turn, so a plain text reply would otherwise run to `maximumSteps` instead of finishing.
+5. **Park-on-approval**, not headless denial: `stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()]` (from `@corvidae/operative`) stops the run cleanly after a step whose tool results include a pending approval—no further `generate` call happens, and the pending approval stays reachable on the final `RunResult`'s last step. `noToolCalls()` has to be combined in: `pendingApproval()` alone never fires on a normal, no-tool-call turn, so a plain text reply would otherwise run to `maximumSteps` instead of finishing.
 
 ```typescript
 import { unlink } from 'node:fs/promises';
-import { createTool, createToolbox } from '@repo/armorer';
-import { createAgent, stopWhen } from '@repo/operative';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { createAgent, stopWhen } from '@corvidae/operative';
 import { z } from 'zod';
 
 const deleteFileTool = createTool({
@@ -290,7 +290,7 @@ Use a Weft-backed run wakeup or signal when a current run must survive restart, 
 
 ### Session liveness (AB-88, AB-214, AB-215)
 
-`SessionHandle` implements `LivenessObservable` (`@repo/operative`): `snapshot()` returns a `LivenessSnapshot` narrowed to `kind: 'session'`, and `subscribeSnapshot(observer, options?)` delivers it immediately, then again on every revision change. Unlike an `AgentRun`, a session never reaches a terminal liveness status—it can always accept another `run()`—so a `subscribeSnapshot` subscription stays open until `unsubscribe()` or `options.signal` aborts it. `durability` is always `'process-local'` (AB-39: session monitoring is not durable-ized by this record).
+`SessionHandle` implements `LivenessObservable` (`@corvidae/operative`): `snapshot()` returns a `LivenessSnapshot` narrowed to `kind: 'session'`, and `subscribeSnapshot(observer, options?)` delivers it immediately, then again on every revision change. Unlike an `AgentRun`, a session never reaches a terminal liveness status—it can always accept another `run()`—so a `subscribeSnapshot` subscription stays open until `unsubscribe()` or `options.signal` aborts it. `durability` is always `'process-local'` (AB-39: session monitoring is not durable-ized by this record).
 
 ```typescript
 const subscription = session.subscribeSnapshot((snapshot) => {
@@ -310,7 +310,7 @@ A `HumanWaitParkedEvent` observed on a run this session started (typically from 
 Type-preserving lazy loading for a whole `RunnableAgent` (AB-21)—instructions, tools, and output schema together, not just the `generate` function (`createLazyGenerate` covers that narrower case: `createAgent({ generate: createLazyGenerate(loader) })`). It defers `import()`ing an agent's module until the first `run()` call, while still returning an `AgentRun` handle synchronously:
 
 ```typescript
-import { createLazyAgent } from '@repo/operative';
+import { createLazyAgent } from '@corvidae/operative';
 
 // A named export: select it inside the loader—there is no selector overload.
 const researcher = createLazyAgent(() =>
@@ -348,7 +348,7 @@ The full-control factory behind `createAgent`, `createSessionHandle`, and bureau
 Most callers should reach for `createAgent({...}).run(...)` instead—it wraps `createActiveRun` in the higher-level `AgentRun` handle and covers the common cases. Reach for `createActiveRun` directly when you need something `createAgent` doesn't expose: an already-live `Conversation` instance, durable routing, hooks (`prepareStep`, `onStep`, `validateResponse`, …), structured output via `output`, or a pre-built emitter to bind tool dispatches to.
 
 ```typescript
-import { createActiveRun, stopWhen } from '@repo/operative';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
 
 // `stopWhen` is required for the in-memory loop to finish on an ordinary turn:
 // without a stop condition, a text-only provider response keeps advancing until
@@ -430,7 +430,7 @@ interface RunResult {
 
 **`durablyStarted` (AB-361).** On the durable branch (`createActiveRun(options, { engine, checkpointStore, runId })`), `durablyStarted` settles once this run's initial workflow record is durably committed—the write `context.engine.start(...)` performs—distinct from `result` (the run's own completion). A caller that needs the started-work control contract's durability guarantee (AB-34/AB-15: an acknowledged run is recoverable after any later crash) awaits it before treating a returned run identifier as durable; a caller that never reads it is unaffected, including when `engine.start` rejects. The in-memory branch leaves it `undefined`—there is no durable write to await.
 
-**Liveness (AB-88, AB-214).** `ActiveRun`, `AgentRun`, and `DiagnosticAgentRun` all implement `LivenessObservable`: `snapshot()` returns the current `LivenessSnapshot` synchronously (never starts work, never blocks, never mutates); `subscribeSnapshot(observer, options?)` delivers that snapshot immediately, then a new one on every revision change, and delivers a terminal snapshot exactly once for already-terminal work. See `@repo/operative` below for the full type contract and `createStallWatchdog`.
+**Liveness (AB-88, AB-214).** `ActiveRun`, `AgentRun`, and `DiagnosticAgentRun` all implement `LivenessObservable`: `snapshot()` returns the current `LivenessSnapshot` synchronously (never starts work, never blocks, never mutates); `subscribeSnapshot(observer, options?)` delivers that snapshot immediately, then a new one on every revision change, and delivers a terminal snapshot exactly once for already-terminal work. See `@corvidae/operative` below for the full type contract and `createStallWatchdog`.
 
 **Event types** emitted on `ActiveRun` (all prefixed by their lifecycle stage):
 
@@ -450,7 +450,7 @@ for await (const event of activeRun.events('step.completed')) {
 The interface operative never provides for you. Wire in any provider:
 
 ```typescript
-import type { GenerateFunction } from '@repo/operative';
+import type { GenerateFunction } from '@corvidae/operative';
 
 // Stub for tests or demos
 const generate: GenerateFunction = async ({ conversation, toolbox }) => ({
@@ -471,7 +471,7 @@ The main entry point exposes session helpers for direct session management witho
 - **`saveAgentSession(persistence, session)`**: Persists an `AgentSession` through conflict-aware session storage.
 
 ```typescript
-import { createAgentSession, loadAgentSession, saveAgentSession } from '@repo/operative';
+import { createAgentSession, loadAgentSession, saveAgentSession } from '@corvidae/operative';
 
 // Direct persistence (use createSessionStore from session/index for the full API)
 const session = createAgentSession({
@@ -489,14 +489,14 @@ For richer session management, `createSessionStore()` and `resumeSession()` are 
 ### `createSessionStore()` and `resumeSession()`
 
 ```typescript
-import { createActiveRun, createSessionStore, resumeSession, stopWhen } from '@repo/operative';
-import { MemoryStorage, textValueStore } from '@repo/weft';
+import { createActiveRun, createSessionStore, resumeSession, stopWhen } from '@corvidae/operative';
+import { MemoryStorage, textValueStore } from '@corvidae/weft';
 
 // createSessionStore requires a real Weft `ConditionalTextValueStore`—it
 // checks for a `.conditionalBatch` method, so a hand-rolled `{ get, set,
 // delete }` stub throws `TypeError: createSessionStore requires a
 // ConditionalTextValueStore`. For tests and prototyping, wrap an in-memory
-// `MemoryStorage` with `textValueStore()` (from `@repo/weft`)
+// `MemoryStorage` with `textValueStore()` (from `@corvidae/weft`)
 //—this is the same pattern operative's own test suite uses. Swap in a
 // real Weft-backed store for production.
 const kvStore = textValueStore(new MemoryStorage());
@@ -664,7 +664,7 @@ import {
   withTimeout,
   everyNSteps,
   stopWhen,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 // Compose two prepare-step hooks into one
 const combined = composeHooks(
@@ -705,7 +705,7 @@ const activeRun = createActiveRun({
 
 ### Guardrails
 
-See [`@repo/operative`](#operativeguardrails--guardrails) below for the tripwire model, the detector/validator catalog, provenance and the three retrieval surfaces, and the `bureau` default preset. This is a quick-start example; import from either `operative` or `@repo/operative`—they're the same implementation.
+See [Guardrails](#guardrails) below for the tripwire model, the detector and validator catalog, provenance, the three retrieval surfaces, and the Bureau default preset. This is a quick-start example; import the implementation from the package's single public entry point, `@corvidae/operative`.
 
 ```typescript
 import {
@@ -716,7 +716,7 @@ import {
   createTopicBoundaryDetector,
   createOutputPIIValidator,
   stopWhen,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 // Injection detection on inputs
 const injectionDetector = createPromptInjectionDetector();
@@ -751,7 +751,7 @@ const activeRun = createActiveRun({
 `createContextAssembler()` returns a function that, given a conversation and a budget, partitions messages into system / retrieved / history slices and trims each to fit:
 
 ```typescript
-import { createContextAssembler, createTokenBudget } from '@repo/operative';
+import { createContextAssembler, createTokenBudget } from '@corvidae/operative';
 
 const budget = createTokenBudget({
   maxTokens: 100_000,
@@ -780,7 +780,7 @@ import {
   createAnthropicProvider,
   createContextAssembler,
   createTokenBudget,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 const generate = createAnthropicProvider({
   model: 'claude-sonnet-4-20250514',
@@ -832,12 +832,12 @@ It's mapped to each provider's native field: Anthropic Messages `metadata`, Open
 
 ### Provider Errors
 
-Every shipped provider throws `ProviderError` (`@repo/operative`) for HTTP/SDK failures—it carries `provider`, `cause`, an optional `statusCode`, and `retryable` (true only for status codes in `{429, 500, 502, 503, 504}`).
+Every shipped provider throws `ProviderError` (`@corvidae/operative`) for HTTP/SDK failures—it carries `provider`, `cause`, an optional `statusCode`, and `retryable` (true only for status codes in `{429, 500, 502, 503, 504}`).
 
 `createAnthropicProviderStream` and `createOpenAIProviderStream` throw the more specific `ToolCallParseError`—a `ProviderError` subclass—when the model finishes a turn but the accumulated tool-call argument JSON it streamed doesn't parse. This is a malformed-output problem, not an API failure: the request succeeded, the model just emitted bad JSON. It carries `toolName`, `toolCallId` (`string | undefined`—the provider didn't always assign one before the parse failed), and `rawArguments` (the unparsed fragment) alongside the inherited `ProviderError` fields, and `retryable` is always `false` since it never has a `statusCode`.
 
 ```typescript
-import { ToolCallParseError } from '@repo/operative';
+import { ToolCallParseError } from '@corvidae/operative';
 
 try {
   await generate(context);
@@ -856,7 +856,7 @@ If the caller aborts `context.signal` mid-stream while a tool call's arguments a
 Use `isToolCallParseError` to recognize the error structurally when it crosses a serialization or module boundary:
 
 ```typescript
-import { isToolCallParseError } from '@repo/operative';
+import { isToolCallParseError } from '@corvidae/operative';
 
 if (isToolCallParseError(error)) {
   // Matches structurally even if `error` came from a different
@@ -873,7 +873,7 @@ import {
   createTokenBucket,
   createAdaptiveBackoff,
   stopWhen,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 // Smooth out burst traffic with a sliding window
 const backpressure = createSlidingWindow({ windowSize: 60_000, maximumRequests: 20 });
@@ -897,7 +897,7 @@ const result = await activeRun.result;
 ### Caching
 
 ```typescript
-import { createActiveRun, stopWhen, withCache, withCacheMetrics } from '@repo/operative';
+import { createActiveRun, stopWhen, withCache, withCacheMetrics } from '@corvidae/operative';
 
 // withCache requires a TextValueStore backend (e.g. from Weft)
 const cachedGenerate = withCache(generate, {
@@ -927,8 +927,8 @@ metrics.reset(); // clear counters between test runs
 ### Generate Middleware
 
 ```typescript
-import { composeGenerate, createFallbackGenerate } from '@repo/operative';
-import type { GenerateMiddleware } from '@repo/operative';
+import { composeGenerate, createFallbackGenerate } from '@corvidae/operative';
+import type { GenerateMiddleware } from '@corvidae/operative';
 
 // composeGenerate(base, ...middleware) applies middleware right-to-left (outermost first)
 const loggingMiddleware: GenerateMiddleware = (next) => async (context) => {
@@ -951,7 +951,7 @@ const withFallback = createFallbackGenerate({
 **Subagents:**
 
 ```typescript
-import { createAgent, createSubagentTool } from '@repo/operative';
+import { createAgent, createSubagentTool } from '@corvidae/operative';
 import { z } from 'zod';
 
 const researcherTool = createSubagentTool({
@@ -1012,7 +1012,7 @@ const researcherTool = createSubagentTool({
 `createSubagentTool` is the model-facing entry point; `dispatchChildRun` is the lower-level primitive underneath it, exported for code that dispatches a subagent directly rather than through a tool. It returns a `ChildRunHandle` that carries `childRunId`, `parentRunId`, and `agentName` alongside `AgentRun`'s own iterate/await/abort/dispose surface, so two concurrently retained handles stay independently addressable—aborting or iterating one never touches the other:
 
 ```typescript
-import { dispatchChildRun } from '@repo/operative';
+import { dispatchChildRun } from '@corvidae/operative';
 
 // `AgentRun` carries no id of its own (a recorded gap owned by AB-88), so a
 // caller who wants one supplies it—here, generated up front so it can
@@ -1037,7 +1037,7 @@ const [resultAlpha, resultBeta] = await Promise.all([alpha.result(), beta.result
 **Child discovery.** `AgentRun.children()` / `.abortChild(id, reason?)` (the signatures the started-work control contract in `documentation/operative-type-safe-api.md` assigns to AB-50) are backed by an opt-in `ChildRunRegistry`. Discovery does not happen automatically—a tool is constructed once, independent of any particular run, so nothing can inject a run-scoped registry into an already-built tool by itself. Wire the same registry into both places to make a run's children discoverable even when the tool's own return value never surfaces them to the caller:
 
 ```typescript
-import { createChildRunRegistry, createSubagentTool } from '@repo/operative';
+import { createChildRunRegistry, createSubagentTool } from '@corvidae/operative';
 
 const registry = createChildRunRegistry();
 // Tools are built once, independent of any particular run—so the parent
@@ -1097,12 +1097,12 @@ This also fixes a reuse hazard the construction-time wiring had: build `research
 
 **Child terminal lifecycle and relationship-query events (AB-90 child ab90-02, AB-222).** Alongside `ChildWorkflowStartedEvent` (`child.started`), `dispatchChildRun` emits `ChildWorkflowCompletedEvent`/`ChildWorkflowFailedEvent`/`ChildWorkflowAbortedEvent` (`multiagent.child-workflow.completed`/`.failed`/`.aborted`—AB-87's decision record names these `child.completed`/`child.failed`/`child.aborted`; AB-50 shipped them). They're mutually exclusive terminals for one child run, each carrying `childRunId` and `parentRunId`.
 
-Two further event classes are typed and exported by this package but not yet wired to a live dispatch call site: `ChildWorkflowReattachedEvent` (`multiagent.child-workflow.reattached`, `childRunId`/`parentRunId`) fires only once AB-53's persisted parent-child topology recovery reattaches a previously detached child's event stream to its parent—this package defines the type, payload shape, and intended dispatch point, but does not itself implement persisted topology or recovery. `ChildWorkflowProgressEvent` (`multiagent.child-workflow.progress`) additionally carries the child's own `SemanticProgress` (`@repo/operative`'s `liveness` module, AB-88/AB-214) and is explicitly non-cursor-advancing—an ephemeral delta, never a durable state transition.
+Two further event classes are typed and exported by this package but not yet wired to a live dispatch call site: `ChildWorkflowReattachedEvent` (`multiagent.child-workflow.reattached`, `childRunId`/`parentRunId`) fires only once AB-53's persisted parent-child topology recovery reattaches a previously detached child's event stream to its parent—this package defines the type, payload shape, and intended dispatch point, but does not itself implement persisted topology or recovery. `ChildWorkflowProgressEvent` (`multiagent.child-workflow.progress`) additionally carries the child's own `SemanticProgress` (`@corvidae/operative`'s `liveness` module, AB-88/AB-214) and is explicitly non-cursor-advancing—an ephemeral delta, never a durable state transition.
 
 `listChildRuns(registry, parentRunId)` is a relationship-query function over the same `ChildRunRegistry` `AgentRun.children()` reads from—it lets a caller enumerate a run's children and their outcomes without polling each child's own handle:
 
 ```typescript
-import { createChildRunRegistry, dispatchChildRun, listChildRuns } from '@repo/operative';
+import { createChildRunRegistry, dispatchChildRun, listChildRuns } from '@corvidae/operative';
 
 const registry = createChildRunRegistry();
 dispatchChildRun(researcherAgent, 'Research topic A', {
@@ -1142,7 +1142,7 @@ import {
   extractHandoffTarget,
   HANDOFF_MARKER,
   stopWhen,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 // Each handoff targets one specific agent
 const escalateToSupport = createHandoffTool({
@@ -1238,8 +1238,8 @@ if (target) {
 ### Scheduler
 
 ```typescript
-import { createScheduler, createHeartbeat, createChunkedTask, stopWhen } from '@repo/operative';
-import type { SchedulerTask } from '@repo/operative';
+import { createScheduler, createHeartbeat, createChunkedTask, stopWhen } from '@corvidae/operative';
+import type { SchedulerTask } from '@corvidae/operative';
 
 // The scheduler shares a generate function and toolbox across all its tasks.
 const scheduler = createScheduler({
@@ -1298,7 +1298,7 @@ await runChunked(scheduler);
 ### Cost Estimation and Budget
 
 ```typescript
-import { estimateCost, createCostBudgetMonitor } from '@repo/operative';
+import { estimateCost, createCostBudgetMonitor } from '@corvidae/operative';
 
 const estimate = estimateCost(
   { prompt: 5000, completion: 800, total: 5800 },
@@ -1317,10 +1317,10 @@ const monitor = createCostBudgetMonitor({
 
 ### Model Catalog (AB-64)
 
-`createModelCatalog` (`@repo/operative`) builds a static, synchronous, side-effect-free `ModelCatalog`—one `BackendDescriptor` row per `(provider, endpoint, model)` this package ships a generate function for. Each descriptor names its `modalities` (an AB-70 `ModalityMatrix`, re-exported from `conversationalist`), context/output limits, effort support and degradation, parameter compatibility, pricing (derived from `defaultPricingTable`, never fabricated), and availability/health. `voyage` and `ollama` are embedding-only and get no row. `CreateModelCatalogOptions.runtime?: RuntimeServices` (AB-325) backs the default `now` when `options.now` is not supplied—defaults to the real implementation; an explicit `now` still takes precedence over `runtime` when both are given.
+`createModelCatalog` (`@corvidae/operative`) builds a static, synchronous, side-effect-free `ModelCatalog`—one `BackendDescriptor` row per `(provider, endpoint, model)` this package ships a generate function for. Each descriptor names its `modalities` (an AB-70 `ModalityMatrix`, re-exported from `conversationalist`), context/output limits, effort support and degradation, parameter compatibility, pricing (derived from `defaultPricingTable`, never fabricated), and availability/health. `voyage` and `ollama` are embedding-only and get no row. `CreateModelCatalogOptions.runtime?: RuntimeServices` (AB-325) backs the default `now` when `options.now` is not supplied—defaults to the real implementation; an explicit `now` still takes precedence over `runtime` when both are given.
 
 ```typescript
-import { createModelCatalog } from '@repo/operative';
+import { createModelCatalog } from '@corvidae/operative';
 
 const catalog = createModelCatalog();
 // catalog.revision, catalog.descriptors, catalog.projection ('privileged')
@@ -1340,13 +1340,13 @@ import {
   createLazyGenerate,
   readGenerationProfile,
   type AgentGenerationProfile,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import {
   createAnthropicProvider,
   createModelCatalog,
   readBackendDescriptors,
   withBackendDescriptors,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 // createAnthropicProvider/createOpenAIProvider/createGeminiProvider (and the
 // Anthropic/OpenAI streaming siblings) attach the single seed descriptor
@@ -1389,10 +1389,10 @@ Every generate-function wrapper this package ships preserves whatever descriptor
 
 ### Model Policy Precedence (AB-64, AB-248)
 
-`composePolicy` (`@repo/operative`) is a pure, synchronous function that composes AB-64's five precedence layers—deployment invariants, Bureau invariants, Agent requirements and preferences, delegated authority, and user constraints and preferences—over a fixed set of `BackendDescriptor`s. Each layer only narrows what the layer above allowed; the first layer to exclude a candidate owns its `exclusionCode`, and no later layer can overwrite it or re-admit a candidate a higher layer denied.
+`composePolicy` (`@corvidae/operative`) is a pure, synchronous function that composes AB-64's five precedence layers—deployment invariants, Bureau invariants, Agent requirements and preferences, delegated authority, and user constraints and preferences—over a fixed set of `BackendDescriptor`s. Each layer only narrows what the layer above allowed; the first layer to exclude a candidate owns its `exclusionCode`, and no later layer can overwrite it or re-admit a candidate a higher layer denied.
 
 ```typescript
-import { composePolicy, createModelCatalog } from '@repo/operative';
+import { composePolicy, createModelCatalog } from '@corvidae/operative';
 
 const { descriptors } = createModelCatalog();
 
@@ -1416,10 +1416,10 @@ Ranking, tie-breaking, the deterministic selector, and the `SelectionPlan` itsel
 
 ### Deterministic Backend Selector and Selection Plan (AB-64, AB-249)
 
-`select(request, options)` (`@repo/operative`) is a pure, synchronous function: no input or output, no clock read except the injected `options.now`/`options.runtime`. It calls `composePolicy` internally for hard-constraint filtering, applies effort compatibility within the eligible set, then ranks by `costPreference`/`latencyPreference`/`preferredProviders`/`preferredModels`, breaking ties by `(provider, model)` lexicographic order. Two calls with the same recorded input produce deeply equal plans. `SelectOptions.runtime?: RuntimeServices` (AB-325) backs the default `now`/`newPlanId` when those are not supplied, defaulting to the real implementation; explicit `now`/`newPlanId` still take precedence over `runtime` when both are given.
+`select(request, options)` (`@corvidae/operative`) is a pure, synchronous function: no input or output, no clock read except the injected `options.now`/`options.runtime`. It calls `composePolicy` internally for hard-constraint filtering, applies effort compatibility within the eligible set, then ranks by `costPreference`/`latencyPreference`/`preferredProviders`/`preferredModels`, breaking ties by `(provider, model)` lexicographic order. Two calls with the same recorded input produce deeply equal plans. `SelectOptions.runtime?: RuntimeServices` (AB-325) backs the default `now`/`newPlanId` when those are not supplied, defaulting to the real implementation; explicit `now`/`newPlanId` still take precedence over `runtime` when both are given.
 
 ```typescript
-import { composePolicy, createModelCatalog, select } from '@repo/operative';
+import { composePolicy, createModelCatalog, select } from '@corvidae/operative';
 
 const catalog = createModelCatalog();
 
@@ -1453,8 +1453,8 @@ Bureau wiring (`BureauOptions.modelPolicy`, `Bureau.planSelection`) and `runStep
 `RunOptions` gains an optional `selection?: SelectionGate`, mirroring the shipped `steering?: SteeringGate` field (unlike `steering`, it carries no `runId` coupling). `run-step.ts` reads it at the same shared boundary the steering gate is already read—after the pause-wait loop, before backpressure—and calls `gate.revalidate()`, which is synchronous and pure, exactly like `select` itself:
 
 ```typescript
-import { createSelectionGate } from '@repo/operative';
-import { select } from '@repo/operative';
+import { createSelectionGate } from '@corvidae/operative';
+import { select } from '@corvidae/operative';
 
 const gate = createSelectionGate({
   initialPlan: select(request, options),
@@ -1469,7 +1469,7 @@ revalidated.outcome; // 'selected' when nothing changed; a typed replacement oth
 
 A revalidated plan that no longer reaches `outcome: 'selected'` fails the step with the new `SelectionRevalidationError` (`kind: 'policy'`, `code: 'SELECTION_REVALIDATION_FAILED'`), carrying both the failed replacement plan (`.plan`) and the superseded plan it replaces (`.supersededPlan`)—never silently falling back to the superseded plan's model. Omitting `RunOptions.selection` leaves `runStep` behaving exactly as it does today.
 
-`DelegatedAuthority` threads through `dispatchChildRun`'s `DispatchChildRunOptions.delegatedAuthority`, forwarded to `agent.run()` as the new `AgentRunContext.delegatedAuthority`—never through `BureauRunOptions`. `attenuateDelegatedAuthority(parent, child)` (`@repo/operative`) composes a parent's grant with the authority a dispatch site wants to hand one specific child: `grantedProviders`/`grantedModels` intersect (never widen), `maximumEffort` takes the lower tier, and the result's `policyVersion` is the attenuating (child) grant's own version.
+`DelegatedAuthority` threads through `dispatchChildRun`'s `DispatchChildRunOptions.delegatedAuthority`, forwarded to `agent.run()` as the new `AgentRunContext.delegatedAuthority`—never through `BureauRunOptions`. `attenuateDelegatedAuthority(parent, child)` (`@corvidae/operative`) composes a parent's grant with the authority a dispatch site wants to hand one specific child: `grantedProviders`/`grantedModels` intersect (never widen), `maximumEffort` takes the lower tier, and the result's `policyVersion` is the attenuating (child) grant's own version.
 
 `AgentRunContext.delegatedAuthority` also threads through `RunOptions.delegatedAuthority` into every tool call's per-execution `ToolContext.executionContext.delegatedAuthority` (AB-300), matching the AB-233 `childRegistry`/`parentRunId` pattern exactly. `createSubagentTool` reads it there at execute time, attenuates it with its own `delegatedAuthority` construction option (a tool's own narrowing for the specific child it dispatches, if any) via `attenuateDelegatedAuthority`, and forwards the result into `dispatchChildRun`. A parent run carrying no grant and a tool with no narrowing of its own dispatch with `delegatedAuthority` left `undefined`, exactly as before this wiring existed.
 
@@ -1480,7 +1480,7 @@ Bureau's `planSelection`/`createSelectionGateFor` surface (`packages/bureau/src/
 `output` (AB-18) is the single validated output contract: one Zod schema that drives inference, the provider-native JSON Schema (via `z.toJSONSchema(schema, { io: 'input' })`), and runtime validation. There is no separate `responseSchema`/`responseJsonSchema` pair, no non-Zod Standard Schema branch, and no raw JSON Schema input—a caller who needs the latter converts it to a Zod schema first.
 
 ```typescript
-import { createActiveRun, stopWhen } from '@repo/operative';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
 import { z } from 'zod';
 
 const OutputSchema = z.object({
@@ -1513,7 +1513,7 @@ import {
   createScratchpad,
   createScratchpadReadTool,
   createScratchpadWriteTool,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 const scratchpad = createScratchpad({ initialValues: { step: 0 } });
 
@@ -1529,7 +1529,7 @@ const agent = createAgent({
 ### Context Compaction
 
 ```typescript
-import { createActiveRun, createContextCompactor, stopWhen } from '@repo/operative';
+import { createActiveRun, createContextCompactor, stopWhen } from '@corvidae/operative';
 
 // createContextCompactor returns an onCompact function for contextManagement.
 // The summarize callback receives an array of Message objects (not a Conversation).
@@ -1556,8 +1556,13 @@ const activeRun = createActiveRun({
 ### Memory Bridge
 
 ```typescript
-import { createActiveRun, createMemoryBridge, createScratchpad, stopWhen } from '@repo/operative';
-import type { GenerateFunction, MemoryLike } from '@repo/operative';
+import {
+  createActiveRun,
+  createMemoryBridge,
+  createScratchpad,
+  stopWhen,
+} from '@corvidae/operative';
+import type { GenerateFunction, MemoryLike } from '@corvidae/operative';
 
 declare const generate: GenerateFunction;
 declare const myMemoryAdapter: MemoryLike;
@@ -1589,7 +1594,7 @@ const activeRun = createActiveRun({
 ### Identity Hook
 
 ```typescript
-import { createActiveRun, createIdentityHook, stopWhen } from '@repo/operative';
+import { createActiveRun, createIdentityHook, stopWhen } from '@corvidae/operative';
 
 const identityHook = createIdentityHook({
   resolve: async () => 'You are Aria, a friendly customer success agent.',
@@ -1607,8 +1612,8 @@ const activeRun = createActiveRun({
 ### Policy Enforcement
 
 ```typescript
-import { createPolicyEnforcementHook } from '@repo/operative';
-import type { ToolLike } from '@repo/operative';
+import { createPolicyEnforcementHook } from '@corvidae/operative';
+import type { ToolLike } from '@corvidae/operative';
 
 // createPolicyEnforcementHook returns a tool-filtering function:
 //   (tools: T[]) => T[]
@@ -1631,7 +1636,7 @@ const allowedTools = enforcePolicy(allTools);
 ### Early Stopping
 
 ```typescript
-import { createActiveRun, createEarlyStoppingHandler, stopWhen } from '@repo/operative';
+import { createActiveRun, createEarlyStoppingHandler, stopWhen } from '@corvidae/operative';
 
 // Creates an onMaximumSteps callback that calls the model one final time
 // without tools, prompting it to summarize findings before the loop ends.
@@ -1654,8 +1659,8 @@ const activeRun = createActiveRun({
 Composable predicates for loop exit. All are available on the `stopWhen` namespace object, or can be imported individually.
 
 ```typescript
-import { createActiveRun } from '@repo/operative';
-import { stopWhen } from '@repo/operative';
+import { createActiveRun } from '@corvidae/operative';
+import { stopWhen } from '@corvidae/operative';
 
 // Stop when the model produces no tool calls (each predicate is a factory—call it)
 const noTools = stopWhen.noToolCalls();
@@ -1730,7 +1735,7 @@ const activeRun = createActiveRun({
 
 ### Guardrails
 
-Guardrails are the trust boundary between the agent loop and everything that can inject untrusted content into it—the user, retrieved memories, ingested documents, and skill resources. Detectors live in `armorer` (shared with the retrieval surfaces); `@repo/operative` wires them into the loop as `prepareStep`/`validateResponse` hooks. Import these functions from the single `@repo/operative` entry point.
+Guardrails are the trust boundary between the agent loop and everything that can inject untrusted content into it—the user, retrieved memories, ingested documents, and skill resources. Detectors live in `armorer` (shared with the retrieval surfaces); `@corvidae/operative` wires them into the loop as `prepareStep`/`validateResponse` hooks. Import these functions from the single `@corvidae/operative` entry point.
 
 ### The Tripwire Model (AB-40)
 
@@ -1786,8 +1791,8 @@ import {
   createPromptInjectionDetector,
   createOutputPIIValidator,
   withMinimumTripwireConfidence,
-} from '@repo/operative';
-import { createActiveRun, stopWhen } from '@repo/operative';
+} from '@corvidae/operative';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
 
 const guardrails = createGuardrails({
   mode: 'tripwire',
@@ -1821,7 +1826,7 @@ import {
   LIVENESS_POLICY_VERSION,
   TOOL_CALL_POLICY,
   toolCallPolicy,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 const clock = {
   now: () => Date.now(),
@@ -1847,15 +1852,15 @@ watchdog.dispose(); // clears the internal cadence timer
 
 **Child-liveness aggregation (AB-216, obs-03).** When a run is dispatched through `dispatchChildRun`/`createSubagentTool` with a `ChildRunRegistry` (the same registry backing `children()`/`abortChild()`, below), that registry also tracks each child's own `LivenessAssessment` and notifies its parent on every change. A parent `ActiveRun`/`AgentRun` supplied that same `RunOptions.childRegistry` therefore also carries an optional `LivenessSnapshot.worstChildAssessment`: the most severe assessment among its non-terminal children (`assessment !== 'terminal'`), most severe first—`unreachable` > `alive-but-stalled` > `aborting` > `cleaning-up` > `legitimately-waiting` > `healthy`—or absent when there are no children or every child is terminal. The parent's own `revision` advances whenever the folded value changes, even when none of the parent's own dimensions did; a stalled or unreachable child never changes the parent's own `reachability`/`progress`/`status`. Omit `childRegistry` and `worstChildAssessment` stays permanently absent, matching `children()`'s own opt-in default.
 
-**Standalone-run identity (AB-88's Amendment 1, corrected by AB-214, migrated onto `RuntimeServices` by AB-325).** A standalone (non-Bureau) run mints a process-local id at `ActiveRun` construction from `createActiveRun`'s own resolved `RuntimeServices.identifiers` directly whenever `RunOptions.runId` and `CreateActiveRunDependencies.identifiers` are both absent—`RunIdentifierSeam` (`createDefaultRunIdentifierSeam`, itself now backed by a `RuntimeServices` instance) remains only as that explicit-override escape hatch and as public API from `@repo/operative`. The minted id populates `LivenessSnapshot.id` and stamps curated `tool.*` bubble events and `createSubagentTool`'s per-call `parentRunId`; it is never registered with Bureau's `Store` and confers no locator or reattachment capability. A Bureau- or caller-supplied `runId` is always used as-is.
+**Standalone-run identity (AB-88's Amendment 1, corrected by AB-214, migrated onto `RuntimeServices` by AB-325).** A standalone (non-Bureau) run mints a process-local id at `ActiveRun` construction from `createActiveRun`'s own resolved `RuntimeServices.identifiers` directly whenever `RunOptions.runId` and `CreateActiveRunDependencies.identifiers` are both absent—`RunIdentifierSeam` (`createDefaultRunIdentifierSeam`, itself now backed by a `RuntimeServices` instance) remains only as that explicit-override escape hatch and as public API from `@corvidae/operative`. The minted id populates `LivenessSnapshot.id` and stamps curated `tool.*` bubble events and `createSubagentTool`'s per-call `parentRunId`; it is never registered with Bureau's `Store` and confers no locator or reattachment capability. A Bureau- or caller-supplied `runId` is always used as-is.
 
 ### Run Store
 
 Observes one or more `ActiveRun` instances, accumulating steps, usage, and the action log. Use this to build dashboards, replay UIs, or cross-run analytics.
 
 ```typescript
-import { createStore } from '@repo/operative';
-import { createActiveRun, stopWhen } from '@repo/operative';
+import { createStore } from '@corvidae/operative';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
 
 const store = createStore({ maxActions: 500, maxSnapshots: 10 });
 
@@ -1926,9 +1931,9 @@ Wraps a streaming generate function into the standard `GenerateFunction` contrac
 Adapts a `StreamingGenerateFunction` (one that receives a `StreamingHandle`) into a standard `GenerateFunction`. The helper manages `appendStreamingMessage → updateStreamingMessage → finalizeStreamingMessage` on the conversation so the loop never sees raw streaming state:
 
 ```typescript
-import { createActiveRun, stopWhen } from '@repo/operative';
-import { withStreaming } from '@repo/operative';
-import type { StreamingGenerateFunction } from '@repo/operative';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
+import { withStreaming } from '@corvidae/operative';
+import type { StreamingGenerateFunction } from '@corvidae/operative';
 
 const streamingGenerate: StreamingGenerateFunction = async ({ conversation, streaming }) => {
   // Push incremental tokens through streaming.update()
@@ -1958,8 +1963,8 @@ const result = await activeRun.result;
 Wraps a `StreamingGenerateFunction` (like `withStreaming`, above) but also drives a `StreamStateMachine` internally and calls fine-grained callbacks as text and tool-call deltas arrive:
 
 ```typescript
-import { withEnhancedStreaming } from '@repo/operative';
-import type { StreamingGenerateFunction } from '@repo/operative';
+import { withEnhancedStreaming } from '@corvidae/operative';
+import type { StreamingGenerateFunction } from '@corvidae/operative';
 
 declare const streamingGenerate: StreamingGenerateFunction;
 
@@ -1973,8 +1978,8 @@ const generate = withEnhancedStreaming(streamingGenerate, {
 By default the tool-call events are reconstructed from the resolved `GenerateResponse`, which means they land _after_ the provider response has closed. Text deltas stream live; tool-call deltas do not. Set `liveToolCalls` to change that:
 
 ```typescript
-import { createAnthropicProviderStream } from '@repo/operative';
-import { withEnhancedStreaming } from '@repo/operative';
+import { createAnthropicProviderStream } from '@corvidae/operative';
+import { withEnhancedStreaming } from '@corvidae/operative';
 
 const generate = withEnhancedStreaming(createAnthropicProviderStream({ model, apiKey }), {
   eventTarget,
@@ -1996,7 +2001,7 @@ A streaming function that reports nothing—a hand-written one, or the Gemini ad
 Creates a backpressure-aware buffer for streaming events—queues, coalesces, and drops `StreamEvent`s under load:
 
 ```typescript
-import { createBackpressureBuffer } from '@repo/operative';
+import { createBackpressureBuffer } from '@corvidae/operative';
 
 const buffer = createBackpressureBuffer({
   maxBufferSize: 100,
@@ -2013,7 +2018,7 @@ buffer.push({ type: 'stream:text-delta', content: 'Hello', accumulated: 'Hello' 
 Parses a raw token stream into typed blocks (`text`, `tool-call`, `thinking`, `metadata`):
 
 ```typescript
-import { createStreamStateMachine } from '@repo/operative';
+import { createStreamStateMachine } from '@corvidae/operative';
 
 const machine = createStreamStateMachine();
 const state = machine.process({ type: 'block-start', id: 'block-1', blockType: 'text' });
@@ -2035,8 +2040,8 @@ import {
   createToolRemovalMutator,
   createOverflowMutator,
   addJitter,
-} from '@repo/operative';
-import { createActiveRun, stopWhen } from '@repo/operative';
+} from '@corvidae/operative';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
 
 // Increase by 0.2 per attempt (default), capped at 1.0
 const escalate = createTemperatureEscalationMutator({
@@ -2091,8 +2096,8 @@ const activeRun = createActiveRun({
 Attaches OpenTelemetry spans to an `ActiveRun`, mirroring the agent loop lifecycle as nested spans. `@opentelemetry/api` is a direct dependency whose version comes from the root catalog.
 
 ```typescript
-import { instrumentRun } from '@repo/operative';
-import { createActiveRun, stopWhen } from '@repo/operative';
+import { instrumentRun } from '@corvidae/operative';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
 import { trace } from '@opentelemetry/api';
 
 const activeRun = createActiveRun({
@@ -2133,11 +2138,11 @@ See [OTel GenAI Semantic Conventions](#otel-genai-semantic-conventions) below fo
 
 ### OpenTelemetry (Inference Calls)
 
-Wraps a `GenerateFunction` with a single CLIENT span per call, following the OTel GenAI "Inference" (chat) span convention. Use this when you want the canonical, spec-compliant span for the actual LLM request—with model, provider, and token usage—as opposed to the loop-level `generate` span from `@repo/operative`, which has no model/provider visibility.
+Wraps a `GenerateFunction` with a single CLIENT span per call, following the OTel GenAI "Inference" (chat) span convention. Use this when you want the canonical, spec-compliant span for the actual LLM request—with model, provider, and token usage—as opposed to the loop-level `generate` span from `@corvidae/operative`, which has no model/provider visibility.
 
 ```typescript
-import { instrumentGenerate } from '@repo/operative';
-import { createAnthropicProvider } from '@repo/operative';
+import { instrumentGenerate } from '@corvidae/operative';
+import { createAnthropicProvider } from '@corvidae/operative';
 import { trace } from '@opentelemetry/api';
 
 const rawGenerate = createAnthropicProvider({ model: 'claude-sonnet-5' });
@@ -2160,7 +2165,7 @@ const generate = instrumentGenerate(rawGenerate, {
 
 ### OTel GenAI Semantic Conventions
 
-Spans and attributes across Operative runtime and provider instrumentation and `@repo/armorer` follow the [OpenTelemetry GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai) wherever a direct mapping exists. The conventions are still in **Development** status (no tagged release as of this writing) and can change—this table is pinned to:
+Spans and attributes across Operative runtime and provider instrumentation and `@corvidae/armorer` follow the [OpenTelemetry GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai) wherever a direct mapping exists. The conventions are still in **Development** status (no tagged release as of this writing) and can change—this table is pinned to:
 
 - `open-telemetry/semantic-conventions-genai` commit [`63f8200`](https://github.com/open-telemetry/semantic-conventions-genai/commit/63f8200eee093730ce845d26ce2aafb621b0807e) (`docs/gen-ai/gen-ai-spans.md`, `docs/gen-ai/gen-ai-agent-spans.md`)
 - general attributes (`error.*`, `server.*`) cross-referenced against semantic-conventions [v1.43.0](https://github.com/open-telemetry/semantic-conventions/tree/v1.43.0)
@@ -2169,12 +2174,12 @@ When the pinned spec revision changes, re-diff these two files against the new c
 
 | Our span (package) | OTel GenAI span | Span name | Kind | Key attributes | Divergence |
 | --- | --- | --- | --- | --- | --- |
-| `invoke_agent` (`@repo/operative`) | Invoke agent (internal) | `invoke_agent [{agentName}]` | INTERNAL | `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name`, `gen_ai.usage.*` | `operative.finish_reason`/`operative.total_steps`/`operative.abort_reason` are documented custom extensions. `event.finishReason` (`stop-condition`, `maximum-steps`, `budget-exceeded`, `aborted`, ...) is intentionally kept OFF `gen_ai.response.finish_reasons`—it is operative's own agent-loop control-flow reason, not a provider-reported model completion reason, and mapping it there would mislead OTel GenAI backends that expect well-known provider stop reasons. |
-| `step` (`@repo/operative`) | _(none)_ | `step` | INTERNAL | `operative.step.index` | **Divergent.** No spec equivalent for a single loop iteration. Kept as a non-normative structural span; name held constant (not `step {n}`) to avoid unbounded span-name cardinality. |
-| `generate` (`@repo/operative`) | _(none—see `providers/instrumentation` row)_ | `generate` | INTERNAL | `operative.usage.*`, `operative.generate.duration_ms` | **Divergent, intentionally.** Observes the loop's call boundary without model/provider visibility. NOT labeled `gen_ai.operation.name=chat` and usage is namespaced under `operative.*` (not `gen_ai.*`) so it never double-reports usage against the canonical chat span below when both instrumentation points are wired to the same call. |
-| `tool_calls` (`@repo/operative`) | _(none)_ | `tool_calls` | INTERNAL | `operative.tools.count`, `operative.tools.names`, `operative.tools.results_count` | **Divergent.** The spec defines a per-call `execute_tool` span (see below), not a batch wrapper for the calls issued in one step. |
-| `{chat\|generate_content} {model}` (`@repo/operative`) | Inference | `{gen_ai.operation.name} {model}` | CLIENT | `gen_ai.operation.name` (`chat`, or `generate_content` for Gemini), `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.max_tokens`, `gen_ai.usage.*` | None—full compliance. This is the canonical span for a single LLM inference call. |
-| `execute_tool {name}` (`@repo/armorer`) | Execute tool | `execute_tool {gen_ai.tool.name}` | INTERNAL | `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.description`, `error.type` | `gen_ai.tool.call.arguments`/`gen_ai.tool.call.result` are Opt-In under the conventions and deliberately not emitted—they can carry privileged tool arguments/results (AB-87/AB-230). `armorer.tool.*` carries duration/digest/status extensions the spec doesn't define. |
+| `invoke_agent` (`@corvidae/operative`) | Invoke agent (internal) | `invoke_agent [{agentName}]` | INTERNAL | `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name`, `gen_ai.usage.*` | `operative.finish_reason`/`operative.total_steps`/`operative.abort_reason` are documented custom extensions. `event.finishReason` (`stop-condition`, `maximum-steps`, `budget-exceeded`, `aborted`, ...) is intentionally kept OFF `gen_ai.response.finish_reasons`—it is operative's own agent-loop control-flow reason, not a provider-reported model completion reason, and mapping it there would mislead OTel GenAI backends that expect well-known provider stop reasons. |
+| `step` (`@corvidae/operative`) | _(none)_ | `step` | INTERNAL | `operative.step.index` | **Divergent.** No spec equivalent for a single loop iteration. Kept as a non-normative structural span; name held constant (not `step {n}`) to avoid unbounded span-name cardinality. |
+| `generate` (`@corvidae/operative`) | _(none—see `providers/instrumentation` row)_ | `generate` | INTERNAL | `operative.usage.*`, `operative.generate.duration_ms` | **Divergent, intentionally.** Observes the loop's call boundary without model/provider visibility. NOT labeled `gen_ai.operation.name=chat` and usage is namespaced under `operative.*` (not `gen_ai.*`) so it never double-reports usage against the canonical chat span below when both instrumentation points are wired to the same call. |
+| `tool_calls` (`@corvidae/operative`) | _(none)_ | `tool_calls` | INTERNAL | `operative.tools.count`, `operative.tools.names`, `operative.tools.results_count` | **Divergent.** The spec defines a per-call `execute_tool` span (see below), not a batch wrapper for the calls issued in one step. |
+| `{chat\|generate_content} {model}` (`@corvidae/operative`) | Inference | `{gen_ai.operation.name} {model}` | CLIENT | `gen_ai.operation.name` (`chat`, or `generate_content` for Gemini), `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.max_tokens`, `gen_ai.usage.*` | None—full compliance. This is the canonical span for a single LLM inference call. |
+| `execute_tool {name}` (`@corvidae/armorer`) | Execute tool | `execute_tool {gen_ai.tool.name}` | INTERNAL | `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.description`, `error.type` | `gen_ai.tool.call.arguments`/`gen_ai.tool.call.result` are Opt-In under the conventions and deliberately not emitted—they can carry privileged tool arguments/results (AB-87/AB-230). `armorer.tool.*` carries duration/digest/status extensions the spec doesn't define. |
 
 `gen_ai.provider.name` values are mapped from operative's internal `ProviderName` to the conventions' well-known values where one is registered:
 
@@ -2193,9 +2198,9 @@ When the pinned spec revision changes, re-diff these two files against the new c
 Drives agent runs through the Weft durable execution engine—checkpointed, crash-recoverable, and resumable. The `ActiveRun` surface is identical to the in-memory path; only the second argument to `createActiveRun()` changes.
 
 ```typescript
-import { createActiveRun } from '@repo/operative';
-import type { DurableRunRouting } from '@repo/operative';
-import { createCheckpointStore, createRunEngine, createRunWorkflow } from '@repo/operative';
+import { createActiveRun } from '@corvidae/operative';
+import type { DurableRunRouting } from '@corvidae/operative';
+import { createCheckpointStore, createRunEngine, createRunWorkflow } from '@corvidae/operative';
 
 // Build the durable substrate once at startup. createRunEngine returns
 // { engine, checkpointStore }—`storage` is Weft's raw Storage backend;
@@ -2220,7 +2225,7 @@ const result = await activeRun.result;
 
 > [!NOTE] Multi-process safety (AB-178) `createRunEngine`'s `ownership` option defaults to `'none'`—one engine per durable store, enforced by infrastructure convention (one replica, a `Recreate` deploy) rather than the engine itself. Pass `ownership: 'workflow-lease'` to let more than one engine safely share a store: Weft claims each workflow for exactly one engine before its generator runs, so a second engine racing to resume the same workflow fails closed instead of double-executing it. This requires a storage backend with the `conditionalBatch` capability (`MemoryStorage` and `SQLiteStorage` both qualify). Same-engine suspend/resume preemption is supported under `'workflow-lease'`; the claim is reacquired after suspend and remains exclusive to the resuming engine. Hosts that require multi-engine safety should opt in with a conditional-batch-capable storage adapter.
 
-> [!WARNING] weft 0.23 persisted-data schema bump (breaking for existing stores) `@repo/weft` 0.23 advances its persisted-data schema from version 1 to version 2 with **no in-place migration**: a store written by weft 0.22.x or earlier is rejected with `PersistedDataIncompatibleError` when opened under 0.23+. There is no online upgrade path—plan a cutover (new store, or offline migration) before deploying this version against an existing durable store.
+> [!WARNING] weft 0.23 persisted-data schema bump (breaking for existing stores) `@corvidae/weft` 0.23 advances its persisted-data schema from version 1 to version 2 with **no in-place migration**: a store written by weft 0.22.x or earlier is rejected with `PersistedDataIncompatibleError` when opened under 0.23+. There is no online upgrade path—plan a cutover (new store, or offline migration) before deploying this version against an existing durable store.
 
 **Exported functions:**
 
@@ -2240,11 +2245,11 @@ const result = await activeRun.result;
 
 **Exported types:** `DurableActiveRunOptions`, `DurableActiveRunContext`, `RecoveredRunHandle`, `StartDurableRunResultOptions`, `CheckpointStore`, `RunEngine`, `RegistryAgnosticEngine`, `CreateRunEngineOptions`, `RunEngineObservability`, `AgentRunWorkflowInput`, `AgentRunWorkflowResult`, `DurableRunDeps`, `RunCheckpoint`, `RunCursor`, `StepRecord`, `SteeringCommand`, `SteeringCommandFailure`, `SteeringCommandState`, `SteeringDesiredState`, `SteeringEffectiveState`, `SteeringRequestedValue`, `SteeringTargetKind` (AB-67—the runtime steering contract's type-only surface). `SteeringDesiredState`/`SteeringEffectiveState` are exported here for the contract's shape; the runtime consumer of `SteeringDesiredState` is `RunOptions.steering: SteeringGate` (see the `RunOptions` table above and `GenerateContext.steering` below)—the `runStep` boundary read, pause/resume gate, and `GenerateContext` threading now ship. `submitSteeringCommand` (Bureau's admission surface, `packages/bureau`) ships `pause`/`resume` on in-memory sessions only (AB-199); `route`/`model`/`provider`/`effort`/`agent-identity` and durable-session pause/resume remain `unsupported-capability` until `ab-67-bureau-b`. AB-67's 2026-09-02 coordinator amendments, as tightened by AB-236: `SteeringCommandFailure` is a discriminated union on `reason`—the `'superseded-by'` member requires `readonly supersededBy: string` (the successor command's `id`); every other member carries `supersededBy?: never`, so a literal or non-literal value supplying a real `supersededBy` alongside a different reason, or omitting it alongside `'superseded-by'`, fails to type-check rather than merely violating a documented invariant (the shared TypeScript configuration also rejects an explicit `supersededBy: undefined`); every `SteeringRequestedValue` variant encodes `policyRef`/`override` as an exclusive pair (`policyRef?: never` alongside `override`, `override?: never` alongside `policyRef`), rejecting a literal that supplies both or neither; `SteeringCommand` carries `runId?: string`, binding a `pause`/`resume` command to a session's non-terminal run—present, it must name a non-terminal run owned by the session or admission fails with `'run-terminal'`; absent with exactly one non-terminal run, the command binds to it; absent with zero or more than one, admission fails with the new `SteeringCommandFailure.reason: 'run-ambiguous'`.
 
-> [!NOTE] Session-input admission types (AB-42, type-only) `@repo/operative` also exports `SessionInputDeliveryMode`, `UserAdmissibleContent`, `SessionInputPayload`, `SessionInputRecord`, `SessionInputAdmissionRequest`, `SessionInputReceipt`, `SessionInputConflict`, `SessionInputAdmissionOutcome`, `SessionInputState`, `SessionInputPromotion`, and `SessionInputFailure`—the request, receipt, and state-transition shapes AB-42's decision record fixes for session-input admission (`submitSessionInput`, illustratively named). These are types only: no runtime `submitSessionInput` implementation ships yet. Per AB-42's coordinator amendments (2026-09-02, applied by AB-202): `SessionInputRecord` and `SessionInputAdmissionRequest` take a `TPayload extends SessionInputPayload` bound rather than an unbounded generic, `SessionInputPayload` accepts only `UserAdmissibleContent`, an explicit allowlist of `TextContent` (with `citations` structurally forbidden via `citations?: never`, not merely omitted), `ImageContent`, and `DocumentContent`—not an `Exclude<>` blacklist, because a blacklist would silently admit a future conversation content kind, and `SessionInputConflict.reason` gains `'id-owned-by-other-principal'` for a session-input `id` collision across principals. See `documentation/operative-type-safe-api.md`'s "Session input admission" section for the full contract.
+> [!NOTE] Session-input admission types (AB-42, type-only) `@corvidae/operative` also exports `SessionInputDeliveryMode`, `UserAdmissibleContent`, `SessionInputPayload`, `SessionInputRecord`, `SessionInputAdmissionRequest`, `SessionInputReceipt`, `SessionInputConflict`, `SessionInputAdmissionOutcome`, `SessionInputState`, `SessionInputPromotion`, and `SessionInputFailure`—the request, receipt, and state-transition shapes AB-42's decision record fixes for session-input admission (`submitSessionInput`, illustratively named). Operative exports these shapes as types. Bureau implements `submitSessionInput` pre-admission checks, but does not admit records: authorized, non-terminal requests return `unsupported-capability` with reason `durable-mailbox-unavailable`. Per AB-42's coordinator amendments (2026-09-02, applied by AB-202): `SessionInputRecord` and `SessionInputAdmissionRequest` take a `TPayload extends SessionInputPayload` bound rather than an unbounded generic, `SessionInputPayload` accepts only `UserAdmissibleContent`, an explicit allowlist of `TextContent` (with citation values structurally forbidden via `citations?: undefined`, not merely omitted; an explicit `undefined` remains allowed), `ImageContent`, and `DocumentContent`—not an `Exclude<>` blacklist, because a blacklist would silently admit a future conversation content kind, and `SessionInputConflict.reason` gains `'id-owned-by-other-principal'` for a session-input `id` collision across principals. See `documentation/operative-type-safe-api.md`'s "Session input admission" section for the full contract.
 
 **Session-input admission types:** `SessionInputDeliveryMode`, `UserAdmissibleContent`, `SessionInputPayload`, `SessionInputRecord`, `SessionInputAdmissionRequest`, `SessionInputReceipt`, `SessionInputConflict`, `SessionInputAdmissionOutcome`, `SessionInputState`, `SessionInputPromotion`, `SessionInputFailure`.
 
-> [!NOTE] Durable event history types (AB-91's `ab91-01` slice, AB-310; widened by AB-320) `@repo/operative` also exports `DurableEventOwnerKind` (`'run' | 'session' | 'schedule'`—`'schedule'` added by AB-320, owning a schedule's four definition events only; a scheduled fire stays on the `'run'` owner), `DurableEventOwner`, `DurableEventEnvelope`, `DurableEventPage`, and `DurableEventGap`—the wire types Bureau's `durable-event-history.ts` store and `Bureau.eventHistory(owner, options?)` read/return. `DurableEventEnvelope` is a redacted, owner-scoped projection of Weft's own `FleetEventEnvelope`, carrying a new `schemaVersion` field Weft's envelope does not have. `DurableEventGap` is returned instead of a `DurableEventPage` when a caller's `since` cursor predates the store's retention floor—distinguishable from an ordinary empty page.
+> [!NOTE] Durable event history types (AB-91's `ab91-01` slice, AB-310; widened by AB-320) `@corvidae/operative` also exports `DurableEventOwnerKind` (`'run' | 'session' | 'schedule'`—`'schedule'` added by AB-320, owning a schedule's four definition events only; a scheduled fire stays on the `'run'` owner), `DurableEventOwner`, `DurableEventEnvelope`, `DurableEventPage`, and `DurableEventGap`—the wire types Bureau's `durable-event-history.ts` store and `Bureau.eventHistory(owner, options?)` read/return. `DurableEventEnvelope` is a redacted, owner-scoped projection of Weft's own `FleetEventEnvelope`, carrying a new `schemaVersion` field Weft's envelope does not have. `DurableEventGap` is returned instead of a `DurableEventPage` when a caller's `since` cursor predates the store's retention floor—distinguishable from an ordinary empty page.
 
 **Durable event history types:** `DurableEventOwnerKind`, `DurableEventOwner`, `DurableEventEnvelope`, `DurableEventPage`, `DurableEventGap`.
 
@@ -2262,9 +2267,9 @@ import {
   createRunRecorder,
   createMockScratchpad,
   createTestStore,
-} from '@repo/operative';
-import type { EventRecorder, QuiescenceReport, RunRecorder } from '@repo/operative';
-import { createActiveRun, stopWhen } from '@repo/operative';
+} from '@corvidae/operative';
+import type { EventRecorder, QuiescenceReport, RunRecorder } from '@corvidae/operative';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
 
 // Replay pre-canned responses in sequence
 const generate = createMockGenerate([
@@ -2322,13 +2327,13 @@ expect(report.quiescent).toBe(true);
 | `createEventRecorder(runtime)` | AB-92/AB-255's `EventRecorder`: `attach`/`attachIterable` a resource's complete event-map type, `normalize()` into a portable `CausalTraceEntry[]`, `assertSequence`/`assertHappensBefore`. |
 | `createManualRuntimeServices(options?)` | Deterministic `RuntimeServices` (AB-92/AB-252): explicit `advance(ms)`/`setTime(epoch)` time control, seeded identifiers and randomness, no real timer. |
 | `createMockScratchpad(initialValues?)` | In-memory `Scratchpad` for testing scratchpad-dependent agents. |
-| `createTestStore()` | In-memory `Store` instance from `@repo/operative`. |
+| `createTestStore()` | In-memory `Store` instance from `@corvidae/operative`. |
 | `createResourceScope(label, runtime)` | AB-92/AB-256's `ResourceScope`: `register()` a run, timer, subscription, deferred-queue item, or `ChildRunRegistry`; `child(label)` nests a scope; `assertQuiescent()` probes without aborting; `close()` aborts every registered run, awaits its `closed()`, and rejects with a `QuiescenceError` naming every resource still live. |
 | `runReactiveSourceConformanceSuite(options, testRunner?)` | AB-92/AB-258's framework-neutral reactive-source conformance suite: registers one `describe` block with one `it` per case (`stableSnapshotIdentity`, `immutableReplacementAfterChange`, `multipleIndependentSubscribers`, `subscribeReadRaceClosure`, `earlyCompletionBeforeSubscription`, `subscribeUnsubscribeSubscribeNoDuplicateWork`, and—only when `options.reattach` is supplied—`serializableLocatorRoundTrip`) against any subject implementing `ReactiveSourceSubject<TSnapshot>`. Never imports a resource type from this package outside its own generic parameter, so it runs against `ActiveRun`/`AgentRun`'s upcoming snapshot surface or any other conforming resource by supplying an adapter. `testRunner` defaults to `bun:test`'s real `describe`/`it`. |
 
 **Exported types:** `RunRecorder`, `EventRecorder`, `CausalTraceEntry`, `EventRecorderOwnerIdentity`, `ManualRuntimeServices`, `ResourceScope`, `QuiescenceReport`, `LeakedResource`, `LeakedResourceKind`, `LeakedResourceDiscoveredVia`, `DetachedResource`, `RegisterableResource`, `ClosableRun`, `ReactiveSourceSubject`, `ReactiveSourceConformanceOptions`, `ReactiveSourceConformanceTestRunner`.
 
-**Also exported (runtime value, not a type):** `QuiescenceError`—the `Error` subclass `close()` rejects with; import it normally (`import { QuiescenceError } from '@repo/operative'`), not with `import type`.
+**Also exported (runtime value, not a type):** `QuiescenceError`—the `Error` subclass `close()` rejects with; import it normally (`import { QuiescenceError } from '@corvidae/operative'`), not with `import type`.
 
 ### Scripted doubles and the `FaultPlan` vocabulary (AB-92/AB-257)
 
@@ -2337,12 +2342,16 @@ expect(report.quiescent).toBe(true);
 `createScriptedGenerate`, `createScriptedTool`, and `createScriptedHook` are named doubles for the boundaries AB-92 enumerates—a `GenerateFunction`, a toolbox-ready `Tool`, and a `HookRegistry<OperativeHookMap>` handler, respectively—each driven by a script of steps consumed one per call:
 
 ```typescript
-import { createToolbox } from '@repo/armorer';
-import { HookRegistry, createManualRuntimeServices } from '@repo/lifecycle';
-import { Conversation } from '@repo/conversationalist';
-import { createScriptedGenerate, createScriptedHook, createScriptedTool } from '@repo/operative';
-import { createActiveRun, stopWhen } from '@repo/operative';
-import type { OperativeHookMap } from '@repo/operative';
+import { createToolbox } from '@corvidae/armorer';
+import { HookRegistry, createManualRuntimeServices } from '@corvidae/lifecycle';
+import { Conversation } from '@corvidae/conversationalist';
+import {
+  createScriptedGenerate,
+  createScriptedHook,
+  createScriptedTool,
+} from '@corvidae/operative';
+import { createActiveRun, stopWhen } from '@corvidae/operative';
+import type { OperativeHookMap } from '@corvidae/operative';
 
 const runtime = createManualRuntimeServices();
 
@@ -2386,7 +2395,7 @@ A `block` step (`{ kind: 'block', barrier: 'name' }`) suspends the call until th
 `createBarrierRegistry(recorder?)` builds a `BarrierRegistry`: a named collection of `Barrier`s a deterministic suite uses in place of a real-timer sleep, at any coordination point where the public surface already offers a hook, an event, or an injected double—a model call, a tool call, a hook phase (through the scripted doubles' own `block` step), a durable checkpoint, a session commit, a child registration, a signal delivery, an event publication, or a cleanup boundary (through `closed()`).
 
 ```typescript
-import { createBarrierRegistry } from '@repo/operative';
+import { createBarrierRegistry } from '@corvidae/operative';
 
 const registry = createBarrierRegistry();
 const barrier = registry.barrier('slow-write');
@@ -2419,10 +2428,10 @@ When `recorder` (an `EventRecorder`) is supplied, every arrival, release, and re
 
 ### The reproduction artifact (AB-92/AB-334)
 
-`ReproductionArtifact<TCleanupReport>` is AB-92 AC8's normalized reproduction shape—`sourceRevision`, `packageVersions`, `effectiveModel`, `clockOrigin`/`identifierSeed`/`randomSeed`, `scriptedOutcomes`, `firedFaults`, `causalTrace`, `terminalResult`, and `cleanupReport`—written and read by `writeReproductionArtifact`/`readReproductionArtifact` (AB-267) as stable, fixed-key-order JSON. It is the ONE declaration of the shape in the repository: `cleanupReport` is a type parameter (defaulting to `ReproductionCleanupReport`, i.e. `CleanupAcknowledgement | DeferredDrainReport`) rather than a fixed union, so a downstream package with its own cleanup-report shape—`bureau/test`'s `ReproductionArtifact` adds `BureauShutdownReport`—instantiates this declaration instead of redeclaring it (`bureau` depends on `@repo/operative`, never the reverse, so the canonical shape has to live here for that to work).
+`ReproductionArtifact<TCleanupReport>` is AB-92 AC8's normalized reproduction shape—`sourceRevision`, `packageVersions`, `effectiveModel`, `clockOrigin`/`identifierSeed`/`randomSeed`, `scriptedOutcomes`, `firedFaults`, `causalTrace`, `terminalResult`, and `cleanupReport`—written and read by `writeReproductionArtifact`/`readReproductionArtifact` (AB-267) as stable, fixed-key-order JSON. It is the ONE declaration of the shape in the repository: `cleanupReport` is a type parameter (defaulting to `ReproductionCleanupReport`, i.e. `CleanupAcknowledgement | DeferredDrainReport`) rather than a fixed union, so a downstream package with its own cleanup-report shape—`bureau/test`'s `ReproductionArtifact` adds `BureauShutdownReport`—instantiates this declaration instead of redeclaring it (`bureau` depends on `@corvidae/operative`, never the reverse, so the canonical shape has to live here for that to work).
 
 ```typescript
-import type { ReproductionArtifact, ReproductionCleanupReport } from '@repo/operative';
+import type { ReproductionArtifact, ReproductionCleanupReport } from '@corvidae/operative';
 
 // A caller with no wider cleanup-report shape of its own uses the default:
 type MyArtifact = ReproductionArtifact; // cleanupReport: ReproductionCleanupReport
@@ -2444,4 +2453,4 @@ bun run typecheck
 bun run test
 ```
 
-From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@repo/operative` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.
+From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@corvidae/operative` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.

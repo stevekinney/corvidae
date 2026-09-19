@@ -1,3 +1,5 @@
+import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
+
 const DEFAULT_READY_PATTERN = /(?:WEFT_SUBPROCESS_READY|Weft running on)\s+(\S+)/;
 const DEFAULT_STARTUP_TIMEOUT_MS = 5_000;
 const DEFAULT_EXIT_TIMEOUT_MS = 2_000;
@@ -10,7 +12,7 @@ type RunningSubprocess = Bun.Subprocess<'ignore', 'pipe', 'pipe'>;
  *
  * @example
  * ```ts
- * import type { SubprocessSignal } from '@repo/weft';
+ * import type { SubprocessSignal } from '@corvidae/weft';
  * const signal: SubprocessSignal = 'SIGKILL';
  * ```
  */
@@ -20,7 +22,7 @@ export type SubprocessSignal = 'SIGINT' | 'SIGKILL' | 'SIGTERM';
  *
  * @example
  * ```ts
- * import type { SubprocessServerOptions } from '@repo/weft';
+ * import type { SubprocessServerOptions } from '@corvidae/weft';
  * const options: SubprocessServerOptions = { entrypoint: './tmp/entrypoint.ts', databasePath: './tmp/weft.db' };
  * ```
  */
@@ -55,7 +57,7 @@ const subprocessServerHandleBrand: unique symbol = Symbol('SubprocessServerHandl
 /** Minimal public view of the child process managed by a {@link SubprocessServerHandle}.
  * @example
  * ```ts
- * import type { SubprocessServerProcess } from '@repo/weft';
+ * import type { SubprocessServerProcess } from '@corvidae/weft';
  * declare const server: { process: SubprocessServerProcess };
  * const process: SubprocessServerProcess = server.process;
  * ```
@@ -72,7 +74,7 @@ export interface SubprocessServerProcess {
  *
  * @example
  * ```ts
- * import { spawnServerSubprocess, type SubprocessServerHandle } from '@repo/weft';
+ * import { spawnServerSubprocess, type SubprocessServerHandle } from '@corvidae/weft';
  * const server: SubprocessServerHandle = await spawnServerSubprocess({ entrypoint: './tmp/entrypoint.ts', databasePath: './tmp/weft.db' });
  * await server.stop();
  * ```
@@ -214,13 +216,14 @@ function createSubprocessEnvironment(
   explicitEnvironment: Record<string, string | undefined> | undefined,
 ): Record<string, string> {
   const environment: Record<string, string> = {};
-  setEnvironmentIfDefined(environment, 'PATH', Bun.env['PATH']);
-  setEnvironmentIfDefined(environment, 'HOME', Bun.env['HOME']);
-  setEnvironmentIfDefined(environment, 'TMPDIR', Bun.env['TMPDIR']);
-  setEnvironmentIfDefined(environment, 'TEMP', Bun.env['TEMP']);
-  setEnvironmentIfDefined(environment, 'TMP', Bun.env['TMP']);
-  setEnvironmentIfDefined(environment, 'TZ', Bun.env['TZ']);
-  setEnvironmentIfDefined(environment, 'NODE_ENV', Bun.env['NODE_ENV']);
+  const runtimeEnvironment = resolveCliEnvironment();
+  setEnvironmentIfDefined(environment, 'PATH', runtimeEnvironment.path);
+  setEnvironmentIfDefined(environment, 'HOME', runtimeEnvironment.home);
+  setEnvironmentIfDefined(environment, 'TMPDIR', runtimeEnvironment.tmpdir);
+  setEnvironmentIfDefined(environment, 'TEMP', runtimeEnvironment.temp);
+  setEnvironmentIfDefined(environment, 'TMP', runtimeEnvironment.tmp);
+  setEnvironmentIfDefined(environment, 'TZ', runtimeEnvironment.tz);
+  setEnvironmentIfDefined(environment, 'NODE_ENV', runtimeEnvironment.nodeEnv);
 
   for (const [key, value] of Object.entries(explicitEnvironment ?? {})) {
     if (value !== undefined) environment[key] = value;
@@ -407,7 +410,7 @@ function isExpectedSignalExit(
  *
  * @example
  * ```ts
- * import { spawnServerSubprocess } from '@repo/weft';
+ * import { spawnServerSubprocess } from '@corvidae/weft';
  * const server = await spawnServerSubprocess({ entrypoint: './tmp/entrypoint.ts', databasePath: './tmp/weft.db' });
  * await server.stop();
  * ```
@@ -449,7 +452,7 @@ export async function spawnServerSubprocess(
 /** Kills a running server subprocess and starts a replacement.
  * @example
  * ```ts
- * import { killAndReboot, spawnServerSubprocess } from '@repo/weft';
+ * import { killAndReboot, spawnServerSubprocess } from '@corvidae/weft';
  * const server = await spawnServerSubprocess({ entrypoint: './tmp/entrypoint.ts', databasePath: './tmp/weft.db' });
  * const rebooted = await killAndReboot(server);
  * await rebooted.stop();
@@ -482,7 +485,7 @@ export async function killAndReboot(
 /** Runs a callback with a server subprocess and tears it down afterward.
  * @example
  * ```ts
- * import { withSubprocessServer } from '@repo/weft';
+ * import { withSubprocessServer } from '@corvidae/weft';
  * declare const options: Parameters<typeof withSubprocessServer>[0];
  * await withSubprocessServer(options, async (server) => fetch(`${server.url}/v1/health`));
  * ```

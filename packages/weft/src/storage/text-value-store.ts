@@ -12,7 +12,7 @@
  * so a string consumer never sees corrupted data masquerading as
  * valid text.
  *
- * @module @repo/weft
+ * @module @corvidae/weft
  */
 import {
   storageConditionalBatch,
@@ -29,7 +29,7 @@ import {
  *
  * @example
  * ```ts
- * import { type TextValueStoreOptions } from '@repo/weft';
+ * import { type TextValueStoreOptions } from '@corvidae/weft';
  *
  * const options: TextValueStoreOptions = {
  *   disposeUnderlyingStorage: false,
@@ -53,7 +53,7 @@ export type TextValueStoreOptions = {
  *
  * @example
  * ```ts
- * import { type TextValueStoreCondition } from '@repo/weft';
+ * import { type TextValueStoreCondition } from '@corvidae/weft';
  *
  * const condition: TextValueStoreCondition = {
  *   key: 'api-key:1:last-used-at',
@@ -77,7 +77,7 @@ export type TextValueStoreCondition = {
  *
  * @example
  * ```ts
- * import { type TextValueStoreBatchOperation } from '@repo/weft';
+ * import { type TextValueStoreBatchOperation } from '@corvidae/weft';
  *
  * const operation: TextValueStoreBatchOperation = {
  *   type: 'set',
@@ -105,8 +105,8 @@ export type TextValueStoreBatchOperation =
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { textValueStore, type TextValueStore } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { textValueStore, type TextValueStore } from '@corvidae/weft';
  *
  * await using base = new MemoryStorage();
  * const store: TextValueStore = textValueStore(base);
@@ -143,8 +143,8 @@ export type TextValueStore = {
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { type ConditionalTextValueStore, textValueStore } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { type ConditionalTextValueStore, textValueStore } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * const store: ConditionalTextValueStore = textValueStore(storage);
@@ -182,8 +182,8 @@ const textDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { textValueStore } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { textValueStore } from '@corvidae/weft';
  *
  * await using base = new MemoryStorage();
  * const store = textValueStore(base);

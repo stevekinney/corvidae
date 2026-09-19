@@ -1,5 +1,5 @@
 {
-  "name": "@repo/markdown",
+  "name": "@corvidae/markdown",
   "private": true,
   "type": "module",
   "exports": {
@@ -9,7 +9,7 @@
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",
     "typecheck": "tsc --noEmit -p ./tsconfig.json",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun test src",
-    "lint:fix": "oxlint --fix --deny-warnings --type-aware --tsconfig ./tsconfig.json src"
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src"
   },
   "dependencies": {
     "@shikijs/engine-oniguruma": "catalog:",
@@ -34,7 +34,7 @@
     "unist-util-visit": "catalog:"
   },
   "devDependencies": {
-    "@repo/typescript-configuration": "workspace:*",
+    "@corvidae/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "@types/diff-match-patch": "catalog:",
     "@types/hast": "catalog:",

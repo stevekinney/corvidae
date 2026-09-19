@@ -1,6 +1,6 @@
-import type { ConversationHistory, JSONValue, TokenUsage } from '@repo/conversationalist';
-import { conversationSchema, jsonValueSchema, tokenUsageSchema } from '@repo/conversationalist';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { ConversationHistory, JSONValue, TokenUsage } from '@corvidae/conversationalist';
+import { conversationSchema, jsonValueSchema, tokenUsageSchema } from '@corvidae/conversationalist';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 import { z } from 'zod';
 
 import type { CostEstimate } from './cost-estimation';

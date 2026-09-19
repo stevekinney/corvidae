@@ -1,5 +1,5 @@
-import type { ToolExecutionResult, ToolResult } from '@repo/armorer';
-import type { ChatStreamEvent } from '@repo/chat';
+import type { ToolExecutionResult, ToolResult } from '@corvidae/armorer';
+import type { ChatStreamEvent } from '@corvidae/chat';
 import {
   StepCompletedEvent,
   ToolErrorBubbleEvent,
@@ -10,7 +10,7 @@ import {
   ToolStartedBubbleEvent,
   type AgentRun,
   type ConversationHistory,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import {
   classifyChatRunFailure,
   SAFE_CHAT_FAILURE_MESSAGE,

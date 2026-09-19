@@ -1,4 +1,4 @@
-export { waitForCondition, waitForRunState } from '@repo/operative';
+export { waitForCondition, waitForRunState } from '@corvidae/operative';
 export { createBureau } from '../create-bureau';
 export type { Bureau, BureauOptions } from '../types';
 export {

@@ -12,7 +12,7 @@ import {
  *
  * @example
  * ```ts
- * import { Engine, LocalClient, MemoryStorage, type WeftClientStorage } from '@repo/weft';
+ * import { Engine, LocalClient, MemoryStorage, type WeftClientStorage } from '@corvidae/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * const client = new LocalClient(engine);

@@ -1,6 +1,6 @@
-import { createTestToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createTestToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { createHeartbeat } from '../../src/scheduler/create-heartbeat';

@@ -32,7 +32,7 @@ import type { DefinitionSchema } from '../types/definition-schema.ts';
  *
  * @example
  * ```ts
- * import { WORKFLOW_CONTRACT_VERSION } from '@repo/weft';
+ * import { WORKFLOW_CONTRACT_VERSION } from '@corvidae/weft';
  *
  * console.log(WORKFLOW_CONTRACT_VERSION); // 1
  * ```
@@ -45,7 +45,7 @@ export const WORKFLOW_CONTRACT_VERSION = 1;
  *
  * @example
  * ```ts
- * import type { WorkflowMessageContract } from '@repo/weft';
+ * import type { WorkflowMessageContract } from '@corvidae/weft';
  *
  * const approval: WorkflowMessageContract = {
  *   inputSchema: { type: 'object', properties: { approved: { type: 'boolean' } } },
@@ -66,7 +66,7 @@ export type WorkflowMessageContract = Readonly<{
  *
  * @example
  * ```ts
- * import type { WorkflowActivityContract } from '@repo/weft';
+ * import type { WorkflowActivityContract } from '@corvidae/weft';
  *
  * const charge: WorkflowActivityContract = {
  *   inputSchema: { type: 'object', properties: { amount: { type: 'number' } } },
@@ -96,7 +96,7 @@ export type WorkflowActivityContract = Readonly<{
  *
  * @example
  * ```ts
- * import type { WorkflowContract } from '@repo/weft';
+ * import type { WorkflowContract } from '@corvidae/weft';
  *
  * const checkout: WorkflowContract = {
  *   name: 'checkout',
@@ -143,8 +143,8 @@ export type WorkflowContract = Readonly<{
  *
  * @example
  * ```ts
- * import { signal } from '@repo/weft';
- * import type { WorkflowContractMessageSource } from '@repo/weft';
+ * import { signal } from '@corvidae/weft';
+ * import type { WorkflowContractMessageSource } from '@corvidae/weft';
  *
  * const approval = signal('approval');
  * const source: WorkflowContractMessageSource = approval;
@@ -178,8 +178,8 @@ export interface WorkflowContractMessageSource {
  *
  * @example
  * ```ts
- * import { activity } from '@repo/weft';
- * import type { WorkflowContractActivitySource } from '@repo/weft';
+ * import { activity } from '@corvidae/weft';
+ * import type { WorkflowContractActivitySource } from '@corvidae/weft';
  *
  * const charge = activity({ name: 'charge', execute: async (input: number) => input });
  * const source: WorkflowContractActivitySource = charge;
@@ -200,8 +200,8 @@ export interface WorkflowContractActivitySource {
  *
  * @example
  * ```ts
- * import { workflow } from '@repo/weft';
- * import type { WorkflowContractSource } from '@repo/weft';
+ * import { workflow } from '@corvidae/weft';
+ * import type { WorkflowContractSource } from '@corvidae/weft';
  *
  * const greet = workflow({ name: 'greet', version: '1.0.0' }).execute(
  *   async function* (_ctx, input: string) {
@@ -234,7 +234,7 @@ export interface WorkflowContractSource {
  *
  * @example
  * ```ts
- * import { WORKFLOW_REVISION_MANIFEST_VERSION } from '@repo/weft';
+ * import { WORKFLOW_REVISION_MANIFEST_VERSION } from '@corvidae/weft';
  *
  * console.log(WORKFLOW_REVISION_MANIFEST_VERSION); // 1
  * ```
@@ -253,8 +253,8 @@ export const WORKFLOW_REVISION_MANIFEST_VERSION = 1;
  *
  * @example
  * ```ts
- * import { WORKFLOW_REVISION_MANIFEST_VERSION, buildWorkflowContract } from '@repo/weft';
- * import type { WorkflowRevisionManifest } from '@repo/weft';
+ * import { WORKFLOW_REVISION_MANIFEST_VERSION, buildWorkflowContract } from '@corvidae/weft';
+ * import type { WorkflowRevisionManifest } from '@corvidae/weft';
  *
  * const contract = buildWorkflowContract({ name: 'checkout', version: '2.1.0' });
  * const manifest: WorkflowRevisionManifest = {

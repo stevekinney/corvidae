@@ -30,8 +30,8 @@
  * call" branch for all three providers (streaming and non-streaming) is
  * exercised below.
  */
-import { createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import {

@@ -1,4 +1,4 @@
-import type { TextValueStore } from '@repo/weft';
+import type { TextValueStore } from '@corvidae/weft';
 import { z } from 'zod';
 
 import { isValidSkillName, SkillParseError } from './parse-skill-markdown';

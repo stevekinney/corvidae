@@ -1,5 +1,5 @@
-import type { AnyToolbox } from '@repo/armorer';
-import type { Conversation } from '@repo/conversationalist';
+import type { AnyToolbox } from '@corvidae/armorer';
+import type { Conversation } from '@corvidae/conversationalist';
 
 import type { SteeringDesiredState } from '../durable/types';
 import type { AgentRunError } from '../errors';

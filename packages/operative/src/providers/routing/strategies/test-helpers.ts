@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 
 import type { GenerateContext } from '../../types.ts';
 import type { ModelRoute } from '../types.ts';

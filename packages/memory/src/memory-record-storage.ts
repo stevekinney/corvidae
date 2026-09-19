@@ -1,4 +1,4 @@
-import type { EmbeddingVectorLike } from '@repo/interoperability';
+import type { EmbeddingVectorLike } from '@corvidae/embeddings';
 
 /**
  * Scope that isolates a set of memory records. Every storage operation is

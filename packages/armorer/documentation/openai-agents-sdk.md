@@ -19,8 +19,8 @@ bun add @openai/agents
 Use `toOpenAIAgentTools` to convert Toolbox tools to OpenAI Agents SDK tools. This helper is async because the SDK is loaded lazily:
 
 ```typescript
-import { createToolbox, createTool } from '@repo/armorer';
-import { toOpenAIAgentTools } from '@repo/armorer';
+import { createToolbox, createTool } from '@corvidae/armorer';
+import { toOpenAIAgentTools } from '@corvidae/armorer';
 import { Agent, run } from '@openai/agents';
 import { z } from 'zod';
 
@@ -91,8 +91,8 @@ const { tools } = await toOpenAIAgentTools(toolbox, {
 Use `createOpenAIToolGate` to implement permission-based tool access control. This is useful for CLI applications or agent systems that need to restrict tool usage based on flags like `--apply` or `--dangerous`.
 
 ```typescript
-import { createToolbox, createTool } from '@repo/armorer';
-import { createOpenAIToolGate } from '@repo/armorer';
+import { createToolbox, createTool } from '@corvidae/armorer';
+import { createOpenAIToolGate } from '@corvidae/armorer';
 import { z } from 'zod';
 
 const toolbox = createToolbox();

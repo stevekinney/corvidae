@@ -1,0 +1,62 @@
+# DiffStatistics
+
+Compact inline display of added, modified, and removed line counts for a file diff.
+
+## Choosing this component
+
+- Showing the line-change summary for a single file or commit in a code review, pull-request list, or activity feed.
+- Toolbars and compact layouts — use `density="toolbar"` to snap to the shared control-height tier.
+- Suppressing zero-count values cleanly with `zeroVisible={false}` when a file has only additions or only deletions.
+
+## Choosing something else
+
+- General numeric metrics (revenue, users, errors) — use [`Statistic`](../statistic/README.md) or [`StatisticGroup`](../statistic-group/README.md) for dashboard figures.
+- Full diff rendering (side-by-side or unified views of the actual line changes) — DiffStatistics only summarises counts; use a diff renderer component for the actual content.
+
+## Related components
+
+- [`Statistic`](../statistic/README.md) — general-purpose metric tile for non-diff numeric values.
+- [`StatisticGroup`](../statistic-group/README.md) — grid container for multiple `Statistic` tiles.
+- [`SourceDiffViewer`](../source-diff-viewer/README.md) — dependency-light unified-diff rendering whose per-file counts these statistics summarize.
+- [`DiffViewer`](https://github.com/stevekinney/cinder/tree/main/components/editor/src/lib/components/diff-viewer) — `@corvidae/editor`'s Markdown-oriented diff review surface, the other producer of diff counts.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { DiffStatistics } from '@corvidae/cinder';
+</script>
+
+<DiffStatistics added={12} removed={4} modified={2} />
+```
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `added` | `number` | yes | — | Number of added lines. |
+| `class` | `string` | no | — | Additional class names merged with `.cinder-diff-statistics`. |
+| `density` | `"toolbar"` | no | — | Toolbar density opt-in (compact variant only). When set, pills snap to the shared `--cinder-control-height-sm` tier. |
+| `modified` | `number` | yes | — | Number of modified lines. |
+| `removed` | `number` | yes | — | Number of removed lines. |
+| `variant` | `"default"` \| `"compact"` | no | — | Layout variant. `default` shows full statistic markup; `compact` trims it for tight surfaces. Distinct from `density`, which adjusts control height. |
+| `zeroVisible` | `boolean` | no | `true` | Whether zero-value statistics render. Set `false` to hide them. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

@@ -35,7 +35,7 @@ import { TimeControl } from './time-control.ts';
  *
  * @example
  * ```ts
- * import { TestEngine, type RunNOptions } from '@repo/weft';
+ * import { TestEngine, type RunNOptions } from '@corvidae/weft';
  *
  * const options: RunNOptions = {
  *   runs: 50,
@@ -57,8 +57,8 @@ export interface RunNOptions {
  *
  * @example
  * ```ts
- * import { workflow } from '@repo/weft';
- * import { TestEngine, type RunNResult } from '@repo/weft';
+ * import { workflow } from '@corvidae/weft';
+ * import { TestEngine, type RunNResult } from '@corvidae/weft';
  *
  * const ping = workflow({ name: 'ping' }).execute(async function* () { return 'pong'; });
  * const engine = new TestEngine();
@@ -117,8 +117,8 @@ function activityRegistrationOptionsFromMetadata(
  *
  * @example
  * ```ts
- * import { workflow, type WorkflowContext } from '@repo/weft';
- * import { TestEngine } from '@repo/weft';
+ * import { workflow, type WorkflowContext } from '@corvidae/weft';
+ * import { TestEngine } from '@corvidae/weft';
  *
  * const engine = new TestEngine();
  *

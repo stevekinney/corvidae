@@ -4,7 +4,7 @@
  * function had no test coverage at all before this file — it's a plain
  * switch with no I/O, no timers, and every branch is trivially reachable.
  */
-import type { StreamEvent } from '@repo/operative';
+import type { StreamEvent } from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { streamEventToFrame } from './websocket-frames';

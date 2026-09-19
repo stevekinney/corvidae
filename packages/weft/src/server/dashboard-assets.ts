@@ -30,7 +30,7 @@ type DashboardAssetFileSystem = {
  *
  * @example
  * ```ts
- * import type { DashboardAssets } from '@repo/weft';
+ * import type { DashboardAssets } from '@corvidae/weft';
  *
  * const dashboardAssets: DashboardAssets = {
  *   prefix: '/assets',

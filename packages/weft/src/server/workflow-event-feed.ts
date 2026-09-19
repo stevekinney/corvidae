@@ -24,7 +24,7 @@ export type FeedEventKind =
  *
  * @example
  * ```ts
- * import type { Cursor, EventEnvelope } from '@repo/weft';
+ * import type { Cursor, EventEnvelope } from '@corvidae/weft';
  *
  * declare const envelope: EventEnvelope;
  * const lastCursor: Cursor = envelope.cursor;
@@ -75,7 +75,7 @@ export type EventSelector = 'events' | 'tokens';
  *
  * @example
  * ```ts
- * import type { EventEnvelope } from '@repo/weft';
+ * import type { EventEnvelope } from '@corvidae/weft';
  *
  * declare const envelope: EventEnvelope;
  * console.log(envelope.selector); // 'events' | 'tokens'
@@ -105,11 +105,11 @@ export type EventEnvelope = {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@repo/weft';
+ * import { Engine, MemoryStorage } from '@corvidae/weft';
  * import {
  *   createEngineEventFeedBackend,
  *   type WorkflowEventFeedBackend,
- * } from '@repo/weft';
+ * } from '@corvidae/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const backend: WorkflowEventFeedBackend = createEngineEventFeedBackend(engine);
@@ -145,12 +145,12 @@ export type WorkflowEventFeedBackend = {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@repo/weft';
+ * import { Engine, MemoryStorage } from '@corvidae/weft';
  * import {
  *   createEngineEventFeedBackend,
  *   createWorkflowEventFeed,
  *   type WorkflowEventFeed,
- * } from '@repo/weft';
+ * } from '@corvidae/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const workflowEventFeed: WorkflowEventFeed = createWorkflowEventFeed(
@@ -186,7 +186,7 @@ export type WorkflowEventFeedOptions = {
  * A committed fleet-wide event, optionally scoped to one workflow.
  * @example
  * ```ts
- * import type { FleetEventEnvelope } from '@repo/weft';
+ * import type { FleetEventEnvelope } from '@corvidae/weft';
  * declare const event: FleetEventEnvelope;
  * console.log(event.cursor);
  * ```
@@ -204,7 +204,7 @@ export type FleetEventEnvelope = {
  * The caller-supplied fields for a new fleet event.
  * @example
  * ```ts
- * import type { FleetEventInput } from '@repo/weft';
+ * import type { FleetEventInput } from '@corvidae/weft';
  * const event: FleetEventInput = { kind: 'worker:connected', emittedAtMs: 1, payload: {} };
  * ```
  */
@@ -219,7 +219,7 @@ export type FleetEventInput = {
  * A fleet event input guaranteed to identify its workflow.
  * @example
  * ```ts
- * import type { FleetWorkflowEventInput } from '@repo/weft';
+ * import type { FleetWorkflowEventInput } from '@corvidae/weft';
  * declare const event: FleetWorkflowEventInput;
  * console.log(event.workflowId);
  * ```
@@ -230,7 +230,7 @@ export type FleetWorkflowEventInput = FleetEventInput & { readonly workflowId: s
  * Caller-owned state operations committed atomically with an event.
  * @example
  * ```ts
- * import type { FleetEventAppendOptions } from '@repo/weft';
+ * import type { FleetEventAppendOptions } from '@corvidae/weft';
  * const options: FleetEventAppendOptions = { operations: [{ type: 'delete', key: 'app:pending' }] };
  * ```
  */
@@ -243,7 +243,7 @@ export type FleetEventAppendOptions = {
  * The compaction boundary returned when a cursor predates retained history.
  * @example
  * ```ts
- * import type { FleetEventGapEnvelope } from '@repo/weft';
+ * import type { FleetEventGapEnvelope } from '@corvidae/weft';
  * declare const gap: FleetEventGapEnvelope;
  * console.log(gap.payload.firstRetainedSequence);
  * ```
@@ -260,7 +260,7 @@ export type FleetEventGapEnvelope = {
  * Durable fleet-feed polling and replay handoff options.
  * @example
  * ```ts
- * import type { FleetEventFeedOptions } from '@repo/weft';
+ * import type { FleetEventFeedOptions } from '@corvidae/weft';
  * const options: FleetEventFeedOptions = { livePollIntervalMs: 100 };
  * ```
  */
@@ -408,13 +408,13 @@ export function createReplayLiveFeed<TEnvelope extends SequencedEventEnvelope>(
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@repo/weft';
+ * import { Engine, MemoryStorage } from '@corvidae/weft';
  * import {
  *   createEngineEventFeedBackend,
  *   createWorkflowEventFeed,
  *   handleRequest,
  *   type HandlerOptions,
- * } from '@repo/weft';
+ * } from '@corvidae/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const workflowEventFeed = createWorkflowEventFeed(createEngineEventFeedBackend(engine));

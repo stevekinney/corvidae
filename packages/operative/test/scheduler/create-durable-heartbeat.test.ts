@@ -1,6 +1,6 @@
-import { Conversation } from '@repo/conversationalist';
-import * as weft from '@repo/weft';
-import { MemoryStorage, yieldToPortableEventLoop } from '@repo/weft';
+import { Conversation } from '@corvidae/conversationalist';
+import * as weft from '@corvidae/weft';
+import { MemoryStorage, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { assertDefined } from '../assert-defined';
 

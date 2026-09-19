@@ -20,7 +20,7 @@ import { scopedStorage } from './scoped-storage.ts';
 /** Named WebExtension storage area used by {@link WebExtensionStorage}.
  * @example
  * ```ts
- * import { WebExtensionStorage, type WebExtensionStorageArea } from '@repo/weft';
+ * import { WebExtensionStorage, type WebExtensionStorageArea } from '@corvidae/weft';
  * const area: WebExtensionStorageArea = 'local';
  * const storage = new WebExtensionStorage({ area });
  * ```
@@ -32,7 +32,7 @@ type WebExtensionStoragePersistence = NonNullable<StorageCapabilities['persisten
 /** Constructor options for {@link WebExtensionStorage}.
  * @example
  * ```ts
- * import { WebExtensionStorage, type WebExtensionStorageOptions } from '@repo/weft';
+ * import { WebExtensionStorage, type WebExtensionStorageOptions } from '@corvidae/weft';
  * const options: WebExtensionStorageOptions = { area: 'sync' };
  * const storage = new WebExtensionStorage(options);
  * ```
@@ -258,8 +258,8 @@ async function invokeWebExtensionMethod<T>(
  *
  * @example
  * ```ts
- * import { Engine } from '@repo/weft';
- * import { WebExtensionStorage } from '@repo/weft';
+ * import { Engine } from '@corvidae/weft';
+ * import { WebExtensionStorage } from '@corvidae/weft';
  *
  * await using storage = new WebExtensionStorage({ area: 'local' });
  * await using engine = new Engine({ storage });

@@ -2,7 +2,7 @@
  * Real-browser `HttpClient` construction smoke test — regression coverage for
  * #713.
  *
- * `@repo/weft` is documented and positioned as the browser
+ * `@corvidae/weft` is documented and positioned as the browser
  * client for `weft-ui`-style SPAs, but `new HttpClient({ baseUrl, token })`
  * used to throw unconditionally in any real browser: the constructor
  * synchronously called through to `resolveConnection`, which read
@@ -32,9 +32,7 @@
  *
  * ## Running
  *
- * Gate: `WEFT_BROWSER_SMOKE=1` must be set (the shared flag for all real-browser
- * smokes; see `bun run test:browser-smoke`). Otherwise all tests skip. This
- * file does NOT run in the default `bun test` pass.
+ * This file runs in the default `bun test` pass.
  *
  * Browser provisioning: `bunx playwright install chromium` (run once).
  */
@@ -51,8 +49,8 @@ import { chromium } from 'playwright';
 const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));
 
 /**
- * Build the real `@repo/weft` entry point as a browser-target
- * IIFE and return its source so it can be served as a static asset. Writes a
+ * Build the real `@corvidae/weft` entry point as a browser-target
+ * ES module and return its source so it can be served as a static asset. Writes a
  * temporary build entry (re-exporting `HttpClient` onto `globalThis`) and
  * bundles it with the `bun build` CLI — see the module docstring for why this
  * shells out instead of calling `Bun.build()` in-process.
@@ -72,12 +70,12 @@ async function buildClientScript(): Promise<string> {
 
   try {
     const proc = Bun.spawn(
-      ['bun', 'build', entryPath, '--target=browser', '--format=iife', `--outfile=${outfilePath}`],
+      ['bun', 'build', entryPath, '--target=browser', '--format=esm', `--outfile=${outfilePath}`],
       { cwd: repositoryRoot, stdout: 'pipe', stderr: 'pipe' },
     );
     const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
     if (exitCode !== 0) {
-      throw new Error(`Failed to build @repo/weft for browser: ${stderr}`);
+      throw new Error(`Failed to build @corvidae/weft for browser: ${stderr}`);
     }
     return await Bun.file(outfilePath).text();
   } finally {
@@ -90,7 +88,7 @@ function buildTestPageHtml(clientScriptUrl: string): string {
 <html>
 <head><title>HttpClient Browser Smoke</title></head>
 <body>
-<script src="${clientScriptUrl}"></script>
+<script type="module" src="${clientScriptUrl}"></script>
 </body>
 </html>`;
 }
@@ -140,8 +138,11 @@ describe('HttpClient — real Chromium construction', () => {
 
   it('new HttpClient({ baseUrl, token }) does not throw with no Bun global and no Node built-ins', async () => {
     const page = await context.newPage();
+    const pageErrors: Error[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error));
     try {
       await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+      expect(pageErrors).toEqual([]);
       await page.waitForFunction(
         () => typeof (globalThis as Record<string, unknown>)['HttpClient'] === 'function',
       );

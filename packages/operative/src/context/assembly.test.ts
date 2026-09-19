@@ -1,6 +1,6 @@
-import type { JSONValue } from '@repo/conversationalist';
-import { Conversation } from '@repo/conversationalist';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import type { JSONValue } from '@corvidae/conversationalist';
+import { Conversation } from '@corvidae/conversationalist';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { createContextAssembler } from './assembly';

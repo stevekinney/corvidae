@@ -1,5 +1,5 @@
 {
-  "name": "@repo/armorer",
+  "name": "@corvidae/armorer",
   "description": "A lightweight registry for validated AI tools. Build tools with Zod schemas and metadata, register them in a toolbox, and execute/query them with event hooks.",
   "type": "module",
   "exports": {
@@ -12,19 +12,23 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "catalog:",
+    "@corvidae/typescript": "workspace:*",
     "@types/bun": "catalog:",
-    "@repo/typescript-configuration": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   },
   "private": true,
   "dependencies": {
-    "@repo/interoperability": "workspace:*",
-    "@repo/lifecycle": "workspace:*",
-    "zod": "catalog:",
+    "@corvidae/cryptography": "workspace:*",
+    "@corvidae/embeddings": "workspace:*",
+    "@corvidae/lifecycle": "workspace:*",
+    "@corvidae/tool-protocol": "workspace:*",
+    "@modelcontextprotocol/client": "catalog:",
+    "@modelcontextprotocol/core": "catalog:",
+    "@modelcontextprotocol/server": "catalog:",
+    "@openai/agents": "catalog:",
     "@opentelemetry/api": "catalog:",
-    "@modelcontextprotocol/sdk": "catalog:",
-    "@openai/agents": "catalog:"
+    "@standard-schema/spec": "catalog:",
+    "zod": "catalog:"
   }
 }

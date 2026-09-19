@@ -52,8 +52,8 @@ const EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE = 1_000;
  *
  * @example
  * ```ts
- * import { Scheduler } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { Scheduler } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  * const scheduler = new Scheduler({

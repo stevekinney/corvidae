@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, test } from 'bun:test';
 
 import type { JSONValue, Message } from '../src/types';

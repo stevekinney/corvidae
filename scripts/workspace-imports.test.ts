@@ -21,6 +21,7 @@ const formerPackageNames = [
   'memory',
   'skills',
   'interoperability',
+  '@corvidae/interoperability',
   'lifecycle',
   '@lostgradient/operative',
   '@lostgradient/weft',
@@ -34,11 +35,14 @@ const formerPackageNames = [
 ];
 
 function isFormerPackageName(name: string): boolean {
-  return formerPackageNames.some((former) => name === former || name.startsWith(`${former}/`));
+  return (
+    name.startsWith('@repo/') ||
+    formerPackageNames.some((former) => name === former || name.startsWith(`${former}/`))
+  );
 }
 
 function externalPackageName(specifier: string): string | undefined {
-  if (/^(?:[./$#]|@repo\/|bun(?::|$)|virtual:|file:)/.test(specifier) || isBuiltin(specifier))
+  if (/^(?:[./$#]|@corvidae\/|bun(?::|$)|virtual:|file:)/.test(specifier) || isBuiltin(specifier))
     return undefined;
   const parts = specifier.split('/');
   return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
@@ -110,16 +114,16 @@ function isModuleLoadingCall(expression: ts.LeftHandSideExpression): boolean {
   );
 }
 
-async function readWorkspaceSources(directory: string) {
+async function readWorkspaceSources(directory: string, sourceDirectory = directory) {
   const files = Array.from(
-    new Bun.Glob('**/*.{ts,tsx,svelte}').scanSync({ cwd: join(root, directory) }),
+    new Bun.Glob('**/*.{ts,tsx,svelte}').scanSync({ cwd: join(root, sourceDirectory) }),
   ).filter((file) => !/(^|\/)(node_modules|build|dist|coverage|\.svelte-kit)\//.test(file));
   const pendingFiles = files.entries();
   const sources: { file: string; source: string }[] = [];
   await Promise.all(
     Array.from({ length: 8 }, async () => {
       for (const [position, file] of pendingFiles) {
-        const source = await Bun.file(join(root, directory, file)).text();
+        const source = await Bun.file(join(root, sourceDirectory, file)).text();
         sources[position] = { file, source };
       }
     }),
@@ -146,8 +150,8 @@ describe('workspace imports', () => {
       const workflow = require('@lostgradient/weft');
       const lifecycle = require.resolve('lifecycle');
       const editor = import.meta.resolve('@lostgradient/editor');
-      const editorSource = Bun.resolveSync('@repo/editor', import.meta.dir);
-      const chatSource = await Bun.resolve('@repo/chat', import.meta.dir);
+      const editorSource = Bun.resolveSync('@corvidae/editor', import.meta.dir);
+      const chatSource = await Bun.resolve('@corvidae/chat', import.meta.dir);
       const ignored = "require('bureau')";
     `;
     expect(importedPackageNames(source, 'consumer.ts')).toEqual(
@@ -157,43 +161,50 @@ describe('workspace imports', () => {
         '@lostgradient/weft',
         'lifecycle',
         '@lostgradient/editor',
-        '@repo/editor',
-        '@repo/chat',
+        '@corvidae/editor',
+        '@corvidae/chat',
       ]),
     );
   });
   test('finds namespace exports and escaped require names without scanning examples or AMD calls', () => {
     const source = `
-      export * as workflow from '@repo/weft';
-      const runtime = req\\u0075ire.resolve('@repo/lifecycle');
-      const example = "import('@repo/bureau')";
-      // require('@repo/memory');
-      define(['@repo/skills'], () => {});
+      export * as workflow from '@corvidae/weft';
+      const runtime = req\\u0075ire.resolve('@corvidae/lifecycle');
+      const example = "import('@corvidae/bureau')";
+      // require('@corvidae/memory');
+      define(['@corvidae/skills'], () => {});
       const load = require;
-      load('@repo/armorer');
+      load('@corvidae/armorer');
     `;
     expect(importedPackageNames(source, 'consumer.ts')).toEqual(
-      new Set(['@repo/weft', '@repo/lifecycle']),
+      new Set(['@corvidae/weft', '@corvidae/lifecycle']),
     );
   });
   test('scans each Svelte script block without treating markup as an import', () => {
     const source = `
-      <script module>export * as library from '@repo/cinder';</script>
-      <script lang="ts">import type { Message } from '@repo/chat';</script>
-      <p>require('@repo/bureau')</p>
+      <script module>export * as library from '@corvidae/cinder';</script>
+      <script lang="ts">import type { Message } from '@corvidae/chat';</script>
+      <p>require('@corvidae/bureau')</p>
     `;
     expect(importedPackageNames(source, 'consumer.svelte')).toEqual(
-      new Set(['@repo/cinder', '@repo/chat']),
+      new Set(['@corvidae/cinder', '@corvidae/chat']),
     );
   });
-  test('source imports use declared workspace dependencies and the sole public entry point', async () => {
-    for (const path of new Bun.Glob('{packages,applications}/*/package.json').scanSync({
+  test.each([
+    './package.json',
+    ...new Bun.Glob('{packages,components,applications,internal}/*/package.json').scanSync({
       cwd: root,
-    })) {
+    }),
+  ])(
+    '%s source imports use declared dependencies and the sole public entry point',
+    async (path) => {
       const directory = path.slice(0, -'/package.json'.length);
       const manifest = await readManifest(directory);
       const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
-      for (const { file, source } of await readWorkspaceSources(directory)) {
+      for (const { file, source } of await readWorkspaceSources(
+        directory,
+        directory === '.' ? 'scripts' : directory,
+      )) {
         expect(source, `${directory}/${file} suppresses TypeScript checking`).not.toMatch(
           /^\s*\/\/\s*@ts-(?:nocheck|ignore)\b/m,
         );
@@ -203,8 +214,8 @@ describe('workspace imports', () => {
             `${directory}/${file} imports former package ${name}`,
           ).toBe(false);
           assertExternalDeclaration(name, dependencies, `${directory}/${file}`);
-          if (!name.startsWith('@repo/')) continue;
-          expect(name, `${directory}/${file}`).toMatch(/^@repo\/[^/]+$/);
+          if (!name.startsWith('@corvidae/')) continue;
+          expect(name, `${directory}/${file}`).toMatch(/^@corvidae\/[^/]+$/);
           if (
             file.startsWith('src/') &&
             !/(^|\/)(?:test|tests|fixtures|__fixtures__|__test-helpers__)\/|(?:\.|-)(?:test|spec|fixture)(?:\.|-)/.test(
@@ -222,10 +233,12 @@ describe('workspace imports', () => {
           }
         }
       }
-    }
-  });
+    },
+  );
   test('manifests do not retain former package identities', async () => {
-    for (const path of new Bun.Glob('{packages,applications}/*/package.json').scanSync({
+    for (const path of new Bun.Glob(
+      '{packages,components,applications,internal}/*/package.json',
+    ).scanSync({
       cwd: root,
     })) {
       const manifest = await readManifest(path.slice(0, -'/package.json'.length));

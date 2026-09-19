@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 
 import {
   createProcessLocalApprovalStateStore,

@@ -1,7 +1,7 @@
 import { createChatStreamWriter } from './chat-agent.ts';
 import { pumpChatRun } from './chat-run-pump.ts';
 
-import type { AgentRun, ConversationHistory } from '@repo/operative';
+import type { AgentRun, ConversationHistory } from '@corvidae/operative';
 import type { ChatSerializedRunError, ChatStreamWriter } from './chat-agent.ts';
 
 /**

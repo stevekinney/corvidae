@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { expectPromiseToReject } from './helpers/async-assertions';
 
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

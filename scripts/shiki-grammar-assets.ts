@@ -1,6 +1,4 @@
-import { basename } from 'node:path';
 import ts from 'typescript';
-import type { Plugin } from 'vite';
 
 type GrammarData = { start: number; end: number; json: string };
 
@@ -50,29 +48,4 @@ export function replaceGrammarData(
     return response.json();
   })`;
   return source.slice(0, data.start) + expression + source.slice(data.end);
-}
-
-/** Emit large language data as normal application assets instead of JavaScript strings. */
-export function shikiGrammarAssets(): Plugin {
-  return {
-    name: 'vite-plugin-shiki-grammar-assets',
-    apply: 'build',
-    applyToEnvironment: (environment) => environment.config.consumer === 'client',
-    transform: {
-      filter: { id: /\/node_modules\/@shikijs\/langs\/dist\/[^/]+\.mjs$/ },
-      handler(source, id) {
-        const data = readGrammarData(source, id);
-        if (!data) return null;
-        const reference = this.emitFile({
-          type: 'asset',
-          name: `shiki-${basename(id, '.mjs')}.json`,
-          source: data.json,
-        });
-        return {
-          code: replaceGrammarData(source, data, `import.meta.ROLLUP_FILE_URL_${reference}`),
-          map: null,
-        };
-      },
-    },
-  };
 }

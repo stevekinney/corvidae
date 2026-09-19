@@ -46,7 +46,7 @@ import type { WorkflowLogRecord } from './workflow-log.ts';
  *
  * @example Start a delayed workflow with tags and search attributes
  * ```ts
- * import { workflow, Engine, type StartOptions } from '@repo/weft';
+ * import { workflow, Engine, type StartOptions } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -156,7 +156,7 @@ export interface StartWorkflowOptions<TServices = unknown> extends StartOptions<
  *
  * @example
  * ```ts
- * import type { StartOrSignalOptions } from '@repo/weft';
+ * import type { StartOrSignalOptions } from '@corvidae/weft';
  *
  * const options: StartOrSignalOptions = {
  *   id: 'github:installations:42:sync',
@@ -189,7 +189,7 @@ export interface StartOrSignalOptions<TServices = unknown> extends StartOptions<
  *
  * @example
  * ```ts
- * import { workflow, Engine, type ForkOptions } from '@repo/weft';
+ * import { workflow, Engine, type ForkOptions } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'process' }).execute(async function* () { return 'done'; }));
@@ -238,7 +238,7 @@ export interface ForkOptions {
  *
  * @example
  * ```ts
- * import { Engine, type EngineOptions } from '@repo/weft';
+ * import { Engine, type EngineOptions } from '@corvidae/weft';
  *
  * const options: EngineOptions = {
  *   development: true,

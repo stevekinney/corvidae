@@ -1,0 +1,38 @@
+# Surface
+
+A themed container that publishes its tone to descendant components through Svelte context.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { Surface } from '@corvidae/cinder';
+</script>
+
+<Surface>Content</Surface>
+```
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `class` | `string` | no | — | Additional CSS classes |
+| `tone` | `"default"` \| `"raised"` \| `"inset"` \| `"transparent"` | no | `"default"` | Surface tone. |
+| `children` | `(opaque)` | no | — | Content rendered inside the surface container. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+<!-- generated:subcomponents:end -->

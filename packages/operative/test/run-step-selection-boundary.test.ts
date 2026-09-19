@@ -11,8 +11,8 @@
  * durable driver shares. No real timers; no network; every catalog
  * timestamp and plan id is injected.
  */
-import { createTestToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createTestToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { noToolCalls } from '../src/conditions/predicates';

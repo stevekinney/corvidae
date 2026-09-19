@@ -16,7 +16,7 @@ import {
  *
  * @example
  * ```ts
- * import { type TextKeyValueRow } from '@repo/weft';
+ * import { type TextKeyValueRow } from '@corvidae/weft';
  *
  * const row: TextKeyValueRow = {
  *   key: 'session:1',
@@ -35,7 +35,7 @@ export type TextKeyValueRow = {
  *
  * @example
  * ```ts
- * import { MemoryStorage, type CopyTextKeyValueRowsToStorageOptions } from '@repo/weft';
+ * import { MemoryStorage, type CopyTextKeyValueRowsToStorageOptions } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * const options: CopyTextKeyValueRowsToStorageOptions = {
@@ -64,7 +64,7 @@ export type CopyTextKeyValueRowsToStorageOptions = {
  *
  * @example
  * ```ts
- * import { type CopyTextKeyValueRowsToStorageResult } from '@repo/weft';
+ * import { type CopyTextKeyValueRowsToStorageResult } from '@corvidae/weft';
  *
  * const result: CopyTextKeyValueRowsToStorageResult = { copied: 3 };
  * console.log(result.copied); // 3
@@ -132,7 +132,7 @@ async function collectRows(
  *
  * @example
  * ```ts
- * import { MemoryStorage, copyTextKeyValueRowsToStorage } from '@repo/weft';
+ * import { MemoryStorage, copyTextKeyValueRowsToStorage } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * const result = await copyTextKeyValueRowsToStorage({

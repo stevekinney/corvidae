@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 import { executionCallbackStartSymbol } from '../internal/approval-resume';
 import type { Tool, ToolExecuteWithOptions } from '../is-tool';
 import { scheduleBoundedTimeout } from './bounded-timeout';

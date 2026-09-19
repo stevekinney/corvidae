@@ -1,5 +1,5 @@
-import { cosineSimilarity, type EmbeddingVectorLike } from '@repo/interoperability';
-import type { RuntimeServices } from '@repo/lifecycle';
+import { cosineSimilarity, type EmbeddingVectorLike } from '@corvidae/embeddings';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 import type { HybridSearchCandidate, VectorSearchResult } from './hybrid-search';
 import { mergeHybridResults } from './hybrid-search';
 import { SOURCE_DOCUMENT_KEY } from './ingest';

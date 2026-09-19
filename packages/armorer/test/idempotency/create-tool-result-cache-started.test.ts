@@ -1,4 +1,4 @@
-import { createManualRuntimeServices, type ManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices, type ManualRuntimeServices } from '@corvidae/lifecycle';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { createToolResultCache } from '../../src/idempotency/create-tool-result-cache';

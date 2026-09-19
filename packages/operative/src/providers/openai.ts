@@ -1,6 +1,6 @@
-import { parseOpenAIToolCalls } from '@repo/armorer';
-import { toOpenAIMessagesGrouped } from '@repo/conversationalist';
-import type { ToolCallInput } from '@repo/interoperability';
+import { parseOpenAIToolCalls } from '@corvidae/armorer';
+import { toOpenAIMessagesGrouped } from '@corvidae/conversationalist';
+import type { ToolCallInput } from '@corvidae/tool-protocol';
 
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { ProviderError, ToolCallParseError } from './errors.ts';

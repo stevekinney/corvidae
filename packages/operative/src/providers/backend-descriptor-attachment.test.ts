@@ -41,11 +41,11 @@ describe('readBackendDescriptors', () => {
 describe('withBackendDescriptors', () => {
   it('keeps the descriptor registry separate from the package root symbol', () => {
     const generate = withBackendDescriptors(noopGenerate(), []);
-    const packageRootSymbol = Symbol.for('@repo/operative');
+    const packageRootSymbol = Symbol.for('@corvidae/operative');
     Object.defineProperty(generate, packageRootSymbol, { value: 'unrelated' });
 
     expect(readBackendDescriptors(generate)).toEqual([]);
-    expect(Symbol.for('@repo/operative/backend-descriptors')).not.toBe(packageRootSymbol);
+    expect(Symbol.for('@corvidae/operative/backend-descriptors')).not.toBe(packageRootSymbol);
   });
 
   it('attaches descriptors readable back through readBackendDescriptors', () => {

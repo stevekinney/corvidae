@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import type { SignedPendingToolApproval } from '@repo/armorer';
+import type { SignedPendingToolApproval } from '@corvidae/armorer';
 import { updatePendingApproval } from '../../../lib/pending-approval.ts';
 
 const resumeSource = readFileSync(new URL('./resume/+server.ts', import.meta.url), 'utf8');

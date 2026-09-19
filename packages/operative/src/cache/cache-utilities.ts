@@ -5,7 +5,7 @@
  * the middleware — useful for admin tasks like bulk invalidation.
  */
 
-import type { TextValueStore } from '@repo/weft';
+import type { TextValueStore } from '@corvidae/weft';
 
 /**
  * Deletes all cache entries under the given namespace prefix.

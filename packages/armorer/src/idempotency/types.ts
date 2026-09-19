@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 
 /**
  * A cached tool execution result stored in the result cache.

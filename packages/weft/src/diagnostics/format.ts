@@ -7,6 +7,7 @@
  * @module diagnostics/format
  */
 
+import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
 import type { DiagnosticReport, VersionCheckReport } from './types.ts';
 
 // ---------------------------------------------------------------------------
@@ -14,7 +15,7 @@ import type { DiagnosticReport, VersionCheckReport } from './types.ts';
 // ---------------------------------------------------------------------------
 
 const supportsColor =
-  typeof process !== 'undefined' && process.stdout?.isTTY && !process.env['NO_COLOR'];
+  typeof process !== 'undefined' && process.stdout?.isTTY && !resolveCliEnvironment().noColor;
 
 const color = {
   green: (text: string) => (supportsColor ? `\x1b[32m${text}\x1b[0m` : text),
@@ -37,7 +38,7 @@ const color = {
  *
  * @example
  * ```ts
- * import { formatBytes } from '@repo/weft';
+ * import { formatBytes } from '@corvidae/weft';
  *
  * console.log(formatBytes(0));         // '0 B'
  * console.log(formatBytes(1024));      // '1.0 KB'
@@ -63,7 +64,7 @@ export function formatBytes(bytes: number): string {
  *
  * @example
  * ```ts
- * import { formatDuration } from '@repo/weft';
+ * import { formatDuration } from '@corvidae/weft';
  *
  * console.log(formatDuration(500));      // '500ms'
  * console.log(formatDuration(90000));    // '2 minutes'
@@ -167,7 +168,7 @@ function appendRecommendationsSection(
  *
  * @example
  * ```ts
- * import { MemoryStorage, collectDiagnostics, formatDiagnosticReport } from '@repo/weft';
+ * import { MemoryStorage, collectDiagnostics, formatDiagnosticReport } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * const report = await collectDiagnostics(storage, ':memory:');
@@ -192,8 +193,8 @@ export function formatDiagnosticReport(report: DiagnosticReport): string {
  *
  * @example
  * ```ts
- * import type { VersionCheckReport } from '@repo/weft';
- * import { formatVersionCheckReport } from '@repo/weft';
+ * import type { VersionCheckReport } from '@corvidae/weft';
+ * import { formatVersionCheckReport } from '@corvidae/weft';
  *
  * const report: VersionCheckReport = {
  *   workflowTypes: [],

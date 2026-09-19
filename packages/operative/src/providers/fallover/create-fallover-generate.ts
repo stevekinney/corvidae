@@ -1,5 +1,5 @@
-import type { RuntimeTimers } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { RuntimeTimers } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import {
   readBackendDescriptors,

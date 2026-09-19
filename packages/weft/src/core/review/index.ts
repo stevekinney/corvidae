@@ -25,7 +25,7 @@ import { ReviewRequestedEvent } from './events.ts';
  *
  * @example
  * ```ts
- * import type { ReviewRequest } from '@repo/weft';
+ * import type { ReviewRequest } from '@corvidae/weft';
  *
  * const request: ReviewRequest = {
  *   reviewId: 'r-1',
@@ -113,7 +113,7 @@ export const reviewListEntrySchema = z.union([
  *
  * @example
  * ```ts
- * import type { EscalationStep } from '@repo/weft';
+ * import type { EscalationStep } from '@corvidae/weft';
  *
  * const step: EscalationStep = { after: 60_000, to: 'manager@example.com' };
  * void step;
@@ -133,7 +133,7 @@ export interface EscalationStep {
  *
  * @example
  * ```ts
- * import type { ReviewOptions } from '@repo/weft';
+ * import type { ReviewOptions } from '@corvidae/weft';
  *
  * const options: ReviewOptions = {
  *   artifact: { summary: 'release plan' },
@@ -160,7 +160,7 @@ export interface ReviewOptions {
  *
  * @example
  * ```ts
- * import type { HumanReviewOptions } from '@repo/weft';
+ * import type { HumanReviewOptions } from '@corvidae/weft';
  *
  * const options: HumanReviewOptions = {
  *   artifact: 'release plan',
@@ -181,7 +181,7 @@ export interface HumanReviewOptions extends ReviewOptions {
  *
  * @example
  * ```ts
- * import type { HumanReviewResult } from '@repo/weft';
+ * import type { HumanReviewResult } from '@corvidae/weft';
  *
  * const result: HumanReviewResult = {
  *   reviewId: 'r-1',
@@ -201,7 +201,7 @@ export type HumanReviewResult = ReviewDecisionRecord;
  *
  * @example
  * ```ts
- * import type { EscalationAction } from '@repo/weft';
+ * import type { EscalationAction } from '@corvidae/weft';
  *
  * const action: EscalationAction = { type: 'escalate', to: 'manager@example.com' };
  * void action;
@@ -222,9 +222,9 @@ export type EscalationAction =
  *
  * @example Catch a review timeout and escalate
  * ```ts
- * import { workflow, ReviewTimeoutError } from '@repo/weft';
- * import type { Context, WorkflowContext } from '@repo/weft';
- * import { TestEngine } from '@repo/weft';
+ * import { workflow, ReviewTimeoutError } from '@corvidae/weft';
+ * import type { Context, WorkflowContext } from '@corvidae/weft';
+ * import { TestEngine } from '@corvidae/weft';
  *
  * const engine = new TestEngine({ startTime: 0 });
  * engine.register(
@@ -271,8 +271,8 @@ export class ReviewTimeoutError extends WeftError<'ReviewTimeoutError'> {
  *
  * @example Attach an event target and a fixed clock for tests
  * ```ts
- * import { ReviewCoordinator, type ReviewCoordinatorOptions } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { ReviewCoordinator, type ReviewCoordinatorOptions } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  * const options: ReviewCoordinatorOptions = {
@@ -298,8 +298,8 @@ export interface ReviewCoordinatorOptions {
  *
  * @example Create a review and later submit a decision
  * ```ts
- * import { ReviewCoordinator } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { ReviewCoordinator } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  * const coordinator = new ReviewCoordinator(storage);

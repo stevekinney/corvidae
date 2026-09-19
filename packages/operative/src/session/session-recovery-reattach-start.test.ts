@@ -1,5 +1,5 @@
-import { Conversation, createConversationHistory } from '@repo/conversationalist';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createAgentSession } from '../agent-session';

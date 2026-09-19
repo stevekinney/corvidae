@@ -5,7 +5,7 @@
  *
  * @example
  * ```ts
- * import { Engine, AttributesChangedEvent } from '@repo/weft';
+ * import { Engine, AttributesChangedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(AttributesChangedEvent.type, (event) => {

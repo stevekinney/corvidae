@@ -1,4 +1,5 @@
-import { BunSQLiteStorage, Engine, activity, workflow } from '@repo/weft';
+import { BunSQLiteStorage, Engine, activity, workflow } from '@corvidae/weft';
+import { resolveExampleEnvironment } from '../../environment-configuration.ts';
 
 export interface CheckoutItem {
   name: string;
@@ -129,7 +130,7 @@ export const checkoutWorkflow = workflow({ name: 'checkout' })
 
 export async function runCheckoutExample(
   input: CheckoutInput = sampleCheckoutInput,
-  databasePath = Bun.env['WEFT_CHECKOUT_DATABASE_PATH'] ?? './checkout.sqlite',
+  databasePath = resolveExampleEnvironment().weftCheckoutDatabasePath ?? './checkout.sqlite',
 ): Promise<CheckoutResult> {
   using storage = new BunSQLiteStorage(databasePath);
   await using engine = new Engine({ storage }).register(checkoutWorkflow);

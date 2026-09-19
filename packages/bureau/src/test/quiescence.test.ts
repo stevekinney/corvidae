@@ -2,16 +2,16 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createTool, createToolbox } from '@repo/armorer';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import {
   createAgent,
   createFaultEngine,
   type FaultPlan,
   type GenerateFunction,
   waitForCondition,
-} from '@repo/operative';
-import { MemoryStorage, textValueStore } from '@repo/weft';
+} from '@corvidae/operative';
+import { MemoryStorage, textValueStore } from '@corvidae/weft';
 import { file } from 'bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -168,7 +168,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
   it("imports nothing outside bureau's own internals plus the documented public packages", async () => {
     const source = await file(new URL('./quiescence.ts', import.meta.url)).text();
     const specifiers = [...source.matchAll(/from '([^']+)'/g)].map((match) => match[1] ?? '');
-    const allowedPackages = new Set(['@repo/operative']);
+    const allowedPackages = new Set(['@corvidae/operative']);
 
     expect(specifiers.length).toBeGreaterThan(0);
     for (const specifier of specifiers) {
@@ -891,7 +891,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
         // fence), not a plain `set` — `FaultOperation` gained
         // `storage:conditionalBatch` alongside the original four verbs so
         // this plan can still reach it (see `wrapStorage`'s own doc
-        // comment in `@repo/operative`).
+        // comment in `@corvidae/operative`).
         operation: 'storage:conditionalBatch',
         occurrence: { kind: 'nth', n: 1 },
         effect: {

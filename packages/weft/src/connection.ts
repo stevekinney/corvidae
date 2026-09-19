@@ -14,7 +14,7 @@
  * A profile token is only applied when neither an explicit `server` option nor
  * `WEFT_ADDR` redirected the request to a different destination.
  *
- * This module is imported from `@repo/weft` (browser-reachable),
+ * This module is imported from `@corvidae/weft` (browser-reachable),
  * so it must stay statically free of `node:*` and Bun-only imports. Environment
  * variables go through {@link readEnvironmentVariable}; `~/.weft/config` and the
  * run lockfile are read through {@link tryLoadNodeBuiltin}, which resolves
@@ -25,6 +25,7 @@
  * @module connection
  */
 
+import { resolveCliEnvironment } from './runtime/environment-configuration.ts';
 import { isBunRuntime, readEnvironmentVariable, tryLoadNodeBuiltin } from './runtime/portable.ts';
 
 /**
@@ -32,7 +33,7 @@ import { isBunRuntime, readEnvironmentVariable, tryLoadNodeBuiltin } from './run
  *
  * @example
  * ```ts
- * import { resolveConnection, type ConnectionOptions } from '@repo/weft';
+ * import { resolveConnection, type ConnectionOptions } from '@corvidae/weft';
  *
  * const options: ConnectionOptions = {
  *   server: 'https://weft.example.com',
@@ -60,7 +61,7 @@ export type ConnectionOptions = {
  *
  * @example
  * ```ts
- * import { resolveConnection, type ResolvedConnection } from '@repo/weft';
+ * import { resolveConnection, type ResolvedConnection } from '@corvidae/weft';
  *
  * const connection: ResolvedConnection = resolveConnection({
  *   server: 'https://weft.example.com',
@@ -80,7 +81,7 @@ export type ResolvedConnection = {
  *
  * @example
  * ```ts
- * import { DEFAULT_WEFT_ADDRESS } from '@repo/weft';
+ * import { DEFAULT_WEFT_ADDRESS } from '@corvidae/weft';
  *
  * console.log(DEFAULT_WEFT_ADDRESS); // "http://localhost:7233"
  * ```
@@ -98,7 +99,7 @@ export const DEFAULT_WEFT_ADDRESS = 'http://localhost:7233';
  *
  * @example
  * ```ts
- * import { ConnectionConfigurationError, resolveConnection } from '@repo/weft';
+ * import { ConnectionConfigurationError, resolveConnection } from '@corvidae/weft';
  *
  * try {
  *   resolveConnection();
@@ -142,7 +143,7 @@ type WeftRunLockfile = {
  *
  * @example
  * ```ts
- * import { resolveConnection } from '@repo/weft';
+ * import { resolveConnection } from '@corvidae/weft';
  *
  * const connection = resolveConnection({ server: 'https://weft.example.com' });
  * console.log(connection.server.toString()); // "https://weft.example.com/"
@@ -152,10 +153,7 @@ export function resolveConnection(options: ConnectionOptions = {}): ResolvedConn
   const context = resolveConnectionContext(options);
   const server = resolveServerString(context);
   const fallbackProfile = profileForToken(context, server);
-  const token = resolveToken(
-    options.token ?? readEnvironmentVariable('WEFT_TOKEN'),
-    fallbackProfile,
-  );
+  const token = resolveToken(options.token ?? resolveCliEnvironment().weftToken, fallbackProfile);
 
   return {
     server: parseServerUrl(server),
@@ -198,7 +196,7 @@ function profileForToken(
 ): WeftProfile | undefined {
   if (context.profile === undefined) return undefined;
   const serverIsOverridden =
-    context.options.server !== undefined || readEnvironmentVariable('WEFT_ADDR') !== undefined;
+    context.options.server !== undefined || resolveCliEnvironment().weftAddr !== undefined;
   if (!serverIsOverridden) return context.profile;
   const profileServer = context.profile.server;
   if (profileServer === undefined) return undefined;
@@ -235,7 +233,7 @@ type ConnectionContext = {
 function resolveConnectionContext(options: ConnectionOptions): ConnectionContext {
   const configuration = readWeftConfiguration();
   const profileName =
-    options.profile ?? readEnvironmentVariable('WEFT_PROFILE') ?? configuration.defaultProfile;
+    options.profile ?? resolveCliEnvironment().weftProfile ?? configuration.defaultProfile;
   const profile = profileName === undefined ? undefined : configuration.profiles?.[profileName];
   const runLockfile = options.includeRunLockfile === false ? undefined : readRunLockfile();
   return {
@@ -248,7 +246,7 @@ function resolveConnectionContext(options: ConnectionOptions): ConnectionContext
 function resolveServerString(context: ConnectionContext): string {
   return (
     context.options.server ??
-    readEnvironmentVariable('WEFT_ADDR') ??
+    resolveCliEnvironment().weftAddr ??
     context.profile?.server ??
     context.runLockfile?.server ??
     context.runLockfile?.url ??
@@ -399,7 +397,8 @@ function runLockfilePath(): string {
 }
 
 function weftHome(): string {
-  return readEnvironmentVariable('WEFT_HOME') ?? `${readEnvironmentVariable('HOME') ?? '.'}/.weft`;
+  const environment = resolveCliEnvironment();
+  return environment.weftHome ?? `${environment.home ?? '.'}/.weft`;
 }
 
 function stringValue(value: unknown): string | undefined {

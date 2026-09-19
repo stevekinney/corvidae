@@ -19,16 +19,16 @@ import { assertDefined } from './assert-defined';
  *      causes the in-flight step (including its tools) to re-run on recovery.
  */
 
-import { createTool, createToolbox } from '@repo/armorer';
-import { createConversationHistory } from '@repo/conversationalist';
-import { CompletableEventTarget } from '@repo/lifecycle';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { createConversationHistory } from '@corvidae/conversationalist';
+import { CompletableEventTarget } from '@corvidae/lifecycle';
 import type {
   CombinedOperativeEventMap,
   DurableRunDeps,
   GenerateFunction,
   OperativeEventEmitter,
   RunOptions,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import {
   AbortAgentRunError,
   createActiveRun,
@@ -39,8 +39,8 @@ import {
   MaximumStepsExceededError,
   stopWhen,
   waitForCondition,
-} from '@repo/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+} from '@corvidae/operative';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 const run = (opts: Parameters<typeof createActiveRun>[0]) => createActiveRun(opts).result;

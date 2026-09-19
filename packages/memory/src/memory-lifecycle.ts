@@ -1,4 +1,4 @@
-import type { Embedder } from '@repo/interoperability';
+import type { Embedder } from '@corvidae/embeddings';
 
 import type { MemoryRecord, MemoryRecordScope, MemoryRecordStorage } from './memory-record-storage';
 import type { TextSearchProvider } from './text-search-provider';

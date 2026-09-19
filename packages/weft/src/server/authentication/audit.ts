@@ -27,7 +27,7 @@ import type { AuthMethod } from './types.ts';
  *
  * @example
  * ```ts
- * import { type AuthAuditEvent } from '@repo/weft';
+ * import { type AuthAuditEvent } from '@corvidae/weft';
  *
  * const event: AuthAuditEvent = {
  *   outcome: 'success',
@@ -69,7 +69,7 @@ export type AuthAuditEvent = {
  *
  * @example
  * ```ts
- * import { type AuthAuditEvent, type AuthAuditSink } from '@repo/weft';
+ * import { type AuthAuditEvent, type AuthAuditSink } from '@corvidae/weft';
  *
  * const collected: AuthAuditEvent[] = [];
  * const sink: AuthAuditSink = (event) => collected.push(event);
@@ -85,7 +85,7 @@ export type AuthAuditSink = (event: AuthAuditEvent) => void;
  *
  * @example
  * ```ts
- * import { defaultAuthAuditSink } from '@repo/weft';
+ * import { defaultAuthAuditSink } from '@corvidae/weft';
  *
  * defaultAuthAuditSink({
  *   outcome: 'failure',

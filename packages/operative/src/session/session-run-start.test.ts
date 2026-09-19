@@ -1,5 +1,5 @@
-import { createToolbox } from '@repo/armorer';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+import { createToolbox } from '@corvidae/armorer';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

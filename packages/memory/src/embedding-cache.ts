@@ -1,4 +1,4 @@
-import type { Embedder, EmbeddingVector } from '@repo/interoperability';
+import type { Embedder, EmbeddingVector } from '@corvidae/embeddings';
 
 import { sha256Hex } from './hash';
 

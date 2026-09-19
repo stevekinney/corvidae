@@ -53,6 +53,36 @@ async function lintImport(
   }
 }
 
+for (const [path, maximum] of [
+  ['packages/example/src/consumer.ts', 100],
+  ['components/example/src/consumer.svelte', 100],
+  ['applications/example/src/consumer.ts', 100],
+  ['packages/example/src/consumer.test.ts', 100],
+  ['scripts/consumer.ts', 300],
+  ['components/example/scripts/consumer.mjs', 300],
+  ['packages/example/scripts/nested/consumer.ts', 300],
+  ['applications/example/scripts/consumer.ts', 300],
+] as const) {
+  test(`${path} accepts complexity ${maximum} and rejects ${maximum + 1}`, async () => {
+    function source(complexity: number): string {
+      const branches = Array.from(
+        { length: complexity - 1 },
+        (_, index) => `if (value === ${index}) return ${index};`,
+      ).join('\n');
+      const implementation = `export function classify(value) { ${branches}\nreturn -1; }`;
+      return path.endsWith('.svelte')
+        ? `<script lang="ts">${implementation}</script>`
+        : implementation;
+    }
+    const accepted = await lintImport(source(maximum), path);
+    expect(accepted.exitCode, accepted.output).toBe(0);
+    const rejected = await lintImport(source(maximum + 1), path);
+    expect(rejected.exitCode, rejected.output).toBe(1);
+    expect(rejected.output).toContain('complexity');
+    expect(rejected.output).toContain(`complexity of ${maximum + 1}`);
+  });
+}
+
 test('the root import rule accepts stylesheet side effects', async () => {
   const result = await lintImport("import './component.css';\n");
   expect(result.output).not.toContain('no-unassigned-import');
@@ -66,17 +96,17 @@ test('the root import rule still rejects unassigned JavaScript module imports', 
 });
 
 test('Chat can load its stylesheet-owning Cinder dependency from the public root', async () => {
-  const result = await lintImport("import '@repo/cinder';\n", 'packages/chat/src/index.ts');
+  const result = await lintImport("import '@corvidae/cinder';\n", 'components/chat/src/index.ts');
   expect(result.output).not.toContain('no-unassigned-import');
   expect(result.exitCode).toBe(0);
 });
 
 test('the Chat stylesheet exception does not allow other modules or consumers', async () => {
   const otherProvider = await lintImport(
-    "import '@repo/lifecycle';\n",
-    'packages/chat/src/index.ts',
+    "import '@corvidae/lifecycle';\n",
+    'components/chat/src/index.ts',
   );
-  const otherConsumer = await lintImport("import '@repo/cinder';\n");
+  const otherConsumer = await lintImport("import '@corvidae/cinder';\n");
   expect(otherProvider.output).toContain('no-unassigned-import');
   expect(otherProvider.exitCode).toBe(1);
   expect(otherConsumer.output).toContain('no-unassigned-import');
@@ -84,7 +114,7 @@ test('the Chat stylesheet exception does not allow other modules or consumers', 
 });
 
 test('application output is excluded at every workspace depth', async () => {
-  for (const output of ['build', '.svelte-kit', 'coverage', '.turbo']) {
+  for (const output of ['build', '.svelte-kit', '.playwright', 'coverage', '.turbo']) {
     const result = await lintImport(
       "import './generated-module.ts';\n",
       `applications/fixture/${output}/generated.ts`,
@@ -106,11 +136,11 @@ test('generated declaration contracts are separate from authored declaration lin
 
 test('UI production retains strict assertion checks while test fixtures keep their source contract', async () => {
   const source = 'export function read(value: unknown) { return value as { name: string }; }\n';
-  const production = await lintImport(source, 'packages/cinder/src/consumer.ts', true);
+  const production = await lintImport(source, 'components/cinder/src/consumer.ts', true);
   expect(production.exitCode).toBe(1);
   expect(production.output).toContain('no-unsafe-type-assertion');
 
-  const fixture = await lintImport(source, 'packages/cinder/src/consumer.test.ts', true);
+  const fixture = await lintImport(source, 'components/cinder/src/consumer.test.ts', true);
   expect(fixture.output).not.toContain('no-unsafe-type-assertion');
   expect(fixture.exitCode).toBe(0);
 });
@@ -144,11 +174,11 @@ test('worker messaging preserves its API while window messaging requires an orig
 test('diagnostic output is retained without permitting stray UI debug logging', async () => {
   const diagnostic = await lintImport(
     "console.warn('Invalid component usage');\n",
-    'packages/cinder/src/consumer.ts',
+    'components/cinder/src/consumer.ts',
   );
   expect(diagnostic.exitCode).toBe(0);
 
-  const debug = await lintImport("console.log('debug');\n", 'packages/cinder/src/consumer.ts');
+  const debug = await lintImport("console.log('debug');\n", 'components/cinder/src/consumer.ts');
   expect(debug.exitCode).toBe(1);
   expect(debug.output).toContain('no-console');
 });
@@ -156,7 +186,7 @@ test('diagnostic output is retained without permitting stray UI debug logging', 
 test('explicit document-debug utilities can print while ordinary UI source cannot', async () => {
   const diagnostic = await lintImport(
     "export function printDocument() { console.log('Document structure:'); }\n",
-    'packages/editor/src/editor/test-utilities.ts',
+    'components/editor/src/editor/test-utilities.ts',
   );
   expect(diagnostic.exitCode).toBe(0);
   const application = await lintImport(
@@ -221,19 +251,22 @@ test('recursive Svelte components retain self imports without allowing arbitrary
     '<script>import Recursive from "./_json-viewer-node.svelte";</script><Recursive />\n';
   const recursive = await lintImport(
     source,
-    'packages/cinder/src/components/json-viewer/_json-viewer-node.svelte',
+    'components/cinder/src/components/json-viewer/_json-viewer-node.svelte',
   );
   expect(recursive.exitCode).toBe(0);
 
   const accidental = await lintImport(
     source,
-    'packages/cinder/src/components/fixture/_json-viewer-node.svelte',
+    'components/cinder/src/components/fixture/_json-viewer-node.svelte',
   );
   expect(accidental.exitCode).toBe(1);
   expect(accidental.output).toContain('no-self-import');
 });
 
-async function compileContract(source: string): Promise<{ exitCode: number; output: string }> {
+async function compileContract(
+  source: string,
+  configurationName = 'base.json',
+): Promise<{ exitCode: number; output: string }> {
   const directory = await mkdtemp(join(root, '.lint-policy-'));
   try {
     await Bun.write(join(directory, 'contract.ts'), source);
@@ -241,7 +274,7 @@ async function compileContract(source: string): Promise<{ exitCode: number; outp
     await Bun.write(
       configuration,
       JSON.stringify({
-        extends: join(root, 'packages/typescript-configuration/base.json'),
+        extends: join(root, 'internal/typescript', configurationName),
         include: ['./contract.ts'],
       }),
     );
@@ -260,6 +293,82 @@ async function compileContract(source: string): Promise<{ exitCode: number; outp
     await rm(directory, { recursive: true, force: true });
   }
 }
+
+test('component source accepts browser APIs and rejects server globals in TypeScript and Svelte', async () => {
+  for (const extension of ['ts', 'svelte']) {
+    const wrap = (source: string) =>
+      extension === 'svelte' ? `<script lang="ts">${source}</script>` : source;
+    const path = `components/example/src/consumer.${extension}`;
+    const browser = await lintImport(
+      wrap("document.title = 'Corvidae'; window.localStorage.clear();"),
+      path,
+    );
+    expect(browser.exitCode, browser.output).toBe(0);
+    for (const source of [
+      'Bun.file("data.json");',
+      'process.cwd();',
+      'globalThis.process.cwd();',
+      'Buffer.from("data");',
+      'require("fs");',
+    ]) {
+      const server = await lintImport(wrap(source), path);
+      expect(server.exitCode, server.output).toBe(1);
+      expect(server.output).toContain('no-restricted-globals');
+    }
+  }
+});
+
+test('component imports reject Node and Bun modules including bare names and dynamic imports', async () => {
+  for (const source of [
+    "export { readFile } from 'node:fs/promises';",
+    "export { readFile } from 'fs/promises';",
+    "export { file } from 'bun';",
+    "export { Database } from 'bun:sqlite';",
+    "export const load = () => import('node:fs');",
+    "import type { Stats } from 'node:fs'; export type File = Stats;",
+  ]) {
+    const result = await lintImport(source, 'components/example/src/consumer.ts');
+    expect(result.exitCode, `${source}\n${result.output}`).toBe(1);
+    expect(result.output).toContain('no-restricted-imports');
+  }
+});
+
+test('component tests and scripts retain Bun APIs without exempting adjacent production files', async () => {
+  for (const path of [
+    'src/consumer.test.ts',
+    'src/consumer-test-helpers.ts',
+    'scripts/prepare.ts',
+  ]) {
+    const result = await lintImport(
+      "export const file = Bun.file('fixture.json');",
+      `components/example/${path}`,
+    );
+    expect(result.exitCode, result.output).toBe(0);
+  }
+});
+
+test('browser compiler policy provides DOM types without ambient Bun or Node globals', async () => {
+  const browser = await compileContract(
+    'export const element: HTMLElement = document.body; export const timer: number = setTimeout(() => {}, 0);',
+    'browser.json',
+  );
+  expect(browser.exitCode, browser.output).toBe(0);
+  const server = await compileContract(
+    'Bun.file("data.json"); process.cwd(); Buffer.from("data");',
+    'browser.json',
+  );
+  expect(server.exitCode, server.output).toBe(2);
+  for (const name of ['Bun', 'process', 'Buffer'])
+    expect(server.output).toContain(`Cannot find name '${name}'`);
+});
+
+test('portable hashing compiles for browser consumers without ambient Bun types', async () => {
+  const result = await compileContract(
+    "import { sha256Hex } from '../packages/cryptography/src/hash.ts'; export const hash = sha256Hex('browser');",
+    'browser.json',
+  );
+  expect(result.exitCode, result.output).toBe(0);
+});
 
 test('TypeScript enforces return completeness while accepting exhaustive unions', async () => {
   const complete = await compileContract(

@@ -1,11 +1,12 @@
 import { BunSQLiteStorage } from './bun-sql.ts';
+import { resolveStorageEnvironment } from './environment-configuration.ts';
 import { IndexedDBStorage } from './indexeddb.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 import { WebExtensionStorage } from './web-extension.ts';
 /**
  * Runtime-detected default storage backend.
  *
- * Imported via `@repo/weft`. Resolves a persistent
+ * Imported via `@corvidae/weft`. Resolves a persistent
  * storage adapter appropriate for the current runtime:
  *
  *   1. Bun -> `BunSQLiteStorage`
@@ -25,7 +26,7 @@ import { WebExtensionStorage } from './web-extension.ts';
  * deployments should pick an explicit adapter and pass it to
  * `new Engine({ storage })`.
  *
- * @module @repo/weft
+ * @module @corvidae/weft
  */
 
 import type { Storage as WeftStorage } from './interface.ts';
@@ -72,7 +73,7 @@ function defaultSqlitePath(runtimeGlobals: RuntimeGlobalsLike): string {
   const { mkdirSync } = process.getBuiltinModule('node:fs');
   const { tmpdir } = process.getBuiltinModule('node:os');
   const pathModule = process.getBuiltinModule('node:path');
-  const override = runtimeGlobals.process?.env?.['WEFT_DEFAULT_STORAGE_PATH'];
+  const override = resolveStorageEnvironment().weftDefaultStoragePath;
   const storagePath =
     override !== undefined && override.length > 0
       ? override
@@ -140,8 +141,8 @@ function describeIndexedDbSupport(runtimeGlobals: RuntimeGlobalsLike): string {
  *
  * @example
  * ```ts
- * import { Engine } from '@repo/weft';
- * import { resolveDefaultStorage } from '@repo/weft';
+ * import { Engine } from '@corvidae/weft';
+ * import { resolveDefaultStorage } from '@corvidae/weft';
  *
  * await using storage = await resolveDefaultStorage();
  * await using engine = new Engine({ storage });

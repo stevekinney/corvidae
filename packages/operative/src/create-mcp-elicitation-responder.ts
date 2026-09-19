@@ -2,10 +2,10 @@ import type {
   ToolElicitationRequest,
   ToolElicitationRequester,
   ToolElicitationResult,
-} from '@repo/armorer';
-import { jsonSchemaToZod } from '@repo/armorer';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+} from '@corvidae/armorer';
+import { jsonSchemaToZod } from '@corvidae/armorer';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 import { z } from 'zod';
 
 import type { EventDispatcher } from './loop';
@@ -44,14 +44,13 @@ export interface CreateMcpElicitationResponderOptions {
  *
  * @example
  * ```ts
- * import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
- * import { createMcpElicitationHandler } from '@repo/armorer';
- * import { createMcpElicitationResponder } from '@repo/operative';
+ * import { createMcpElicitationHandler } from '@corvidae/armorer';
+ * import { createMcpElicitationResponder } from '@corvidae/operative';
  *
  * let currentContext: StepContext = { conversation, step: 0 };
  *
  * client.setRequestHandler(
- *   ElicitRequestSchema,
+ *   'elicitation/create',
  *   createMcpElicitationHandler(
  *     createMcpElicitationResponder({
  *       onElicitation,

@@ -1,10 +1,10 @@
 # Lifecycle
 
-`@repo/lifecycle` contains the shared event and hook primitives used across Agent Bureau. It has no agent-domain behavior of its own; it provides the typed infrastructure that other packages use to publish state, expose observables, and compose hooks.
+`@corvidae/lifecycle` contains the shared event and hook primitives used across Agent Bureau. It has no agent-domain behavior of its own; it provides the typed infrastructure that other packages use to publish state, expose observables, and compose hooks.
 
 ## Workspace usage
 
-Declare `"@repo/lifecycle": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@repo/lifecycle`; it exports TypeScript source directly and has no library build or publication step.
+Declare `"@corvidae/lifecycle": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@corvidae/lifecycle`; it exports TypeScript source directly and has no library build or publication step.
 
 ## What It Does
 
@@ -16,13 +16,13 @@ Declare `"@repo/lifecycle": "workspace:*"` in the consuming workspace's dependen
 
 ## How It Works
 
-The package wraps standard `EventTarget` behavior in TypeScript types rather than inventing a separate event system. Runtime packages dispatch events through these primitives, and consumers can choose the most convenient consumption style: listener callbacks, async iteration, or observable subscriptions.
+The package wraps the standard [`EventTarget`](https://developer.mozilla.org/docs/Web/API/EventTarget) behavior in TypeScript types rather than inventing another event system. Runtime packages dispatch events through these primitives, and consumers can choose the most convenient consumption style: listener callbacks, async iteration, or observable subscriptions.
 
 Hooks are stored in registries keyed by hook maps. Packages such as `operative` use that pattern to expose lifecycle customization without hard-coding every integration into the run loop.
 
 ## Project Role
 
-`lifecycle` is the shared substrate for observability and extension. `conversationalist`, `armorer`, `operative`, `@repo/operative`, and `gateway` all rely on event streams or hooks, and this package keeps those mechanics consistent across the workspace.
+`lifecycle` is the shared substrate for observability and extension. `@corvidae/conversationalist`, `@corvidae/armorer`, and `@corvidae/operative` all rely on its event streams or hooks. Host applications use the same primitives when they compose those packages, which keeps lifecycle behavior consistent across the workspace.
 
 ## Public API
 
@@ -35,7 +35,7 @@ A type-safe wrapper around the native `EventTarget`. `M` is a record mapping eve
 **`dispatch(event)`** is the primary addition over the native API—it accepts only events whose `type` key is present in `M`, so typos in event names become compile errors.
 
 ```typescript
-import { TypedEventTarget } from '@repo/lifecycle';
+import { TypedEventTarget } from '@corvidae/lifecycle';
 
 class ProgressEvent extends Event {
   constructor(public readonly percent: number) {
@@ -89,7 +89,7 @@ Extends `TypedEventTarget` with lifecycle management and convenience consumption
 - **`events(type, options?)`**: Returns an `AsyncIterableIterator<M[K]>` for the given event type, terminated by the target's signal.
 
 ```typescript
-import { CompletableEventTarget } from '@repo/lifecycle';
+import { CompletableEventTarget } from '@corvidae/lifecycle';
 
 type StreamEvents = {
   data: MessageEvent;
@@ -150,7 +150,7 @@ Adapts any `EventTarget` into an `AsyncIterableIterator`. Events are buffered in
 - **`bufferSize`**: `number`—maximum number of unconsumed events to buffer before dropping new ones (default `256`).
 
 ```typescript
-import { eventIterator } from '@repo/lifecycle';
+import { eventIterator } from '@corvidae/lifecycle';
 
 const controller = new AbortController();
 const target = new EventTarget();
@@ -193,7 +193,7 @@ Returns a TC39-style `ObservableLike` for a single event type on any `EventTarge
 - **`signal`**: `AbortSignal`—combined with the subscription's own controller via `AbortSignal.any()`.
 
 ```typescript
-import { eventObservable } from '@repo/lifecycle';
+import { eventObservable } from '@corvidae/lifecycle';
 
 const target = new EventTarget();
 const controller = new AbortController();
@@ -231,7 +231,7 @@ function allEventsObservable<E extends Event>(
 Like `eventObservable()`, but subscribes to multiple event types at once and merges them into a single stream. All event types share one subscription and one `unsubscribe()` call.
 
 ```typescript
-import { allEventsObservable } from '@repo/lifecycle';
+import { allEventsObservable } from '@corvidae/lifecycle';
 
 const target = new EventTarget();
 
@@ -286,7 +286,7 @@ interface ForwardableSource {
 `CompletableEventTarget` implements `ForwardableSource` via its `toObservable()` method, making it the natural source for this function.
 
 ```typescript
-import { CompletableEventTarget, ForwardedEvent, forwardEvents } from '@repo/lifecycle';
+import { CompletableEventTarget, ForwardedEvent, forwardEvents } from '@corvidae/lifecycle';
 
 type ChildEvents = { data: MessageEvent; error: ErrorEvent };
 
@@ -337,7 +337,7 @@ A priority-ordered registry for named async hooks. `M` maps hook names to their 
 - **`onError`**: `HookErrorHandler`—registry-wide error fallback used when a handler's own `onError` is not set.
 
 ```typescript
-import { HookRegistry } from '@repo/lifecycle';
+import { HookRegistry } from '@corvidae/lifecycle';
 
 type BuildHooks = {
   'before-compile': (source: string) => string | undefined;
@@ -382,7 +382,7 @@ function mergeHookRegistries<M extends HookMap>(
 Combines multiple `HookRegistry` instances into a new registry. Registries listed earlier receive a higher priority offset (increments of 1000 per position), so handlers from the first registry run before those from later ones at equal declared priority. `undefined` entries are silently skipped, making it safe to spread optional hook sources.
 
 ```typescript
-import { HookRegistry, mergeHookRegistries } from '@repo/lifecycle';
+import { HookRegistry, mergeHookRegistries } from '@corvidae/lifecycle';
 
 type AppHooks = {
   'on-request': (url: string) => string | undefined;
@@ -413,7 +413,7 @@ console.log(result); // 'https://example.com/api?plugin=true'
 This means two `ManualRuntimeServices` instances constructed with **different** `identifierSeed`s are, barring a hash collision, extremely unlikely to mint the same identifier—their prefixes almost certainly differ, so their identifier sets are practically disjoint—while two instances constructed with the **same** `identifierSeed` still mint byte-identical sequences (AB-92's reproduction guarantee is unchanged).
 
 ```typescript
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 
 const a = createManualRuntimeServices({ identifierSeed: 'runtime-a' });
 const b = createManualRuntimeServices({ identifierSeed: 'runtime-b' });
@@ -454,4 +454,4 @@ bun run typecheck
 bun run test
 ```
 
-From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@repo/lifecycle` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.
+From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@corvidae/lifecycle` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.

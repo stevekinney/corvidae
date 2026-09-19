@@ -1,5 +1,5 @@
-import type { Message } from '@repo/conversationalist';
-import { Conversation } from '@repo/conversationalist';
+import type { Message } from '@corvidae/conversationalist';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it, mock } from 'bun:test';
 import { assertDefined } from './assert-defined';
 

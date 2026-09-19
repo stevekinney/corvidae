@@ -1,6 +1,6 @@
-import { createToolbox } from '@repo/armorer';
-import { createConversationHistory } from '@repo/conversationalist';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+import { createToolbox } from '@corvidae/armorer';
+import { createConversationHistory } from '@corvidae/conversationalist';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createAgentSession } from '../agent-session';

@@ -1,4 +1,8 @@
-import type { HookErrorHandler, HookRegistrationOptions, RuntimeServices } from '@repo/lifecycle';
+import type {
+  HookErrorHandler,
+  HookRegistrationOptions,
+  RuntimeServices,
+} from '@corvidae/lifecycle';
 
 import { GenerateRetryEvent } from './events';
 import { addJitter } from './retry/jitter';

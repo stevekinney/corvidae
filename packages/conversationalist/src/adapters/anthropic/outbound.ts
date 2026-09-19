@@ -168,7 +168,7 @@ function toToolMessage(
  *
  * @example
  * ```ts
- * import { toAnthropicMessages } from '@repo/conversationalist';
+ * import { toAnthropicMessages } from '@corvidae/conversationalist';
  *
  * const { system, messages } = toAnthropicMessages(conversation);
  * const response = await anthropic.messages.create({

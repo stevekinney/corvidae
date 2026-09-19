@@ -17,7 +17,7 @@ import type { EngineConstructorOptions } from './engine-internal-types.ts';
  *
  * @example
  * ```ts
- * import { activity, Engine, workflow, type EngineCreateOptions } from '@repo/weft';
+ * import { activity, Engine, workflow, type EngineCreateOptions } from '@corvidae/weft';
  *
  * const greet = activity({ name: 'greet', execute: async (name: string) => `Hello, ${name}` });
  * const welcome = workflow({ name: 'welcome' }).execute(async function* (ctx, input: string) {

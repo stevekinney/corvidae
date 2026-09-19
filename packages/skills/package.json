@@ -1,5 +1,5 @@
 {
-  "name": "@repo/skills",
+  "name": "@corvidae/skills",
   "private": true,
   "description": "Skills platform for agent-bureau: discover, load, and use AgentSkills-compatible SKILL.md content with a self-improvement engine.",
   "type": "module",
@@ -15,14 +15,15 @@
   "dependencies": {
     "gray-matter": "catalog:",
     "zod": "catalog:",
-    "@repo/weft": "workspace:*",
-    "@repo/armorer": "workspace:*",
-    "@repo/interoperability": "workspace:*",
-    "@repo/lifecycle": "workspace:*"
+    "@corvidae/weft": "workspace:*",
+    "@corvidae/armorer": "workspace:*",
+    "@corvidae/cryptography": "workspace:*",
+    "@corvidae/lifecycle": "workspace:*",
+    "@corvidae/tool-protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@repo/typescript-configuration": "workspace:*",
+    "@corvidae/typescript": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   }

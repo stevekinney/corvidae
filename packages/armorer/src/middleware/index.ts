@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import type { ClearScheduledTimeout, ScheduleTimeout, ToolConfiguration } from '../is-tool';
 import {

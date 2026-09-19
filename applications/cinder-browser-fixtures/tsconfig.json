@@ -1,9 +1,0 @@
-{
-  "extends": "@repo/typescript-configuration/library.json",
-  "compilerOptions": {
-    "types": ["bun", "vite/client"],
-    "allowImportingTsExtensions": true,
-    "noEmit": true
-  },
-  "include": ["src", "scripts", "tests", "vite.config.ts", "playwright.config.ts", "fixtures"]
-}

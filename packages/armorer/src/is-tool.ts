@@ -1,4 +1,9 @@
-import type { EventIteratorOptions, ObservableLike, Observer, Subscription } from '@repo/lifecycle';
+import type {
+  EventIteratorOptions,
+  ObservableLike,
+  Observer,
+  Subscription,
+} from '@corvidae/lifecycle';
 import { z } from 'zod';
 
 import type { CoreToolContext } from './core/context';
@@ -13,7 +18,12 @@ import { policyPauseDecisionsSymbol, policyPauseTierSymbol } from './internal/ap
 import type { PolicyPauseTier, ToolCall, ToolCallReturn, ToolExecutionResult } from './types';
 
 export type ToolParametersSchema = z.ZodType;
-export type { EventIteratorOptions, ObservableLike, Observer, Subscription } from '@repo/lifecycle';
+export type {
+  EventIteratorOptions,
+  ObservableLike,
+  Observer,
+  Subscription,
+} from '@corvidae/lifecycle';
 
 export type MinimalAbortSignal = AbortSignal;
 export type TimeoutHandle = unknown;
@@ -308,7 +318,7 @@ export interface ToolElicitationUrlRequest {
  * execution — typically an MCP client, but the shape is transport-agnostic.
  *
  * Mirrors the MCP spec's form/URL elicitation split without depending on
- * `@modelcontextprotocol/sdk` types. This is a discriminated union on `mode`
+ * MCP SDK types. This is a discriminated union on `mode`
  * so a URL-mode request can never be constructed without its `url`, and a
  * form-mode request can never carry a stray `url` that would silently be
  * dropped by a `mode`-unaware caller.
@@ -437,7 +447,7 @@ export type ToolExecuteWithOptions = ToolExecuteOptions & {
  *
  * @example
  * ```typescript
- * import { isTool, createTool } from '@repo/armorer';
+ * import { isTool, createTool } from '@corvidae/armorer';
  *
  * const tool = createTool({ ... });
  * if (isTool(tool)) {

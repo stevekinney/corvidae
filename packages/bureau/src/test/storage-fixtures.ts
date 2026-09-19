@@ -43,9 +43,9 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { RuntimeServices } from '@repo/lifecycle';
-import type { Storage, StorageConfiguration } from '@repo/weft';
-import { MemoryStorage } from '@repo/weft';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { Storage, StorageConfiguration } from '@corvidae/weft';
+import { MemoryStorage } from '@corvidae/weft';
 
 /**
  * One isolated storage backend for a single test. `configuration` is ready

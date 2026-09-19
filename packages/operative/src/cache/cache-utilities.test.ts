@@ -1,4 +1,4 @@
-import { MemoryStorage, type TextValueStore, textValueStore } from '@repo/weft';
+import { MemoryStorage, type TextValueStore, textValueStore } from '@corvidae/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { clearCache, invalidateCache } from './cache-utilities';

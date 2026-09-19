@@ -4,7 +4,7 @@
  *
  * @example
  * ```ts
- * import { VERSION } from '@repo/weft';
+ * import { VERSION } from '@corvidae/weft';
  *
  * console.log(`Running Weft ${VERSION}`);
  * ```

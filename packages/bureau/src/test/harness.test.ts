@@ -1,8 +1,8 @@
-import { createProcessLocalApprovalStateStore, createTool, createToolbox } from '@repo/armorer';
-import type { ManualRuntimeServices } from '@repo/lifecycle';
-import { createManualRuntimeServices } from '@repo/lifecycle';
-import type { GenerateFunction } from '@repo/operative';
-import { createAgent, stopWhen, waitForCondition, waitForRunState } from '@repo/operative';
+import { createProcessLocalApprovalStateStore, createTool, createToolbox } from '@corvidae/armorer';
+import type { ManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import type { GenerateFunction } from '@corvidae/operative';
+import { createAgent, stopWhen, waitForCondition, waitForRunState } from '@corvidae/operative';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

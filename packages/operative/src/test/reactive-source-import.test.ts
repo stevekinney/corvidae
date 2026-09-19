@@ -6,7 +6,7 @@ test('the public operative entry imports in a plain Bun process without the test
     [
       process.execPath,
       '--eval',
-      "const api = await import('@repo/operative'); if (typeof api.runReactiveSourceConformanceSuite !== 'function') throw new Error('Missing conformance API');",
+      "const api = await import('@corvidae/operative'); if (typeof api.runReactiveSourceConformanceSuite !== 'function') throw new Error('Missing conformance API');",
     ],
     { cwd: resolve(import.meta.dir, '../..'), stdout: 'pipe', stderr: 'pipe' },
   );

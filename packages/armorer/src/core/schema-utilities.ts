@@ -3,7 +3,7 @@
  * These utilities intentionally work with untyped Zod internals (_def, shape, etc.)
  * which requires permissive type handling.
  */
-import type { StandardSchemaV1 } from '@repo/interoperability';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 
 export type ToolSchema = z.ZodType;
@@ -20,6 +20,22 @@ export type ToolSchema = z.ZodType;
  * wrapped pipe, and toolbox registration normalizes it again.
  */
 const WRAPPED_STANDARD_SCHEMA = Symbol('armorer.wrappedStandardSchema');
+
+/** Returns whether a value exposes a valid Standard Schema V1 contract. */
+export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
+  if (typeof value !== 'object' || value === null || !('~standard' in value)) return false;
+  const properties: unknown = value['~standard'];
+  return (
+    typeof properties === 'object' &&
+    properties !== null &&
+    'version' in properties &&
+    properties.version === 1 &&
+    'vendor' in properties &&
+    typeof properties.vendor === 'string' &&
+    'validate' in properties &&
+    typeof properties.validate === 'function'
+  );
+}
 
 /**
  * Wraps a non-Zod Standard Schema validator (Valibot, ArkType, ...) as a

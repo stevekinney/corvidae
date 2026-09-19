@@ -1,6 +1,15 @@
-import { createTool, createToolbox, type AnyToolbox, type ToolRequestContext } from '@repo/armorer';
-import type { ChatStreamEvent } from '@repo/chat';
-import { appendUserMessage, createConversationHistory, decodeChatStreamEvent } from '@repo/chat';
+import {
+  createTool,
+  createToolbox,
+  type AnyToolbox,
+  type ToolRequestContext,
+} from '@corvidae/armorer';
+import type { ChatStreamEvent } from '@corvidae/chat';
+import {
+  appendUserMessage,
+  createConversationHistory,
+  decodeChatStreamEvent,
+} from '@corvidae/chat';
 import {
   AbortAgentRunError,
   AgentRunError,
@@ -12,7 +21,7 @@ import {
   type BeforeToolExecutionHook,
   type EnhancedStreamingOptions,
   type StreamingGenerateFunction,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { expect } from 'bun:test';
 import { z } from 'zod';
 import {

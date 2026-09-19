@@ -5,7 +5,7 @@ import {
   materializeToolResultAsync,
   materializeToolResults,
   materializeToolResultsAsync,
-} from '@repo/interoperability';
+} from '@corvidae/tool-protocol';
 
 import {
   type ConversationEnvironment,
@@ -32,8 +32,8 @@ export {
   materializeToolResultAsync,
   materializeToolResults,
   materializeToolResultsAsync,
-} from '@repo/interoperability';
-export type { MaterializeToolCallOptions } from '@repo/interoperability';
+} from '@corvidae/tool-protocol';
+export type { MaterializeToolCallOptions } from '@corvidae/tool-protocol';
 
 export interface AppendToolCallOptions {
   content?: MessageInput['content'];

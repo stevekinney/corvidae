@@ -140,7 +140,7 @@ function applyMessageRecords(draft: ContractDraft, contract: WorkflowContract): 
  *
  * @example
  * ```ts
- * import { normalizeWorkflowContract } from '@repo/weft';
+ * import { normalizeWorkflowContract } from '@corvidae/weft';
  *
  * const normalized = normalizeWorkflowContract({
  *   name: 'checkout',
@@ -260,7 +260,7 @@ function appendTagsField(fields: string[], tags: ReadonlyArray<string> | undefin
  *
  * @example
  * ```ts
- * import { canonicalWorkflowContractJson } from '@repo/weft';
+ * import { canonicalWorkflowContractJson } from '@corvidae/weft';
  *
  * const left = canonicalWorkflowContractJson({
  *   name: 'checkout',

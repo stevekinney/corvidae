@@ -3,7 +3,7 @@
  *
  * @example
  * ```ts
- * import { type WorkflowScheduleProvenance } from '@repo/weft';
+ * import { type WorkflowScheduleProvenance } from '@corvidae/weft';
  *
  * const provenance: WorkflowScheduleProvenance = {
  *   scheduleId: 'nightly-cleanup',
@@ -22,7 +22,7 @@ export interface WorkflowScheduleProvenance {
  *
  * @example
  * ```ts
- * import { type WorkflowFinalizerStatus } from '@repo/weft';
+ * import { type WorkflowFinalizerStatus } from '@corvidae/weft';
  *
  * const finalizer: WorkflowFinalizerStatus = {
  *   status: 'succeeded',

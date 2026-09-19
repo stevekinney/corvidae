@@ -1,4 +1,4 @@
-import { createSessionHandle } from '@repo/operative';
+import { createSessionHandle } from '@corvidae/operative';
 import { json } from '@sveltejs/kit';
 
 import {

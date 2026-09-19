@@ -11,7 +11,7 @@
  *
  * @example Use a Duration in a retry policy
  * ```ts
- * import type { Duration, RetryPolicy } from '@repo/weft';
+ * import type { Duration, RetryPolicy } from '@corvidae/weft';
  *
  * const initialBackoff: Duration = '500ms';
  * const maxBackoff: Duration = '30s';
@@ -40,7 +40,7 @@ export type Duration = number | string;
  *
  * @example
  * ```ts
- * import { Engine, type RetentionPolicy } from '@repo/weft';
+ * import { Engine, type RetentionPolicy } from '@corvidae/weft';
  *
  * const retention: RetentionPolicy = {
  *   completed: '7d',
@@ -85,7 +85,7 @@ export interface NormalizedRetentionPolicy {
  *
  * @example Configure a retry policy on an activity
  * ```ts
- * import { activity, type RetryPolicy } from '@repo/weft';
+ * import { activity, type RetryPolicy } from '@corvidae/weft';
  *
  * const retry: RetryPolicy = {
  *   maxAttempts: 5,
@@ -121,7 +121,7 @@ export interface RetryPolicy {
  *
  * @example
  * ```ts
- * import { workflow, Engine, type WorkflowTypeRetentionPolicy } from '@repo/weft';
+ * import { workflow, Engine, type WorkflowTypeRetentionPolicy } from '@corvidae/weft';
  *
  * const engine = new Engine({ retention: { completed: '7d' } });
  * engine.register(workflow({ name: 'ping' }).execute(async function* () { return 'pong'; }));
@@ -144,7 +144,7 @@ export interface WorkflowTypeRetentionPolicy {
  *
  * @example
  * ```ts
- * import { Engine, type RetentionOverview } from '@repo/weft';
+ * import { Engine, type RetentionOverview } from '@corvidae/weft';
  *
  * const engine = new Engine({ retention: { completed: '7d' } });
  * const overview: RetentionOverview = await engine.getRetentionOverview();
@@ -172,7 +172,7 @@ export interface RetentionOverview {
  *
  * @example
  * ```ts
- * import { DEFAULT_RETRY_POLICY, type RetryPolicy } from '@repo/weft';
+ * import { DEFAULT_RETRY_POLICY, type RetryPolicy } from '@corvidae/weft';
  *
  * // Extend the default policy with a custom non-retryable error list:
  * const policy: RetryPolicy = {

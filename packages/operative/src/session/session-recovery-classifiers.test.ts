@@ -1,4 +1,4 @@
-import { yieldToPortableEventLoop } from '@repo/weft';
+import { yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from '../durable/run-workflow-result';

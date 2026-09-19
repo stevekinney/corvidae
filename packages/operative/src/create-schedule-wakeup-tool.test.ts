@@ -1,4 +1,4 @@
-import { createTool, createToolbox, createToolCall } from '@repo/armorer';
+import { createTool, createToolbox, createToolCall } from '@corvidae/armorer';
 import { describe, expect, it } from 'bun:test';
 
 import type { ScheduleWakeupContext } from './create-schedule-wakeup-tool';

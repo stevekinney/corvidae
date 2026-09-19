@@ -46,11 +46,11 @@ import {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@repo/weft';
+ * import { Engine, MemoryStorage } from '@corvidae/weft';
  * import {
  *   createEngineEventFeedBackend,
  *   createWorkflowEventFeed,
- * } from '@repo/weft';
+ * } from '@corvidae/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const workflowEventFeed = createWorkflowEventFeed(createEngineEventFeedBackend(engine));

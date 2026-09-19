@@ -1,0 +1,1583 @@
+/// <reference lib="dom" />
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { createRawSnippet, tick } from 'svelte';
+
+import { setupHappyDom } from '@corvidae/testing';
+
+setupHappyDom();
+
+// ---------------------------------------------------------------------------
+// Floating-ui mocks — installed before importing the component.
+// ---------------------------------------------------------------------------
+
+type Resolver = (value: unknown) => void;
+let computePositionResult = {
+  x: 10,
+  y: 20,
+  placement: 'bottom-start',
+  middlewareData: {} as { arrow?: { x?: number; y?: number } },
+};
+let deferComputePosition = false;
+let deferredResolvers: Resolver[] = [];
+
+const computePositionSpy = mock(async () => {
+  if (deferComputePosition) {
+    return new Promise((resolve) => {
+      deferredResolvers.push(resolve);
+    });
+  }
+  return computePositionResult;
+});
+
+const autoUpdateTeardown = mock(() => {});
+const autoUpdateSpy = mock((_anchor: HTMLElement, _panel: HTMLElement, update: () => void) => {
+  update();
+  return autoUpdateTeardown;
+});
+const arrowSpy = mock((opts: unknown) => ({ name: 'arrow', options: opts, fn: () => ({}) }));
+const flipSpy = mock(() => ({ name: 'flip', fn: () => ({}) }));
+const shiftSpy = mock((opts: unknown) => ({ name: 'shift', options: opts, fn: () => ({}) }));
+const offsetSpy = mock((v: unknown) => ({ name: 'offset', options: v, fn: () => ({}) }));
+
+function registerPopoverFloatingUiMock(): void {
+  mock.module('@floating-ui/dom', () => ({
+    computePosition: computePositionSpy,
+    autoUpdate: autoUpdateSpy,
+    arrow: arrowSpy,
+    flip: flipSpy,
+    shift: shiftSpy,
+    offset: offsetSpy,
+  }));
+}
+
+registerPopoverFloatingUiMock();
+
+const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
+const { default: Popover } = await import('./popover.svelte');
+const { default: BindableFixture } =
+  await import('../../test/fixtures/popover-bindable-fixture.svelte');
+const { resetEscapeStack } = await import('../../_internal/overlay.ts');
+
+const triggerSnippet = createRawSnippet(() => ({
+  render: () => `<button type="button">Open</button>`,
+  setup: () => {},
+}));
+
+const disabledTriggerSnippet = createRawSnippet(() => ({
+  render: () => `<button type="button" disabled>Open</button>`,
+  setup: () => {},
+}));
+
+function textSnippet(text: string) {
+  return createRawSnippet(() => ({
+    render: () => `<span>${text}</span>`,
+    setup: () => {},
+  }));
+}
+
+function focusableSnippet() {
+  return createRawSnippet(() => ({
+    render: () => `<button type="button">Focusable inside</button>`,
+    setup: () => {},
+  }));
+}
+
+function queryPopoverPanel(): HTMLDivElement | null {
+  return document.body.querySelector<HTMLDivElement>('.cinder-popover');
+}
+
+// Per-test DOM cleanup for nodes we attach directly to document.body.
+let scratchNodes: HTMLElement[] = [];
+function attachScratch(node: HTMLElement): void {
+  scratchNodes.push(node);
+  document.body.appendChild(node);
+}
+
+// Popover emits dev-only guidance warnings (see popover.svelte). Several tests
+// open the popover in configurations that intentionally trip them, so we spy
+// (rather than blanket-silence) and assert in afterEach that every warning
+// matches one of these known patterns — any UNEXPECTED warning fails the test.
+const KNOWN_POPOVER_WARNINGS = [
+  'open without a trigger anchor',
+  'role="dialog" without `label` or `ariaLabelledby`',
+  'role="listbox" only sets the surface role',
+];
+let warnSpy: ReturnType<typeof spyOn<typeof console, 'warn'>>;
+
+beforeEach(() => {
+  // Bun module mocks are process-global. Re-register this fixture before each
+  // test so another floating-surface test file cannot replace the exports
+  // used by Popover when the scoped suite runs in one serial process.
+  registerPopoverFloatingUiMock();
+  deferComputePosition = false;
+  deferredResolvers = [];
+  computePositionResult = {
+    x: 10,
+    y: 20,
+    placement: 'bottom-start',
+    middlewareData: {},
+  };
+  warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  cleanup();
+  for (const node of scratchNodes) {
+    if (node.isConnected) node.remove();
+  }
+  scratchNodes = [];
+  // Portaled panels can outlive Testing Library's render container when an
+  // attachment teardown is scheduled after the test settles. Clear the body
+  // so a later file in a scoped serial run cannot select a stale panel.
+  document.body.replaceChildren();
+  computePositionSpy.mockClear();
+  autoUpdateSpy.mockClear();
+  autoUpdateTeardown.mockClear();
+  arrowSpy.mockClear();
+  flipSpy.mockClear();
+  shiftSpy.mockClear();
+  offsetSpy.mockClear();
+  resetEscapeStack();
+
+  const unexpected = warnSpy.mock.calls
+    .map((args) => args.map(String).join(' '))
+    .filter((message) => !KNOWN_POPOVER_WARNINGS.some((known) => message.includes(known)));
+  // Restore in `finally` so an unexpected-warning failure can't leave
+  // `console.warn` patched for every subsequent test in the suite.
+  try {
+    expect(unexpected).toEqual([]);
+  } finally {
+    warnSpy.mockRestore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+describe('Popover — rendering', () => {
+  test('renders no panel when open=false', () => {
+    render(Popover, {
+      props: { open: false, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+    expect(queryPopoverPanel()).toBeNull();
+  });
+
+  test('re-resolves a trigger that becomes enabled before opening', async () => {
+    const { rerender } = render(Popover, {
+      props: {
+        open: false,
+        trigger: disabledTriggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+
+    await rerender({
+      open: true,
+      trigger: triggerSnippet,
+      children: textSnippet('content'),
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+  });
+
+  test('renders panel with role and aria-label when open=true', async () => {
+    render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const panel = queryPopoverPanel()!;
+    expect(panel.getAttribute('role')).toBe('dialog');
+    expect(panel.getAttribute('aria-label')).toBe('Popover');
+  });
+
+  test('label prop sets aria-label', async () => {
+    render(Popover, {
+      props: {
+        open: true,
+        label: 'Settings menu',
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const panel = queryPopoverPanel()!;
+    expect(panel.getAttribute('aria-label')).toBe('Settings menu');
+    expect(panel.hasAttribute('aria-labelledby')).toBe(false);
+  });
+
+  test('non-dialog roles do not fall back to a generic aria-label', async () => {
+    render(Popover, {
+      props: {
+        open: true,
+        role: 'listbox',
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const panel = queryPopoverPanel()!;
+    expect(panel.getAttribute('role')).toBe('listbox');
+    expect(panel.hasAttribute('aria-label')).toBe(false);
+  });
+
+  test('ariaLabelledby wins over label', async () => {
+    render(Popover, {
+      props: {
+        open: true,
+        label: 'fallback',
+        ariaLabelledby: 'external-id',
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const panel = queryPopoverPanel()!;
+    expect(panel.getAttribute('aria-labelledby')).toBe('external-id');
+    expect(panel.hasAttribute('aria-label')).toBe(false);
+  });
+
+  test('data-cinder-placement reflects floating-ui result, even outside public union', async () => {
+    computePositionResult = {
+      x: 5,
+      y: 5,
+      placement: 'right-start',
+      middlewareData: {},
+    };
+    render(Popover, {
+      props: {
+        open: true,
+        placement: 'bottom-start',
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    await waitFor(() => {
+      const panel = queryPopoverPanel();
+      expect(panel?.getAttribute('data-cinder-placement')).toBe('right-start');
+    });
+  });
+
+  test('positionReady flips true after first computePosition resolves', async () => {
+    render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+    await waitFor(() => {
+      const panel = queryPopoverPanel();
+      expect(panel?.getAttribute('data-cinder-position-ready')).toBe('true');
+    });
+  });
+
+  test('aria-hidden is set while positionReady=false and removed after', async () => {
+    deferComputePosition = true;
+    const triggerBtn = document.createElement('button');
+    triggerBtn.type = 'button';
+    attachScratch(triggerBtn);
+
+    render(Popover, {
+      props: { open: true, triggerRef: triggerBtn, children: textSnippet('plain') },
+    });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const panel = queryPopoverPanel()!;
+    expect(panel.getAttribute('aria-hidden')).toBe('true');
+    expect(panel.getAttribute('data-cinder-position-ready')).toBe('false');
+
+    // Release the deferred computePosition.
+    deferComputePosition = false;
+    for (const resolve of deferredResolvers) resolve(computePositionResult);
+    deferredResolvers = [];
+
+    await waitFor(() => {
+      expect(panel.getAttribute('data-cinder-position-ready')).toBe('true');
+      expect(panel.hasAttribute('aria-hidden')).toBe(false);
+    });
+  });
+
+  test('panel inline style reflects computePosition x/y', async () => {
+    computePositionResult = { x: 33, y: 44, placement: 'bottom-start', middlewareData: {} };
+    render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+    await waitFor(() => {
+      const panel = queryPopoverPanel();
+      expect(panel?.getAttribute('data-cinder-position-ready')).toBe('true');
+    });
+    const panel = queryPopoverPanel()!;
+    const style = panel.getAttribute('style') ?? '';
+    expect(style).toContain('left: 33px');
+    expect(style).toContain('top: 44px');
+  });
+
+  test('computePosition uses fixed strategy', async () => {
+    render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+
+    await waitFor(() => {
+      expect(computePositionSpy).toHaveBeenCalled();
+    });
+
+    const options = computePositionSpy.mock.calls[0]?.at(2) as { strategy?: string } | undefined;
+    expect(options?.strategy).toBe('fixed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Portal and arrow
+// ---------------------------------------------------------------------------
+
+describe('Popover — portal and arrow', () => {
+  test('overlaps the panel border in every arrow placement', () => {
+    const css = readFileSync(new URL('./popover.css', import.meta.url), 'utf8');
+    expect(css).toContain('top: 1px;');
+    expect(css).toContain('bottom: 1px;');
+    expect(css).toContain('left: 1px;');
+    expect(css).toContain('right: 1px;');
+  });
+
+  test('moves the panel to document.body when open', async () => {
+    const { container } = render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    const panel = queryPopoverPanel()!;
+    expect(document.body.contains(panel)).toBe(true);
+    expect(panel.parentElement?.parentElement).toBe(document.body);
+    expect(container.contains(panel)).toBe(false);
+  });
+
+  test('keeps a panel inside the nearest open native dialog', async () => {
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('open', '');
+    const nativeMatches = dialog.matches.bind(dialog);
+    dialog.matches = (selector: string) => selector === ':modal' || nativeMatches(selector);
+    const triggerButton = document.createElement('button');
+    triggerButton.type = 'button';
+    dialog.append(triggerButton);
+    attachScratch(dialog);
+
+    render(Popover, {
+      props: {
+        open: true,
+        triggerRef: triggerButton,
+        children: textSnippet('dialog content'),
+      },
+    });
+
+    await waitFor(() => {
+      expect(dialog.querySelector('.cinder-popover')).not.toBeNull();
+    });
+    expect(dialog.querySelector('.cinder-popover')?.parentElement?.parentElement).toBe(dialog);
+  });
+
+  test('inherited portal tokens remain inherited so panel classes can override them', async () => {
+    render(Popover, {
+      props: {
+        open: true,
+        class: 'consumer-popover',
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    const trigger = document.querySelector<HTMLElement>('.cinder-popover__trigger button')!;
+    trigger.style.setProperty('--cinder-surface-raised', 'hotpink');
+
+    await waitFor(() => {
+      const portalScope = queryPopoverPanel()?.parentElement;
+      expect(portalScope?.style.getPropertyValue('--cinder-surface-raised')).toBe('hotpink');
+    });
+
+    const panel = queryPopoverPanel()!;
+    const portalScope = panel.parentElement!;
+    expect(portalScope.classList.contains('cinder-popover__portal-scope')).toBe(true);
+    expect(portalScope.style.getPropertyValue('--cinder-surface-raised')).toBe('hotpink');
+    expect(panel.style.getPropertyValue('--cinder-surface-raised')).toBe('');
+    expect(panel.classList.contains('consumer-popover')).toBe(true);
+  });
+
+  test('applies portalScopeClass to the portaled scope, not the floating panel', async () => {
+    render(Popover, {
+      props: {
+        open: true,
+        class: 'consumer-popover',
+        portalScopeClass: 'consumer-root compact',
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        document.body.querySelector('.consumer-root.compact .consumer-popover'),
+      ).not.toBeNull();
+    });
+
+    const panel = queryPopoverPanel()!;
+    const portalScope = panel.parentElement!;
+    expect(portalScope.classList.contains('cinder-popover__portal-scope')).toBe(true);
+    expect(portalScope.classList.contains('consumer-root')).toBe(true);
+    expect(portalScope.classList.contains('compact')).toBe(true);
+    expect(panel.classList.contains('consumer-root')).toBe(false);
+    expect(panel.classList.contains('compact')).toBe(false);
+  });
+
+  test('copies inherited dir and theme attributes before portaling', async () => {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('dir', 'rtl');
+    wrapper.setAttribute('data-theme', 'dark');
+    wrapper.setAttribute('data-cinder-theme', 'midnight');
+
+    const triggerButton = document.createElement('button');
+    triggerButton.type = 'button';
+    triggerButton.textContent = 'Trigger';
+    wrapper.appendChild(triggerButton);
+    attachScratch(wrapper);
+
+    render(Popover, {
+      props: {
+        open: true,
+        triggerRef: triggerButton,
+        children: textSnippet('content'),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    const portalScope = queryPopoverPanel()!.parentElement!;
+    expect(portalScope.getAttribute('dir')).toBe('rtl');
+    expect(portalScope.getAttribute('data-theme')).toBe('dark');
+    expect(portalScope.getAttribute('data-cinder-theme')).toBe('midnight');
+  });
+
+  test('renders an arrow inside a placed panel when arrowVisible=true', async () => {
+    computePositionResult = {
+      x: 10,
+      y: 20,
+      placement: 'bottom-start',
+      middlewareData: { arrow: { x: 24 } },
+    };
+
+    render(Popover, {
+      props: {
+        open: true,
+        arrowVisible: true,
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+
+    await waitFor(() => {
+      const panel = queryPopoverPanel();
+      expect(panel?.getAttribute('data-cinder-placement')).toBe('bottom-start');
+      expect(panel?.querySelector('.cinder-popover__arrow')).not.toBeNull();
+    });
+
+    const arrow = queryPopoverPanel()!.querySelector<HTMLSpanElement>('.cinder-popover__arrow')!;
+    expect(arrow.getAttribute('aria-hidden')).toBe('true');
+    // happy-dom doesn't run a layout engine, so we can't assert the resolved
+    // left/top offsets Floating-UI computes. The arrow element rendering with
+    // aria-hidden and the panel having data-cinder-placement is what we can
+    // verify here; real positioning is covered by visual checks.
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Trigger ARIA
+// ---------------------------------------------------------------------------
+
+describe('Popover — trigger ARIA', () => {
+  test('trigger gets aria-expanded, aria-controls, aria-haspopup when open', async () => {
+    const { container } = render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const button = container.querySelector('button')!;
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+    const ariaControls = button.getAttribute('aria-controls');
+    expect(ariaControls).toBeTruthy();
+    // aria-controls must point at the actual panel's id (the panel is asserted
+    // non-null above). $props.id() no longer produces a 'cinder-popover-' prefix,
+    // so assert the relationship rather than a literal prefix format.
+    expect(ariaControls).toBe(queryPopoverPanel()!.id);
+  });
+
+  test('aria-controls is absent when open=false', () => {
+    const { container } = render(Popover, {
+      props: { open: false, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+    const button = container.querySelector('button')!;
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(button.hasAttribute('aria-controls')).toBe(false);
+  });
+
+  test('role="group" omits aria-haspopup', () => {
+    const { container } = render(Popover, {
+      props: {
+        open: false,
+        role: 'group',
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    const button = container.querySelector('button')!;
+    expect(button.hasAttribute('aria-haspopup')).toBe(false);
+  });
+
+  test('role="listbox" maps aria-haspopup to "listbox"', () => {
+    const { container } = render(Popover, {
+      props: {
+        open: false,
+        role: 'listbox',
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    const button = container.querySelector('button')!;
+    expect(button.getAttribute('aria-haspopup')).toBe('listbox');
+  });
+
+  test('wireTriggerAria=false preserves pre-existing trigger ARIA', async () => {
+    const triggerButton = document.createElement('button');
+    triggerButton.type = 'button';
+    triggerButton.setAttribute('aria-expanded', 'mixed');
+    triggerButton.setAttribute('aria-controls', 'preexisting-controls');
+    triggerButton.setAttribute('aria-haspopup', 'menu');
+    attachScratch(triggerButton);
+
+    render(Popover, {
+      props: {
+        open: true,
+        triggerRef: triggerButton,
+        wireTriggerAria: false,
+        children: textSnippet('content'),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    expect(triggerButton.getAttribute('aria-expanded')).toBe('mixed');
+    expect(triggerButton.getAttribute('aria-controls')).toBe('preexisting-controls');
+    expect(triggerButton.getAttribute('aria-haspopup')).toBe('menu');
+  });
+
+  test('disabling trigger ARIA wiring restores the trigger attributes Popover changed', async () => {
+    const triggerButton = document.createElement('button');
+    triggerButton.type = 'button';
+    triggerButton.setAttribute('aria-expanded', 'mixed');
+    triggerButton.setAttribute('aria-controls', 'preexisting-controls');
+    triggerButton.setAttribute('aria-haspopup', 'menu');
+    attachScratch(triggerButton);
+
+    const { rerender } = render(Popover, {
+      props: {
+        open: true,
+        triggerRef: triggerButton,
+        children: textSnippet('content'),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    expect(triggerButton.getAttribute('aria-expanded')).toBe('true');
+    // Popover must have changed aria-controls from the pre-existing value to
+    // the actual panel id. $props.id() no longer produces a 'cinder-popover-'
+    // prefix, so assert the relationship rather than a literal prefix format.
+    expect(triggerButton.getAttribute('aria-controls')).not.toBe('preexisting-controls');
+    expect(triggerButton.getAttribute('aria-controls')).toBe(queryPopoverPanel()!.id);
+    expect(triggerButton.getAttribute('aria-haspopup')).toBe('dialog');
+
+    await rerender({
+      open: true,
+      triggerRef: triggerButton,
+      wireTriggerAria: false,
+      children: textSnippet('content'),
+    });
+
+    expect(triggerButton.getAttribute('aria-expanded')).toBe('mixed');
+    expect(triggerButton.getAttribute('aria-controls')).toBe('preexisting-controls');
+    expect(triggerButton.getAttribute('aria-haspopup')).toBe('menu');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Focus management
+// ---------------------------------------------------------------------------
+
+describe('Popover — focus management', () => {
+  test('initial focus moves to first focusable inside panel after positionReady', async () => {
+    render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: focusableSnippet() },
+    });
+    await waitFor(() => {
+      const inside = queryPopoverPanel()?.querySelector('button') ?? null;
+      expect(inside).not.toBeNull();
+      expect(document.activeElement).toBe(inside);
+    });
+  });
+
+  test('initial focus falls back to panel root when no focusable child', async () => {
+    render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: textSnippet('plain') },
+    });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const panel = queryPopoverPanel()!;
+    expect(panel.getAttribute('tabindex')).toBe('-1');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(panel);
+    });
+  }, 30_000);
+
+  test('focus does not move while positionReady=false (computePosition pending)', async () => {
+    deferComputePosition = true;
+    const triggerBtn = document.createElement('button');
+    triggerBtn.type = 'button';
+    triggerBtn.textContent = 'trigger';
+    attachScratch(triggerBtn);
+    triggerBtn.focus();
+    expect(document.activeElement).toBe(triggerBtn);
+
+    render(Popover, {
+      props: {
+        open: true,
+        triggerRef: triggerBtn,
+        children: focusableSnippet(),
+      },
+    });
+
+    await tick();
+    await tick();
+    // Panel may render but focus stays on trigger while positionReady is false.
+    expect(document.activeElement).toBe(triggerBtn);
+  });
+
+  test('focus returns to trigger on close via Escape', async () => {
+    const { container } = render(BindableFixture, { props: { initialOpen: true } });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const triggerButton = container.querySelector('button')!;
+
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="open-state"]')?.textContent).toBe('closed');
+    });
+    expect(document.activeElement).toBe(triggerButton);
+  });
+
+  test('focusManagement="preserve" keeps focus on the trigger when opening', async () => {
+    const triggerInput = document.createElement('input');
+    triggerInput.type = 'text';
+    attachScratch(triggerInput);
+    triggerInput.focus();
+    expect(document.activeElement).toBe(triggerInput);
+
+    render(Popover, {
+      props: {
+        open: true,
+        triggerRef: triggerInput,
+        focusManagement: 'preserve',
+        children: focusableSnippet(),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()?.getAttribute('data-cinder-position-ready')).toBe('true');
+    });
+    expect(document.activeElement).toBe(triggerInput);
+  }, 180_000);
+
+  test('focusManagement="preserve" closes on Escape without stealing focus from the input', async () => {
+    const triggerInput = document.createElement('input');
+    triggerInput.type = 'text';
+    attachScratch(triggerInput);
+    triggerInput.focus();
+
+    const { rerender } = render(Popover, {
+      props: {
+        open: true,
+        triggerRef: triggerInput,
+        focusManagement: 'preserve',
+        children: focusableSnippet(),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    await rerender({
+      open: false,
+      triggerRef: triggerInput,
+      focusManagement: 'preserve',
+      children: focusableSnippet(),
+    });
+
+    expect(queryPopoverPanel()).toBeNull();
+    expect(document.activeElement).toBe(triggerInput);
+  });
+
+  test('focusManagement="preserve" does not refocus a blurred trigger on close', async () => {
+    const triggerInput = document.createElement('input');
+    triggerInput.type = 'text';
+    const outsideButton = document.createElement('button');
+    outsideButton.type = 'button';
+    outsideButton.textContent = 'outside';
+    attachScratch(triggerInput);
+    attachScratch(outsideButton);
+    triggerInput.focus();
+
+    const { rerender } = render(Popover, {
+      props: {
+        open: true,
+        triggerRef: triggerInput,
+        focusManagement: 'preserve',
+        children: focusableSnippet(),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    outsideButton.focus();
+    expect(document.activeElement).toBe(outsideButton);
+
+    await rerender({
+      open: false,
+      triggerRef: triggerInput,
+      focusManagement: 'preserve',
+      children: focusableSnippet(),
+    });
+
+    expect(queryPopoverPanel()).toBeNull();
+    expect(document.activeElement).toBe(outsideButton);
+  });
+
+  // Drives the close through the reactive `bind:open` fixture so Popover's
+  // open-lifecycle $effect actually re-runs its cleanup (the candidate
+  // iteration that restores focus). Passing `open` as a plain getter/setter to
+  // render() — as the original #109 test did — is NOT reactive in Svelte 5, so
+  // the cleanup never fired and the assertion ran against a stale activeElement
+  // (see TODO(post-#110)). With the trigger removed before close, the first two
+  // candidates (triggerRef, resolvedAnchorAtOpen) fail the connection check and
+  // focus falls through to the third candidate, capturedFocus.
+  test('focus restores to capturedFocus when triggerRef is unmounted before close', async () => {
+    const previouslyFocused = document.createElement('button');
+    previouslyFocused.id = 'popover-prev-focus';
+    attachScratch(previouslyFocused);
+    previouslyFocused.focus();
+
+    const triggerEl = document.createElement('button');
+    triggerEl.id = 'popover-transient-trigger';
+    attachScratch(triggerEl);
+
+    const { container } = render(BindableFixture, {
+      props: { initialOpen: true, triggerRef: triggerEl },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    // Drop the trigger before close. triggerRef and resolvedAnchorAtOpen now
+    // both point at a disconnected node, so the candidate iteration must fall
+    // through to capturedFocus (the element focused when the popover opened).
+    triggerEl.remove();
+
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="open-state"]')?.textContent).toBe('closed');
+    });
+    expect(document.activeElement).toBe(previouslyFocused);
+  });
+
+  test('no focus is forced when all candidates are disconnected', async () => {
+    const triggerEl = document.createElement('button');
+    attachScratch(triggerEl);
+
+    let openValue = true;
+    render(Popover, {
+      props: {
+        get open() {
+          return openValue;
+        },
+        set open(value: boolean) {
+          openValue = value;
+        },
+        triggerRef: triggerEl,
+        children: textSnippet('content'),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    triggerEl.remove();
+    // Ensure no element is focused before the close — captured focus was null
+    // (focus on body) at open time, and the trigger is now gone.
+    (document.activeElement as HTMLElement | null)?.blur?.();
+
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await waitFor(() => {
+      expect(openValue).toBe(false);
+    });
+    // No fallback to document.body — focus left where the close landed.
+    expect(document.activeElement).not.toBe(triggerEl);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Outside mousedown
+// ---------------------------------------------------------------------------
+
+describe('Popover — outside mousedown', () => {
+  test('mousedown outside panel and anchor closes', async () => {
+    const { container } = render(BindableFixture, { props: { initialOpen: true } });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    const outside = document.createElement('div');
+    attachScratch(outside);
+    await fireEvent.mouseDown(outside);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="open-state"]')?.textContent).toBe('closed');
+    });
+  });
+
+  test('mousedown on anchor does not close', async () => {
+    const { container } = render(BindableFixture, { props: { initialOpen: true } });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const triggerButton = container.querySelector('button')!;
+    await fireEvent.mouseDown(triggerButton);
+    expect(container.querySelector('[data-testid="open-state"]')?.textContent).toBe('open');
+  });
+
+  test('mousedown inside panel does not close', async () => {
+    const { container } = render(BindableFixture, { props: { initialOpen: true } });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const panel = queryPopoverPanel()!;
+    await fireEvent.mouseDown(panel);
+    expect(container.querySelector('[data-testid="open-state"]')?.textContent).toBe('open');
+  });
+
+  test('mousedown inside a descendant portal (nested overlay) does not close', async () => {
+    // A descendant Popover/SpeedDial/collapsed NavigationBar resolves its own
+    // portal target to this panel's `${panelId}-scope` container, so it lands
+    // as a *sibling* of the panel element under that scope — not inside the
+    // panel itself. Simulate that by appending a node directly to the portal
+    // scope container, outside `panel`, and confirm it still counts as inside.
+    const { container } = render(BindableFixture, { props: { initialOpen: true } });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+    const panel = queryPopoverPanel()!;
+    const portalScope = panel.parentElement!;
+    expect(portalScope.classList.contains('cinder-popover__portal-scope')).toBe(true);
+
+    const descendantOverlay = document.createElement('div');
+    descendantOverlay.textContent = 'nested overlay content';
+    portalScope.appendChild(descendantOverlay);
+
+    await fireEvent.mouseDown(descendantOverlay);
+    expect(container.querySelector('[data-testid="open-state"]')?.textContent).toBe('open');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Escape
+// ---------------------------------------------------------------------------
+
+describe('Popover — Escape', () => {
+  test('Escape closes the popover via bindable open', async () => {
+    const { container } = render(BindableFixture, { props: { initialOpen: true } });
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="open-state"]')?.textContent).toBe('closed');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// floating-ui wiring
+// ---------------------------------------------------------------------------
+
+describe('Popover — floating-ui wiring', () => {
+  test('autoUpdate invoked with anchor + panel, default offset forwarded', async () => {
+    render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+    await waitFor(() => {
+      expect(autoUpdateSpy).toHaveBeenCalled();
+    });
+    const call = autoUpdateSpy.mock.calls[0]!;
+    expect(call[0]).toBeInstanceOf(HTMLElement);
+    expect(call[1]).toBeInstanceOf(HTMLElement);
+    expect(offsetSpy).toHaveBeenCalledWith(8);
+  });
+
+  test('custom offset forwarded to offset middleware', async () => {
+    render(Popover, {
+      props: {
+        open: true,
+        offset: 16,
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    await waitFor(() => {
+      expect(offsetSpy).toHaveBeenCalledWith(16);
+    });
+  });
+
+  test('arrow middleware is NOT called when arrowVisible=false', async () => {
+    render(Popover, {
+      props: {
+        open: true,
+        arrowVisible: false,
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    // Wait for positioning to actually RUN before asserting the middleware was not
+    // added. Asserting after a bare `tick()` passed for the wrong reason: nothing had
+    // been computed yet, so the negative held vacuously and the test could not fail.
+    await waitFor(() => {
+      expect(computePositionSpy).toHaveBeenCalled();
+    });
+    expect(arrowSpy).not.toHaveBeenCalled();
+  });
+
+  test('arrow middleware IS called when arrowVisible=true', async () => {
+    render(Popover, {
+      props: {
+        open: true,
+        arrowVisible: true,
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+    // The arrow element is `bind:this` on a span inside `{#if arrowVisible}`, so it
+    // is still undefined on the first positioning pass — `anchored-overlay` only
+    // pushes the arrow middleware once BOTH `arrowVisible` and the bound element are
+    // truthy, which happens on the re-run triggered by that binding. A single
+    // `tick()` samples one microtask too early and lands before the re-run. Await the
+    // real contract instead, the same way the offset-middleware tests above do.
+    await waitFor(() => {
+      expect(arrowSpy).toHaveBeenCalled();
+    });
+  });
+
+  test('autoUpdate teardown invoked on close', async () => {
+    const { rerender } = render(Popover, {
+      props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+    });
+    await waitFor(() => {
+      expect(autoUpdateSpy).toHaveBeenCalled();
+    });
+    autoUpdateTeardown.mockClear();
+    await rerender({ open: false, trigger: triggerSnippet, children: textSnippet('content') });
+    expect(autoUpdateTeardown).toHaveBeenCalled();
+  });
+
+  test('survives closing with an empty-string data-cinder-closing and stays inert/aria-hidden (CIN-376)', async () => {
+    // Stub a real (non-zero) transition duration for `.cinder-popover` so
+    // `waitForTransitionCompletion` takes its transitionend-listening path
+    // instead of resolving on the next microtask — this is the only way to
+    // observe the intermediate "closing but still mounted" DOM state.
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (target: Element) => {
+      if (target instanceof HTMLElement && target.classList.contains('cinder-popover')) {
+        return {
+          transitionProperty: 'opacity',
+          transitionDuration: '80ms',
+          transitionDelay: '0ms',
+        } as CSSStyleDeclaration;
+      }
+      return originalGetComputedStyle(target);
+    };
+
+    try {
+      const { rerender } = render(Popover, {
+        props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+      });
+      await waitFor(() => {
+        expect(queryPopoverPanel()).not.toBeNull();
+      });
+
+      await rerender({ open: false, trigger: triggerSnippet, children: textSnippet('content') });
+
+      const panel = queryPopoverPanel();
+      expect(panel).not.toBeNull();
+      // Regression guard: `isClosing || undefined` serializes Svelte's boolean
+      // `true` as the literal string `data-cinder-closing="true"`, not the
+      // empty-string idiom `[data-cinder-closing]` attribute selectors (and
+      // modal.svelte/drawer.svelte) are written against.
+      expect(panel?.getAttribute('data-cinder-closing')).toBe('');
+      // Regression guard: a closing-but-still-mounted panel must not remain
+      // keyboard/AT-reachable — a focusable child inside a dismissing popover
+      // must not be tabbable while it fades out.
+      expect(panel?.getAttribute('aria-hidden')).toBe('true');
+      expect(panel?.hasAttribute('inert')).toBe(true);
+
+      const event = new Event('transitionend');
+      Object.defineProperty(event, 'propertyName', { value: 'opacity' });
+      panel?.dispatchEvent(event);
+
+      await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+    } finally {
+      window.getComputedStyle = originalGetComputedStyle;
+    }
+  });
+
+  test('a removed trigger while closing does not unmount the panel early (CIN-376)', async () => {
+    // Regression guard: `anchorElement` re-resolves reactively and goes null
+    // the instant the trigger disconnects — a controlled consumer can do
+    // this in the very same update that flips `open` false. Without a
+    // last-anchor snapshot, the template's mount gate (`resolvedAnchorElement`)
+    // would unmount the panel immediately, before its exit transition could
+    // ever play.
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (target: Element) => {
+      if (target instanceof HTMLElement && target.classList.contains('cinder-popover')) {
+        return {
+          transitionProperty: 'opacity',
+          transitionDuration: '80ms',
+          transitionDelay: '0ms',
+        } as CSSStyleDeclaration;
+      }
+      return originalGetComputedStyle(target);
+    };
+
+    const triggerEl = document.createElement('button');
+    attachScratch(triggerEl);
+
+    try {
+      let openValue = true;
+      const { rerender } = render(Popover, {
+        props: {
+          get open() {
+            return openValue;
+          },
+          set open(value: boolean) {
+            openValue = value;
+          },
+          triggerRef: triggerEl,
+          children: textSnippet('content'),
+        },
+      });
+
+      await waitFor(() => {
+        expect(queryPopoverPanel()).not.toBeNull();
+      });
+
+      // Remove the trigger and close in the same update — `anchorElement`
+      // goes null synchronously.
+      triggerEl.remove();
+      openValue = false;
+      await rerender({ open: false, triggerRef: triggerEl, children: textSnippet('content') });
+
+      const panel = queryPopoverPanel();
+      expect(panel).not.toBeNull();
+      expect(panel?.getAttribute('data-cinder-closing')).toBe('');
+
+      const event = new Event('transitionend');
+      Object.defineProperty(event, 'propertyName', { value: 'opacity' });
+      panel?.dispatchEvent(event);
+
+      await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+    } finally {
+      window.getComputedStyle = originalGetComputedStyle;
+    }
+  });
+
+  test('a removed trigger while closing keeps the panel inside its resolved top-layer owner (CIN-376)', async () => {
+    // Regression guard: retaining the anchor (`resolvedAnchorElement`) keeps
+    // the panel mounted, but `findNearestOpenTopLayer` can no longer walk up
+    // from a disconnected/removed trigger to find the enclosing modal's
+    // top-layer boundary — without a retained portal-target snapshot, the
+    // portal scope falls through to `document.body`, and the enclosing
+    // modal then paints above the still-exiting Popover.
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (target: Element) => {
+      if (target instanceof HTMLElement && target.classList.contains('cinder-popover')) {
+        return {
+          transitionProperty: 'opacity',
+          transitionDuration: '80ms',
+          transitionDelay: '0ms',
+        } as CSSStyleDeclaration;
+      }
+      return originalGetComputedStyle(target);
+    };
+
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('open', '');
+    const nativeMatches = dialog.matches.bind(dialog);
+    dialog.matches = (selector: string) => selector === ':modal' || nativeMatches(selector);
+    const triggerButton = document.createElement('button');
+    triggerButton.type = 'button';
+    dialog.append(triggerButton);
+    attachScratch(dialog);
+
+    try {
+      let openValue = true;
+      const { rerender } = render(Popover, {
+        props: {
+          get open() {
+            return openValue;
+          },
+          set open(value: boolean) {
+            openValue = value;
+          },
+          triggerRef: triggerButton,
+          children: textSnippet('dialog content'),
+        },
+      });
+
+      await waitFor(() => {
+        expect(dialog.querySelector('.cinder-popover')).not.toBeNull();
+      });
+      expect(dialog.querySelector('.cinder-popover')?.parentElement?.parentElement).toBe(dialog);
+
+      // Remove the trigger and close in the same update.
+      triggerButton.remove();
+      openValue = false;
+      await rerender({
+        open: false,
+        triggerRef: triggerButton,
+        children: textSnippet('dialog content'),
+      });
+
+      const panel = queryPopoverPanel();
+      expect(panel).not.toBeNull();
+      expect(panel?.getAttribute('data-cinder-closing')).toBe('');
+      // Still scoped inside the dialog — not fallen through to document.body.
+      expect(panel?.parentElement?.parentElement).toBe(dialog);
+    } finally {
+      window.getComputedStyle = originalGetComputedStyle;
+    }
+  });
+
+  test('onExitComplete fires once the exit transition genuinely finishes, not immediately on close (CIN-376 round 20)', async () => {
+    // Regression guard: lets a consumer composing Popover (e.g. Combobox's
+    // listbox/empty-state panels, ReviewEditor's SelectionPopover analog)
+    // decouple its own wrapping `{#if}` from the live `open` prop — without
+    // this callback, that consumer's `{#if}` would destroy the whole
+    // Popover instance the instant `open` flips false, before Popover's own
+    // retained-exit lifecycle (data-cinder-closing, not an `{#if}` around
+    // its own root) ever gets a chance to run.
+    const onExitComplete = mock(() => {});
+    let openValue = true;
+    const { rerender } = render(Popover, {
+      props: {
+        get open() {
+          return openValue;
+        },
+        set open(value: boolean) {
+          openValue = value;
+        },
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+        onExitComplete,
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()?.getAttribute('data-cinder-position-ready')).toBe('true');
+    });
+
+    openValue = false;
+    await rerender({
+      open: false,
+      trigger: triggerSnippet,
+      children: textSnippet('content'),
+      onExitComplete,
+    });
+
+    await waitFor(() => {
+      expect(onExitComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(queryPopoverPanel()).toBeNull();
+  });
+
+  test('a reopen after the exit completes with no fresh anchor does not resurrect the stale trigger (CIN-376)', async () => {
+    // Regression guard: `resolvedAnchorElement`'s fallback used to hold onto
+    // `lastAnchorElement` forever. If a controlled consumer removes its
+    // trigger while closing, lets the exit finish, and later sets `open`
+    // back to `true` without supplying a fresh trigger, the fallback would
+    // still resolve to the now-fully-disconnected element from the PREVIOUS
+    // session — mounting and positioning a panel for what is effectively an
+    // anchorless open, even though the open-lifecycle effect (gated on the
+    // live `anchorElement`) correctly refuses to register Escape or manage
+    // focus for it. The snapshot must clear once the exit genuinely
+    // completes (`onClosed`).
+    const triggerButton = document.createElement('button');
+    triggerButton.type = 'button';
+    attachScratch(triggerButton);
+
+    let openValue = true;
+    const { rerender } = render(Popover, {
+      props: {
+        get open() {
+          return openValue;
+        },
+        set open(value: boolean) {
+          openValue = value;
+        },
+        triggerRef: triggerButton,
+        children: textSnippet('content'),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    // Remove the trigger, close, and let the (reduced-motion-default,
+    // microtask-resolved) exit fully complete.
+    triggerButton.remove();
+    openValue = false;
+    await rerender({ open: false, triggerRef: triggerButton, children: textSnippet('content') });
+    await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+
+    // Reopen without ever supplying a fresh trigger.
+    openValue = true;
+    await rerender({ open: true, triggerRef: triggerButton, children: textSnippet('content') });
+
+    expect(queryPopoverPanel()).toBeNull();
+  });
+
+  test('a reopen after the exit completes does not retain a stale prior-session position (CIN-376 round 19)', async () => {
+    // Regression guard: `lastPositionStyle` (the retained-position snapshot
+    // that lets a closing panel keep its coordinates through
+    // `createAnchoredOverlay`'s cleanup, so it fades in place instead of
+    // jumping to `left: 0; top: 0`) was never cleared by `onClosed` — so
+    // after one normally positioned session, a LATER session that closes
+    // before its own first `computePosition` ever resolves would still see
+    // `resolvedPositionStyle` (and `data-cinder-has-position`, which trusts
+    // it as proof of a valid CURRENT position) as non-empty, forcing the
+    // closing panel visible at the PREVIOUS session's stale coordinates
+    // instead of correctly staying hidden (an early close, never
+    // positioned, has nothing valid to fade from).
+    const triggerButton = document.createElement('button');
+    triggerButton.type = 'button';
+    attachScratch(triggerButton);
+
+    let openValue = true;
+    const { rerender } = render(Popover, {
+      props: {
+        get open() {
+          return openValue;
+        },
+        set open(value: boolean) {
+          openValue = value;
+        },
+        triggerRef: triggerButton,
+        children: textSnippet('content'),
+      },
+    });
+
+    // First session: computePosition resolves normally, positioning the panel.
+    await waitFor(() => {
+      const panel = queryPopoverPanel();
+      expect(panel?.getAttribute('data-cinder-position-ready')).toBe('true');
+    });
+    expect(queryPopoverPanel()?.hasAttribute('data-cinder-has-position')).toBe(true);
+
+    // Close and let the exit fully complete (onClosed fires).
+    openValue = false;
+    await rerender({ open: false, triggerRef: triggerButton, children: textSnippet('content') });
+    await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+
+    // Second session: computePosition never resolves before the close.
+    deferComputePosition = true;
+    openValue = true;
+    await rerender({ open: true, triggerRef: triggerButton, children: textSnippet('content') });
+    await waitFor(() => {
+      const panel = queryPopoverPanel();
+      expect(panel).not.toBeNull();
+      expect(panel?.getAttribute('data-cinder-position-ready')).toBe('false');
+    });
+    // Never positioned this session — no stale carry-over from the last one.
+    expect(queryPopoverPanel()?.hasAttribute('data-cinder-has-position')).toBe(false);
+
+    openValue = false;
+    await rerender({ open: false, triggerRef: triggerButton, children: textSnippet('content') });
+
+    // The panel may still be briefly retained for its exit, but must not
+    // carry the PREVIOUS session's position forward as if it were valid.
+    const panel = queryPopoverPanel();
+    if (panel) {
+      expect(panel.hasAttribute('data-cinder-has-position')).toBe(false);
+      expect(panel.getAttribute('style') ?? '').not.toContain('left:');
+    }
+  });
+
+  test('retains inherited portal-style tokens through the exit when the trigger ref is un-supplied while closing (CIN-376)', async () => {
+    // Regression guard: `createInheritedPortalStyle`'s source used to read
+    // the live `anchorElement`, which goes `null` the instant a controlled
+    // consumer clears `triggerRef` (even while the underlying DOM node stays
+    // connected and styled) — `resolvedAnchorElement`'s retained anchor kept
+    // the panel mounted/positioned, but the inherited theme tokens still
+    // reset to an empty string, so a locally-themed-subtree Popover lost its
+    // tokens/typography/direction/color-scheme for the duration of the fade.
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (target: Element) => {
+      if (target instanceof HTMLElement && target.classList.contains('cinder-popover')) {
+        return {
+          transitionProperty: 'opacity',
+          transitionDuration: '80ms',
+          transitionDelay: '0ms',
+        } as CSSStyleDeclaration;
+      }
+      return originalGetComputedStyle(target);
+    };
+
+    const triggerButton = document.createElement('button');
+    triggerButton.type = 'button';
+    triggerButton.style.setProperty('--cinder-surface-raised', 'hotpink');
+    attachScratch(triggerButton);
+
+    try {
+      let openValue = true;
+      let triggerRefValue: HTMLElement | null = triggerButton;
+      const { rerender } = render(Popover, {
+        props: {
+          get open() {
+            return openValue;
+          },
+          set open(value: boolean) {
+            openValue = value;
+          },
+          get triggerRef() {
+            return triggerRefValue;
+          },
+          children: textSnippet('themed content'),
+        },
+      });
+
+      await waitFor(() => {
+        const portalScope = queryPopoverPanel()?.parentElement;
+        expect(portalScope?.style.getPropertyValue('--cinder-surface-raised')).toBe('hotpink');
+      });
+
+      // Un-supply the triggerRef and close in the same update. The button
+      // itself stays connected and styled — only this component's own
+      // association with it is dropped.
+      triggerRefValue = null;
+      openValue = false;
+      await rerender({ open: false, triggerRef: null, children: textSnippet('themed content') });
+
+      const panel = queryPopoverPanel();
+      expect(panel).not.toBeNull();
+      expect(panel?.getAttribute('data-cinder-closing')).toBe('');
+      const portalScope = panel?.parentElement;
+      expect(portalScope?.style.getPropertyValue('--cinder-surface-raised')).toBe('hotpink');
+    } finally {
+      window.getComputedStyle = originalGetComputedStyle;
+    }
+  });
+
+  test('keeps positioning active through an ordinary close, without waiting for async recomputation (CIN-376)', async () => {
+    // Regression guard: `open` becomes `false` before the later
+    // `exitState.sync()` effect can set `isClosing` (fires after a render has
+    // already committed) — gating `anchoredOverlay`'s `open()` on
+    // `exitState.isClosing` would briefly take the closed path, hitting the
+    // `[data-cinder-position-ready='false']` CSS rule and clearing
+    // `positionStyle`/`positionReady` for a tick before the async Floating UI
+    // recomputation restores them, interrupting the fade. `renderPanel`
+    // doesn't have this lag.
+    //
+    // A narrower residual gap remains, the same one documented on
+    // SelectionPopover's equivalent fix: `anchorElement` is itself a
+    // `$derived` that explicitly tracks the `open` prop (to re-resolve a
+    // disabled-then-focusable snippet trigger), so `anchoredOverlay`'s
+    // internal effect still reruns when `open` changes — even though its
+    // OVERALL `open()`/`anchor()` results stay valid throughout — briefly
+    // tearing down and rebuilding the position tracking. Poll for it to
+    // settle, then assert it converges back to the exact pre-close style.
+    //
+    // Stub a real (non-zero) transition duration so the exit doesn't resolve
+    // on the next microtask (the reduced-motion default) — that's the only
+    // way to observe the intermediate "closing but still mounted/positioned"
+    // state before `await rerender` itself yields the microtask queue.
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (target: Element) => {
+      if (target instanceof HTMLElement && target.classList.contains('cinder-popover')) {
+        return {
+          transitionProperty: 'opacity',
+          transitionDuration: '80ms',
+          transitionDelay: '0ms',
+        } as CSSStyleDeclaration;
+      }
+      return originalGetComputedStyle(target);
+    };
+
+    try {
+      const { rerender } = render(Popover, {
+        props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
+      });
+      await waitFor(() => {
+        expect(queryPopoverPanel()?.getAttribute('data-cinder-position-ready')).toBe('true');
+      });
+      const panelBeforeClose = queryPopoverPanel();
+      const styleBeforeClose = panelBeforeClose?.getAttribute('style');
+      expect(styleBeforeClose).toBeTruthy();
+
+      await rerender({ open: false, trigger: triggerSnippet, children: textSnippet('content') });
+
+      const panel = queryPopoverPanel();
+      expect(panel).not.toBeNull();
+      expect(panel?.getAttribute('data-cinder-closing')).toBe('');
+
+      await waitFor(() => {
+        expect(queryPopoverPanel()?.getAttribute('data-cinder-position-ready')).toBe('true');
+        expect(queryPopoverPanel()?.getAttribute('style')).toBe(styleBeforeClose);
+      });
+    } finally {
+      window.getComputedStyle = originalGetComputedStyle;
+    }
+  });
+
+  test('clears the stale anchor when the trigger disconnects while already closed (CIN-376)', async () => {
+    // Regression guard: `lastAnchorElement`'s snapshot effect only ever SET
+    // the snapshot; it never cleared it when the anchor went null outside an
+    // active (open or closing) session — `onClosed` doesn't cover this,
+    // since no close session ever starts. A stale reference from a PREVIOUS
+    // session would sit around indefinitely, and a later controlled
+    // `open = true` with no fresh anchor would resolve to it — mounting a
+    // panel for what is effectively an anchorless open.
+    const triggerButton = document.createElement('button');
+    triggerButton.type = 'button';
+    attachScratch(triggerButton);
+
+    let openValue = true;
+    const { rerender } = render(Popover, {
+      props: {
+        get open() {
+          return openValue;
+        },
+        set open(value: boolean) {
+          openValue = value;
+        },
+        triggerRef: triggerButton,
+        children: textSnippet('content'),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()).not.toBeNull();
+    });
+
+    // Close normally (trigger still connected) and let the exit complete.
+    openValue = false;
+    await rerender({ open: false, triggerRef: triggerButton, children: textSnippet('content') });
+    await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+
+    // NOW remove the trigger, while the Popover is already fully closed —
+    // no open/closing session is active.
+    triggerButton.remove();
+    await rerender({ open: false, triggerRef: triggerButton, children: textSnippet('content') });
+
+    // Reopen without ever supplying a fresh trigger.
+    openValue = true;
+    await rerender({ open: true, triggerRef: triggerButton, children: textSnippet('content') });
+
+    expect(queryPopoverPanel()).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// No-anchor degradation
+// ---------------------------------------------------------------------------
+
+describe('Popover — no-anchor degradation', () => {
+  test('open=true with no trigger and no triggerRef does not render panel', async () => {
+    render(Popover, {
+      props: { open: true, children: textSnippet('content') },
+    });
+    await tick();
+    await tick();
+    expect(queryPopoverPanel()).toBeNull();
+  });
+
+  test('open=true with no anchor does not register Escape handler (no overlay-stack pollution)', async () => {
+    // Render an anchorless popover. With the gate, the open lifecycle effect
+    // bails before pushing onto the shared escape stack — so a sibling overlay
+    // can still receive Escape.
+    let siblingEscapes = 0;
+    const overlay = await import('../../_internal/overlay.ts');
+    const release = overlay.pushEscapeHandler(() => {
+      siblingEscapes += 1;
+    });
+
+    render(Popover, {
+      props: { open: true, children: textSnippet('content') },
+    });
+    await tick();
+    await tick();
+
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(siblingEscapes).toBe(1);
+    release();
+  });
+});
+
+describe('Popover — panel id', () => {
+  test('uses a supplied id for the panel and trigger aria-controls', async () => {
+    const { container } = render(Popover, {
+      props: {
+        id: 'custom-popover-id',
+        open: true,
+        trigger: triggerSnippet,
+        children: textSnippet('content'),
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryPopoverPanel()?.id).toBe('custom-popover-id');
+    });
+
+    const button = container.querySelector('button')!;
+    expect(button.getAttribute('aria-controls')).toBe('custom-popover-id');
+  });
+});

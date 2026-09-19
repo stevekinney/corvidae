@@ -1,5 +1,5 @@
-import type { JSONValue } from '@repo/interoperability';
-import type { TypedEventTarget } from '@repo/lifecycle';
+import type { TypedEventTarget } from '@corvidae/lifecycle';
+import type { JSONValue } from '@corvidae/tool-protocol';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';

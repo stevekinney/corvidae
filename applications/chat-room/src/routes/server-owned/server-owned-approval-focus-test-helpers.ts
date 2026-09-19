@@ -1,6 +1,6 @@
 import { expect, type Route } from '@playwright/test';
-import { gotoHydrated } from '../exercises/hydration';
 import { newFixtureMarker } from '../fixture-probe';
+import { gotoHydrated } from '../page.svelte-test-helpers';
 import { fixtureMarker } from '../streaming-fixture';
 
 export { fixtureMarker, gotoHydrated, newFixtureMarker };

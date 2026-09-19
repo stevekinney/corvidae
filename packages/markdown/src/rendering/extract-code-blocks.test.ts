@@ -1,7 +1,7 @@
 /**
  * Unit tests for extractCodeBlocks.
  *
- * DEP-565: Coverage hardening for @repo/markdown.
+ * DEP-565: Coverage hardening for @corvidae/markdown.
  */
 
 import { describe, expect, it } from 'bun:test';

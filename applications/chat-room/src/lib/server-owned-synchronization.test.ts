@@ -1,4 +1,4 @@
-import { createConversationHistory } from '@repo/chat';
+import { createConversationHistory } from '@corvidae/chat';
 import { describe, expect, test } from 'bun:test';
 
 import type { ServerOwnedConversationSnapshot } from './server-owned-snapshot';

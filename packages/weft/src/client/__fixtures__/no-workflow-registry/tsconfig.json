@@ -12,8 +12,8 @@
     "skipLibCheck": true,
     "types": ["bun"],
     "paths": {
-      "@repo/weft": ["../../../index.ts"],
-      "@repo/weft/client": ["../../../client/index.ts"]
+      "@corvidae/weft": ["../../../index.ts"],
+      "@corvidae/weft/client": ["../../../client/index.ts"]
     }
   },
   "include": ["consumer.ts"]

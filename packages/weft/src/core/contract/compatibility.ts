@@ -56,7 +56,7 @@ import { WORKFLOW_REVISION_MANIFEST_VERSION } from './types.ts';
  *
  * @example
  * ```ts
- * import type { WorkflowCompatibilityReason } from '@repo/weft';
+ * import type { WorkflowCompatibilityReason } from '@corvidae/weft';
  *
  * const counts = new Map<WorkflowCompatibilityReason, number>();
  * counts.set('contract-hash-mismatch', 1);
@@ -79,7 +79,7 @@ export type WorkflowCompatibilityReason =
  *
  * @example
  * ```ts
- * import type { WorkflowCompatibilityVerdict } from '@repo/weft';
+ * import type { WorkflowCompatibilityVerdict } from '@corvidae/weft';
  *
  * const verdict: WorkflowCompatibilityVerdict = {
  *   compatible: false,
@@ -129,7 +129,7 @@ export type WorkflowCompatibilityVerdict =
  *
  * @example
  * ```ts
- * import type { WorkflowCompatibilityPolicy } from '@repo/weft';
+ * import type { WorkflowCompatibilityPolicy } from '@corvidae/weft';
  *
  * const lenient: WorkflowCompatibilityPolicy = { requireExactRevision: false };
  * console.log(lenient.requireExactRevision);
@@ -155,7 +155,7 @@ export interface WorkflowCompatibilityPolicy {
  *
  * @example
  * ```ts
- * import { DEFAULT_WORKFLOW_COMPATIBILITY_POLICY } from '@repo/weft';
+ * import { DEFAULT_WORKFLOW_COMPATIBILITY_POLICY } from '@corvidae/weft';
  *
  * console.log(DEFAULT_WORKFLOW_COMPATIBILITY_POLICY.requireExactRevision); // true
  * ```
@@ -243,7 +243,7 @@ function isArtifactRevisionMismatch(
  *   buildWorkflowContract,
  *   buildWorkflowRevisionManifest,
  *   checkWorkflowCompatibility,
- * } from '@repo/weft';
+ * } from '@corvidae/weft';
  *
  * const current = await buildWorkflowRevisionManifest(
  *   buildWorkflowContract({ name: 'checkout', version: '1.0.0' }),

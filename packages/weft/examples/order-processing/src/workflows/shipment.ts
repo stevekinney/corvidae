@@ -1,4 +1,4 @@
-import { workflow } from '@repo/weft';
+import { workflow } from '@corvidae/weft';
 
 import { shipOrder } from '../activities/shipping';
 import type { ShipmentInput } from '../model';

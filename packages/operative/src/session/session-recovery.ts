@@ -1,5 +1,5 @@
-import type { ConversationHistory } from '@repo/conversationalist';
-import { CompletableEventTarget } from '@repo/lifecycle';
+import type { ConversationHistory } from '@corvidae/conversationalist';
+import { CompletableEventTarget } from '@corvidae/lifecycle';
 
 import type { AgentRun, RunEvent } from '../agent-run';
 import { createAgentRun } from '../agent-run';

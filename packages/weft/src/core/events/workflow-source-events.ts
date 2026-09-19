@@ -10,7 +10,7 @@ type WorkflowSourceKind = import('../source/index.ts').WorkflowSourceKind;
  *
  * @example
  * ```ts
- * import { Engine, WorkflowSourceLoadStartedEvent } from '@repo/weft';
+ * import { Engine, WorkflowSourceLoadStartedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowSourceLoadStartedEvent.type, (event) => {
@@ -40,7 +40,7 @@ export class WorkflowSourceLoadStartedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowSourceLoadReadyEvent } from '@repo/weft';
+ * import { Engine, WorkflowSourceLoadReadyEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowSourceLoadReadyEvent.type, (event) => {
@@ -78,7 +78,7 @@ export class WorkflowSourceLoadReadyEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowSourceLoadFailedEvent } from '@repo/weft';
+ * import { Engine, WorkflowSourceLoadFailedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowSourceLoadFailedEvent.type, (event) => {
@@ -121,7 +121,7 @@ export class WorkflowSourceLoadFailedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowSourceLoadCancelledEvent } from '@repo/weft';
+ * import { Engine, WorkflowSourceLoadCancelledEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowSourceLoadCancelledEvent.type, (event) => {

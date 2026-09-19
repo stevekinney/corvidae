@@ -7,7 +7,7 @@
  *   history doesn't meaningfully affect the response.
  */
 
-import { sha256HexSync } from '@repo/interoperability';
+import { sha256HexSync } from '@corvidae/cryptography';
 
 import type { GenerateContext } from '../types';
 

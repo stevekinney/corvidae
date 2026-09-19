@@ -1,5 +1,5 @@
-import type { AnyToolbox, ToolboxEventMap } from '@repo/armorer';
-import { CompletableEventTarget, createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { AnyToolbox, ToolboxEventMap } from '@corvidae/armorer';
+import { CompletableEventTarget, createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import type { CombinedOperativeEventMap, OperativeEventEmitter } from '../events';
 import {

@@ -38,9 +38,9 @@ import type {
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import type { MailboxEventSink } from '@repo/weft';
- * import { createFleetEventFeed } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import type { MailboxEventSink } from '@corvidae/weft';
+ * import { createFleetEventFeed } from '@corvidae/weft';
  *
  * const events: MailboxEventSink = createFleetEventFeed(new MemoryStorage());
  * void events;
@@ -69,7 +69,7 @@ export type MailboxEventSink = {
  *
  * @example
  * ```ts
- * import type { ApplicationCommandRejection } from '@repo/weft';
+ * import type { ApplicationCommandRejection } from '@corvidae/weft';
  *
  * const rejection: ApplicationCommandRejection = { reason: 'application', message: 'unsupported kind' };
  * console.log(rejection.reason); // 'application'
@@ -90,7 +90,7 @@ export type ApplicationCommandRejection = Readonly<{
  *
  * @example
  * ```ts
- * import { MemoryStorage, type MailboxOptions } from '@repo/weft';
+ * import { MemoryStorage, type MailboxOptions } from '@corvidae/weft';
  *
  * const options: MailboxOptions = {
  *   storage: new MemoryStorage(),
@@ -157,7 +157,7 @@ export type MailboxOptions = {
  *
  * @example
  * ```ts
- * import type { ApplicationCommandInput } from '@repo/weft';
+ * import type { ApplicationCommandInput } from '@corvidae/weft';
  *
  * const command: ApplicationCommandInput = {
  *   caller: 'user:42',
@@ -201,7 +201,7 @@ export type ApplicationCommandInput = {
  *
  * @example
  * ```ts
- * import type { ApplicationCommandAdmission } from '@repo/weft';
+ * import type { ApplicationCommandAdmission } from '@corvidae/weft';
  *
  * declare const admission: ApplicationCommandAdmission;
  * if (admission.status === 'admitted') console.log(admission.receipt.commandId);
@@ -231,7 +231,7 @@ export type ApplicationCommandAdmission =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandReceipt } from '@repo/weft';
+ * import type { ApplicationCommandReceipt } from '@corvidae/weft';
  *
  * declare const receipt: ApplicationCommandReceipt;
  * console.log(receipt.state, receipt.attempt);
@@ -283,7 +283,7 @@ export type ApplicationCommandReceipt = Readonly<{
  *
  * @example
  * ```ts
- * import type { MailboxCapacity } from '@repo/weft';
+ * import type { MailboxCapacity } from '@corvidae/weft';
  *
  * declare const capacity: MailboxCapacity;
  * console.log(capacity.open, capacity.remaining, capacity.limit);
@@ -304,7 +304,7 @@ export type MailboxCapacity = Readonly<{
  *
  * @example
  * ```ts
- * import type { MailboxListOptions } from '@repo/weft';
+ * import type { MailboxListOptions } from '@corvidae/weft';
  *
  * const options: MailboxListOptions = { limit: 50, states: ['available'] };
  * console.log(options.limit); // 50

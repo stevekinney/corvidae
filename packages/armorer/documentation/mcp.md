@@ -6,15 +6,15 @@ Expose a Toolbox registry as an MCP server, with tools, resources, and prompts. 
 
 ## Prerequisites
 
-- Install the MCP SDK as a runtime dependency (Toolbox does not ship transports).
+- Install `@modelcontextprotocol/server` as a runtime dependency for the transport you use.
 - Have a registry created with `createToolbox()` and tools registered into it.
 
 ## Quick start (stdio transport)
 
 ```typescript
-import { createToolbox, createTool } from '@repo/armorer';
-import { createMCP } from '@repo/armorer';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createToolbox, createTool } from '@corvidae/armorer';
+import { createMCP } from '@corvidae/armorer';
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
 const toolbox = createToolbox();
@@ -39,7 +39,7 @@ await mcp.connect(new StdioServerTransport());
 
 ## Conversion helpers
 
-`@repo/armorer` also exposes conversion helpers for MCP tool interoperability:
+`@corvidae/armorer` also exposes conversion helpers for MCP tool interoperability:
 
 - `toMcpTools(input, options?)`: convert Toolbox tools to MCP tool definitions with handlers.
 - `fromMcpTools(tools, options?)`: convert MCP tool definitions back into executable Toolbox tools.
@@ -49,15 +49,15 @@ await mcp.connect(new StdioServerTransport());
 Use the Streamable HTTP server transport to expose MCP over HTTP.
 
 ```typescript
-import { createMCP } from '@repo/armorer';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { createMCP } from '@corvidae/armorer';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 const mcp = createMCP(toolbox, {
   serverInfo: { name: 'toolbox-tools', version: '0.1.0' },
 });
 
 // Create an HTTP transport and hand requests to it.
-const transport = new StreamableHTTPServerTransport();
+const transport = new WebStandardStreamableHTTPServerTransport();
 
 // In your HTTP handler:
 // const response = await transport.handleRequest(req);
@@ -83,7 +83,6 @@ createTool(
       mcp: {
         title: 'Status Tool',
         annotations: { readOnlyHint: true },
-        execution: { taskSupport: 'optional' },
         meta: { source: 'toolbox' },
       },
     },
@@ -177,7 +176,7 @@ When tools are re-registered in the Toolbox registry, the MCP server refreshes t
 
 ## OAuth client support
 
-When connecting to an MCP server that requires authorization, `@repo/armorer` provides an `OAuthClientProvider` implementation and thin connection orchestration on top of `@modelcontextprotocol/sdk`'s `client/auth.js` (PKCE, RFC 9728/8414 discovery, dynamic client registration, and token refresh) and `StreamableHTTPClientTransport`. This module never persists anything itself — you supply a `McpOAuthTokenStorage` hook (in-memory, a database row, an encrypted session, ...) and it reads/writes exclusively through that interface.
+When connecting to an MCP server that requires authorization, `@corvidae/armorer` provides an `OAuthClientProvider` implementation and thin connection orchestration on top of `@modelcontextprotocol/client` (PKCE, RFC 9728/8414 discovery, dynamic client registration, token refresh, and `StreamableHTTPClientTransport`). This module never persists anything itself—you supply a `McpOAuthTokenStorage` hook (in-memory, a database row, an encrypted session, and so on) and it reads/writes exclusively through that interface.
 
 ```typescript
 import {
@@ -187,7 +186,7 @@ import {
   createMcpOAuthProvider,
   fromMcpClientTools,
   isMcpUnauthorizedError,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 
 const tokenStorage = createInMemoryMcpOAuthTokenStorage(); // swap for durable storage in production
 
@@ -234,12 +233,11 @@ await completeMcpOAuthAuthorization(provider, {
 Agent SDK integration examples are documented in [Agent SDK Integrations](./agent-sdk-integrations.md), including:
 
 - OpenAI Agents SDK via MCP (`stdio` and Streamable HTTP)
-- Anthropic Claude Agent SDK via in-process MCP server
 - Guidance on when to use MCP vs direct OpenAI Agents adapter
 
 ## No dependence on MCP sampling or roots
 
-`createMCP` only exposes Toolbox tools (and, optionally, resources/prompts) as an MCP server — it never establishes an MCP client session against a host and never requests `sampling/createMessage` or `roots/list`. `fromMcpTools` does interoperate with MCP tool definitions (turning them into executable Toolbox tools via a caller-supplied `callTool`), but that's a one-shot `tools/call` invocation, not a client session that could negotiate sampling or roots capabilities — those two capabilities are never used anywhere in `@repo/armorer`. This is intentional, not an oversight:
+`createMCP` only exposes Toolbox tools (and, optionally, resources/prompts) as an MCP server — it never establishes an MCP client session against a host and never requests `sampling/createMessage` or `roots/list`. `fromMcpTools` does interoperate with MCP tool definitions (turning them into executable Toolbox tools via a caller-supplied `callTool`), but that's a one-shot `tools/call` invocation, not a client session that could negotiate sampling or roots capabilities — those two capabilities are never used anywhere in `@corvidae/armorer`. This is intentional, not an oversight:
 
 - **Sampling** (`sampling/createMessage`) lets an MCP server ask the connected client's host to run an LLM completion on its behalf. Armorer's tools call out to LLM providers directly (via `conversationalist`/provider adapters) rather than routing through a host's sampling capability — there's no reason for a tool to depend on whether the MCP client it's connected to happens to support sampling.
 - **Roots** (`roots/list`) lets a server ask the client which filesystem/workspace roots it should operate within. Armorer's filesystem-touching tools (e.g. the coding toolbox) take paths as explicit tool input or configuration, validated by the tool itself, instead of discovering them through an MCP root negotiation.

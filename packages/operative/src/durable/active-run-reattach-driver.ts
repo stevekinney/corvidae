@@ -1,6 +1,6 @@
-import { Conversation } from '@repo/conversationalist';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { isWeftErrorLike } from '@repo/weft';
+import { Conversation } from '@corvidae/conversationalist';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { isWeftErrorLike } from '@corvidae/weft';
 
 import { AgentRunError } from '../errors';
 import type { OperativeEventEmitter } from '../events';

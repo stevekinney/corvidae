@@ -1,5 +1,5 @@
-import type { ConversationHistory, Message, MessageInput } from '@repo/conversationalist';
-import { appendMessages, createProjection } from '@repo/conversationalist';
+import type { ConversationHistory, Message, MessageInput } from '@corvidae/conversationalist';
+import { appendMessages, createProjection } from '@corvidae/conversationalist';
 
 import type { TokenBudget } from '../../context/token-budget.ts';
 import type { ContextAssembler } from '../../context/types.ts';

@@ -3,8 +3,8 @@ import type {
   GuardrailProvenance,
   GuardrailTriggeredEvent,
   InputDetector,
-} from '@repo/armorer';
-import { scanContent } from '@repo/armorer';
+} from '@corvidae/armorer';
+import { scanContent } from '@corvidae/armorer';
 
 import { SOURCE_DOCUMENT_KEY } from './ingest';
 import type { MemoryMetadata } from './types';

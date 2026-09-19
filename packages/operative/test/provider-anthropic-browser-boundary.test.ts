@@ -5,6 +5,7 @@ describe('Anthropic browser boundary', () => {
   it('executes the injected-client path in a browser-like VM without Node credential modules', async () => {
     const build = await Bun.build({
       entrypoints: [`${import.meta.dir}/fixtures/anthropic-browser-entry.ts`],
+      define: { 'import.meta.env': '{}' },
       format: 'cjs',
       target: 'browser',
     });

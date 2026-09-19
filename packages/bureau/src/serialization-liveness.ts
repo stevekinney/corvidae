@@ -1,4 +1,8 @@
-import type { LivenessEvidenceEntry, LivenessSnapshot, SemanticProgress } from '@repo/operative';
+import type {
+  LivenessEvidenceEntry,
+  LivenessSnapshot,
+  SemanticProgress,
+} from '@corvidae/operative';
 
 import { toJsonSafe } from './serialization-json';
 

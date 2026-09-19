@@ -66,7 +66,7 @@ export type ActivityReconciliationReference = {
  *
  * @example
  * ```ts
- * import { ActivityReconciliationCapabilityError } from '@repo/weft';
+ * import { ActivityReconciliationCapabilityError } from '@corvidae/weft';
  *
  * function needsConditionalBatchStorage(error: unknown): boolean {
  *   return error instanceof ActivityReconciliationCapabilityError;
@@ -89,7 +89,7 @@ export class ActivityReconciliationCapabilityError extends WeftError<'ActivityRe
  *
  * @example
  * ```ts
- * import { ActivityReconciliationConflictError } from '@repo/weft';
+ * import { ActivityReconciliationConflictError } from '@corvidae/weft';
  *
  * function shouldRetryWorkflowTurn(error: unknown): boolean {
  *   return error instanceof ActivityReconciliationConflictError;
@@ -110,7 +110,7 @@ export class ActivityReconciliationConflictError extends WeftError<'ActivityReco
  *
  * @example
  * ```ts
- * import { ActivityReconciliationIndeterminateError } from '@repo/weft';
+ * import { ActivityReconciliationIndeterminateError } from '@corvidae/weft';
  *
  * function needsOperatorReconciliation(error: unknown): boolean {
  *   return error instanceof ActivityReconciliationIndeterminateError;

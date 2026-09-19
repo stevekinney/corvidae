@@ -1,5 +1,5 @@
-import { createTestToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createTestToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { createChunkedTask } from '../../src/scheduler/create-chunked-task';

@@ -14,7 +14,7 @@
  * line is a stray `[!WARNING]`.
  *
  * The rewrite targets Cinder's `<Callout>` markup (see
- * `packages/components/src/components/callout/callout.svelte`) so the result
+ * `components/cinder/src/components/callout/callout.svelte`) so the result
  * picks up `callout.css` and re-themes with the rest of the design system,
  * rather than needing a parallel set of styles.
  *
@@ -84,7 +84,7 @@ const VARIANTS: Readonly<Record<string, CalloutVariant>> = {
  * the marker to sit alone and renders `> [!NOTE] Heads up` as a literal
  * blockquote. Cinder's Callout takes a `title` prop, so the trailing text has
  * an obvious home, and the repo's own docs already write alerts this way (see
- * `packages/chat/src/lib/components/chat/README.md`). Anchoring to the start
+ * `components/chat/src/lib/components/chat/README.md`). Anchoring to the start
  * of the line still keeps prose that merely mentions `[!NOTE]` mid-sentence
  * from being promoted.
  *

@@ -1,6 +1,6 @@
-import { createToolbox } from '@repo/armorer';
-import { Conversation, type ConversationHistory } from '@repo/conversationalist';
-import { CompletableEventTarget } from '@repo/lifecycle';
+import { createToolbox } from '@corvidae/armorer';
+import { Conversation, type ConversationHistory } from '@corvidae/conversationalist';
+import { CompletableEventTarget } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

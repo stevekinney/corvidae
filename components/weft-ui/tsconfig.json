@@ -1,0 +1,8 @@
+{
+  "extends": "@corvidae/typescript/browser.json",
+  "compilerOptions": {
+    "types": ["bun"]
+  },
+  "include": ["src", "fixtures", "scripts", "tests"],
+  "exclude": ["node_modules", "coverage"]
+}

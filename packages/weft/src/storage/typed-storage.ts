@@ -28,7 +28,7 @@ import {
  *
  * @example
  * ```ts
- * import { type StorageCodec, withCodec, MemoryStorage } from '@repo/weft';
+ * import { type StorageCodec, withCodec, MemoryStorage } from '@corvidae/weft';
  *
  * const encoder = new TextEncoder();
  * const decoder = new TextDecoder();
@@ -97,7 +97,7 @@ export type MessagePackValue =
  *
  * @example
  * ```ts
- * import { MemoryStorage, withCodec, jsonCodec, type TypedBatchOperation } from '@repo/weft';
+ * import { MemoryStorage, withCodec, jsonCodec, type TypedBatchOperation } from '@corvidae/weft';
  *
  * await using raw = new MemoryStorage();
  * const store = withCodec(raw, jsonCodec());
@@ -119,7 +119,7 @@ export type TypedBatchOperation<Value> =
  *
  * @example
  * ```ts
- * import { type TypedConditionalBatchCondition } from '@repo/weft';
+ * import { type TypedConditionalBatchCondition } from '@corvidae/weft';
  *
  * type SessionMetadata = { lastUsedAt: string };
  * const condition: TypedConditionalBatchCondition<SessionMetadata> = {
@@ -141,7 +141,7 @@ export type TypedConditionalBatchCondition<Value> = {
  *
  * @example
  * ```ts
- * import { type CodecStorageOptions } from '@repo/weft';
+ * import { type CodecStorageOptions } from '@corvidae/weft';
  *
  * const options: CodecStorageOptions = {
  *   disposeUnderlyingStorage: false,
@@ -171,7 +171,7 @@ export type CodecStorageOptions = {
  *
  * @example
  * ```ts
- * import { MemoryStorage, withCodec, jsonCodec, type TypedStorage } from '@repo/weft';
+ * import { MemoryStorage, withCodec, jsonCodec, type TypedStorage } from '@corvidae/weft';
  *
  * type User = { name: string; age: number };
  *
@@ -325,7 +325,7 @@ class CodecStorage<Value> implements ConditionalTypedStorage<Value> {
  *
  * @example
  * ```ts
- * import { MemoryStorage, withCodec, jsonCodec } from '@repo/weft';
+ * import { MemoryStorage, withCodec, jsonCodec } from '@corvidae/weft';
  *
  * type Config = { retries: number; timeout: number };
  *
@@ -401,7 +401,7 @@ function decodeMessagePackValue(bytes: Uint8Array): MessagePackValue {
  *
  * @example
  * ```ts
- * import { MemoryStorage, withCodec, jsonCodec } from '@repo/weft';
+ * import { MemoryStorage, withCodec, jsonCodec } from '@corvidae/weft';
  *
  * type Point = { x: number; y: number };
  * const isPoint = (v: unknown): v is Point =>
@@ -446,7 +446,7 @@ export function jsonCodec<Value extends JSONValue>(
  *
  * @example
  * ```ts
- * import { MemoryStorage, withCodec, msgpackCodec } from '@repo/weft';
+ * import { MemoryStorage, withCodec, msgpackCodec } from '@corvidae/weft';
  *
  * type Event = { ts: Date; payload: Uint8Array };
  *

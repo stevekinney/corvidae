@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 /** Options for controlling jitter behavior. */
 export interface JitterOptions {

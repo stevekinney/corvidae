@@ -108,7 +108,7 @@ export const MAILBOX_PRIMITIVE = 'mailbox';
  *
  * @example
  * ```ts
- * import { MailboxContentionError } from '@repo/weft';
+ * import { MailboxContentionError } from '@corvidae/weft';
  *
  * const error = new MailboxContentionError('admit', null);
  * console.log(error.code); // 'MailboxContentionError'

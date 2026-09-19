@@ -13,7 +13,7 @@ import {
   type WorkflowLogRecord,
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
-} from '@repo/weft';
+} from '@corvidae/weft';
 import { WorkflowVersionMismatchEvent } from '../events';
 import type { CheckpointStore } from './checkpoint-store';
 import { createCheckpointStore } from './checkpoint-store';
@@ -252,10 +252,10 @@ export interface RunEngineObservability {
 /**
  * Re-exported for convenience so durable-layer callers can import the engine
  * type from the same module that builds it, rather than reaching into
- * `@repo/weft` directly. This is the upstream registry-erased engine
+ * `@corvidae/weft` directly. This is the upstream registry-erased engine
  * type (Weft's `Engine` with its two chained-builder registration methods,
  * `register`/`registerWorkflows`, removed) — see its JSDoc in
- * `@repo/weft` for why the removal, rather than widening the registry
+ * `@corvidae/weft` for why the removal, rather than widening the registry
  * generics, is what makes a concretely narrowed `Engine.create({ workflows })`
  * result assignable here without a cast.
  */

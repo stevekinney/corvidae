@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { environmentConfiguration } from '../environment-configuration.ts';
 import type { FixtureCategory, InteractionStep, MaskRule } from '../visual-fixtures.ts';
 
 export type Theme = 'light' | 'dark';
@@ -59,7 +60,9 @@ function manifestPath(path: string | undefined): string {
   return path;
 }
 
-function read(path = manifestPath(process.env['BROWSER_FIXTURE_MANIFEST'])): ManifestFile {
+function read(
+  path = manifestPath(environmentConfiguration().browserFixtureManifest),
+): ManifestFile {
   const ownedPath = manifestPath(path);
   const existing = cached.get(ownedPath);
   if (existing !== undefined) return existing;

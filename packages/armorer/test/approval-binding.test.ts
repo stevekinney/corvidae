@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { expectPromiseToReject } from './helpers/async-assertions';
 

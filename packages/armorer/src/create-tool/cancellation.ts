@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 
 import { errorString, normalizeError } from '../errors';
 import type { MinimalAbortSignal, ToolExecuteOptions } from '../is-tool';

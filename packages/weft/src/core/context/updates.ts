@@ -7,8 +7,8 @@ import type { ContextInternals } from './internals.ts';
  *
  * @example
  * ```ts
- * import { workflow, Engine, update } from '@repo/weft';
- * import type { UpdateHandlerOptions } from '@repo/weft';
+ * import { workflow, Engine, update } from '@corvidae/weft';
+ * import type { UpdateHandlerOptions } from '@corvidae/weft';
  *
  * const setAge = update<{ age: number }, void>('setAge');
  * const engine = new Engine();

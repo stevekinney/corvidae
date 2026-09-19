@@ -1,5 +1,5 @@
 /**
- * @repo/markdown barrel is SSR-safe (Bun no-DOM smoke)
+ * @corvidae/markdown barrel is SSR-safe (Bun no-DOM smoke)
  *
  * Verifies that every runtime export of the pipeline barrel can be imported
  * and called in a Node-like environment with no DOM present. Milkdown and
@@ -30,7 +30,7 @@ const pipeline = await import('./index.js');
 if (originalDocument) Object.defineProperty(globalThis, 'document', originalDocument);
 if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
 
-describe('@repo/markdown barrel is SSR-safe (Bun no-DOM smoke)', () => {
+describe('@corvidae/markdown barrel is SSR-safe (Bun no-DOM smoke)', () => {
   it('exports parse as a function', () => {
     expect(typeof pipeline.parse).toBe('function');
   });

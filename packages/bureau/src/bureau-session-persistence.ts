@@ -2,9 +2,9 @@ import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
-} from '@repo/conversationalist';
-import type { AgentSession, JSONValue, SessionStore, Store } from '@repo/operative';
-import { createAgentSession } from '@repo/operative';
+} from '@corvidae/conversationalist';
+import type { AgentSession, JSONValue, SessionStore, Store } from '@corvidae/operative';
+import { createAgentSession } from '@corvidae/operative';
 
 import { isPlainAuthorityRecord } from './session-authority';
 import type { DiagnosticSink } from './types';

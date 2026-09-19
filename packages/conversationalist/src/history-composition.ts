@@ -1,4 +1,4 @@
-import type { CompletableEventTarget, Observer, Subscription } from '@repo/lifecycle';
+import type { CompletableEventTarget, Observer, Subscription } from '@corvidae/lifecycle';
 import type { CompactionOptions, CompactionResult, Summarizer } from './compaction/types';
 import type { ConversationEnvironment } from './environment';
 import type {

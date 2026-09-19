@@ -3,7 +3,7 @@
 Prevent cascading failures by tracking error rates and temporarily disabling failing tools.
 
 ```typescript
-import { createToolbox, createMiddleware } from '@repo/armorer';
+import { createToolbox, createMiddleware } from '@corvidae/armorer';
 
 type CircuitState = 'closed' | 'open' | 'half-open';
 

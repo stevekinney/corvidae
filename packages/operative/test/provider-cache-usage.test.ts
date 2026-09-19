@@ -9,8 +9,8 @@
  * `prompt_tokens` includes them, so `prompt` is normalized to exclude the
  * cached count for provider-neutral parity.
  */
-import { createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import {

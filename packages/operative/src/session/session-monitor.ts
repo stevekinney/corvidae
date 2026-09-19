@@ -1,4 +1,4 @@
-import type { RuntimeServices, TypedEventTarget } from '@repo/lifecycle';
+import type { RuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
 
 import type { AgentRun } from '../agent-run';
 import type { OperativeEventMap } from '../events';

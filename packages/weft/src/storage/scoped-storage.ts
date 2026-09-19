@@ -48,7 +48,7 @@ function joinScopePrefixes(leftPrefix: string, rightPrefix: string): string {
  *
  * @example
  * ```ts
- * import { MemoryStorage, ScopedStorage } from '@repo/weft';
+ * import { MemoryStorage, ScopedStorage } from '@corvidae/weft';
  *
  * await using raw = new MemoryStorage();
  * const scopeA = new ScopedStorage(raw, 'scope:a');
@@ -222,7 +222,7 @@ export class ScopedStorage implements Storage {
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, scopedStorage } from '@repo/weft';
+ * import { workflow, Engine, MemoryStorage, scopedStorage } from '@corvidae/weft';
  *
  * await using raw = new MemoryStorage();
  *

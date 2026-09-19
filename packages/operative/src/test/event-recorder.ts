@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 
 import type { RunEvent } from '../agent-run';
 import type { CombinedOperativeEventType } from '../events';

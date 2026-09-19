@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { chunkText } from '../src/chunking';

@@ -3,7 +3,7 @@
 Manage shared resources like database connections or API clients.
 
 ```typescript
-import { createTool } from '@repo/armorer';
+import { createTool } from '@corvidae/armorer';
 import { z } from 'zod';
 
 // Generic resource pool

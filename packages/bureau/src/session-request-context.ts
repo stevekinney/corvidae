@@ -1,5 +1,5 @@
-import type { ToolRequestContext } from '@repo/armorer';
-import type { JSONValue } from '@repo/operative';
+import type { ToolRequestContext } from '@corvidae/armorer';
+import type { JSONValue } from '@corvidae/operative';
 
 import { isPlainAuthorityRecord } from './session-authority';
 

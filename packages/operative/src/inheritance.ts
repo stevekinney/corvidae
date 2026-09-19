@@ -16,9 +16,9 @@
  * the bureau exists here — operative stays bureau-agnostic.
  */
 
-import type { AnyToolbox } from '@repo/armorer';
-import { combineToolboxes } from '@repo/armorer';
-import type { JSONValue } from '@repo/interoperability';
+import type { AnyToolbox } from '@corvidae/armorer';
+import { combineToolboxes } from '@corvidae/armorer';
+import type { JSONValue } from '@corvidae/tool-protocol';
 
 import type { MemoryLike } from './create-memory-bridge';
 import type { GenerateFunction, PrepareStepHook } from './types';

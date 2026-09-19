@@ -3,7 +3,7 @@ import {
   createMockGenerate,
   createModelCatalog,
   withBackendDescriptors,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentCatalog } from './agent-catalog';

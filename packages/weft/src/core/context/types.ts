@@ -12,7 +12,7 @@ import type { WorkflowLogRecord } from '../types/workflow-log.ts';
  *
  * @example
  * ```ts
- * import { activity, type SagaStep, type WorkflowContext } from '@repo/weft';
+ * import { activity, type SagaStep, type WorkflowContext } from '@corvidae/weft';
  *
  * const chargeCard = activity({
  *   name: 'chargeCard',
@@ -57,7 +57,7 @@ export interface ErasedSagaStep {
  *
  * @example
  * ```ts
- * import { workflow, activity, Engine, type OffloadReference, type WorkflowContext } from '@repo/weft';
+ * import { workflow, activity, Engine, type OffloadReference, type WorkflowContext } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -86,7 +86,7 @@ export interface OffloadReference {
  *
  * @example
  * ```ts
- * import { workflow, Engine, type StreamReference, type WorkflowContext } from '@repo/weft';
+ * import { workflow, Engine, type StreamReference, type WorkflowContext } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -122,7 +122,7 @@ export interface StoredStreamChunk<T = unknown> {
  *
  * @example
  * ```ts
- * import { workflow, Engine, type StreamSink, type WorkflowContext } from '@repo/weft';
+ * import { workflow, Engine, type StreamSink, type WorkflowContext } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -146,7 +146,7 @@ export interface StreamSink {
  *
  * @example
  * ```ts
- * import { Context, type ContextOptions } from '@repo/weft';
+ * import { Context, type ContextOptions } from '@corvidae/weft';
  *
  * const controller = new AbortController();
  * const options: ContextOptions = {

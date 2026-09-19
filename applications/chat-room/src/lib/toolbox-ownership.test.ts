@@ -31,7 +31,6 @@ function read(relativePath: string): string {
 
 function isServerReachableRoute(path: string): boolean {
   if (!path.startsWith('routes/')) return false;
-  if (path.startsWith('routes/exercises/')) return false;
   return path.includes('/api/') || /\+page\.server\.ts$|\+server\.ts$/.test(path);
 }
 
@@ -61,10 +60,8 @@ describe('the approval-signing toolbox is host-owned', () => {
     // much larger mechanism for the same property; refusing construction
     // anywhere in `routes/*.ts` gets it with a rule a reader can hold.
     //
-    // `.svelte` is excluded deliberately: the `/exercises/*` routes build
-    // throwaway local toolboxes to demonstrate the run loop. They are
-    // client-side, sign nothing, and nobody resumes against them. Tests are
-    // excluded for the same reason.
+    // `.svelte` and test files are excluded because neither is a server-owned
+    // request module. Every production TypeScript route remains in scope.
     const underRoutes = sourceFiles(applicationRoot)
       .filter((path) => path.endsWith('.ts'))
       .filter((path) => !/\.(test|e2e)\.ts$/.test(path))

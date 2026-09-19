@@ -1,5 +1,5 @@
-import type { EventMap, ObservableLike, Observer, Subscription } from '@repo/lifecycle';
-import type { RunResult } from '@repo/operative';
+import type { EventMap, ObservableLike, Observer, Subscription } from '@corvidae/lifecycle';
+import type { RunResult } from '@corvidae/operative';
 import type { AgentDefinitions, AgentNames, BureauAgentCatalog } from './agent-catalog';
 
 /**

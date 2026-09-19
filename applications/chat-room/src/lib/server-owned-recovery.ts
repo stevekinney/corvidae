@@ -1,4 +1,4 @@
-import type { AgentRun, SessionHandle } from '@repo/operative';
+import type { AgentRun, SessionHandle } from '@corvidae/operative';
 
 /**
  * What a re-attach attempt actually found.

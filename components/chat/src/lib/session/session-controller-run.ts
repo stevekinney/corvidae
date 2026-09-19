@@ -1,0 +1,257 @@
+import {
+  appendStreamingMessage,
+  cancelStreamingMessage,
+  finalizeStreamingMessage,
+} from '@corvidae/conversationalist';
+import type { ChatPushHandlers } from '../components/chat/adapter/chat-adapter.ts';
+import { markMessageDeliveryFailed } from '../components/chat/builders.ts';
+import type { ConversationHistory } from '../components/chat/conversation-model.ts';
+import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
+import { consumeSessionEvents } from './session-controller-events.ts';
+import {
+  decodeTransportResult,
+  type ChatSessionControllerOptions,
+} from './session-controller-support.ts';
+
+export type SessionRunState = {
+  active: AbortController | undefined;
+  disposed: boolean;
+  running: boolean;
+  activeRun: Promise<void> | undefined;
+  activeUserMessageId: string | undefined;
+};
+
+type SessionRunnerDependencies = {
+  options: ChatSessionControllerOptions;
+  maxTurns: number;
+  lifecycle: SessionRunState;
+  toolOwners: Map<string, string>;
+  pendingApprovals: Set<string>;
+  update: (conversation: ConversationHistory) => void;
+  emit: (callback: (handlers: ChatPushHandlers) => void) => void;
+  notifyStreaming: (value: boolean) => void;
+  reportError: (error: unknown) => void;
+};
+
+export type TurnState = {
+  text: string;
+  toolResultSeen: boolean;
+  approvalRequired: boolean;
+  committed: ConversationHistory;
+  toolCalls: Set<string>;
+  toolResults: Set<string>;
+};
+
+export function createSessionRunner({
+  options,
+  maxTurns,
+  lifecycle,
+  toolOwners,
+  pendingApprovals,
+  update,
+  emit,
+  notifyStreaming,
+  reportError,
+}: SessionRunnerDependencies): {
+  executeRun: (userMessageId: string, attachments?: ChatAttachment[]) => Promise<void>;
+  stopActiveRun: () => Promise<void>;
+} {
+  const assertActive = (): void => {
+    if (lifecycle.disposed) throw new Error('Chat session is disposed');
+    if (lifecycle.running) throw new Error('Chat session is already running');
+  };
+  const run = async (userMessageId: string, attachments: ChatAttachment[] = []): Promise<void> => {
+    assertActive();
+    lifecycle.running = true;
+    lifecycle.activeUserMessageId = userMessageId;
+    let turn = 0;
+    notifyStreaming(true);
+    try {
+      while (++turn <= maxTurns) {
+        const before = options.getConversation();
+        const started = appendStreamingMessage(before, 'assistant');
+        update(started.conversation);
+        const messageId = started.messageId;
+        emit((handlers) => handlers.onStreamBegin(messageId));
+        const controller = new AbortController();
+        lifecycle.active = controller;
+        const shouldContinue = await executeTurn({
+          options,
+          update,
+          emit,
+          reportError,
+          turn,
+          userMessageId,
+          attachments,
+          lifecycle,
+          toolOwners,
+          pendingApprovals,
+          before,
+          messageId,
+          controller,
+        });
+        if (!shouldContinue) return;
+      }
+      const error = new Error(`Reached the tool-call continuation limit (${maxTurns}).`);
+      update(markMessageDeliveryFailed(options.getConversation(), userMessageId));
+      reportError(error);
+      throw error;
+    } finally {
+      lifecycle.running = false;
+      notifyStreaming(false);
+    }
+  };
+  const executeRun = async (
+    userMessageId: string,
+    attachments: ChatAttachment[] = [],
+  ): Promise<void> => {
+    const promise = run(userMessageId, attachments);
+    lifecycle.activeRun = promise;
+    try {
+      await promise;
+    } finally {
+      if (lifecycle.activeRun === promise) lifecycle.activeRun = undefined;
+    }
+  };
+  const stopActiveRun = async (): Promise<void> => {
+    lifecycle.active?.abort();
+    // The initiating send/retry owns any run rejection. Stop only promises
+    // that the run has settled and released the controller for its next turn.
+    try {
+      await lifecycle.activeRun;
+    } catch {
+      // The initiating promise remains the owner of the rejection.
+    }
+  };
+  return { executeRun, stopActiveRun };
+}
+
+type TurnDependencies = Pick<
+  SessionRunnerDependencies,
+  'options' | 'update' | 'emit' | 'reportError'
+> & {
+  turn: number;
+  userMessageId: string;
+  attachments: ChatAttachment[];
+  lifecycle: SessionRunState;
+  toolOwners: Map<string, string>;
+  pendingApprovals: Set<string>;
+  before: ConversationHistory;
+  messageId: string;
+  controller: AbortController;
+};
+
+async function executeTurn({
+  options,
+  update,
+  emit,
+  reportError,
+  turn,
+  userMessageId,
+  attachments,
+  lifecycle,
+  toolOwners,
+  pendingApprovals,
+  before,
+  messageId,
+  controller,
+}: TurnDependencies): Promise<boolean> {
+  // Two things abort the transport from inside this loop rather than
+  // from the user: a protocol failure at its throw site (see
+  // `decodeTransportResult`) and a terminal `run.*` failure frame. In
+  // both cases the signal is already aborted by the time the rejection
+  // reaches the catch, and remembering WHY keeps that from reading as a
+  // user cancellation — which would swallow the error entirely.
+  let protocolFailure = false;
+  const turnState: TurnState = {
+    text: '',
+    toolResultSeen: false,
+    approvalRequired: false,
+    committed: before,
+    toolCalls: new Set<string>(),
+    toolResults: new Set<string>(),
+  };
+  try {
+    const events = await decodeTransportResult(
+      await options.transport({
+        conversation: before,
+        signal: controller.signal,
+        turn,
+        attachments,
+      }),
+      () => {
+        // A frame can fail validation after the user has already
+        // stopped: the transport may still deliver a queued malformed
+        // frame. That is a cancellation, not a protocol failure — the
+        // command must still resolve cleanly — so the cause is only
+        // recorded when nothing had aborted this turn yet.
+        if (!controller.signal.aborted) protocolFailure = true;
+        controller.abort();
+      },
+    );
+    await consumeSessionEvents({
+      events,
+      controller,
+      userMessageId,
+      messageId,
+      state: turnState,
+      options,
+      emit,
+      update,
+      toolOwners,
+      pendingApprovals,
+      reportError,
+      isProtocolFailure: () => protocolFailure,
+      markProtocolFailure: () => {
+        protocolFailure = true;
+      },
+    });
+    finalizeTurn(options, update, turnState, messageId);
+    if (controller.signal.aborted && !protocolFailure) return false;
+  } catch (error) {
+    if (controller.signal.aborted && !protocolFailure) {
+      finalizeTurn(options, update, turnState, messageId);
+      return false;
+    }
+    // The transport's signal is the only way it learns the command
+    // failed. A stream-guard rejection (malformed frame, non-increasing
+    // sequence, mixed envelope) surfaces here while the transport's
+    // provider or background work may still be running on that signal,
+    // so abort it before rolling back and reporting. A protocol failure
+    // has already aborted at its throw site; this covers every other
+    // way the turn can fail, and aborting twice is a no-op.
+    controller.abort();
+    update(
+      markMessageDeliveryFailed(
+        cancelStreamingMessage(turnState.committed, messageId),
+        userMessageId,
+      ),
+    );
+    reportError(error);
+    throw error;
+  } finally {
+    emit((handlers) => handlers.onStreamEnd());
+    if (lifecycle.active === controller) lifecycle.active = undefined;
+  }
+  if (shouldStopAfterTurn(turnState)) return false;
+  return true;
+}
+
+function finalizeTurn(
+  options: ChatSessionControllerOptions,
+  update: (conversation: ConversationHistory) => void,
+  state: TurnState,
+  messageId: string,
+): void {
+  const conversation = options.getConversation();
+  update(
+    state.text
+      ? finalizeStreamingMessage(conversation, messageId)
+      : cancelStreamingMessage(conversation, messageId),
+  );
+}
+
+function shouldStopAfterTurn(state: TurnState): boolean {
+  if (!state.toolResultSeen || state.approvalRequired) return true;
+  return [...state.toolCalls].some((id) => !state.toolResults.has(id));
+}

@@ -1,11 +1,11 @@
-import { cosineSimilarity, type EmbeddingVectorLike } from '@repo/interoperability';
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import { cosineSimilarity, type EmbeddingVectorLike } from '@corvidae/embeddings';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 import {
   type Storage,
   storageConditionalBatch,
   storageDeletePrefix,
   storageKeys,
-} from '@repo/weft';
+} from '@corvidae/weft';
 import { z } from 'zod';
 
 import {

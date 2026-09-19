@@ -1,4 +1,4 @@
-import { activity, workflow } from '@repo/weft';
+import { activity, workflow } from '@corvidae/weft';
 
 const formatGreetingActivity = activity({
   name: 'formatGreeting',

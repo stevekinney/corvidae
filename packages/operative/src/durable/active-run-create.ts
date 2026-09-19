@@ -1,5 +1,5 @@
-import { Conversation, isConversation } from '@repo/conversationalist';
-import { CompletableEventTarget, createDefaultRuntimeServices } from '@repo/lifecycle';
+import { Conversation, isConversation } from '@corvidae/conversationalist';
+import { CompletableEventTarget, createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import { createClosedAcknowledgement } from '../closed-acknowledgement';
 import type { ActiveRun } from '../create-run';

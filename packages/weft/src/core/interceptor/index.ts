@@ -12,7 +12,7 @@ export * from './workflow-composition.ts';
  *
  * @example
  * ```ts
- * import { interceptor } from '@repo/weft';
+ * import { interceptor } from '@corvidae/weft';
  *
  * const tracer = interceptor({
  *   name: 'tracer',

@@ -42,7 +42,7 @@ import { utf8ByteLength } from './utf8.ts';
  *   digestCanonicalWorkerManifest,
  *   parseWorkerManifest,
  *   type WorkerManifestParseSuccess,
- * } from '@repo/weft';
+ * } from '@corvidae/weft';
  *
  * const result = parseWorkerManifest({
  *   manifestVersion: 1,
@@ -73,7 +73,7 @@ export type WorkerManifestParseSuccess = Readonly<{
  *
  * @example
  * ```ts
- * import { parseWorkerManifest, type WorkerManifestParseResult } from '@repo/weft';
+ * import { parseWorkerManifest, type WorkerManifestParseResult } from '@corvidae/weft';
  *
  * const result: WorkerManifestParseResult = parseWorkerManifest({});
  * console.log(result.ok);
@@ -339,7 +339,7 @@ function parseWorkflows(
  *
  * @example
  * ```ts
- * import { parseWorkerManifest } from '@repo/weft';
+ * import { parseWorkerManifest } from '@corvidae/weft';
  *
  * const result = parseWorkerManifest({
  *   manifestVersion: 1,

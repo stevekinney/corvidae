@@ -1,6 +1,6 @@
 # Corvidae
 
-Corvidae is an internal [Bun](https://bun.sh) workspace for agent runtimes, durable workflows, and [Svelte](https://svelte.dev) interfaces. [Turborepo](https://turborepo.com/docs) coordinates local quality checks and application builds. The libraries are private, consume one another through `workspace:*`, and export TypeScript source directly.
+Corvidae is an internal [Bun](https://bun.sh/) workspace for agent runtimes, durable workflows, and [Svelte](https://svelte.dev/) interfaces. [Turborepo](https://turborepo.com/docs) coordinates local quality checks and application builds. The libraries are private, consume one another through `workspace:*` (Bun's protocol for linking another local workspace), and export [TypeScript](https://www.typescriptlang.org/) source directly.
 
 ## Working locally
 
@@ -11,32 +11,34 @@ bun install --frozen-lockfile
 bun run validate
 ```
 
-The local quality commands are `bun run lint`, `bun run typecheck`, `bun run test`, `bun run build`, and `bun run format:check`. `bun audit --audit-level=high` checks dependency advisories. No CI, publishing, deployment, or Git-hook setup is included.
+The local quality commands are `bun run lint`, `bun run typecheck`, `bun run test`, `bun run build`, and `bun run format:check`. `bun run audit` checks high-severity dependency advisories. No CI, publishing, deployment, or Git-hook setup is included.
 
-Weft storage integration tests start and dispose local PostgreSQL clusters. Install PostgreSQL and make `initdb` and `pg_ctl` available on `PATH` before running the full test suite. The tests use temporary loopback-only databases and require no external database credentials.
+Weft's [PostgreSQL](https://www.postgresql.org/) integration tests start and dispose local clusters. Install PostgreSQL and make `initdb` and `pg_ctl` available on `PATH` before running the complete repository test suite. Those tests use temporary loopback-only databases and require no external credentials.
 
 Run one workspace through its package scripts:
 
 ```bash
-bunx turbo run lint typecheck test --filter=@repo/operative
-bun run --filter=@repo/chat-room dev
-bun run --filter=@repo/chat-room build
-bun run --filter=@repo/chat-room preview
+bunx turbo run lint typecheck test --filter=@corvidae/operative
+bun run --filter=@corvidae/chat-room dev
+bun run --filter=@corvidae/chat-room build
+bun run --filter=@corvidae/chat-room preview
 ```
 
 Chat-room uses the documented [SvelteKit Vite integration](https://svelte.dev/docs/kit/@sveltejs-kit-vite). Its `dev`, `build`, and `preview` commands invoke Vite through Bun. Application output is disposable and excluded from source control.
 
+Run the cross-component browser suite with `bun run test:browser`, or use `bun run test:browser:preview` to exercise production compilation. Run the operator suite with `bun run --filter=@corvidae/weft-ui test:browser`. Both use [Playwright](https://playwright.dev/). `bun run dev:browser-fixtures` starts the Bun fixture host for local inspection.
+
 ## Workspace boundaries
 
-Libraries live in `packages/`. The Agent Bureau packages provide agent composition, tools, conversations, memory, skills, and lifecycle primitives. Weft provides durable execution; Weft UI provides its reusable operator interface. Cinder, Chat, Editor, and Markdown provide the component and document surfaces. Testing contains shared test infrastructure. The existing TypeScript configuration package owns compiler policy.
+Browser component libraries live in `components/`: Cinder, Chat, Editor, and Weft UI. Other libraries live in `packages/`: the agent runtimes, Weft execution engine, Markdown processing, and shared test infrastructure. Repository configuration lives in `internal/`, including the `@corvidae/typescript` presets. Every workspace uses the `@corvidae/*` namespace.
 
-Applications live in `applications/`. Chat-room exercises the agent and interface packages. Weft Console owns the operator console's browser build, and Weft CLI owns executable command-line composition. Cinder Browser Fixtures hosts component tests through Vite and owns their generated manifest. The existing server remains a Bun application.
+Chat-room is the application under `applications/`. The `weft` package owns its `weft` and `weft-mcp` source executables. Weft UI owns its browser integration host under `components/weft-ui/scripts/browser`. Tests spanning Cinder, Chat, and Editor live under `scripts/browser-fixtures`; they need a real browser page, but have no application or package identity. Both test hosts compile Svelte and serve their assets with Bun. Chat-room is the only workspace that uses Vite.
 
-Every library exposes exactly one package entry:
+Every source library exposes exactly one package entry:
 
 ```json
 {
-  "name": "@repo/example",
+  "name": "@corvidae/example",
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" }
@@ -49,10 +51,22 @@ Declare a dependency in the workspace that imports it. Internal dependencies use
 
 ## Configuration and verification
 
-Formatting, lint policy, editor settings, dependency versions, and task coordination live at the root. Compiler options live in `packages/typescript-configuration`. Local TypeScript configurations select their source files; tool-required application and test configurations remain beside their owners.
+Environment configuration uses [`@lostgradient/environmentalist`](https://github.com/stevekinney/environmentalist) with [Zod](https://zod.dev/) schemas owned by the workspace that consumes the values. Keep schemas and synchronous resolver functions in `environment-configuration.ts` beside the relevant runtime or tooling. Import the resolver where the value is needed; call-time settings must remain call-time settings, and importing a library must not require credentials.
 
-Turbo hashes upstream library source through transit tasks, so changing a provider invalidates its consumers' checks without building the libraries. Root tool configuration and shared scripts also participate in cache keys. Chat-room, Weft Console, and Cinder Browser Fixtures share the grammar-asset Vite plugin in `scripts/shiki-grammar-assets.ts`; its outputs belong to those applications. Chat-room checks generate and cache their SvelteKit configuration and types; Cinder fixture tests generate and cache their manifest.
+Resolution uses explicitly selected environment values and schema defaults only. Pass `sources: ['env', 'defaults']`, `argv: []`, and `coerce: false`; encode existing conversions in schema transforms and omit undefined source entries. Bun and SvelteKit retain responsibility for loading `.env` files. This does not enable Environmentalist's flag, project-file, or home-directory discovery, and it does not change existing explicit-option precedence or Weft connection-profile resolution. Portable library code uses a custom synchronous source with explicitly mapped canonical keys and no values when Bun and Node globals are absent.
+
+Keep existing environment-variable names and empty-value behavior. Mark credentials with Environmentalist's `secret` metadata. Chat-room reads private request configuration through its server-only module; browser components continue to receive only their existing explicitly injected configuration. Test setup, environment restoration, child-process inheritance, and bundler replacement keys may use the raw environment, but configuration decisions belong in the owning resolver. `bun run test:self` enforces that boundary.
+
+Formatting, lint policy, editor settings, dependency versions, and task coordination live at the root. Executable repository tooling lives in the owning workspace's `scripts/` directory. [Oxlint](https://oxc.rs/docs/guide/usage/linter.html) caps classic cyclomatic complexity—the number of independent paths through a function—at 100 in implementation and tests, and 300 under `scripts/`; file length remains review guidance.
+
+Compiler options live in the configuration-only `@corvidae/typescript` workspace at `internal/typescript`. It exports `library.json` and `browser.json`; both compose the private `base.json`. Component workspaces extend `@corvidae/typescript/browser.json`, which supplies DOM types and browser/Svelte resolution conditions without ambient Bun or Node types. Their `tsconfig.browser.json` checks production source; `tsconfig.json` also checks colocated tests and Bun tooling and supports Oxlint's automatic project discovery. Both checks run through `typecheck`. Root lint rules reject Node/Bun globals and imports in component source, including Svelte scripts. Tests and scripts retain their runtime APIs. Other local TypeScript configurations select their own source files; tool-required application and test configurations remain beside their owners.
+
+Turbo hashes upstream library source through transit tasks—dependency-only tasks that affect cache keys without running a build. Changing a provider therefore invalidates its consumers' checks without building the libraries. Root tool configuration and shared scripts also participate in cache keys. Chat-room owns its [Vite](https://vite.dev/) grammar-asset plugin.
+
+The root browser fixtures and Weft UI's browser host share the build helpers in `scripts/build-browser.ts` and the Svelte compiler in `@corvidae/testing`, while each host owns its own server and routes. Chat-room checks generate and cache their SvelteKit configuration and types. Root browser fixture tests generate and cache a manifest plus the explicit list of fixture modules they can load lazily; no upstream library build is required.
 
 `bun run test:self` checks the workspace architecture, including source exports, dependency cycles, declared imports, catalog use, cache invalidation, build ownership, and the absence of publishing and hook installation. These checks keep the consolidation rules executable.
 
 The [migration inventory](./MIGRATION.md) records source revisions, package mappings, dependency edges, removal decisions, and validation evidence. It is the completion record for this consolidation.
+
+The [Operative and Bureau API contract](./documentation/operative-type-safe-api.md) explains typed agents, durable execution, and started-work control. The [workflow versioning guide](./documentation/workflow-versioning.md) describes version stamps and recovery behavior. Generated codebase reports are disposable; `scripts/measure-codebase.ts` and `scripts/inventory-dependencies.ts` write fresh measurements to `/tmp` by default.

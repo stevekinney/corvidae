@@ -38,7 +38,7 @@ export type DeploymentConsistencyResult =
  *
  * @example
  * ```ts
- * import { DeploymentConsistencyGuard } from '@repo/weft';
+ * import { DeploymentConsistencyGuard } from '@corvidae/weft';
  *
  * const guard = new DeploymentConsistencyGuard();
  * console.log(guard.checkAndRecord('billing', 'b3', 'sha256:aa').ok); // true

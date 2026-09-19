@@ -45,7 +45,7 @@ export interface GeminiFormatToolResultsOptions {
  * @example
  * ```ts
  * import { GoogleGenAI } from '@google/genai';
- * import { toGeminiTools } from '@repo/armorer';
+ * import { toGeminiTools } from '@corvidae/armorer';
  *
  * const client = new GoogleGenAI({ apiKey });
  * const response = await client.models.generateContent({

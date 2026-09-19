@@ -1,8 +1,8 @@
-import type { Conversation as ConversationType } from '@repo/conversationalist';
-import { Conversation, createConversationHistory } from '@repo/conversationalist';
-import type { JSONValue } from '@repo/interoperability';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { Conversation as ConversationType } from '@corvidae/conversationalist';
+import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { JSONValue } from '@corvidae/tool-protocol';
 
 import type { AgentSession } from '../agent-session';
 import { createAgentSession } from '../agent-session';
@@ -17,7 +17,7 @@ export interface ResumeSessionOptions {
   /**
    * AB-92/AB-252/AB-321 — the injectable runtime-service seam. Defaults to
    * the real implementation ({@link createDefaultRuntimeServices}). A test
-   * composes its own deterministic instance from the `@repo/operative` root
+   * composes its own deterministic instance from the `@corvidae/operative` root
    * API's `createManualRuntimeServices`.
    */
   runtime?: RuntimeServices | undefined;

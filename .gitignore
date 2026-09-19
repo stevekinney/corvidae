@@ -1,6 +1,8 @@
 # Workspace source is governed here, not by personal filename exclusions.
 !applications/*/src/
 !applications/*/src/**
+!components/*/src/
+!components/*/src/**
 !packages/*/src/
 !packages/*/src/**
 

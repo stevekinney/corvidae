@@ -1,4 +1,4 @@
-import { sha256HexSync } from '@repo/interoperability';
+import { sha256HexSync } from '@corvidae/cryptography';
 
 /**
  * Recursively sorts object keys to produce deterministic JSON serialization.

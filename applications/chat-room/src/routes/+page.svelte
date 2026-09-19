@@ -6,12 +6,11 @@
     decodeChatStreamEvents,
     type ChatAdapterErrorEvent,
     type ConversationHistory,
-  } from '@repo/chat';
+  } from '@corvidae/chat';
   import { toBannerFailure, type BannerFailure } from '../lib/chat-failure.ts';
-  import { resolve } from '$app/paths';
   import { SvelteMap } from 'svelte/reactivity';
   import { updatePendingApproval, type PendingApprovalResult } from '../lib/pending-approval.ts';
-  import type { SignedPendingToolApproval } from '@repo/armorer';
+  import type { SignedPendingToolApproval } from '@corvidae/armorer';
   let conversation = $state<ConversationHistory>(
     createConversationHistory({ id: 'chatroom-demo' }),
   );
@@ -77,7 +76,6 @@
 
 <svelte:head><title>Chatroom</title></svelte:head>
 <div style="height: 100dvh; display: flex; flex-direction: column;">
-  <a href={resolve('/exercises')} style="padding: 0.5rem 1rem;">Exercises</a>
   <p
     role="alert"
     data-testid="demo-error"

@@ -1,11 +1,11 @@
-import type { AnyToolbox, ToolExecutionResult } from '@repo/armorer';
+import type { AnyToolbox, ToolExecutionResult } from '@corvidae/armorer';
 import type {
   ConversationSnapshot,
   DocumentContent,
   ImageContent,
   TextContent,
-} from '@repo/conversationalist';
-import type { JSONValue, ToolCall } from '@repo/interoperability';
+} from '@corvidae/conversationalist';
+import type { JSONValue, ToolCall } from '@corvidae/tool-protocol';
 
 import type { Effort } from '../providers/types';
 import type { EventDispatcher } from '../run-step';

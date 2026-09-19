@@ -1,6 +1,6 @@
-import type { AnyToolbox } from '@repo/armorer';
-import { Conversation, isConversation } from '@repo/conversationalist';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { AnyToolbox } from '@corvidae/armorer';
+import { Conversation, isConversation } from '@corvidae/conversationalist';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import { MaximumStepsExceededError } from './errors';
 import { RunErrorEvent } from './events';

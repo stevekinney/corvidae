@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@repo/conversationalist';
+import type { TokenUsage } from '@corvidae/conversationalist';
 
 import type { StreamBlock, StreamCommand, StreamState, StreamStateMachine } from './types';
 

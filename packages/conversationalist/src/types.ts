@@ -9,7 +9,7 @@ import type {
   ToolErrorInput as SharedToolErrorInput,
   ToolResult as SharedToolResult,
   ToolResultInput as SharedToolResultInput,
-} from '@repo/interoperability';
+} from '@corvidae/tool-protocol';
 
 import type { MultiModalContent } from './multi-modal';
 
@@ -19,8 +19,8 @@ import type { MultiModalContent } from './multi-modal';
  */
 export const CURRENT_SCHEMA_VERSION = 5;
 
-/** Shared JSON value types have one definition in @repo/interoperability. */
-export type { JSONPrimitive, JSONValue } from '@repo/interoperability';
+/** Shared JSON value types have one definition in @corvidae/tool-protocol. */
+export type { JSONPrimitive, JSONValue } from '@corvidae/tool-protocol';
 
 export type ConversationProvider = 'openai' | 'anthropic' | 'gemini';
 export type ChatMessageRole = 'user' | 'assistant' | 'system';

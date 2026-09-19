@@ -1,4 +1,4 @@
-import type { BackendDescriptor } from '@repo/operative';
+import type { BackendDescriptor } from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 import { createModelCatalogService } from './model-catalog-refresh';
 

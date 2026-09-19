@@ -1,4 +1,4 @@
-import { hmacSha256HexSync, timingSafeEqualHex } from '@repo/interoperability';
+import { hmacSha256HexSync, timingSafeEqualHex } from '@corvidae/cryptography';
 import {
   ApprovalBindingError,
   type ApprovalStateStore,

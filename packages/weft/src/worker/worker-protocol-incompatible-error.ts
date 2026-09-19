@@ -23,7 +23,7 @@ import { WeftError } from '../core/weft-error.ts';
  *
  * @example
  * ```ts
- * import { workerProtocolIncompatibleMessage } from '@repo/weft';
+ * import { workerProtocolIncompatibleMessage } from '@corvidae/weft';
  *
  * const message = workerProtocolIncompatibleMessage({ expected: 2, received: 1 });
  * ```
@@ -43,7 +43,7 @@ export function workerProtocolIncompatibleMessage(versions: {
  *
  * @example
  * ```ts
- * import { WorkerProtocolIncompatibleError } from '@repo/weft';
+ * import { WorkerProtocolIncompatibleError } from '@corvidae/weft';
  *
  * throw new WorkerProtocolIncompatibleError({ expected: 2, received: 1 });
  * ```

@@ -6,7 +6,7 @@
 // `operative` and above `bureau`.
 //
 // The acceptance criterion from plan.md E3:
-//   package graph: interoperability/lifecycle → armorer/conversationalist →
+//   package graph: tool-protocol/cryptography/lifecycle → armorer/conversationalist →
 //     operative(+herald subpaths) → memory/skills → bureau → gateway
 //
 // Runtime tests (this file) verify:
@@ -34,14 +34,14 @@ describe('E3: skills package graph position', () => {
     const deps = Object.keys(packageJson.dependencies ?? {});
 
     // Forbidden workspace dependencies — these would break the layer contract.
-    // Skills is at the memory layer: deps are armorer, interoperability, and
+    // Skills is at the memory layer: deps are armorer, tool-protocol, cryptography, and
     // lifecycle (the RuntimeServices seam every layer routes reads through
     // per AB-324/AB-326 — same relationship bureau has with lifecycle).
     const forbiddenWorkspaceDeps = [
-      '@repo/operative', // skills is ABOVE operative's layer
-      '@repo/memory', // same layer — no intra-layer import
-      '@repo/conversationalist', // skills is above conversationalist
-      '@repo/bureau', // bureau is above skills
+      '@corvidae/operative', // skills is ABOVE operative's layer
+      '@corvidae/memory', // same layer — no intra-layer import
+      '@corvidae/conversationalist', // skills is above conversationalist
+      '@corvidae/bureau', // bureau is above skills
       'gateway', // gateway is above skills
       'sentinel', // unrelated
       'evaluation', // unrelated
@@ -53,7 +53,7 @@ describe('E3: skills package graph position', () => {
     }
   });
 
-  it('depends on armorer (same layer — tools/seams), interoperability (zero-dep primitive), and lifecycle (RuntimeServices seam)', async () => {
+  it('depends on armorer, tool-protocol, cryptography, and lifecycle', async () => {
     const packageJson = (await import('../package.json')) as {
       dependencies?: Record<string, string>;
     };
@@ -61,9 +61,12 @@ describe('E3: skills package graph position', () => {
     const deps = Object.keys(packageJson.dependencies ?? {});
 
     // These are the ALLOWED workspace deps for this layer.
-    expect(deps).toContain('@repo/armorer');
-    expect(deps).toContain('@repo/interoperability');
-    expect(deps).toContain('@repo/lifecycle');
+    expect(deps).toContain('@corvidae/armorer');
+    expect(deps).toContain('@corvidae/tool-protocol');
+    expect(deps).toContain('@corvidae/cryptography');
+    expect(deps).toContain('@corvidae/lifecycle');
+    expect(deps).not.toContain('@corvidae/embeddings');
+    expect(deps).not.toContain('@corvidae/interoperability');
   });
 });
 

@@ -1,5 +1,5 @@
-import type { Message } from '@repo/conversationalist';
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { Message } from '@corvidae/conversationalist';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 
 import type { TokenBudget } from '../context/token-budget.ts';
 import type { ContextAssembler } from '../context/types.ts';

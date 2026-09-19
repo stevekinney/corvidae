@@ -8,7 +8,7 @@ import type { WebSocketFactory } from './event-stream-transport.ts';
  *
  * @example
  * ```ts
- * import { type WorkflowEventTransport } from '@repo/weft';
+ * import { type WorkflowEventTransport } from '@corvidae/weft';
  *
  * const transport: WorkflowEventTransport = 'sse';
  * void transport;
@@ -23,7 +23,7 @@ export type WorkflowEventTransport = 'auto' | 'websocket' | 'sse';
  *
  * @example
  * ```ts
- * import { HttpClient, type WorkflowEventStreamOptions } from '@repo/weft';
+ * import { HttpClient, type WorkflowEventStreamOptions } from '@corvidae/weft';
  *
  * const eventStreamOptions = {
  *   eventTransport: 'sse',

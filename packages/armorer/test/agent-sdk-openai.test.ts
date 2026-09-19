@@ -1,9 +1,9 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 import { MCPServerStdio, MCPServerStreamableHttp } from '@openai/agents';
-import { createManualRuntimeServices } from '@repo/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

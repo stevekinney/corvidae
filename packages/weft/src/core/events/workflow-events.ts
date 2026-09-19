@@ -6,7 +6,7 @@ import type { TerminationReason } from '../types/history-policy.ts';
  *
  * @example
  * ```ts
- * import { Engine, WorkflowDefinitionRegisteredEvent, workflow } from '@repo/weft';
+ * import { Engine, WorkflowDefinitionRegisteredEvent, workflow } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowDefinitionRegisteredEvent.type, (event) => {
@@ -32,7 +32,7 @@ export class WorkflowDefinitionRegisteredEvent extends Event {
  *
  * @example
  * ```ts
- * import { workflow, Engine, WorkflowStartedEvent } from '@repo/weft';
+ * import { workflow, Engine, WorkflowStartedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowStartedEvent.type, (event) => {
@@ -63,7 +63,7 @@ export class WorkflowStartedEvent extends Event {
  *
  * @example
  * ```ts
- * import { workflow, Engine, WorkflowCompletedEvent } from '@repo/weft';
+ * import { workflow, Engine, WorkflowCompletedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowCompletedEvent.type, (event) => {
@@ -94,7 +94,7 @@ export class WorkflowCompletedEvent extends Event {
  *
  * @example
  * ```ts
- * import { workflow, Engine, WorkflowFailedEvent } from '@repo/weft';
+ * import { workflow, Engine, WorkflowFailedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowFailedEvent.type, (event) => {
@@ -123,7 +123,7 @@ export class WorkflowFailedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, workflow, WorkflowCancelledEvent } from '@repo/weft';
+ * import { Engine, workflow, WorkflowCancelledEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowCancelledEvent.type, (event) => {
@@ -131,7 +131,7 @@ export class WorkflowFailedEvent extends Event {
  * });
  * engine.register(
  *   workflow({ name: 'slow' }).execute(async function* (
- *     _ctx: import('@repo/weft').WorkflowContext,
+ *     _ctx: import('@corvidae/weft').WorkflowContext,
  *     _input: unknown,
  *   ) {
  *     await new Promise(() => {}); // never resolves
@@ -161,7 +161,7 @@ export class WorkflowCancelledEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowTimedOutEvent } from '@repo/weft';
+ * import { Engine, WorkflowTimedOutEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowTimedOutEvent.type, (event) => {
@@ -212,7 +212,7 @@ export const WORKFLOW_TERMINAL_EVENT_TYPES: ReadonlySet<string> = new Set<string
  *
  * @example
  * ```ts
- * import { Engine, WorkflowResumedEvent } from '@repo/weft';
+ * import { Engine, WorkflowResumedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowResumedEvent.type, (event) => {
@@ -241,7 +241,7 @@ export class WorkflowResumedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowSuspendedEvent } from '@repo/weft';
+ * import { Engine, WorkflowSuspendedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowSuspendedEvent.type, (event) => {
@@ -264,7 +264,7 @@ export class WorkflowSuspendedEvent extends Event {
  *
  * @example
  * ```ts
- * import type { WorkflowRecoverySkippedReason } from '@repo/weft';
+ * import type { WorkflowRecoverySkippedReason } from '@corvidae/weft';
  *
  * const reason: WorkflowRecoverySkippedReason = 'type-not-registered';
  * void reason;
@@ -280,7 +280,7 @@ export type WorkflowRecoverySkippedReason = 'type-not-registered';
  *
  * @example
  * ```ts
- * import { Engine, WorkflowRecoverySkippedEvent } from '@repo/weft';
+ * import { Engine, WorkflowRecoverySkippedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowRecoverySkippedEvent.type, (event) => {
@@ -317,7 +317,7 @@ export class WorkflowRecoverySkippedEvent extends Event {
  *
  * @example
  * ```ts
- * import type { WorkflowTeardownStatus } from '@repo/weft';
+ * import type { WorkflowTeardownStatus } from '@corvidae/weft';
  *
  * const status: WorkflowTeardownStatus = 'dead-lettered';
  * void status;
@@ -336,7 +336,7 @@ export type WorkflowTeardownStatus = 'completed' | 'failed' | 'dead-lettered';
  *
  * @example
  * ```ts
- * import { Engine, WorkflowTeardownEvent } from '@repo/weft';
+ * import { Engine, WorkflowTeardownEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowTeardownEvent.type, (event) => {

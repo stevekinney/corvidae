@@ -32,7 +32,7 @@ import {
  *
  * @example
  * ```ts
- * import { principalFromJwtClaims, type JwtClaims } from '@repo/weft';
+ * import { principalFromJwtClaims, type JwtClaims } from '@corvidae/weft';
  *
  * const claims: JwtClaims = {
  *   sub: 'user-123',
@@ -56,7 +56,7 @@ export type JwtClaims = Record<string, unknown>;
  *
  * @example
  * ```ts
- * import { principalFromApiKey, type AuthenticatedPrincipal } from '@repo/weft';
+ * import { principalFromApiKey, type AuthenticatedPrincipal } from '@corvidae/weft';
  *
  * const principal: AuthenticatedPrincipal = principalFromApiKey({
  *   subject: 'local-tool',
@@ -80,7 +80,7 @@ export type AuthenticatedPrincipal = {
  *
  * @example
  * ```ts
- * import { anonymousPrincipal, type UnauthenticatedPrincipal } from '@repo/weft';
+ * import { anonymousPrincipal, type UnauthenticatedPrincipal } from '@corvidae/weft';
  *
  * const principal: UnauthenticatedPrincipal = anonymousPrincipal();
  * console.log(principal.method);
@@ -95,7 +95,7 @@ export type UnauthenticatedPrincipal = {
  *
  * @example
  * ```ts
- * import { anonymousPrincipal, type Principal } from '@repo/weft';
+ * import { anonymousPrincipal, type Principal } from '@corvidae/weft';
  *
  * const principal: Principal = anonymousPrincipal();
  * console.log(principal.method);
@@ -108,7 +108,7 @@ export type Principal = AuthenticatedPrincipal | UnauthenticatedPrincipal;
  *
  * @example
  * ```ts
- * import { principalFromJwtClaims } from '@repo/weft';
+ * import { principalFromJwtClaims } from '@corvidae/weft';
  *
  * const principal = principalFromJwtClaims({
  *   sub: 'user-123',
@@ -137,7 +137,7 @@ export function principalFromJwtClaims(claims: JwtClaims): AuthenticatedPrincipa
  *
  * @example
  * ```ts
- * import { principalFromApiKey } from '@repo/weft';
+ * import { principalFromApiKey } from '@corvidae/weft';
  *
  * const principal = principalFromApiKey({
  *   subject: 'automation',
@@ -167,7 +167,7 @@ export function principalFromApiKey(options: {
  *
  * @example
  * ```ts
- * import { principalFromMutualTls } from '@repo/weft';
+ * import { principalFromMutualTls } from '@corvidae/weft';
  *
  * const principal = principalFromMutualTls({
  *   subject: 'client-cert-subject',
@@ -197,7 +197,7 @@ export function principalFromMutualTls(options: {
  *
  * @example
  * ```ts
- * import { anonymousPrincipal } from '@repo/weft';
+ * import { anonymousPrincipal } from '@corvidae/weft';
  *
  * const principal = anonymousPrincipal();
  * console.log(principal.method);
@@ -216,7 +216,7 @@ export function anonymousPrincipal(): UnauthenticatedPrincipal {
  *
  * @example
  * ```ts
- * import { principalFromStdioLocal } from '@repo/weft';
+ * import { principalFromStdioLocal } from '@corvidae/weft';
  *
  * const principal = principalFromStdioLocal();
  * console.log(principal.hasScope('workflows:write'));

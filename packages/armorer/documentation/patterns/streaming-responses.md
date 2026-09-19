@@ -12,7 +12,7 @@ Armorer supports two modes for async-iterable tool output:
 ## Example: Collect Fallback (Default)
 
 ```typescript
-import { createTool } from '@repo/armorer';
+import { createTool } from '@corvidae/armorer';
 import { z } from 'zod';
 
 const tokenTool = createTool({

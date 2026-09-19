@@ -20,8 +20,8 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { gotoHydrated } from '../../exercises/hydration';
 import { fixtureRequestCount, newFixtureMarker } from '../../fixture-probe';
+import { gotoHydrated } from '../../page.svelte-test-helpers';
 import {
   APPROVAL_FOLLOW_UP_TEXT,
   APPROVAL_NOTE_TEXT,

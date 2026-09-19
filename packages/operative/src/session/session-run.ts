@@ -1,7 +1,7 @@
-import type { ConversationHistory } from '@repo/conversationalist';
-import { Conversation, createConversationHistory } from '@repo/conversationalist';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { CompletableEventTarget, ForwardedEvent } from '@repo/lifecycle';
+import type { ConversationHistory } from '@corvidae/conversationalist';
+import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { CompletableEventTarget, ForwardedEvent } from '@corvidae/lifecycle';
 
 import type { AgentRun, RunEvent } from '../agent-run';
 import { createAgentRun } from '../agent-run';

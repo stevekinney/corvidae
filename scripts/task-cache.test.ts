@@ -5,6 +5,41 @@ import { join } from 'node:path';
 
 const root = join(import.meta.dir, '..');
 
+test('application hosts and tests receive only their owned configuration', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-host-environment-'));
+  try {
+    await createWorkspace(directory);
+    const cases = [
+      { name: 'chat-room', task: 'dev', variable: 'ANTHROPIC_API_KEY' },
+      { name: 'chat-room', task: 'preview', variable: 'ANTHROPIC_BASE_URL' },
+      { name: 'weft-ui', task: 'dev:browser', variable: 'WEFT_UI_PORT' },
+      { name: 'weft', task: 'test', variable: 'WEFT_EVENT_DISPATCH_ARCHITECTURE_BENCHMARK' },
+      { name: 'cinder', task: 'test', variable: 'CINDER_SVG_DATA_URI_ROOTS' },
+    ];
+    for (const { name, task, variable } of cases) {
+      const script = `if (process.env[${JSON.stringify(variable)}] !== 'configuration-test' || process.env.CORVIDAE_UNRELATED_TEST !== undefined) process.exit(1); console.log('configuration received');`;
+      await Bun.write(join(directory, 'packages', name, 'check.ts'), script);
+      await Bun.write(
+        join(directory, 'packages', name, 'package.json'),
+        JSON.stringify({
+          name: `@corvidae/${name}`,
+          private: true,
+          scripts: { [task]: 'bun check.ts' },
+        }),
+      );
+      await run(directory, [process.execPath, 'install']);
+      const output = await run(
+        directory,
+        [join(root, 'node_modules/.bin/turbo'), 'run', task, `--filter=@corvidae/${name}`],
+        { ...process.env, [variable]: 'configuration-test', CORVIDAE_UNRELATED_TEST: 'excluded' },
+      );
+      expect(output).toContain('configuration received');
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 async function run(
   directory: string,
   command: string[],
@@ -46,19 +81,33 @@ async function createWorkspace(directory: string): Promise<void> {
       name: 'task-cache-regression',
       private: true,
       packageManager: `bun@${Bun.version}`,
-      workspaces: ['packages/*'],
+      workspaces: ['packages/*', 'components/*', 'applications/*', 'internal/*'],
     }),
   );
   await Bun.write(join(directory, '.gitignore'), 'node_modules/\n');
   await Bun.write(join(directory, 'turbo.json'), Bun.file(join(root, 'turbo.json')));
+  await Bun.write(
+    join(directory, 'internal/typescript/package.json'),
+    JSON.stringify({
+      name: '@fixture/typescript',
+      private: true,
+      exports: { './library.json': './library.json' },
+    }),
+  );
+  await Bun.write(
+    join(directory, 'internal/typescript/library.json'),
+    JSON.stringify({ compilerOptions: { strict: true } }),
+  );
   for (const [name, dependency] of [
     ['base', undefined],
     ['library', 'base'],
     ['application', 'library'],
   ]) {
     if (!name) throw new Error('Fixture workspace name is required');
+    const parent =
+      name === 'application' ? 'applications' : name === 'library' ? 'components' : 'packages';
     await Bun.write(
-      join(directory, 'packages', name, 'package.json'),
+      join(directory, parent, name, 'package.json'),
       JSON.stringify({
         name: `@fixture/${name}`,
         private: true,
@@ -67,15 +116,16 @@ async function createWorkspace(directory: string): Promise<void> {
           test: `bun --eval "console.log('runner=' + (process.env.CODEX_CI ?? 'unset'))"`,
         },
         dependencies: dependency ? { [`@fixture/${dependency}`]: 'workspace:*' } : {},
+        devDependencies: name === 'base' ? { '@fixture/typescript': 'workspace:*' } : {},
       }),
     );
-    await Bun.write(join(directory, 'packages', name, 'source.ts'), 'export const value = 1;\n');
+    await Bun.write(join(directory, parent, name, 'source.ts'), 'export const value = 1;\n');
   }
   await run(directory, ['git', 'init', '--quiet']);
   await run(directory, [process.execPath, 'install']);
 }
 
-test('source task hashes follow transitive library and shared tooling changes', async () => {
+test('source task hashes follow transitive libraries, internal configuration and shared tooling', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-task-cache-'));
   try {
     await createWorkspace(directory);
@@ -84,9 +134,18 @@ test('source task hashes follow transitive library and shared tooling changes', 
     await Bun.write(join(directory, 'packages/base/source.ts'), 'export const value = 2;\n');
     const afterDependency = applicationHash(await run(directory, command));
     expect(afterDependency).not.toBe(before);
+    await Bun.write(join(directory, 'components/library/source.ts'), 'export const value = 3;\n');
+    const afterComponent = applicationHash(await run(directory, command));
+    expect(afterComponent).not.toBe(afterDependency);
+    await Bun.write(
+      join(directory, 'internal/typescript/library.json'),
+      JSON.stringify({ compilerOptions: { strict: true, noImplicitReturns: true } }),
+    );
+    const afterConfiguration = applicationHash(await run(directory, command));
+    expect(afterConfiguration).not.toBe(afterComponent);
     await Bun.write(join(directory, '.oxlintrc.json'), '{ "rules": { "no-labels": "error" } }');
     const afterTooling = applicationHash(await run(directory, command));
-    expect(afterTooling).not.toBe(afterDependency);
+    expect(afterTooling).not.toBe(afterConfiguration);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -141,18 +200,13 @@ test('application check caches restore generated inputs without restoring build 
           '.svelte-kit/generated/root.svelte',
         ],
       },
-      {
-        name: 'cinder-browser-fixtures',
-        tasks: ['test', 'build'],
-        outputs: ['.playwright/manifest.json'],
-      },
     ];
     for (const application of cases) {
       const applicationDirectory = join(directory, 'packages', application.name);
       await Bun.write(
         join(applicationDirectory, 'package.json'),
         JSON.stringify({
-          name: `@repo/${application.name}`,
+          name: `@corvidae/${application.name}`,
           private: true,
           scripts: Object.fromEntries(application.tasks.map((task) => [task, 'bun generate.ts'])),
         }),
@@ -174,7 +228,7 @@ for (const output of ${JSON.stringify(application.outputs)}) await Bun.write(out
           join(root, 'node_modules/.bin/turbo'),
           'run',
           task,
-          `--filter=@repo/${application.name}`,
+          `--filter=@corvidae/${application.name}`,
         ];
         const unrelatedBuildOutput = join(
           applicationDirectory,
@@ -193,6 +247,50 @@ for (const output of ${JSON.stringify(application.outputs)}) await Bun.write(out
         expect(await Bun.file(unrelatedBuildOutput).exists()).toBe(false);
       }
     }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('root browser test caches restore their generated catalogs and follow provider source', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-browser-cache-'));
+  try {
+    await createWorkspace(directory);
+    await Bun.write(join(directory, '.gitignore'), 'node_modules/\n.playwright/\nexecutions.txt\n');
+    const manifestPath = join(directory, 'package.json');
+    const manifest = await Bun.file(manifestPath).json();
+    await Bun.write(
+      manifestPath,
+      JSON.stringify({
+        ...manifest,
+        devDependencies: { '@fixture/library': 'workspace:*' },
+        scripts: { 'test:browser-fixtures': 'bun scripts/generate.ts' },
+      }),
+    );
+    const outputs = ['manifest.json', 'fixture-modules.ts'].map((file) =>
+      join('scripts/browser-fixtures/.playwright', file),
+    );
+    await Bun.write(
+      join(directory, 'scripts/generate.ts'),
+      `
+const executions = Bun.file('executions.txt');
+await Bun.write(executions, String((await executions.exists() ? Number(await executions.text()) : 0) + 1));
+for (const output of ${JSON.stringify(outputs)}) await Bun.write(output, 'generated input');
+`,
+    );
+    await run(directory, [process.execPath, 'install']);
+    const command = [join(root, 'node_modules/.bin/turbo'), 'run', 'test:browser-fixtures'];
+    await run(directory, command);
+    expect(await Bun.file(join(directory, 'executions.txt')).text()).toBe('1');
+    for (const output of outputs) await rm(join(directory, output));
+    await run(directory, command);
+    expect(await Bun.file(join(directory, 'executions.txt')).text()).toBe('1');
+    for (const output of outputs) {
+      expect(await Bun.file(join(directory, output)).text()).toBe('generated input');
+    }
+    await Bun.write(join(directory, 'packages/base/source.ts'), 'export const value = 2;\n');
+    await run(directory, command);
+    expect(await Bun.file(join(directory, 'executions.txt')).text()).toBe('2');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

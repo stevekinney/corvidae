@@ -1,0 +1,249 @@
+import { alignNormalizedToSourceByAst } from './source-line-map-alignment.js';
+
+/**
+ * Map normalized-document line numbers back to source-document line numbers.
+ *
+ * `normalizeDocument()` (see `normalize-document.ts`) deliberately changes a
+ * document's line *count*: it collapses runs of 3+ blank lines to one,
+ * drops the front-matter/body separator down to at most one blank line,
+ * removes blank lines between tight list items, and folds a Setext
+ * heading's underline into its one-line ATX form. `generateUnifiedDiff` and
+ * `generateMarkdownSummary` both diff the *normalized* documents (to avoid
+ * reporting formatting-only differences as real edits), but a line index
+ * into that normalized text is not the same line index the caller's raw
+ * `state.original` / `state.content` uses -- reporting it directly, as both
+ * functions used to, points `### Lines` headings and `@@` hunk headers at
+ * the wrong line whenever normalization changed the line count above the
+ * edit (cinder#1324).
+ *
+ * Alignment is built from the AST, not from comparing lines of text.
+ * `parseOrThrow(source)` and `parseOrThrow(normalized)` each produce an
+ * mdast tree whose nodes carry their own source positions; walking both
+ * trees in lockstep and pairing corresponding nodes (see
+ * {@link collectLeafAnchors}) gives an exact, structural answer to "what
+ * source line does this normalized line come from" for every node the
+ * parser understood, with no string comparison anywhere.
+ *
+ * This module used to do the opposite: reconstruct the mapping *after*
+ * serialization by comparing normalized and source text line by line
+ * (first raw equality, then a hand-rolled marker canonicalizer, then a
+ * canonicalizer that called the real `normalize()` per line). Each version
+ * was a strictly better string heuristic than the last, but a review round
+ * proved the whole *approach* unsound, not just under-enumerated: a Setext
+ * heading's underline (`Title\n---`) and a thematic break (`***`) are
+ * different mdast node types that can both canonicalize to the identical
+ * string `---`. No per-line canonicalization -- however complete -- can
+ * recover which source line a normalized `---` actually came from once two
+ * structurally different nodes produce the same text; equal strings don't
+ * establish provenance. Comparing node *types* instead of rendered text
+ * makes that collision structurally impossible: a `heading` node and a
+ * `thematicBreak` node are never "the same node" no matter what text they
+ * happen to serialize to, so pairing can't confuse them (see the collision
+ * regression test below).
+ *
+ * This also settles the earlier, real performance question head-on:
+ * `buildSourceLineMap` can run on every keystroke (`ReviewEditor`'s hidden
+ * `formDiff`/`formSummary` inputs are reactive whenever the component has a
+ * `name`, so this runs far more often than "once per user-triggered
+ * export," a claim an earlier version of this module's changeset made
+ * incorrectly). Two parses plus one tree walk is no worse asymptotically
+ * than the LCS table the old approach also paid for, and {@link
+ * buildSourceLineMapCached} (used by both `unified-diff.ts` and
+ * `markdown-summary.ts`) memoizes per distinct `(source, normalized)` pair
+ * the same way `@corvidae/markdown`'s own `normalizeWithCache` does, so
+ * repeated calls against an unchanged `original` -- the common case, since
+ * only `current` changes per keystroke -- are free after the first.
+ *
+ * @module
+ */
+
+/**
+ * A normalized-to-source line mapping, plus the source document's own true
+ * line count.
+ *
+ * `lines[normalizedLineIndex]` (0-based index) is the 1-based line number in
+ * `source` that normalized line most plausibly corresponds to.
+ * `sourceLineCount` is `source`'s own line count, tracked separately because
+ * `lines.length` is the *normalized* document's line count -- normalization
+ * can shrink a document by dropping trailing content entirely (blank lines
+ * at EOF collapse away with nothing left to anchor them, unlike a mid-
+ * document blank run, which always leaves one representative line behind).
+ * When that happens, `lines.length` alone is not "how many lines `source`
+ * really has," and extrapolating a past-the-end lookup from it instead of
+ * from `sourceLineCount` reports a line well before the source's actual end
+ * (cinder#1324 follow-up).
+ */
+export interface SourceLineMap {
+  lines: number[];
+  sourceLineCount: number;
+}
+
+/**
+ * Build a {@link SourceLineMap} from `source` to `normalized`.
+ *
+ * Parses both documents and walks their ASTs in lockstep ({@link
+ * collectLeafAnchors}), pairing corresponding nodes by structural type
+ * rather than comparing rendered text. Each paired *leaf* node (a node this
+ * module doesn't recurse further into -- see {@link CONTAINER_TYPES})
+ * contributes an exact anchor: its own source and normalized line spans,
+ * linearly interpolated against each other when the two spans differ in
+ * length (a Setext heading's two source lines folding into one normalized
+ * ATX line, for instance). Lines no anchor covers -- gaps between sibling
+ * nodes, and any leading or trailing blank run -- are filled by {@link
+ * fillUnmatchedRuns}, interpolating forward from the nearest preceding
+ * anchor and clamped to the next one, exactly as before, just now anchored
+ * by node boundaries instead of string matches.
+ *
+ * If parsing either document fails (not expected -- `normalize()` itself
+ * just parsed and reserialized `normalized`, and `source` is ordinary
+ * Markdown -- but not guaranteed either), this degrades to treating the
+ * entire document as unanchored rather than throwing: {@link
+ * fillUnmatchedRuns}'s pure forward interpolation still produces a
+ * monotonic, in-range (if approximate) map.
+ */
+export function buildSourceLineMap(source: string, normalized: string): SourceLineMap {
+  const sourceLines = splitLines(source);
+  const normalizedLines = splitLines(normalized);
+
+  const matched = alignNormalizedToSourceByAst(source, normalized, normalizedLines.length);
+  const filled = fillUnmatchedRuns(matched, sourceLines.length);
+
+  return {
+    lines: filled.map((sourceIndex) => sourceIndex + 1), // 1-based
+    sourceLineCount: sourceLines.length,
+  };
+}
+
+/**
+ * Small LRU cache in front of {@link buildSourceLineMap}, mirroring
+ * `@corvidae/markdown`'s own `normalizeWithCache` (same size, same
+ * "first key evicted" policy). `unified-diff.ts` and `markdown-summary.ts`
+ * both call this instead of the raw builder: `ReviewEditor`'s hidden
+ * `formDiff`/`formSummary` inputs are `$derived`, so both exports re-run on
+ * every content edit whenever the component has a `name` -- not just on a
+ * user-triggered "export" action. Each export needs a line map for
+ * `original` (which rarely changes across keystrokes) and one for
+ * `current` (which changes every keystroke); caching by the exact
+ * `(source, normalized)` pair means the `original` side is typically a
+ * cache hit after the first call, and repeated calls with an unchanged
+ * document pair (e.g. two exports reading the same original) cost nothing
+ * beyond the lookup.
+ */
+const lineMapCache = new Map<string, SourceLineMap>();
+const LINE_MAP_CACHE_SIZE = 10;
+
+export function buildSourceLineMapCached(source: string, normalized: string): SourceLineMap {
+  // `JSON.stringify` of a two-element array, not `${source} ${normalized}`
+  // string concatenation: a plain join is ambiguous -- `source: "X"`,
+  // `normalized: "Y Z"` and `source: "X Y"`, `normalized: "Z"` both
+  // concatenate to `"X Y Z"`, which would return the wrong cached map for
+  // one of the two genuinely different input pairs. `JSON.stringify`
+  // escapes each string, so the pair boundary is never ambiguous.
+  const key = JSON.stringify([source, normalized]);
+  const cached = lineMapCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const map = buildSourceLineMap(source, normalized);
+
+  if (lineMapCache.size >= LINE_MAP_CACHE_SIZE) {
+    const firstKey = lineMapCache.keys().next().value;
+    if (firstKey !== undefined) lineMapCache.delete(firstKey);
+  }
+  lineMapCache.set(key, map);
+
+  return map;
+}
+
+/** Clears {@link buildSourceLineMapCached}'s cache. Exposed for tests. */
+export function clearSourceLineMapCache(): void {
+  lineMapCache.clear();
+}
+
+/**
+ * Fill the gaps AST alignment left as `null` (normalized lines no leaf
+ * anchor covers) by interpolating forward from the nearest preceding
+ * anchor, one source line per unanchored normalized line, clamped to the
+ * nearest *following* anchor so the result never overshoots past where
+ * alignment resumes. Freezing on the preceding anchor instead (the simpler
+ * alternative) reports the line *before* a gap -- e.g. the blank line
+ * before a synthesized paragraph break -- instead of interpolating toward
+ * the gap's own approximate position; clamping to the following anchor
+ * instead of advancing unboundedly keeps the result monotonically
+ * non-decreasing even when a long gap sits between two anchors that are
+ * close together in `source`.
+ */
+function fillUnmatchedRuns(matched: (number | null)[], sourceLength: number): number[] {
+  const n = matched.length;
+  const filled: number[] = Array.from({ length: n });
+
+  let i = 0;
+  while (i < n) {
+    const current = matched[i];
+    if (current !== null && current !== undefined) {
+      filled[i] = current;
+      i++;
+      continue;
+    }
+
+    // Start of a run of unanchored normalized lines: find where it ends and
+    // what the next real anchor (if any) is, so the interpolation below has
+    // both a point to advance from and a ceiling not to cross.
+    let end = i;
+    while (end < n && (matched[end] === null || matched[end] === undefined)) end++;
+
+    const precedingMatch = i > 0 ? filled[i - 1]! : -1; // -1: no anchor yet
+    const followingMatch = end < n ? matched[end]! : sourceLength - 1;
+
+    for (let k = 0; k < end - i; k++) {
+      filled[i + k] = Math.min(precedingMatch + k + 1, followingMatch);
+    }
+
+    i = end;
+  }
+
+  return filled;
+}
+
+/**
+ * Identity map: normalized line N is source line N (unnormalized inputs).
+ * `sourceLineCount` equals the line count of the same text, since with no
+ * normalization applied there's nothing for it to diverge from.
+ */
+export function identitySourceLineMap(normalized: string): SourceLineMap {
+  const lines = splitLines(normalized).map((_, index) => index + 1);
+  return { lines, sourceLineCount: lines.length };
+}
+
+/**
+ * Look up a normalized-space line number (1-based, as `unified-diff.ts` and
+ * `markdown-summary.ts` already track it) in a {@link SourceLineMap}.
+ *
+ * A lookup past the end of `lines` (normalized line count + 1, the "insert
+ * after the last line" position both callers use for a pure trailing
+ * addition) extrapolates from `sourceLineCount` -- the source document's own
+ * true end -- rather than from `lines`' own length or its last entry.
+ * Anchoring to `lines.length` instead would undercount whenever
+ * normalization stripped trailing source content (e.g. blank lines at EOF)
+ * entirely rather than collapsing it to a representative line, since then
+ * the normalized document, and therefore `lines`, is shorter than `source`
+ * itself by more than just the collapsed lines' difference.
+ */
+export function mapNormalizedLineNumber(
+  lineMap: SourceLineMap,
+  normalizedLineNumber: number,
+): number {
+  const { lines, sourceLineCount } = lineMap;
+  if (normalizedLineNumber > lines.length) {
+    return sourceLineCount + (normalizedLineNumber - lines.length);
+  }
+  const index = Math.max(normalizedLineNumber - 1, 0);
+  return lines[index]!;
+}
+
+function splitLines(text: string): string[] {
+  if (text === '') return [];
+  const withoutTrailingNewline = text.endsWith('\n') ? text.slice(0, -1) : text;
+  return withoutTrailingNewline.split('\n');
+}
+
+export { alignNormalizedToSourceByAst, pairChildrenByType } from './source-line-map-alignment.js';

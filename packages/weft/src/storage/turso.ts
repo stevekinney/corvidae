@@ -156,7 +156,7 @@ function resolveTursoStoragePersistence(url: string): TursoStoragePersistence {
  *
  * @example
  * ```ts
- * import { TursoStorage, type TursoStorageOptions } from '@repo/weft';
+ * import { TursoStorage, type TursoStorageOptions } from '@corvidae/weft';
  *
  * const options: TursoStorageOptions = {
  *   url: 'file:local.db',
@@ -181,8 +181,8 @@ export type TursoStorageOptions = {
  *
  * @example
  * ```ts
- * import { TursoStorage } from '@repo/weft';
- * import { Engine } from '@repo/weft';
+ * import { TursoStorage } from '@corvidae/weft';
+ * import { Engine } from '@corvidae/weft';
  *
  * await using storage = new TursoStorage({
  *   url: 'libsql://my-db.turso.io',

@@ -10,7 +10,7 @@ Bolting these together (`allowDangerous: boolean`, `readOnly: boolean`) collapse
 ## The model
 
 ```typescript
-import { createToolbox } from '@repo/armorer';
+import { createToolbox } from '@corvidae/armorer';
 
 const toolbox = createToolbox(tools, {
   approvalPolicy: {
@@ -35,7 +35,7 @@ const toolbox = createToolbox(tools, {
 Combining verdicts from multiple sources should always keep the **most restrictive** one — `deny` beats `ask` beats `allow`. `combineApprovalStatuses` is the primitive for that:
 
 ```typescript
-import { combineApprovalStatuses } from '@repo/armorer';
+import { combineApprovalStatuses } from '@corvidae/armorer';
 
 combineApprovalStatuses('allow', 'ask', 'deny'); // 'deny'
 combineApprovalStatuses('allow', 'ask'); // 'ask'
@@ -58,7 +58,7 @@ That ordering is what makes composition with persona/skill layers safe: a person
 A tool armorer can't classify — no `readOnly`/`mutates`/`dangerous` metadata and no matching risk tag — is never silently treated as safe. Under every approval mode, including `never`, an unclassified tool escalates to `ask`:
 
 ```typescript
-import { evaluateApprovalStatus } from '@repo/armorer';
+import { evaluateApprovalStatus } from '@corvidae/armorer';
 
 evaluateApprovalStatus(undefined, 'never'); // 'ask' — not 'allow'
 evaluateApprovalStatus('read-only', 'never'); // 'allow'

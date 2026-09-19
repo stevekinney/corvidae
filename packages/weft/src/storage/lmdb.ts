@@ -19,7 +19,7 @@ import { scopedStorage } from './scoped-storage.ts';
  *
  * @example
  * ```ts
- * import { LMDBStorage, type LMDBStorageOptions } from '@repo/weft';
+ * import { LMDBStorage, type LMDBStorageOptions } from '@corvidae/weft';
  *
  * const options: LMDBStorageOptions = { durability: 'relaxed' };
  * await using storage = new LMDBStorage('./weft-data', options);
@@ -96,8 +96,8 @@ function openLmdbEnvironment(options: Parameters<OpenLMDBEnvironment>[0]): LMDBD
  *
  * @example
  * ```ts
- * import { LMDBStorage } from '@repo/weft';
- * import { workflow, Engine } from '@repo/weft';
+ * import { LMDBStorage } from '@corvidae/weft';
+ * import { workflow, Engine } from '@corvidae/weft';
  *
  * await using storage = new LMDBStorage('./weft-data');
  * await using engine = new Engine({ storage });

@@ -1,0 +1,62 @@
+# ContextMenuTrigger
+
+Compose-only trigger region that opens a context-menu on right-click or touch long-press.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { ContextMenu } from '@corvidae/cinder';
+  import { ContextMenuTrigger } from '@corvidae/cinder';
+  import { DropdownItem } from '@corvidae/cinder';
+  import { DropdownMenu } from '@corvidae/cinder';
+</script>
+
+<ContextMenu>
+  <ContextMenuTrigger>
+    <p>Right-click this region</p>
+  </ContextMenuTrigger>
+
+  <DropdownMenu>
+    <DropdownItem onclick={() => {}}>Copy</DropdownItem>
+  </DropdownMenu>
+</ContextMenu>
+```
+
+## Guidance
+
+### Use When
+
+- Wrapping the region that should own contextual actions inside ContextMenu.
+- Pairing pointer-positioned menu behavior with dropdown menu items.
+
+### Avoid When
+
+- Used outside context-menu — it requires the ContextMenu provider.
+- Opening a normal click menu from a visible button — use dropdown-trigger.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `class` | `string` | no | — | Additional class names merged with the component's root class. |
+| `children` | `(opaque)` | yes | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

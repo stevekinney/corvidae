@@ -1,6 +1,6 @@
-import { createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import { createManualRuntimeServices, HookRegistry } from '@repo/lifecycle';
+import { createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import { createManualRuntimeServices, HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { noToolCalls } from '../conditions/predicates';

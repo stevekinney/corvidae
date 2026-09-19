@@ -12,7 +12,7 @@
  *
  * @example
  * ```ts
- * import { executeActivity, type ActivityExecutionRequest } from '@repo/weft';
+ * import { executeActivity, type ActivityExecutionRequest } from '@corvidae/weft';
  *
  * const request: ActivityExecutionRequest = {
  *   operationId: crypto.randomUUID(),
@@ -45,7 +45,7 @@ export interface ActivityExecutionRequest {
  *
  * @example
  * ```ts
- * import { executeActivity, type ActivityExecutionResult } from '@repo/weft';
+ * import { executeActivity, type ActivityExecutionResult } from '@corvidae/weft';
  *
  * const result: ActivityExecutionResult = await executeActivity(
  *   { operationId: 'op-1', activityName: 'add', input: [1, 2], attempt: 1 },
@@ -81,7 +81,7 @@ export interface ActivityExecutionResult {
  *
  * @example
  * ```ts
- * import { executeActivity } from '@repo/weft';
+ * import { executeActivity } from '@corvidae/weft';
  *
  * const result = await executeActivity(
  *   {

@@ -41,7 +41,7 @@ export type NameKind = 'workflow' | 'activity';
  *
  * @example
  * ```ts
- * import { validateWorkflowOrActivityName } from '@repo/weft';
+ * import { validateWorkflowOrActivityName } from '@corvidae/weft';
  *
  * validateWorkflowOrActivityName('formatGreeting', 'activity'); // ok
  * try {

@@ -11,7 +11,7 @@ You can export JSON Schema from either a single tool or an entire toolbox.
 Get JSON Schema representation for one tool definition:
 
 ```typescript
-import { createTool } from '@repo/armorer';
+import { createTool } from '@corvidae/armorer';
 import { z } from 'zod';
 
 const tool = createTool({
@@ -38,7 +38,7 @@ const jsonSchema = tool.toJSON();
 Export all registered tools as JSON Schema:
 
 ```typescript
-import { createTool, createToolbox } from '@repo/armorer';
+import { createTool, createToolbox } from '@corvidae/armorer';
 import { z } from 'zod';
 
 const toolbox = createToolbox();

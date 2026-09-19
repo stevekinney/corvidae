@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { expectPromiseToReject } from '../helpers/async-assertions';
@@ -1580,7 +1580,7 @@ describe('withToolboxIdempotency', () => {
     );
 
     // `outcome: 'denied'` is a real runtime value (see `create-tool.ts`) not
-    // covered by `interoperability`'s `SharedToolResult['outcome']` union.
+    // covered by the tool protocol's `ToolResult['outcome']` union.
     expect(first.outcome as string).toBe('denied');
     expect(second.outcome as string).toBe('denied');
     expect(first.idempotency).toBeUndefined();

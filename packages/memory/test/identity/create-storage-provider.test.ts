@@ -1,5 +1,5 @@
-import { createManualRuntimeServices } from '@repo/lifecycle';
-import { MemoryStorage, textValueStore } from '@repo/weft';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { MemoryStorage, textValueStore } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createStorageIdentityProvider } from '../../src/identity/create-storage-provider';

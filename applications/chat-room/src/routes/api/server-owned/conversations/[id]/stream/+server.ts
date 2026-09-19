@@ -1,6 +1,5 @@
-import { env } from '$env/dynamic/private';
-import type { BeforeToolExecutionHook, OnElicitation, ToolCall } from '@repo/operative';
-import { createAnthropicProviderStream, createSessionHandle, stopWhen } from '@repo/operative';
+import type { BeforeToolExecutionHook, OnElicitation, ToolCall } from '@corvidae/operative';
+import { createAnthropicProviderStream, createSessionHandle, stopWhen } from '@corvidae/operative';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { createChatRunOptions } from '../../../../../../lib/chat-agent.ts';
@@ -17,6 +16,7 @@ import {
   raise,
   unavailableDuringShutdown,
 } from '../../../../../../lib/server-owned-unavailable.ts';
+import { readEnvironmentConfiguration } from '../../../../../../lib/server/environment-configuration.ts';
 import {
   ELICITATION_MESSAGE,
   ELICITED_TOOL_NAME,
@@ -78,8 +78,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
   } catch (cause) {
     return unavailableDuringShutdown(cause) ?? raise(cause);
   }
-  const apiKey = env['ANTHROPIC_API_KEY'];
-  const baseURL = env['ANTHROPIC_BASE_URL'];
+  const { anthropicApiKey: apiKey, anthropicBaseUrl: baseURL } = readEnvironmentConfiguration();
   if (!apiKey) {
     return json({ error: 'ANTHROPIC_API_KEY is not configured' }, { status: 503 });
   }

@@ -1,12 +1,12 @@
 # Skills
 
-`@repo/skills` supplies procedural knowledge to Corvidae agent runtimes. It lets the runtime keep a small catalog of available capabilities in context, load full instructions only when an agent chooses a relevant skill, and then fetch larger bundled resources on demand.
+`@corvidae/skills` supplies procedural knowledge to Corvidae agent runtimes. It lets the runtime keep a small catalog of available capabilities in context, load full instructions only when an agent chooses a relevant skill, and then fetch larger bundled resources on demand.
 
 Persistent sessions, memory, tools, schedulers, and durable workflows can share repeatable operating knowledge through skills instead of hard-coding every procedure into system prompts or runtime code.
 
 ## Workspace usage
 
-Declare `"@repo/skills": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@repo/skills`; it exports TypeScript source directly and has no library build or publication step.
+Declare `"@corvidae/skills": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@corvidae/skills`; it exports TypeScript source directly and has no library build or publication step.
 
 ## Mental Model
 
@@ -20,7 +20,7 @@ This keeps normal runs cheap and focused while still making specialized procedur
 
 ## Why It Is Important
 
-Corvidae has several extension points: `@repo/armorer` tools, `@repo/operative` hooks, `@repo/memory` recall, and application-owned runtime composition. Skills connect those extension points into one workflow:
+Corvidae has several extension points: `@corvidae/armorer` tools, `@corvidae/operative` hooks, `@corvidae/memory` recall, and application-owned runtime composition. Skills connect those extension points into one workflow:
 
 - Applications can inject the skill catalog on the first step of a run and add skill management tools to the active toolbox.
 - `operative` can consume skill hooks and enforce the tool policy from active skills.
@@ -73,7 +73,7 @@ import {
   createSkillToolbox,
   createStaticSkillProvider,
   parseSkillMarkdown,
-} from '@repo/skills';
+} from '@corvidae/skills';
 
 const provider = createStaticSkillProvider([
   parseSkillMarkdown(`---
@@ -97,8 +97,8 @@ In an agent loop, call `catalogHook.prepareStep(context)` on step 0; it returns 
 Use `scanDirectory()` when skills live on disk:
 
 ```typescript
-import { createStorageSkillProvider, scanDirectory } from '@repo/skills';
-import { MemoryStorage, textValueStore } from '@repo/weft';
+import { createStorageSkillProvider, scanDirectory } from '@corvidae/skills';
+import { MemoryStorage, textValueStore } from '@corvidae/weft';
 
 // createStorageSkillProvider needs a Weft TextValueStore. Use a real durable
 // store in production; this in-memory one is enough to illustrate the API.
@@ -119,7 +119,7 @@ Each directory containing a `SKILL.md` becomes one skill. Other files in that sa
 Use `fetchFromRegistry()` when a registry serves skill files at `{baseUrl}/{name}/SKILL.md`:
 
 ```typescript
-import { fetchFromRegistry } from '@repo/skills';
+import { fetchFromRegistry } from '@corvidae/skills';
 
 await fetchFromRegistry({
   baseUrl: 'https://example.com/skills',
@@ -135,7 +135,7 @@ await fetchFromRegistry({
 `fetchFromRegistry()` **rejects unverified content by default.** A fetched `SKILL.md` is accepted only if it passes at least one of two guards; if neither applies, saving is refused unless you explicitly opt out.
 
 - **Bearer auth**: pass `authToken` to send `Authorization: Bearer <authToken>` on every request (both the `SKILL.md` fetch and, when signing is configured, the `.sig` fetch).
-- **Content-hash pinning**: pass `expectedHashes: { [name]: sha256HexDigest }`. The fetched content's SHA-256 hex digest (computed with `sha256HexSync` from `interoperability`—the same hasher the self-improvement proposal-rejection flow uses, not a duplicate) must match exactly. A mismatch is **always** rejected, even if `allowUnverified` is set—that's tamper evidence, not merely "no verification configured." A matching pin is sufficient proof of integrity on its own: the signature is not also fetched or required for that skill, so an unrelated `.sig` outage can't reject already hash-verified content.
+- **Content-hash pinning**: pass `expectedHashes: { [name]: sha256HexDigest }`. The fetched content's SHA-256 hex digest (computed with `sha256HexSync` from `@corvidae/cryptography`—the same hasher the self-improvement proposal-rejection flow uses, not a duplicate) must match exactly. A mismatch is **always** rejected, even if `allowUnverified` is set—that's tamper evidence, not merely "no verification configured." A matching pin is sufficient proof of integrity on its own: the signature is not also fetched or required for that skill, so an unrelated `.sig` outage can't reject already hash-verified content.
 - **Detached signatures**: pass `publicKey`, an SPKI PEM-encoded Ed25519 public key. For any skill with no pinned hash, the registry must also serve a base64-encoded detached Ed25519 signature over the raw `SKILL.md` bytes at `{baseUrl}/{name}/SKILL.md.sig`. Verification uses `node:crypto`'s `verify(null, content, publicKey, signature)` (the `null` algorithm is required for Ed25519). An invalid signature is **always** rejected, same as a hash mismatch—and a non-404 error fetching the signature (401/403/500/...) is treated as that same kind of failure, not as "no signature," so it fails closed rather than falling through to unverified.
 - **`allowUnverified`**: opts out of the default-reject policy only for the "nothing to verify against" case—no matching hash pin and no signature configured/served. It never rescues a hash mismatch or a failed signature check.
 
@@ -152,7 +152,7 @@ const signature = sign(null, Buffer.from(skillMarkdown), privateKey).toString('b
 
 ## Runtime integration
 
-The application creates a skill session, injects the catalog on the first step, and combines its base toolbox with the skill management tools. The source gateway application is outside this consolidation; compose these package APIs directly in Corvidae.
+The host application creates a skill session, injects the catalog on the first step, and combines its base toolbox with the skill-management tools. Compose those package APIs directly where the application assembles its runtime.
 
 A skill-enabled run follows this sequence:
 
@@ -183,7 +183,7 @@ Accepting a skill proposal parses its content as `SKILL.md` and saves it through
 
 ## Package Structure
 
-### `@repo/skills` (root)
+### `@corvidae/skills` (root)
 
 The primary API covering providers, parsing, ingestion, sessions, hooks, tools, proposals, and all public types.
 
@@ -206,7 +206,7 @@ import {
   acceptProposal,
   rejectProposal,
   listProposals,
-} from '@repo/skills';
+} from '@corvidae/skills';
 ```
 
 **Parsing:**
@@ -265,8 +265,8 @@ import {
 Testing utilities for code that depends on `SkillProvider`. Both require no filesystem or network access, but their methods are async (Promise-returning)—`await` store and provider calls as the examples below do.
 
 ```typescript
-import { createMockKeyValueStore, createMockSkillProvider } from '@repo/skills';
-import { parseSkillMarkdown } from '@repo/skills';
+import { createMockKeyValueStore, createMockSkillProvider } from '@corvidae/skills';
+import { parseSkillMarkdown } from '@corvidae/skills';
 
 // In-memory TextValueStore backed by Weft MemoryStorage—
 // drop-in replacement for production stores in unit tests.
@@ -310,4 +310,4 @@ bun run typecheck
 bun run test
 ```
 
-From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@repo/skills` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.
+From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@corvidae/skills` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.

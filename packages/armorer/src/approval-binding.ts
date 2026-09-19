@@ -1,5 +1,5 @@
-import { hmacSha256HexSync, timingSafeEqualHex } from '@repo/interoperability';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import { hmacSha256HexSync, timingSafeEqualHex } from '@corvidae/cryptography';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import type { JsonValue } from './core/serialization/json';
 import { stableStringifyJson } from './core/serialization/json';

@@ -2,8 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import { lstat, mkdtemp, readdir, readlink, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
+import ts from 'typescript';
 
 const root = join(import.meta.dir, '..');
+const componentLibraries = ['cinder', 'chat', 'editor', 'weft-ui'];
 const libraries = [
   'bureau',
   'operative',
@@ -11,7 +13,9 @@ const libraries = [
   'conversationalist',
   'memory',
   'skills',
-  'interoperability',
+  'tool-protocol',
+  'embeddings',
+  'cryptography',
   'lifecycle',
   'weft',
   'weft-ui',
@@ -20,7 +24,6 @@ const libraries = [
   'editor',
   'markdown',
   'testing',
-  'shared',
 ];
 
 type Manifest = {
@@ -46,7 +49,9 @@ async function readManifest(path: string): Promise<Manifest> {
 
 async function libraryApplicationConfigurations(): Promise<string[]> {
   const paths: string[] = [];
-  const configurations = new Bun.Glob('packages/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}');
+  const configurations = new Bun.Glob(
+    '{packages,components}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}',
+  );
   for await (const path of configurations.scan({ cwd: root, onlyFiles: true })) {
     if (!path.split('/').includes('node_modules')) paths.push(path);
   }
@@ -55,7 +60,7 @@ async function libraryApplicationConfigurations(): Promise<string[]> {
 
 async function workspaceManifests(): Promise<Map<string, Manifest>> {
   const manifests = new Map<string, Manifest>();
-  for (const directory of ['applications', 'packages']) {
+  for (const directory of ['applications', 'components', 'packages', 'internal']) {
     for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const path = join(directory, entry.name);
@@ -70,14 +75,138 @@ async function workspaceManifests(): Promise<Map<string, Manifest>> {
 }
 
 describe('internal workspace architecture', () => {
+  test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
+    const { scripts = {} } = await readManifest('.');
+    const validationStages = scripts['validate']?.split(' && ');
+    expect(validationStages).toEqual([
+      'bun run lint',
+      'bun run typecheck',
+      'bun run test',
+      'bun run build',
+      'bun run format:check',
+      'bun run audit',
+    ]);
+    expect(scripts['test']?.split(' && ').filter((stage) => stage === 'bun run test:self')).toEqual(
+      ['bun run test:self'],
+    );
+    expect(scripts['test:self']).toBe('bun test ./scripts/*.test.ts');
+    expect(scripts['audit']).toBe('bun audit --audit-level=high');
+  });
+
+  test('compiler configuration has a dedicated internal owner and two public presets', async () => {
+    const configuration = await readManifest('internal/typescript');
+    expect(configuration.name).toBe('@corvidae/typescript');
+    expect(configuration.private).toBe(true);
+    expect(configuration.exports).toEqual({
+      './library.json': './library.json',
+      './browser.json': './browser.json',
+    });
+    expect(configuration.scripts).toBeUndefined();
+    expect(await Bun.file(join(root, 'internal/typescript/base.json')).exists()).toBe(true);
+    expect(await Bun.file(join(root, 'internal/typescript/server.json')).exists()).toBe(false);
+    for (const preset of ['library.json', 'browser.json']) {
+      const contents = await Bun.file(join(root, 'internal/typescript', preset)).json();
+      expect(contents.extends).toBe('./base.json');
+      expect(import.meta.resolve(`@corvidae/typescript/${preset}`)).toEndWith(preset);
+    }
+    for (const privatePreset of ['base.json', 'server.json']) {
+      expect(() => import.meta.resolve(`@corvidae/typescript/${privatePreset}`)).toThrow();
+    }
+  });
+
+  test('runtime and README contract references have durable root documentation', async () => {
+    for (const filename of ['operative-type-safe-api.md', 'workflow-versioning.md']) {
+      const document = Bun.file(join(root, 'documentation', filename));
+      expect(await document.exists(), filename).toBe(true);
+      expect(await document.text(), filename).toMatch(/^# /);
+    }
+  });
+
+  test('every package and application has a README', async () => {
+    for await (const manifestPath of new Bun.Glob(
+      '{applications,components,packages,internal}/*/package.json',
+    ).scan(root)) {
+      const directory = dirname(manifestPath);
+      const readme = Bun.file(join(root, directory, 'README.md'));
+      expect(await readme.exists(), directory).toBe(true);
+      expect(await readme.text(), directory).toMatch(/^# /);
+    }
+  });
+
+  test('every executable workspace exposes consistent Bun quality scripts', async () => {
+    for await (const manifestPath of new Bun.Glob(
+      '{applications,components,packages}/*/package.json',
+    ).scan(root)) {
+      const directory = dirname(manifestPath);
+      const manifest = await readManifest(directory);
+      const scripts = manifest.scripts ?? {};
+
+      for (const script of ['lint', 'lint:fix', 'test', 'typecheck']) {
+        expect(scripts[script], `${directory}: ${script}`).toBeString();
+      }
+      expect(scripts['lint'], directory).toContain('oxlint --deny-warnings');
+      expect(scripts['lint:fix'], directory).toContain('oxlint --deny-warnings --fix');
+      expect(scripts['test'], directory).toMatch(/\bbun test\b/);
+      expect(scripts['typecheck'], directory).toMatch(/\b(?:svelte-check|tsc --noEmit)\b/);
+
+      for (const [name, command] of Object.entries(scripts)) {
+        expect(command, `${directory}: ${name}`).not.toMatch(/\b(?:deno|node|npm|npx|pnpm|yarn)\b/);
+        expect(command, `${directory}: ${name}`).not.toMatch(/\bbun run (?:\.\.?\/)?\S+\.ts\b/);
+      }
+    }
+  });
+
+  test('browser test hosts have no application identity or Vite dependency', async () => {
+    const manifests = await workspaceManifests();
+    for (const name of ['weft-cli', 'weft-console', 'cinder-browser-fixtures']) {
+      expect(manifests.has(`@corvidae/${name}`)).toBe(false);
+    }
+    manifests.set('root', await readManifest('.'));
+    for (const [name, manifest] of manifests) {
+      if (name === '@corvidae/chat-room') continue;
+      const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
+      expect(dependencies['vite'], name).toBeUndefined();
+      expect(dependencies['@sveltejs/vite-plugin-svelte'], name).toBeUndefined();
+    }
+    const weft = manifests.get('@corvidae/weft');
+    expect(weft?.bin).toEqual({ weft: 'src/cli-main.ts', 'weft-mcp': 'src/cli-mcp.ts' });
+  });
+  test('component workspaces enforce browser source and separately check Bun tooling', async () => {
+    for await (const path of new Bun.Glob('components/*/package.json').scan(root)) {
+      const directory = dirname(path);
+      const manifest = await readManifest(directory);
+      const browserPath = join(root, directory, 'tsconfig.browser.json');
+      const loaded = ts.readConfigFile(browserPath, ts.sys.readFile);
+      expect(loaded.error, directory).toBeUndefined();
+      const browser = ts.parseJsonConfigFileContent(loaded.config, ts.sys, dirname(browserPath));
+      expect(browser.errors, directory).toEqual([]);
+      expect(browser.options.types, directory).toEqual([]);
+      expect(browser.options.lib, directory).toContain('lib.dom.d.ts');
+      expect(browser.options.customConditions, directory).toContain('browser');
+      expect(browser.options.strict, directory).toBe(true);
+      expect(browser.fileNames.length, directory).toBeGreaterThan(0);
+      expect(
+        browser.fileNames.filter((file) => /\.(?:test|spec)\.ts$|\/scripts\//.test(file)),
+        directory,
+      ).toEqual([]);
+      expect(manifest.scripts?.['typecheck'], directory).toContain(
+        '--tsconfig ./tsconfig.browser.json',
+      );
+      expect(manifest.scripts?.['typecheck'], directory).toContain('--tsconfig ./tsconfig.json');
+    }
+  });
   test('locked workspace executable metadata matches existing manifest entrypoints', async () => {
     const lock = Bun.JSON5.parse(await Bun.file(join(root, 'bun.lock')).text()) as {
       workspaces: Record<string, Pick<Manifest, 'name' | 'bin'>>;
     };
     const rootManifest = await readManifest('.');
     expect(lock.workspaces['']?.name, 'Root workspace identity').toBe(rootManifest.name);
-    for await (const path of new Bun.Glob('{applications,packages}/*/package.json').scan(root)) {
+    const expectedPaths = [''];
+    for await (const path of new Bun.Glob(
+      '{applications,components,packages,internal}/*/package.json',
+    ).scan(root)) {
       const directory = dirname(path);
+      expectedPaths.push(directory);
       const manifest = await readManifest(directory);
       expect(lock.workspaces[directory]?.name, directory).toBe(manifest.name);
       expect(lock.workspaces[directory]?.bin, directory).toEqual(manifest.bin);
@@ -85,6 +214,7 @@ describe('internal workspace architecture', () => {
         expect(await Bun.file(join(root, directory, entrypoint)).exists(), entrypoint).toBe(true);
       }
     }
+    expect(Object.keys(lock.workspaces).toSorted()).toEqual(expectedPaths.toSorted());
   });
 
   test('workspace source stays versioned despite personal ignore patterns', async () => {
@@ -93,7 +223,7 @@ describe('internal workspace architecture', () => {
       await Bun.write(join(directory, '.gitignore'), Bun.file(join(root, '.gitignore')));
       const personalIgnore = join(directory, 'personal-ignore');
       await Bun.write(personalIgnore, 'Icon?\n');
-      for (const workspace of ['applications/example', 'packages/example']) {
+      for (const workspace of ['applications/example', 'components/example', 'packages/example']) {
         for (const path of [
           'src/components/icons/index.ts',
           'src/components/icons/index.test.ts',
@@ -126,10 +256,14 @@ describe('internal workspace architecture', () => {
         .toString()
         .trim()
         .split('\n')
-        .filter((path) => path.startsWith('applications/') || path.startsWith('packages/'));
+        .filter((path) =>
+          ['applications/', 'components/', 'packages/'].some((prefix) => path.startsWith(prefix)),
+        );
       expect(workspaceFiles).toEqual([
         'applications/example/src/components/icons/index.test.ts',
         'applications/example/src/components/icons/index.ts',
+        'components/example/src/components/icons/index.test.ts',
+        'components/example/src/components/icons/index.ts',
         'packages/example/src/components/icons/index.test.ts',
         'packages/example/src/components/icons/index.ts',
       ]);
@@ -156,12 +290,13 @@ describe('internal workspace architecture', () => {
 
   for (const library of libraries) {
     test(`${library} exposes source without a build or publication contract`, async () => {
-      const manifest = await readManifest(`packages/${library}`);
-      expect(manifest.name).toBe(`@repo/${library}`);
+      const directory = `${componentLibraries.includes(library) ? 'components' : 'packages'}/${library}`;
+      const manifest = await readManifest(directory);
+      expect(manifest.name).toBe(`@corvidae/${library}`);
       expect(manifest.private).toBe(true);
       expect(manifest.type).toBe('module');
       expect(manifest.exports).toEqual({ '.': './src/index.ts' });
-      expect(await Bun.file(join(root, 'packages', library, 'src/index.ts')).exists()).toBe(true);
+      expect(await Bun.file(join(root, directory, 'src/index.ts')).exists()).toBe(true);
       for (const command of ['lint', 'lint:fix', 'test', 'typecheck']) {
         expect(manifest.scripts?.[command], `${library}: ${command}`).toBeString();
       }
@@ -178,15 +313,20 @@ describe('internal workspace architecture', () => {
   test('every internal edge resolves and uses workspace:*', async () => {
     const manifests = await workspaceManifests();
     for (const manifest of manifests.values()) {
-      expect(manifest.name).toStartWith('@repo/');
+      expect(manifest.name).toStartWith('@corvidae/');
       expect(manifest.private).toBe(true);
       for (const [name, version] of Object.entries({
         ...manifest.dependencies,
         ...manifest.devDependencies,
         ...manifest.peerDependencies,
       })) {
-        expect(name).not.toMatch(/^@lostgradient\/|^@cinder\//);
-        if (!name.startsWith('@repo/')) continue;
+        const internalName = name.replace(/^@(lostgradient|cinder)\//, '@corvidae/');
+        if (internalName !== name) {
+          expect(manifests.has(internalName), `${name} duplicates internal ${internalName}`).toBe(
+            false,
+          );
+        }
+        if (!name.startsWith('@corvidae/')) continue;
         expect(version, `${manifest.name} -> ${name}`).toBe('workspace:*');
         expect(manifests.has(name), `${manifest.name} -> missing ${name}`).toBe(true);
       }
@@ -206,7 +346,7 @@ describe('internal workspace architecture', () => {
         ...manifest.devDependencies,
         ...manifest.peerDependencies,
       })) {
-        if (dependency.startsWith('@repo/')) visit(dependency, [...ancestors, name]);
+        if (dependency.startsWith('@corvidae/')) visit(dependency, [...ancestors, name]);
       }
       complete.add(name);
     }
@@ -223,7 +363,7 @@ describe('internal workspace architecture', () => {
         ...workspace.dependencies,
         ...workspace.devDependencies,
       })) {
-        if (name.startsWith('@repo/')) continue;
+        if (name.startsWith('@corvidae/')) continue;
         const declarations = versions.get(name) ?? [];
         declarations.push(version);
         versions.set(name, declarations);

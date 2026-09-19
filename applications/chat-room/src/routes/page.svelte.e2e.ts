@@ -154,9 +154,9 @@ test('retry after a failed send re-runs the assistant turn', async ({ page }) =>
 // arrangement that still puts the real route, the real zod schema, and the real
 // `toolbox.resumeApproval` on the path.
 //
-// What it pins that `/exercises/tool-approval` cannot: that exercise performs no
-// network I/O at all and seeds approvals with no `pendingApproval` and no token,
-// so it proves Chat's affordances and nothing about the round trip.
+// This test drives the real network boundary rather than only Chat's approval
+// affordances: the forged descriptor reaches the real resume route and fails
+// signature verification there.
 //
 // The `pendingApproval` below is a forgery, but a faithful one — field for field
 // the shape armorer really mints for `remember_note` (`reason` and `metadata`

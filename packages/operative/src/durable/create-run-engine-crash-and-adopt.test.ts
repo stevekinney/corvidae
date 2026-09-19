@@ -1,4 +1,4 @@
-import { MemoryStorage, workflow, yieldToPortableEventLoop } from '@repo/weft';
+import { MemoryStorage, workflow, yieldToPortableEventLoop } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createRunEngine } from './create-run-engine';

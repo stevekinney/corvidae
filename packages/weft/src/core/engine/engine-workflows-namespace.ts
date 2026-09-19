@@ -55,8 +55,8 @@ import { resolveWorkflowSource, type ResolveWorkflowSourceOptions } from './sour
  *
  * @example
  * ```ts
- * import { Engine } from '@repo/weft';
- * import type { ActivateWorkflowRevisionOptions } from '@repo/weft';
+ * import { Engine } from '@corvidae/weft';
+ * import type { ActivateWorkflowRevisionOptions } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * const active = await engine.workflows.getActive('checkout');
@@ -90,9 +90,9 @@ export type ActivateWorkflowRevisionOptions = {
  *
  * @example
  * ```ts
- * import { Engine, buildWorkflowContract, buildWorkflowRevisionManifest } from '@repo/weft';
- * import { workflow, type WorkflowContext } from '@repo/weft';
- * import type { EngineWorkflowsNamespace } from '@repo/weft';
+ * import { Engine, buildWorkflowContract, buildWorkflowRevisionManifest } from '@corvidae/weft';
+ * import { workflow, type WorkflowContext } from '@corvidae/weft';
+ * import type { EngineWorkflowsNamespace } from '@corvidae/weft';
  *
  * const checkout = workflow({ name: 'checkout', version: '1.0.0' }).execute(
  *   async function* (_ctx: WorkflowContext, input: string) {

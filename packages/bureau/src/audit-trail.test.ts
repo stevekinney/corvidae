@@ -4,16 +4,16 @@
  * Uses a hand-crafted `TextValueStore` stub so tests are fully deterministic
  * without starting a live bureau or durable engine.
  */
-import { CompletableEventTarget, createManualRuntimeServices } from '@repo/lifecycle';
-import type { Action } from '@repo/operative';
+import { CompletableEventTarget, createManualRuntimeServices } from '@corvidae/lifecycle';
+import type { Action } from '@corvidae/operative';
 import {
   AgentScheduledEvent,
   ScheduleCancelledEvent,
   SchedulePausedEvent,
   ScheduleResumedEvent,
   SessionDeletedEvent,
-} from '@repo/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+} from '@corvidae/operative';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { type AuditRecord, computeInitialAuditSequence, createAuditTrail } from './audit-trail';

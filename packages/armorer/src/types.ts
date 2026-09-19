@@ -9,7 +9,7 @@ import type {
   ToolErrorInput as SharedToolErrorInput,
   ToolResult as SharedToolResult,
   ToolResultInput as SharedToolResultInput,
-} from '@repo/interoperability';
+} from '@corvidae/tool-protocol';
 
 import type { ApprovalBindingPayload } from './approval-binding';
 

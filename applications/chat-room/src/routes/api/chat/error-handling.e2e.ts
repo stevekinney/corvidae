@@ -15,8 +15,8 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { gotoHydrated } from '../../exercises/hydration';
 import { fixtureRequestCount, newFixtureMarker } from '../../fixture-probe';
+import { gotoHydrated } from '../../page.svelte-test-helpers';
 import { MIDSTREAM_PARTIAL_TEXT, fixtureMarker } from '../../streaming-fixture';
 
 const BANNER = '[data-testid="demo-error"]';

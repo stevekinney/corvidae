@@ -7,7 +7,7 @@ const imports = `
 import { expectTypeOf } from 'bun:test';
 import { z } from 'zod';
 import { createTool, withContext } from '../src';
-import type { StandardSchemaV1 } from '@repo/interoperability';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { normalizeToolSchema } from '../src/utilities/schema-normalization';
 export const schema = z.object({ value: z.string() });
 void [expectTypeOf, createTool, withContext, normalizeToolSchema];

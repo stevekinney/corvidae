@@ -46,10 +46,10 @@ export type ResolveSourceModuleResult =
  *
  * @example
  * ```ts
- * import { workflowSource } from '@repo/weft';
+ * import { workflowSource } from '@corvidae/weft';
  *
  * declare const loadCheckout: () => Promise<{
- *   checkout: import('@repo/weft').WorkflowDefinition<unknown, unknown, 'checkout'>;
+ *   checkout: import('@corvidae/weft').WorkflowDefinition<unknown, unknown, 'checkout'>;
  * }>;
  * const source = workflowSource(
  *   { name: 'checkout', location: './checkout.ts', exportName: 'checkout', revision: 'r1' },

@@ -6,8 +6,8 @@
  * the subagent's result back into the parent conversation.
  */
 
-import type { Conversation, JSONValue, Message } from '@repo/conversationalist';
-import { Conversation as ConversationClass } from '@repo/conversationalist';
+import type { Conversation, JSONValue, Message } from '@corvidae/conversationalist';
+import { Conversation as ConversationClass } from '@corvidae/conversationalist';
 
 /** Options for preparing a subagent's conversation context. */
 export interface PrepareSubagentContextOptions {

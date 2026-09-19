@@ -301,7 +301,7 @@ function isStorageConfigurationType(value: string): value is StorageConfiguratio
  *
  * @example
  * ```ts
- * import { resolveStorage } from '@repo/weft';
+ * import { resolveStorage } from '@corvidae/weft';
  *
  * const storage = await resolveStorage({ type: 'sqlite', path: './weft.db' });
  * void storage;

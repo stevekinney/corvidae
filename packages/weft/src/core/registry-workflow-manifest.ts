@@ -262,7 +262,7 @@ function buildMessageEntries(
  *
  * @example
  * ```ts
- * import { Engine } from '@repo/weft';
+ * import { Engine } from '@corvidae/weft';
  *
  * declare const engine: Engine;
  * const definition = engine.getWorkflowDefinition('checkout');

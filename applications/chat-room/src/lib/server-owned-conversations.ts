@@ -1,13 +1,13 @@
-import type { ChatSerializedRunError, ConversationHistory } from '@repo/chat';
+import type { ChatSerializedRunError, ConversationHistory } from '@corvidae/chat';
 import {
   appendUserMessage,
   createConversationHistory,
   decodeChatStreamEvent,
   getMessages,
   markMessageDeliveryFailed,
-} from '@repo/chat';
-import type { AgentSession } from '@repo/operative';
-import { createAgentSession } from '@repo/operative';
+} from '@corvidae/chat';
+import type { AgentSession } from '@corvidae/operative';
+import { createAgentSession } from '@corvidae/operative';
 import { serverOwnedRuntime } from './server-owned-runtime.ts';
 import type {
   ServerOwnedConversationSnapshot,

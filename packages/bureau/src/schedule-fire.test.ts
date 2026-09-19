@@ -2,9 +2,14 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createTool, createToolbox } from '@repo/armorer';
-import { getMessages } from '@repo/conversationalist';
-import type { GenerateContext, GenerateFunction, GenerateResponse, Toolbox } from '@repo/operative';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { getMessages } from '@corvidae/conversationalist';
+import type {
+  GenerateContext,
+  GenerateFunction,
+  GenerateResponse,
+  Toolbox,
+} from '@corvidae/operative';
 import {
   AgentScheduledEvent,
   ScheduleCancelledEvent,
@@ -13,7 +18,7 @@ import {
   SchedulePausedEvent,
   ScheduleResumedEvent,
   stopWhen,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

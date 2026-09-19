@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "page-header",
+  "import": "@corvidae/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Basic page header",
+      "description": "Page-level heading with named title, description, breadcrumb, and action regions.",
+      "code": "<script lang=\"ts\">\n  import { Button } from '@corvidae/cinder';\n  import { Breadcrumbs } from '@corvidae/cinder';\n  import { PageHeader } from '@corvidae/cinder';\n</script>\n\n<div>\n  <PageHeader title=\"Approvals\" description=\"3 pending · 12 resolved\" />\n</div>\n\n<div style=\"margin-top: var(--cinder-space-4);\">\n  <PageHeader>\n    {#snippet breadcrumbs()}\n      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Schedules' }]} />\n    {/snippet}\n    {#snippet title()}Schedules{/snippet}\n    {#snippet description()}Create and manage recurring automation schedules.{/snippet}\n    {#snippet actions()}\n      <Button variant=\"primary\" size=\"sm\" label=\"+ New schedule\" />\n    {/snippet}\n  </PageHeader>\n</div>\n"
+    }
+  ]
+}

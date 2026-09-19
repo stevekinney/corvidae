@@ -23,7 +23,7 @@ import type { SqlStorageValue } from './cloudflare-durable-object-sql.ts';
  *
  * @example
  * ```ts
- * import type { CloudflareValueEncoding } from '@repo/weft';
+ * import type { CloudflareValueEncoding } from '@corvidae/weft';
  *
  * const encoding: CloudflareValueEncoding = 'blob';
  * void encoding;

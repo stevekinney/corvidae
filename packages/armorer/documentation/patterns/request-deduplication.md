@@ -3,7 +3,7 @@
 Prevent duplicate requests from executing simultaneously using cache middleware.
 
 ```typescript
-import { createCacheMiddleware } from '@repo/armorer';
+import { createCacheMiddleware } from '@corvidae/armorer';
 
 // Create a deduplication middleware that holds in-flight requests
 function createDeduplicationMiddleware() {

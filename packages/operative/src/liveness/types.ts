@@ -1,4 +1,4 @@
-import type { Subscription } from '@repo/lifecycle';
+import type { Subscription } from '@corvidae/lifecycle';
 
 export type { Subscription };
 

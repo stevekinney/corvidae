@@ -9,7 +9,7 @@ import {
   yieldToPortableEventLoop,
   type WorkflowLogRecord,
   type WorkflowStatus,
-} from '@repo/weft';
+} from '@corvidae/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { WorkflowVersionMismatchEvent } from '../events';

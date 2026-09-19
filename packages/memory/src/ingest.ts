@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 
 import type { ChunkingOptions, ContentChunk } from './chunking';
 import { chunkMarkdown } from './chunking';

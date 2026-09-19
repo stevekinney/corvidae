@@ -8,8 +8,8 @@
  * `query`, and nothing that mutates.
  */
 
-import type { AgentGenerationProfile, AgentRun, RunnableAgent } from '@repo/operative';
-import { projectDescriptor, readGenerationProfile } from '@repo/operative';
+import type { AgentGenerationProfile, AgentRun, RunnableAgent } from '@corvidae/operative';
+import { projectDescriptor, readGenerationProfile } from '@corvidae/operative';
 
 /**
  * A plain literal map of agent name to `RunnableAgent`. There is no

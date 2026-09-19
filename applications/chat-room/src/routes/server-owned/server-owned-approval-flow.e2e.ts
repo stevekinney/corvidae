@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-import { gotoHydrated } from '../exercises/hydration';
 import { newFixtureMarker } from '../fixture-probe';
 import { APPROVAL_FOLLOW_UP_TEXT, fixtureMarker } from '../streaming-fixture';
+import { gotoHydrated } from './server-owned-test-helpers';
 
 function objectRecord(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {

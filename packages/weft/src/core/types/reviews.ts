@@ -19,7 +19,7 @@ export type ReviewDecision = 'approved' | 'rejected' | 'needs-changes';
  *
  * @example
  * ```ts
- * import { Engine, type SubmitReviewOptions } from '@repo/weft';
+ * import { Engine, type SubmitReviewOptions } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * const options: SubmitReviewOptions = {
@@ -50,7 +50,7 @@ export interface SubmitReviewOptions {
  *
  * @example
  * ```ts
- * import type { ReviewStatus } from '@repo/weft';
+ * import type { ReviewStatus } from '@corvidae/weft';
  *
  * const status: ReviewStatus = 'pending';
  * void status;
@@ -67,7 +67,7 @@ export type ReviewStatus = 'pending' | 'completed';
  *
  * @example
  * ```ts
- * import type { ReviewListFilter } from '@repo/weft';
+ * import type { ReviewListFilter } from '@corvidae/weft';
  *
  * const filter: ReviewListFilter = {
  *   status: 'completed',
@@ -90,7 +90,7 @@ export interface ReviewListFilter {
  *
  * @example
  * ```ts
- * import type { PendingReviewEntry } from '@repo/weft';
+ * import type { PendingReviewEntry } from '@corvidae/weft';
  *
  * const entry: PendingReviewEntry = {
  *   status: 'pending',
@@ -117,7 +117,7 @@ export interface PendingReviewEntry extends ReviewRequest {
  *
  * @example
  * ```ts
- * import type { CompletedReviewEntry } from '@repo/weft';
+ * import type { CompletedReviewEntry } from '@corvidae/weft';
  *
  * const entry: CompletedReviewEntry = {
  *   status: 'completed',
@@ -155,7 +155,7 @@ export interface CompletedReviewEntry extends ReviewDecisionRecord {
  *
  * @example
  * ```ts
- * import type { ReviewListEntry } from '@repo/weft';
+ * import type { ReviewListEntry } from '@corvidae/weft';
  *
  * function summarize(entry: ReviewListEntry): string {
  *   return entry.status === 'completed'

@@ -77,7 +77,7 @@ export interface RuntimeDeferred {
  * The injectable runtime-service contract (AB-92 AC4). A production caller
  * that never supplies one gets {@link createDefaultRuntimeServices}'s real-
  * globals implementation; a test composes its own deterministic instance
- * from `@repo/lifecycle`'s `createManualRuntimeServices`.
+ * from `@corvidae/lifecycle`'s `createManualRuntimeServices`.
  */
 export interface RuntimeServices {
   readonly clock: RuntimeClock;

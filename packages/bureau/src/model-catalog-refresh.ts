@@ -1,4 +1,4 @@
-import type { BackendDescriptor, ModelCatalog } from '@repo/operative';
+import type { BackendDescriptor, ModelCatalog } from '@corvidae/operative';
 
 /**
  * Bureau-local model-catalog refresh mechanism.
@@ -199,7 +199,7 @@ export interface CatalogRefreshHandle {
  *
  * This is deliberately the seam AB-246 leaves for a future live provider
  * probe: today every caller supplies a source that returns static rows (or,
- * in `createBureau`'s default, re-derives `@repo/operative`'s
+ * in `createBureau`'s default, re-derives `@corvidae/operative`'s
  * static seed), but the signature — request in, descriptors out, abortable —
  * is shaped so a later probe-backed source can be substituted without
  * changing this module. Rate limiting and the probe itself are out of scope

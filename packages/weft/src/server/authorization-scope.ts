@@ -22,7 +22,7 @@
  *
  * @example
  * ```ts
- * import { AUTHORIZATION_SCOPES } from '@repo/weft';
+ * import { AUTHORIZATION_SCOPES } from '@corvidae/weft';
  *
  * console.log(AUTHORIZATION_SCOPES.includes('workflows:read'));
  * ```
@@ -56,7 +56,7 @@ export const AUTHORIZATION_SCOPES = [
  *
  * @example
  * ```ts
- * import { type AuthorizationScope } from '@repo/weft';
+ * import { type AuthorizationScope } from '@corvidae/weft';
  *
  * const scope: AuthorizationScope = 'workflows:read';
  * console.log(scope);
@@ -71,7 +71,7 @@ const SCOPE_LOOKUP = new Set<string>(AUTHORIZATION_SCOPES);
  *
  * @example
  * ```ts
- * import { isAuthorizationScope } from '@repo/weft';
+ * import { isAuthorizationScope } from '@corvidae/weft';
  *
  * console.log(isAuthorizationScope('workflows:read'));
  * console.log(isAuthorizationScope('not-a-scope'));

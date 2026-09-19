@@ -1,7 +1,11 @@
 {
-  "name": "@repo/weft",
+  "name": "@corvidae/weft",
   "private": true,
   "type": "module",
+  "bin": {
+    "weft": "src/cli-main.ts",
+    "weft-mcp": "src/cli-mcp.ts"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
@@ -9,7 +13,8 @@
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
     "test": "bun test",
-    "typecheck": "tsc --noEmit && bun ../../scripts/typecheck-contracts.ts"
+    "typecheck": "tsc --noEmit && bun run typecheck:fixtures && bun ../../scripts/typecheck-contracts.ts",
+    "typecheck:fixtures": "tsc --noEmit -p src/cli/__fixtures__/codegen/typecheck/tsconfig.json"
   },
   "dependencies": {
     "@electric-sql/pglite": "catalog:",
@@ -21,10 +26,11 @@
     "lmdb": "catalog:",
     "pg": "catalog:",
     "valibot": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@lostgradient/environmentalist": "catalog:"
   },
   "devDependencies": {
-    "@repo/typescript-configuration": "workspace:*",
+    "@corvidae/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "@types/pg": "catalog:",
     "fake-indexeddb": "catalog:",

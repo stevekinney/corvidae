@@ -7,6 +7,8 @@
  * @module runtime/portable
  */
 
+import { readEnvironmentVariable as readConfiguredEnvironmentVariable } from './environment-configuration.ts';
+
 // ---------------------------------------------------------------------------
 // Runtime detection
 // ---------------------------------------------------------------------------
@@ -89,7 +91,7 @@ const RUNTIME_DETECTORS: readonly RuntimeDetector[] = [
  *
  * @example
  * ```ts
- * import { detectRuntime } from '@repo/weft';
+ * import { detectRuntime } from '@corvidae/weft';
  *
  * const runtime = detectRuntime();
  * // Returns 'bun' | 'node' | 'browser' | 'edge'
@@ -110,7 +112,7 @@ export function detectRuntime(): RuntimeKind {
  *
  * @example
  * ```ts
- * import { detectRuntimeVersion } from '@repo/weft';
+ * import { detectRuntimeVersion } from '@corvidae/weft';
  *
  * const version = detectRuntimeVersion();
  * console.log(typeof version); // 'string'
@@ -141,9 +143,7 @@ export function detectRuntimeVersion(): string {
  * @internal
  */
 export function readEnvironmentVariable(name: string): string | undefined {
-  const bun = getBunGlobal();
-  if (bun !== undefined) return bun.env[name];
-  return getProcess()?.env?.[name];
+  return readConfiguredEnvironmentVariable(name);
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +158,7 @@ export function readEnvironmentVariable(name: string): string | undefined {
  *
  * @example
  * ```ts
- * import { sleep } from '@repo/weft';
+ * import { sleep } from '@corvidae/weft';
  *
  * async function poll() {
  *   for (let i = 0; i < 3; i++) {
@@ -214,7 +214,7 @@ const textEncoder = new TextEncoder();
  *
  * @example
  * ```ts
- * import { hashBytes } from '@repo/weft';
+ * import { hashBytes } from '@corvidae/weft';
  *
  * const data = new TextEncoder().encode('hello');
  * const hash = hashBytes(data);
@@ -233,7 +233,7 @@ export function hashBytes(data: Uint8Array): string {
  *
  * @example
  * ```ts
- * import { hashString } from '@repo/weft';
+ * import { hashString } from '@corvidae/weft';
  *
  * const h1 = hashString('workflow-key');
  * const h2 = hashString('workflow-key');

@@ -1,11 +1,11 @@
-import type { Embedder, EmbeddingVector } from '@repo/interoperability';
+import type { Embedder, EmbeddingVector } from '@corvidae/embeddings';
 
 import { isPromise } from '../../type-guards';
 import type { TextQueryField } from '../query-predicates';
 import { getSchemaKeys } from '../schema-utilities';
 import type { AnyToolDefinition as ToolDefinition } from '../tool-definition';
 
-export type { Embedder, EmbeddingVector } from '@repo/interoperability';
+export type { Embedder, EmbeddingVector } from '@corvidae/embeddings';
 
 export type EmbeddingInfo = {
   vector: EmbeddingVector;

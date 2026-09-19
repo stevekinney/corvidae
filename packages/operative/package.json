@@ -1,5 +1,5 @@
 {
-  "name": "@repo/operative",
+  "name": "@corvidae/operative",
   "description": "A composable agent loop with lazy Anthropic, OpenAI, and Gemini providers exposed through its source entry point.",
   "type": "module",
   "exports": {
@@ -12,20 +12,23 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@repo/weft": "workspace:*",
-    "@repo/armorer": "workspace:*",
-    "@repo/conversationalist": "workspace:*",
-    "@repo/interoperability": "workspace:*",
-    "@repo/lifecycle": "workspace:*",
+    "@corvidae/weft": "workspace:*",
+    "@corvidae/armorer": "workspace:*",
+    "@corvidae/conversationalist": "workspace:*",
+    "@corvidae/cryptography": "workspace:*",
+    "@corvidae/embeddings": "workspace:*",
+    "@corvidae/lifecycle": "workspace:*",
+    "@corvidae/tool-protocol": "workspace:*",
     "zod": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@google/genai": "catalog:",
     "@anthropic-ai/sdk": "catalog:",
-    "openai": "catalog:"
+    "openai": "catalog:",
+    "@lostgradient/environmentalist": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@repo/typescript-configuration": "workspace:*",
+    "@corvidae/typescript": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   },

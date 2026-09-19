@@ -95,7 +95,7 @@ test('a person approves the note in the browser and the turn completes', async (
   //   reload: You … | Assistant Called 1 tool … Succeeded | Assistant "Saved that note."
   //
   // Delineating assistant steps belongs to the wire and the controller in
-  // `@repo/chat`, which this issue's delivery boundary excludes —
+  // `@corvidae/chat`, which this issue's delivery boundary excludes —
   // CIN-615 carries it with these measurements. What is asserted here is the
   // half that IS this route's to keep true: the server's own history, which a
   // reload renders, puts the tool before the reply.

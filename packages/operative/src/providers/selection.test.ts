@@ -7,7 +7,7 @@
  * byte-stable and comparable with a deep-equality assertion — no sleeps, no
  * timers, no network, no wall-clock read.
  */
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { type BackendDescriptor, createModelCatalog, type ModelCatalog } from './model-catalog.ts';

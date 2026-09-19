@@ -17,7 +17,7 @@
  *
  * @example
  * ```ts
- * import { type LaunchMetadata } from '@repo/weft';
+ * import { type LaunchMetadata } from '@corvidae/weft';
  *
  * function describe(metadata: LaunchMetadata): string {
  *   return `input=${JSON.stringify(metadata.input)} id=${metadata.launchOptions.id}`;

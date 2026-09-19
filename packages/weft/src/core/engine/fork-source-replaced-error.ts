@@ -33,7 +33,7 @@ import { WeftError } from '../weft-error.ts';
  *
  * @example
  * ```ts
- * import { Engine, ForkSourceReplacedError } from '@repo/weft';
+ * import { Engine, ForkSourceReplacedError } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * try {

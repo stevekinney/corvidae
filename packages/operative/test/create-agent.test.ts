@@ -13,9 +13,9 @@
  *   - Symbol.dispose aborts and cleans up
  */
 
-import { createTool, createToolbox, type SignedPendingToolApproval } from '@repo/armorer';
-import { Conversation, isConversation } from '@repo/conversationalist';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createTool, createToolbox, type SignedPendingToolApproval } from '@corvidae/armorer';
+import { Conversation, isConversation } from '@corvidae/conversationalist';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

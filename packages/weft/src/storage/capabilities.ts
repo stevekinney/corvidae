@@ -54,8 +54,8 @@ import type { Storage } from './interface.ts';
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import type { StorageCapabilities } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import type { StorageCapabilities } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * const caps: StorageCapabilities = storage.capabilities();
@@ -132,9 +132,9 @@ export type StorageCapabilities = {
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { requireStorageCapability } from '@repo/weft';
- * import type { GatedStorageCapabilityKey } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { requireStorageCapability } from '@corvidae/weft';
+ * import type { GatedStorageCapabilityKey } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * // The third argument's type is GatedStorageCapabilityKey — only the
@@ -162,8 +162,8 @@ export type GatedStorageCapabilityKey = 'conditionalBatch';
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@repo/weft';
- * import { requireStorageCapability } from '@repo/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
+ * import { requireStorageCapability } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * requireStorageCapability(storage, 'conditionalBatch', 'AtomicState compare-and-swap');
@@ -200,8 +200,8 @@ export function requireStorageCapability(
  *
  * @example
  * ```ts
- * import { assertDurableStorageForRecovery } from '@repo/weft';
- * import { SQLiteStorage } from '@repo/weft';
+ * import { assertDurableStorageForRecovery } from '@corvidae/weft';
+ * import { SQLiteStorage } from '@corvidae/weft';
  *
  * await using storage = new SQLiteStorage('./weft.db');
  * assertDurableStorageForRecovery(storage);

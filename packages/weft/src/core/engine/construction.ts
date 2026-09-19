@@ -1,3 +1,4 @@
+import { resolveEngineEnvironment } from '../../runtime/environment-configuration.ts';
 import { CompressedStorage } from '../../storage/compressed-storage.ts';
 import type { Storage as WeftStorage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
@@ -89,19 +90,6 @@ export function typedEngineView(engine: object): never {
 
 let didWarnOnMemoryStorageFallback = false;
 
-/**
- * Read an environment variable without assuming a runtime. The engine
- * constructor runs in Bun, Node, and the browser/Service Worker, so a bare
- * `Bun.env[...]` (or `process.env[...]`) would throw a ReferenceError where
- * that global is absent. Returns `undefined` when no environment object exists.
- */
-function readEnvironmentVariable(name: string): string | undefined {
-  return readEnvironmentVariableFromSources(name, {
-    bunEnv: typeof Bun !== 'undefined' ? Bun.env : undefined,
-    processEnv: typeof process !== 'undefined' ? process.env : undefined,
-  });
-}
-
 export function readEnvironmentVariableFromSources(
   name: string,
   sources: {
@@ -128,8 +116,8 @@ export function readEnvironmentVariableFromSources(
 function shouldWarnOnMemoryStorageFallback(options?: EngineConstructorOptions): boolean {
   return (
     options?.development === true ||
-    readEnvironmentVariable('WEFT_DEV_WARNINGS') === '1' ||
-    readEnvironmentVariable('NODE_ENV') === 'development'
+    resolveEngineEnvironment().weftDevWarnings ||
+    resolveEngineEnvironment().nodeEnv === 'development'
   );
 }
 

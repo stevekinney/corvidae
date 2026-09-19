@@ -6,7 +6,7 @@
  * JSON Schema documents in `./protocol-schemas.ts`, the `taskResult` variant
  * parser in `./protocol-task-result.ts`, and internal helpers in
  * `./protocol-internals.ts`. All are re-exported so the public surface
- * `@repo/weft` stays a single import path.
+ * `@corvidae/weft` stays a single import path.
  *
  * @module worker/protocol
  */
@@ -89,7 +89,7 @@ export type {
  *
  * @example
  * ```ts
- * import type { WorkerToServerMessage } from '@repo/weft';
+ * import type { WorkerToServerMessage } from '@corvidae/weft';
  *
  * const message: WorkerToServerMessage = { type: 'heartbeat', workerId: 'worker-1' };
  * ```
@@ -101,7 +101,7 @@ export type WorkerToServerMessage = RegisterMessage | HeartbeatMessage | TaskRes
  *
  * @example
  * ```ts
- * import type { ServerToWorkerMessage } from '@repo/weft';
+ * import type { ServerToWorkerMessage } from '@corvidae/weft';
  *
  * const message: ServerToWorkerMessage = { type: 'shutdown' };
  * ```
@@ -355,7 +355,7 @@ function parseProtocolErrorMessage(
  * Parse and validate a worker-to-server protocol message.
  * @example
  * ```ts
- * import { parseWorkerToServerMessage } from '@repo/weft';
+ * import { parseWorkerToServerMessage } from '@corvidae/weft';
  * const result = parseWorkerToServerMessage({ type: 'heartbeat', workerId: 'worker-1' });
  * ```
  */
@@ -390,7 +390,7 @@ export function parseWorkerToServerMessage(
  * Parse and validate a server-to-worker protocol message.
  * @example
  * ```ts
- * import { parseServerToWorkerMessage } from '@repo/weft';
+ * import { parseServerToWorkerMessage } from '@corvidae/weft';
  * const result = parseServerToWorkerMessage({ type: 'shutdown' });
  * ```
  */

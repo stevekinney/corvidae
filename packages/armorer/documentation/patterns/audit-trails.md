@@ -3,7 +3,7 @@
 Track all tool executions for compliance and debugging.
 
 ```typescript
-import { createToolbox } from '@repo/armorer';
+import { createToolbox } from '@corvidae/armorer';
 
 interface AuditEntry {
   timestamp: number;

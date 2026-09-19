@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "find-bar",
+  "import": "@corvidae/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Basic find bar",
+      "description": "A find-in-page control with match navigation.",
+      "code": "<script lang=\"ts\">\n  import { FindBar } from '@corvidae/cinder';\n</script>\n\n<FindBar value=\"terminal\" activeIndex={1} matchCount={4} />\n"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { yieldToPortableEventLoop } from '@repo/weft';
+import { yieldToPortableEventLoop } from '@corvidae/weft';
 
 /**
  * Polls `condition` up to `maximumAttempts` times, yielding one macrotask

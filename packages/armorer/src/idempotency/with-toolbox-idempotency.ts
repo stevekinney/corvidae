@@ -1,5 +1,5 @@
-import { sha256HexSync } from '@repo/interoperability';
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import { sha256HexSync } from '@corvidae/cryptography';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 
 import type { JsonValue } from '../core/serialization/json';
 import { stableStringifyJson } from '../core/serialization/json';

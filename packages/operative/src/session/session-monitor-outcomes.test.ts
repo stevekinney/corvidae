@@ -1,5 +1,5 @@
-import { createManualRuntimeServices, TypedEventTarget } from '@repo/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+import { createManualRuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { OperativeEventMap } from '../events';

@@ -1,8 +1,8 @@
+import type { RuntimeServices } from '@corvidae/lifecycle';
 import type {
   Context as OpenTelemetryContext,
   Link as OpenTelemetryLink,
 } from '@opentelemetry/api';
-import type { RuntimeServices } from '@repo/lifecycle';
 import type { ToolError, ToolErrorCategory } from './core/errors';
 import type { LoopDetector } from './core/loop-detection';
 import type { Tool, ToolConfiguration } from './is-tool';

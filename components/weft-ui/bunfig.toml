@@ -1,0 +1,5 @@
+[test]
+preload = ["./tests/setup.ts"]
+coverageReporter = ["text", "lcov"]
+coverageSkipTestFiles = true
+pathIgnorePatterns = ["scripts/browser/tests/e2e/**"]

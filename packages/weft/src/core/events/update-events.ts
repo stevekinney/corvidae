@@ -5,7 +5,7 @@
  *
  * @example
  * ```ts
- * import { Engine, UpdateReceivedEvent } from '@repo/weft';
+ * import { Engine, UpdateReceivedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(UpdateReceivedEvent.type, (event) => {
@@ -36,7 +36,7 @@ export class UpdateReceivedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, UpdateCompletedEvent } from '@repo/weft';
+ * import { Engine, UpdateCompletedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(UpdateCompletedEvent.type, (event) => {

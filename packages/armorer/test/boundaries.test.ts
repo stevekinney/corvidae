@@ -13,9 +13,10 @@ const pkg: {
 } = packageJson;
 
 describe('package dependency boundaries', () => {
-  it('keeps MCP out of dependencies unless this source package directly owns MCP execution', () => {
-    expect(pkg.dependencies?.['@modelcontextprotocol/sdk']).toBeDefined();
-    expect(pkg.peerDependencies?.['@modelcontextprotocol/sdk']).toBeUndefined();
-    expect(pkg.peerDependenciesMeta?.['@modelcontextprotocol/sdk']).toBeUndefined();
+  it('owns the MCP v2 packages used for execution', () => {
+    expect(pkg.dependencies?.['@modelcontextprotocol/client']).toBeDefined();
+    expect(pkg.dependencies?.['@modelcontextprotocol/core']).toBeDefined();
+    expect(pkg.dependencies?.['@modelcontextprotocol/server']).toBeDefined();
+    expect(pkg.dependencies?.['@modelcontextprotocol/sdk']).toBeUndefined();
   });
 });

@@ -53,7 +53,7 @@ import { WeftError } from '../weft-error.ts';
  *
  * @example
  * ```ts
- * import { Engine, WorkflowRevisionUnavailableError } from '@repo/weft';
+ * import { Engine, WorkflowRevisionUnavailableError } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * try {

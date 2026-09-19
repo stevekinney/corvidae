@@ -72,8 +72,8 @@ export interface CodingTools {
  *
  * @example
  * ```typescript
- * import { createCodingTools } from '@repo/armorer';
- * import { createToolbox } from '@repo/armorer';
+ * import { createCodingTools } from '@corvidae/armorer';
+ * import { createToolbox } from '@corvidae/armorer';
  *
  * const { readFile, grep, glob } = createCodingTools({ root: process.cwd() });
  * const toolbox = createToolbox([readFile, grep, glob]);

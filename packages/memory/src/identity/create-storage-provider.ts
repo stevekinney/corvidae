@@ -1,5 +1,5 @@
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
-import type { TextValueStore } from '@repo/weft';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
+import type { TextValueStore } from '@corvidae/weft';
 
 import type { IdentityProvider, PersonaDescriptor, SoulHistoryEntry, SoulItem } from './types';
 

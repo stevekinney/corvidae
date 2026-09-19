@@ -21,7 +21,7 @@ import type { ApplicationDeliveryReceipt, OutboxCapacity } from './outbox-contra
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryClaimedPayload } from '@repo/weft';
+ * import type { ApplicationDeliveryClaimedPayload } from '@corvidae/weft';
  *
  * declare const payload: ApplicationDeliveryClaimedPayload;
  * if (payload.form === 'inline') console.log(payload.verified); // true
@@ -55,7 +55,7 @@ export type ApplicationDeliveryClaimedPayload =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryClaim } from '@repo/weft';
+ * import type { ApplicationDeliveryClaim } from '@corvidae/weft';
  *
  * declare const claim: ApplicationDeliveryClaim;
  * console.log(claim.attemptToken, claim.signal.aborted);
@@ -79,7 +79,7 @@ export type ApplicationDeliveryClaim = Readonly<{
  *
  * @example
  * ```ts
- * import type { OutboxClaimResult } from '@repo/weft';
+ * import type { OutboxClaimResult } from '@corvidae/weft';
  *
  * declare const result: OutboxClaimResult;
  * if (result.status === 'claimed') console.log(result.claim.attemptToken);
@@ -96,7 +96,7 @@ export type OutboxClaimResult =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryHeartbeatResult } from '@repo/weft';
+ * import type { ApplicationDeliveryHeartbeatResult } from '@corvidae/weft';
  *
  * declare const result: ApplicationDeliveryHeartbeatResult;
  * if (result.status === 'renewed' && result.cancellationRequested) console.log('stop sending');
@@ -123,7 +123,7 @@ export type ApplicationDeliveryHeartbeatResult =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliverySettleResult } from '@repo/weft';
+ * import type { ApplicationDeliverySettleResult } from '@corvidae/weft';
  *
  * declare const result: ApplicationDeliverySettleResult;
  * if (result.status === 'settled') console.log(result.receipt.state);
@@ -142,7 +142,7 @@ export type ApplicationDeliverySettleResult =
  *
  * @example
  * ```ts
- * import type { OutboxDeliverResult } from '@repo/weft';
+ * import type { OutboxDeliverResult } from '@corvidae/weft';
  *
  * declare const result: OutboxDeliverResult;
  * if (result.status === 'settled') console.log(result.receipt.state);
@@ -174,7 +174,7 @@ export type OutboxDeliverResult =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryCancellationResult } from '@repo/weft';
+ * import type { ApplicationDeliveryCancellationResult } from '@corvidae/weft';
  *
  * declare const result: ApplicationDeliveryCancellationResult;
  * if (result.status === 'requested') console.log(result.cleanupPending); // true
@@ -195,7 +195,7 @@ export type ApplicationDeliveryCancellationResult =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryCleanupResult } from '@repo/weft';
+ * import type { ApplicationDeliveryCleanupResult } from '@corvidae/weft';
  *
  * declare const cleanup: ApplicationDeliveryCleanupResult;
  * console.log(cleanup.status === 'pending'); // the outbox stopped waiting
@@ -211,7 +211,7 @@ export type ApplicationDeliveryCleanupResult =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryOperatorResult } from '@repo/weft';
+ * import type { ApplicationDeliveryOperatorResult } from '@corvidae/weft';
  *
  * declare const result: ApplicationDeliveryOperatorResult;
  * if (result.status === 'applied') console.log(result.receipt.state);
@@ -237,7 +237,7 @@ export type ApplicationDeliveryOperatorResult =
  *
  * @example
  * ```ts
- * import type { OutboxMaintenanceReport } from '@repo/weft';
+ * import type { OutboxMaintenanceReport } from '@corvidae/weft';
  *
  * declare const report: OutboxMaintenanceReport;
  * console.log(report.rescheduled, report.parked, report.retired);
@@ -258,7 +258,7 @@ export type OutboxMaintenanceReport = Readonly<{
  *
  * @example
  * ```ts
- * import type { OutboxWaitOptions } from '@repo/weft';
+ * import type { OutboxWaitOptions } from '@corvidae/weft';
  *
  * const options: OutboxWaitOptions = { timeoutMs: 5_000 };
  * console.log(options.timeoutMs); // 5000
@@ -276,7 +276,7 @@ export type OutboxWaitOptions = {
  *
  * @example
  * ```ts
- * import type { OutboxDrainReport } from '@repo/weft';
+ * import type { OutboxDrainReport } from '@corvidae/weft';
  *
  * declare const report: OutboxDrainReport;
  * console.log(report.acknowledged, report.pending);

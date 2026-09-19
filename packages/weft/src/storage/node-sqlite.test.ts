@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
+import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
 import { loadBetterSqlite3ForTest } from './node-sqlite-loader.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 
@@ -292,7 +293,9 @@ it('resolves native Node when a filesystem Bun shim shadows PATH', () => {
   const directory = mkdtempSync(join(tmpdir(), 'weft-node-runtime-'));
   try {
     symlinkSync(process.execPath, join(directory, 'node'));
-    const runtime = resolveNativeNode([directory, process.env['PATH'] ?? ''].join(delimiter));
+    const runtime = resolveNativeNode(
+      [directory, resolveCliEnvironment().path ?? ''].join(delimiter),
+    );
     const identity = Bun.spawnSync([runtime, '-p', 'typeof process.versions.bun']);
     expect(identity.exitCode).toBe(0);
     expect(identity.stdout.toString().trim()).toBe('undefined');
@@ -318,7 +321,7 @@ it('runs all native SQLite integration cases under Node', async () => {
   // Verify runtime identity while preserving the inherited runtime managers.
   const environment = {
     ...process.env,
-    PATH: (process.env['PATH'] ?? '').split(delimiter).filter(existsSync).join(delimiter),
+    PATH: (resolveCliEnvironment().path ?? '').split(delimiter).filter(existsSync).join(delimiter),
   };
   const runtime = resolveNativeNode(environment.PATH);
   const child = Bun.spawn({

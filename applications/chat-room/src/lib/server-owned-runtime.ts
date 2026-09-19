@@ -1,7 +1,7 @@
-import type { SessionStore } from '@repo/operative';
-import { createSessionStore } from '@repo/operative';
-import type { ConditionalTextValueStore, Storage } from '@repo/weft';
-import { textValueStore } from '@repo/weft';
+import type { SessionStore } from '@corvidae/operative';
+import { createSessionStore } from '@corvidae/operative';
+import type { ConditionalTextValueStore, Storage } from '@corvidae/weft';
+import { textValueStore } from '@corvidae/weft';
 import { writeSync } from 'node:fs';
 import { settleRuntimeOwnedPendingApprovals } from './server-owned-elicitation.ts';
 import type { Durability } from './server-owned-storage.ts';

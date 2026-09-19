@@ -1,13 +1,37 @@
 import { plugin } from 'bun';
 import { beforeAll, describe, expect, test } from 'bun:test';
 
-import { compileSvelteComponentForBun, sveltePlugin } from './svelte-plugin.ts';
+import {
+  compileSvelteComponentForBun,
+  compileSvelteRuneModuleForBun,
+  sveltePlugin,
+} from './svelte-plugin.ts';
 
 beforeAll(async () => {
   await plugin(sveltePlugin({ generate: 'client' }));
 });
 
 describe('sveltePlugin', () => {
+  test('explicit build mode controls component diagnostics independently of the host process', () => {
+    const source = '<p>Browser fixture</p>';
+    const options = { generate: 'client', injectCss: true } as const;
+    const development = compileSvelteComponentForBun(source, 'fixture.svelte', options, {}, true);
+    const production = compileSvelteComponentForBun(source, 'fixture.svelte', options, {}, false);
+
+    expect(development.contents).toContain('check_target');
+    expect(production.contents).not.toContain('check_target');
+    expect(production.contents).not.toContain('mark_module_start');
+  });
+
+  test('explicit build mode also controls rune-module diagnostics', () => {
+    const source = 'export class Counter { count = $state(0); }';
+    const development = compileSvelteRuneModuleForBun(source, 'counter.svelte.ts', 'client', true);
+    const production = compileSvelteRuneModuleForBun(source, 'counter.svelte.ts', 'client', false);
+
+    expect(development.contents).toContain('$.tag');
+    expect(production.contents).not.toContain('$.tag');
+  });
+
   test('executes a real Svelte component through Bun dynamic import', async () => {
     const module = await import('./fixtures/svelte-plugin-component.svelte');
     expect(typeof module.default).toBe('function');

@@ -19,7 +19,7 @@ import { parseWorkerManifest, type WorkerManifestParseResult } from './parse.ts'
  *
  * @example
  * ```ts
- * import { parseWorkerManifestJson } from '@repo/weft';
+ * import { parseWorkerManifestJson } from '@corvidae/weft';
  *
  * const result = parseWorkerManifestJson('{"manifestVersion":1,"manifestVersion":2}');
  * console.log(result.ok ? 'accepted' : result.reason); // 'duplicate_key'

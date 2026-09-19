@@ -55,7 +55,7 @@ describe('createDualNamespaceMemory — merged-read / private-write', () => {
     await dualMemory.init();
   });
 
-  describe('@repo/lifecycle', () => {
+  describe('@corvidae/lifecycle', () => {
     it('initializes both private and shared memories', async () => {
       const lifecyclePrivateMemory = makeMemory('lifecycle-private');
       const lifecycleSharedMemory = makeMemory('lifecycle-shared');

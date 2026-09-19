@@ -1,4 +1,4 @@
-import type { Modality, ModalityMatrix } from '@repo/conversationalist';
+import type { Modality, ModalityMatrix } from '@corvidae/conversationalist';
 import type { ProviderName } from './types.ts';
 
 // ── Modality matrices ───────────────────────────────────────────────────────

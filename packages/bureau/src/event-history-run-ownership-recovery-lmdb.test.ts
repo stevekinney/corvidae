@@ -15,8 +15,8 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createTool, createToolbox } from '@repo/armorer';
-import { stopWhen } from '@repo/operative';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { stopWhen } from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

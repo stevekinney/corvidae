@@ -51,7 +51,7 @@ import type {
   RuntimeServices,
   RuntimeTimeoutHandle,
   Subscription,
-} from '@repo/lifecycle';
+} from '@corvidae/lifecycle';
 
 import type { ChildRunRegistry } from '../child-run';
 import type { CleanupAcknowledgement, ClosedOptions } from '../types';

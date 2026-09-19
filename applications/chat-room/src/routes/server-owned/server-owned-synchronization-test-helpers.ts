@@ -1,6 +1,6 @@
 import type { APIResponse } from '@playwright/test';
 import type { ServerOwnedConversationSnapshot } from '../../lib/server-owned-snapshot.ts';
-import { gotoHydrated } from '../exercises/hydration';
+import { gotoHydrated } from '../page.svelte-test-helpers';
 import { fixtureMarker } from '../streaming-fixture';
 
 export { fixtureMarker, gotoHydrated };

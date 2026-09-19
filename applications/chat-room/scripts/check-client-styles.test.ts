@@ -70,22 +70,22 @@ describe('findMissingStyleMarkers', () => {
 
   test('covers every component stylesheet that ships a barrel import', () => {
     // The markers are the contract: each `.css` sidecar next to a component
-    // barrel in `packages/chat` must have one, or a barrel that loses its
+    // barrel in `components/chat` must have one, or a barrel that loses its
     // import goes unnoticed while the chat.css markers still pass.
     const sources = new Set(REQUIRED_STYLE_MARKERS.map(({ source }) => source));
     expect([...sources].toSorted()).toEqual([
-      '@repo/chat chat-composer-popover.css',
-      '@repo/chat chat-conversation-header.css',
-      '@repo/chat chat-conversation-list.css',
-      '@repo/chat chat-navigation-rail.css',
-      '@repo/chat chat-sub-session.css',
-      '@repo/chat chat.css',
+      '@corvidae/chat chat-composer-popover.css',
+      '@corvidae/chat chat-conversation-header.css',
+      '@corvidae/chat chat-conversation-list.css',
+      '@corvidae/chat chat-navigation-rail.css',
+      '@corvidae/chat chat-sub-session.css',
+      '@corvidae/chat chat.css',
     ]);
   });
 
   test('a single missing component stylesheet is reported by name', () => {
     const withoutRail = EVERY_SIDECAR.replace(
-      COMPONENT_SIDECARS['@repo/chat chat-navigation-rail.css'] ?? '',
+      COMPONENT_SIDECARS['@corvidae/chat chat-navigation-rail.css'] ?? '',
       '',
     );
     expect(
@@ -93,7 +93,7 @@ describe('findMissingStyleMarkers', () => {
         new Map([['chat.hash.css', withoutRail]]),
         REQUIRED_STYLE_MARKERS,
       ).map(({ source }) => source),
-    ).toEqual(['@repo/chat chat-navigation-rail.css']);
+    ).toEqual(['@corvidae/chat chat-navigation-rail.css']);
   });
 });
 

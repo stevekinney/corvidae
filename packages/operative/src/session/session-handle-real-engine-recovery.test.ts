@@ -1,14 +1,14 @@
-import type { Toolbox } from '@repo/armorer';
-import { createToolbox } from '@repo/armorer';
-import { createConversationHistory } from '@repo/conversationalist';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import type { Toolbox } from '@corvidae/armorer';
+import { createToolbox } from '@corvidae/armorer';
+import { createConversationHistory } from '@corvidae/conversationalist';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import {
   MemoryStorage,
   textValueStore,
   workflow,
   yieldToPortableEventLoop,
   type WorkflowState,
-} from '@repo/weft';
+} from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentSession } from '../agent-session';

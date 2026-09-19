@@ -174,12 +174,8 @@ describe('blockBaselineGuard — validating (updateSnapshots: none)', () => {
     expect(result.message).toContain(BASELINE);
     // Names the block-mode env var that triggered the comparison.
     expect(result.message).toContain('CINDER_VISUAL_DIFF=block');
-    expect(result.message).toContain(
-      'bun run --cwd applications/cinder-browser-fixtures test:browser:update',
-    );
-    expect(result.message).toContain(
-      'bun run --cwd applications/cinder-browser-fixtures test:browser:visual',
-    );
+    expect(result.message).toContain('bun run test:browser:update');
+    expect(result.message).toContain('bun run test:browser:visual');
   });
 });
 

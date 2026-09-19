@@ -1,6 +1,6 @@
-import type { ToolExecutionResult } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import type { ToolCall } from '@repo/interoperability';
+import type { ToolExecutionResult } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import type { ToolCall } from '@corvidae/tool-protocol';
 
 import {
   ResponseSchemaFailedEvent,

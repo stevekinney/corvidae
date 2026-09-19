@@ -1,4 +1,4 @@
-import { runDetectorPipeline } from '@repo/armorer';
+import { runDetectorPipeline } from '@corvidae/armorer';
 
 import { GuardrailTripwireError } from '../errors';
 import type { GenerateResponse, PrepareStepHook, StepContext } from '../types';

@@ -1,6 +1,6 @@
-import { createTestToolbox, createTool, createToolbox, type Tool } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import { TypedEventTarget } from '@repo/lifecycle';
+import { createTestToolbox, createTool, createToolbox, type Tool } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import { TypedEventTarget } from '@corvidae/lifecycle';
 import {
   type ActiveRun,
   BudgetExceededEvent,
@@ -14,7 +14,7 @@ import {
   runFrameSchema,
   StreamCustomEvent,
   type StreamEventMap,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -1,4 +1,4 @@
-import { getMessages } from '@repo/chat';
+import { getMessages } from '@corvidae/chat';
 import { json } from '@sveltejs/kit';
 
 import {

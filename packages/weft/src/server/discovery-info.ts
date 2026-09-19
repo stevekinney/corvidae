@@ -13,8 +13,8 @@
  *
  * @example
  * ```ts
- * import { serve, type DiscoveryInfo } from '@repo/weft';
- * import { Engine, MemoryStorage } from '@repo/weft';
+ * import { serve, type DiscoveryInfo } from '@corvidae/weft';
+ * import { Engine, MemoryStorage } from '@corvidae/weft';
  *
  * const discoveryInfo: DiscoveryInfo = {
  *   description: 'Order processing API',

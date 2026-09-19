@@ -18,7 +18,7 @@ import type {
  *
  * @example
  * ```ts
- * import { createObservabilityInterceptors, type InterceptionContext } from '@repo/weft';
+ * import { createObservabilityInterceptors, type InterceptionContext } from '@corvidae/weft';
  *
  * const { interceptor } = createObservabilityInterceptors({
  *   attributeExtractor: (ctx: InterceptionContext) => {
@@ -49,7 +49,7 @@ export type InterceptionContext =
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage, createObservabilityInterceptors, type ObservabilityOptions } from '@repo/weft';
+ * import { Engine, MemoryStorage, createObservabilityInterceptors, type ObservabilityOptions } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });

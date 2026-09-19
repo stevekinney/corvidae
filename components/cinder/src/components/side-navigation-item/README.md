@@ -1,0 +1,39 @@
+# SideNavigationItem
+
+Individual link within a side navigation, supporting nesting and active highlighting.
+
+## Usage
+
+`SideNavigationItem` is a compose-only leaf of [`SideNavigation`](../side-navigation/README.md). The idiomatic API is `SideNavigation.Item`, reached through the parent namespace — see the [side-navigation README](../side-navigation/README.md#usage) for the composed snippet. The flat `@corvidae/cinder` subpath remains exported for à-la-carte builds that import the leaf directly.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `active` | `boolean` | no | — | Marks this item as the currently active destination; emits `aria-current` and applies active visual styling. |
+| `class` | `string` | no | — | Additional class merged onto the `.cinder-navigation-item` root element. |
+| `current` | `"true"` \| `"page"` \| `"step"` \| `"location"` \| `"date"` \| `"time"` | no | — | The `aria-current` token emitted while `active` is true. Defaults to `'page'`, which is correct for navigation bars and breadcrumb-adjacent links. Use `'true'` (or another standard token such as `'step'` / `'location'`) for section/view switchers, where `'page'` would mislabel the current section as the current page in the browsing context. |
+| `disabled` | `boolean` | no | — | Prevents interaction: removes the item from the tab order, blocks clicks, and applies disabled visual styling. |
+| `href` | `string` | no | — | Destination URL. Providing this prop renders the item as an `<a>` element instead of a `<button>`. |
+| `listItemClass` | `string` | no | — | Class merged onto the outer <li>. |
+| `children` | `(opaque)` | yes | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
+| `onclick` | `(opaque)` | no | — | Optional click handler called for the rendered `<a>` element. Useful for intercepting plain left-clicks for SPA navigation while letting modified clicks (cmd/ctrl/shift/alt or middle-click) fall through to native browser behavior. Disabled-state preventDefault still applies. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+None.
+
+<!-- generated:subcomponents:end -->

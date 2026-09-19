@@ -10,14 +10,15 @@
  * already has that credential available as an environment variable — this
  * script reads it but never logs, prints, or otherwise echoes its value.
  */
-import { createToolbox } from '@repo/armorer';
+import { createToolbox } from '@corvidae/armorer';
 import {
   appendUserMessage,
   createConversationHistory,
   decodeChatStreamEvent,
   type ChatStreamEvent,
-} from '@repo/chat';
-import { createAnthropicProviderStream } from '@repo/operative';
+} from '@corvidae/chat';
+import { createAnthropicProviderStream } from '@corvidae/operative';
+import { readLiveEnvironmentConfiguration } from './environment-configuration.ts';
 
 import { createChatAgent, createChatStreamWriter, startChatRun } from '../src/lib/chat-agent.ts';
 import { pumpChatRun } from '../src/lib/chat-run-pump.ts';
@@ -26,7 +27,7 @@ const MODEL = 'claude-sonnet-5';
 const MAX_TOKENS = 256;
 
 async function main(): Promise<void> {
-  const apiKey = process.env['ANTHROPIC_API_KEY'];
+  const apiKey = readLiveEnvironmentConfiguration().anthropicApiKey;
 
   if (!apiKey) {
     console.error('test:live-operative requires ANTHROPIC_API_KEY in the environment.');

@@ -7,7 +7,7 @@
  *
  * @example
  * ```ts
- * import type { StandardTypedV1Properties } from '@repo/weft';
+ * import type { StandardTypedV1Properties } from '@corvidae/weft';
  *
  * const properties: StandardTypedV1Properties = { version: 1, vendor: 'example' };
  * void properties;
@@ -24,7 +24,7 @@ export interface StandardTypedV1Properties<Input = unknown, Output = Input> {
  *
  * @example
  * ```ts
- * import type { StandardTypedV1Types } from '@repo/weft';
+ * import type { StandardTypedV1Types } from '@corvidae/weft';
  *
  * const types: StandardTypedV1Types<string, number> = {
  *   input: '',
@@ -43,7 +43,7 @@ export interface StandardTypedV1Types<Input = unknown, Output = Input> {
  *
  * @example
  * ```ts
- * import type { StandardSchemaV1Properties } from '@repo/weft';
+ * import type { StandardSchemaV1Properties } from '@corvidae/weft';
  *
  * const properties: StandardSchemaV1Properties<unknown, string> = {
  *   version: 1,
@@ -69,7 +69,7 @@ export interface StandardSchemaV1Properties<
  *
  * @example
  * ```ts
- * import type { StandardSchemaV1Result } from '@repo/weft';
+ * import type { StandardSchemaV1Result } from '@corvidae/weft';
  *
  * const result: StandardSchemaV1Result<string> = { value: 'ok' };
  * void result;
@@ -83,7 +83,7 @@ export type StandardSchemaV1Result<Output> =
  *
  * @example
  * ```ts
- * import type { StandardSchemaV1SuccessResult } from '@repo/weft';
+ * import type { StandardSchemaV1SuccessResult } from '@corvidae/weft';
  *
  * const result: StandardSchemaV1SuccessResult<string> = { value: 'ok' };
  * void result;
@@ -99,7 +99,7 @@ export interface StandardSchemaV1SuccessResult<Output> {
  *
  * @example
  * ```ts
- * import type { StandardSchemaV1FailureResult } from '@repo/weft';
+ * import type { StandardSchemaV1FailureResult } from '@corvidae/weft';
  *
  * const result: StandardSchemaV1FailureResult = {
  *   issues: [{ message: 'Expected a string.' }],
@@ -116,7 +116,7 @@ export interface StandardSchemaV1FailureResult {
  *
  * @example
  * ```ts
- * import type { StandardSchemaV1Issue } from '@repo/weft';
+ * import type { StandardSchemaV1Issue } from '@corvidae/weft';
  *
  * const issue: StandardSchemaV1Issue = { message: 'Expected a string.' };
  * void issue;
@@ -132,7 +132,7 @@ export interface StandardSchemaV1Issue {
  *
  * @example
  * ```ts
- * import type { StandardSchemaV1PathSegment } from '@repo/weft';
+ * import type { StandardSchemaV1PathSegment } from '@corvidae/weft';
  *
  * const segment: StandardSchemaV1PathSegment = { key: 'email' };
  * void segment;
@@ -147,7 +147,7 @@ export interface StandardSchemaV1PathSegment {
  *
  * @example
  * ```ts
- * import type { StandardSchemaV1Options } from '@repo/weft';
+ * import type { StandardSchemaV1Options } from '@corvidae/weft';
  *
  * const options: StandardSchemaV1Options = { libraryOptions: { abortEarly: true } };
  * void options;
@@ -162,7 +162,7 @@ export interface StandardSchemaV1Options {
  *
  * @example
  * ```ts
- * import type { StandardJSONSchemaV1Properties } from '@repo/weft';
+ * import type { StandardJSONSchemaV1Properties } from '@corvidae/weft';
  *
  * const properties: StandardJSONSchemaV1Properties = {
  *   version: 1,
@@ -187,7 +187,7 @@ export interface StandardJSONSchemaV1Properties<
  *
  * @example
  * ```ts
- * import type { StandardJSONSchemaV1Converter } from '@repo/weft';
+ * import type { StandardJSONSchemaV1Converter } from '@corvidae/weft';
  *
  * const converter: StandardJSONSchemaV1Converter = {
  *   input: () => ({ type: 'object' }),
@@ -206,7 +206,7 @@ export interface StandardJSONSchemaV1Converter {
  *
  * @example
  * ```ts
- * import type { StandardJSONSchemaV1Target } from '@repo/weft';
+ * import type { StandardJSONSchemaV1Target } from '@corvidae/weft';
  *
  * const target: StandardJSONSchemaV1Target = 'draft-2020-12';
  * void target;
@@ -220,7 +220,7 @@ export type StandardJSONSchemaV1Target =
  *
  * @example
  * ```ts
- * import type { StandardJSONSchemaV1Options } from '@repo/weft';
+ * import type { StandardJSONSchemaV1Options } from '@corvidae/weft';
  *
  * const options: StandardJSONSchemaV1Options = { target: 'draft-2020-12' };
  * void options;
@@ -242,7 +242,7 @@ export interface StandardJSONSchemaV1Options {
  *
  * @example
  * ```ts
- * import type { StandardTypedV1 } from '@repo/weft';
+ * import type { StandardTypedV1 } from '@corvidae/weft';
  *
  * const typedMetadata = {
  *   '~standard': { version: 1, vendor: 'example' },
@@ -260,7 +260,7 @@ export interface StandardTypedV1<Input = unknown, Output = Input> {
  *
  * @example
  * ```ts
- * import type { StandardSchemaV1 } from '@repo/weft';
+ * import type { StandardSchemaV1 } from '@corvidae/weft';
  *
  * const stringSchema = {
  *   '~standard': {
@@ -286,7 +286,7 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
  *
  * @example
  * ```ts
- * import type { StandardJSONSchemaV1 } from '@repo/weft';
+ * import type { StandardJSONSchemaV1 } from '@corvidae/weft';
  *
  * const jsonSchemaMetadata = {
  *   '~standard': {
@@ -317,7 +317,7 @@ export interface StandardJSONSchemaV1<Input = unknown, Output = Input> {
  *
  * @example
  * ```ts
- * import type { DefinitionSchema } from '@repo/weft';
+ * import type { DefinitionSchema } from '@corvidae/weft';
  *
  * function acceptsDefinitionSchema(schema: DefinitionSchema): DefinitionSchema {
  *   return schema;
@@ -340,7 +340,7 @@ export type DefinitionSchema<Input = unknown, Output = Input> =
  *
  * @example
  * ```ts
- * import type { InferSchemaInput } from '@repo/weft';
+ * import type { InferSchemaInput } from '@corvidae/weft';
  * import { z } from 'zod';
  *
  * const schema = z.string().transform((s) => s.length);
@@ -362,7 +362,7 @@ export type InferSchemaInput<TSchema> =
  *
  * @example
  * ```ts
- * import type { InferSchemaOutput } from '@repo/weft';
+ * import type { InferSchemaOutput } from '@corvidae/weft';
  * import { z } from 'zod';
  *
  * const schema = z.string().transform((s) => s.length);

@@ -26,7 +26,7 @@ import { WeftError } from '../weft-error.ts';
  *
  * @example
  * ```ts
- * import { Engine, WorkflowCatalogConflictError } from '@repo/weft';
+ * import { Engine, WorkflowCatalogConflictError } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * try {
@@ -136,7 +136,7 @@ export class WorkflowCatalogActivationConflictError extends WeftError<'WorkflowC
  *
  * @example
  * ```ts
- * import { Engine, WorkflowRevisionNotInstalledError } from '@repo/weft';
+ * import { Engine, WorkflowRevisionNotInstalledError } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * try {

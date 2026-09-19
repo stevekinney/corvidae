@@ -46,8 +46,8 @@ const RESERVED_ATOMIC_STATE_KEYS = new Set(['__proto__', 'constructor', 'prototy
  *
  * @example
  * ```ts
- * import { AtomicState, AtomicStateConflictError } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { AtomicState, AtomicStateConflictError } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  * const state = new AtomicState<number>(storage, 'state:workflow-scope:default:counter', {
@@ -225,8 +225,8 @@ function notifyObserver<T>(observer: AtomicStateObserver<T>, event: AtomicStateE
  *
  * @example
  * ```ts
- * import { AtomicState } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { AtomicState } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  * const counter = new AtomicState<number>(storage, 'state:workflow-scope:default:count', { initial: 0 });

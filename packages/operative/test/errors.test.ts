@@ -1,5 +1,5 @@
-import { createTestToolbox, createTool, createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createTestToolbox, createTool, createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';

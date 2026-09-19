@@ -48,8 +48,8 @@ import { installFencedSourceRevision } from './source-install-fence.ts';
  *
  * @example
  * ```ts
- * import { Engine } from '@repo/weft';
- * import type { ResolveWorkflowSourceOptions } from '@repo/weft';
+ * import { Engine } from '@corvidae/weft';
+ * import type { ResolveWorkflowSourceOptions } from '@corvidae/weft';
  *
  * declare const engine: Engine;
  * const options: ResolveWorkflowSourceOptions = { signal: AbortSignal.timeout(5_000) };
@@ -388,11 +388,11 @@ async function resolveCachedOrHandle(
  *
  * @example
  * ```ts
- * import { Engine, workflowSource } from '@repo/weft';
+ * import { Engine, workflowSource } from '@corvidae/weft';
  *
  * declare const engine: Engine;
  * declare const loadCheckout: () => Promise<{
- *   checkout: import('@repo/weft').WorkflowDefinition<unknown, unknown, 'checkout'>;
+ *   checkout: import('@corvidae/weft').WorkflowDefinition<unknown, unknown, 'checkout'>;
  * }>;
  * engine.registerSource(
  *   workflowSource(

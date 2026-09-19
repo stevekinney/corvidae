@@ -9,7 +9,7 @@
  *
  * @example
  * ```ts
- * import { WEFT_RESERVED_KEY_PREFIXES } from '@repo/weft';
+ * import { WEFT_RESERVED_KEY_PREFIXES } from '@corvidae/weft';
  *
  * const key = 'wf:order-123';
  * const isWeftKey = WEFT_RESERVED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));

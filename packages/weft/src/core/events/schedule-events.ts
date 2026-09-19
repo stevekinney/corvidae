@@ -18,7 +18,7 @@
  *
  * @example
  * ```ts
- * import { workflow, Engine, ScheduleFiredEvent } from '@repo/weft';
+ * import { workflow, Engine, ScheduleFiredEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener('schedule:fired', (e: Event) => {
@@ -60,7 +60,7 @@ export class ScheduleFiredEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, ScheduleMissedFireEvent } from '@repo/weft';
+ * import { Engine, ScheduleMissedFireEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(ScheduleMissedFireEvent.type, (event) => {

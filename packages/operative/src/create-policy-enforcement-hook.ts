@@ -1,4 +1,4 @@
-import type { ToolPolicy } from '@repo/interoperability';
+import type { ToolPolicy } from '@corvidae/tool-protocol';
 
 export type { ToolPolicy };
 

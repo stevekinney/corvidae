@@ -8,7 +8,7 @@
  * initialization failure are covered by `agent-catalog.test.ts` and
  * `create-bureau.test.ts` respectively.
  */
-import { createToolbox, type Toolbox } from '@repo/armorer';
+import { createToolbox, type Toolbox } from '@corvidae/armorer';
 import {
   AgentContractError,
   type AgentRun,
@@ -17,7 +17,7 @@ import {
   type DefinitionResolvingAgent,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type RunnableAgent,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

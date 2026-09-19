@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 
 import { type GrantStateStore } from './approval-binding';
 import { createTool as createToolFactory, type CreateToolOptions } from './create-tool';

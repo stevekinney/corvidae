@@ -1,5 +1,5 @@
-import type { StandardSchemaV1 } from '@repo/interoperability';
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { z } from 'zod';
 
 import type { ToolRisk } from '../core/risk';

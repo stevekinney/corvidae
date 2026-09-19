@@ -1,6 +1,6 @@
-import { createConversationHistory } from '@repo/conversationalist';
-import { createManualRuntimeServices } from '@repo/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+import { createConversationHistory } from '@corvidae/conversationalist';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createSessionStore } from './create-session-store';

@@ -35,8 +35,8 @@ interface RegistrationWithPeriodicSync extends ServiceWorkerRegistration {
  *
  * @example
  * ```ts
- * import { ServiceWorkerScheduler, type ServiceWorkerSchedulerOptions } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { ServiceWorkerScheduler, type ServiceWorkerSchedulerOptions } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  *
@@ -76,8 +76,8 @@ const DEFAULT_PERIODIC_SYNC_MIN_INTERVAL = 60_000;
  *
  * @example
  * ```ts
- * import { ServiceWorkerScheduler, createPeriodicSyncHandler } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { ServiceWorkerScheduler, createPeriodicSyncHandler } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  *

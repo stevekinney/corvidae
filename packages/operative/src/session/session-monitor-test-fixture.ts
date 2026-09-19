@@ -1,5 +1,5 @@
-import { Conversation } from '@repo/conversationalist';
-import { CompletableEventTarget, type Subscription } from '@repo/lifecycle';
+import { Conversation } from '@corvidae/conversationalist';
+import { CompletableEventTarget, type Subscription } from '@corvidae/lifecycle';
 import { afterEach } from 'bun:test';
 
 import { createAgentRun, type AgentRun } from '../agent-run';

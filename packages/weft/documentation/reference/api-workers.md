@@ -49,7 +49,7 @@ class WorkerPool implements Disposable, AsyncDisposable {
 **Example:**
 
 ```ts partial
-import { WorkerPool } from '@repo/weft';
+import { WorkerPool } from '@corvidae/weft';
 
 await using pool = new WorkerPool({
   concurrency: 4,
@@ -155,7 +155,7 @@ The worker sends heartbeats every 10 seconds after registration is acknowledged 
 **Example:**
 
 ```ts
-import { RemoteWorker } from '@repo/weft';
+import { RemoteWorker } from '@corvidae/weft';
 
 const worker = new RemoteWorker({
   serverUrl: 'ws://localhost:7233/api/v1/tasks/default/stream',
@@ -244,7 +244,7 @@ class LongPollWorker implements Disposable {
 **Example:**
 
 ```ts
-import { LongPollWorker } from '@repo/weft';
+import { LongPollWorker } from '@corvidae/weft';
 
 const worker = new LongPollWorker({
   serverUrl: 'http://localhost:7233',
@@ -397,7 +397,7 @@ A Git SHA is deliberately absent: repositories may be dirty, builds may inject c
 ### `WorkerManifest`
 
 ```ts
-import { WORKER_MANIFEST_VERSION, type WorkerManifest } from '@repo/weft';
+import { WORKER_MANIFEST_VERSION, type WorkerManifest } from '@corvidae/weft';
 
 const manifest: WorkerManifest = {
   manifestVersion: WORKER_MANIFEST_VERSION,
@@ -428,7 +428,7 @@ Activity keys are canonical runtime activity names, qualified structurally by th
 Both validate an untrusted manifest and return a result rather than throwing, because a malformed manifest is an ordinary wire condition on a boundary the host does not control. A success carries the normalized manifest _and_ its canonical serialization, so a caller that stores or digests the result never re-derives canonical form.
 
 ```ts
-import { parseWorkerManifest } from '@repo/weft';
+import { parseWorkerManifest } from '@corvidae/weft';
 
 const result = parseWorkerManifest(JSON.parse('{"manifestVersion":99}'));
 
@@ -452,7 +452,7 @@ import {
   executionIdentitySatisfies,
   type WorkerExecutionIdentity,
   type WorkerExecutionRequirement,
-} from '@repo/weft';
+} from '@corvidae/weft';
 
 // Pin the deployment; let policy choose any eligible build within it.
 const requirement: WorkerExecutionRequirement = { deploymentName: 'billing' };
@@ -483,7 +483,7 @@ An omitted requirement field means policy may choose any eligible value. It is _
 Manifest digests are content-addressed and algorithm-tagged (`sha256:<hex>`). Two manifests that differ only in key insertion order digest identically; any difference the host cares about changes the digest.
 
 ```ts
-import { computeWorkerManifestDigest, WORKER_MANIFEST_VERSION } from '@repo/weft';
+import { computeWorkerManifestDigest, WORKER_MANIFEST_VERSION } from '@corvidae/weft';
 
 const digest = await computeWorkerManifestDigest({
   manifestVersion: WORKER_MANIFEST_VERSION,
@@ -507,7 +507,7 @@ Use `digestCanonicalWorkerManifest()` when a canonical serialization is already 
 Builds a real manifest from an engine's canonical workflow and activity registrations, replacing the `declared-shape:`-tagged placeholders `RemoteWorker` and the internal Worker realm derive by default. Intended for a build script: construct an `Engine` with every workflow the artifact bundles registered (never started), call this function, and pass the result as [`RemoteWorkerOptions.manifest`](#remoteworkeroptions).
 
 ```ts
-import { buildWorkerManifestFromRegistry, Engine, workflow } from '@repo/weft';
+import { buildWorkerManifestFromRegistry, Engine, workflow } from '@corvidae/weft';
 
 const engine = new Engine();
 engine.register(workflow({ name: 'checkout', version: '2.1.0' }).execute(async function* () {}));

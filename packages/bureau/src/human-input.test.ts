@@ -36,8 +36,8 @@ import {
   createTool,
   createToolbox,
   type Toolbox,
-} from '@repo/armorer';
-import { type GenerateFunction, stopWhen } from '@repo/operative';
+} from '@corvidae/armorer';
+import { type GenerateFunction, stopWhen } from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

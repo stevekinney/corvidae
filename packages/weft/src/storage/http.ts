@@ -23,7 +23,7 @@ import { scopedStorage } from './scoped-storage.ts';
  *
  * @example
  * ```ts
- * import { HTTPStorage, type HTTPStorageOptions } from '@repo/weft';
+ * import { HTTPStorage, type HTTPStorageOptions } from '@corvidae/weft';
  *
  * const token = 'example-token';
  * const options: HTTPStorageOptions = {
@@ -124,7 +124,7 @@ function parseScanLine(line: string): [string, Uint8Array] | null {
  *
  * @example
  * ```ts
- * import { HTTPStorage } from '@repo/weft';
+ * import { HTTPStorage } from '@corvidae/weft';
  *
  * const token = 'example-token';
  * await using storage = new HTTPStorage({

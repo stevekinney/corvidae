@@ -1,5 +1,5 @@
-import { createTool } from '@repo/armorer';
-import type { TextValueStore } from '@repo/weft';
+import { createTool } from '@corvidae/armorer';
+import type { TextValueStore } from '@corvidae/weft';
 import { z } from 'zod';
 
 import type { SkillProvider } from '../types';

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { requestContext, toolbox } from '../../../../lib/toolbox.ts';
 
-import type { SignedPendingToolApproval } from '@repo/armorer';
+import type { SignedPendingToolApproval } from '@corvidae/armorer';
 import type { RequestHandler } from './$types';
 
 const actionSchema = z.object({

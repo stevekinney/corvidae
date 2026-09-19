@@ -33,7 +33,7 @@ export interface ExpiredDeadline {
  *
  * @example
  * ```ts
- * import { createDeadlineOperations } from '@repo/weft';
+ * import { createDeadlineOperations } from '@corvidae/weft';
  *
  * const ops = createDeadlineOperations('wf-123', Date.now(), '30m');
  * // Returns a BatchOperation array to put the deadline key in storage.
@@ -74,8 +74,8 @@ export function cleanupDeadlineOperations(
  *
  * @example
  * ```ts
- * import { checkExpiredDeadlines, createDeadlineOperations } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { checkExpiredDeadlines, createDeadlineOperations } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const storage = new MemoryStorage();
  * const ops = createDeadlineOperations('wf-abc', Date.now() - 60_000, '30s');
@@ -110,7 +110,7 @@ export async function checkExpiredDeadlines(
  *
  * @example
  * ```ts
- * import { timeRemaining } from '@repo/weft';
+ * import { timeRemaining } from '@corvidae/weft';
  *
  * const now = Date.now();
  * const deadline = now + 5000;
@@ -143,7 +143,7 @@ export function timeRemaining(deadline: number | undefined, now: number): number
  *
  * @example
  * ```ts
- * import { workflow, Engine, WorkflowTimeoutError } from '@repo/weft';
+ * import { workflow, Engine, WorkflowTimeoutError } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(

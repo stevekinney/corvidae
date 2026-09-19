@@ -1,10 +1,10 @@
 # Memory
 
-`@repo/memory` provides persistent recall for Agent Bureau agents. It defines the memory API, storage contracts, embedding-backed retrieval, hybrid search, ingestion helpers, runtime hooks, identity primitives, and tool surfaces for storing, recalling, and forgetting memory.
+`@corvidae/memory` provides persistent recall for Agent Bureau agents. It defines the memory API, storage contracts, embedding-backed retrieval, hybrid search, ingestion helpers, runtime hooks, identity primitives, and tool surfaces for storing, recalling, and forgetting memory.
 
 ## Workspace usage
 
-Declare `"@repo/memory": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@repo/memory`; it exports TypeScript source directly and has no library build or publication step.
+Declare `"@corvidae/memory": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@corvidae/memory`; it exports TypeScript source directly and has no library build or publication step.
 
 ## Table of Contents
 
@@ -25,8 +25,8 @@ Declare `"@repo/memory": "workspace:*"` in the consuming workspace's dependencie
 ## What It Does
 
 - Creates a `Memory` instance with `remember()`, `rememberOnce()`, `recall()`, `list()`, `forget()`, `forgetAll()`, and `count()`.
-- Defines the `MemoryRecordStorage` contract used by Weft, Cloudflare, and test backends.
-- Combines vector search, BM25 text search, temporal decay, and maximal marginal relevance.
+- Defines the `MemoryRecordStorage` contract used by Weft-backed and in-memory test storage.
+- Combines vector search, **BM25** text ranking, temporal decay, and **maximal marginal relevance** (MMR) for result diversity.
 - Supports deduplication, conflict detection, namespace isolation, and external text-search providers.
 - Adds ingestion, chunking, file synchronization, reflection, run capture, and consolidation helpers.
 - Provides memory tools and identity tools for use through `armorer` and `operative`.
@@ -35,19 +35,19 @@ Declare `"@repo/memory": "workspace:*"` in the consuming workspace's dependencie
 
 `createMemory()` accepts an embedder and a storage backend. On writes, it embeds content, checks for duplicates or conflicts, persists a canonical memory record, and optionally indexes text. On recall, it gathers vector and text candidates, merges scores, applies temporal decay and diversity, and returns ranked `MemorySearchResult` entries.
 
-The storage contract is intentionally lower-level than the public memory API. Backends own durable record reads and vector lookup, while `memory` owns retrieval semantics. `createWeftMemoryRecordStorage()` is the default durable workspace backend, and `cloudflare` provides a Workers backend with the same storage contract.
+The storage contract is intentionally lower-level than the public memory API. Backends own durable record reads and vector lookup, while `memory` owns retrieval semantics. `createWeftMemoryRecordStorage()` is the durable workspace backend, and `createInMemoryMemoryRecordStorage()` provides an ephemeral backend for tests.
 
 ## Project Role
 
-`operative` uses memory through hooks and bridges during agent runs. `gateway` wires configured memory into the composed runtime. `skills` can use memory to persist skill usage and self-improvement context. The package is the long-term knowledge layer shared by those higher-level surfaces.
+`@corvidae/operative` uses memory through hooks and bridges during agent runs. Host applications wire configured memory into their composed runtime, and `@corvidae/skills` can use it to persist skill usage and learning context. This package is the long-term knowledge layer shared by those higher-level surfaces.
 
 ## Quick Start
 
 `createMemory()` needs two things: an **embedder** (an `Embedder`—`(texts: string[]) => number[][] | Promise<number[][]>`, mapping a batch of strings to one float vector each) and a **storage backend**. This Quick Start uses the deterministic test embedder and the in-memory backend from `memory/test` so it runs with no provider or runtime wiring:
 
 ```typescript
-import { createMemory } from '@repo/memory';
-import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '@repo/memory';
+import { createMemory } from '@corvidae/memory';
+import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '@corvidae/memory';
 
 // Deterministic, unit-normalized, hash-based vectors—no network calls.
 const embedder = createMockEmbedder(128);
@@ -69,14 +69,14 @@ await memory.close();
 For production, supply a real embedder (your model provider's embedding endpoint) and the durable Weft-backed storage instead of the test doubles:
 
 ```typescript
-import { createMemory, createWeftMemoryRecordStorage } from '@repo/memory';
+import { createMemory, createWeftMemoryRecordStorage } from '@corvidae/memory';
 
 // Wire this to your provider—e.g. OpenAI's text-embedding-3-small (1536 dims).
 // An `Embedder` may return vectors synchronously or as a promise; a provider
 // call is async, so this one is too.
 const embedder = async (texts: string[]): Promise<number[][]> => embedProvider(texts);
 
-// `weftStorage` is a Weft Storage instance from the operative/gateway runtime.
+// `weftStorage` is a Weft Storage instance from the host runtime.
 const storage = createWeftMemoryRecordStorage(weftStorage);
 
 const memory = createMemory({ embedder, storage });
@@ -94,7 +94,7 @@ import {
   createHyDEGenerator,
   getMemoryStatus,
   createConsolidationTask,
-} from '@repo/memory';
+} from '@corvidae/memory';
 ```
 
 ### `createMemory(options)`
@@ -331,7 +331,7 @@ interface CreateConsolidationOptions {
 ## Storage Backends
 
 ```typescript
-import { createWeftMemoryRecordStorage, DEFAULT_MEMORY_KEY_PREFIX } from '@repo/memory';
+import { createWeftMemoryRecordStorage, DEFAULT_MEMORY_KEY_PREFIX } from '@corvidae/memory';
 ```
 
 ### `MemoryRecordStorage` (contract)
@@ -414,9 +414,9 @@ interface CreateWeftMemoryRecordStorageOptions {
 ```
 
 ```typescript
-import { createWeftMemoryRecordStorage } from '@repo/memory';
+import { createWeftMemoryRecordStorage } from '@corvidae/memory';
 
-// `weftStorage` comes from the operative/gateway runtime (ctx.services or similar)
+// `weftStorage` comes from the host runtime (`ctx.services` or a similar boundary).
 const storage = createWeftMemoryRecordStorage(weftStorage, {
   keyPrefix: 'my-app:memory:v1:',
 });
@@ -447,7 +447,7 @@ import {
   createRunCaptureHook,
   createReflectionHook,
   summarizeRun,
-} from '@repo/memory';
+} from '@corvidae/memory';
 ```
 
 ### `createMemoryHooks(options)`
@@ -470,8 +470,8 @@ interface MemoryHookOptions {
 ```
 
 ```typescript
-import { createMemoryHooks } from '@repo/memory';
-import { createRun } from '@repo/operative';
+import { createMemoryHooks } from '@corvidae/memory';
+import { createRun } from '@corvidae/operative';
 
 const hooks = createMemoryHooks({ memory, recallLimit: 10 });
 
@@ -506,8 +506,8 @@ function summarizeRun(result: StepResultLike): string;
 ```
 
 ```typescript
-import { createRunCaptureHook } from '@repo/memory';
-import { createRun } from '@repo/operative';
+import { createRunCaptureHook } from '@corvidae/memory';
+import { createRun } from '@corvidae/operative';
 
 const captureHook = createRunCaptureHook({
   memory,
@@ -542,7 +542,7 @@ interface CreateReflectionHookOptions {
 ```
 
 ```typescript
-import { createReflectionHook, summarizeRun } from '@repo/memory';
+import { createReflectionHook, summarizeRun } from '@corvidae/memory';
 
 const reflectionHook = createReflectionHook({
   memory,
@@ -558,7 +558,7 @@ import {
   createMemoryStoreTool,
   createMemoryRecallTool,
   createMemoryForgetTool,
-} from '@repo/memory';
+} from '@corvidae/memory';
 ```
 
 Memory tools are `armorer` `Tool` instances. Pass them to a `Toolbox` alongside your other tools so the model can self-direct its memory operations.
@@ -591,12 +591,12 @@ function createMemoryForgetTool(memory: Memory): Tool;
 ```
 
 ```typescript
-import { createToolbox } from '@repo/armorer';
+import { createToolbox } from '@corvidae/armorer';
 import {
   createMemoryStoreTool,
   createMemoryRecallTool,
   createMemoryForgetTool,
-} from '@repo/memory';
+} from '@corvidae/memory';
 
 const memoryToolbox = createToolbox([
   createMemoryStoreTool(memory),
@@ -616,7 +616,7 @@ import {
   createFileSynchronizer,
   SOURCE_DOCUMENT_KEY,
   CHUNK_INDEX_KEY,
-} from '@repo/memory';
+} from '@corvidae/memory';
 ```
 
 Every loader below implements the same contract—`(document: string, options?: ChunkingOptions) => ContentChunk[] | Promise<ContentChunk[]>`—and produces `ContentChunk[]`. `ingest()` accepts any function matching that shape via its `chunk` option, so adding a format doesn't require changes to this package: write (or wrap) a loader, pass it to `ingest()`.
@@ -671,7 +671,7 @@ function chunkHtml(html: string, options?: ChunkingOptions): Promise<ContentChun
 ```
 
 ```typescript
-import { chunkHtml, ingest } from '@repo/memory';
+import { chunkHtml, ingest } from '@corvidae/memory';
 
 const html = await Bun.file('docs/page.html').text();
 
@@ -686,7 +686,7 @@ await ingest(memory, html, {
 This package intentionally does not bundle a PDF parser—extracting PDF text pulls in a heavyweight, native-dependent library, and only some consumers need it. Extract the text yourself (e.g. with [`pdf-parse`](https://www.npmjs.com/package/pdf-parse) or [`unpdf`](https://www.npmjs.com/package/unpdf), whichever fits your runtime), and feed the result to `chunkText` with page breaks as structure hints:
 
 ```typescript
-import { chunkText, ingest } from '@repo/memory';
+import { chunkText, ingest } from '@corvidae/memory';
 // bun add pdf-parse (or your extractor of choice) as a project dependency
 import pdf from 'pdf-parse';
 
@@ -737,7 +737,7 @@ interface IngestResult {
 ```
 
 ```typescript
-import { ingest } from '@repo/memory';
+import { ingest } from '@corvidae/memory';
 
 const markdown = await Bun.file('docs/getting-started.md').text();
 
@@ -820,7 +820,7 @@ class PollCycleCompletedEvent extends Event {
 ```
 
 ```typescript
-import { createFileSynchronizer } from '@repo/memory';
+import { createFileSynchronizer } from '@corvidae/memory';
 
 const synchronizer = createFileSynchronizer({
   memory,
@@ -860,7 +860,7 @@ import {
   applyMaximalMarginalRelevance,
   extractKeywords,
   isStopWord,
-} from '@repo/memory';
+} from '@corvidae/memory';
 ```
 
 These helpers power `recall()` internally but are exported for custom retrieval pipelines.
@@ -979,7 +979,7 @@ import {
   createPersonaCreateTool,
   createPersonaUpdateTool,
   createPersonaDeleteTool,
-} from '@repo/memory';
+} from '@corvidae/memory';
 ```
 
 Identity captures who an agent _is_—its soul (durable values and traits), personas (role/domain descriptors), and user context. Soul distillation promotes high-confidence experiential memories into pinned soul items over time.
@@ -1054,7 +1054,7 @@ interface CreateSoulSeedOptions {
 ```
 
 ```typescript
-import { createSoulSeed, createStaticIdentityProvider } from '@repo/memory';
+import { createSoulSeed, createStaticIdentityProvider } from '@corvidae/memory';
 
 const soul = createSoulSeed({
   name: 'Aria',
@@ -1172,8 +1172,8 @@ function createIdentityToolbox(provider: IdentityProvider): {
 ```
 
 ```typescript
-import { createToolbox, combineToolboxes } from '@repo/armorer';
-import { createIdentityToolbox } from '@repo/memory';
+import { createToolbox, combineToolboxes } from '@corvidae/armorer';
+import { createIdentityToolbox } from '@corvidae/memory';
 
 const identityTools = createIdentityToolbox(identityProvider);
 
@@ -1192,7 +1192,7 @@ The root API includes deterministic test helpers and the storage contract harnes
 ### Test utilities
 
 ```typescript
-import { createMockEmbedder, createInMemoryMemoryRecordStorage } from '@repo/memory';
+import { createMockEmbedder, createInMemoryMemoryRecordStorage } from '@corvidae/memory';
 ```
 
 **`createMockEmbedder(dimension?)`:** Returns a deterministic, hash-based `Embedder`. No network calls. `dimension` defaults to 128.
@@ -1200,8 +1200,8 @@ import { createMockEmbedder, createInMemoryMemoryRecordStorage } from '@repo/mem
 **`createInMemoryMemoryRecordStorage(options?)`:** Full in-memory backend with the identical observable contract as the Weft local backend—including `putOnce`, `searchByVector` with cosine ranking, and `deleteNamespace`. `options.now` injects the clock used to stamp `updatedAt` on `update()` (defaults to the real `Date.now`); a deterministic test supplies a fixed or stepped clock instead of reaching a real wall clock.
 
 ```typescript
-import { createMemory } from '@repo/memory';
-import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '@repo/memory';
+import { createMemory } from '@corvidae/memory';
+import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '@corvidae/memory';
 
 const storage = createInMemoryMemoryRecordStorage();
 const embedder = createMockEmbedder(128);
@@ -1216,7 +1216,7 @@ expect(results[0]?.content).toBe('The sky is blue.');
 
 ### Storage contract harness
 
-The package's internal `test/contract-harness.ts` registers [Bun test suites](https://bun.sh/docs/test) for both bundled storage backends. It checks put/get round-trips, `putOnce` semantics, namespace isolation, pagination, vector search ranking and thresholds, update, delete invariants, and `deleteNamespace`. Keep backend contract tests inside this package and import the harness relatively, as `test/memory-record-storage-contract.test.ts` does. The runtime root exports the storage interfaces and factories; test registration stays internal so ordinary consumers can import `@repo/memory` outside the test runner.
+The package's internal `test/contract-harness.ts` registers [Bun test suites](https://bun.sh/docs/test) for both bundled storage backends. It checks put/get round-trips, `putOnce` semantics, namespace isolation, pagination, vector search ranking and thresholds, update, delete invariants, and `deleteNamespace`. Keep backend contract tests inside this package and import the harness relatively, as `test/memory-record-storage-contract.test.ts` does. The runtime root exports the storage interfaces and factories; test registration stays internal so ordinary consumers can import `@corvidae/memory` outside the test runner.
 
 Run the shared contract suite from this package directory:
 
@@ -1234,4 +1234,4 @@ bun run typecheck
 bun run test
 ```
 
-From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@repo/memory` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.
+From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@corvidae/memory` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.

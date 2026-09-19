@@ -48,7 +48,7 @@ function snapshotAlertState(state: MutableAlertState): AlertStateSnapshot {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage, AlertManager } from '@repo/weft';
+ * import { Engine, MemoryStorage, AlertManager } from '@corvidae/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });

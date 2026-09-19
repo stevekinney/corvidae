@@ -1,4 +1,4 @@
-import { createAgent, createMockGenerate } from '@repo/operative';
+import { createAgent, createMockGenerate } from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 import { createAgentCatalog } from './agent-catalog';
 import { createSupervisor } from './create-supervisor';

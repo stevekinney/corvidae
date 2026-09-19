@@ -1,6 +1,6 @@
-import { Conversation } from '@repo/conversationalist';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { HISTORY_CIRCUIT_BREAKER_REASON } from '@repo/weft';
+import { Conversation } from '@corvidae/conversationalist';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { HISTORY_CIRCUIT_BREAKER_REASON } from '@corvidae/weft';
 
 import type { ActiveRun } from '../create-run';
 import {

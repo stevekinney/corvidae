@@ -1,4 +1,4 @@
-import { createTool } from '@repo/armorer';
+import { createTool } from '@corvidae/armorer';
 import { z } from 'zod';
 
 import { escapeXml } from './create-skill-catalog-hook';

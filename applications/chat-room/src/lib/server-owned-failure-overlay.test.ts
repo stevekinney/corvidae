@@ -1,4 +1,4 @@
-import { appendUserMessage, createConversationHistory, getMessages } from '@repo/chat';
+import { appendUserMessage, createConversationHistory, getMessages } from '@corvidae/chat';
 import { expect, test } from 'bun:test';
 import { withUnsavedFailures } from './server-owned-failure-overlay';
 import { serverOwnedPersistenceFailureHint } from './server-owned-snapshot';

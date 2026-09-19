@@ -6,7 +6,7 @@
  * is derived from — never a hand-copied model list — so a later addition to
  * any of those tables without a matching descriptor row fails here.
  */
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { defaultPricingTable } from '../cost-estimation.ts';

@@ -59,7 +59,7 @@ describe('yieldToPortableEventLoop', () => {
   });
 });
 
-describe('@repo/weft barrel re-exports', () => {
+describe('@corvidae/weft barrel re-exports', () => {
   // These helpers were defined and used internally but never reachable from the
   // public testing barrel. A consumer could not write
   // `afterEach(yieldToPortableEventLoop)` to drain a deferred inline launch

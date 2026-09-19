@@ -1,4 +1,4 @@
-import type { TextValueStore } from '@repo/weft';
+import type { TextValueStore } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type {

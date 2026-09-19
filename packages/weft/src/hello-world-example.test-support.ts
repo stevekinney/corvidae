@@ -1,10 +1,10 @@
 /**
  * The smallest end-to-end Weft example: define an activity, compose it into a
  * workflow, then run it on an in-memory engine. This is a real consumer starting
- * point — it imports everything from the source-only `@repo/weft` workspace, exactly as
+ * point — it imports everything from the source-only `@corvidae/weft` workspace, exactly as
  * your own project would. Run it with `bun src/hello-world-example.test-support.ts` from the Weft workspace.
  */
-import { Engine, MemoryStorage, activity, workflow } from '@repo/weft';
+import { Engine, MemoryStorage, activity, workflow } from '@corvidae/weft';
 
 // --- hello-world -----------------------------------------------------------
 

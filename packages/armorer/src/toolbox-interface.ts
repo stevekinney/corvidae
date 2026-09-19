@@ -1,4 +1,9 @@
-import type { EventIteratorOptions, ObservableLike, Observer, Subscription } from '@repo/lifecycle';
+import type {
+  EventIteratorOptions,
+  ObservableLike,
+  Observer,
+  Subscription,
+} from '@corvidae/lifecycle';
 import type { AnthropicTool } from './adapters/anthropic/types';
 import type { GeminiTool } from './adapters/gemini/types';
 import type { OpenAITool } from './adapters/openai/types';

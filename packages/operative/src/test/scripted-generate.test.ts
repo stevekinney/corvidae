@@ -1,5 +1,5 @@
-import { createTestToolbox, createTool } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createTestToolbox, createTool } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

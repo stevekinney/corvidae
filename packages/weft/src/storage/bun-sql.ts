@@ -31,7 +31,7 @@ type BunSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence'
 
 /**
  * Runtime-neutral alias for the Bun SQLite adapter. Consumers that import
- * from `@repo/weft` get this class under Bun.
+ * from `@corvidae/weft` get this class under Bun.
  */
 
 /**
@@ -48,8 +48,8 @@ type BunSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence'
  *
  * @example
  * ```ts
- * import { BunSQLiteStorage } from '@repo/weft';
- * import { workflow, Engine, type WorkflowContext } from '@repo/weft';
+ * import { BunSQLiteStorage } from '@corvidae/weft';
+ * import { workflow, Engine, type WorkflowContext } from '@corvidae/weft';
  *
  * // Durable on-disk storage
  * await using storage = new BunSQLiteStorage('./weft.db');

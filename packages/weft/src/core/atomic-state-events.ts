@@ -4,7 +4,7 @@
  *
  * @example
  * ```ts
- * import type { SleepFunction } from '@repo/weft';
+ * import type { SleepFunction } from '@corvidae/weft';
  *
  * const sleep: SleepFunction = async (milliseconds) => {
  *   await Bun.sleep(milliseconds);
@@ -19,7 +19,7 @@ export type SleepFunction = (milliseconds: number) => Promise<void>;
  *
  * @example
  * ```ts
- * import type { AtomicStateOptions } from '@repo/weft';
+ * import type { AtomicStateOptions } from '@corvidae/weft';
  *
  * const options: AtomicStateOptions<number> = {
  *   initial: 0,
@@ -49,7 +49,7 @@ export interface AtomicStateOptions<T = unknown> {
  *
  * @example
  * ```ts
- * import type { AtomicStateScope } from '@repo/weft';
+ * import type { AtomicStateScope } from '@corvidae/weft';
  *
  * const scope: AtomicStateScope = {
  *   type: 'workflow',
@@ -65,7 +65,7 @@ export type AtomicStateScope =
  *
  * @example
  * ```ts
- * import type { AtomicStateSnapshot } from '@repo/weft';
+ * import type { AtomicStateSnapshot } from '@corvidae/weft';
  *
  * const snapshot: AtomicStateSnapshot<number> = { value: 1, version: 2 };
  * console.log(snapshot.version);
@@ -81,7 +81,7 @@ export interface AtomicStateSnapshot<T = unknown> {
  *
  * @example
  * ```ts
- * import type { AtomicStateCommitResult } from '@repo/weft';
+ * import type { AtomicStateCommitResult } from '@corvidae/weft';
  *
  * const result: AtomicStateCommitResult<string> = {
  *   applied: true,
@@ -100,7 +100,7 @@ export interface AtomicStateCommitResult<T = unknown> extends AtomicStateSnapsho
  *
  * @example
  * ```ts
- * import { AtomicStateChangeEvent, type AtomicStateEvent } from '@repo/weft';
+ * import { AtomicStateChangeEvent, type AtomicStateEvent } from '@corvidae/weft';
  *
  * const event: AtomicStateEvent<number> = new AtomicStateChangeEvent(1, undefined, 1);
  * console.log(event.type);
@@ -114,7 +114,7 @@ export type AtomicStateEvent<T = unknown> =
  *
  * @example
  * ```ts
- * import type { AtomicStateObserver } from '@repo/weft';
+ * import type { AtomicStateObserver } from '@corvidae/weft';
  *
  * const observer: AtomicStateObserver<number> = {
  *   next(event) {
@@ -136,7 +136,7 @@ export type AtomicStateObserver<T = unknown> =
  *
  * @example
  * ```ts
- * import type { AtomicStateSubscription } from '@repo/weft';
+ * import type { AtomicStateSubscription } from '@corvidae/weft';
  *
  * const subscription: AtomicStateSubscription = {
  *   unsubscribe() {},
@@ -165,8 +165,8 @@ const fallbackObservableSymbol = Symbol.for('observable') as typeof Symbol.obser
  *
  * @example
  * ```ts
- * import { AtomicState, OBSERVABLE_SYMBOL } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { AtomicState, OBSERVABLE_SYMBOL } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const state = new AtomicState<number>(new MemoryStorage(), 'state:workflow-scope:default:count');
  * const observable = state[OBSERVABLE_SYMBOL]();
@@ -188,7 +188,7 @@ if (symbolConstructor.observable === undefined) {
  *
  * @example
  * ```ts
- * import { AtomicStateChangeEvent } from '@repo/weft';
+ * import { AtomicStateChangeEvent } from '@corvidae/weft';
  *
  * const event = new AtomicStateChangeEvent('next', 'previous', 4);
  * console.log(event.value, event.previousValue, event.version);
@@ -212,7 +212,7 @@ export class AtomicStateChangeEvent<T> extends Event {
  *
  * @example
  * ```ts
- * import { AtomicStateConflictEvent } from '@repo/weft';
+ * import { AtomicStateConflictEvent } from '@corvidae/weft';
  *
  * const event = new AtomicStateConflictEvent('state:workflow-scope:default:count', 2);
  * console.log(event.stateKey, event.attempt);
@@ -234,7 +234,7 @@ export class AtomicStateConflictEvent extends Event {
  *
  * @example
  * ```ts
- * import { AtomicStateExhaustedEvent } from '@repo/weft';
+ * import { AtomicStateExhaustedEvent } from '@corvidae/weft';
  *
  * const event = new AtomicStateExhaustedEvent('state:workflow-scope:default:count', 10);
  * console.log(event.stateKey, event.attempts);

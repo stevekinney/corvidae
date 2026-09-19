@@ -44,7 +44,7 @@ import { WORKFLOW_REVISION_MANIFEST_VERSION } from './types.ts';
  *   buildWorkflowRevisionManifest,
  *   parseWorkflowRevisionManifest,
  *   type WorkflowRevisionManifestParseSuccess,
- * } from '@repo/weft';
+ * } from '@corvidae/weft';
  *
  * const manifest = await buildWorkflowRevisionManifest(buildWorkflowContract({ name: 'checkout' }));
  * const result = await parseWorkflowRevisionManifest(manifest);
@@ -67,7 +67,7 @@ export type WorkflowRevisionManifestParseSuccess = Readonly<{
  *
  * @example
  * ```ts
- * import { parseWorkflowRevisionManifest, type WorkflowRevisionManifestParseResult } from '@repo/weft';
+ * import { parseWorkflowRevisionManifest, type WorkflowRevisionManifestParseResult } from '@corvidae/weft';
  *
  * const result: WorkflowRevisionManifestParseResult = await parseWorkflowRevisionManifest({});
  * console.log(result.ok);
@@ -384,7 +384,7 @@ async function finalizeManifest(
  *
  * @example
  * ```ts
- * import { buildWorkflowContract, buildWorkflowRevisionManifest, parseWorkflowRevisionManifest } from '@repo/weft';
+ * import { buildWorkflowContract, buildWorkflowRevisionManifest, parseWorkflowRevisionManifest } from '@corvidae/weft';
  *
  * const manifest = await buildWorkflowRevisionManifest(buildWorkflowContract({ name: 'checkout' }));
  * const result = await parseWorkflowRevisionManifest(manifest);

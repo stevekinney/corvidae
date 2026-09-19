@@ -187,7 +187,7 @@ export async function countWorkflowRevisionReferences(
  *
  * @example
  * ```ts
- * import type { WorkflowCatalogRemovalResult } from '@repo/weft';
+ * import type { WorkflowCatalogRemovalResult } from '@corvidae/weft';
  *
  * function describe(result: WorkflowCatalogRemovalResult): string {
  *   return result.removed ? 'removed' : `kept: ${result.reason}`;
@@ -247,7 +247,7 @@ export type WorkflowCatalogRemovalResult =
  *
  * @example
  * ```ts
- * import { Engine, removeWorkflowRevision, workflow } from '@repo/weft';
+ * import { Engine, removeWorkflowRevision, workflow } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'checkout', version: '1.0.0' }).execute(
@@ -382,7 +382,7 @@ async function reportPostConcurrentTombstoneResolution(
  *
  * @example
  * ```ts
- * import type { WorkflowRevisionDiagnostics } from '@repo/weft';
+ * import type { WorkflowRevisionDiagnostics } from '@corvidae/weft';
  *
  * function isSafeToRemove(diagnostics: WorkflowRevisionDiagnostics): boolean {
  *   return diagnostics.removable;
@@ -424,7 +424,7 @@ export type WorkflowRevisionDiagnostics = Readonly<{
  *
  * @example
  * ```ts
- * import { Engine, getWorkflowRevisionDiagnostics } from '@repo/weft';
+ * import { Engine, getWorkflowRevisionDiagnostics } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * const diagnostics = await getWorkflowRevisionDiagnostics(engine, 'checkout', 'some-revision');

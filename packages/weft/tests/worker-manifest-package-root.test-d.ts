@@ -7,7 +7,7 @@ import {
   type WorkerExecutionRequirement,
   type WorkerManifest,
   type WorkerManifestRejectionReason,
-} from '@repo/weft';
+} from '@corvidae/weft';
 
 const manifest: WorkerManifest = {
   manifestVersion: WORKER_MANIFEST_VERSION,

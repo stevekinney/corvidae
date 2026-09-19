@@ -1,0 +1,199 @@
+#!/usr/bin/env bun
+
+import { conformanceManifest } from './conformance-manifest.ts';
+import { resolveFixtureEnvironment } from './environment-configuration.ts';
+
+export type ConformanceWorkerFixture = 'conforming';
+
+type InFlightTask = {
+  activityName: string;
+  timeout?: ReturnType<typeof setTimeout>;
+  // The token captured from THIS dispatch. Carried on the per-dispatch task object
+  // (not a side map keyed by operationId) so a re-dispatch of the same operation
+  // cannot overwrite an earlier attempt's token — echoing the wrong token would
+  // mask the very stale-attempt bug the conformance suite exists to catch.
+  attemptToken: string;
+  // The workflowRevision (WFT-20) captured from THIS dispatch, echoed back
+  // unchanged on the eventual taskResult. Undefined when the dispatch did
+  // not carry one.
+  workflowRevision?: string;
+};
+
+const serverUrl = resolveFixtureEnvironment().workerUrl;
+const protocolVersion = resolveFixtureEnvironment().protocolVersion;
+const activities = resolveFixtureEnvironment().activities;
+const heartbeatIntervalMs = resolveFixtureEnvironment().heartbeatIntervalMs;
+const workerId = `conformance-worker-${crypto.randomUUID()}`;
+
+if (serverUrl === undefined) {
+  process.stderr.write(`WEFT_WORKER_URL is required\n`);
+  process.exit(2);
+}
+
+const inFlightTasks = new Map<string, InFlightTask>();
+const socket = new WebSocket(serverUrl);
+let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+
+function send(message: Record<string, unknown>): void {
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(message));
+  }
+}
+
+function parseMessage(data: unknown): Record<string, unknown> | undefined {
+  const parsed: unknown = JSON.parse(String(data));
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  return Object.fromEntries(Object.entries(parsed));
+}
+
+function startHeartbeats(): void {
+  if (heartbeatTimer !== undefined) return;
+  heartbeatTimer = setInterval(() => {
+    send({ type: 'heartbeat', workerId });
+  }, heartbeatIntervalMs);
+}
+
+function complete(
+  operationId: string,
+  value: unknown,
+  attemptToken: string,
+  workflowRevision?: string,
+): void {
+  inFlightTasks.delete(operationId);
+  send({
+    type: 'taskResult',
+    operationId,
+    status: 'completed',
+    value: value === undefined ? null : value,
+    attemptToken,
+    ...(workflowRevision !== undefined && { workflowRevision }),
+  });
+}
+
+function fail(
+  operationId: string,
+  error: string,
+  attemptToken: string,
+  workflowRevision?: string,
+): void {
+  inFlightTasks.delete(operationId);
+  send({
+    type: 'taskResult',
+    operationId,
+    status: 'failed',
+    error,
+    attemptToken,
+    ...(workflowRevision !== undefined && { workflowRevision }),
+  });
+}
+
+function cancel(operationId: string): void {
+  const task = inFlightTasks.get(operationId);
+  if (task === undefined) return;
+  if (task?.timeout !== undefined) {
+    clearTimeout(task.timeout);
+  }
+  inFlightTasks.delete(operationId);
+  send({
+    type: 'taskResult',
+    operationId,
+    status: 'cancelled',
+    cancelled: true,
+    error: 'Task cancelled',
+    // Echo the token (and revision, if any) captured on THIS dispatch's
+    // in-flight task object.
+    attemptToken: task.attemptToken,
+    ...(task.workflowRevision !== undefined && { workflowRevision: task.workflowRevision }),
+  });
+}
+
+function isInputRecord(input: unknown): input is Record<string, unknown> {
+  return input !== null && typeof input === 'object' && !Array.isArray(input);
+}
+
+function millisecondsFromInput(input: unknown): number {
+  if (!isInputRecord(input)) return 25;
+  const milliseconds = input['milliseconds'];
+  return typeof milliseconds === 'number' && Number.isFinite(milliseconds) ? milliseconds : 25;
+}
+
+function handleTask(message: Record<string, unknown>): void {
+  const operationId = message['operationId'];
+  const activityName = message['activityName'];
+  if (typeof operationId !== 'string' || typeof activityName !== 'string') return;
+
+  // Capture the per-dispatch token from THIS task and carry it on the dispatch —
+  // either passed straight to the synchronous result or stored on the in-flight
+  // task object for the deferred ones. Never looked up later by operationId.
+  const attemptToken = message['attemptToken'];
+  if (typeof attemptToken !== 'string' || attemptToken.length === 0) return;
+  const rawWorkflowRevision = message['workflowRevision'];
+  const workflowRevision =
+    typeof rawWorkflowRevision === 'string' ? rawWorkflowRevision : undefined;
+
+  if (activityName === 'conformance.echo') {
+    complete(operationId, message['input'], attemptToken, workflowRevision);
+    return;
+  }
+
+  const tokenField = { attemptToken, ...(workflowRevision !== undefined && { workflowRevision }) };
+
+  if (activityName === 'conformance.sleep') {
+    const timeout = setTimeout(
+      () => complete(operationId, message['input'], attemptToken, workflowRevision),
+      millisecondsFromInput(message['input']),
+    );
+    inFlightTasks.set(operationId, { activityName, timeout, ...tokenField });
+    return;
+  }
+
+  if (activityName === 'conformance.cancel') {
+    const timeout = setTimeout(
+      () => fail(operationId, 'Cancel was not delivered', attemptToken, workflowRevision),
+      millisecondsFromInput(message['input']),
+    );
+    inFlightTasks.set(operationId, { activityName, timeout, ...tokenField });
+    return;
+  }
+
+  fail(operationId, `Unknown activity: ${activityName}`, attemptToken, workflowRevision);
+}
+
+socket.addEventListener('open', () => {
+  send({
+    type: 'register',
+    protocolVersion,
+    workerId,
+    manifest: conformanceManifest(activities),
+    concurrency: 3,
+  });
+});
+
+socket.addEventListener('message', (event) => {
+  const parsed = parseMessage(event.data);
+  if (parsed === undefined) return;
+  if (parsed['type'] === 'registerAck') {
+    startHeartbeats();
+  } else if (parsed['type'] === 'task') {
+    handleTask(parsed);
+  } else if (parsed['type'] === 'cancel') {
+    const operationId = parsed['operationId'];
+    if (typeof operationId === 'string') cancel(operationId);
+  } else if (parsed['type'] === 'shutdown') {
+    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+    socket.close();
+  } else if (parsed['type'] === 'registerError' || parsed['type'] === 'protocolError') {
+    process.stderr.write(`${JSON.stringify(parsed)}\n`);
+    socket.close();
+  }
+});
+
+socket.addEventListener('close', () => {
+  if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+  process.exit(0);
+});
+
+socket.addEventListener('error', () => {
+  if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+  process.exit(1);
+});

@@ -22,7 +22,7 @@
  *
  * @example
  * ```ts
- * import type { ArchiveAdapter } from '@repo/weft';
+ * import type { ArchiveAdapter } from '@corvidae/weft';
  *
  * const adapter: ArchiveAdapter = {
  *   async store(workflowId, key, bytes) {

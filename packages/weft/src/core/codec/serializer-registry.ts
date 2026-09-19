@@ -11,7 +11,7 @@ import { ExtensionCodec, decode as msgpackDecode, encode as msgpackEncode } from
  *
  * @example
  * ```ts
- * import { type SerializerHandlers } from '@repo/weft';
+ * import { type SerializerHandlers } from '@corvidae/weft';
  *
  * class ValidationError extends Error {
  *   constructor(
@@ -94,7 +94,7 @@ const registryByTag = new Map<string, RegistryEntry>();
  *
  * @example
  * ```ts
- * import { registerSerializer } from '@repo/weft';
+ * import { registerSerializer } from '@corvidae/weft';
  *
  * class RateLimitError extends Error {
  *   constructor(readonly retryAfterMs: number) {

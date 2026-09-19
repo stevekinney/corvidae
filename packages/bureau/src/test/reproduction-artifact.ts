@@ -22,7 +22,7 @@
  * same repository checkout.
  *
  * The `ReproductionArtifact` shape itself is NOT declared here (AB-334):
- * it is `@repo/operative`'s canonical declaration, owned there
+ * it is `@corvidae/operative`'s canonical declaration, owned there
  * because `bureau` can import from `operative` but never the reverse.
  * `ReproductionArtifact` below is that declaration instantiated with
  * Bureau's own widened `cleanupReport` union — the "Bureau-specific
@@ -37,14 +37,14 @@ import type {
   ReproductionArtifact as OperativeReproductionArtifact,
   ReproductionCleanupReport,
   ScriptedOutcome,
-} from '@repo/operative';
-import { summarizeToolInput } from '@repo/operative';
+} from '@corvidae/operative';
+import { summarizeToolInput } from '@corvidae/operative';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import type { BureauShutdownReport } from '../types';
 import type { BureauTestHarness } from './harness';
 
-export type { ScriptedOutcome } from '@repo/operative';
+export type { ScriptedOutcome } from '@corvidae/operative';
 
 /**
  * AB-92 AC8's `ReproductionArtifact`, instantiated with Bureau's own
@@ -207,7 +207,7 @@ function resolveEffectiveModel<D extends AgentDefinitions>(
  *
  * `terminalResult` is passed through `summarizeToolInput` — the same
  * redaction projection already in force for `tool-pre`/`tool-post` frames
- * elsewhere in this codebase (`@repo/operative`'s
+ * elsewhere in this codebase (`@corvidae/operative`'s
  * `run-envelope.ts`) — before being embedded, so a privileged value (a key
  * matching its sensitive-key pattern: `password`, `secret`, `token`,
  * `apiKey`, `authorization`, `credential`, `privateKey`) never appears in

@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
 
 import type { RuntimeComposition } from './runtime-composition';
 import type { BureauOptions } from './types';

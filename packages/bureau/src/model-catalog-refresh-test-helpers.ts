@@ -1,5 +1,5 @@
-import type { MimeFamily, ModalityMatrix } from '@repo/conversationalist';
-import type { BackendDescriptor } from '@repo/operative';
+import type { MimeFamily, ModalityMatrix } from '@corvidae/conversationalist';
+import type { BackendDescriptor } from '@corvidae/operative';
 
 import {
   type CatalogDescriptorSource,

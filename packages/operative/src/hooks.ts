@@ -1,7 +1,7 @@
-import type { AnyToolbox, ToolExecutionResult } from '@repo/armorer';
-import type { Message } from '@repo/conversationalist';
-import type { ToolCall } from '@repo/interoperability';
-import type { HookMap } from '@repo/lifecycle';
+import type { AnyToolbox, ToolExecutionResult } from '@corvidae/armorer';
+import type { Message } from '@corvidae/conversationalist';
+import type { HookMap } from '@corvidae/lifecycle';
+import type { ToolCall } from '@corvidae/tool-protocol';
 
 import type { AgentSession } from './agent-session';
 import type { BudgetReport, TokenBudget } from './context/index';

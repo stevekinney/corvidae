@@ -35,8 +35,8 @@ export type WorkflowCatalogEntry = Readonly<{
  *
  * @example
  * ```ts
- * import { Engine } from '@repo/weft';
- * import type { WorkflowCatalogActivePointer } from '@repo/weft';
+ * import { Engine } from '@corvidae/weft';
+ * import type { WorkflowCatalogActivePointer } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * const pointer: WorkflowCatalogActivePointer | null = await engine.workflows.getActive('checkout');
@@ -56,8 +56,8 @@ export type WorkflowCatalogActivePointer = Readonly<{
  *
  * @example
  * ```ts
- * import { Engine } from '@repo/weft';
- * import type { WorkflowRevisionRecord } from '@repo/weft';
+ * import { Engine } from '@corvidae/weft';
+ * import type { WorkflowRevisionRecord } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * const record: WorkflowRevisionRecord | null = await engine.workflows.getRevision(
@@ -79,8 +79,8 @@ export type WorkflowRevisionRecord = Readonly<{
  *
  * @example
  * ```ts
- * import { Engine } from '@repo/weft';
- * import type { WorkflowCatalogActivationResult } from '@repo/weft';
+ * import { Engine } from '@corvidae/weft';
+ * import type { WorkflowCatalogActivationResult } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * const active = await engine.workflows.getActive('checkout');

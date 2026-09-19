@@ -33,7 +33,7 @@ import type { RemoteActivityContext } from './remote-activity-context.ts';
  *
  * @example
  * ```ts
- * import type { RemoteWorkerActivityFunction } from '@repo/weft';
+ * import type { RemoteWorkerActivityFunction } from '@corvidae/weft';
  *
  * const formatGreeting: RemoteWorkerActivityFunction = async (input) =>
  *   `hi ${String((input as { name: string }).name)}`;
@@ -50,7 +50,7 @@ export type RemoteWorkerActivityFunction = (
  *
  * @example
  * ```ts
- * import type { RemoteWorkerActivityImplementation } from '@repo/weft';
+ * import type { RemoteWorkerActivityImplementation } from '@corvidae/weft';
  *
  * const bare: RemoteWorkerActivityImplementation = async () => 'a';
  * const shaped: RemoteWorkerActivityImplementation = { execute: async () => 'b' };
@@ -66,7 +66,7 @@ export type RemoteWorkerActivityImplementation =
  *
  * @example
  * ```ts
- * import type { RemoteWorkerWorkflowDefinition } from '@repo/weft';
+ * import type { RemoteWorkerWorkflowDefinition } from '@corvidae/weft';
  *
  * const welcome: RemoteWorkerWorkflowDefinition = {
  *   name: 'welcome',
@@ -87,7 +87,7 @@ export type RemoteWorkerWorkflowDefinition = {
  *
  * @example
  * ```ts
- * import { buildQualifiedActivityTable } from '@repo/weft';
+ * import { buildQualifiedActivityTable } from '@corvidae/weft';
  *
  * const table = buildQualifiedActivityTable({
  *   welcome: {

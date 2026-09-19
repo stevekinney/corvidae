@@ -81,7 +81,7 @@ class CircularBuffer {
  *
  * @example
  * ```ts
- * import { MetricsCollector } from '@repo/weft';
+ * import { MetricsCollector } from '@corvidae/weft';
  *
  * const collector = new MetricsCollector();
  * collector.increment('weft.workflow.started');
@@ -166,7 +166,7 @@ export class MetricsCollector {
  *
  * @example
  * ```ts
- * import { createOpenTelemetryMetrics, type OpenTelemetryMetrics } from '@repo/weft';
+ * import { createOpenTelemetryMetrics, type OpenTelemetryMetrics } from '@corvidae/weft';
  *
  * const openTelemetryMetrics: OpenTelemetryMetrics = createOpenTelemetryMetrics('my-service');
  * openTelemetryMetrics.workflowDuration.record(120);
@@ -197,7 +197,7 @@ export type OpenTelemetryMetrics = {
  *
  * @example
  * ```ts
- * import { createOpenTelemetryMetrics } from '@repo/weft';
+ * import { createOpenTelemetryMetrics } from '@corvidae/weft';
  *
  * // Uses the auto-detected OpenTelemetry API or no-op fallback
  * const instruments = createOpenTelemetryMetrics('my-service');
@@ -345,7 +345,7 @@ function formatDpmoGaugeLines(snapshot: MetricsSnapshot): string[] {
  *
  * @example
  * ```ts
- * import { MetricsCollector, serializeMetricsSnapshotForPrometheus } from '@repo/weft';
+ * import { MetricsCollector, serializeMetricsSnapshotForPrometheus } from '@corvidae/weft';
  *
  * const collector = new MetricsCollector();
  * collector.increment('weft.workflow.started');
@@ -370,7 +370,7 @@ export function serializeMetricsSnapshotForPrometheus(snapshot: MetricsSnapshot)
  *
  * @example
  * ```ts
- * import { createMetricsCollectorExporter } from '@repo/weft';
+ * import { createMetricsCollectorExporter } from '@corvidae/weft';
  *
  * const exporter = createMetricsCollectorExporter(undefined);
  * // Pass to serve() to expose /v1/metrics

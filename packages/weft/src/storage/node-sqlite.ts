@@ -6,7 +6,7 @@
  * storage layer to run on Node.js 22+.
  *
  * `better-sqlite3` is a peer dependency — it must be installed separately by
- * consumers who import `@repo/weft`.
+ * consumers who import `@corvidae/weft`.
  *
  * @module storage/node-sqlite
  */
@@ -41,7 +41,7 @@ type NodeSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence
 
 /**
  * Runtime-neutral alias for the Node SQLite adapter. Consumers that import
- * from `@repo/weft` get this class under Node.
+ * from `@corvidae/weft` get this class under Node.
  */
 
 /**
@@ -51,20 +51,20 @@ type NodeSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence
  * Implements the same WAL-mode schema as {@link BunSQLiteStorage}
  * but resolves the `better-sqlite3` peer dependency lazily at construction time,
  * so the module compiles without it installed.  Import from
- * `@repo/weft` to use this adapter.
+ * `@corvidae/weft` to use this adapter.
  *
  * Unlike BunSQLiteStorage, this adapter currently implements only the required
  * Storage methods (`get`, `put`, `delete`, `scan`, `batch`, and
  * `conditionalBatch`). The optional `has`, `keys`, `count`, `deletePrefix`, and
  * `scoped` helpers fall back to the generic implementations in
- * `@repo/weft`; `deleteRange` falls back to `storageDeleteRange`
- * (exported from `@repo/weft` / `@repo/weft`). There is no SQL passthrough
+ * `@corvidae/weft`; `deleteRange` falls back to `storageDeleteRange`
+ * (exported from `@corvidae/weft` / `@corvidae/weft`). There is no SQL passthrough
  * `query()` method.
  *
  * @example
  * ```ts
- * import { NodeSQLiteStorage } from '@repo/weft';
- * import { workflow, Engine } from '@repo/weft';
+ * import { NodeSQLiteStorage } from '@corvidae/weft';
+ * import { workflow, Engine } from '@corvidae/weft';
  *
  * // Requires: bun add better-sqlite3
  * await using storage = new NodeSQLiteStorage('./weft.db');

@@ -2,12 +2,14 @@ import type { BunPlugin } from 'bun';
 import { dirname } from 'node:path';
 import { compile, compileModule, parse } from 'svelte/compiler';
 import ts from 'typescript';
+import { environmentConfiguration } from './environment-configuration.ts';
 
 export type SvelteGenerationTarget = 'client' | 'server';
 
 export type SvelteCompilerPluginOptions = {
   generate?: SvelteGenerationTarget;
   injectCss?: boolean;
+  development?: boolean;
   allowStyleBlock?: (path: string) => boolean;
   filename?: (path: string) => string;
   transformServerOutput?: (input: { code: string; path: string; dev: boolean }) => string;
@@ -149,6 +151,7 @@ export function compileSvelteComponentForBun(
   path: string,
   options: Required<Pick<SvelteCompilerPluginOptions, 'generate' | 'injectCss'>>,
   hooks: SvelteCompilerPluginHooks,
+  development?: boolean,
 ): { contents: string; loader: 'js'; resolveDir: string } {
   if (
     hasAuthoredStyleBlock(source) &&
@@ -161,7 +164,7 @@ export function compileSvelteComponentForBun(
   }
 
   const filename = hooks.filename?.(path) ?? path;
-  const dev = process.env['NODE_ENV'] !== 'production';
+  const dev = development ?? environmentConfiguration().nodeEnv !== 'production';
   const result = compile(source, {
     filename,
     generate: options.generate,
@@ -181,12 +184,13 @@ export function compileSvelteRuneModuleForBun(
   source: string,
   path: string,
   generate: SvelteGenerationTarget,
+  development?: boolean,
 ): { contents: string; loader: 'js'; resolveDir: string } {
   const moduleSource = path.endsWith('.ts') ? typeScriptTranspiler.transformSync(source) : source;
   const result = compileModule(moduleSource, {
     filename: path,
     generate,
-    dev: process.env['NODE_ENV'] !== 'production',
+    dev: development ?? environmentConfiguration().nodeEnv !== 'production',
   });
 
   return { contents: result.js.code, loader: 'js', resolveDir: dirname(path) };
@@ -209,11 +213,17 @@ export function sveltePlugin(options: SvelteCompilerPluginOptions = {}): BunPlug
             filename: options.filename,
             transformServerOutput: options.transformServerOutput,
           },
+          options.development,
         ),
       );
 
       builder.onLoad({ filter: /\.svelte\.[jt]s$/ }, async ({ path }) =>
-        compileSvelteRuneModuleForBun(await Bun.file(path).text(), path, generate),
+        compileSvelteRuneModuleForBun(
+          await Bun.file(path).text(),
+          path,
+          generate,
+          options.development,
+        ),
       );
     },
   };

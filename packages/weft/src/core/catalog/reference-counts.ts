@@ -38,7 +38,7 @@
  *
  * @example
  * ```ts
- * import type { WorkflowRevisionReferenceCounts } from '@repo/weft';
+ * import type { WorkflowRevisionReferenceCounts } from '@corvidae/weft';
  *
  * function summarize(counts: WorkflowRevisionReferenceCounts): string {
  *   return `${counts.registeredDefinitions} registered, ${counts.inFlightStarts} in flight`;

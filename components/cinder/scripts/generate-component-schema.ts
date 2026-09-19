@@ -1,0 +1,1355 @@
+/**
+ * Generates a JSON Schema (draft 2020-12) for a component's `<name>.types.ts`
+ * by walking the exported `*Props` type with `ts-morph`.
+ *
+ * Public surface — see `SUPPORTED.md` for the type subset this generator
+ * understands. Non-JSON-schemable props (snippets, callbacks, generics,
+ * mapped/conditional types) are recorded in the schema's `metadata.unsupportedProps`
+ * instead of being silently widened or thrown. Only malformed types (`never`,
+ * unresolvable references) throw.
+ */
+
+import { basename, dirname, join } from 'node:path';
+
+import {
+  Node,
+  Project,
+  type InterfaceDeclaration,
+  type Symbol as MorphSymbol,
+  type SourceFile,
+  type Type,
+  type TypeAliasDeclaration,
+} from 'ts-morph';
+
+import type { ComponentSchemaUnsupportedReason } from '../src/schema-types';
+
+const SCHEMA_URI = 'https://json-schema.org/draft/2020-12/schema' as const;
+const MAX_SCHEMA_TYPE_DEPTH = 6;
+const MAX_SCHEMA_STRUCTURAL_OBJECT_DEPTH = 5;
+// JSON Schema's conditional `then` keyword, used as a computed object key in
+// the generated `if`/`then` blocks below. `as const` keeps it typed as the
+// literal without an assertion.
+// eslint-disable-next-line unicorn/no-thenable -- `then` is JSON Schema's conditional keyword, not a Promise `.then`; this constant only ever becomes a computed key on schema data, never an awaited value.
+const JSON_SCHEMA_THEN_KEYWORD = 'then' as const;
+
+export type UnsupportedReason = ComponentSchemaUnsupportedReason;
+
+export interface UnsupportedProp {
+  name: string;
+  reason: UnsupportedReason;
+  /**
+   * `true` when the prop is required on the component; omitted when it is
+   * optional. Recorded so the generated README can show a faithful Required
+   * column for props the JSON schema cannot express (e.g. a required
+   * `onSelect: () => void` callback). The renderer treats an absent value as
+   * not-required.
+   */
+  required?: boolean;
+  /** The prop's JSDoc description, when one is authored. */
+  description?: string;
+}
+
+export interface PropertySchema {
+  type?: 'string' | 'number' | 'integer' | 'boolean' | 'null' | 'array' | 'object';
+  enum?: ReadonlyArray<string | number | boolean | null>;
+  const?: string | number | boolean | null;
+  items?: PropertySchema;
+  properties?: Record<string, PropertySchema>;
+  required?: string[];
+  additionalProperties?: boolean | PropertySchema;
+  anyOf?: PropertySchema[];
+  not?: PropertySchema;
+  minimum?: number;
+  minItems?: number;
+  // Added for Modal's `describedById` restriction (PR #1422 review): the
+  // `title`/`aria-label` conditional restrictions elsewhere in this file
+  // already emit these two through the loosely-typed `allOf`/`then` escape
+  // hatch (`Record<string, unknown>`, see `ComponentSchemaOutput.allOf`
+  // below) — `describedById`'s restriction is unconditional, though, so it
+  // lives directly on the BASE property object, which needs these two
+  // fields typed here to accept it.
+  minLength?: number;
+  pattern?: string;
+  description?: string;
+  default?: unknown;
+}
+
+export interface ComponentSchemaOutput {
+  $schema: typeof SCHEMA_URI;
+  type: 'object';
+  properties: Record<string, PropertySchema>;
+  required?: string[];
+  allOf?: Array<Record<string, unknown>>;
+  additionalProperties?: boolean;
+  metadata?: {
+    unsupportedProps?: UnsupportedProp[];
+  };
+}
+
+export interface GenerateResult {
+  /** The schema object suitable for JSON serialization. */
+  schema: ComponentSchemaOutput;
+  /** Rendered TypeScript module text (the `.schema.ts` file content). */
+  schemaModule: string;
+  /** Rendered JSON text (the `.schema.json` file content). */
+  schemaJson: string;
+}
+
+let activeTypesFilePath: string | null = null;
+
+/**
+ * The `ts-morph` `Project` for the `generateSchemaForComponent` call
+ * currently on the stack — reset to a fresh `Project` at the start of every
+ * call (see `generateSchemaForComponent`), then reused by every `getProject()`
+ * call for the remainder of that same invocation (including the nested
+ * lookups in `getPropType` and `getHtmlAttributeDeclarationSites`).
+ *
+ * Deliberately NOT reused *across* calls. It previously was — one `Project`
+ * accumulated every processed component's types file (and its resolved
+ * dependencies) across an entire `components:check`/`components:generate`
+ * run. TypeScript's checker enumerates an intersection or union type's
+ * members in an order sensitive to that Program's total accumulated state,
+ * so the schema for at least one component (`input`, whose `id` is both
+ * inherited from `HTMLInputAttributes` and redeclared as required) came out
+ * with a different property order depending on how many — and which —
+ * other components had already been parsed into the shared `Project`
+ * beforehand. That made a full run's result diverge, deterministically but
+ * platform-dependently, from generating the same component in isolation:
+ * confirmed to reproduce on Linux (matching CI/Vercel) even with fully
+ * sequential, non-concurrent processing, while an identical macOS run
+ * matched the committed (isolated-equivalent) output. A fresh `Project` per
+ * *call* always matches the isolated result, on any platform, at the cost of
+ * reparsing shared dependencies (`svelte/elements`, etc.) once per component
+ * rather than once per run.
+ */
+let activeProject: Project | null = null;
+function getProject(): Project {
+  if (activeProject) return activeProject;
+  activeProject = new Project({
+    skipAddingFilesFromTsConfig: true,
+    skipFileDependencyResolution: false,
+  });
+  return activeProject;
+}
+
+export interface GenerateOptions {
+  /** Optional pre-built project (for tests/fixtures). */
+  project?: Project;
+  /** Absolute path to `<name>.types.ts`. */
+  typesFilePath: string;
+  /** Component directory name; used for the relative `schema-types` import. */
+  componentName: string;
+  /** Depth from component directory up to `src/`. Top-level: 2, experimental: 3. */
+  depthToSrc: number;
+}
+
+/**
+ * Generate a schema for a component's types file.
+ *
+ * Resolves the exported type matching `<PascalCaseName>Props` — e.g.
+ * `ButtonProps` for `button`. Throws if no such export exists.
+ */
+export function generateSchemaForComponent(options: GenerateOptions): GenerateResult {
+  const { typesFilePath, componentName, depthToSrc } = options;
+  activeTypesFilePath = typesFilePath;
+  // Reset (or adopt an explicitly-provided) Project for this call, so every
+  // `getProject()` call for the rest of this invocation — including the
+  // nested lookups in `getPropType` and `getHtmlAttributeDeclarationSites`
+  // — resolves the same instance as `project` below, and the next call to
+  // `generateSchemaForComponent` starts from a clean, uncontaminated Project.
+  activeProject = options.project ?? null;
+  const project = options.project ?? getProject();
+  const sourceFile = project.addSourceFileAtPath(typesFilePath);
+
+  // Prefer a focused `<Name>SchemaProps` type if exported — that's the explicit
+  // allowlist of cinder-specific props, free of HTML attribute spread. Fall back
+  // to `<Name>Props`, which works for components without HTML attribute spread.
+  const base = toPascalCase(componentName);
+  const schemaPropsName = `${base}SchemaProps`;
+  const propsTypeName = `${base}Props`;
+  const propsType =
+    findExportedType(sourceFile, schemaPropsName) ?? findExportedType(sourceFile, propsTypeName);
+
+  if (!propsType) {
+    throw new Error(
+      `generate-component-schema: ${basename(typesFilePath)} does not export ${schemaPropsName} or ${propsTypeName}`,
+    );
+  }
+
+  const properties: Record<string, PropertySchema> = {};
+  const required: string[] = [];
+  const unsupportedProps: UnsupportedProp[] = [];
+
+  // When falling back to `<Name>Props`, filter out properties inherited from
+  // svelte/elements HTML attribute types. Without this, every component that
+  // intersects with `HTMLAttributes` produces 200+ rows of aria-*, on*, and
+  // global-attribute props in its generated schema and README — drowning the
+  // cinder-specific props in noise. A focused `<Name>SchemaProps` interface
+  // (when present) is the authored allowlist; in its absence, we apply a
+  // declared-in-svelte-elements heuristic.
+  const usedFocusedAllowList = Boolean(findExportedType(sourceFile, schemaPropsName));
+
+  const memberSymbols = propsType.getProperties();
+  for (const symbol of memberSymbols) {
+    const propName = symbol.getName();
+
+    if (!usedFocusedAllowList && isInheritedFromSvelteElements(symbol)) {
+      continue;
+    }
+
+    const propType = getPropType(symbol);
+    if (!propType) {
+      unsupportedProps.push(makeUnsupportedProp(symbol, propName, 'unknown-shape'));
+      continue;
+    }
+
+    const converted = hasJsDocTag(symbol, 'schemaPermissive')
+      ? { kind: 'ok' as const, schema: {} }
+      : convertType(
+          propType,
+          0,
+          hasJsDocTag(symbol, 'schemaObject') || hasSchemaObjectTagDeep(propType),
+        );
+    if (converted.kind === 'unsupported') {
+      if (propName === 'customValueAllowed') {
+        const description = readJsDocDescription(symbol);
+        properties[propName] = {
+          type: 'boolean',
+          ...(description ? { description } : {}),
+        };
+        continue;
+      }
+      const reason =
+        converted.reason === 'unknown-shape' && propType.getText().includes('NoInfer<')
+          ? 'generic-type-parameter'
+          : converted.reason;
+      unsupportedProps.push(makeUnsupportedProp(symbol, propName, reason));
+      continue;
+    }
+
+    const description = readJsDocDescription(symbol);
+    const defaultValue = readJsDocDefault(symbol);
+    const schemaEntry: PropertySchema = { ...converted.schema };
+    if (description) schemaEntry.description = description;
+    if (defaultValue !== undefined) schemaEntry.default = defaultValue;
+    properties[propName] = schemaEntry;
+
+    if (!symbol.isOptional()) required.push(propName);
+  }
+
+  // When a `<Name>SchemaProps` allowlist is used, props that exist on the full
+  // `<Name>Props` but are deliberately omitted from the allowlist never reach the
+  // loop above. That is correct for HTML-attribute and expressible props — the
+  // allowlist is the curated JSON-expressible surface. But a component-authored
+  // FUNCTION or SNIPPET prop (e.g. a required `onSelect: () => void`) is part of
+  // the public API and JSON Schema simply cannot represent it. Omitting it
+  // silently means tooling and the generated README have no way to discover the
+  // prop exists at all. Record exactly those props in `unsupportedProps` so they
+  // are documented as known-but-unexpressible, without polluting the schema with
+  // the hundreds of inherited HTML attributes.
+  if (usedFocusedAllowList) {
+    const fullPropsType = findExportedType(sourceFile, propsTypeName);
+    if (fullPropsType) {
+      const recordedNames = new Set([
+        ...Object.keys(properties),
+        ...unsupportedProps.map((entry) => entry.name),
+      ]);
+      for (const symbol of fullPropsType.getProperties()) {
+        const propName = symbol.getName();
+        if (recordedNames.has(propName)) continue;
+        // Only component-authored props — never the inherited svelte/elements
+        // event handlers (onclick, etc.) or aria-*/global attributes.
+        if (isInheritedFromSvelteElements(symbol)) continue;
+        const propType = getPropType(symbol);
+        if (!propType) continue;
+        const converted = convertType(
+          propType,
+          0,
+          hasJsDocTag(symbol, 'schemaObject') || hasSchemaObjectTagDeep(propType),
+        );
+        // Record ONLY function/snippet props. An expressible prop the author
+        // deliberately curated out of the allowlist stays out; a non-callback
+        // unsupported shape is the author's omission to make, not ours to surface.
+        if (converted.kind === 'unsupported' && converted.reason === 'function-or-snippet') {
+          unsupportedProps.push(makeUnsupportedProp(symbol, propName, 'function-or-snippet'));
+        }
+      }
+    }
+  }
+
+  const schema: ComponentSchemaOutput = {
+    $schema: SCHEMA_URI,
+    type: 'object',
+    properties,
+    additionalProperties: false,
+  };
+  if (required.length > 0) schema.required = required.toSorted();
+  if (unsupportedProps.length > 0) {
+    schema.metadata = {
+      unsupportedProps: unsupportedProps.toSorted((a, b) => a.name.localeCompare(b.name)),
+    };
+  }
+  applyComponentSchemaRules(componentName, schema);
+
+  const schemaJson = JSON.stringify(schema, null, 2) + '\n';
+  const schemaModule = renderSchemaModule(schema, depthToSrc);
+
+  return { schema, schemaJson, schemaModule };
+}
+
+/**
+ * Build an `unsupportedProps` entry, capturing the prop's required-ness and
+ * authored description so the generated README can report a prop the JSON schema
+ * cannot express (e.g. a required `() => void` callback) without falsely showing
+ * it as optional and undescribed.
+ */
+function makeUnsupportedProp(
+  symbol: MorphSymbol,
+  name: string,
+  reason: UnsupportedReason,
+): UnsupportedProp {
+  const entry: UnsupportedProp = { name, reason };
+  if (!symbol.isOptional()) entry.required = true;
+  const description = readJsDocDescription(symbol);
+  if (description) entry.description = description;
+  return entry;
+}
+
+function applyComponentSchemaRules(componentName: string, schema: ComponentSchemaOutput): void {
+  if (componentName === 'grid') {
+    const columns = schema.properties['columns'];
+    if (columns?.anyOf) {
+      columns.anyOf = columns.anyOf.map((entry) =>
+        entry.type === 'number' ? { ...entry, type: 'integer', minimum: 1 } : entry,
+      );
+    }
+    return;
+  }
+
+  if (componentName === 'grid-item') {
+    for (const spanProp of ['span', 'rowSpan']) {
+      const prop = schema.properties[spanProp];
+      if (prop?.anyOf) {
+        prop.anyOf = prop.anyOf.map((entry) =>
+          entry.type === 'number' ? { ...entry, type: 'integer', minimum: 1 } : entry,
+        );
+      }
+    }
+
+    for (const lineProp of ['columnStart', 'columnEnd', 'rowStart', 'rowEnd']) {
+      const prop = schema.properties[lineProp];
+      if (prop?.anyOf) {
+        prop.anyOf = prop.anyOf.map((entry) =>
+          entry.type === 'number' ? { ...entry, type: 'integer', not: { const: 0 } } : entry,
+        );
+      }
+    }
+    return;
+  }
+
+  if (componentName === 'approval-card') {
+    applyApprovalCardSchemaRules(schema);
+    return;
+  }
+
+  if (componentName === 'run-step-timeline') {
+    applyRunStepTimelineSchemaRules(schema);
+    return;
+  }
+
+  if (componentName === 'invocation-rule-builder') {
+    applyInvocationRuleBuilderSchemaRules(schema);
+    return;
+  }
+
+  if (componentName === 'source-diff-viewer') {
+    applySourceDiffViewerSchemaRules(schema);
+    return;
+  }
+
+  if (componentName === 'schedule-builder') {
+    applyScheduleBuilderSchemaRules(schema);
+    return;
+  }
+
+  if (componentName === 'segment') {
+    applySegmentSchemaRules(schema);
+    return;
+  }
+
+  if (componentName !== 'modal') return;
+
+  // `describedById` is optional (never `required` unconditionally), but
+  // WHEN provided it must reference a real id — the constraints sidecar's
+  // `described-by-non-empty` rule already rejects an empty OR
+  // whitespace-only value (`nonEmpty`, which trims) — see
+  // modal.constraints.ts. `type: 'string'` alone lets a schema-driven
+  // consumer (CLI/MCP) pass `describedById: '   '` right past validation,
+  // even though modal.svelte's own runtime guard rejects it too (see that
+  // file's `isNonEmptyString` comment). `minLength: 1` + `pattern: '\S'`
+  // mirror the `title`/`aria-label` restrictions immediately below —
+  // `minLength` alone still lets whitespace-only through, `pattern: '\S'`
+  // requires at least one non-whitespace character, matching
+  // `isNonEmptyString` (trims before checking) and the constraints
+  // sidecar's `nonEmpty` predicate exactly.
+  const describedByIdProperty = schema.properties['describedById'];
+  if (describedByIdProperty) {
+    describedByIdProperty.minLength = 1;
+    describedByIdProperty.pattern = '\\S';
+  }
+
+  // `chrome="none"` (the chromeless full-bleed mode) requires `aria-label`
+  // since no header/title renders; `chrome="default"` (or omitted, the
+  // default) requires `title` instead. Expressed as two complementary
+  // `if`/`then` branches — the same `allOf` mechanism as the `alertdialog`
+  // branch below — rather than leaving it as prose-only documentation.
+  const chromelessCondition = {
+    properties: {
+      chrome: { const: 'none' },
+    },
+    required: ['chrome'],
+  };
+
+  schema.allOf = [
+    {
+      if: {
+        properties: {
+          role: { const: 'alertdialog' },
+        },
+        required: ['role'],
+      },
+      // eslint-disable-next-line unicorn/no-thenable -- `then` is JSON Schema's conditional keyword here, not a Promise `.then`; this object is schema data, never awaited.
+      [JSON_SCHEMA_THEN_KEYWORD]: {
+        required: ['describedById'],
+      },
+    },
+    {
+      if: chromelessCondition,
+      // eslint-disable-next-line unicorn/no-thenable -- see above.
+      [JSON_SCHEMA_THEN_KEYWORD]: {
+        required: ['aria-label'],
+        // `required` alone only checks key presence — `{ chrome: 'none',
+        // 'aria-label': '' }` would otherwise validate even though the
+        // constraints sidecar (`chromeless-accessible-label`) rejects the
+        // empty string and Modal's own runtime nameless guard flags it as
+        // an unnamed dialog. `minLength: 1` alone still isn't enough —
+        // `{ chrome: 'none', 'aria-label': '   ' }` satisfies minLength but
+        // is still not a real name. `pattern: '\\S'` requires at least one
+        // non-whitespace character, matching the runtime guard's
+        // `isNonEmptyString` (which trims before checking) and the
+        // constraints sidecar's `nonEmpty` predicate.
+        properties: {
+          'aria-label': { minLength: 1, pattern: '\\S' },
+        },
+      },
+    },
+    {
+      if: { not: chromelessCondition },
+      // eslint-disable-next-line unicorn/no-thenable -- see above.
+      [JSON_SCHEMA_THEN_KEYWORD]: {
+        required: ['title'],
+        // The default chrome's `title` renders the visible <h2> and
+        // supplies the accessible name via `aria-labelledby` — `aria-label`
+        // is typed `never` for this branch (ModalProps' discriminated
+        // union) and modal.svelte discards it entirely in favor of
+        // `aria-labelledby`. Forbidding it here closes the gap where
+        // schema-driven configuration (CLI/MCP consumers) could otherwise
+        // request an accessible name that is never exposed to assistive
+        // technology.
+        not: {
+          required: ['aria-label'],
+        },
+        // Same reasoning as the chromeless branch's aria-label restriction
+        // above: `required` alone only checks key presence — `{ title: '' }`
+        // or `{ title: '   ' }` would otherwise validate even though the
+        // constraints sidecar (`accessible-title`) and Modal's own runtime
+        // nameless guard both reject an empty/whitespace-only title.
+        // `minLength: 1` + `pattern: '\\S'` mirror the chromeless branch's
+        // aria-label restriction exactly, matching `isNonEmptyString`
+        // (trims before checking) and the constraints sidecar's `nonEmpty`
+        // predicate (also trims).
+        properties: {
+          title: { minLength: 1, pattern: '\\S' },
+        },
+      },
+    },
+  ];
+}
+
+function applySegmentSchemaRules(schema: ComponentSchemaOutput): void {
+  schema.allOf = [
+    {
+      if: {
+        not: {
+          required: ['href'],
+        },
+      },
+      // eslint-disable-next-line unicorn/no-thenable -- `then` is JSON Schema's conditional keyword here, not a Promise `.then`; this object is schema data, never awaited.
+      [JSON_SCHEMA_THEN_KEYWORD]: {
+        required: ['value'],
+      },
+    },
+  ];
+}
+
+function applyInvocationRuleBuilderSchemaRules(schema: ComponentSchemaOutput): void {
+  const flatModeCondition = {
+    properties: {
+      mode: { const: 'flat-conditions' },
+    },
+    required: ['mode'],
+  };
+
+  schema.allOf = [
+    {
+      if: flatModeCondition,
+      // eslint-disable-next-line unicorn/no-thenable -- `then` is JSON Schema's conditional keyword here, not a Promise `.then`; this object is schema data, never awaited.
+      [JSON_SCHEMA_THEN_KEYWORD]: {
+        required: ['conditions'],
+        not: { required: ['rules'] },
+      },
+    },
+    {
+      if: { not: flatModeCondition },
+      // eslint-disable-next-line unicorn/no-thenable -- `then` is JSON Schema's conditional keyword here, not a Promise `.then`; this object is schema data, never awaited.
+      [JSON_SCHEMA_THEN_KEYWORD]: {
+        required: ['rules'],
+        not: { required: ['conditions'] },
+      },
+    },
+  ];
+}
+
+function applyScheduleBuilderSchemaRules(schema: ComponentSchemaOutput): void {
+  // `previewCount` is how many fires to request — a positive integer.
+  const previewCount = schema.properties['previewCount'];
+  if (previewCount?.type === 'number') {
+    previewCount.type = 'integer';
+    previewCount.minimum = 1;
+  }
+
+  // The `interval` variant's `every` is documented as a positive integer.
+  const intervalVariant = schema.properties['value']?.anyOf?.find(
+    (variant) => variant.properties?.['every'] !== undefined,
+  );
+  const every = intervalVariant?.properties?.['every'];
+  if (every?.type === 'number') {
+    every.type = 'integer';
+    every.minimum = 1;
+  }
+}
+
+function applyApprovalCardSchemaRules(schema: ComponentSchemaOutput): void {
+  const operation = schema.properties['operation'];
+  const variants = operation?.anyOf;
+  const fileWriteOperation = variants?.find(
+    (variant) => variant.properties?.['kind']?.const === 'file-write',
+  );
+  const filesTouched = fileWriteOperation?.properties?.['filesTouched'];
+
+  if (fileWriteOperation && filesTouched?.type === 'array') {
+    fileWriteOperation.properties ??= {};
+    fileWriteOperation.properties['filesTouched'] = {
+      ...filesTouched,
+      minItems: 1,
+    };
+    fileWriteOperation.required = sortedUniqueStrings([
+      ...(fileWriteOperation.required ?? []),
+      'filesTouched',
+    ]);
+  }
+}
+
+function applyRunStepTimelineSchemaRules(schema: ComponentSchemaOutput): void {
+  const cappedChildrenSchema: PropertySchema = {
+    type: 'array',
+    items: {
+      type: 'object',
+      additionalProperties: true,
+    },
+    description: 'Descendants beyond the rendered depth cap; summarized as a depth-limit row.',
+  };
+  const depthThreeStepSchema = makeRunStepTimelineStepSchema(cappedChildrenSchema);
+  const depthTwoStepSchema = makeRunStepTimelineStepSchema({
+    type: 'array',
+    items: depthThreeStepSchema,
+    description: 'Nested child-workflow steps rendered at depth 3.',
+  });
+  const depthOneStepSchema = makeRunStepTimelineStepSchema({
+    type: 'array',
+    items: depthTwoStepSchema,
+    description: 'Nested child-workflow steps rendered at depth 2.',
+  });
+  const topLevelStepSchema = makeRunStepTimelineStepSchema({
+    type: 'array',
+    items: depthOneStepSchema,
+    description: 'Schema-bounded nested child-workflow steps.',
+  });
+
+  // Branch/coordination group: a top-level entry with parallel sub-lanes. A lane
+  // renders its steps through the SAME depth-capped path as the main rail
+  // (`flattenSteps(lane.steps, '')` starting at depth 0), so lane steps validate
+  // with the identical schema — every rendered level (0–3) is a proper step
+  // (id/label/status required, so an `{ reason: '…' }` child that would crash the
+  // renderer is rejected), and only steps summarized past the cap are loose.
+  const laneStepSchema = topLevelStepSchema;
+  const branchGroupSchema: PropertySchema = {
+    type: 'object',
+    properties: {
+      kind: {
+        const: 'branch',
+        description: 'Discriminator identifying a branch-group entry.',
+      },
+      id: {
+        type: 'string',
+        description: 'Stable identity; used as the keyed list identity.',
+      },
+      label: {
+        type: 'string',
+        description: 'Display label for the branch group.',
+      },
+      lanes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'Stable identity; used as the keyed list identity within the group.',
+            },
+            label: {
+              type: 'string',
+              description: 'Optional display label for the lane.',
+            },
+            outcome: {
+              enum: ['won', 'lost', 'settled'],
+              description:
+                'Competitive outcome for the lane. Omit while the branch is still racing.',
+            },
+            steps: {
+              type: 'array',
+              items: laneStepSchema,
+              description: 'Ordered steps that ran within this lane.',
+            },
+          },
+          additionalProperties: false,
+          required: ['id', 'steps'],
+        },
+        description: 'The parallel sub-lanes.',
+      },
+      collapseThreshold: {
+        type: 'integer',
+        minimum: 1,
+        description:
+          'Collapse the group by default once the lane count reaches this threshold. Defaults to 3.',
+      },
+      collapsed: {
+        type: 'boolean',
+        description: 'Force the initial collapsed (`true`) or expanded (`false`) state.',
+      },
+    },
+    additionalProperties: false,
+    required: ['id', 'kind', 'label', 'lanes'],
+  };
+
+  schema.properties['steps'] = {
+    type: 'array',
+    items: {
+      anyOf: [topLevelStepSchema, branchGroupSchema],
+    },
+    description:
+      'Ordered list of timeline entries to render — either steps or branch/coordination groups.',
+  };
+  schema.required = sortedUniqueStrings([...(schema.required ?? []), 'steps']);
+
+  const unsupportedProps = schema.metadata?.unsupportedProps?.filter(
+    (property) => property.name !== 'steps',
+  );
+  if (unsupportedProps && unsupportedProps.length > 0) {
+    schema.metadata = { unsupportedProps };
+  } else {
+    delete schema.metadata;
+  }
+}
+
+function applySourceDiffViewerSchemaRules(schema: ComponentSchemaOutput): void {
+  const maxLines = schema.properties['maxLines'];
+  if (maxLines?.type !== 'number') return;
+
+  schema.properties['maxLines'] = {
+    ...maxLines,
+    type: 'integer',
+    minimum: 0,
+    default: 1000,
+  };
+
+  const lineNumbers = schema.properties['lineNumbers'];
+  if (lineNumbers?.type === 'boolean') {
+    schema.properties['lineNumbers'] = {
+      ...lineNumbers,
+      default: true,
+    };
+  }
+}
+
+function sortedUniqueStrings(values: string[]): string[] {
+  const sorted: string[] = [];
+
+  for (const value of new Set(values)) {
+    const insertionIndex = sorted.findIndex((existingValue) => existingValue > value);
+    if (insertionIndex === -1) {
+      sorted.push(value);
+    } else {
+      sorted.splice(insertionIndex, 0, value);
+    }
+  }
+
+  return sorted;
+}
+
+function makeRunStepTimelineStepSchema(childrenSchema?: PropertySchema): PropertySchema {
+  const properties: Record<string, PropertySchema> = {
+    id: {
+      type: 'string',
+      description: 'Stable identity; used as the keyed list identity.',
+    },
+    label: {
+      type: 'string',
+      description: 'Display label for this step.',
+    },
+    status: {
+      enum: [
+        'pending',
+        'running',
+        'succeeded',
+        'failed',
+        'timed-out',
+        'cancelled',
+        'skipped',
+        'retrying',
+        'waiting_approval',
+      ],
+      description: 'Generic execution state.',
+    },
+    startTime: {
+      type: 'string',
+      description: 'ISO datetime string for when this step started.',
+    },
+    endTime: {
+      type: 'string',
+      description: 'ISO datetime string for when this step ended.',
+    },
+    duration: {
+      type: 'string',
+      description: 'Human-readable duration string, e.g. "1m 23s".',
+    },
+    attemptCount: {
+      type: 'number',
+      description: 'Number of attempts made so far, including any retries.',
+    },
+    actionsCount: {
+      type: 'number',
+      description: 'Number of actions associated with this step.',
+    },
+    progress: {
+      type: 'number',
+      description: 'Optional determinate progress value between 0 and `progressMax`.',
+    },
+    progressMax: {
+      type: 'number',
+      description: 'Maximum value for the progress bar. Defaults to 100.',
+    },
+    details: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Stable identity for this detail panel.',
+          },
+          label: {
+            type: 'string',
+            description: 'Trigger label rendered on the Collapsible header.',
+          },
+          content: {
+            type: 'string',
+            description: 'Pre-formatted content shown inside the panel.',
+          },
+        },
+        additionalProperties: false,
+        required: ['content', 'id', 'label'],
+      },
+      description: 'Expandable detail panels (logs, payloads, errors) shown inline.',
+    },
+    link: {
+      type: 'object',
+      properties: {
+        href: {
+          type: 'string',
+          description: 'Destination URL for the step link.',
+        },
+        label: {
+          type: 'string',
+          description: 'Visible text for the step link.',
+        },
+      },
+      additionalProperties: false,
+      required: ['href', 'label'],
+      description: 'Optional link to logs, traces, or a step detail route.',
+    },
+    rewound: {
+      type: 'boolean',
+      description: 'Marks a step that was speculatively executed and then unwound (rolled back).',
+    },
+    compensates: {
+      type: 'string',
+      description: 'Id of the forward step that this step compensates (reverses).',
+    },
+  };
+
+  if (childrenSchema) {
+    properties['children'] = childrenSchema;
+  }
+
+  return {
+    type: 'object',
+    properties,
+    additionalProperties: false,
+    required: ['id', 'label', 'status'],
+  };
+}
+
+interface ConvertSuccess {
+  kind: 'ok';
+  schema: PropertySchema;
+}
+
+interface ConvertUnsupported {
+  kind: 'unsupported';
+  reason: UnsupportedReason;
+}
+
+type ConvertResult = ConvertSuccess | ConvertUnsupported;
+
+function convertType(type: Type, depth = 0, expandObjectShapes = false): ConvertResult {
+  if (depth > MAX_SCHEMA_TYPE_DEPTH) return { kind: 'unsupported', reason: 'unknown-shape' };
+
+  // Strip `undefined` — optional props are handled by `symbol.isOptional()`,
+  // so the schema only needs to describe the present-value type.
+  if (type.isUnion()) {
+    const parts = type.getUnionTypes().filter((t) => !t.isUndefined());
+    if (parts.length === 0) return { kind: 'unsupported', reason: 'unknown-shape' };
+    if (parts.length === 1) return convertSingleType(parts[0]!, depth, expandObjectShapes);
+    // After stripping undefined, if every remaining type is a boolean literal
+    // (`true` and `false`), collapse to a plain boolean schema rather than an enum.
+    if (parts.length === 2 && parts.every((t) => t.isBooleanLiteral())) {
+      return { kind: 'ok', schema: { type: 'boolean' } };
+    }
+    return convertUnion(parts, depth, expandObjectShapes);
+  }
+
+  return convertSingleType(type, depth, expandObjectShapes);
+}
+
+function convertUnion(parts: Type[], depth = 0, expandObjectShapes = false): ConvertResult {
+  const nonNullParts = parts.filter((t) => !t.isNull());
+  const hasNull = parts.some((t) => t.isNull());
+
+  // Literal union → enum
+  if (nonNullParts.every((t) => t.isLiteral())) {
+    const values: Array<string | number | boolean | null> = nonNullParts.map(literalValue);
+    if (hasNull) values.push(null);
+    return { kind: 'ok', schema: { enum: values } };
+  }
+
+  // Mixed-shape union → anyOf, but each part must be convertible.
+  const anyOf: PropertySchema[] = [];
+  for (const part of nonNullParts) {
+    const converted = convertSingleType(part, depth, expandObjectShapes);
+    if (converted.kind === 'unsupported') return converted;
+    anyOf.push(converted.schema);
+  }
+  if (hasNull) anyOf.push({ type: 'null' });
+  return { kind: 'ok', schema: { anyOf } };
+}
+
+function convertSingleType(type: Type, depth = 0, expandObjectShapes = false): ConvertResult {
+  if (type.isStringLiteral()) return { kind: 'ok', schema: { const: stringLiteralValue(type) } };
+  if (type.isNumberLiteral()) return { kind: 'ok', schema: { const: numberLiteralValue(type) } };
+  if (type.isBooleanLiteral()) {
+    return { kind: 'ok', schema: { const: booleanLiteralValue(type) } };
+  }
+  if (type.isString()) return { kind: 'ok', schema: { type: 'string' } };
+  if (type.isNumber()) return { kind: 'ok', schema: { type: 'number' } };
+  if (type.isBoolean()) return { kind: 'ok', schema: { type: 'boolean' } };
+  if (type.isNull()) return { kind: 'ok', schema: { type: 'null' } };
+
+  if (type.isArray()) {
+    const element = type.getArrayElementTypeOrThrow();
+    const inner = convertType(
+      element,
+      depth + 1,
+      expandObjectShapes || hasSchemaObjectTagDeep(element),
+    );
+    if (inner.kind === 'unsupported') return inner;
+    return { kind: 'ok', schema: { type: 'array', items: inner.schema } };
+  }
+
+  // Function / snippet / callable
+  if (type.getCallSignatures().length > 0) {
+    return { kind: 'unsupported', reason: 'function-or-snippet' };
+  }
+
+  // Type parameter (generic)
+  if (type.isTypeParameter()) {
+    return { kind: 'unsupported', reason: 'generic-type-parameter' };
+  }
+
+  // NoInfer<T> — TypeScript 5.4 substitution type that wraps a type parameter to
+  // prevent inference widening. ts-morph does not flag it as a type parameter, but
+  // its getText() returns "NoInfer<…>", so we detect it by text prefix.
+  if (type.getText().startsWith('NoInfer<')) {
+    return { kind: 'unsupported', reason: 'generic-type-parameter' };
+  }
+
+  // Object: model simple structural object types only when explicitly allowed.
+  // Unsupported member shapes make the whole prop unsupported instead of emitting
+  // an opaque object schema that downstream consumers would treat as permissive.
+  if (type.isObject()) {
+    const stringIndex = type.getStringIndexType();
+    if (stringIndex) {
+      const inner = convertType(stringIndex, depth + 1, expandObjectShapes);
+      if (inner.kind === 'unsupported') return inner;
+      return { kind: 'ok', schema: { type: 'object', additionalProperties: inner.schema } };
+    }
+
+    if (
+      depth > MAX_SCHEMA_STRUCTURAL_OBJECT_DEPTH ||
+      !expandObjectShapes ||
+      !(
+        isDeclaredInActiveTypesFile(type) ||
+        isDeclaredInComponentTypesFile(type) ||
+        hasSchemaObjectTagDeep(type) ||
+        isNamedSchemaObjectType(type)
+      )
+    ) {
+      return { kind: 'unsupported', reason: 'unknown-shape' };
+    }
+
+    const properties: Record<string, PropertySchema> = {};
+    const required: string[] = [];
+
+    for (const property of type.getProperties()) {
+      const propertyType = getPropType(property);
+      if (!propertyType) return { kind: 'unsupported', reason: 'unknown-shape' };
+      const converted = hasJsDocTag(property, 'schemaPermissive')
+        ? { kind: 'ok' as const, schema: {} }
+        : convertType(
+            propertyType,
+            depth + 1,
+            expandObjectShapes ||
+              hasJsDocTag(property, 'schemaObject') ||
+              hasSchemaObjectTagDeep(propertyType),
+          );
+      if (converted.kind === 'unsupported') return converted;
+
+      const schemaEntry: PropertySchema = { ...converted.schema };
+      const description = readJsDocDescription(property);
+      const defaultValue = readJsDocDefault(property);
+      if (description) schemaEntry.description = description;
+      if (defaultValue !== undefined) schemaEntry.default = defaultValue;
+      properties[property.getName()] = schemaEntry;
+
+      if (!property.isOptional()) required.push(property.getName());
+    }
+
+    if (Object.keys(properties).length === 0) return { kind: 'ok', schema: { type: 'object' } };
+
+    return {
+      kind: 'ok',
+      schema: {
+        type: 'object',
+        properties,
+        additionalProperties: false,
+        ...(required.length > 0 ? { required: required.toSorted() } : {}),
+      },
+    };
+  }
+
+  return { kind: 'unsupported', reason: 'unknown-shape' };
+}
+
+function isDeclaredInActiveTypesFile(type: Type): boolean {
+  if (activeTypesFilePath === null) return false;
+
+  const declarations = [
+    ...(type.getAliasSymbol()?.getDeclarations() ?? []),
+    ...(type.getSymbol()?.getDeclarations() ?? []),
+  ];
+
+  return declarations.some(
+    (declaration) => declaration.getSourceFile().getFilePath() === activeTypesFilePath,
+  );
+}
+
+function isDeclaredInComponentTypesFile(type: Type): boolean {
+  const declarations = [
+    ...(type.getAliasSymbol()?.getDeclarations() ?? []),
+    ...(type.getSymbol()?.getDeclarations() ?? []),
+  ];
+
+  return declarations.some((declaration) => {
+    const filePath = declaration.getSourceFile().getFilePath();
+    return (
+      filePath.includes('/components/cinder/src/components/') && filePath.endsWith('.types.ts')
+    );
+  });
+}
+
+/**
+ * Read a string-literal type's value. ts-morph types `getLiteralValueOrThrow()`
+ * as `string | number | PseudoBigInt`, so we runtime-check rather than assert.
+ */
+function stringLiteralValue(type: Type): string {
+  const value = type.getLiteralValueOrThrow();
+  if (typeof value !== 'string') {
+    throw new Error(`Expected string literal, got ${typeof value}: ${type.getText()}`);
+  }
+  return value;
+}
+
+/**
+ * Read a number-literal type's value. See {@link stringLiteralValue} for why
+ * this runtime-checks instead of asserting.
+ */
+function numberLiteralValue(type: Type): number {
+  const value = type.getLiteralValueOrThrow();
+  if (typeof value !== 'number') {
+    throw new Error(`Expected number literal, got ${typeof value}: ${type.getText()}`);
+  }
+  return value;
+}
+
+function literalValue(type: Type): string | number | boolean {
+  if (type.isStringLiteral()) return stringLiteralValue(type);
+  if (type.isNumberLiteral()) return numberLiteralValue(type);
+  if (type.isBooleanLiteral()) return booleanLiteralValue(type);
+  throw new Error(`literalValue called on non-literal type: ${type.getText()}`);
+}
+
+function booleanLiteralValue(type: Type): boolean {
+  // A boolean-literal type prints as exactly `true` or `false`. ts-morph's
+  // public `Type` API has no boolean accessor, so the type text is the
+  // cast-free way to read which literal this is.
+  return type.getText() === 'true';
+}
+
+function hasSchemaObjectTag(type: Type): boolean {
+  const symbol = type.getAliasSymbol() ?? type.getSymbol();
+  if (!symbol) return false;
+
+  let declarations: ReturnType<MorphSymbol['getDeclarations']>;
+  try {
+    declarations = symbol.getDeclarations();
+  } catch {
+    return false;
+  }
+
+  for (const declaration of declarations) {
+    if (!Node.isJSDocable(declaration)) continue;
+    const docs = declaration.getJsDocs();
+    if (docs.some((doc) => doc.getTags().some((tag) => tag.getTagName() === 'schemaObject'))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasSchemaObjectTagDeep(type: Type, seen = new Set<string>(), depth = 0): boolean {
+  if (depth > 4) return false;
+  const key = [
+    type.getAliasSymbol()?.getName(),
+    type.getSymbol()?.getName(),
+    type.getText(undefined, 0).slice(0, 240),
+  ].join('|');
+  if (seen.has(key)) return false;
+  seen.add(key);
+
+  if (hasSchemaObjectTag(type)) return true;
+  if (type.isUnion()) {
+    return type
+      .getUnionTypes()
+      .some((part) => !part.isUndefined() && hasSchemaObjectTagDeep(part, seen, depth + 1));
+  }
+  if (type.isArray())
+    return hasSchemaObjectTagDeep(type.getArrayElementTypeOrThrow(), seen, depth + 1);
+  return false;
+}
+
+function isNamedSchemaObjectType(type: Type): boolean {
+  const names = [
+    type.getAliasSymbol()?.getName(),
+    type.getSymbol()?.getName(),
+    type.getText(),
+  ].filter(Boolean);
+
+  return names.some((name) => /(?:Schema|SchemaConfiguration|SchemaPoint)/.test(name ?? ''));
+}
+
+/**
+ * True when the property symbol's declaration sites are *all* inside
+ * `svelte/elements` — i.e. it's a purely-inherited HTML attribute like
+ * `aria-label`, `onclick`, `id`. Used to skip those props when falling back
+ * to a `<Name>Props` type that intersects with `HTMLAttributes`.
+ *
+ * Filtering is by **declaration site**, not by name. A component-defined
+ * `disabled: boolean` declared in `src/` is preserved even though
+ * `HTMLButtonAttributes` also declares a `disabled?: boolean | null` — at
+ * least one declaration is local, so the property keeps its place in the
+ * schema. The same logic handles `Omit<...> & { disabled: ... }` (the Omit
+ * removes the svelte/elements declaration, leaving only the local one) and
+ * straight intersection shadows (both declarations present; one is local).
+ *
+ * `class` is declared inside `svelte/elements` but is meaningful for every
+ * component and is allowlisted by name as a deliberate exception.
+ */
+function isInheritedFromSvelteElements(symbol: MorphSymbol): boolean {
+  if (symbol.getName() === 'class') return false;
+  const declarations = symbol.getDeclarations();
+  if (declarations.length === 0) return false;
+  const htmlAttributeDeclarationPaths = getHtmlAttributeDeclarationSites();
+  for (const declaration of declarations) {
+    const sourceFilePath = declaration.getSourceFile().getFilePath();
+    if (!htmlAttributeDeclarationPaths.has(sourceFilePath)) {
+      // At least one declaration lives outside svelte/elements — this is a
+      // local prop (possibly shadowing an HTML attribute). Keep it.
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Ensure ts-morph knows about `svelte/elements.d.ts` in the given `Project` —
+ * some downstream callers walk back from a property's declaration through
+ * ts-morph and need the source file resolvable. Adding it here is a no-op if
+ * it's already loaded (e.g. via normal import resolution of the component's
+ * own types file). Runs once per `generateSchemaForComponent` call — each
+ * call gets its own `Project` (see `getProject()`), so this must not be
+ * skipped just because a previous component's Project already had it.
+ */
+function ensureElementsDeclarationLoaded(project: Project, elementsFilePath: string): void {
+  if (project.getSourceFile(elementsFilePath) !== undefined) return;
+  try {
+    project.addSourceFileAtPath(elementsFilePath);
+  } catch {
+    // Best-effort; the path-set built by getHtmlAttributeDeclarationSites is
+    // the source of truth for filtering, independent of this Project.
+  }
+}
+
+/**
+ * Set of absolute source-file paths whose declarations define HTML attributes
+ * inherited by Svelte components (i.e. `svelte/elements.d.ts` and its sibling
+ * `.d.ts` files in `node_modules/svelte/`).
+ *
+ * The path set itself is computed once per process — it depends only on
+ * where `svelte` resolves on disk, not on which component is being
+ * processed. `ensureElementsDeclarationLoaded` still runs on every call,
+ * against the current call's `Project` (see `getProject()`), since that
+ * Project is fresh per component.
+ */
+let cachedHtmlAttributeDeclarationSites: Set<string> | null = null;
+function getHtmlAttributeDeclarationSites(): Set<string> {
+  const project = getProject();
+  if (cachedHtmlAttributeDeclarationSites) {
+    const elementsFilePath = [...cachedHtmlAttributeDeclarationSites].find((path) =>
+      path.endsWith('/elements.d.ts'),
+    );
+    if (elementsFilePath) ensureElementsDeclarationLoaded(project, elementsFilePath);
+    return cachedHtmlAttributeDeclarationSites;
+  }
+  const sites = new Set<string>();
+  // Resolve `svelte/elements` via Bun (works whether or not ts-morph has the
+  // file in its project) then add every sibling `.d.ts` under that directory
+  // to the set. Svelte spreads its HTML attribute interfaces across
+  // `elements.d.ts` plus a handful of internal helper files; matching by
+  // directory is robust to that layout without hard-coding filenames.
+  let sveltePackageEntry: string;
+  try {
+    sveltePackageEntry = Bun.resolveSync('svelte/package.json', process.cwd());
+  } catch {
+    // No svelte in scope — return empty set. The filter degrades to "filter
+    // nothing", which is the conservative behaviour for the fallback path.
+    cachedHtmlAttributeDeclarationSites = sites;
+    return sites;
+  }
+  const svelteDirectory = dirname(sveltePackageEntry);
+  const elementsFilePath = join(svelteDirectory, 'elements.d.ts');
+  const declarationGlob = new Bun.Glob('*.d.ts');
+  for (const relativePath of declarationGlob.scanSync({ cwd: svelteDirectory, absolute: true })) {
+    sites.add(relativePath);
+  }
+  ensureElementsDeclarationLoaded(project, elementsFilePath);
+  cachedHtmlAttributeDeclarationSites = sites;
+  return sites;
+}
+
+function getPropType(symbol: MorphSymbol): Type | null {
+  const declarations = symbol.getDeclarations();
+  if (declarations.length === 0) return null;
+
+  // When a component's own prop type shadows an inherited HTML attribute (e.g.
+  // `value?: NoInfer<T>` in `SelectProps<T>` shadowing `HTMLSelectAttributes`'s
+  // `value?: any`), ts-morph returns the HTML-attribute declaration first because
+  // TypeScript resolves intersections left-to-right. We prefer the locally-authored
+  // declaration so schema generation sees the component's intended type, not the
+  // HTML fallback.
+  const htmlAttributeSites = getHtmlAttributeDeclarationSites();
+  const localDecl = declarations.find(
+    (d) => !htmlAttributeSites.has(d.getSourceFile().getFilePath()),
+  );
+  const decl = localDecl ?? declarations[0]!;
+  const resolvedType = symbol.getTypeAtLocation(decl);
+
+  // `symbol.getTypeAtLocation` collapses `NoInfer<T>` props to `any` when the
+  // enclosing type alias is generic (e.g. `SelectProps<T>`). When the resolved
+  // type is `any` and the local declaration lives in the active types file, use
+  // the TypeChecker directly on that declaration to recover the unevaluated
+  // generic type. We only substitute the checker type when it references `NoInfer`
+  // to avoid changing resolution for other components (e.g. `Input`, `Radio`) that
+  // also shadow HTML attribute `value` with a plain `string` type.
+  if (resolvedType.isAny() && localDecl !== undefined) {
+    const checkerType = getProject().getTypeChecker().getTypeAtLocation(localDecl);
+    if (checkerType.getText().includes('NoInfer<')) return checkerType;
+  }
+
+  return resolvedType;
+}
+
+function findExportedType(sourceFile: SourceFile, name: string): Type | null {
+  const iface: InterfaceDeclaration | undefined = sourceFile.getInterface(name);
+  if (iface && iface.isExported()) return iface.getType();
+  const alias: TypeAliasDeclaration | undefined = sourceFile.getTypeAlias(name);
+  if (alias && alias.isExported()) return alias.getType();
+  return null;
+}
+
+function readJsDocDescription(symbol: MorphSymbol): string | undefined {
+  const tags = symbol.getDeclarations().flatMap((d) => (Node.isJSDocable(d) ? d.getJsDocs() : []));
+  for (const doc of tags) {
+    const text = doc.getDescription().trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function readJsDocDefault(symbol: MorphSymbol): unknown {
+  for (const decl of symbol.getDeclarations()) {
+    if (!Node.isJSDocable(decl)) continue;
+    const docs = decl.getJsDocs();
+    for (const doc of docs) {
+      for (const tag of doc.getTags()) {
+        if (tag.getTagName() === 'default') {
+          const raw = tag.getCommentText();
+          if (raw === undefined) return undefined;
+          return parseDefaultValue(raw.trim());
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+function hasJsDocTag(symbol: MorphSymbol, tagName: string): boolean {
+  for (const decl of symbol.getDeclarations()) {
+    if (!Node.isJSDocable(decl)) continue;
+    const docs = decl.getJsDocs();
+    if (docs.some((doc) => doc.getTags().some((tag) => tag.getTagName() === tagName))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function parseDefaultValue(raw: string): unknown {
+  // Strip optional surrounding backticks like `@default `true``.
+  const trimmed = raw.replace(/^`+|`+$/g, '').trim();
+  if (trimmed === '') return undefined;
+  // Strip a single matched pair of single quotes like `@default 'auto'`, the
+  // same way the line above already strips backticks — but only when every
+  // internal single quote is backslash-escaped, so a value with an
+  // unescaped internal quote (e.g. `'won't fit'`) is left untouched rather
+  // than mis-stripped.
+  const singleQuoted = /^'([^'\\]*(?:\\.[^'\\]*)*)'$/.exec(trimmed);
+  const unquoted = singleQuoted ? singleQuoted[1]! : trimmed;
+  // Try JSON first (covers numbers, booleans, null, quoted strings).
+  try {
+    return JSON.parse(unquoted);
+  } catch {
+    // Fall back to a string literal value.
+    return unquoted;
+  }
+}
+
+function toPascalCase(kebab: string): string {
+  return kebab
+    .split(/[-/]/)
+    .filter(Boolean)
+    .map((segment) => segment[0]!.toUpperCase() + segment.slice(1))
+    .join('');
+}
+
+function renderSchemaModule(schema: ComponentSchemaOutput, depthToSrc: number): string {
+  const relativePath = '../'.repeat(depthToSrc) + 'schema-types';
+  const literal = JSON.stringify(schema, null, 2);
+  if (schema.allOf) {
+    // `allOf` schemas carry a JSON Schema `then` keyword. Emitting them as an
+    // object literal would (a) make the `then` key trip `unicorn/no-thenable`
+    // and (b) force `tsc` to deep-check a large literal. Parsing a JSON string
+    // sidesteps both; the value is a build-time-generated schema, so the single
+    // assertion on `JSON.parse`'s `any` result is safe and documented.
+    return [
+      `import type { ComponentSchema } from '${relativePath}';`,
+      ``,
+      `// eslint-disable-next-line no-unsafe-type-assertion -- generated schema parsed from a build-validated JSON string; see generate-component-schema.ts.`,
+      `const schema = JSON.parse(${JSON.stringify(literal)}) as ComponentSchema;`,
+      ``,
+      `export default schema;`,
+      ``,
+    ].join('\n');
+  }
+
+  return [
+    `import type { ComponentSchema } from '${relativePath}';`,
+    ``,
+    `const schema = ${literal} satisfies ComponentSchema;`,
+    ``,
+    `export default schema as ComponentSchema;`,
+    ``,
+  ].join('\n');
+}
+
+export function resetSchemaProjectCache(): void {
+  activeProject = null;
+  cachedHtmlAttributeDeclarationSites = null;
+}
+
+if (import.meta.main) {
+  // CLI entry: `bun scripts/generate-component-schema.ts <component-dir>`
+  const dir = process.argv[2];
+  if (!dir) {
+    console.error('Usage: generate-component-schema.ts <component-dir>');
+    process.exit(1);
+  }
+  const componentName = basename(dir);
+  const typesFilePath = join(dir, `${componentName}.types.ts`);
+  const isExperimental = dir.includes('/experimental/');
+  const depthToSrc = isExperimental ? 3 : 2;
+  const result = generateSchemaForComponent({ typesFilePath, componentName, depthToSrc });
+  await Bun.write(join(dir, `${componentName}.schema.json`), result.schemaJson);
+  await Bun.write(join(dir, `${componentName}.schema.ts`), result.schemaModule);
+  console.log(`wrote ${componentName}.schema.{json,ts}`);
+}

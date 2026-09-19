@@ -1,5 +1,5 @@
-import { Conversation } from '@repo/conversationalist';
-import type { TypedEventTarget } from '@repo/lifecycle';
+import { Conversation } from '@corvidae/conversationalist';
+import type { TypedEventTarget } from '@corvidae/lifecycle';
 import {
   type ActiveRun,
   buildRunReport,
@@ -20,13 +20,13 @@ import {
   type StreamEventMap,
   type SummarizeOptions,
   type ToolFrameStatus,
-} from '@repo/operative';
+} from '@corvidae/operative';
 
 import { serializeUnknownError } from './serialization';
 
 /**
  * AB-96 — bureau-side wiring of operative's versioned run envelope
- * (`@repo/operative`). Extends `websocket-frames.ts`'s
+ * (`@corvidae/operative`). Extends `websocket-frames.ts`'s
  * `streamEventToFrame` concept with the fuller, documented lifecycle frame
  * set (run-started, step, assistant-chunk/final, tool-pre/post,
  * notification, run-finished), and builds the terminal `RunReport` for every

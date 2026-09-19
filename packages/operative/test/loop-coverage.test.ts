@@ -1,7 +1,7 @@
-import { createTestToolbox, createTool } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import { HookRegistry } from '@repo/lifecycle';
-import { yieldToPortableEventLoop } from '@repo/weft';
+import { createTestToolbox, createTool } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
+import { yieldToPortableEventLoop } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

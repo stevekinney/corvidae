@@ -1,10 +1,10 @@
 # Armorer
 
-`@repo/armorer` is the Agent Bureau tool layer. It provides type-safe tool definitions, validated execution, toolbox registries, provider adapters, middleware, MCP integration, and testing utilities.
+`@corvidae/armorer` is Corvidae's tool layer. It provides type-safe tool definitions, validated execution, toolbox registries, provider adapters, middleware, [Model Context Protocol](https://modelcontextprotocol.io/) integration, and testing utilities.
 
 ## Workspace usage
 
-Declare `"@repo/armorer": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@repo/armorer`; it exports TypeScript source directly and has no library build or publication step.
+Declare `"@corvidae/armorer": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@corvidae/armorer`; it exports TypeScript source directly and has no library build or publication step.
 
 ## Table of Contents
 
@@ -30,16 +30,16 @@ Toolbox turns tool calling into a structured, observable, and searchable workflo
 - Creates validated tools with `createTool()`.
 - Groups tools into immutable registries with `createToolbox()`.
 - Executes tool calls with runtime validation, middleware, events, policies, idempotency, and streaming support.
-- Converts tool definitions and tool results for OpenAI, Anthropic, Gemini, OpenAI Agents SDK, and MCP.
+- Converts tool definitions and tool results for [OpenAI](https://platform.openai.com/docs/), [Anthropic](https://docs.anthropic.com/), [Gemini](https://ai.google.dev/gemini-api/docs), the [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/), and MCP.
 - Supports registry querying, semantic search, inspection, truncation, and testing utilities.
 
 ## How It Works
 
-A tool combines metadata, an input schema, and an execute function. A toolbox registers one or more tools, validates incoming calls, runs middleware and policy hooks, executes the matching tool, and emits typed lifecycle events. Provider adapters materialize the same toolbox into provider-specific tool declarations and parse provider tool calls back into the shared `interoperability` contract.
+A tool combines metadata, an input schema, and an execute function. A toolbox registers one or more tools, validates incoming calls, runs middleware and policy hooks, executes the matching tool, and emits typed lifecycle events. Provider adapters materialize the same toolbox into provider-specific tool declarations and parse provider tool calls back into the shared `@corvidae/tool-protocol` contract.
 
 ## Project Role
 
-`armorer` is the action layer for Agent Bureau. `operative` uses it to execute tool calls during an agent run and uses its provider adapters when sending tools to providers, `skills` and `memory` expose their capabilities as toolboxes, and `gateway` surfaces the composed tool set through API and UI state.
+`armorer` is Corvidae's action layer. `@corvidae/operative` uses it to execute tool calls during an agent run and to send tool declarations to providers. `@corvidae/skills` and `@corvidae/memory` expose their capabilities as toolboxes, while host applications decide how to surface the composed tool set through an API or interface.
 
 ## Features
 
@@ -53,13 +53,13 @@ A tool combines metadata, an input schema, and an execute function. A toolbox re
 - **Built-in Middleware**: Caching, Rate Limiting, and Timeouts
 - **Testing Utilities**: Mock tools and test registries for easy verification
 - MCP server integration for exposing tools over MCP
-- OpenAI Agents SDK integration with tool gating and MCP support for Claude Agent SDK
+- OpenAI Agents SDK integration with tool gating and MCP support
 - Concurrency controls and execution tracing hooks
 - Pre-configured search tool for semantic tool discovery in agentic workflows
 
 ## Runtime and export support
 
-Armorer is a private ESM workspace whose only export points to `src/index.ts`. Import tools, composition helpers, provider integrations, instrumentation, and test utilities from `@repo/armorer`. The consuming application compiles the source. Filesystem tools and server SDK integrations still require their underlying server capabilities; consolidation does not make those operations available in a browser.
+Armorer is a private ESM workspace whose only export points to `src/index.ts`. Import tools, composition helpers, provider integrations, instrumentation, and test utilities from `@corvidae/armorer`. The consuming application compiles the source. Filesystem tools and server SDK integrations still require their underlying server capabilities; consolidation does not make those operations available in a browser.
 
 Required runtime integrations are direct catalog-backed dependencies. Run this package's `lint`, `typecheck`, and `test` scripts against source; there is no package archive, generated declaration output, or library build to validate.
 
@@ -74,7 +74,7 @@ The root API groups the following capabilities:
 The primary API for creating and managing tools:
 
 ```typescript
-import { createToolbox, createTool, isTool } from '@repo/armorer';
+import { createToolbox, createTool, isTool } from '@corvidae/armorer';
 ```
 
 **Exports:** `createToolbox`, `createTool`, `createToolCall`, `combineToolboxes`, `lazy`, `withContext`, `isTool`, `isToolbox`, `createMiddleware`, provider import helpers on `createToolbox`, and all core types.
@@ -84,7 +84,7 @@ import { createToolbox, createTool, isTool } from '@repo/armorer';
 Composition and utility functions:
 
 ```typescript
-import { pipe, parallel, retry, when } from '@repo/armorer';
+import { pipe, parallel, retry, when } from '@corvidae/armorer';
 ```
 
 **Exports:** Everything from main entry point **plus** `pipe`, `bind`, `parallel`, `retry`, `when`, `tap`, `preprocess`, `postprocess`, `PipelineError`, error utilities, and composition types.
@@ -94,7 +94,7 @@ import { pipe, parallel, retry, when } from '@repo/armorer';
 Query helpers and predicates for filtering tools:
 
 ```typescript
-import { queryTools, textMatches, tagsMatchAll, schemaMatches } from '@repo/armorer';
+import { queryTools, textMatches, tagsMatchAll, schemaMatches } from '@corvidae/armorer';
 ```
 
 **Exports:** `queryTools`, `reindexSearchIndex`, `textMatches`, `tagsMatchAll`, `tagsMatchAny`, `tagsMatchNone`, `schemaMatches`, `schemaHasKeys`, and related types.
@@ -104,7 +104,7 @@ import { queryTools, textMatches, tagsMatchAll, schemaMatches } from '@repo/armo
 Tool and registry inspection utilities:
 
 ```typescript
-import { inspectTool, inspectRegistry } from '@repo/armorer';
+import { inspectTool, inspectRegistry } from '@corvidae/armorer';
 ```
 
 **Exports:** `inspectTool`, `inspectRegistry`, `extractSchemaSummary`, `extractMetadataFlags`, and Zod schemas for inspection results.
@@ -122,7 +122,7 @@ import {
   fromOpenAITools,
   parseOpenAIToolCalls,
   toOpenAITools,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 ```
 
 ### Anthropic conversion
@@ -135,7 +135,7 @@ import {
   fromAnthropicTools,
   parseAnthropicToolCalls,
   toAnthropicTools,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 ```
 
 ### Gemini conversion
@@ -148,7 +148,7 @@ import {
   fromGeminiTools,
   parseGeminiToolCalls,
   toGeminiTools,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 ```
 
 Toolboxes also expose lazy provider exporters, and `createToolbox` exposes matching lazy provider import helpers:
@@ -171,7 +171,7 @@ Use the toolbox methods when your tools define runtime availability hooks. `tool
 Truncation utilities for tool results:
 
 ```typescript
-import { truncateToolResultContent, containsBase64Data } from '@repo/armorer';
+import { truncateToolResultContent, containsBase64Data } from '@corvidae/armorer';
 ```
 
 **Exports:** `truncateToolResultContent`, `truncateToolResultContentStructured`, `truncateText`, `safeSlice`, `createTruncatingAsyncIterable`, `containsBase64Data`, `stripBase64Data`, `isHighSurrogate`, `isLowSurrogate`, `DEFAULT_MAX_CHARACTERS`, `DEFAULT_ERROR_MAX_CHARACTERS`, and types `TruncationOptions`, `ToolResultTruncationOptions`, `StructuredToolResultTruncationOptions`, and `StructuredToolResultTruncation`.
@@ -181,7 +181,7 @@ import { truncateToolResultContent, containsBase64Data } from '@repo/armorer';
 Persistent idempotency helpers for at-least-once executors:
 
 ```typescript
-import { createToolResultCache, fullInputKey, withToolboxIdempotency } from '@repo/armorer';
+import { createToolResultCache, fullInputKey, withToolboxIdempotency } from '@corvidae/armorer';
 ```
 
 **Exports:** `createToolResultCache`, `withIdempotency`, `withToolboxIdempotency`, `fullInputKey`, `fieldKey`, `compositeKey`, `namespacedKey`, and idempotency cache/result types.
@@ -193,7 +193,7 @@ import { createToolResultCache, fullInputKey, withToolboxIdempotency } from '@re
 OpenTelemetry tracing:
 
 ```typescript
-import { instrument } from '@repo/armorer';
+import { instrument } from '@corvidae/armorer';
 ```
 
 ### Middleware
@@ -206,7 +206,7 @@ import {
   createRateLimitMiddleware,
   createTimeoutMiddleware,
   createTruncationMiddleware,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 ```
 
 ### Test utilities
@@ -214,7 +214,7 @@ import {
 Testing utilities:
 
 ```typescript
-import { createMockTool, createTestRegistry } from '@repo/armorer';
+import { createMockTool, createTestRegistry } from '@corvidae/armorer';
 ```
 
 ### Integrations
@@ -224,7 +224,7 @@ import { createMockTool, createTestRegistry } from '@repo/armorer';
 Model Context Protocol server integration:
 
 ```typescript
-import { createMCP, toMcpTools, fromMcpTools } from '@repo/armorer';
+import { createMCP, toMcpTools, fromMcpTools } from '@corvidae/armorer';
 ```
 
 ### OpenAI Agents
@@ -232,7 +232,7 @@ import { createMCP, toMcpTools, fromMcpTools } from '@repo/armorer';
 OpenAI Agents SDK integration with tool gating:
 
 ```typescript
-import { toOpenAIAgentTools, createOpenAIToolGate } from '@repo/armorer';
+import { toOpenAIAgentTools, createOpenAIToolGate } from '@corvidae/armorer';
 ```
 
 ### Other Utilities
@@ -242,21 +242,21 @@ import { toOpenAIAgentTools, createOpenAIToolGate } from '@repo/armorer';
 Pre-built tools (search, etc.):
 
 ```typescript
-import { createSearchTool } from '@repo/armorer';
+import { createSearchTool } from '@corvidae/armorer';
 ```
 
 ### Composition utilities
 
-Composition utilities are exported from `@repo/armorer`:
+Composition utilities are exported from `@corvidae/armorer`:
 
 ```typescript
-import { pipe, bind, parallel } from '@repo/armorer';
+import { pipe, bind, parallel } from '@corvidae/armorer';
 ```
 
 ## Quick Start
 
 ```typescript
-import { createToolbox, createTool } from '@repo/armorer';
+import { createToolbox, createTool } from '@corvidae/armorer';
 import { z } from 'zod';
 
 const addNumbers = createTool({
@@ -288,7 +288,7 @@ console.log(toolCall.result); // 8
 Compose toolboxes without mutating existing instances.
 
 ```typescript
-import { createToolbox, combineToolboxes } from '@repo/armorer';
+import { createToolbox, combineToolboxes } from '@corvidae/armorer';
 
 const base = createToolbox([mathTool], {
   context: { region: 'us-east-1' },
@@ -411,7 +411,7 @@ import {
   signGrant,
   verifyGrantSignature,
   type ReusableApprovalGrant,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 
 const grantStore = createProcessLocalGrantStateStore();
 // Reuses the same secret configured as the toolbox's `approvalSecret` (see
@@ -456,7 +456,7 @@ await grantStore.revoke(signed.id); // idempotent; never throws on an unknown or
 - `'run'` requires `runId` and matches only a call whose request context carries that exact `runId`—a sibling run under the same principal never matches, even mid-session.
 - `'session'` requires `sessionId` and matches any call whose request context carries that exact `sessionId`, spanning every run of that session.
 
-`Toolbox.issueGrant` (and the gateway's `POST /grants`, below) validates the identifier is present for the chosen scope, rejecting `run` without `runId` and `session` without `sessionId`—a `GrantError` with code `'invalid-scope'` from the toolbox, a `400` from the gateway. Matching is symmetric: a `run`/`session` grant missing its own identifier (which issuance now prevents, but a grant restored from an untrusted or pre-AB-364 store still could) never matches—comparing two `undefined`s would let it authorize every call under the same principal, tenant, owner, agent, and tool, exactly the gap this closes. A request context supplies `runId`/`sessionId` itself; Bureau always stamps both onto every run it starts, so a bureau-hosted toolbox never needs to set them by hand.
+`Toolbox.issueGrant` validates that the chosen scope has its required identifier: a `run` grant needs `runId`, and a `session` grant needs `sessionId`. Invalid input throws a `GrantError` with code `'invalid-scope'`. Matching is symmetric: a restored or untrusted grant that lacks its scope identifier never matches. A request context supplies `runId` and `sessionId`; Bureau stamps both onto every run it starts, so a Bureau-hosted toolbox does not set them by hand.
 
 ### Matching a grant against an incoming call
 
@@ -500,7 +500,7 @@ A match decrements `usesRemaining` by one and emits a `'grant.used'` toolbox eve
 
 ### Gateway grant routes
 
-The gateway's `POST /api/v1/grants` accepts the same fields (`principalId` is always the authenticated caller, never a body field): a `scope: 'run'` body without `runId`, or `scope: 'session'` without `sessionId`, is rejected with `400` before the toolbox is ever called. `GET /api/v1/grants` and `DELETE /api/v1/grants/:id` are scoped to the caller's own grants, mirroring the review routes.
+An HTTP host can expose the same fields, but it owns authentication, status-code mapping, and caller scoping. Keep `principalId` under host control rather than accepting it from an untrusted request body.
 
 ### Request Authority and Execution Projections
 
@@ -518,7 +518,7 @@ import {
   formatOpenAIToolResultsAsync,
   parseOpenAIToolCalls,
   toOpenAITools,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 
 // 1. Export tools
 const tools = toOpenAITools(toolbox);
@@ -558,10 +558,10 @@ import {
   appendToolResultsAsync,
   appendUserMessage,
   createConversationHistory,
-} from '@repo/conversationalist';
-import { toOpenAIMessagesGrouped } from '@repo/conversationalist';
-import { createToolbox } from '@repo/armorer';
-import { parseOpenAIToolCalls, toOpenAITools } from '@repo/armorer';
+} from '@corvidae/conversationalist';
+import { toOpenAIMessagesGrouped } from '@corvidae/conversationalist';
+import { createToolbox } from '@corvidae/armorer';
+import { parseOpenAIToolCalls, toOpenAITools } from '@corvidae/armorer';
 
 let conversation = createConversationHistory({ title: 'Weather' });
 conversation = appendUserMessage(conversation, 'What is the weather in Denver?');
@@ -584,8 +584,8 @@ See [Using `armorer` with `conversationalist`](documentation/conversationalist-i
 Native instrumentation for distributed tracing.
 
 ```ts
-import { createToolbox } from '@repo/armorer';
-import { instrument } from '@repo/armorer';
+import { createToolbox } from '@corvidae/armorer';
+import { instrument } from '@corvidae/armorer';
 import { context, trace } from '@opentelemetry/api';
 
 const toolbox = createToolbox();
@@ -631,13 +631,13 @@ Non-standard fields (duration, digests, internal status) are namespaced under `a
 Batteries-included middleware for production needs.
 
 ```ts
-import { createToolbox } from '@repo/armorer';
+import { createToolbox } from '@corvidae/armorer';
 import {
   createCacheMiddleware,
   createRateLimitMiddleware,
   createTruncationMiddleware,
   createUntrustedOutputFencingMiddleware,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 
 const toolbox = createToolbox([], {
   middleware: [
@@ -654,8 +654,8 @@ const toolbox = createToolbox([], {
 Prevent oversized tool results from blowing up context windows. The truncation utilities safely handle UTF-16 surrogate pairs and strip base64 data. When a tool returns a streaming result (an object with `stream` or `result` fields containing an `AsyncIterable`), the middleware wraps the streams so chunks are yielded until the character limit is reached, then a truncation marker is emitted and iteration stops.
 
 ```ts
-import { truncateToolResultContent } from '@repo/armorer';
-import { createTruncationMiddleware } from '@repo/armorer';
+import { truncateToolResultContent } from '@corvidae/armorer';
+import { createTruncationMiddleware } from '@corvidae/armorer';
 
 // Standalone usage
 const truncated = truncateToolResultContent(longResult, {
@@ -672,7 +672,7 @@ const toolbox = createToolbox(tools, {
 For large tool outputs that are stored separately, use the structured head-and-tail helper:
 
 ```ts
-import { truncateToolResultContentStructured } from '@repo/armorer';
+import { truncateToolResultContentStructured } from '@corvidae/armorer';
 
 const excerpt = truncateToolResultContentStructured(toolOutput, {
   maxBytes: 8000,
@@ -690,9 +690,9 @@ The structured result is `{ head, tail, originalSize, omittedBytes, truncated }`
 Tools that return third-party text can carry prompt-injection instructions inside otherwise useful data. Mark those tools with `risk.untrustedOutput: true`, then add the fencing middleware before truncation so the model receives a clear data boundary.
 
 ```ts
-import { createToolbox, createTool } from '@repo/armorer';
-import { createUntrustedOutputFencingMiddleware } from '@repo/armorer';
-import { queryTools } from '@repo/armorer';
+import { createToolbox, createTool } from '@corvidae/armorer';
+import { createUntrustedOutputFencingMiddleware } from '@corvidae/armorer';
+import { queryTools } from '@corvidae/armorer';
 import { z } from 'zod';
 
 const fetchPage = createTool({
@@ -726,8 +726,8 @@ Use the idempotency helpers when a tool might be retried by an at-least-once exe
 - `authorization-required`: a completed result exists, but it was recorded under another policy revision and must not be returned without reauthorization.
 
 ```ts
-import { createToolbox } from '@repo/armorer';
-import { createToolResultCache, withToolboxIdempotency } from '@repo/armorer';
+import { createToolbox } from '@corvidae/armorer';
+import { createToolResultCache, withToolboxIdempotency } from '@corvidae/armorer';
 
 // This adapter is atomic only among instances sharing this store object in one process.
 const cache = createToolResultCache({ store: processLocalKeyValueStore });
@@ -884,7 +884,7 @@ Detectors: simple repeat (same call N times) and ping-pong (alternating between 
 Utilities for testing tools and agent logic.
 
 ```ts
-import { createMockTool, createTestRegistry } from '@repo/armorer';
+import { createMockTool, createTestRegistry } from '@corvidae/armorer';
 
 const mock = createMockTool({ name: 'weather' });
 mock.mockResolve({ temp: 72 });
@@ -901,7 +901,7 @@ console.log(toolbox.history[0].call.name); // 'weather'
 Toolbox supports registry-level policy hooks and per-tool policy for centralized guardrails. You can also tag tools as mutating or read-only and enforce those tags at the registry. See the [Registry documentation](documentation/registry.md) for details on querying, searching, and middleware.
 
 ```ts
-import { createToolbox, createTool } from '@repo/armorer';
+import { createToolbox, createTool } from '@corvidae/armorer';
 import { z } from 'zod';
 
 const toolbox = createToolbox([], {
@@ -1025,7 +1025,7 @@ Availability is not secrets configuration. A tool with an optional API key can s
 You can use `isTool(obj)` to check if an object is a tool:
 
 ```typescript
-import { isTool, createTool } from '@repo/armorer';
+import { isTool, createTool } from '@corvidae/armorer';
 
 const tool = createTool({ ... });
 if (isTool(tool)) {
@@ -1120,7 +1120,7 @@ const userTool = createToolWithContext({
 You can supply `execute` as a promise that resolves to a function. To avoid `import()` starting immediately, wrap the dynamic import with `lazy` so it only loads on first execution:
 
 ```typescript
-import { lazy } from '@repo/armorer';
+import { lazy } from '@corvidae/armorer';
 
 const heavyTool = createTool({
   name: 'heavy-tool',
@@ -1287,8 +1287,8 @@ longTask.addEventListener('progress', (event) => {
 Toolbox includes a pre-configured search tool that lets agents discover available tools dynamically. This is useful when you have many tools and want the large language model to find the right one for a task.
 
 ```typescript
-import { createToolbox, createTool } from '@repo/armorer';
-import { createSearchTool } from '@repo/armorer';
+import { createToolbox, createTool } from '@corvidae/armorer';
+import { createSearchTool } from '@corvidae/armorer';
 import { z } from 'zod';
 
 const toolbox = createToolbox();
@@ -1334,8 +1334,8 @@ See [Search Tool documentation](documentation/search-tool.md) for filtering by t
 The coding toolbox is a first-party, read-only tool set for inspecting a codebase: `read-file`, `grep`, and `glob`, all constrained to a single root directory by a path jail.
 
 ```typescript
-import { createToolbox } from '@repo/armorer';
-import { createCodingTools } from '@repo/armorer';
+import { createToolbox } from '@corvidae/armorer';
+import { createCodingTools } from '@corvidae/armorer';
 
 const { readFile, grep, glob, jail } = createCodingTools({ root: process.cwd() });
 const toolbox = createToolbox([readFile, grep, glob]);
@@ -1390,17 +1390,17 @@ Longer-form docs live in `documentation/`:
 - [Context and withContext](documentation/context.md) - Shared toolbox context, tool-local context injection, and runtime execution context
 - [Tool Composition](documentation/composition.md) - `pipe`, `bind`, `tap`, `when`, `parallel`, `retry`, `preprocess`, `postprocess`
 - [Embeddings & Semantic Search](documentation/embeddings.md) - Vector embeddings with OpenAI and Pinecone
-- [Integrations](documentation/integrations/) - Pinecone, LanceDB, and Chroma integration guides
-- [Pinecone Integration](documentation/integrations/pinecone.md) - Managed vector database for hosted semantic retrieval
-- [LanceDB Integration](documentation/integrations/lancedb.md) - Serverless vector database for local and cloud deployments
-- [Chroma Integration](documentation/integrations/chroma.md) - Open-source embedding database with built-in embedding functions
+- [Host-owned integrations](documentation/integrations/) - Bring-your-own Pinecone, LanceDB, and Chroma examples built on the generic embedder registry
+- [Pinecone integration](documentation/integrations/pinecone.md) - Host-side managed vector retrieval
+- [LanceDB integration](documentation/integrations/lancedb.md) - Host-side local or cloud vector retrieval
+- [Chroma integration](documentation/integrations/chroma.md) - Host-side vector retrieval with Chroma embedding functions
 - [Search Tool](documentation/search-tool.md) - Pre-configured tool for semantic tool discovery in agentic workflows
 - [AbortSignal Support](documentation/about-signal.md) - Cancellation and timeout handling
 - [Testing Utilities](documentation/testing.md) - `createMockTool` and `createTestRegistry` for test workflows
 - [JSON Schema Output](documentation/json-schema.md) - Export tools as JSON Schema
 - [Provider Adapters](documentation/provider-adapters.md) - OpenAI, Anthropic, and Gemini integrations
 - [MCP Server](documentation/mcp.md) - Expose tools over Model Context Protocol
-- [Agent SDK Integrations](documentation/agent-sdk-integrations.md) - OpenAI and Anthropic Agent SDK usage via MCP
+- [Agent SDK Integrations](documentation/agent-sdk-integrations.md) - OpenAI Agents SDK usage via MCP
 - [OpenAI Agents SDK](documentation/openai-agents-sdk.md) - Integration with `@openai/agents` including tool gating
 - [Public API Reference](documentation/api-reference.md) - Complete API reference with all exports and types
 

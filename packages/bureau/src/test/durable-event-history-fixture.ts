@@ -32,16 +32,16 @@
  *   rejection `durable-event-history.ts`'s `UnsupportedDurableEventSchemaVersionError`
  *   documents (AB-313, `ab91-04`) — never silently coerced or upgraded.
  */
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createManualRuntimeServices } from '@repo/lifecycle';
-import type { DurableEventEnvelope, DurableEventOwner } from '@repo/operative';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import type { DurableEventEnvelope, DurableEventOwner } from '@corvidae/operative';
 import {
   createFleetEventFeed,
   type FleetEventFeed,
   resolveStorage,
   type Storage,
   type StorageConfiguration,
-} from '@repo/weft';
+} from '@corvidae/weft';
 
 import { createDurableEventHistory, type DurableEventHistory } from '../durable-event-history';
 import type { BureauStorageFixture } from './storage-fixtures';

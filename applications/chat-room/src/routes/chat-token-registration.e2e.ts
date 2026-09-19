@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 // `--cinder-chat-message-max-width` is registered with `@property` in
-// `packages/chat/src/lib/components/chat/chat.css`. A registration is a
+// `components/chat/src/lib/components/chat/chat.css`. A registration is a
 // browser-side contract that the source-regex unit tests cannot see through:
 // a typed registration whose `initial-value` is not computationally
 // independent (a `rem` length, for one) is silently dropped by the engine,

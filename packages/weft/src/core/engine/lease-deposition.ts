@@ -48,7 +48,7 @@ import type { EngineInternals } from './internals.ts';
  *
  * @example
  * ```ts
- * import { ENGINE_LEASE_LOST_WARNING_NAME } from '@repo/weft';
+ * import { ENGINE_LEASE_LOST_WARNING_NAME } from '@corvidae/weft';
  *
  * process.on('warning', (warning) => {
  *   if (warning.name === ENGINE_LEASE_LOST_WARNING_NAME) {
@@ -106,7 +106,7 @@ export function handleDeposition(internals: EngineInternals): void {
  *
  * @example
  * ```ts
- * import { WORKFLOW_CLAIM_LOST_WARNING_NAME } from '@repo/weft';
+ * import { WORKFLOW_CLAIM_LOST_WARNING_NAME } from '@corvidae/weft';
  *
  * process.on('warning', (warning) => {
  *   if (warning.name === WORKFLOW_CLAIM_LOST_WARNING_NAME) {
@@ -129,7 +129,7 @@ export const WORKFLOW_CLAIM_LOST_WARNING_NAME = 'WeftWorkflowClaimLostWarning';
  *
  * @example
  * ```ts
- * import { WeftWorkflowClaimLostWarning } from '@repo/weft';
+ * import { WeftWorkflowClaimLostWarning } from '@corvidae/weft';
  *
  * process.on('warning', (warning) => {
  *   if (warning instanceof WeftWorkflowClaimLostWarning) {
@@ -161,7 +161,7 @@ export class WeftWorkflowClaimLostWarning extends Error {
  *
  * @example
  * ```ts
- * import type { WorkflowWakeKind } from '@repo/weft';
+ * import type { WorkflowWakeKind } from '@corvidae/weft';
  *
  * const kind: WorkflowWakeKind = 'signal';
  * void kind;
@@ -185,7 +185,7 @@ export type WorkflowWakeKind =
  *
  * @example
  * ```ts
- * import { WORKFLOW_WAKE_DISCARDED_WARNING_NAME } from '@repo/weft';
+ * import { WORKFLOW_WAKE_DISCARDED_WARNING_NAME } from '@corvidae/weft';
  *
  * process.on('warning', (warning) => {
  *   if (warning.name === WORKFLOW_WAKE_DISCARDED_WARNING_NAME) {
@@ -207,7 +207,7 @@ export const WORKFLOW_WAKE_DISCARDED_WARNING_NAME = 'WeftWorkflowWakeDiscardedWa
  *
  * @example
  * ```ts
- * import { WeftWorkflowWakeDiscardedWarning } from '@repo/weft';
+ * import { WeftWorkflowWakeDiscardedWarning } from '@corvidae/weft';
  *
  * process.on('warning', (warning) => {
  *   if (warning instanceof WeftWorkflowWakeDiscardedWarning) {

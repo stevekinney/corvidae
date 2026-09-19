@@ -9,20 +9,20 @@ import {
   createTestToolbox,
   createTool,
   createToolbox,
-} from '@repo/armorer';
-import { Conversation, createConversationHistory, getMessages } from '@repo/conversationalist';
-import type { RuntimeTimeoutHandle } from '@repo/lifecycle';
+} from '@corvidae/armorer';
+import { Conversation, createConversationHistory, getMessages } from '@corvidae/conversationalist';
+import type { RuntimeTimeoutHandle } from '@corvidae/lifecycle';
 import {
   CompletableEventTarget,
   createManualRuntimeServices,
   TypedEventTarget,
-} from '@repo/lifecycle';
+} from '@corvidae/lifecycle';
 import {
   createInMemoryMemoryRecordStorage,
   createMemory,
   createMockEmbedder,
   type Memory,
-} from '@repo/memory';
+} from '@corvidae/memory';
 import {
   AbortAgentRunError,
   type ActiveRun,
@@ -60,8 +60,8 @@ import {
   TaskDispatchedEvent,
   TaskPreemptedEvent,
   type Toolbox,
-} from '@repo/operative';
-import type { ConditionalTextValueStore } from '@repo/weft';
+} from '@corvidae/operative';
+import type { ConditionalTextValueStore } from '@corvidae/weft';
 import {
   createFleetEventFeed,
   encode,
@@ -71,7 +71,7 @@ import {
   ScheduleHandle,
   textValueStore,
   yieldToPortableEventLoop,
-} from '@repo/weft';
+} from '@corvidae/weft';
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { z } from 'zod';
 
@@ -6153,7 +6153,7 @@ describe('createBureau session update/query capability unavailability (AB-192)',
 
 describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => {
   // AB-42's fixed pre-admission check order: authorization, then session
-  // lifecycle, then capability/capacity. No adopted @repo/weft
+  // lifecycle, then capability/capacity. No adopted @corvidae/weft
   // version exposes WFT-84's durable mailbox yet, so every authorized,
   // non-terminal request unconditionally returns 'unsupported-capability' —
   // 'admitted'/'replayed'/'conflict'/'backlog-exhausted' are structurally

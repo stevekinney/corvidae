@@ -1,0 +1,504 @@
+/// <reference lib="dom" />
+import { afterAll, afterEach, describe, expect, spyOn, test } from 'bun:test';
+
+import { setupHappyDom } from '@corvidae/testing';
+
+setupHappyDom();
+
+class TestResizeObserver {
+  observe(): void {}
+  disconnect(): void {}
+}
+
+// Capture the original so it can be restored — overwriting globalThis without
+// restoring leaks the stub into any later test file that relies on the real one.
+const originalResizeObserver = globalThis.ResizeObserver;
+globalThis.ResizeObserver = TestResizeObserver as unknown as typeof ResizeObserver;
+
+const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
+const { default: MatrixChart } = await import('./matrix-chart.svelte');
+
+afterEach(() => cleanup());
+afterAll(() => {
+  globalThis.ResizeObserver = originalResizeObserver;
+});
+
+const confusionData = [
+  { actual: 'Cat', predicted: 'Cat', count: 50 },
+  { actual: 'Cat', predicted: 'Dog', count: 5 },
+  { actual: 'Dog', predicted: 'Cat', count: 3 },
+  { actual: 'Dog', predicted: 'Dog', count: 42 },
+];
+
+describe('MatrixChart', () => {
+  test('preserves consumer inline styles while applying theme variables', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Styled matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+      style: 'inline-size: 20rem; --consumer-token: keep-me',
+      theme: { foreground: 'hotpink' },
+    });
+    const root = container.querySelector('.cinder-matrix-chart');
+    expect(root?.getAttribute('style')).toContain('inline-size: 20rem');
+    expect(root?.getAttribute('style')).toContain('--consumer-token: keep-me');
+    expect(root?.getAttribute('style')).toContain('--_cinder-chart-foreground: hotpink');
+  });
+
+  test('uses the custom theme palette and paints the chart background', async () => {
+    const { container } = render(MatrixChart, {
+      label: 'Themed matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+      theme: { palette: ['custom-palette'], background: 'custom-background' },
+    });
+    const fill = container.querySelector('.cinder-matrix-chart__cell')?.getAttribute('fill');
+    const rootStyle = container.querySelector('.cinder-matrix-chart')?.getAttribute('style');
+    const cssText = await Bun.file(new URL('./matrix-chart.css', import.meta.url)).text();
+
+    expect(fill).toContain('custom-palette');
+    expect(fill).toContain('custom-background');
+    expect(rootStyle).toContain('--_cinder-chart-background: custom-background');
+    expect(cssText).toMatch(
+      /\.cinder-matrix-chart\s*\{[^}]*background: var\(--_cinder-chart-background, transparent\)/s,
+    );
+  });
+
+  test('derives label contrast from the rendered cell color', async () => {
+    const { container } = render(MatrixChart, {
+      label: 'Transparent background matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+      cellLabelsVisible: true,
+      theme: { palette: ['white'], background: '#0000' },
+    });
+    const fills = [...container.querySelectorAll('.cinder-matrix-chart__cell-label')].map((label) =>
+      label.getAttribute('fill'),
+    );
+    const cssText = await Bun.file(new URL('./matrix-chart.css', import.meta.url)).text();
+
+    expect(fills).toContain('var(--cinder-text-inverse)');
+    expect(fills).not.toContain('#0000');
+    expect(cssText).toMatch(/__cell-label\s*\{[^}]*mix-blend-mode: difference/s);
+  });
+
+  test('routes cell boundaries through the custom grid theme channel', async () => {
+    const { container } = render(MatrixChart, {
+      label: 'Grid-themed matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+      theme: { grid: 'custom-grid' },
+    });
+    const rootStyle = container.querySelector('.cinder-matrix-chart')?.getAttribute('style');
+    const cssText = await Bun.file(new URL('./matrix-chart.css', import.meta.url)).text();
+
+    expect(rootStyle).toContain('--_cinder-chart-grid: custom-grid');
+    expect(cssText).toContain('stroke: var(--_cinder-chart-grid, currentColor)');
+  });
+
+  test('keeps cells inside the plot when category labels are long', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Long labels',
+      data: [{ x: 'A very long category label', y: 'Another very long row label', value: 1 }],
+      xField: 'x',
+      yField: 'y',
+      valueField: 'value',
+    });
+    const cell = container.querySelector<SVGRectElement>('.cinder-matrix-chart__cell');
+    expect(cell?.getAttribute('x')).toBe('0');
+    expect(Number(cell?.getAttribute('width'))).toBeGreaterThan(0);
+  });
+
+  test('renders cells for all categorical combinations', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    const cells = container.querySelectorAll('.cinder-matrix-chart__cell');
+    expect(cells.length).toBe(4);
+  });
+
+  test('renders x-axis and y-axis tick labels', () => {
+    const { getAllByText } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    expect(getAllByText('Cat').length).toBeGreaterThan(0);
+    expect(getAllByText('Dog').length).toBeGreaterThan(0);
+  });
+
+  test('renders accessible data table when dataTableVisibility is visible', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      dataTableVisibility: 'visible',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    expect(container.querySelector('table')).not.toBeNull();
+    expect(container.querySelector('table')?.className).not.toContain('cinder-sr-only');
+    expect(container.querySelector('caption')?.textContent).toBe('Confusion matrix');
+  });
+
+  test('hides data table when dataTableVisibility is hidden', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+      dataTableVisibility: 'hidden',
+    });
+
+    expect(container.querySelector('table')).toBeNull();
+  });
+
+  test('screen-reader-only data table has cinder-sr-only class', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+      dataTableVisibility: 'screen-reader-only',
+    });
+
+    expect(container.querySelector('table.cinder-sr-only')).not.toBeNull();
+  });
+
+  test('renders accessible SVG title when data is present', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Performance heatmap',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    const svgTitle = container.querySelector('svg > title');
+    expect(svgTitle?.textContent).toBe('Performance heatmap');
+  });
+
+  test('SVG is aria-hidden when loading', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Loading chart',
+      loading: true,
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    expect(container.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    // The chart-level SVG title (direct child, for aria-labelledby) should not be present when loading
+    expect(container.querySelector('svg > title')).toBeNull();
+    // The heatmap plot must NOT draw under the loading overlay — data may be
+    // present while loading, so cells/labels are suppressed until loading ends.
+    expect(container.querySelectorAll('.cinder-matrix-chart__cell').length).toBe(0);
+    expect(container.querySelectorAll('.cinder-matrix-chart__tick-label').length).toBe(0);
+  });
+
+  test('shows loading state text', () => {
+    const { getByText } = render(MatrixChart, {
+      label: 'Loading chart',
+      loading: true,
+      data: [],
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    expect(getByText('Loading chart…')).toBeTruthy();
+  });
+
+  test('shows empty state when data is empty', () => {
+    const { getByText, container } = render(MatrixChart, {
+      label: 'Empty chart',
+      data: [],
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    expect(getByText('No chart data')).toBeTruthy();
+    expect(container.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  test('renders sparse cells as null (no cell label)', () => {
+    const sparseData = [
+      { actual: 'Cat', predicted: 'Cat', count: 50 },
+      // 'Cat' × 'Dog' is missing entirely
+      { actual: 'Dog', predicted: 'Dog', count: 42 },
+    ];
+    const { container } = render(MatrixChart, {
+      label: 'Sparse matrix',
+      data: sparseData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+      cellLabelsVisible: true,
+    });
+
+    // Two categories × two categories = 4 cells; only 2 have data
+    const cells = container.querySelectorAll('.cinder-matrix-chart__cell');
+    const cellLabels = container.querySelectorAll('.cinder-matrix-chart__cell-label');
+    expect(cells.length).toBe(4);
+    // Only populated cells get a label
+    expect(cellLabels.length).toBe(2);
+  });
+
+  test('applies correct color-scale data attribute', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Diverging chart',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+      colorScale: 'diverging',
+    });
+
+    expect(container.querySelector('[data-cinder-color-scale="diverging"]')).not.toBeNull();
+  });
+
+  test('uses custom dataTableCaption when provided', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      dataTableCaption: 'Custom table caption',
+      dataTableVisibility: 'visible',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    expect(container.querySelector('caption')?.textContent).toBe('Custom table caption');
+  });
+
+  test('renders cell tooltips via SVG title elements', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    const cellTitles = [...container.querySelectorAll('.cinder-matrix-chart__cell title')];
+    expect(cellTitles.length).toBe(4);
+    // Each cell title has the format "x × y: value"
+    expect(cellTitles.some((title) => title.textContent?.includes('×'))).toBe(true);
+  });
+
+  test('non-finite values render as missing cells (no NaN in fill)', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Glitchy',
+      data: [
+        { x: 'a', y: 'p', v: NaN },
+        { x: 'a', y: 'q', v: Infinity },
+        { x: 'b', y: 'p', v: 10 },
+        { x: 'b', y: 'q', v: 20 },
+      ],
+      xField: 'x',
+      yField: 'y',
+      valueField: 'v',
+    });
+    for (const cell of container.querySelectorAll<SVGRectElement>('.cinder-matrix-chart__cell')) {
+      expect(cell.getAttribute('fill') ?? '').not.toContain('NaN');
+    }
+    // The two non-finite cells render with the "missing" inset surface fill.
+    const fills = [...container.querySelectorAll('.cinder-matrix-chart__cell')].map((c) =>
+      c.getAttribute('fill'),
+    );
+    expect(fills.filter((f) => f === 'var(--cinder-surface-inset)').length).toBe(2);
+  });
+
+  test('a degenerate domain (all equal values) does not divide by zero', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Flat',
+      data: [
+        { x: 'a', y: 'p', v: 7 },
+        { x: 'b', y: 'p', v: 7 },
+      ],
+      xField: 'x',
+      yField: 'y',
+      valueField: 'v',
+    });
+    for (const cell of container.querySelectorAll<SVGRectElement>('.cinder-matrix-chart__cell')) {
+      const fill = cell.getAttribute('fill') ?? '';
+      expect(fill).not.toContain('NaN');
+      // Equal values map to the midpoint (50%).
+      expect(fill).toContain('50%');
+    }
+  });
+
+  test('the SVG exposes role="img"', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+    expect(container.querySelector('svg')?.getAttribute('role')).toBe('img');
+  });
+
+  test('category labels containing the delimiter do not collide', () => {
+    // Regression: a flat "x::y" key would merge ("A::B","C") with ("A","B::C").
+    const { container } = render(MatrixChart, {
+      label: 'Delimiters',
+      data: [
+        { x: 'A::B', y: 'C', v: 11 },
+        { x: 'A', y: 'B::C', v: 22 },
+      ],
+      xField: 'x',
+      yField: 'y',
+      valueField: 'v',
+      dataTableVisibility: 'visible',
+    });
+    // Both distinct values must survive in the data table (no overwrite / collapse).
+    const tableText = container.querySelector('table')?.textContent ?? '';
+    expect(tableText).toContain('11');
+    expect(tableText).toContain('22');
+  });
+
+  test('pointer enter on a cell marks it data-cinder-active and leaving the plot clears it', async () => {
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+
+    // Before hover: no cell is active.
+    expect(container.querySelector('.cinder-matrix-chart__cell[data-cinder-active]')).toBeNull();
+
+    // Pointer enters the first cell directly — no overlay intercepting, so the
+    // cell's own native <title> (the value-on-hover tooltip) stays reachable.
+    const firstCell = container.querySelector('.cinder-matrix-chart__cell') as SVGRectElement;
+    expect(firstCell).not.toBeNull();
+    await fireEvent.pointerEnter(firstCell);
+
+    const activeCell = container.querySelector('.cinder-matrix-chart__cell[data-cinder-active]');
+    expect(activeCell).toBe(firstCell);
+    // The first cell is the first predicted (x) × first actual (y) combination.
+    // `confusionData` lists Cat before Dog for both fields, so the first cell is
+    // Cat × Cat. Asserting the exact coordinates (not merely truthy) pins which
+    // cell the pointer handler activated — a regression that activated the wrong
+    // cell, or dropped the coordinate data attributes, would fail here.
+    expect(activeCell?.getAttribute('data-cinder-x')).toBe('Cat');
+    expect(activeCell?.getAttribute('data-cinder-y')).toBe('Cat');
+
+    // Leaving the plot group (the presentation <g> that owns onpointerleave)
+    // clears the active cell.
+    const plotGroup = firstCell.closest('g[role="presentation"]');
+    expect(plotGroup).not.toBeNull();
+    await fireEvent.pointerLeave(plotGroup as SVGGElement);
+    expect(container.querySelector('.cinder-matrix-chart__cell[data-cinder-active]')).toBeNull();
+  });
+
+  test('each cell carries a native <title> so pointer users get value-on-hover', () => {
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+    });
+    const cells = container.querySelectorAll('.cinder-matrix-chart__cell');
+    expect(cells.length).toBeGreaterThan(0);
+    // Every cell owns a <title> child — the affordance an intercepting overlay
+    // would have hidden from pointer hover. The text mirrors the formatted value.
+    for (const cell of cells) {
+      expect(cell.querySelector('title')?.textContent).toContain('×');
+    }
+  });
+
+  test('matrix-chart CSS has a rule for data-cinder-active', async () => {
+    const cssText = await Bun.file(new URL('./matrix-chart.css', import.meta.url)).text();
+    expect(cssText).toContain('.cinder-matrix-chart__cell[data-cinder-active]');
+  });
+
+  test('the active-cell rule carries a non-color channel, not brightness alone (CIN-144)', async () => {
+    const cssText = await Bun.file(new URL('./matrix-chart.css', import.meta.url)).text();
+    const activeRuleMatch = cssText.match(
+      /\.cinder-matrix-chart__cell\[data-cinder-active\]\s*\{([^}]*)\}/,
+    );
+    expect(activeRuleMatch).not.toBeNull();
+    const activeRuleBody = activeRuleMatch?.[1] ?? '';
+    // Brightness alone is a color/luminance-only channel and fails WCAG's
+    // non-color-reliance guidance for conveying state. The active rule must
+    // also change stroke-width so the cell is distinguishable without color.
+    expect(activeRuleBody).toContain('stroke-width: 3');
+
+    // The active stroke-width must be strictly thicker than the cell's base
+    // stroke-width, or the "channel" is a no-op.
+    const baseRuleMatch = cssText.match(/\.cinder-matrix-chart__cell\s*\{([^}]*)\}/);
+    expect(baseRuleMatch).not.toBeNull();
+    const baseStrokeWidthMatch = baseRuleMatch?.[1]?.match(/stroke-width:\s*([\d.]+)/);
+    expect(baseStrokeWidthMatch).not.toBeNull();
+    const baseStrokeWidth = Number(baseStrokeWidthMatch?.[1]);
+    const activeStrokeWidthMatch = activeRuleBody.match(/stroke-width:\s*([\d.]+)/);
+    const activeStrokeWidth = Number(activeStrokeWidthMatch?.[1]);
+    expect(activeStrokeWidth).toBeGreaterThan(baseStrokeWidth);
+  });
+
+  test('formats every cell label with one hoisted Intl.NumberFormat instance (#1186 row 6)', () => {
+    const numberFormatSpy = spyOn(Intl, 'NumberFormat');
+
+    const { container } = render(MatrixChart, {
+      label: 'Confusion matrix',
+      data: confusionData,
+      xField: 'predicted',
+      yField: 'actual',
+      valueField: 'count',
+      cellLabelsVisible: true,
+      dataTableVisibility: 'visible',
+    });
+
+    // Correctness: every rendered label — SVG title, visible cell label, and
+    // the accessible data-table fallback — still formats the right value.
+    const cellTitles = [...container.querySelectorAll('.cinder-matrix-chart__cell title')];
+    expect(cellTitles).toHaveLength(4);
+    for (const value of ['50', '5', '3', '42']) {
+      expect(cellTitles.some((title) => title.textContent?.endsWith(`: ${value}`))).toBe(true);
+    }
+
+    const cellLabels = [...container.querySelectorAll('.cinder-matrix-chart__cell-label')];
+    expect(cellLabels.map((label) => label.textContent).toSorted()).toEqual(
+      ['3', '42', '5', '50'].toSorted(),
+    );
+
+    const tableCellText = [...container.querySelectorAll('table td')].map(
+      (cell) => cell.textContent,
+    );
+    expect(tableCellText).toContain('50');
+    expect(tableCellText).toContain('5');
+    expect(tableCellText).toContain('3');
+    expect(tableCellText).toContain('42');
+
+    // Roughly 3x(rows*cols) format calls happen across title, visible
+    // label, and data-table text — all through one constructed formatter.
+    expect(numberFormatSpy).toHaveBeenCalledTimes(1);
+
+    numberFormatSpy.mockRestore();
+  });
+});

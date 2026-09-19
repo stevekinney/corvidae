@@ -16,7 +16,7 @@
  *
  * @example
  * ```ts
- * import type { LockHolder } from '@repo/weft';
+ * import type { LockHolder } from '@corvidae/weft';
  *
  * const holder: LockHolder = { holderId: 'workflow-a', leaseExpiresAt: 1_717_000_030_000 };
  * void holder;
@@ -36,7 +36,7 @@ export interface LockHolder {
  *
  * @example
  * ```ts
- * import type { LockRecord } from '@repo/weft';
+ * import type { LockRecord } from '@corvidae/weft';
  *
  * const record: LockRecord = {
  *   holders: [{ holderId: 'workflow-a', leaseExpiresAt: 1_717_000_030_000 }],
@@ -55,7 +55,7 @@ export interface LockRecord {
  *
  * @example
  * ```ts
- * import type { AcquireAttempt } from '@repo/weft';
+ * import type { AcquireAttempt } from '@corvidae/weft';
  *
  * const attempt: AcquireAttempt = { acquired: false, position: 0 };
  * if (!attempt.acquired) {
@@ -80,8 +80,8 @@ export interface AcquireAttempt {
  *
  * @example
  * ```ts
- * import { initialLockRecord, AtomicState } from '@repo/weft';
- * import { MemoryStorage } from '@repo/weft';
+ * import { initialLockRecord, AtomicState } from '@corvidae/weft';
+ * import { MemoryStorage } from '@corvidae/weft';
  *
  * const slot = new AtomicState(new MemoryStorage(), 'state:workflow-scope:default:lock', {
  *   initial: initialLockRecord(),

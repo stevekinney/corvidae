@@ -17,7 +17,7 @@ import type { WorkflowStatus } from './identity.ts';
  *
  * @example
  * ```ts
- * import { type WorkflowSnapshot } from '@repo/weft';
+ * import { type WorkflowSnapshot } from '@corvidae/weft';
  *
  * function describe(snapshot: WorkflowSnapshot): string {
  *   return `${snapshot.status} @ step ${snapshot.step}`;

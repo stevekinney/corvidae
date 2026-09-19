@@ -1,7 +1,7 @@
-import { sha256HexSync } from '@repo/interoperability';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
-import type { TextValueStore } from '@repo/weft';
+import { sha256HexSync } from '@corvidae/cryptography';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { TextValueStore } from '@corvidae/weft';
 import { z } from 'zod';
 
 import { parseSkillMarkdown } from '../parse-skill-markdown';

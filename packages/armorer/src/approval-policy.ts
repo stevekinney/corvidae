@@ -228,7 +228,7 @@ export type PermissionGate = (toolName: string, input: unknown) => PermissionGat
  * run never parks on a human, so anything the capability tier would `ask`
  * about is denied instead.
  *
- * `allowList` field names match `interoperability`'s `ToolPolicy` shape
+ * `allowList` field names match `@corvidae/tool-protocol`'s `ToolPolicy` shape
  * (the same one `operative`'s `createPolicyEnforcementHook` filters tool
  * arrays with) for consistency, but `allowList` is REQUIRED here — unlike a
  * filter, where an absent allowlist just means "don't restrict by name,"

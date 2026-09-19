@@ -1,4 +1,4 @@
-import type { ActivityContext } from '@repo/weft';
+import type { ActivityContext } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { TOOL_CALL_POLICY, WEFT_ACTIVITY_POLICY } from '../liveness/policies';

@@ -1,4 +1,4 @@
-import { TestEngine } from '@repo/weft';
+import { TestEngine } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { addItemUpdate, cancelOrderSignal, orderStatusQuery } from '../src/messages';

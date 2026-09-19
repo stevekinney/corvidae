@@ -1,10 +1,10 @@
-import { gotoHydrated } from '../exercises/hydration';
 import {
   fixtureGateHeld,
   fixtureRequestCount,
   newFixtureMarker,
   releaseFixtureGate,
 } from '../fixture-probe';
+import { gotoHydrated } from '../page.svelte-test-helpers';
 import { STEPPED_CHUNKS, fixtureMarker } from '../streaming-fixture';
 import { readCreatedConversation } from './server-owned-test-helpers';
 

@@ -1,4 +1,4 @@
-import type { StandardSchemaV1 } from '@repo/interoperability';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { describe, expect, expectTypeOf, it } from 'bun:test';
 import { z } from 'zod';
 

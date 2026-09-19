@@ -47,9 +47,12 @@
  */
 import { writeFileSync } from 'node:fs';
 
+import { readFixtureEnvironment } from './environment-configuration.ts';
 import { serverOwnedRuntime } from './server-owned-runtime.ts';
 
-if (process.env['HOST_LISTENER'] === '1') {
+const { hostListener, teardownMarker, blockTeardown, reloadMarker } = readFixtureEnvironment();
+
+if (hostListener) {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     // `on`, not `once`, and deliberately empty: a host that keeps its own
     // handler registered across deliveries is the realistic shape, and
@@ -67,7 +70,7 @@ if (process.env['HOST_LISTENER'] === '1') {
 // slot — the path a deployment actually takes.
 const runtime = serverOwnedRuntime();
 
-const marker = process.env['TEARDOWN_MARKER'];
+const marker = teardownMarker;
 if (marker !== undefined && marker !== '') {
   // `BLOCK_TEARDOWN=1` holds the teardown open until the PARENT says
   // otherwise — it waits on stdin, and the parent simply never writes.
@@ -79,7 +82,7 @@ if (marker !== undefined && marker !== '') {
   // people's code in the same review. A barrier is also STRICTER: the
   // assertion becomes "it exited while the teardown was still blocked", which
   // no amount of waiting could satisfy by accident.
-  const blockTeardown = process.env['BLOCK_TEARDOWN'] === '1';
+  const shouldBlockTeardown = blockTeardown;
 
   runtime.onDispose(async () => {
     // Announced at the START of the teardown, so a test wanting to deliver a
@@ -87,7 +90,7 @@ if (marker !== undefined && marker !== '') {
     // delay.
     process.stdout.write('disposing\n');
 
-    if (blockTeardown) {
+    if (shouldBlockTeardown) {
       // Never resolves in the test that sets this: the parent holds the
       // barrier closed and asserts the process dies anyway.
       await new Promise<void>((resolve) => {
@@ -113,7 +116,6 @@ function signalHandler(value: unknown): (signal: 'SIGTERM' | 'SIGINT', forced: b
   };
 }
 
-const reloadMarker = process.env['RELOAD_MARKER'];
 if (reloadMarker !== undefined && reloadMarker !== '') {
   // What a second module evaluation does: `globalThis` survives the reload,
   // so the slot is still populated and simply gets overwritten with the new

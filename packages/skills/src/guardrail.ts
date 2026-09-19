@@ -1,5 +1,5 @@
-import type { DetectorContext, GuardrailTriggeredEvent, InputDetector } from '@repo/armorer';
-import { scanContent } from '@repo/armorer';
+import type { DetectorContext, GuardrailTriggeredEvent, InputDetector } from '@corvidae/armorer';
+import { scanContent } from '@corvidae/armorer';
 
 /**
  * Options for scanning skill content (a skill's body when activated, or a

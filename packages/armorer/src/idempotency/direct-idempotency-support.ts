@@ -1,5 +1,5 @@
-import { sha256HexSync } from '@repo/interoperability';
-import { type RuntimeServices } from '@repo/lifecycle';
+import { sha256HexSync } from '@corvidae/cryptography';
+import { type RuntimeServices } from '@corvidae/lifecycle';
 
 import { assertJsonValue, stableStringifyJson } from '../core/serialization/json';
 import type { InternalToolExecuteOptions } from '../create-tool/execution-options';

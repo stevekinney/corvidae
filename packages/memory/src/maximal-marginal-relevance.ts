@@ -1,4 +1,4 @@
-import { cosineSimilarity } from '@repo/interoperability';
+import { cosineSimilarity } from '@corvidae/embeddings';
 
 export interface MaximalMarginalRelevanceOptions {
   /** Tradeoff between relevance (1) and diversity (0). */

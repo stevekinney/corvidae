@@ -1,5 +1,5 @@
-import { createMockTool, createTestToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createMockTool, createTestToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { createToolRemovalMutator } from '../../src/retry/tool-removal-mutator';

@@ -1,6 +1,12 @@
-import type { MediaLimits, MimeFamily, Modality, ModalityMatrix } from '@repo/conversationalist';
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import type {
+  MediaLimits,
+  MimeFamily,
+  Modality,
+  ModalityMatrix,
+} from '@corvidae/conversationalist';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 
+import { readEnvironmentConfiguration } from '../environment-configuration.ts';
 import { ANTHROPIC_LIMITS, GEMINI_LIMITS, OPENAI_LIMITS } from './model-catalog-data.ts';
 import {
   buildAnthropicRow,
@@ -122,13 +128,7 @@ export interface ModelCatalog {
  * here because `endpointAmbiguous` is now decided in this module.
  */
 function readOpenAIBaseUrlOverride(): string | undefined {
-  if (typeof Bun !== 'undefined') return Bun.env['OPENAI_BASE_URL'];
-  const runtimeProcess = Reflect.get(globalThis, 'process');
-  if (typeof runtimeProcess !== 'object' || runtimeProcess === null) return undefined;
-  const environment = Reflect.get(runtimeProcess, 'env');
-  if (typeof environment !== 'object' || environment === null) return undefined;
-  const value = Reflect.get(environment, 'OPENAI_BASE_URL');
-  return typeof value === 'string' ? value : undefined;
+  return readEnvironmentConfiguration().openaiBaseUrl;
 }
 
 export interface CreateModelCatalogOptions {

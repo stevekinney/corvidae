@@ -1,4 +1,4 @@
-import { CompletableEventTarget, type RuntimeServices } from '@repo/lifecycle';
+import { CompletableEventTarget, type RuntimeServices } from '@corvidae/lifecycle';
 import type { z } from 'zod';
 
 import { serializeToolDefinition } from '../core/serialization';

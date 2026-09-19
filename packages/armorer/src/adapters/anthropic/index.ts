@@ -27,7 +27,7 @@ export type {
  *
  * @example
  * ```ts
- * import { toAnthropicTools } from '@repo/armorer';
+ * import { toAnthropicTools } from '@corvidae/armorer';
  *
  * // Single tool
  * const tool = toAnthropicTools(myTool);

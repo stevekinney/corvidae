@@ -18,7 +18,7 @@ import type { GeminiContent, GeminiConversation, GeminiPart } from './types';
  * @example
  * ```ts
  * import { GoogleGenAI } from '@google/genai';
- * import { toGeminiMessages } from '@repo/conversationalist';
+ * import { toGeminiMessages } from '@corvidae/conversationalist';
  *
  * const client = new GoogleGenAI({ apiKey });
  * const { systemInstruction, contents } = toGeminiMessages(conversation);

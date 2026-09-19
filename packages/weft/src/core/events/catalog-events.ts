@@ -8,7 +8,7 @@ import type { WorkflowCompatibilityReason } from '../contract/compatibility.ts';
  *
  * @example
  * ```ts
- * import { Engine, WorkflowRevisionInstalledEvent, workflow } from '@repo/weft';
+ * import { Engine, WorkflowRevisionInstalledEvent, workflow } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowRevisionInstalledEvent.type, (event) => {
@@ -37,7 +37,7 @@ export class WorkflowRevisionInstalledEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowRevisionActivatedEvent, workflow } from '@repo/weft';
+ * import { Engine, WorkflowRevisionActivatedEvent, workflow } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowRevisionActivatedEvent.type, (event) => {
@@ -77,7 +77,7 @@ export class WorkflowRevisionActivatedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowRevisionActivationRejectedEvent } from '@repo/weft';
+ * import { Engine, WorkflowRevisionActivationRejectedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowRevisionActivationRejectedEvent.type, (event) => {
@@ -115,7 +115,7 @@ export class WorkflowRevisionActivationRejectedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowRevisionDrainingEvent } from '@repo/weft';
+ * import { Engine, WorkflowRevisionDrainingEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowRevisionDrainingEvent.type, (event) => {
@@ -141,7 +141,7 @@ export class WorkflowRevisionDrainingEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowRevisionRemovedEvent } from '@repo/weft';
+ * import { Engine, WorkflowRevisionRemovedEvent } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(WorkflowRevisionRemovedEvent.type, (event) => {

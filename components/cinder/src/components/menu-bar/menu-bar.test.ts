@@ -1,0 +1,789 @@
+import { fileEditViewMenus } from './menu-bar-test-data.ts';
+/// <reference lib="dom" />
+import { afterEach, beforeEach, describe, expect, jest, mock, spyOn, test } from 'bun:test';
+
+import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+
+setupHappyDom();
+
+const computePositionSpy = mock(
+  async (_reference: unknown, _menu: HTMLElement, options: unknown) => ({
+    x: 32,
+    y: 48,
+    placement: (options as { placement?: string })?.placement ?? 'bottom-start',
+  }),
+);
+const autoUpdateTeardown = mock(() => {});
+const autoUpdateSpy = mock((_reference: unknown, _menu: HTMLElement, update: () => void) => {
+  update();
+  return autoUpdateTeardown;
+});
+
+mock.module('@floating-ui/dom', () => ({
+  arrow: () => ({ name: 'arrow', fn: () => ({}) }),
+  autoUpdate: autoUpdateSpy,
+  computePosition: computePositionSpy,
+  flip: () => ({ name: 'flip', fn: () => ({}) }),
+  offset: (options: unknown) => ({ name: 'offset', options, fn: () => ({}) }),
+  shift: (options: unknown) => ({ name: 'shift', options, fn: () => ({}) }),
+}));
+
+const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
+const { prepareSvelteServerSource, renderSvelteOnServer } = await import('@corvidae/testing');
+const { tick } = await import('svelte');
+const { default: MenuBar } = await import('./menu-bar.svelte');
+const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const MENU_BAR_SOURCE = `${import.meta.dir}/_menu-bar-ssr-test.svelte`;
+
+await prepareSvelteServerSource(MENU_BAR_SOURCE);
+
+/**
+ * Runs `run` with Bun's fake timers installed so the submenu's internal
+ * 150 ms close timer can be advanced deterministically instead of waiting on
+ * the real clock. `jest.useFakeTimers()` monkey-patches the process-global
+ * timer functions, and the suite runs `--parallel=1` in one shared process,
+ * so every caller must save and restore all four globals — mirroring
+ * `tooltip.test.ts`'s `triggerDelayedTooltipShow` — or a leftover fake timer
+ * breaks every later test file's real timers.
+ */
+async function withFakeTimers(run: () => void | Promise<void>): Promise<void> {
+  const trackedSetTimeout = globalThis.setTimeout;
+  const trackedClearTimeout = globalThis.clearTimeout;
+  const trackedSetInterval = globalThis.setInterval;
+  const trackedClearInterval = globalThis.clearInterval;
+  jest.useFakeTimers();
+  try {
+    await run();
+  } finally {
+    jest.useRealTimers();
+    globalThis.setTimeout = trackedSetTimeout;
+    globalThis.clearTimeout = trackedClearTimeout;
+    globalThis.setInterval = trackedSetInterval;
+    globalThis.clearInterval = trackedClearInterval;
+    expect(globalThis.setTimeout).toBe(trackedSetTimeout);
+    expect(globalThis.clearTimeout).toBe(trackedClearTimeout);
+    expect(globalThis.setInterval).toBe(trackedSetInterval);
+    expect(globalThis.clearInterval).toBe(trackedClearInterval);
+  }
+}
+
+describe('MenuBar', () => {
+  beforeEach(() => {
+    computePositionSpy.mockClear();
+    autoUpdateSpy.mockClear();
+    autoUpdateTeardown.mockClear();
+  });
+
+  // Unmount AFTER each test so the last test's render doesn't leak into the next
+  // file (cleanup() in beforeEach never runs after the final test).
+  afterEach(() => {
+    cleanup();
+    resetEscapeStack();
+  });
+
+  test('renders a labelled menubar with top-level menuitem triggers', () => {
+    const { container, getByRole } = render(MenuBar, {
+      props: {
+        id: 'application-menu',
+        menus: fileEditViewMenus(),
+        label: 'Workspace menu',
+        'data-testid': 'menu-root',
+        role: 'presentation',
+      },
+    });
+
+    const root = getByRole('menubar', { name: 'Workspace menu' });
+    expect(root.id).toBe('application-menu');
+    expect(root.getAttribute('data-testid')).toBe('menu-root');
+    expect(root.getAttribute('role')).toBe('menubar');
+    expect(container.querySelectorAll('.cinder-menu-bar__trigger')).toHaveLength(3);
+    expect(getByRole('menuitem', { name: 'File' }).getAttribute('tabindex')).toBe('0');
+    expect(getByRole('menuitem', { name: 'View' }).getAttribute('aria-disabled')).toBe('true');
+  });
+
+  test('opens a menu with ArrowDown and focuses the first enabled item', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.keyDown(file, { key: 'ArrowDown' });
+    await tick();
+
+    expect(file.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'New' }));
+  });
+
+  test('moves between enabled top-level triggers and skips disabled triggers', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+    const edit = getByRole('menuitem', { name: 'Edit' });
+
+    file.focus();
+    await fireEvent.keyDown(file, { key: 'ArrowRight' });
+
+    expect(document.activeElement).toBe(edit);
+    await fireEvent.keyDown(edit, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(file);
+  });
+
+  test('mirrors top-level trigger arrows in right-to-left direction', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus(), dir: 'rtl' } });
+    const file = getByRole('menuitem', { name: 'File' });
+    const edit = getByRole('menuitem', { name: 'Edit' });
+
+    file.focus();
+    await fireEvent.keyDown(file, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(edit);
+
+    await fireEvent.keyDown(edit, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(file);
+  });
+
+  test('reacts to ancestor direction changes after mount', async () => {
+    const target = Object.assign(document.createElement('div'), { dir: 'ltr' });
+    document.body.appendChild(target);
+    const { getByRole } = render(MenuBar, {
+      target,
+      props: { menus: fileEditViewMenus() },
+    });
+    const root = getByRole('menubar');
+    const file = getByRole('menuitem', { name: 'File' });
+    const edit = getByRole('menuitem', { name: 'Edit' });
+
+    expect(root.getAttribute('dir')).toBeNull();
+
+    await tick();
+    target.setAttribute('dir', 'rtl');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(root.getAttribute('dir')).toBeNull();
+
+    file.focus();
+    await fireEvent.keyDown(file, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(edit);
+  });
+
+  test('omits document-only direction from the menubar root after mount', () => {
+    document.documentElement.dir = 'ltr';
+    try {
+      const { getByRole } = render(MenuBar, {
+        props: { menus: fileEditViewMenus() },
+      });
+
+      expect(getByRole('menubar').getAttribute('dir')).toBeNull();
+    } finally {
+      document.documentElement.removeAttribute('dir');
+    }
+  });
+
+  test('mirrors open-menu top-level traversal in right-to-left direction', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus(), dir: 'rtl' } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'New' }), { key: 'ArrowLeft' });
+    await tick();
+
+    expect(getByRole('menuitem', { name: 'Edit' }).getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('opens a submenu and keeps parent menu traversal scoped to parent items', async () => {
+    const { getByRole, queryByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowRight' });
+    await tick();
+
+    expect(submenuTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Cinder workspace' }));
+
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowDown' });
+    expect(queryByRole('menuitem', { name: 'Cinder workspace' })).not.toBe(document.activeElement);
+  });
+
+  test('renders a directional chevron instead of a text submenu glyph', async () => {
+    const { getByRole } = render(MenuBar, { menus: fileEditViewMenus() });
+    await fireEvent.click(getByRole('menuitem', { name: 'File' }));
+    await tick();
+    const indicator = document.querySelector('.cinder-menu-bar__submenu-indicator');
+    expect(indicator).not.toBeNull();
+    expect(indicator?.querySelector('svg')).not.toBeNull();
+    expect(indicator?.textContent?.trim() ?? '').toBe('');
+  });
+
+  test('right-to-left submenus fall back to the inline-start side', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus(), dir: 'rtl' } });
+    const file = getByRole('menuitem', { name: 'File' });
+    const root = getByRole('menubar');
+
+    expect(root.getAttribute('dir')).toBe('rtl');
+    await fireEvent.click(file);
+    await tick();
+    computePositionSpy.mockClear();
+
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowLeft' });
+
+    // `computePosition` is awaited inside the anchored-overlay effect, so the call
+    // does not land within a single `tick()`. Poll for it rather than sampling once.
+    // This does not weaken the assertion: a genuinely broken RTL placement never
+    // produces a `left-start` call, so `waitFor` would time out and still fail.
+    await waitFor(() => {
+      const submenuCall = computePositionSpy.mock.calls.find((call) => {
+        const options = call.at(2) as { placement?: string } | undefined;
+        return options?.placement === 'left-start';
+      });
+      expect(submenuCall).toBeDefined();
+    });
+    expect(getByRole('menu', { name: 'Open Recent' }).getAttribute('dir')).toBe('rtl');
+  });
+
+  test('preserves explicit auto direction on the menubar root', () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus(), dir: 'auto' } });
+
+    expect(getByRole('menubar').getAttribute('dir')).toBe('auto');
+  });
+
+  test('server rendering omits provider fallback direction until local DOM can be checked', async () => {
+    const html = await renderSvelteOnServer(MENU_BAR_SOURCE);
+    const menuBarTag = html.match(/<div[^>]*class="[^"]*cinder-menu-bar[^"]*"[^>]*>/)?.[0] ?? '';
+
+    expect(menuBarTag).not.toBe('');
+    expect(menuBarTag).not.toContain('dir=');
+  });
+
+  test('server rendering uses provider direction before local DOM can be checked', async () => {
+    const html = await renderSvelteOnServer(MENU_BAR_SOURCE, {
+      providerDirection: 'rtl',
+    });
+    const menuBarTag = html.match(/<div[^>]*class="[^"]*cinder-menu-bar[^"]*"[^>]*>/)?.[0] ?? '';
+
+    expect(menuBarTag).toContain('dir="rtl"');
+  }, 30_000);
+
+  test('uses the computed menubar root direction for dir auto keyboard behavior', async () => {
+    const originalWindowGetComputedStyle = window.getComputedStyle;
+    const originalGlobalGetComputedStyle = globalThis.getComputedStyle;
+    const getComputedStyleOverride = ((target: Element) => {
+      const style = originalWindowGetComputedStyle(target);
+      if (target instanceof HTMLElement && target.getAttribute('role') === 'menubar') {
+        return new Proxy(style, {
+          get(declaration, key) {
+            return key === 'direction' ? 'rtl' : Reflect.get(declaration, key, declaration);
+          },
+        });
+      }
+      return style;
+    }) as typeof window.getComputedStyle;
+    window.getComputedStyle = getComputedStyleOverride;
+    globalThis.getComputedStyle = getComputedStyleOverride;
+
+    try {
+      const { getByRole } = render(MenuBar, {
+        props: {
+          menus: fileEditViewMenus(),
+          dir: 'auto',
+        },
+      });
+      const file = getByRole('menuitem', { name: 'File' });
+      const edit = getByRole('menuitem', { name: 'Edit' });
+
+      file.focus();
+      await fireEvent.keyDown(file, { key: 'ArrowLeft' });
+      expect(document.activeElement).toBe(edit);
+    } finally {
+      window.getComputedStyle = originalWindowGetComputedStyle;
+      globalThis.getComputedStyle = originalGlobalGetComputedStyle;
+    }
+  });
+
+  test('right-to-left submenu ArrowRight returns focus to the submenu trigger', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus(), dir: 'rtl' } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowLeft' });
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'Cinder workspace' }), {
+      key: 'ArrowRight',
+    });
+    await tick();
+
+    expect(document.activeElement).toBe(submenuTrigger);
+    expect(submenuTrigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('opens a submenu on the first enabled item after opening the parent menu from ArrowUp', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.keyDown(file, { key: 'ArrowUp' });
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowRight' });
+    await tick();
+
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Cinder workspace' }));
+  });
+
+  test('returns focus to the submenu trigger when Escape closes a submenu', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowRight' });
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'Cinder workspace' }), { key: 'Escape' });
+
+    expect(document.activeElement).toBe(submenuTrigger);
+    expect(submenuTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(file.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('CIN-428: two-stage Escape — first closes the submenu only, second closes the top-level menu (staged submenu-then-menubar close)', async () => {
+    // DropdownMenu's escape-stack registration (CIN-428) is keyed per
+    // instance: the submenu renders its own DropdownMenu, so it registers
+    // separately from — and above, since it opens later — the top-level
+    // menu's own DropdownMenu registration. LIFO ordering alone reproduces
+    // the staged close this test asserts, with no target-scoping needed.
+    const { getByRole, queryByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowRight' });
+    await tick();
+    expect(submenuTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(file.getAttribute('aria-expanded')).toBe('true');
+
+    // Stage 1: Escape with focus inside the submenu closes ONLY the submenu.
+    const firstEscape = new window.KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    getByRole('menuitem', { name: 'Cinder workspace' }).dispatchEvent(firstEscape);
+    await tick();
+
+    expect(firstEscape.defaultPrevented).toBe(true);
+    expect(submenuTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(queryByRole('menuitem', { name: 'Cinder workspace' })).toBeNull();
+    expect(file.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(submenuTrigger);
+
+    // Stage 2: a second Escape (focus now on the submenu trigger, which sits
+    // inside the top-level menu) closes the top-level menu too.
+    const secondEscape = new window.KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    submenuTrigger.dispatchEvent(secondEscape);
+    await tick();
+
+    expect(secondEscape.defaultPrevented).toBe(true);
+    expect(file.getAttribute('aria-expanded')).toBe('false');
+    expect(queryByRole('menuitem', { name: 'Open Recent' })).toBeNull();
+    expect(document.activeElement).toBe(file);
+  });
+
+  test('CIN-428: inherits escape-stack registration transitively from DropdownMenu — with another registration underneath, Escape dismisses only the open top-level menu', async () => {
+    let parentEscapeCount = 0;
+    const releaseParent = pushEscapeHandler(() => {
+      parentEscapeCount += 1;
+    });
+
+    try {
+      const { getByRole, queryByRole } = render(MenuBar, {
+        props: { menus: fileEditViewMenus() },
+      });
+      const file = getByRole('menuitem', { name: 'File' });
+
+      await fireEvent.click(file);
+      await tick();
+      expect(file.getAttribute('aria-expanded')).toBe('true');
+
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await tick();
+
+      expect(parentEscapeCount).toBe(0);
+      expect(file.getAttribute('aria-expanded')).toBe('false');
+      expect(queryByRole('menuitem', { name: 'New' })).toBeNull();
+    } finally {
+      releaseParent();
+    }
+  });
+
+  test('closes an open submenu when focus moves to a sibling menu item', async () => {
+    const { getByRole, queryByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowRight' });
+    await tick();
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowDown' });
+    await tick();
+
+    expect(submenuTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(queryByRole('menuitem', { name: 'Cinder workspace' })).toBeNull();
+  });
+
+  test('does not move focus into a submenu when focus lands on the submenu trigger', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.keyDown(file, { key: 'ArrowDown' });
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'New' }), { key: 'ArrowDown' });
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+
+    expect(document.activeElement).toBe(submenuTrigger);
+    expect(submenuTrigger.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('moves focus into an already disclosed submenu on explicit keyboard activation', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.keyDown(file, { key: 'ArrowDown' });
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'New' }), { key: 'ArrowDown' });
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.keyDown(submenuTrigger, { key: 'ArrowRight' });
+    await tick();
+
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Cinder workspace' }));
+  });
+
+  test('moves from an open submenu to the next top-level menu with ArrowRight', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+    const edit = getByRole('menuitem', { name: 'Edit' });
+
+    await fireEvent.keyDown(file, { key: 'ArrowDown' });
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'Open Recent' }), { key: 'ArrowRight' });
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'Cinder workspace' }), {
+      key: 'ArrowRight',
+    });
+    await tick();
+
+    expect(edit.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Undo' }));
+  });
+
+  test('closes all menus and restores top-level focus when a submenu item is selected', async () => {
+    const { getByRole, queryByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'Open Recent' }), { key: 'ArrowRight' });
+    await tick();
+    await fireEvent.click(getByRole('menuitem', { name: 'Cinder workspace' }));
+    await tick();
+
+    expect(file.getAttribute('aria-expanded')).toBe('false');
+    expect(queryByRole('menuitem', { name: 'Cinder workspace' })).toBeNull();
+    expect(document.activeElement).toBe(file);
+  });
+
+  test('closes the menu and restores top-level focus when a top-level item is selected', async () => {
+    const { getByRole, queryByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    await fireEvent.click(getByRole('menuitem', { name: 'New' }));
+    await tick();
+
+    expect(file.getAttribute('aria-expanded')).toBe('false');
+    expect(queryByRole('menuitem', { name: 'New' })).toBeNull();
+    expect(document.activeElement).toBe(file);
+  });
+
+  test('opens a submenu on pointer entry while the parent menu is open', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.pointerEnter(submenuTrigger);
+    await tick();
+
+    expect(submenuTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(getByRole('menuitem', { name: 'Cinder workspace' })).toBeTruthy();
+    expect(document.activeElement?.textContent).not.toContain('Cinder workspace');
+  });
+
+  test('printable keys move focus within the open menu', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'New' }));
+
+    await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), { key: 'd' });
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Delete Project' }));
+  });
+
+  test('typeahead buffer resets after closing and reopening a menu', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'New' }), { key: 'd' });
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Delete Project' }));
+
+    await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), {
+      key: 'Escape',
+    });
+    expect(file.getAttribute('aria-expanded')).toBe('false');
+
+    await fireEvent.click(file);
+    await tick();
+    await fireEvent.keyDown(getByRole('menuitem', { name: 'New' }), { key: 'o' });
+
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Open Recent' }));
+  });
+
+  test('submenu pointer leave keeps the submenu open while the pointer moves toward the panel', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.pointerEnter(submenuTrigger);
+    await tick();
+    const submenu = getByRole('menu', { name: 'Open Recent' });
+    const submenuWrapper = requiredInstance(
+      submenuTrigger.closest('.cinder-menu-bar__submenu'),
+      HTMLElement,
+    );
+
+    submenuTrigger.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 100, bottom: 40, width: 100, height: 40 }) as DOMRect;
+    submenu.getBoundingClientRect = () =>
+      ({ left: 100, top: 0, right: 260, bottom: 120, width: 160, height: 120 }) as DOMRect;
+
+    await withFakeTimers(async () => {
+      await fireEvent.mouseLeave(submenuWrapper, { clientX: 90, clientY: 20 });
+      await fireEvent(
+        document,
+        new PointerEvent('pointermove', { clientX: 130, clientY: 28, bubbles: true }),
+      );
+      jest.advanceTimersByTime(150);
+      await tick();
+
+      expect(submenuTrigger.getAttribute('aria-expanded')).toBe('true');
+    });
+  });
+
+  test('submenu pointer leave stays open when focus enters the submenu', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    await tick();
+    const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+    await fireEvent.pointerEnter(submenuTrigger);
+    await tick();
+    const submenuWrapper = requiredInstance(
+      submenuTrigger.closest('.cinder-menu-bar__submenu'),
+      HTMLElement,
+    );
+
+    await withFakeTimers(async () => {
+      await fireEvent.mouseLeave(submenuWrapper, { clientX: 90, clientY: 20 });
+      await fireEvent.focusIn(getByRole('menuitem', { name: 'Cinder workspace' }));
+      jest.advanceTimersByTime(150);
+      await tick();
+
+      expect(submenuTrigger.getAttribute('aria-expanded')).toBe('true');
+    });
+  });
+
+  test('Alt access key opens the first enabled matching menu', async () => {
+    const { getByRole } = render(MenuBar, {
+      props: {
+        menus: [
+          { id: 'disabled-file', label: 'Format', accessKey: 'f', disabled: true, items: [] },
+          ...fileEditViewMenus(),
+        ],
+      },
+    });
+    const root = getByRole('menubar');
+
+    await fireEvent.keyDown(root, { key: 'f', altKey: true });
+    await tick();
+
+    expect(getByRole('menuitem', { name: 'File' }).getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('closes on outside pointer down', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const file = getByRole('menuitem', { name: 'File' });
+
+    await fireEvent.click(file);
+    expect(file.getAttribute('aria-expanded')).toBe('true');
+    await fireEvent.pointerDown(document.body);
+
+    expect(file.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('Escape closes the open top-level menu when focus is on the trigger button', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const fileButton = getByRole('menuitem', { name: 'File' });
+
+    // Open the File menu
+    await fireEvent.click(fileButton);
+    await tick();
+    expect(fileButton.getAttribute('aria-expanded')).toBe('true');
+
+    // Press Escape while focus is on the trigger button
+    await fireEvent.keyDown(fileButton, { key: 'Escape' });
+    await tick();
+    expect(fileButton.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('Escape on a closed menubar item is not consumed, so enclosing handlers still run', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const fileButton = getByRole('menuitem', { name: 'File' });
+    fileButton.focus();
+    expect(fileButton.getAttribute('aria-expanded')).toBe('false');
+
+    // Construct a cancelable KeyboardEvent so we can assert `defaultPrevented`
+    // after dispatch. With nothing open, the menu bar must let Escape through —
+    // calling preventDefault here would swallow it from an enclosing overlay or
+    // page-level Escape handler.
+    const closedEscape = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    fileButton.dispatchEvent(closedEscape);
+    await tick();
+    expect(closedEscape.defaultPrevented).toBe(false);
+
+    // Open the menu, then Escape IS consumed (it has something to close).
+    await fireEvent.click(fileButton);
+    await tick();
+    expect(fileButton.getAttribute('aria-expanded')).toBe('true');
+    const openEscape = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    fileButton.dispatchEvent(openEscape);
+    await tick();
+    expect(openEscape.defaultPrevented).toBe(true);
+    expect(fileButton.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('reuses dropdown primitives instead of copying their markup classes', async () => {
+    const source = await Bun.file(new URL('./menu-bar.svelte', import.meta.url)).text();
+
+    expect(source).toContain("DropdownMenu from '../dropdown-menu/dropdown-menu.svelte'");
+    expect(source).toContain("DropdownItem from '../dropdown-item/dropdown-item.svelte'");
+    expect(source).toContain("DropdownLabel from '../dropdown-label/dropdown-label.svelte'");
+    expect(source).toContain(
+      "DropdownSeparator from '../dropdown-separator/dropdown-separator.svelte'",
+    );
+    expect(source).toContain('[role="menuitemcheckbox"]:not([data-disabled])');
+    expect(source).toContain('submenuLeavePoint = latestPointerPoint;');
+    expect(source).toContain('openSubmenuKey = null;');
+    expect(source).not.toContain('class="cinder-dropdown-menu');
+    expect(source).not.toContain('class="cinder-dropdown-item');
+  });
+
+  test('shadow-root keyboard navigation resolves focus targets inside the component root', async () => {
+    // Top-level triggers (unlike the dropdown panels, which MenuBar always
+    // portals to document.body via its own hardcoded `supportsPopover: false`
+    // context — see makeContext) live directly inside MenuBar's own markup,
+    // so they stay inside the shadow tree. `focusTopLevelTrigger` resolves
+    // them by id via `focusElement`; `document.getElementById` (used before
+    // the shadow-DOM-aware fix) cannot see into a shadow tree and would
+    // silently fail to move focus here.
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    document.body.append(host);
+    const view = render(MenuBar, { target: shadow, props: { menus: fileEditViewMenus() } });
+
+    try {
+      const triggers = Array.from(
+        shadow.querySelectorAll<HTMLButtonElement>('.cinder-menu-bar__trigger'),
+      );
+      const file = triggers.find((trigger) => trigger.textContent?.trim() === 'File');
+      const edit = triggers.find((trigger) => trigger.textContent?.trim() === 'Edit');
+      if (!file || !edit) throw new Error('Missing top-level triggers.');
+
+      file.focus();
+      expect(shadow.activeElement).toBe(file);
+
+      await fireEvent.keyDown(file, { key: 'ArrowRight' });
+      expect(shadow.activeElement).toBe(edit);
+
+      // 'view' is disabled, so ArrowRight from 'edit' wraps back to 'file'.
+      await fireEvent.keyDown(edit, { key: 'ArrowRight' });
+      expect(shadow.activeElement).toBe(file);
+    } finally {
+      view.unmount();
+      host.remove();
+    }
+  });
+
+  test('document focusin is a no-op when nothing is open, but walks open menus once something is (#1186 row 9)', async () => {
+    const { getByRole } = render(MenuBar, { props: { menus: fileEditViewMenus() } });
+    const outsideButton = document.createElement('button');
+    document.body.append(outsideButton);
+    const file = getByRole('menuitem', { name: 'File' });
+
+    try {
+      expect(file.getAttribute('aria-expanded')).toBe('false');
+
+      const spy = spyOn(Element.prototype, 'contains');
+      spy.mockClear();
+
+      outsideButton.focus();
+      await tick();
+      await tick();
+
+      // The guard exits before scheduling the tick().then() microtask that
+      // walks isInsideOpenMenu, so nothing measurably happened.
+      expect(spy).toHaveBeenCalledTimes(0);
+      expect(file.getAttribute('aria-expanded')).toBe('false');
+
+      await fireEvent.keyDown(file, { key: 'ArrowDown' });
+      await tick();
+      expect(file.getAttribute('aria-expanded')).toBe('true');
+
+      spy.mockClear();
+      outsideButton.focus();
+      await tick();
+      await tick();
+
+      // With a menu open, the same focusin now walks isInsideOpenMenu.
+      expect(spy.mock.calls.length).toBeGreaterThan(0);
+
+      spy.mockRestore();
+    } finally {
+      outsideButton.remove();
+    }
+  });
+});

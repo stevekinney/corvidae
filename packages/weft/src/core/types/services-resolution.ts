@@ -7,7 +7,7 @@
  *
  * @example
  * ```ts
- * import { type WorkflowServicesResolution } from '@repo/weft';
+ * import { type WorkflowServicesResolution } from '@corvidae/weft';
  *
  * const ok: WorkflowServicesResolution = {
  *   status: 'available',
@@ -31,7 +31,7 @@ export type WorkflowServicesResolution<TServices = unknown> =
  *
  * @example
  * ```ts
- * import { type WorkflowServicesResolverLaunchOptions } from '@repo/weft';
+ * import { type WorkflowServicesResolverLaunchOptions } from '@corvidae/weft';
  *
  * const launchOptions: WorkflowServicesResolverLaunchOptions = {
  *   id: 'checkout-123',
@@ -55,7 +55,7 @@ export interface WorkflowServicesResolverLaunchOptions {
  *
  * @example
  * ```ts
- * import { type WorkflowServicesResolverScheduleInfo } from '@repo/weft';
+ * import { type WorkflowServicesResolverScheduleInfo } from '@corvidae/weft';
  *
  * const schedule: WorkflowServicesResolverScheduleInfo = {
  *   id: 'nightly-reconciliation',
@@ -80,7 +80,7 @@ export interface WorkflowServicesResolverScheduleInfo {
  *
  * @example
  * ```ts
- * import { type WorkflowServicesResolverInfo } from '@repo/weft';
+ * import { type WorkflowServicesResolverInfo } from '@corvidae/weft';
  *
  * function describe(info: WorkflowServicesResolverInfo): string {
  *   return `${info.workflowType}/${info.workflowId}`;

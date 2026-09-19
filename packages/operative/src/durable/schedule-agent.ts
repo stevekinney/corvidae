@@ -1,5 +1,5 @@
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 import type {
   PaginatedResult,
   ScheduleFilter,
@@ -7,8 +7,8 @@ import type {
   ScheduleOverlapPolicy,
   ScheduleSpec,
   ScheduleSummary,
-} from '@repo/weft';
-import { parseDuration, ScheduleHandle } from '@repo/weft';
+} from '@corvidae/weft';
+import { parseDuration, ScheduleHandle } from '@corvidae/weft';
 
 import type { ClosedFunction } from '../closed-acknowledgement';
 import { createClosedAcknowledgement } from '../closed-acknowledgement';

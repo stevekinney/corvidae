@@ -1,4 +1,8 @@
-import { WorkflowHandle, type Engine, type WorkflowHandle as WorkflowHandleType } from '@repo/weft';
+import {
+  WorkflowHandle,
+  type Engine,
+  type WorkflowHandle as WorkflowHandleType,
+} from '@corvidae/weft';
 
 const activeRecoveryHandles = new Set<WorkflowHandle>();
 

@@ -1,4 +1,4 @@
-import { MemoryStorage } from '@repo/weft';
+import { MemoryStorage } from '@corvidae/weft';
 
 import { createWeftMemoryRecordStorage } from '../src/create-weft-memory-record-storage';
 import { createInMemoryMemoryRecordStorage } from '../src/index';

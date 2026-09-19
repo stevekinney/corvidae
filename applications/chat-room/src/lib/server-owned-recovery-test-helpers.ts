@@ -1,5 +1,5 @@
-import type { AgentRun } from '@repo/operative';
-import { createAgent, SessionRecoverEvent } from '@repo/operative';
+import type { AgentRun } from '@corvidae/operative';
+import { createAgent, SessionRecoverEvent } from '@corvidae/operative';
 import { expect, spyOn } from 'bun:test';
 import {
   classifyRecovery,

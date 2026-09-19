@@ -6,6 +6,13 @@
     "suspicious": "warn"
   },
   "rules": {
+    "complexity": [
+      "error",
+      {
+        "max": 100,
+        "variant": "classic"
+      }
+    ],
     "no-with": "error",
     "no-labels": "error",
     "no-console": "warn",
@@ -65,11 +72,67 @@
     "**/.bun/**",
     "**/node_modules/**",
     "**/*.generated.d.ts",
-    "*.lock"
+    "*.lock",
+    "**/.playwright/**"
   ],
   "overrides": [
     {
-      "files": ["**/packages/**/src/**", "**/applications/**/src/**"],
+      "files": ["**/components/*/src/**"],
+      "excludeFiles": [
+        "**/components/*/src/**/*.test.*",
+        "**/components/*/src/**/*.spec.*",
+        "**/components/*/src/**/*.test-d.ts",
+        "**/components/*/src/**/*.type-test.ts",
+        "**/components/*/src/**/*.playwright.ts",
+        "**/components/*/src/**/*-test-*.ts",
+        "**/components/*/src/**/*.test-support.ts",
+        "**/components/*/src/**/test/**",
+        "**/components/*/src/**/tests/**",
+        "**/components/*/src/**/__tests__/**",
+        "**/components/*/src/**/__fixtures__/**",
+        "**/components/*/src/**/__test-helpers__/**"
+      ],
+      "env": {
+        "browser": true,
+        "svelte": true,
+        "node": false,
+        "commonjs": false
+      },
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "globals": [
+              "Bun",
+              "process",
+              "Buffer",
+              "global",
+              "require",
+              "module",
+              "exports",
+              "__dirname",
+              "__filename",
+              "setImmediate",
+              "clearImmediate"
+            ],
+            "checkGlobalObject": true
+          }
+        ],
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^(?:node:|bun(?::|$)|(?:assert|assert/strict|async_hooks|buffer|bun|child_process|cluster|console|constants|crypto|dgram|diagnostics_channel|dns|dns/promises|domain|events|fs|fs/promises|http|http2|https|inspector|inspector/promises|module|net|os|path|path/posix|path/win32|perf_hooks|process|punycode|querystring|readline|readline/promises|repl|stream|stream/consumers|stream/promises|stream/web|string_decoder|sys|timers|timers/promises|tls|trace_events|tty|undici|url|util|util/types|v8|vm|wasi|worker_threads|ws|zlib)(?:/|$))",
+                "message": "Component source runs in browsers. Keep Bun and Node APIs in tests or scripts."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["**/packages/**/src/**", "**/applications/**/src/**", "**/components/**/src/**"],
       "rules": {
         "no-console": [
           "warn",
@@ -98,51 +161,33 @@
       }
     },
     {
-      "files": ["**/packages/weft/src/core/context/**", "**/packages/weft/src/benchmarks/**"],
+      "files": ["**/packages/weft/src/core/context/**"],
       "rules": {
         "no-console": "off"
       }
     },
     {
-      "files": [
-        "**/packages/cinder/src/**",
-        "**/packages/chat/src/**",
-        "**/packages/editor/src/**",
-        "**/packages/markdown/src/**",
-        "**/packages/weft-ui/src/**"
-      ],
+      "files": ["**/components/*/src/**", "**/packages/markdown/src/**"],
       "rules": {
         "typescript/no-unsafe-type-assertion": "error"
       }
     },
     {
-      "files": [
-        "**/packages/cinder/src/**",
-        "**/packages/chat/src/**",
-        "**/packages/editor/src/**",
-        "**/packages/markdown/src/**",
-        "**/packages/weft-ui/src/**"
-      ],
+      "files": ["**/components/*/src/**", "**/packages/markdown/src/**"],
       "rules": {
         "unicorn/no-array-sort": "off",
         "unicorn/no-array-reverse": "off"
       }
     },
     {
-      "files": ["**/packages/chat/src/index.ts"],
+      "files": ["**/components/chat/src/index.ts"],
       "rules": {
         "import/no-unassigned-import": [
           "error",
           {
-            "allow": ["**/*.css", "@repo/cinder"]
+            "allow": ["**/*.css", "@corvidae/cinder"]
           }
         ]
-      }
-    },
-    {
-      "files": ["applications/server/**/*.ts"],
-      "rules": {
-        "no-console": "off"
       }
     },
     {
@@ -194,6 +239,18 @@
       }
     },
     {
+      "files": ["scripts/**", "**/scripts/**"],
+      "rules": {
+        "complexity": [
+          "error",
+          {
+            "max": 300,
+            "variant": "classic"
+          }
+        ]
+      }
+    },
+    {
       "files": ["scripts/**/*.ts", "**/scripts/**/*.ts"],
       "rules": {
         "no-console": "off"
@@ -201,9 +258,9 @@
     },
     {
       "files": [
-        "**/packages/cinder/src/components/json-viewer/_json-viewer-node.svelte",
-        "**/packages/cinder/src/components/json-schema-editor/property-editor.svelte",
-        "**/packages/cinder/src/components/json-schema-editor/property-list.svelte"
+        "**/components/cinder/src/components/json-viewer/_json-viewer-node.svelte",
+        "**/components/cinder/src/components/json-schema-editor/property-editor.svelte",
+        "**/components/cinder/src/components/json-schema-editor/property-list.svelte"
       ],
       "rules": {
         "import/no-cycle": "off",

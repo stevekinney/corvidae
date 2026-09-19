@@ -1,4 +1,4 @@
-import type { CompletableEventTarget } from '@repo/lifecycle';
+import type { CompletableEventTarget } from '@corvidae/lifecycle';
 
 import { type LoopDetectionOptions, LoopDetector } from './core/loop-detection';
 import type { ToolboxEventMap } from './event-types';

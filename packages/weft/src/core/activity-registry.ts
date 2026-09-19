@@ -28,7 +28,7 @@ import { validateWorkflowOrActivityName } from './types/name-grammar.ts';
  *
  * @example
  * ```ts
- * import { ActivityRegistry, type ActivityMetadata } from '@repo/weft';
+ * import { ActivityRegistry, type ActivityMetadata } from '@corvidae/weft';
  *
  * const registry = new ActivityRegistry();
  * const fn = async (input: unknown) => ({ result: input });
@@ -65,7 +65,7 @@ export interface ActivityMetadata {
  *
  * @example
  * ```ts
- * import { ActivityRegistry, type ActivityRegistrationOptions } from '@repo/weft';
+ * import { ActivityRegistry, type ActivityRegistrationOptions } from '@corvidae/weft';
  *
  * const options: ActivityRegistrationOptions = {
  *   queue: 'high-priority',
@@ -316,7 +316,7 @@ function buildActivityMetadata(
  *
  * @example
  * ```ts
- * import { ActivityRegistry } from '@repo/weft';
+ * import { ActivityRegistry } from '@corvidae/weft';
  *
  * const registry = new ActivityRegistry();
  * const fn = async (input: unknown) => ({ result: input });

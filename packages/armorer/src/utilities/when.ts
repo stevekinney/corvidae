@@ -26,8 +26,8 @@ type WhenPredicate<TInput = unknown> = (
  *
  * @example Basic conditional
  * ```typescript
- * import { createTool } from '@repo/armorer';
- * import { when } from '@repo/armorer';
+ * import { createTool } from '@corvidae/armorer';
+ * import { when } from '@corvidae/armorer';
  * import { z } from 'zod';
  *
  * const expensiveProcess = createTool({

@@ -1,10 +1,10 @@
-import { Conversation, createConversationHistory } from '@repo/conversationalist';
+import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
 import {
   createAgentSession,
   type AgentSession,
   type JSONValue,
   type SessionStore,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { createSessionPersistence } from './bureau-session-persistence';

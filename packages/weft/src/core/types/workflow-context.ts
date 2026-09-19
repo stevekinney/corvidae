@@ -61,7 +61,7 @@ export type WorkflowOperationTupleResult<
  *
  * @example
  * ```ts
- * import type { WorkflowKeyedRaceResult, WorkflowOperation } from '@repo/weft';
+ * import type { WorkflowKeyedRaceResult, WorkflowOperation } from '@corvidae/weft';
  *
  * type Winner = WorkflowKeyedRaceResult<{
  *   event: WorkflowOperation<string>;
@@ -111,7 +111,7 @@ export type RunAllResult<TBranches extends Record<string, WorkflowRunAllBranch>>
  *
  * @example
  * ```ts
- * import { workflow, Engine, activity, type WorkflowContext } from '@repo/weft';
+ * import { workflow, Engine, activity, type WorkflowContext } from '@corvidae/weft';
  *
  * interface GreetingInput {
  *   name: string;
@@ -493,7 +493,7 @@ export interface WorkflowContext<
    *
    * @example
    * ```ts
-   * import { workflow, type WorkflowContext } from '@repo/weft';
+   * import { workflow, type WorkflowContext } from '@corvidae/weft';
    *
    * const myWorkflow = workflow({ name: 'my-workflow' }).execute(async function* (ctx: WorkflowContext) {
    *   ctx.onCancel(async () => {
@@ -554,7 +554,7 @@ export interface WorkflowContext<
    *
    * @example
    * ```ts
-   * import { workflow, type WorkflowContext } from '@repo/weft';
+   * import { workflow, type WorkflowContext } from '@corvidae/weft';
    *
    * const provision = workflow({ name: 'provision' })
    *   .execute(async function* (ctx: WorkflowContext) {

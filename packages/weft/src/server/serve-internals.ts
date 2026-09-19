@@ -9,6 +9,7 @@ import type { Engine } from '../core/engine.ts';
 import { getEnginePayloadSizeMaxBytes } from '../core/engine/payload-size-policy.ts';
 import { createMcpSessionManager } from '../mcp/session.ts';
 import { createMetricsCollectorExporter, MetricsCollector } from '../observability/metrics.ts';
+import { resolveServerEnvironment } from '../runtime/environment-configuration.ts';
 import { WorkerRegistry } from '../worker/registry.ts';
 import {
   buildTLSOptions,
@@ -121,7 +122,7 @@ function authenticationRequiredByEnvironment(rawValue: string | undefined): bool
 
 export function assertAuthenticationPosture(
   options: ServeOptions,
-  environmentRequirement = Bun.env[AUTHENTICATION_REQUIRED_ENVIRONMENT_VARIABLE],
+  environmentRequirement = resolveServerEnvironment().weftServerAuthenticationRequired,
 ): void {
   if (options.auth) return;
   const environmentRequiresAuthentication =

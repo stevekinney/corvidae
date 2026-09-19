@@ -1,4 +1,4 @@
-import { ChatRunFailureError } from '@repo/chat';
+import { ChatRunFailureError } from '@corvidae/chat';
 
 /**
  * A failure banner's state, kept structured rather than flattened to a string.

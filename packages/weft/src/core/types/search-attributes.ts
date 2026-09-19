@@ -10,7 +10,7 @@
  *
  * @example
  * ```ts
- * import { workflow, Engine, type SearchAttributeValue } from '@repo/weft';
+ * import { workflow, Engine, type SearchAttributeValue } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'order' }).execute(async function* () { return 'shipped'; }));
@@ -49,7 +49,7 @@ export type StringArraySearchAttributeDefinition = {
  *
  * @example
  * ```ts
- * import type { SearchAttributeDefinition } from '@repo/weft';
+ * import type { SearchAttributeDefinition } from '@corvidae/weft';
  *
  * const createdAt: SearchAttributeDefinition = { type: 'string', format: 'date-time' };
  * const tags: SearchAttributeDefinition = {
@@ -91,7 +91,7 @@ export type SearchAttributeValueForDefinition<TDefinition> =
  *
  * @example
  * ```ts
- * import { searchAttribute, type SearchAttributeHandle } from '@repo/weft';
+ * import { searchAttribute, type SearchAttributeHandle } from '@corvidae/weft';
  *
  * declare const ctx: {
  *   setAttribute(attribute: SearchAttributeHandle<string>, value: string): void;
@@ -117,7 +117,7 @@ export interface SearchAttributeHandle<TValue extends SearchAttributeValue = Sea
  *
  * @example
  * ```ts
- * import { Engine, workflow, type SearchAttributeSchema } from '@repo/weft';
+ * import { Engine, workflow, type SearchAttributeSchema } from '@corvidae/weft';
  *
  * const schema: SearchAttributeSchema = {
  *   customerId: { type: 'string' },
@@ -139,7 +139,7 @@ export type SearchAttributeSchema = Record<string, SearchAttributeDefinition>;
  *
  * @example
  * ```ts
- * import { searchAttribute } from '@repo/weft';
+ * import { searchAttribute } from '@corvidae/weft';
  *
  * const createdAt = searchAttribute('createdAt', { type: 'string', format: 'date-time' });
  * ```

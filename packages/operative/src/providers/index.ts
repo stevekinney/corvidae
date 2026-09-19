@@ -1,7 +1,7 @@
 /**
  * Operative providers — LLM provider factories folded from the former herald package.
  *
- * These are re-exported from the `@repo/operative` root entry point. Each
+ * These are re-exported from the `@corvidae/operative` root entry point. Each
  * provider loads its SDK dynamically when called, so unused SDKs stay unused.
  */
 

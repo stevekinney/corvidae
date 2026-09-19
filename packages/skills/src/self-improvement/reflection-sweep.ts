@@ -1,6 +1,6 @@
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
-import type { TextValueStore } from '@repo/weft';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { TextValueStore } from '@corvidae/weft';
 
 import type { MemoryLike, StepResultLike } from '../skill-memory';
 import type { SkillProvider } from '../types';

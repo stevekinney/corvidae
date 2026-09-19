@@ -1,6 +1,6 @@
-import { Conversation } from '@repo/conversationalist';
-import { createManualRuntimeServices } from '@repo/lifecycle';
-import { yieldToPortableEventLoop } from '@repo/weft';
+import { Conversation } from '@corvidae/conversationalist';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { yieldToPortableEventLoop } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentRun, RunEvent } from './agent-run';

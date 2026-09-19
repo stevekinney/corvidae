@@ -20,7 +20,7 @@ import type {
  *
  * @example
  * ```ts
- * import { workflow, Engine, type WorkflowInterceptor } from '@repo/weft';
+ * import { workflow, Engine, type WorkflowInterceptor } from '@corvidae/weft';
  *
  * const tracer: WorkflowInterceptor = {
  *   *activity(ctx, next) {
@@ -102,7 +102,7 @@ export const WORKFLOW_INTERCEPTOR_HOOKS = Object.freeze([
  *
  * @example
  * ```ts
- * import { Engine, type ActivityInterceptor } from '@repo/weft';
+ * import { Engine, type ActivityInterceptor } from '@corvidae/weft';
  *
  * const logger: ActivityInterceptor = {
  *   async execute(ctx, next) {
@@ -128,7 +128,7 @@ export interface ActivityInterceptor {
  *
  * @example
  * ```ts
- * import { Engine, type Interceptor } from '@repo/weft';
+ * import { Engine, type Interceptor } from '@corvidae/weft';
  *
  * const tracer: Interceptor = {
  *   *activity(interception, next) {
@@ -157,8 +157,8 @@ export interface Interceptor extends WorkflowInterceptor, ActivityInterceptor {}
  *
  * @example
  * ```ts
- * import { composeWorkflowInterceptors, type ComposedWorkflowInterceptor } from '@repo/weft';
- * import type { WorkflowInterceptor } from '@repo/weft';
+ * import { composeWorkflowInterceptors, type ComposedWorkflowInterceptor } from '@corvidae/weft';
+ * import type { WorkflowInterceptor } from '@corvidae/weft';
  *
  * const tracer: WorkflowInterceptor = {
  *   *activity(ctx, next) {
@@ -215,8 +215,8 @@ export interface ComposedWorkflowInterceptor {
  *
  * @example
  * ```ts
- * import { composeActivityInterceptors, type ComposedActivityInterceptor } from '@repo/weft';
- * import type { ActivityInterceptor } from '@repo/weft';
+ * import { composeActivityInterceptors, type ComposedActivityInterceptor } from '@corvidae/weft';
+ * import type { ActivityInterceptor } from '@corvidae/weft';
  *
  * const logger: ActivityInterceptor = {
  *   async execute(ctx, next) {

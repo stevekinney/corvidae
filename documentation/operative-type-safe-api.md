@@ -1,0 +1,219 @@
+# The typed Operative and Bureau API
+
+This document describes the public TypeScript contracts implemented by `@corvidae/operative` and `@corvidae/bureau`. The source exports are the authoritative definition; this document explains the relationships that are easy to miss when reading the individual modules.
+
+## Agent input and run context
+
+Every runnable agent accepts the same input and context shapes (supporting types are defined in the linked source):
+
+```ts
+import type { ConversationHistory } from '@corvidae/conversationalist';
+
+export type AgentInput = string | { conversation: ConversationHistory };
+
+export interface AgentRunContext {
+  signal?: AbortSignal | undefined;
+  traceContext?: unknown;
+  withTraceContext?: (<T>(parentContext: unknown, fn: () => Promise<T>) => Promise<T>) | undefined;
+  agentName?: string | undefined;
+  childRegistry?: ChildRunRegistry | undefined;
+  delegatedAuthority?: DelegatedAuthority | undefined;
+  principal?: string | undefined;
+}
+```
+
+A string starts a fresh conversation. `{ conversation }` resumes supplied history after it has been cloned, so the caller's history and the in-flight run do not share mutable state. `principal` is attribution forwarded to run options; it is not, by itself, an authorization mechanism.
+
+## Runnable agents and run handles
+
+`RunnableAgent<O, H>` preserves the output type and whether an output schema was provided:
+
+```ts
+export interface RunnableAgent<O = never, H extends boolean = false> {
+  readonly name: string;
+  readonly hasOutput: boolean;
+  readonly generationProfile?: AgentGenerationProfile | undefined;
+  run: (input: AgentInput, context?: AgentRunContext) => AgentRun<O, H>;
+}
+```
+
+The function is intentionally property-typed. This makes TypeScript check its parameter contravariantly, so an implementation cannot silently accept only the string form and reject conversation resumption.
+
+`run()` starts synchronously and returns an `AgentRun` immediately. The handle is deliberately not a `Promise` or thenable: callers choose an explicit terminal operation.
+
+```ts
+const run = agent.run('Summarize this report.');
+const result = await run.result();
+const text = await run.unwrap();
+```
+
+An `AgentRun` is an async iterable of `RunEvent` values and provides:
+
+- `result()`, which resolves to the terminal `RunResult`;
+- `unwrap()`, which resolves to plain text for a schema-less run or the validated output for a run with a schema, and rejects unsuccessful runs;
+- `output()`, only on the `H = true` type, for the typed validated value;
+- `abort(reason?)`, `children()`, and `abortChild(childId, reason?)`;
+- `snapshot()` and `subscribeSnapshot()` for liveness observation;
+- `closed(options?)`, an awaitable cleanup acknowledgement; and
+- `[Symbol.dispose]()` for synchronous disposal.
+
+`RunResult` always contains `conversation`, `steps`, `content`, `usage`, and `finishReason`. It may contain `costEstimate`, `error`, and `schemaValidation`. The conditional `output` property exists only when the compile-time `H` parameter is `true`; runtime narrowing also uses the agent's `hasOutput` witness.
+
+Standalone runs use a permanently `redacted` liveness projection. Their liveness result exposes `finishReason` and `hasError`, not the complete conversation, model content, output, or error object.
+
+## Creating and loading agents
+
+`createAgent` requires a `generate` function because there is no Bureau to provide one. `output` is a Zod schema when typed structured output is desired; the validated value is available through `RunResult.output` and `AgentRun.output()` after successful validation. The factory also accepts instructions, tools or a toolbox, guardrails, stop conditions, maximum steps, retry and context-management settings, permissions, and an optional `RuntimeServices` instance.
+
+```ts
+import { createAgent } from '@corvidae/operative';
+import type { GenerateFunction } from '@corvidae/operative';
+import { z } from 'zod';
+
+declare const generate: GenerateFunction;
+
+const researcher = createAgent({
+  name: 'researcher',
+  generate,
+  instructions: 'Research carefully and cite your sources.',
+  output: z.object({ summary: z.string() }),
+});
+
+const summary = await researcher.run('Summarize the report.').output();
+```
+
+The returned standalone agent is bureau-less and in-memory. Its name defaults to `'(agent)'` when omitted, and its `hasOutput` value reflects whether an output schema was supplied.
+
+`createLazyGenerate` memoizes the first successful loader result and shares an in-flight load across concurrent calls. `createLazyAgent` does the same for a whole runnable agent and returns a synchronous `AgentRun` handle whose first work may await the definition. Both loaders validate their resolved export and reset to the unloaded state after a failed load. Capability metadata supplied through `descriptors` or `generationProfile` is readable without invoking the loader.
+
+## Durable execution
+
+Import durable workflow helpers from the `@corvidae/operative` package root. `createRunWorkflow(checkpointStore, options)` builds the `agentRun` workflow. Its `version` option is stamped into each new run's `RunCursor.workflowVersion`.
+
+A durable checkpoint contains only cloneable state:
+
+```ts
+export interface RunCheckpoint {
+  runId: string;
+  cursor: RunCursor;
+  conversation: ConversationSnapshot | null;
+  steps: StepRecord[];
+}
+```
+
+The cursor carries the next step, usage totals, last content, schema-retry count, applied steering version, and optional workflow version. The live `Conversation`, toolbox, hooks, emitter, and generator closures do not cross a checkpoint boundary. A step is the durability unit: generation and its tools are checkpointed together, so a crash during a step can replay that whole step. Effectful tools and hooks must therefore be idempotent.
+
+`createRunEngine` requires the durable storage and workflow definition. It can recover on boot, re-provide non-serializable run services with `resolveWorkflowServices`, run scheduler maintenance automatically or manually, and use `ownership: 'workflow-lease'` for per-workflow multi-process fencing. A resolver returning `{ status: 'unavailable' }` fails that run terminally without aborting recovery of other runs.
+
+The durable path uses the same `runStep` implementation as in-memory execution. This keeps generation, tools, retries, schema validation, hooks, and events on one behavior path while the durable driver adds checkpoint boundaries.
+
+## Events and observation
+
+The root package exports the `OperativeEventMap`, `CombinedOperativeEventMap`, event classes, and event type unions. The event surface covers run and step lifecycle, generation, tools, guardrails, sessions, child workflows, scheduling, steering, and durable recovery. `WorkflowVersionMismatchEvent` reports the durable version observation described in the [workflow versioning guide](./workflow-versioning.md).
+
+An observer receives the current snapshot synchronously when it subscribes, then receives each later revision. Subscriptions are independent and may be removed without changing ownership or cancellation. A terminal handle still delivers its terminal snapshot to a later subscriber.
+
+## Started-work control contract
+
+The run and administrative handles use one lifecycle vocabulary for work that has started. A resource has an immutable identifier, a kind, creation and transition timestamps, a monotonic revision, a current status, ownership, durability, projection, and a terminal result when one exists. Optional owner and parent fields are omitted when the resource has no such relationship; an omitted field is not an authorization failure.
+
+### The common facts
+
+Snapshots are cached, immutable, and side-effect-free. Calling `snapshot()` does not start work or wait for progress. `subscribeSnapshot()` delivers the current snapshot before returning, then delivers later revisions. A handle's `cancellable` value is truthful at construction time; unsupported cancellation is a no-op on the live handle and is represented by its unchanged snapshot.
+
+### Required capabilities
+
+An independently owned live operation exposes a cached snapshot, independent observation, idempotent cancellation where supported, an awaitable terminal result, and an awaitable cleanup acknowledgement. `AgentRun` supplies these as `snapshot()`, `subscribeSnapshot()`, `abort()`, `result()`, and `closed()`. Child runs remain parent-owned and are discovered through `children()` and `abortChild()` when a `ChildRunRegistry` is wired.
+
+Cleanup acknowledgement describes cleanup, not optimistic rollback. An external tool, provider, or hook may already have committed a side effect; the run preserves the observed outcome and idempotency evidence rather than claiming that effect was reversed.
+
+`closed()` never rejects and memoizes the resource-level acknowledgement. A caller's `ClosedOptions.signal` bounds only that caller's wait; an `unresolved`/`timed-out` result is not written into the shared cache. The acknowledgement distinguishes definite cleanup failure (`failed`) from effects whose outcome cannot be confirmed: `timed-out`, `unknown-effect`, `unreachable`, and `persistence-failed`. A cancellation request disqualifies the immediate `not-required` fast path, and durable runs report `persistence-failed` when the post-cancellation state cannot be confirmed.
+
+Bureau's `detachBestEffortPromise()` is reserved for detached wake-ups and cleanup triggers whose result is not the lifecycle acknowledgement. It observes and diagnoses a rejection without turning that fire-and-forget path into an unhandled rejection. Callers needing a truthful lifecycle result use `result()` and `closed()` instead.
+
+## Session input admission
+
+Operative exports the session-input record and outcome types. Bureau implements `submitSessionInput(sessionId, request)` with pre-admission checks in order: an unauthorized caller or unknown session receives `not-found`; an authorized caller naming a terminal session receives `session-terminal`; every other request receives `unsupported-capability` with reason `durable-mailbox-unavailable`. The method creates no record and consumes no identifier. Its `admitted`, `replayed`, `conflict`, and `backlog-exhausted` outcomes are currently unreachable.
+
+The following types define the mailbox admission contract without claiming that record admission is implemented. `SessionInputPayload` is `string` or an array of an explicit allowlist: `TextContent` with `citations?: undefined`, `ImageContent`, or `DocumentContent`. It is intentionally not an `Exclude` over the provider union, so a future response-only content variant cannot be admitted silently.
+
+`SessionInputRecord<TPayload>` and `SessionInputAdmissionRequest<TPayload>` bound `TPayload extends SessionInputPayload`. A record carries `id`, `idOrigin`, `sessionId`, authenticated `principal`, `deliveryMode` (`'steer'` or `'queue'`), `payload`, `payloadDigest`, admission time, optional expiry, and optional explicit `supersedes`. An exact retry replays the original receipt without creating a second record. Conflicting reuse returns a typed conflict (`session-mismatch`, `delivery-mode-mismatch`, `payload-mismatch`, or `id-owned-by-other-principal`) and leaves the original untouched.
+
+The state vocabulary is `accepted`, `queued`, `promoted`, `rejected`, `expired`, `superseded`, `canceled`, and `failed`. Promotion commits the model-visible message and promoted state together. Typed outcomes also cover authorization/lookup failure, terminal sessions, unsupported capability, and per-session or per-principal backlog exhaustion.
+
+The record and state-transition types describe the admission boundary; the current runtime behavior is the pre-admission rejection surface above.
+
+## Steering commands
+
+Bureau currently accepts `pause` and `resume` for authorized, non-terminal, in-memory sessions. Other targets return `unsupported-capability`; durable sessions also return it for pause and resume. The wider exported command contract describes these typed states: `accepted`, `applied`, `rejected`, `superseded`, or `failed`. The operative run-step boundary reads a `SteeringGate`; a paused run waits for `awaitResume()` or its abort signal before the next step. The requested value is one of `agent-identity`, `route`, `model`, `provider`, `effort`, `pause`, or `resume`. Configuration targets carry exactly one of `policyRef` or `override`; pause and resume carry neither.
+
+An exact retry of an idempotency identifier and equivalent requested value replays the existing command state. Reusing that identifier for a different requested value returns a typed conflict. A command that loses its target run to terminal completion fails with `run-terminal` rather than applying after the run has ended. `configVersion` increments exactly once on acceptance; the step boundary applies the desired state and stamps the effective state.
+
+The five steering event classes are exported and included in `OperativeEventMap`, but the current Operative runtime dispatches only `steering.applied` from `runStep`. `steering.accepted`, `steering.rejected`, `steering.superseded`, and `steering.failed` describe Bureau admission and termination, but currently have no production dispatch site. The run emitter has no external dispatch surface for Bureau to use.
+
+## Bureau composition
+
+`createBureau` accepts an `AgentDefinitions` map of runnable agents and returns a typed Bureau catalog. `bureau.run(name, input, options?)` preserves the selected agent's output type and forwards the caller's principal and other run context. Bureau also owns durable composition, recovery classification, session and scheduler operations, model selection, event history, pending reviews, and shutdown reporting.
+
+The Bureau durable options that affect the Operative contract include `workflowVersion`, `durableOwnership`, `durableGuardrails`, persistence, and the durable storage configuration. `workflowVersion` is passed to both the workflow stamp and recovery comparison when a durable engine is composed.
+
+## Compile-ready example
+
+```ts
+import { createBureau } from '@corvidae/bureau';
+import { createAgent } from '@corvidae/operative';
+import type { GenerateFunction } from '@corvidae/operative';
+import { z } from 'zod';
+
+export async function runExample(generate: GenerateFunction) {
+  const agents = {
+    researcher: createAgent({
+      name: 'researcher',
+      generate,
+      output: z.object({ summary: z.string() }),
+    }),
+    writer: createAgent({ name: 'writer', generate }),
+  };
+
+  const bureau = await createBureau({ agents });
+  try {
+    const structured = await bureau.run('researcher', 'Summarize this.').output();
+    const prose = await bureau.run('writer', 'Draft an introduction.').unwrap();
+    return { structured, prose };
+  } finally {
+    await bureau.shutdown();
+  }
+}
+```
+
+The catalog is built from the literal `agents` object, so `structured` is typed as `{ summary: string }` while `prose` is typed as `string`.
+
+### Widened runtime modules
+
+When the module path is only known at runtime, the loader must narrow the module's shape and preserve the unresolved output capability as `boolean`:
+
+```ts
+import { createLazyAgent } from '@corvidae/operative';
+import type { RunnableAgent } from '@corvidae/operative';
+
+export async function runWidenedPlugin(pluginPath: string): Promise<string> {
+  const plugin: RunnableAgent<unknown, boolean> = createLazyAgent<unknown, boolean>(
+    () => import(pluginPath) as Promise<{ default: RunnableAgent<unknown, boolean> }>,
+  );
+  return plugin.run('do the thing').unwrap();
+}
+```
+
+Because `H` is `boolean`, `output()` is not available on the returned run and the wrapper does not pretend that a runtime-loaded plugin has a statically known schema. This is the canonical widened-plugin pattern exercised by `packages/operative/src/create-lazy-agent.test-d.ts`.
+
+## Source map
+
+- [Runnable agent contract](../packages/operative/src/runnable-agent.ts)
+- [Agent factory](../packages/operative/src/create-agent.ts)
+- [Lazy agent and generate factories](../packages/operative/src/create-lazy-agent.ts)
+- [Run result and options](../packages/operative/src/types.ts)
+- [Durable workflow](../packages/operative/src/durable/run-workflow.ts)
+- [Durable engine](../packages/operative/src/durable/create-run-engine.ts)
+- [Durable checkpoint types](../packages/operative/src/durable/types.ts)
+- [Bureau options and API](../packages/bureau/src/types.ts)
+- [Bureau factory and recovery](../packages/bureau/src/create-bureau.ts)

@@ -32,7 +32,7 @@ import type { ApplicationCommandReceipt } from './mailbox-contract.ts';
  *
  * @example
  * ```ts
- * import type { ApplicationCommandClaimedPayload } from '@repo/weft';
+ * import type { ApplicationCommandClaimedPayload } from '@corvidae/weft';
  *
  * declare const payload: ApplicationCommandClaimedPayload;
  * if (payload.form === 'inline') console.log(payload.verified); // true
@@ -63,7 +63,7 @@ export type ApplicationCommandClaimedPayload =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandClaim } from '@repo/weft';
+ * import type { ApplicationCommandClaim } from '@corvidae/weft';
  *
  * declare const claim: ApplicationCommandClaim;
  * console.log(claim.attemptToken, claim.signal.aborted);
@@ -89,7 +89,7 @@ export type ApplicationCommandClaim = Readonly<{
  *
  * @example
  * ```ts
- * import type { MailboxClaimResult } from '@repo/weft';
+ * import type { MailboxClaimResult } from '@corvidae/weft';
  *
  * declare const result: MailboxClaimResult;
  * if (result.status === 'claimed') console.log(result.claim.attemptToken);
@@ -104,7 +104,7 @@ export type MailboxClaimResult =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandRenewalResult } from '@repo/weft';
+ * import type { ApplicationCommandRenewalResult } from '@corvidae/weft';
  *
  * declare const result: ApplicationCommandRenewalResult;
  * if (result.status === 'renewed' && result.cancellationRequested) console.log('wind down');
@@ -136,7 +136,7 @@ export type ApplicationCommandRenewalResult =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandSettleResult } from '@repo/weft';
+ * import type { ApplicationCommandSettleResult } from '@corvidae/weft';
  *
  * declare const result: ApplicationCommandSettleResult;
  * if (result.status === 'settled') console.log(result.receipt.state);
@@ -164,7 +164,7 @@ export type ApplicationCommandSettleResult =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandCancellationResult } from '@repo/weft';
+ * import type { ApplicationCommandCancellationResult } from '@corvidae/weft';
  *
  * declare const result: ApplicationCommandCancellationResult;
  * if (result.status === 'requested') console.log(result.cleanupPending); // true
@@ -189,7 +189,7 @@ export type ApplicationCommandCancellationResult =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandCleanupResult } from '@repo/weft';
+ * import type { ApplicationCommandCleanupResult } from '@corvidae/weft';
  *
  * declare const cleanup: ApplicationCommandCleanupResult;
  * console.log(cleanup.status === 'pending'); // the mailbox stopped waiting
@@ -209,7 +209,7 @@ export type ApplicationCommandCleanupResult =
  *
  * @example
  * ```ts
- * import type { MailboxMaintenanceReport } from '@repo/weft';
+ * import type { MailboxMaintenanceReport } from '@corvidae/weft';
  *
  * declare const report: MailboxMaintenanceReport;
  * console.log(report.released, report.reclaimed, report.deadLettered);
@@ -236,7 +236,7 @@ export type MailboxMaintenanceReport = Readonly<{
  *
  * @example
  * ```ts
- * import type { MailboxWaitOptions } from '@repo/weft';
+ * import type { MailboxWaitOptions } from '@corvidae/weft';
  *
  * const options: MailboxWaitOptions = { timeoutMs: 5_000, pollIntervalMs: 50 };
  * console.log(options.timeoutMs); // 5000

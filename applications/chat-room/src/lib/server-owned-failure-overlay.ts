@@ -1,4 +1,4 @@
-import { markMessageDeliveryFailed, type ConversationHistory } from '@repo/chat';
+import { markMessageDeliveryFailed, type ConversationHistory } from '@corvidae/chat';
 
 import type { ServerOwnedConversationSnapshot } from './server-owned-snapshot';
 

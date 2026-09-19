@@ -8,7 +8,7 @@
  *
  * @example
  * ```ts
- * import { WorkerPool, type WorkerPoolOptions } from '@repo/weft';
+ * import { WorkerPool, type WorkerPoolOptions } from '@corvidae/weft';
  *
  * const options: WorkerPoolOptions = {
  *   concurrency: 4,
@@ -42,7 +42,7 @@ type PendingWorkerRequest = {
  *
  * @example
  * ```ts
- * import { WorkerPool } from '@repo/weft';
+ * import { WorkerPool } from '@corvidae/weft';
  *
  * await using pool = new WorkerPool({
  *   concurrency: 2,

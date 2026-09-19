@@ -51,7 +51,7 @@ describe('pumpChatRun: roll_dice tool path', () => {
   // `chat-agent.ts` — so this request never reaches a second `generate` call
   // for a follow-up reply. `generate` below asserts that by throwing if it is
   // ever invoked a second time: the pre-Operative contract this restores has
-  // the client's existing continuation loop (`packages/chat`'s
+  // the client's existing continuation loop (`components/chat`'s
   // `createChatSessionController`) re-POST for the follow-up instead.
   test('emits a tool_call then a tool_result carrying 4, and stops without generating a follow-up', async () => {
     let calls = 0;

@@ -1,4 +1,4 @@
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { SessionSleepEvent } from '../events';

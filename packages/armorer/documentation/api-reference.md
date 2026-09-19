@@ -1,9 +1,9 @@
 # Armorer Public API Reference
 
-Armorer is a private workspace library. Import its supported runtime, type, adapter, registry, and test utilities from `@repo/armorer`. The [package manifest](../package.json) exposes only `src/index.ts`; the capability groups below all share that entry point.
+Armorer is a private workspace library. Import its supported runtime, type, adapter, registry, and test utilities from `@corvidae/armorer`. The [package manifest](../package.json) exposes only `src/index.ts`; the capability groups below all share that entry point.
 
 ```typescript
-import { createTool, createToolbox, createRegistry, defineTool } from '@repo/armorer';
+import { createTool, createToolbox, createRegistry, defineTool } from '@corvidae/armorer';
 ```
 
 ## Runtime API
@@ -368,7 +368,7 @@ Registry operations are available from the same root entry:
 
 ## Model Context Protocol
 
-Import MCP integration helpers from `@repo/armorer`.
+Import MCP integration helpers from `@corvidae/armorer`.
 
 ### Functions
 
@@ -389,11 +389,6 @@ Import MCP integration helpers from `@repo/armorer`.
 - `MCPToolLike`
 - `MCPToolSource`
 - `ToMCPToolsOptions`
-
-### Test seam
-
-- `internalToolTestUtilities`
-- `internalMcpTestUtilities`
 
 ## OpenAI adapters
 
@@ -552,7 +547,6 @@ Import MCP integration helpers from `@repo/armorer`.
 These root exports support focused internal verification:
 
 - `internalToolTestUtilities`
-- `internalMcpTestUtilities`
 - `internalOpenAIAgentsTestUtilities`
 - `internalQueryPredicateTestUtilities`
 - `internalRegistryTestUtilities`

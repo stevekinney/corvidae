@@ -1,10 +1,10 @@
-import { isStandardSchema, type StandardSchemaV1 } from '@repo/interoperability';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 
 import { normalizeSchema } from '../utilities/schema-normalization';
 import { formatToolId, normalizeIdentity, type ToolId, type ToolIdentity } from './identity';
 import { buildTagsFromRisk, type ToolRisk } from './risk';
-import { isZodSchema } from './schema-utilities';
+import { isStandardSchema, isZodSchema } from './schema-utilities';
 import { assertJsonValue, type JsonObject } from './serialization/json';
 import { assertKebabCaseTag, type NormalizeTagsOption, uniqTags } from './tag-utilities';
 

@@ -1,4 +1,4 @@
-import { MemoryStorage, textValueStore } from '@repo/weft';
+import { MemoryStorage, textValueStore } from '@corvidae/weft';
 
 import type { SkillCatalogEntry, SkillContent, SkillProvider } from '../types';
 

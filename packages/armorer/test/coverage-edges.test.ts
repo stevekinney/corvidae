@@ -24,7 +24,6 @@ import {
 import { unwrapSchema } from '../src/core/schema-utilities';
 import { assertJsonValue } from '../src/core/serialization/json';
 import { createTool, internalToolTestUtilities } from '../src/create-tool';
-import { createMCP, internalMcpTestUtilities } from '../src/integrations/mcp';
 import { createInternalToolboxTestUtilities } from '../src/toolbox-test-utilities';
 import { createSearchTool } from '../src/tools/search-tools';
 import { internalRetryTestUtilities, retry } from '../src/utilities/retry';
@@ -650,19 +649,6 @@ describe('coverage edges', () => {
     expect(callCount).toBe(2);
 
     internalOpenAIAgentsTestUtilities.resetModuleState();
-
-    internalMcpTestUtilities.resetModuleState();
-    internalMcpTestUtilities.setModuleLoader(() => {
-      throw new Error('mcp missing');
-    });
-    await expectPromiseToReject(createMCP(createToolbox()), (error) =>
-      expect(() => {
-        throw error;
-      }).toThrow(
-        'Missing peer dependency "@modelcontextprotocol/sdk". Install it to use armorer/mcp.',
-      ),
-    );
-    internalMcpTestUtilities.resetModuleState();
 
     const defaultUnknownDecision = await createOpenAIToolGate({
       registry: [],

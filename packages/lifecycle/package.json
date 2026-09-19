@@ -1,5 +1,5 @@
 {
-  "name": "@repo/lifecycle",
+  "name": "@corvidae/lifecycle",
   "private": true,
   "description": "Typed EventTarget, async iterators, observables, hooks, and lifecycle utilities for agent-bureau.",
   "type": "module",
@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@repo/typescript-configuration": "workspace:*",
+    "@corvidae/typescript": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   }

@@ -1,4 +1,4 @@
-import type { ChatSerializedRunError, ConversationHistory } from '@repo/chat';
+import type { ChatSerializedRunError, ConversationHistory } from '@corvidae/chat';
 /** The browser-safe projection persisted by the server-owned conversation route. */
 export type ServerOwnedConversationSnapshot = {
   id: string;

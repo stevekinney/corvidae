@@ -3,8 +3,8 @@ import {
   createToolbox,
   type ToolConfigurationInput,
   type ToolContext,
-} from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+} from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

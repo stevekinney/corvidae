@@ -1,4 +1,4 @@
-import type { AnyToolbox } from '@repo/armorer';
+import type { AnyToolbox } from '@corvidae/armorer';
 import {
   createTestToolbox,
   createTool,
@@ -9,10 +9,14 @@ import {
   ToolboxPolicyDeniedEvent,
   ToolboxProgressEvent,
   ToolboxSettledEvent,
-} from '@repo/armorer';
-import { Conversation, createConversationHistory } from '@repo/conversationalist';
-import { CompletableEventTarget, createManualRuntimeServices, HookRegistry } from '@repo/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@repo/weft';
+} from '@corvidae/armorer';
+import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
+import {
+  CompletableEventTarget,
+  createManualRuntimeServices,
+  HookRegistry,
+} from '@corvidae/lifecycle';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

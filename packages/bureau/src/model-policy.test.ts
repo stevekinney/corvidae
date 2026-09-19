@@ -18,7 +18,7 @@ import {
   createModelCatalog,
   type ProviderName,
   withBackendDescriptors,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

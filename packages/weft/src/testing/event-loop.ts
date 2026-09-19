@@ -6,7 +6,7 @@
  *
  * @example
  * ```ts
- * import { flushPortableMicrotasks } from '@repo/weft';
+ * import { flushPortableMicrotasks } from '@corvidae/weft';
  *
  * let ran = false;
  * void Promise.resolve().then(() => {
@@ -35,7 +35,7 @@ export async function flushPortableMicrotasks(turns = 3): Promise<void> {
  * @example
  * ```ts
  * import { afterEach } from 'bun:test';
- * import { yieldToPortableEventLoop } from '@repo/weft';
+ * import { yieldToPortableEventLoop } from '@corvidae/weft';
  *
  * afterEach(yieldToPortableEventLoop);
  * ```

@@ -1,6 +1,6 @@
 # Conversationalist Public API Reference
 
-This document describes the public API exposed by the `@repo/conversationalist` package root.
+This document describes the public API exposed by the `@corvidae/conversationalist` package root.
 
 ## Core conversation API
 
@@ -551,7 +551,7 @@ Projection builders compare stable event identities to detect prefix extensions.
 
 ## Supporting root types
 
-These are exported from `@repo/conversationalist`:
+These are exported from `@corvidae/conversationalist`:
 
 - `ConversationProvider`
 - `ExportOptions`

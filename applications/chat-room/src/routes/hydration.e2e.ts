@@ -11,97 +11,11 @@ import { readCreatedConversation } from './server-owned/server-owned-test-helper
 // server on DEV_PORT) with absolute URLs, so they are unaffected by `baseURL`.
 const DEV_ORIGIN = 'http://localhost:5175';
 
-// ROADMAP A11Y-1. This list is EXHAUSTIVE, not a sample, and that is the point:
-// every route under `src/routes/exercises/` renders its content unconditionally
-// in markup — there is no `{#if browser}` guard anywhere — so every one of them
-// is server-rendered and hydrated exactly like the handful that used to be
-// checked here.
+// ROADMAP A11Y-1. This list is deliberately explicit: Playwright needs test
+// names at collection time, and a missing application route should be a
+// reviewable diff rather than a silent change in what runs.
 //
-// Most render `<Chat>` or `<ReviewEditor>`. A growing minority render plain
-// markup around a local Operative run instead — the result-contract exercises
-// (`output`, `retry`, `stop-condition`) and the guardrail and context ones
-// (`tripwire`, `compaction`). Those are a weaker guarantee about WHAT hydrates
-// but the same guarantee that hydration happens — and the same reason to check
-// it. Keep this list current as routes are added: a hydration failure gets
-// triaged against the surface actually under test, and a stale rationale sends
-// that triage at a component neither route mounts.
-//
-// It used to list five exercises out of 25, which
-// meant `review-front-matter`'s nine ReviewEditor instances seeded with
-// edge-case YAML front matter went unchecked, and so did `review-ssr-and-a11y`,
-// the route built specifically to audit SSR and hydration.
-//
-// The invariant, so a new exercise gets added as a matter of course rather than
-// by a later sweep: **every directory under `src/routes/exercises/` appears
-// here, plus `/`.** Ordered to match the directory listing so `ls` against this
-// array is a trivial diff. Routes outside `exercises/` that server-render and
-// hydrate belong here too, appended after them.
-//
-// Deliberately NOT globbed at test time: Playwright needs test names at
-// collection time, and an explicit list makes a missing route a reviewable diff
-// line instead of a silent change in what runs.
-//
-// `/exercises` stays as the control — it renders neither component, so if every
-// route goes red at once it points at the shared layout, the base styles, or the
-// hydration beacon rather than at a component.
-//
-// This used to assert that each Chat route emitted EXACTLY ONE mismatch — a
-// pinned bug, not a passing test. Fixed upstream by cinder#1261 and verified
-// here against `@repo/cinder@0.24.1` / `@repo/chat@0.9.1`: all
-// three Chat routes now report zero, as does a page containing nothing but a
-// Cinder icon, which is where that one was localized.
-// The ReviewEditor routes joined this list once cinder#1277 shipped. That one
-// was NOT the LiveRegion or the empty `{#if name}` block it looked like: the
-// editor package listed `node` before `svelte` in its conditional exports, so
-// SvelteKit SSR loaded the precompiled `dist/server` bundle while the browser
-// compiled the same components from source — two independent compilations of
-// one page, disagreeing on hydration anchor comments. Exactly what cinder#1261
-// fixed for chat and cinder; editor was missed by that sweep.
-const HYDRATING_ROUTES = [
-  '/',
-  '/exercises',
-  '/exercises/adapter-push',
-  '/exercises/artifacts',
-  '/exercises/assistant-metadata',
-  '/exercises/attachments',
-  '/exercises/chat-transcript-navigation',
-  '/exercises/compaction',
-  '/exercises/composer-popover',
-  '/exercises/contracts',
-  '/exercises/conversation-list',
-  '/exercises/diff-viewer',
-  '/exercises/history-scroll',
-  '/exercises/interleaving',
-  '/exercises/markdown-editor',
-  '/exercises/message-lifecycle',
-  '/exercises/multi-agent',
-  '/exercises/output',
-  '/exercises/presentation',
-  '/exercises/retry',
-  '/exercises/review-anchoring',
-  '/exercises/review-basics',
-  '/exercises/review-comment-creation',
-  '/exercises/review-comment-lifecycle',
-  '/exercises/review-diff-performance',
-  '/exercises/review-form-and-exports',
-  '/exercises/review-front-matter',
-  '/exercises/review-imperative',
-  '/exercises/review-modes',
-  '/exercises/review-ssr-and-a11y',
-  '/exercises/review-state-and-session',
-  '/exercises/review-views',
-  '/exercises/row-reconciliation',
-  '/exercises/stop-condition',
-  '/exercises/tool-approval',
-  '/exercises/tripwire',
-  '/exercises/utilities',
-  '/exercises/virtualization',
-  // Not an exercise: the server-owned variant's landing page. It renders on
-  // the server and hydrates interactive state (a create form), so a mismatch
-  // there is exactly what this spec exists to catch — the `exercises/`
-  // invariant above is a floor, not a ceiling.
-  '/server-owned',
-];
+const HYDRATING_ROUTES = ['/', '/server-owned'];
 
 /**
  * Matches every warning Svelte emits about hydration going wrong.
@@ -137,9 +51,8 @@ declare global {
  * `flatten` callback, which needs BOTH `experimental.async` and an `await`
  * inside a component. `experimental.async` is not enabled — nothing in
  * `vite.config.ts` or the workspace turns it on — and that leg alone settles
- * it. The second leg no longer holds on its own: the result-contract exercises
- * added `{#await}` blocks under `src/routes/exercises/`, which is exactly why
- * this note now rests on the flag rather than on their absence.)
+ * it. This note therefore rests on the flag rather than on the absence of
+ * asynchronous blocks in individual components.)
  *
  * What remained was a TEST-side risk — whether a `console` event had been
  * delivered to Playwright yet — and that is removed structurally rather than

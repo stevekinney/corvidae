@@ -1,5 +1,5 @@
-import type { ConversationSnapshot } from '@repo/conversationalist';
-import { activity } from '@repo/weft';
+import type { ConversationSnapshot } from '@corvidae/conversationalist';
+import { activity } from '@corvidae/weft';
 
 import type { CheckpointStore } from './checkpoint-store';
 import type { RunCursor, StepRecord } from './types';

@@ -7,10 +7,10 @@
 
 The canonical loop is the same for every provider:
 
-1. Convert the current conversation into provider messages with `@repo/conversationalist`.
-2. Convert the toolbox into provider tool definitions with `@repo/armorer`.
+1. Convert the current conversation into provider messages with `@corvidae/conversationalist`.
+2. Convert the toolbox into provider tool definitions with `@corvidae/armorer`.
 3. Call the provider SDK.
-4. Parse the provider tool calls with `@repo/armorer`.
+4. Parse the provider tool calls with `@corvidae/armorer`.
 5. Append those calls to the conversation with `appendToolCalls(...)`.
 6. Execute them with `toolbox.execute(...)`.
 7. Append the results with `appendToolResults(...)` or `appendToolResultsAsync(...)`.
@@ -24,10 +24,10 @@ import {
   appendToolResultsAsync,
   appendUserMessage,
   createConversationHistory,
-} from '@repo/conversationalist';
-import { toOpenAIMessagesGrouped } from '@repo/conversationalist';
-import { createToolbox } from '@repo/armorer';
-import { parseOpenAIToolCalls, toOpenAITools } from '@repo/armorer';
+} from '@corvidae/conversationalist';
+import { toOpenAIMessagesGrouped } from '@corvidae/conversationalist';
+import { createToolbox } from '@corvidae/armorer';
+import { parseOpenAIToolCalls, toOpenAITools } from '@corvidae/armorer';
 
 let conversation = createConversationHistory({ title: 'Weather' });
 conversation = appendUserMessage(conversation, 'What is the weather in Denver?');
@@ -55,10 +55,10 @@ import {
   appendToolResults,
   appendUserMessage,
   createConversationHistory,
-} from '@repo/conversationalist';
-import { toAnthropicMessagesForSdk } from '@repo/conversationalist';
-import { createToolbox } from '@repo/armorer';
-import { parseAnthropicToolCalls, toAnthropicTools } from '@repo/armorer';
+} from '@corvidae/conversationalist';
+import { toAnthropicMessagesForSdk } from '@corvidae/conversationalist';
+import { createToolbox } from '@corvidae/armorer';
+import { parseAnthropicToolCalls, toAnthropicTools } from '@corvidae/armorer';
 
 let conversation = createConversationHistory({ title: 'Weather' });
 conversation = appendUserMessage(conversation, 'Use the weather tool for Denver.');
@@ -88,10 +88,10 @@ import {
   appendToolResultsAsync,
   appendUserMessage,
   createConversationHistory,
-} from '@repo/conversationalist';
-import { toGeminiMessages } from '@repo/conversationalist';
-import { createToolbox } from '@repo/armorer';
-import { parseGeminiToolCalls, toGeminiTools } from '@repo/armorer';
+} from '@corvidae/conversationalist';
+import { toGeminiMessages } from '@corvidae/conversationalist';
+import { createToolbox } from '@corvidae/armorer';
+import { parseGeminiToolCalls, toGeminiTools } from '@corvidae/armorer';
 
 let conversation = createConversationHistory({ title: 'Weather' });
 conversation = appendUserMessage(conversation, 'Stream the weather for Denver.');

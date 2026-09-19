@@ -10,7 +10,7 @@ export const MAX_BULK_CONFIRMATION_TOKEN_LENGTH = 256;
  *
  * @example
  * ```ts
- * import type { BulkOperationAction } from '@repo/weft';
+ * import type { BulkOperationAction } from '@corvidae/weft';
  *
  * const action: BulkOperationAction = 'cancel';
  * void action;
@@ -25,7 +25,7 @@ export type BulkOperationAction =
  *
  * @example
  * ```ts
- * import type { BulkOperationPrincipal } from '@repo/weft';
+ * import type { BulkOperationPrincipal } from '@corvidae/weft';
  *
  * const principal: BulkOperationPrincipal = {
  *   method: 'api-key',
@@ -44,7 +44,7 @@ export type BulkOperationPrincipal = {
  *
  * @example
  * ```ts
- * import type { BulkOperationFilterSummary } from '@repo/weft';
+ * import type { BulkOperationFilterSummary } from '@corvidae/weft';
  *
  * const filter: BulkOperationFilterSummary = {
  *   status: ['running', 'pending'],
@@ -76,7 +76,7 @@ export type BulkOperationFilterSummary = {
  *
  * @example
  * ```ts
- * import type { BulkOperationScopeSummary } from '@repo/weft';
+ * import type { BulkOperationScopeSummary } from '@corvidae/weft';
  *
  * const scope: BulkOperationScopeSummary = {
  *   matched: 2,
@@ -103,7 +103,7 @@ export type BulkOperationScopeSummary = {
  *
  * @example
  * ```ts
- * import type { BulkOperationDryRunResult } from '@repo/weft';
+ * import type { BulkOperationDryRunResult } from '@corvidae/weft';
  *
  * const preview: BulkOperationDryRunResult = {
  *   dryRun: true,
@@ -151,7 +151,7 @@ export type BulkOperationDryRunResult = {
  *
  * @example
  * ```ts
- * import type { BulkOperationDryRunOptions } from '@repo/weft';
+ * import type { BulkOperationDryRunOptions } from '@corvidae/weft';
  *
  * const options: BulkOperationDryRunOptions = {
  *   dryRun: true,
@@ -172,7 +172,7 @@ export type BulkOperationDryRunOptions = {
  *
  * @example
  * ```ts
- * import type { BulkOperationCommitOptions } from '@repo/weft';
+ * import type { BulkOperationCommitOptions } from '@corvidae/weft';
  *
  * const options: BulkOperationCommitOptions = {
  *   confirmationToken: 'bulk:token-from-preview',
@@ -194,7 +194,7 @@ export type BulkOperationCommitOptions = {
  *
  * @example
  * ```ts
- * import type { BulkOperationOptions } from '@repo/weft';
+ * import type { BulkOperationOptions } from '@corvidae/weft';
  *
  * const options: BulkOperationOptions = { dryRun: true, bulkConcurrency: 4 };
  * void options;
@@ -208,7 +208,7 @@ export type BulkOperationOptions = BulkOperationDryRunOptions | BulkOperationCom
  *
  * @example
  * ```ts
- * import type { BulkSignalAllDryRunOptions } from '@repo/weft';
+ * import type { BulkSignalAllDryRunOptions } from '@corvidae/weft';
  *
  * const options: BulkSignalAllDryRunOptions = { dryRun: true };
  * void options;
@@ -222,7 +222,7 @@ export type BulkSignalAllDryRunOptions = BulkOperationDryRunOptions;
  *
  * @example
  * ```ts
- * import type { BulkSignalAllCommitOptions } from '@repo/weft';
+ * import type { BulkSignalAllCommitOptions } from '@corvidae/weft';
  *
  * const options: BulkSignalAllCommitOptions = {
  *   confirmationToken: 'bulk:token-from-preview',
@@ -237,7 +237,7 @@ export type BulkSignalAllCommitOptions = BulkOperationCommitOptions;
  *
  * @example
  * ```ts
- * import type { BulkSignalAllOptions } from '@repo/weft';
+ * import type { BulkSignalAllOptions } from '@corvidae/weft';
  *
  * const options: BulkSignalAllOptions = { dryRun: true };
  * void options;
@@ -250,7 +250,7 @@ export type BulkSignalAllOptions = BulkSignalAllDryRunOptions | BulkSignalAllCom
  *
  * @example
  * ```ts
- * import type { BulkOperationAuditEvent } from '@repo/weft';
+ * import type { BulkOperationAuditEvent } from '@corvidae/weft';
  *
  * const event: BulkOperationAuditEvent = {
  *   type: 'bulk-operation:audit',
@@ -315,7 +315,7 @@ export type BulkCancelResult = {
  *
  * @example
  * ```ts
- * import type { BulkRetryFailedResult } from '@repo/weft';
+ * import type { BulkRetryFailedResult } from '@corvidae/weft';
  *
  * const result: BulkRetryFailedResult = {
  *   retried: 2,

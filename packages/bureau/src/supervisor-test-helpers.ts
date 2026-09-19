@@ -1,5 +1,5 @@
-import { Conversation } from '@repo/conversationalist';
-import type { AgentInput, AgentRun, RunResult } from '@repo/operative';
+import { Conversation } from '@corvidae/conversationalist';
+import type { AgentInput, AgentRun, RunResult } from '@corvidae/operative';
 
 export function makeRunResult(
   content: string,

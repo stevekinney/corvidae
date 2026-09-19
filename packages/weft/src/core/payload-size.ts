@@ -26,7 +26,7 @@ export type PayloadKind =
  *
  * @example
  * ```ts
- * import { workflow, Engine, PayloadSizeExceededError } from '@repo/weft';
+ * import { workflow, Engine, PayloadSizeExceededError } from '@corvidae/weft';
  *
  * const engine = new Engine({ payloadSize: { maxBytes: 64 } });
  * engine.register(workflow({ name: 'echo' }).execute(async function* (_ctx, input) { return input; }));

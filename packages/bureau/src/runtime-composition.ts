@@ -6,16 +6,16 @@ import {
   type ToolboxExecuteOptions,
   type ToolCallInput,
   type ToolRequestContext,
-} from '@repo/armorer';
+} from '@corvidae/armorer';
 import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
-} from '@repo/conversationalist';
-import type { EventMap, HookReplayPolicy, RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices, TypedEventTarget } from '@repo/lifecycle';
-import type { CreateMemoryOptions, Memory } from '@repo/memory';
-import { createMemory } from '@repo/memory';
+} from '@corvidae/conversationalist';
+import type { EventMap, HookReplayPolicy, RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
+import type { CreateMemoryOptions, Memory } from '@corvidae/memory';
+import { createMemory } from '@corvidae/memory';
 import type {
   AgentInput,
   AgentRunContext,
@@ -41,7 +41,7 @@ import type {
   StepRecord,
   StreamEventMap,
   ValidateResponseHook,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import {
   createAgentSession,
   createAnthropicProvider,
@@ -78,18 +78,18 @@ import {
   withEnhancedStreaming,
   withMinimumTripwireConfidence,
   WorkflowVersionMismatchEvent,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import type {
   SkillSession,
   SkillProvider as SkillsPackageProvider,
   ToolPolicy,
-} from '@repo/skills';
+} from '@corvidae/skills';
 import {
   createSkillCatalogHook,
   createSkillSession,
   createStorageSkillProvider,
   escapeXml,
-} from '@repo/skills';
+} from '@corvidae/skills';
 import {
   type ConditionalTextValueStore,
   decode,
@@ -106,7 +106,7 @@ import {
   WorkflowFailedEvent,
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
-} from '@repo/weft';
+} from '@corvidae/weft';
 import { z } from 'zod';
 
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';

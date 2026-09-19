@@ -1,5 +1,5 @@
-import type { RuntimeServices } from '@repo/lifecycle';
-import { CompletableEventTarget, createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { CompletableEventTarget, createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import type { ChildRunRegistry } from '../child-run';
 import { createClosedAcknowledgement } from '../closed-acknowledgement';

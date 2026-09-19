@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 import { z } from 'zod';
 
 import type { ComposedTool } from '../compose-types';
@@ -25,7 +25,7 @@ type RetryOptions = {
   /**
    * The injectable runtime-service seam (AB-92's `RuntimeServices`, AB-254)
    * backing this wrap's default `sleep` timer. Resolved once, at wrap time.
-   * A test composes its own from `@repo/lifecycle`'s
+   * A test composes its own from `@corvidae/lifecycle`'s
    * `createManualRuntimeServices()` and drives the backoff delay entirely
    * through `advance()`, with no real timer, instead of supplying `sleep`.
    */
@@ -51,8 +51,8 @@ type RetryOptions = {
  *
  * @example Basic retry with exponential backoff
  * ```typescript
- * import { createTool } from '@repo/armorer';
- * import { retry } from '@repo/armorer';
+ * import { createTool } from '@corvidae/armorer';
+ * import { retry } from '@corvidae/armorer';
  * import { z } from 'zod';
  *
  * const fetchData = createTool({

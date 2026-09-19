@@ -25,7 +25,7 @@ type DescriptorBearingFunction = GenerateFunction | StreamingGenerateFunction;
  * @internal
  */
 const OPERATIVE_BACKEND_DESCRIPTORS: unique symbol = Symbol.for(
-  '@repo/operative/backend-descriptors',
+  '@corvidae/operative/backend-descriptors',
 );
 
 /**

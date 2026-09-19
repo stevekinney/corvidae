@@ -12,15 +12,15 @@
  * Layer A (live) is the operative/store; Layer B is this trail. Together they
  * form the glass-box audit surface for the gateway.
  */
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 import type {
   AgentScheduledEvent,
   ScheduleCancelledEvent,
   SchedulePausedEvent,
   ScheduleResumedEvent,
   SessionDeletedEvent,
-} from '@repo/operative';
-import type { ConditionalTextValueStore } from '@repo/weft';
+} from '@corvidae/operative';
+import type { ConditionalTextValueStore } from '@corvidae/weft';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { EventTimestampResolver } from './event-timestamp';
@@ -81,7 +81,7 @@ import type { Bureau, DiagnosticSink } from './types';
  *   nothing (there is nothing to filter in), but `BudgetExceededEvent`
  *   itself is orphaned production code post-AB-231 — flagged as a
  *   follow-up (dispatch it for real, since it's still exported public
- *   surface of `@repo/operative`, `packages/operative/src/index.ts`
+ *   surface of `@corvidae/operative`, `packages/operative/src/index.ts`
  *   — removing it would be a breaking change, not a same-PR cleanup)
  *   rather than fixed here, which is out of this child's
  *   `packages/bureau`-only boundary. That verification, though, only

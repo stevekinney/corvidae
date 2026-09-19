@@ -1,4 +1,4 @@
-import type { Message } from '@repo/conversationalist';
+import type { Message } from '@corvidae/conversationalist';
 
 import type { PrepareStepHook } from './types';
 

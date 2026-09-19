@@ -18,7 +18,7 @@ import { WORKFLOW_REVISION_MANIFEST_VERSION } from './types.ts';
  *
  * @example
  * ```ts
- * import type { BuildWorkflowRevisionManifestOptions } from '@repo/weft';
+ * import type { BuildWorkflowRevisionManifestOptions } from '@corvidae/weft';
  *
  * const options: BuildWorkflowRevisionManifestOptions = { revision: 'deploy-2026.09.01' };
  * console.log(options.revision);
@@ -56,7 +56,7 @@ export interface BuildWorkflowRevisionManifestOptions {
  *
  * @example
  * ```ts
- * import { buildWorkflowContract, buildWorkflowRevisionManifest } from '@repo/weft';
+ * import { buildWorkflowContract, buildWorkflowRevisionManifest } from '@corvidae/weft';
  *
  * const contract = buildWorkflowContract({ name: 'checkout', version: '2.1.0' });
  * const manifest = await buildWorkflowRevisionManifest(contract);

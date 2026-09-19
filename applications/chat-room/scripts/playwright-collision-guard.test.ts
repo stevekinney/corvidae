@@ -70,25 +70,6 @@ test('split specifications retain every browser project selected for their origi
   }
 });
 
-test('browser capability contracts select supported engines explicitly', () => {
-  const clipboard = 'src/routes/exercises/utilities/utilities.clipboard.e2e.ts';
-  const nativeTab =
-    'src/routes/exercises/review-ssr-and-a11y/review-ssr-and-a11y.native-tab.e2e.ts';
-  const projectsFor = (path: string) =>
-    (playwrightConfig.projects ?? [])
-      .filter(
-        (project) =>
-          matchesSpecification(path, project.testMatch ?? playwrightConfig.testMatch) &&
-          !matchesSpecification(path, project.testIgnore ?? playwrightConfig.testIgnore),
-      )
-      .map((project) => project.name);
-  expect(projectsFor(clipboard)).toEqual(['chromium']);
-  expect(
-    projectsFor('src/routes/exercises/conversation-list/conversation-list.clipboard.e2e.ts'),
-  ).toEqual(['chromium']);
-  expect(projectsFor(nativeTab)).toEqual(['chromium', 'firefox']);
-});
-
 function listenOrExplain(server: Server, port: number): Promise<void> {
   return new Promise((resolve, reject) => {
     server.once('error', (error: NodeJS.ErrnoException) => {

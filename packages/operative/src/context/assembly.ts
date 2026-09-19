@@ -5,7 +5,7 @@
  * (system, history, retrieved) may consume, then trims messages to fit.
  */
 
-import type { Message } from '@repo/conversationalist';
+import type { Message } from '@corvidae/conversationalist';
 
 import { getPendingToolCallIds } from './pending-tool-calls';
 import type { AssemblyOptions, AssemblyResult, BudgetReport, ContextAssembler } from './types';

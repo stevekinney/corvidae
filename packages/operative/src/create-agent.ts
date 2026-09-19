@@ -1,8 +1,8 @@
-import type { AnyToolbox, HeadlessPermissionPolicyConfiguration, Tool } from '@repo/armorer';
-import { createHeadlessPermissionPolicyHooks, createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import type { RuntimeServices } from '@repo/lifecycle';
-import { createDefaultRuntimeServices } from '@repo/lifecycle';
+import type { AnyToolbox, HeadlessPermissionPolicyConfiguration, Tool } from '@corvidae/armorer';
+import { createHeadlessPermissionPolicyHooks, createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import type { RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 import type { ZodType } from 'zod';
 
 import type { AgentRun } from './agent-run';
@@ -131,7 +131,7 @@ export interface CreateAgentOptionsBase {
    * share one clock; two agents never share one. Unconfigured (the
    * default), a run reads the real globals; a test composes its own
    * deterministic instance with `createManualRuntimeServices()` from
-   * `@repo/operative`.
+   * `@corvidae/operative`.
    */
   runtime?: RuntimeServices | undefined;
 }
@@ -408,8 +408,8 @@ export type { AgentRun };
  *
  * @example Stateless chat host with a shared toolbox and park-on-approval
  * ```ts
- * import { createToolbox } from '@repo/armorer';
- * import { createAgent, stopWhen } from '@repo/operative';
+ * import { createToolbox } from '@corvidae/armorer';
+ * import { createAgent, stopWhen } from '@corvidae/operative';
  *
  * // Built once for this process. This example requires both HTTP requests to
  * // reach this toolbox instance. Multi-process or restart-safe hosts must also

@@ -27,7 +27,7 @@
  *
  * @example
  * ```ts
- * import type { ConstraintViolation } from '@repo/weft';
+ * import type { ConstraintViolation } from '@corvidae/weft';
  *
  * const policy: ConstraintViolation = 'compensate';
  * void policy;
@@ -58,7 +58,7 @@ export interface ConstraintCheckState {
  *
  * @example
  * ```ts
- * import { constraint, Engine, workflow, type ConstraintDefinition } from '@repo/weft';
+ * import { constraint, Engine, workflow, type ConstraintDefinition } from '@corvidae/weft';
  *
  * let balance = 0;
  * const positiveBalance: ConstraintDefinition = constraint({
@@ -138,7 +138,7 @@ export interface ConstraintDefinition {
  *
  * @example
  * ```ts
- * import { constraint, Engine } from '@repo/weft';
+ * import { constraint, Engine } from '@corvidae/weft';
  *
  * let balance = 0;
  *

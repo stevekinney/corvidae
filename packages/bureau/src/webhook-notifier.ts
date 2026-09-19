@@ -49,7 +49,7 @@
  * request can otherwise exceed the computed deadline without the delivery
  * code itself noticing.
  */
-import { createDefaultRuntimeServices, type RuntimeServices } from '@repo/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
 import {
   createStallWatchdog,
   LIVENESS_POLICY_VERSION,
@@ -64,8 +64,8 @@ import {
   type StallWatchdogClock,
   type Subscription,
   WEBHOOK_DELIVERY_POLICY,
-} from '@repo/operative';
-import type { TextValueStore } from '@repo/weft';
+} from '@corvidae/operative';
+import type { TextValueStore } from '@corvidae/weft';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { AuditTrail } from './audit-trail';
@@ -153,7 +153,7 @@ const AGGREGATE_DELIVERY_ID = 'webhook-notifier';
  * (`packages/operative/src/liveness/active-run-liveness.ts`), duplicated at
  * module-local scope rather than imported: this issue's delivery boundary
  * restricts its edit to `online-evals.ts`/`webhook-notifier.ts` and their
- * tests, and the source ordering is not part of `@repo/operative`'s
+ * tests, and the source ordering is not part of `@corvidae/operative`'s
  * public `liveness` subpath export.
  */
 const ASSESSMENT_SEVERITY: readonly Exclude<LivenessAssessment, 'terminal'>[] = [

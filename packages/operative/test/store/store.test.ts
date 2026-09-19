@@ -1,6 +1,6 @@
-import { createTestToolbox, createTool } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createTestToolbox, createTool } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from '../assert-defined';

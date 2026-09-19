@@ -8,14 +8,16 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 - Plan non-trivial work, implement one complete testable capability at a time, and add a regression test for every defect.
 - Use current official Bun, TypeScript, Turborepo, and dependency documentation for unfamiliar APIs or configuration.
 - Run the relevant focused command while working and `bun run validate` before finishing. Treat warnings, console errors, and failed checks as defects.
-- Treat file length and cyclomatic complexity as review guidance, including in imported tests. Require a concrete ownership, duplication, or correctness benefit before restructuring code. Keep correctness, types, tests, and builds enforced. Prefer platform and Bun primitives over new abstractions or dependencies.
+- Treat file length as review guidance, including in imported tests. Enforce classic cyclomatic complexity of at most 100 in implementation and tests, or 300 under `scripts/`. Keep executable repository tooling in its owning workspace’s `scripts/` directory; required tool configuration and application entrypoints retain their documented locations. Require a concrete ownership, duplication, or correctness benefit before restructuring code. Keep correctness, types, tests, and builds enforced. Prefer platform and Bun primitives over new abstractions or dependencies.
 - Do not add compatibility, migration, shim, adapter, or re-export layers while the template is pre-release unless the requirement explicitly demands one.
 
 ## Workspace and dependencies
 
-- `applications/*` contains deployable applications; `packages/*` contains shared libraries and configuration. Every workspace is named `@repo/*`.
+- `applications/*` contains deployable applications; `components/*` contains browser component libraries; `packages/*` contains other shared libraries; `internal/*` contains repository configuration. Every workspace is named `@corvidae/*`.
 - Internal dependencies always use `workspace:*`. Shared external tool versions belong in the root Bun `catalog`; add runtime dependencies to the workspace that imports them.
-- Shared packages export TypeScript source directly. Consumers compile it, so do not add a build step to a just-in-time package without a packaging need.
+- Component source uses the shared browser TypeScript configuration and root browser lint policy. Keep Bun and Node APIs in tests or scripts. Run both the browser source check and the inclusive tooling/test check.
+- The `@corvidae/typescript` configuration package under `internal/typescript` exports only `library.json` and `browser.json`; `base.json` is private composition.
+- Shared source libraries export TypeScript source directly. Consumers compile it, so do not add a build step to a just-in-time package without a packaging need.
 - Use Bun commands only. `bun.lock` is authoritative, and dependency changes must update it with `bun install`.
 - Keep `typescript` explicit at the root. Do not rely on a transitive or peer dependency to supply `tsc`.
 
@@ -23,7 +25,7 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 
 - Only applications have `build` tasks. Cache their declared application outputs. Lint, type-check, test, and development tasks consume library source directly and must not depend on upstream library builds.
 - Declare an environment variable in `turbo.json` only when it changes that task's result. Add task outputs whenever a task writes reusable artifacts; keep watchers and mutation tasks uncached.
-- Use `--filter` for focused work, for example `bunx turbo run test --filter=@repo/server`. Run `bun run validate` for the complete graph.
+- Use `--filter` for focused work, for example `bunx turbo run test --filter=@corvidae/operative`. Run `bun run validate` for the complete graph.
 
 ## Worktrees and agents
 

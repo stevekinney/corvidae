@@ -23,7 +23,7 @@ import { assertDefined } from './assert-defined';
  * Each test here proves one facet of that contract.
  */
 
-import { workflow, yieldToPortableEventLoop } from '@repo/weft';
+import { workflow, yieldToPortableEventLoop } from '@corvidae/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createDurableMultiAgentHarness } from '../src/test/durable-multi-agent-harness';

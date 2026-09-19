@@ -15,7 +15,7 @@ import type {
  *
  * @example
  * ```ts
- * import type { ValidationIssue } from '@repo/weft';
+ * import type { ValidationIssue } from '@corvidae/weft';
  *
  * const issue: ValidationIssue = { message: 'Expected a string.', path: '/email' };
  * void issue;
@@ -33,7 +33,7 @@ export interface ValidationIssue {
  *
  * @example
  * ```ts
- * import type { StandardSchemaValidationContext } from '@repo/weft';
+ * import type { StandardSchemaValidationContext } from '@corvidae/weft';
  *
  * const context: StandardSchemaValidationContext = {
  *   fieldName: 'input',
@@ -61,7 +61,7 @@ export interface StandardSchemaValidationContext {
  *
  * @example
  * ```ts
- * import { StandardSchemaValidationError } from '@repo/weft';
+ * import { StandardSchemaValidationError } from '@corvidae/weft';
  *
  * const error = new StandardSchemaValidationError({
  *   fieldName: 'input',
@@ -110,7 +110,7 @@ export class StandardSchemaValidationError extends WeftError<'StandardSchemaVali
  *
  * @example
  * ```ts
- * import { validateStandardSchema } from '@repo/weft';
+ * import { validateStandardSchema } from '@corvidae/weft';
  * import { z } from 'zod';
  *
  * const schema = z.object({ email: z.string().email() });
@@ -153,7 +153,7 @@ export async function validateStandardSchema<Output>(
  *
  * @example
  * ```ts
- * import { formatStandardSchemaIssues } from '@repo/weft';
+ * import { formatStandardSchemaIssues } from '@corvidae/weft';
  *
  * const formatted = formatStandardSchemaIssues([
  *   { message: 'Expected a string.', path: '/email' },

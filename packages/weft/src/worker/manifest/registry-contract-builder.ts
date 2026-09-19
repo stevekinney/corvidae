@@ -69,7 +69,7 @@ import { WORKER_MANIFEST_VERSION } from './types.ts';
  *
  * @example
  * ```ts
- * import { WorkerManifestBuildError } from '@repo/weft';
+ * import { WorkerManifestBuildError } from '@corvidae/weft';
  *
  * try {
  *   throw new WorkerManifestBuildError('workflow "checkout" is not registered');
@@ -89,7 +89,7 @@ export class WorkerManifestBuildError extends WeftError<'WorkerManifestBuildErro
  *
  * @example
  * ```ts
- * import type { WorkerManifestFromRegistryOptions } from '@repo/weft';
+ * import type { WorkerManifestFromRegistryOptions } from '@corvidae/weft';
  *
  * const options: WorkerManifestFromRegistryOptions = {
  *   workflows: { checkout: ['charge'] },
@@ -268,7 +268,7 @@ async function buildWorkflowContract(
  *
  * @example
  * ```ts
- * import { buildWorkerManifestFromRegistry, Engine, workflow } from '@repo/weft';
+ * import { buildWorkerManifestFromRegistry, Engine, workflow } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(

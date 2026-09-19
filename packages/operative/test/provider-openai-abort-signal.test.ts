@@ -6,8 +6,8 @@
  * stream open until the model finished on its own, and an aborted run parked
  * on a stalled stream never resolved.
  */
-import { createTestToolbox, createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
+import { createTestToolbox, createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentRun } from '../src/agent-run';

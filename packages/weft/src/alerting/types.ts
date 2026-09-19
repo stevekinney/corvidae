@@ -26,7 +26,7 @@ export const ALERT_METRICS = [
  *
  * @example
  * ```ts
- * import { type AlertMetric, type AlertRule } from '@repo/weft';
+ * import { type AlertMetric, type AlertRule } from '@corvidae/weft';
  *
  * const metric: AlertMetric = 'workflow.failure_rate';
  * const rule: AlertRule = {
@@ -50,7 +50,7 @@ export type AlertMetric = (typeof ALERT_METRICS)[number];
  *
  * @example
  * ```ts
- * import { AlertManager, type AlertRule } from '@repo/weft';
+ * import { AlertManager, type AlertRule } from '@corvidae/weft';
  *
  * const rule: AlertRule = {
  *   metric: 'workflow.failure_rate',
@@ -81,7 +81,7 @@ export type AlertRule = {
  *
  * @example
  * ```ts
- * import { AlertManager, type WebhookTarget, type AlertingOptions } from '@repo/weft';
+ * import { AlertManager, type WebhookTarget, type AlertingOptions } from '@corvidae/weft';
  *
  * const target: WebhookTarget = {
  *   url: 'https://hooks.example.com/alerts',
@@ -112,7 +112,7 @@ export type WebhookTarget = {
  *
  * @example
  * ```ts
- * import { AlertManager, type AlertingOptions } from '@repo/weft';
+ * import { AlertManager, type AlertingOptions } from '@corvidae/weft';
  *
  * const options: AlertingOptions = {
  *   rules: [
@@ -141,7 +141,7 @@ export type AlertingOptions = {
  *
  * @example
  * ```ts
- * import { AlertManager, type AlertStatus } from '@repo/weft';
+ * import { AlertManager, type AlertStatus } from '@corvidae/weft';
  *
  * const engine = new EventTarget();
  * using manager = new AlertManager(engine, {

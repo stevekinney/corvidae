@@ -1,5 +1,5 @@
-import type { ScheduleOptions, ScheduleSpec, ScheduleSummary } from '@repo/weft';
-import { ScheduleHandle } from '@repo/weft';
+import type { ScheduleOptions, ScheduleSpec, ScheduleSummary } from '@corvidae/weft';
+import { ScheduleHandle } from '@corvidae/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { ScheduleSelfFn } from './create-schedule-self-tool';

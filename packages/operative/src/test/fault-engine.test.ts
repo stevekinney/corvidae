@@ -1,6 +1,6 @@
-import { createTestToolbox, createTool, createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
-import { createManualRuntimeServices, HookRegistry } from '@repo/lifecycle';
+import { createTestToolbox, createTool, createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
+import { createManualRuntimeServices, HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

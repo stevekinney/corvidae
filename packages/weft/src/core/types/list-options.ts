@@ -25,7 +25,7 @@ export interface TimeRange {
  *
  * @example
  * ```ts
- * import { Engine, type ListFilter } from '@repo/weft';
+ * import { Engine, type ListFilter } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * const filter: ListFilter = {
@@ -44,7 +44,7 @@ export interface ListFilter {
    *
    * @example
    * ```ts
-   * import type { ListFilter } from '@repo/weft';
+   * import type { ListFilter } from '@corvidae/weft';
    * const filter: ListFilter = { type: 'order-fulfillment' };
    * ```
    */
@@ -91,7 +91,7 @@ export interface ListFilter {
  *
  * @example Include failure categories projected from search attributes
  * ```ts
- * import { Engine, type ListOptions } from '@repo/weft';
+ * import { Engine, type ListOptions } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * const options: ListOptions = { includeFailureCategory: true };

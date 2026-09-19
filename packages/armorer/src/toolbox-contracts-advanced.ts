@@ -1,4 +1,9 @@
-import type { EventIteratorOptions, ObservableLike, Observer, Subscription } from '@repo/lifecycle';
+import type {
+  EventIteratorOptions,
+  ObservableLike,
+  Observer,
+  Subscription,
+} from '@corvidae/lifecycle';
 import { z } from 'zod';
 import type { AnthropicTool } from './adapters/anthropic/types';
 import type { GeminiTool } from './adapters/gemini/types';
@@ -376,7 +381,7 @@ interface LoopStatistics {
  *
  * @example
  * ```typescript
- * import { createToolbox, createTool } from '@repo/armorer';
+ * import { createToolbox, createTool } from '@corvidae/armorer';
  * import { z } from 'zod';
  *
  * // Create a toolbox with tools up front

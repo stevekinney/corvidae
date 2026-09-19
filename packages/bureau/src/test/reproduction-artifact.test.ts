@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 
-import { createToolbox } from '@repo/armorer';
-import { createManualRuntimeServices } from '@repo/lifecycle';
+import { createToolbox } from '@corvidae/armorer';
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
 import {
   createAgent,
   createEventRecorder,
@@ -9,7 +9,7 @@ import {
   type GenerateFunction,
   readReproductionArtifact,
   writeReproductionArtifact,
-} from '@repo/operative';
+} from '@corvidae/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { BureauShutdownReport } from '../types';
@@ -202,15 +202,15 @@ describe('assembleReproductionArtifact', () => {
   it('omits versionless and malformed manifest values without inventing metadata', () => {
     expect(
       collectPackageVersions([
-        { name: '@repo/versioned', version: '1.2.3' },
-        { name: '@repo/no-version' },
+        { name: '@corvidae/versioned', version: '1.2.3' },
+        { name: '@corvidae/no-version' },
         { version: '4.5.6' },
-        { name: '@repo/non-string-version', version: 7 },
+        { name: '@corvidae/non-string-version', version: 7 },
         null,
         [],
         'manifest',
       ]),
-    ).toEqual({ '@repo/versioned': '1.2.3' });
+    ).toEqual({ '@corvidae/versioned': '1.2.3' });
   });
 
   it('reads clockOrigin, identifierSeed, and randomSeed from an explicitly pinned harness runtime', async () => {

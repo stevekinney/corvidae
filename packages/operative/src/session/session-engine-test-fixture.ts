@@ -8,7 +8,7 @@ import {
   type SignalDeliveryOptions,
   type UpdateDefinition,
   type WorkflowState,
-} from '@repo/weft';
+} from '@corvidae/weft';
 import { afterEach } from 'bun:test';
 import {
   createRecoveryHandle,

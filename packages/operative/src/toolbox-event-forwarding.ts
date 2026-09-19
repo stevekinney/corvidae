@@ -1,5 +1,5 @@
-import type { AnyToolbox } from '@repo/armorer';
-import { forwardEvents } from '@repo/lifecycle';
+import type { AnyToolbox } from '@corvidae/armorer';
+import { forwardEvents } from '@corvidae/lifecycle';
 
 /**
  * Attach whatever run-owned listeners a caller wants on one toolbox instance

@@ -1,6 +1,6 @@
 import { assertDefined } from './assert-defined';
 /**
- * OTel GenAI conventions coverage for the `@repo/operative` root instrumentation API.
+ * OTel GenAI conventions coverage for the `@corvidae/operative` root instrumentation API.
  *
  * Spec: the wrapped GenerateFunction emits a single CLIENT span per call,
  * following the OTel GenAI "Inference" span shape — span name
@@ -10,9 +10,9 @@ import { assertDefined } from './assert-defined';
  * provider cache fields). See the mapping table in the package README
  * (the instrumentation section) for the pinned conventions version.
  */
+import { createToolbox } from '@corvidae/armorer';
+import { Conversation } from '@corvidae/conversationalist';
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
-import { createToolbox } from '@repo/armorer';
-import { Conversation } from '@repo/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { instrumentGenerate } from '../src/index.ts';

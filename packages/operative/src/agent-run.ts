@@ -15,7 +15,7 @@
  * architecture.md for the 3-reviewer consensus on this decision.
  */
 
-import type { Subscription } from '@repo/lifecycle';
+import type { Subscription } from '@corvidae/lifecycle';
 
 import type { ChildRunDescriptor, ChildRunRegistry } from './child-run';
 import type { ActiveRun } from './create-run';

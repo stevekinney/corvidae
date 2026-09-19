@@ -39,7 +39,7 @@ interface QueuedOperation {
  *
  * @example
  * ```ts
- * import { StepContext } from '@repo/weft';
+ * import { StepContext } from '@corvidae/weft';
  *
  * const controller = new AbortController();
  * const ctx = new StepContext('wf-demo', controller.signal);
@@ -109,7 +109,7 @@ export class StepContext implements StepWorkflowContext {
  *
  * @example
  * ```ts
- * import { workflow, Engine, compileStepWorkflow, type StepWorkflowContext } from '@repo/weft';
+ * import { workflow, Engine, compileStepWorkflow, type StepWorkflowContext } from '@corvidae/weft';
  *
  * async function process(ctx: StepWorkflowContext, input: unknown) {
  *   const upper = await ctx.step('uppercase', () =>
@@ -235,7 +235,7 @@ export function isGeneratorFunction(fn: Function): boolean {
  *
  * @example
  * ```ts
- * import { isAsyncGeneratorFunction } from '@repo/weft';
+ * import { isAsyncGeneratorFunction } from '@corvidae/weft';
  *
  * async function* myWorkflow() { yield 1; }
  * function* syncGen() { yield 1; }

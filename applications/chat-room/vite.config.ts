@@ -2,7 +2,7 @@ import adapter from '@sveltejs/adapter-auto';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { createRequire } from 'node:module';
 import { defineConfig } from 'vite';
-import { shikiGrammarAssets } from '../../scripts/shiki-grammar-assets.ts';
+import { shikiGrammarAssets } from './scripts/shiki-grammar-assets.ts';
 
 export default defineConfig({
   // Let Vite load the original WebAssembly asset instead of base64 JavaScript.
@@ -21,7 +21,12 @@ export default defineConfig({
     ssr: {
       build: {
         rolldownOptions: {
-          external: ['@repo/armorer', '@repo/conversationalist', '@repo/operative', '@repo/weft'],
+          external: [
+            '@corvidae/armorer',
+            '@corvidae/conversationalist',
+            '@corvidae/operative',
+            '@corvidae/weft',
+          ],
         },
       },
     },

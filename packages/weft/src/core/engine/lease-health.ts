@@ -5,7 +5,7 @@
  *
  * @example
  * ```ts
- * import type { LeaseLostReason } from '@repo/weft';
+ * import type { LeaseLostReason } from '@corvidae/weft';
  *
  * function requiresImmediateHandoff(reason: LeaseLostReason): boolean {
  *   return reason === 'deposed';
@@ -44,7 +44,7 @@ export type LeaseManagerHealth =
  *
  * @example
  * ```ts
- * import type { EngineLeaseHealth } from '@repo/weft';
+ * import type { EngineLeaseHealth } from '@corvidae/weft';
  *
  * function needsOperatorAttention(health: EngineLeaseHealth): boolean {
  *   return health.status === 'contested';

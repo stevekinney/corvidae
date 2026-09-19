@@ -1,4 +1,4 @@
-import type { StreamEvent } from '@repo/operative';
+import type { StreamEvent } from '@corvidae/operative';
 
 import type { StreamFrame } from './types';
 

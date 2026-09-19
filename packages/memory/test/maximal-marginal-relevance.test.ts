@@ -1,4 +1,4 @@
-import { cosineSimilarity } from '@repo/interoperability';
+import { cosineSimilarity } from '@corvidae/embeddings';
 import { describe, expect, it } from 'bun:test';
 
 import { applyMaximalMarginalRelevance } from '../src/maximal-marginal-relevance';
@@ -22,7 +22,7 @@ describe('cosineSimilarity', () => {
   });
 
   it('throws a RangeError when vector lengths differ', () => {
-    // cosineSimilarity now comes from `interoperability`, whose spec throws
+    // cosineSimilarity comes from `@corvidae/embeddings`, whose contract throws
     // RangeError on a length mismatch (previously a generic Error).
     expect(() => cosineSimilarity([1, 0], [1, 0, 0])).toThrow(RangeError);
   });

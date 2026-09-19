@@ -1,5 +1,5 @@
 {
-  "extends": "@repo/typescript-configuration/library.json",
+  "extends": "@corvidae/typescript/library.json",
   "compilerOptions": {
     "lib": ["ESNext"],
     "types": ["node", "bun"],

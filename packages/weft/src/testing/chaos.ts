@@ -24,7 +24,7 @@ export type { FailureCategory } from '../core/types.ts';
  *
  * @example
  * ```ts
- * import { withChaos, type FaultClass } from '@repo/weft';
+ * import { withChaos, type FaultClass } from '@corvidae/weft';
  *
  * const faults: FaultClass[] = ['transient', 'error'];
  * const noisy = withChaos(
@@ -43,7 +43,7 @@ export type FaultClass = 'transient' | 'timeout' | 'error' | 'delay';
  *
  * @example
  * ```ts
- * import { withChaos, type ChaosScenario } from '@repo/weft';
+ * import { withChaos, type ChaosScenario } from '@corvidae/weft';
  *
  * const scenario: ChaosScenario = {
  *   faultRate: 0.2,
@@ -101,7 +101,7 @@ function makePrng(seed: number): () => number {
  *
  * @example
  * ```ts
- * import { ChaosTransientError } from '@repo/weft';
+ * import { ChaosTransientError } from '@corvidae/weft';
  *
  * const err = new ChaosTransientError();
  * console.log(err.retryable); // true
@@ -126,7 +126,7 @@ export class ChaosTransientError extends Error {
  *
  * @example
  * ```ts
- * import { ChaosNonRetryableError } from '@repo/weft';
+ * import { ChaosNonRetryableError } from '@corvidae/weft';
  *
  * const err = new ChaosNonRetryableError();
  * console.log(err.retryable); // false
@@ -151,7 +151,7 @@ export class ChaosNonRetryableError extends Error {
  *
  * @example
  * ```ts
- * import { ChaosTimeoutError } from '@repo/weft';
+ * import { ChaosTimeoutError } from '@corvidae/weft';
  *
  * const err = new ChaosTimeoutError(25);
  * console.log(err.timeoutMilliseconds); // 25
@@ -221,7 +221,7 @@ async function raiseTimeoutFault(timeoutMilliseconds: number): Promise<never> {
  *
  * @example
  * ```ts
- * import { TestEngine, withChaos } from '@repo/weft';
+ * import { TestEngine, withChaos } from '@corvidae/weft';
  *
  * const noisySendEmail = withChaos(
  *   async (input: unknown) => ({ sent: true }),

@@ -13,7 +13,7 @@
  *
  * @example
  * ```ts
- * import { DEFAULT_SCOPE } from '@repo/weft';
+ * import { DEFAULT_SCOPE } from '@corvidae/weft';
  * console.log(DEFAULT_SCOPE); // 'default'
  * ```
  */

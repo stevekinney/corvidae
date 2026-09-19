@@ -1,0 +1,59 @@
+# Grid
+
+Grid renders a low-chrome CSS grid container for explicit columns, intrinsic auto-fill layouts, and optional child placement through `Grid.Item`.
+
+## Usage
+
+```svelte
+<script lang="ts">
+  import { Grid } from '@corvidae/cinder';
+</script>
+
+<Grid columns={3} gap="var(--cinder-space-4)">
+  <Grid.Item span={2}>Wide item</Grid.Item>
+  <div>Regular item</div>
+</Grid>
+```
+
+Use `minItemWidth` for intrinsic responsive grids without adding media queries:
+
+```svelte
+<Grid minItemWidth="16rem" gap="var(--cinder-space-6)">
+  <article>One</article>
+  <article>Two</article>
+  <article>Three</article>
+</Grid>
+```
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `as` | `"object"` \| `"slot"` \| `"style"` \| `"title"` \| `"a"` \| `"abbr"` \| `"address"` \| `"article"` \| `"aside"` \| `"audio"` \| `"b"` \| `"bdi"` \| `"bdo"` \| `"blockquote"` \| `"body"` \| `"button"` \| `"canvas"` \| `"caption"` \| `"cite"` \| `"code"` \| `"colgroup"` \| `"data"` \| `"datalist"` \| `"dd"` \| `"del"` \| `"details"` \| `"dfn"` \| `"dialog"` \| `"div"` \| `"dl"` \| `"dt"` \| `"em"` \| `"fieldset"` \| `"figcaption"` \| `"figure"` \| `"footer"` \| `"form"` \| `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"h6"` \| `"head"` \| `"header"` \| `"hgroup"` \| `"html"` \| `"i"` \| `"iframe"` \| `"ins"` \| `"kbd"` \| `"label"` \| `"legend"` \| `"li"` \| `"main"` \| `"map"` \| `"mark"` \| `"menu"` \| `"meter"` \| `"nav"` \| `"noscript"` \| `"ol"` \| `"optgroup"` \| `"option"` \| `"output"` \| `"p"` \| `"picture"` \| `"pre"` \| `"progress"` \| `"q"` \| `"rp"` \| `"rt"` \| `"ruby"` \| `"s"` \| `"samp"` \| `"script"` \| `"search"` \| `"section"` \| `"select"` \| `"small"` \| `"span"` \| `"strong"` \| `"sub"` \| `"summary"` \| `"sup"` \| `"table"` \| `"tbody"` \| `"td"` \| `"template"` \| `"textarea"` \| `"tfoot"` \| `"th"` \| `"thead"` \| `"time"` \| `"tr"` \| `"u"` \| `"ul"` \| `"var"` \| `"video"` | no | — | Rendered HTML tag. |
+| `class` | `string` | no | — | Custom class merged with `.cinder-grid`. |
+| `columnGap` | `string` | no | — | Column gap override. Wins over `gap` for columns. |
+| `columns` | `string` \| `integer` | no | — | Positive integer number of equal-width columns or a full CSS `grid-template-columns` value. Numeric values render as `repeat(<columns>, minmax(0, 1fr))`. |
+| `gap` | `string` | no | — | Uniform row and column gap. |
+| `minItemWidth` | `string` | no | — | Minimum item width for an intrinsic auto-fill grid. When present, this takes precedence over `columns`. |
+| `narrowCollapseEnabled` | `boolean` | no | `false` | Enables a single-column fallback when the Grid element's border-box width is 48rem or less and resets direct Grid.Item placement to auto flow. |
+| `rowGap` | `string` | no | — | Row gap override. Wins over `gap` for rows. |
+| `children` | `(opaque)` | yes | — | Grid contents. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
+
+## Subcomponents
+
+<!-- generated:subcomponents:start -->
+
+- `Grid.Item` - optional placement child for spanning or pinning a grid item; see [`grid-item`](../grid-item/README.md).
+
+<!-- generated:subcomponents:end -->

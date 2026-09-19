@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { environmentConfiguration } from '../environment-configuration.ts';
 import type { MaskRule } from '../visual-fixtures.ts';
 import { screenshotPath, type ArtifactKey } from './artifact-path.ts';
 import { parseComponentFilter, parseComponentScopeValue } from './component-filter.ts';
@@ -37,7 +38,7 @@ function isVisualDiffMode(value: string): value is VisualDiffMode {
  * Invalid or unset values fall back to `'off'` with a one-time console warning.
  */
 export function resolveVisualDiffMode(): VisualDiffMode {
-  const raw = process.env['CINDER_VISUAL_DIFF'];
+  const raw = environmentConfiguration().cinderVisualDiff;
 
   if (raw === undefined || raw === '') {
     return 'off';
@@ -190,7 +191,7 @@ export function blockBaselineGuard(
   baselinePath: string,
   baselineExists: boolean,
   updateSnapshots: UpdateSnapshotsState,
-  explicitUpdateRun = process.env['CINDER_UPDATE_SNAPSHOTS'] === '1',
+  explicitUpdateRun = environmentConfiguration().cinderUpdateSnapshots,
 ): BlockBaselineGuardResult {
   if (isAuthoringState(updateSnapshots, explicitUpdateRun)) {
     return { ok: true };
@@ -207,11 +208,11 @@ export function blockBaselineGuard(
     'Block mode compares against committed baselines, but none exists for this case.',
     'To author missing or changed baselines, run:',
     '',
-    '  bun run --cwd applications/cinder-browser-fixtures test:browser:update',
+    '  bun run test:browser:update',
     '',
-    'Then rerun the application-owned visual regression command:',
+    'Then rerun the root visual regression command:',
     '',
-    '  bun run --cwd applications/cinder-browser-fixtures test:browser:visual',
+    '  bun run test:browser:visual',
   ].join('\n');
 
   return { ok: false, message };
@@ -219,7 +220,7 @@ export function blockBaselineGuard(
 
 export function isScreenshotInComponentScope(
   slug: string,
-  rawComponentScope = process.env['CINDER_TEST_COMPONENTS'],
+  rawComponentScope = environmentConfiguration().cinderTestComponents,
   knownSlugs?: ReadonlySet<string>,
 ): boolean {
   if (parseComponentScopeValue(rawComponentScope).length === 0) return true;
@@ -248,7 +249,7 @@ function reportFragmentPath(testId: string, key: ArtifactKey): string {
   const hash = createHash('sha256')
     .update(JSON.stringify([testId, key.slug, key.theme, key.viewport, key.fixture]))
     .digest('hex');
-  const workerId = process.env['TEST_WORKER_INDEX'] ?? '0';
+  const workerId = environmentConfiguration().testWorkerIndex ?? '0';
   return `test-results/visual-report/${workerId}/${hash}.json`;
 }
 

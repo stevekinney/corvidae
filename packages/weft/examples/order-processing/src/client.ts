@@ -3,7 +3,8 @@ import {
   Engine,
   WorkflowAlreadyExistsError,
   type WorkflowHandle,
-} from '@repo/weft';
+} from '@corvidae/weft';
+import { resolveExampleEnvironment } from '../../environment-configuration.ts';
 
 import { addItemUpdate, cancelOrderSignal, orderStatusQuery } from './messages';
 import { calculateOrderTotal, type AddItemInput, type OrderProcessingInput } from './model';
@@ -11,7 +12,7 @@ import { createOrderProcessingEngine } from './registry';
 import { highValueOrderInput, standardOrderInput } from './sample-data';
 
 const command = Bun.argv[2] ?? 'place';
-const databasePath = Bun.env['WEFT_DATABASE_PATH'] ?? './order-processing.sqlite';
+const databasePath = resolveExampleEnvironment().weftDatabasePath ?? './order-processing.sqlite';
 
 if (import.meta.main) {
   using storage = new BunSQLiteStorage(databasePath);

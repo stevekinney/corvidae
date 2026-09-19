@@ -78,7 +78,7 @@ export function setContextWorkflowInterceptor(
  *
  * @example
  * ```ts
- * import { Context } from '@repo/weft';
+ * import { Context } from '@corvidae/weft';
  *
  * const ctx = new Context({ workflowId: 'wf-demo', workflowType: 'demo', startedAt: Date.now(), abortController: new AbortController() });
  * void ctx;

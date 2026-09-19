@@ -1,13 +1,13 @@
-import type { ToolboxEvents, ToolExecutionResult } from '@repo/armorer';
-import type { Conversation, ConversationActionType } from '@repo/conversationalist';
-import type { ToolCall } from '@repo/interoperability';
+import type { ToolboxEvents, ToolExecutionResult } from '@corvidae/armorer';
+import type { Conversation, ConversationActionType } from '@corvidae/conversationalist';
 import type {
   EventMap,
   ForwardedEvent,
   ObservableLike,
   Observer,
   Subscription,
-} from '@repo/lifecycle';
+} from '@corvidae/lifecycle';
+import type { ToolCall } from '@corvidae/tool-protocol';
 
 import type { CostBudgetExceededEvent, CostBudgetThresholdEvent } from './cost-budget-monitor';
 import { estimateCacheHitRate } from './cost-estimation';

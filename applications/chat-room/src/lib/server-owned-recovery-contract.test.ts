@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { AgentRun, DiagnosticAgentRun, SessionHandle } from '@repo/operative';
+import type { AgentRun, DiagnosticAgentRun, SessionHandle } from '@corvidae/operative';
 
 /**
  * What the published Operative types actually say about a recovered run.
