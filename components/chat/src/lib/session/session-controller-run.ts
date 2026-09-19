@@ -35,12 +35,25 @@ type SessionRunnerDependencies = {
 };
 
 export type TurnState = {
+  /** Whole-turn text, which decides whether the row is finalized or cancelled. */
   text: string;
+  /** Text of the row currently open, which resets at every step boundary. */
+  currentAssistantText: string;
+  /** The row this turn is streaming into — the host's identifier once it says so. */
+  currentAssistantMessageId: string;
+  /** The open step, or -1 before any boundary has been announced. */
+  currentStep: number;
+  legacyTextSeen: boolean;
+  richTextSeen: boolean;
   toolResultSeen: boolean;
   approvalRequired: boolean;
   committed: ConversationHistory;
   toolCalls: Set<string>;
   toolResults: Set<string>;
+  /** Rows this run appended itself, which a terminal snapshot may replace. */
+  provisionalIds: Set<string>;
+  /** Rows that already existed when this run started, which it may not replace. */
+  runStartIds: ReadonlySet<string>;
 };
 
 export function createSessionRunner({
@@ -186,11 +199,18 @@ async function executeTurn({
     isRunRequestCurrent(lifecycle, options.getConversation().id, request);
   const turnState: TurnState = {
     text: '',
+    currentAssistantText: '',
+    currentAssistantMessageId: messageId,
+    currentStep: -1,
+    legacyTextSeen: false,
+    richTextSeen: false,
     toolResultSeen: false,
     approvalRequired: false,
     committed: before,
     toolCalls: new Set<string>(),
     toolResults: new Set<string>(),
+    provisionalIds: new Set<string>([messageId, userMessageId]),
+    runStartIds: new Set<string>(before.ids),
   };
   try {
     const events = await decodeTransportResult(
@@ -223,7 +243,6 @@ async function executeTurn({
       controller,
       isCurrent,
       userMessageId,
-      messageId,
       state: turnState,
       options,
       emit,
@@ -237,11 +256,11 @@ async function executeTurn({
       },
     });
     if (!isCurrent()) return false;
-    finalizeTurn(options, update, turnState, messageId);
+    finalizeTurn(options, update, turnState);
     if (controller.signal.aborted && !protocolFailure) return false;
   } catch (error) {
     if (controller.signal.aborted && !protocolFailure) {
-      finalizeTurn(options, update, turnState, messageId);
+      finalizeTurn(options, update, turnState);
       return false;
     }
     // The transport's signal is the only way it learns the command
@@ -259,7 +278,7 @@ async function executeTurn({
     if (!isCurrent()) return false;
     update(
       markMessageDeliveryFailed(
-        cancelStreamingMessage(turnState.committed, messageId),
+        cancelStreamingMessage(turnState.committed, turnState.currentAssistantMessageId),
         userMessageId,
       ),
     );
@@ -277,13 +296,12 @@ function finalizeTurn(
   options: ChatSessionControllerOptions,
   update: (conversation: ConversationHistory) => void,
   state: TurnState,
-  messageId: string,
 ): void {
   const conversation = options.getConversation();
   update(
     state.text
-      ? finalizeStreamingMessage(conversation, messageId)
-      : cancelStreamingMessage(conversation, messageId),
+      ? finalizeStreamingMessage(conversation, state.currentAssistantMessageId)
+      : cancelStreamingMessage(conversation, state.currentAssistantMessageId),
   );
 }
 

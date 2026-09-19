@@ -1,13 +1,14 @@
 import type { TokenUsage } from '@corvidae/conversationalist';
 import { isTokenUsage } from '../components/chat/builders.ts';
 import {
-  SUPPORTED_WIRE_VERSION,
+  isSupportedWireVersion,
   type ChatAgentRunErrorCode,
   type ChatAgentRunErrorKind,
   type ChatSerializedRunError,
   type ChatStreamBlock,
   type ChatStreamBlockType,
   type ChatStreamState,
+  type V2WireEnvelope,
   type WireEnvelope,
 } from './stream-event-codec-types.ts';
 
@@ -48,9 +49,12 @@ export function readWireEnvelope(parsed: Record<string, unknown>): Partial<WireE
   // be the one that was validated.
   const wireVersion = parsed['wireVersion'];
   const sequence = parsed['sequence'];
-  if (wireVersion !== SUPPORTED_WIRE_VERSION) throw new Error('Invalid chat stream event');
+  if (!isSupportedWireVersion(wireVersion)) throw new Error('Invalid chat stream event');
   if (!isNonNegativeSafeInteger(sequence)) throw new Error('Invalid chat stream event');
-  return { wireVersion: SUPPORTED_WIRE_VERSION, sequence };
+  // The version is CARRIED, not normalized: a frame that arrived as version 2
+  // must re-encode as version 2, and a consumer reading the decoded event has
+  // to be able to tell which vocabulary produced it.
+  return { wireVersion, sequence };
 }
 
 /** A fully-present wire envelope, required on every new (CIN-507) member. */
@@ -58,6 +62,18 @@ export function requireWireEnvelope(envelope: Partial<WireEnvelope>): WireEnvelo
   if (envelope.wireVersion === undefined || envelope.sequence === undefined)
     throw new Error('Invalid chat stream event');
   return { wireVersion: envelope.wireVersion, sequence: envelope.sequence };
+}
+
+/**
+ * A fully-present version 2 envelope, required on every member wire version 2
+ * introduced. Separate from `requireWireEnvelope` because a version 1
+ * producer must not be able to emit a version 2 member at all — accepting one
+ * would make the version field decorative.
+ */
+export function requireV2Envelope(envelope: Partial<WireEnvelope>): V2WireEnvelope {
+  const required = requireWireEnvelope(envelope);
+  if (required.wireVersion !== 2) throw new Error('Invalid chat stream event');
+  return { wireVersion: 2, sequence: required.sequence };
 }
 
 export function isChatStreamBlockType(value: unknown): value is ChatStreamBlockType {
