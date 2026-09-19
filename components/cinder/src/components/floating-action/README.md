@@ -170,6 +170,8 @@ Circular button representing the single most important action on a screen.
 
 ## Guidance
 
+`variant` and `shape` are deliberately independent axes here, unlike some other components in this library where "variant" controls shape or form: `variant` (`primary`/`secondary`/`surface`) is color palette only, and `shape` (`filled`/`extended`) is the filled-circle-versus-extended-pill axis. Set both together freely — an `extended` shape works with any `variant`.
+
 ### Use When
 
 - One action dominates the page purpose (compose, add, create).
