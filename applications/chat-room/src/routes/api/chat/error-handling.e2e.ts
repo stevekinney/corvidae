@@ -36,7 +36,19 @@ async function sendAndFail(
 
   // The banner appearing is the settle signal: it is written from the error
   // path, so it cannot be there until the turn has finished failing.
-  await expect(page.locator(BANNER)).not.toBeEmpty();
+  try {
+    await expect(page.locator(BANNER)).not.toBeEmpty();
+  } catch (error) {
+    const provider = await fixtureRequestCount(marker).then(
+      (count) => ({ count }),
+      (cause: unknown) => ({ probeError: String(cause) }),
+    );
+    await test.info().attach('failed-turn-provider-requests', {
+      body: JSON.stringify({ marker, provider }),
+      contentType: 'application/json',
+    });
+    throw error;
+  }
   return { marker };
 }
 
