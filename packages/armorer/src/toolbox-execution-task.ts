@@ -92,13 +92,7 @@ export function createExecutionTask(
       initialEffectiveContext,
     });
     const { cleanup, childExecutionId } = child;
-    const deferredSettlement = subscribeToolEvents(
-      tool,
-      childExecutionId,
-      toolCall,
-      emit,
-      cleanup,
-    );
+    const deferredSettlement = subscribeToolEvents(tool, childExecutionId, toolCall, emit, cleanup);
 
     return runToolInvocation(
       context,

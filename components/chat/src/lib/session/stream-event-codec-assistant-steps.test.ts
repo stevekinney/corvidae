@@ -83,5 +83,4 @@ describe('assistant.step.* frames', () => {
       decodeChatStreamEvent({ type: 'text', text: 'hi', wireVersion: 2, sequence: 0 }),
     ).toThrow('Invalid chat stream event');
   });
-
 });

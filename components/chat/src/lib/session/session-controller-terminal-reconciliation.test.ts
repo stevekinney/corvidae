@@ -4,10 +4,7 @@ import {
   createConversationHistory,
   markMessageDeliveryFailed,
 } from '../components/chat/builders.ts';
-import type {
-  ConversationHistory,
-  MessageInput,
-} from '../components/chat/conversation-model.ts';
+import type { ConversationHistory, MessageInput } from '../components/chat/conversation-model.ts';
 import { createChatSessionController } from './session-controller.ts';
 import type { ChatStreamEvent } from './stream-event-codec.ts';
 

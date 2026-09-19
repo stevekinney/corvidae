@@ -8,7 +8,6 @@ import { markMessageDeliveryFailed } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
 import { consumeSessionEvents } from './session-controller-events.ts';
-import { mergeRunHistory } from './session-controller-rows.ts';
 import {
   captureHistoryToken,
   invalidateOutstandingWork,
@@ -16,6 +15,7 @@ import {
   type SessionRunRequest,
   type SessionRunState,
 } from './session-controller-history.ts';
+import { mergeRunHistory } from './session-controller-rows.ts';
 import {
   decodeTransportResult,
   type ChatExecutionOwner,

@@ -61,9 +61,7 @@ export function mergeRunHistory(
   // object, not the server's: a prior turn may carry local decoration — a
   // delivery-failure marker, an unsaved-turn annotation — that the server has
   // no idea about and would silently strip if its copy won.
-  const retained = new Set(
-    [...runStartIds].filter((id) => terminal.messages[id] !== undefined),
-  );
+  const retained = new Set([...runStartIds].filter((id) => terminal.messages[id] !== undefined));
   const firstProvisional = current.ids.findIndex(
     (id) => provisionalIds.has(id) && !retained.has(id),
   );
