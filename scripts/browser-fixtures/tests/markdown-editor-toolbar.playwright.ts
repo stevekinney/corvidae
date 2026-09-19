@@ -238,6 +238,9 @@ for (const theme of THEMES) {
       for (let index = 1; index < actions.length; index += 1) {
         const previous = actions[index - 1];
         const current = actions[index];
+        if (previous === undefined || current === undefined) {
+          throw new Error(`Missing toolbar action at index ${index}`);
+        }
         expect(
           current.left,
           `button ${index} must not overlap its predecessor`,

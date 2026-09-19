@@ -204,9 +204,7 @@ async function assertReviewToolbarActionAccess(reviewEditor: Locator, width: num
               buttons.some((button) => {
                 const name = button.getAttribute('aria-label') ?? button.textContent ?? '';
                 const rect = button.getBoundingClientRect();
-                return (
-                  (names as string[]).includes(name.trim()) && rect.width > 0 && rect.height > 0
-                );
+                return names.includes(name.trim()) && rect.width > 0 && rect.height > 0;
               }),
             requiredActions,
           )
