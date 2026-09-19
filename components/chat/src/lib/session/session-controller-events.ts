@@ -68,6 +68,12 @@ export async function consumeSessionEvents(dependencies: SessionEventDependencie
       case 'assistant.step.started':
         applyStepStarted(dependencies, event.step, event.messageId);
         break;
+      case 'run.completed':
+        // Recorded, not applied. Reconciliation happens once, after the
+        // stream has closed, so a frame that follows the terminal cannot be
+        // reduced into a history the terminal has already replaced.
+        state.terminalConversation = event.conversation;
+        break;
       case 'assistant.step.completed':
         // Only the step that is actually open: a late or duplicated
         // completion for a step already closed must not finalize the row the
@@ -112,29 +118,52 @@ function applyToolCall(
   args: Extract<ChatStreamEvent, { type: 'tool_call' }>['arguments'],
 ): void {
   if (state.toolCalls.has(id)) return;
-  update(appendToolCall(options.getConversation(), { id, name, arguments: args }));
+  const next = appendToolCall(options.getConversation(), { id, name, arguments: args });
+  update(next);
+  recordProvisionalRow(state, next, (message) => message.toolCall?.id === id);
   toolOwners.set(id, userMessageId);
   state.toolCalls.add(id);
   state.committed = options.getConversation();
 }
 
+/**
+ * Remembers the row a builder just appended so a terminal snapshot can
+ * replace it. The row's own identifier is the client's, minted by the
+ * builder; the terminal names the same content under the host's.
+ */
+function recordProvisionalRow(
+  state: TurnState,
+  history: ConversationHistory,
+  matches: (message: ConversationHistory['messages'][string]) => boolean,
+): void {
+  const row = history.ids.findLast((id) => {
+    const message = history.messages[id];
+    return message !== undefined && matches(message);
+  });
+  if (row !== undefined) state.provisionalIds.add(row);
+}
+
 function applyToolResult(
-  { state, options, update, pendingApprovals, reportError }: SessionEventDependencies,
+  dependencies: SessionEventDependencies,
   callId: string,
   result: ToolResult,
 ): void {
+  const { state, options, update, pendingApprovals, reportError } = dependencies;
   // Keyed by CALL identifier, not by frame: `tool_result` and `tool.settled`
   // are the legacy and rich projections of one settlement, and a host that
   // emits both would otherwise append the same outcome twice — and call the
   // host's own `onToolResult` observer twice for one tool run.
   if (state.toolResults.has(callId)) return;
+  state.provisionalIds.add(callId);
   state.toolResultSeen = true;
   state.toolResults.add(callId);
   const requiresApproval = result.outcome === 'action_required' && result.action !== undefined;
   state.approvalRequired ||= requiresApproval;
   if (requiresApproval) pendingApprovals.add(callId);
   else pendingApprovals.delete(callId);
-  update(appendToolResult(options.getConversation(), result));
+  const next = appendToolResult(options.getConversation(), result);
+  update(next);
+  recordProvisionalRow(state, next, (message) => message.toolResult?.callId === callId);
   state.committed = options.getConversation();
   try {
     options.hooks?.onToolResult?.(result);

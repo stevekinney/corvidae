@@ -8,6 +8,7 @@ import { markMessageDeliveryFailed } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
 import { consumeSessionEvents } from './session-controller-events.ts';
+import { mergeRunHistory } from './session-controller-rows.ts';
 import {
   captureHistoryToken,
   invalidateOutstandingWork,
@@ -50,6 +51,8 @@ export type TurnState = {
   committed: ConversationHistory;
   toolCalls: Set<string>;
   toolResults: Set<string>;
+  /** The authoritative history a `run.completed` frame carried, if any. */
+  terminalConversation: ConversationHistory | undefined;
   /** Rows this run appended itself, which a terminal snapshot may replace. */
   provisionalIds: Set<string>;
   /** Rows that already existed when this run started, which it may not replace. */
@@ -197,6 +200,11 @@ async function executeTurn({
   let protocolFailure = false;
   const isCurrent = (): boolean =>
     isRunRequestCurrent(lifecycle, options.getConversation().id, request);
+  // Settling a cancelled turn's row is still a WRITE, so it needs the two
+  // guards that say the write would land somewhere it belongs: the session is
+  // alive, and the conversation on screen is still the one this row is in.
+  const canSettleRow = (): boolean =>
+    !lifecycle.disposed && request.token.conversationId === options.getConversation().id;
   const turnState: TurnState = {
     text: '',
     currentAssistantText: '',
@@ -209,6 +217,7 @@ async function executeTurn({
     committed: before,
     toolCalls: new Set<string>(),
     toolResults: new Set<string>(),
+    terminalConversation: undefined,
     provisionalIds: new Set<string>([messageId, userMessageId]),
     runStartIds: new Set<string>(before.ids),
   };
@@ -255,12 +264,35 @@ async function executeTurn({
         protocolFailure = true;
       },
     });
+    // A USER CANCELLATION is not staleness, and the order of these two checks
+    // is what keeps them apart. Cancelling retires the run's token, so the
+    // staleness guard below would swallow this case — leaving the row the
+    // turn was streaming into flagged as streaming forever, which renders as
+    // a live shimmer nothing will ever end. The row still has to settle; only
+    // the terminal reconciliation is abandoned.
+    if (controller.signal.aborted && !protocolFailure) {
+      if (canSettleRow()) finalizeTurn(options, update, turnState);
+      return false;
+    }
+    // The terminal is authoritative about THIS RUN's rows and nothing else,
+    // so it is reconciled against whatever is on screen rather than installed
+    // over it. Guarded like every other installation: a terminal that arrives
+    // after a cancel, a navigation or a newer accepted snapshot has nothing
+    // left to be authoritative about.
     if (!isCurrent()) return false;
+    if (turnState.terminalConversation !== undefined)
+      update(
+        mergeRunHistory(
+          options.getConversation(),
+          turnState.terminalConversation,
+          turnState.provisionalIds,
+          turnState.runStartIds,
+        ),
+      );
     finalizeTurn(options, update, turnState);
-    if (controller.signal.aborted && !protocolFailure) return false;
   } catch (error) {
     if (controller.signal.aborted && !protocolFailure) {
-      finalizeTurn(options, update, turnState);
+      if (canSettleRow()) finalizeTurn(options, update, turnState);
       return false;
     }
     // The transport's signal is the only way it learns the command

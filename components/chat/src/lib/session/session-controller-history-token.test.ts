@@ -236,3 +236,46 @@ describe('chat session history token', () => {
     expect(conversation.ids).toHaveLength(0);
   });
 });
+
+describe('cancelling a run still settles its row', () => {
+  test('stopping mid-stream finalizes the partial assistant row', async () => {
+    let conversation = createConversationHistory({ id: 'stopped' });
+    const { gate, release } = openGate();
+    // Resolved once the first delta has actually been reduced, so the stop
+    // below is reliably a cancellation of a turn with partial output rather
+    // than a race with one that has not started producing yet.
+    const { gate: streamed, release: sawPartial } = openGate();
+    const controller = createChatSessionController({
+      getConversation: () => conversation,
+      setConversation: (next) => {
+        conversation = next;
+        if (
+          next.ids.some((id) => next.messages[id]?.content === 'partial')
+        )
+          sawPartial();
+      },
+      transport: async () =>
+        (async function* (): AsyncGenerator<ChatStreamEvent> {
+          yield { type: 'text', text: 'partial' };
+          await gate;
+          yield { type: 'text', text: ' more' };
+        })(),
+    });
+    const sent = controller.adapter.sendMessage({ role: 'user', content: 'go' }, []);
+    await streamed;
+    // `stop` waits for the run to settle and the run is parked on the gate, so
+    // the gate has to open while the stop is pending rather than after it.
+    const stopped = controller.stop();
+    release();
+    await stopped;
+    await sent;
+    const assistant = conversation.ids.find(
+      (id) => conversation.messages[id]?.role === 'assistant',
+    );
+    expect(assistant).toBeDefined();
+    expect(conversation.messages[assistant ?? '']?.content).toBe('partial');
+    // A cancelled turn is finished, not perpetually streaming: a row left
+    // with the streaming flag renders a live shimmer nothing will ever end.
+    expect(conversation.messages[assistant ?? '']?.metadata['__streaming']).not.toBe(true);
+  });
+});
