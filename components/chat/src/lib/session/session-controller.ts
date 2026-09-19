@@ -16,10 +16,18 @@ import {
   latestResolvedApprovalOwner,
   rebuildApprovalState,
 } from './session-controller-approval-state.ts';
-import { createSessionRunner, type SessionRunState } from './session-controller-run.ts';
+import {
+  captureHistoryToken as captureToken,
+  createSessionRunState,
+  invalidateOutstandingWork,
+  isHistoryTokenCurrent as isTokenCurrent,
+  startSubmission,
+} from './session-controller-history.ts';
+import { createSessionRunner } from './session-controller-run.ts';
 import {
   cleanIncompleteToolRows,
   pruneMessageAttachments,
+  type ChatHistoryToken,
   type ChatSessionController,
   type ChatSessionControllerOptions,
 } from './session-controller-support.ts';
@@ -29,13 +37,8 @@ export function createChatSessionController(
   options: ChatSessionControllerOptions,
 ): ChatSessionController {
   const maxTurns = options.maxContinuationTurns ?? 5;
-  const lifecycle: SessionRunState = {
-    active: undefined,
-    disposed: false,
-    running: false,
-    activeRun: undefined,
-    activeUserMessageId: undefined,
-  };
+  const executionOwner = options.executionOwner ?? 'browser';
+  const lifecycle = createSessionRunState();
   const toolOwners = new Map<string, string>();
   const messageAttachments = new Map<string, ChatAttachment[]>();
   const pendingApprovals = new Set<string>();
@@ -81,11 +84,29 @@ export function createChatSessionController(
   };
   const update = (conversation: ConversationHistory): void => {
     pruneMessageAttachments(conversation, messageAttachments, resolvedApprovalOwners);
+    // Every accepted write advances the revision, which is what retires a
+    // full-session snapshot someone is still holding a token for.
+    lifecycle.revision += 1;
     options.setConversation(conversation);
+  };
+  const captureHistoryToken = (): ChatHistoryToken =>
+    captureToken(lifecycle, options.getConversation().id);
+  const isHistoryTokenCurrent = (token: ChatHistoryToken): boolean =>
+    isTokenCurrent(lifecycle, options.getConversation().id, token);
+  const invalidate = (): void => invalidateOutstandingWork(lifecycle);
+  const adoptHistory = (history: ConversationHistory, token: ChatHistoryToken): boolean => {
+    // A run owns the conversation while it is streaming into it, and a full
+    // snapshot replaces membership outright — installing one mid-run would
+    // drop the rows the run is still appending to.
+    if (lifecycle.running || !isHistoryTokenCurrent(token) || history.id !== token.conversationId)
+      return false;
+    update(history);
+    return true;
   };
   const { executeRun, stopActiveRun } = createSessionRunner({
     options,
     maxTurns,
+    executionOwner,
     lifecycle,
     toolOwners,
     pendingApprovals,
@@ -96,6 +117,7 @@ export function createChatSessionController(
   });
   const send = async (message: MessageInput, attachments: ChatAttachment[] = []): Promise<void> => {
     assertActive();
+    startSubmission(lifecycle);
     const current = options.getConversation();
     const cleaned = cleanIncompleteToolRows(current);
     if (cleaned !== current) update(cleaned);
@@ -153,6 +175,7 @@ export function createChatSessionController(
     },
     retryMessage: async (messageId) => {
       assertActive();
+      startSubmission(lifecycle);
       const history = options.getConversation();
       const message = history.messages[messageId];
       const position = history.ids.indexOf(messageId);
@@ -173,6 +196,7 @@ export function createChatSessionController(
     },
     editMessage: async ({ messageId, content }) => {
       assertActive();
+      startSubmission(lifecycle);
       const message = options.getConversation().messages[messageId];
       if (!message || message.role !== 'user')
         throw new Error('Only a current user message can be edited');
@@ -257,9 +281,13 @@ export function createChatSessionController(
   return {
     adapter,
     stop: stopActiveRun,
+    captureHistoryToken,
+    isHistoryTokenCurrent,
+    adoptHistory,
+    invalidate,
     dispose: () => {
+      invalidate();
       lifecycle.disposed = true;
-      lifecycle.active?.abort();
       messageAttachments.clear();
     },
   };

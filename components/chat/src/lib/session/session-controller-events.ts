@@ -20,6 +20,7 @@ type SessionEventDependencies = {
   toolOwners: Map<string, string>;
   pendingApprovals: Set<string>;
   reportError: (error: unknown) => void;
+  isCurrent: () => boolean;
   isProtocolFailure: () => boolean;
   markProtocolFailure: () => void;
 };
@@ -36,11 +37,17 @@ export async function consumeSessionEvents({
   toolOwners,
   pendingApprovals,
   reportError,
+  isCurrent,
   isProtocolFailure,
   markProtocolFailure,
 }: SessionEventDependencies): Promise<void> {
   for await (const event of events) {
     if (controller.signal.aborted && !isProtocolFailure()) break;
+    // Re-read per event, not once per stream. Every `await` on the iterator
+    // is a gap in which a submission, a navigation or a disposal can land,
+    // and the frame that comes back after one is exactly the stale callback
+    // this guard exists to stop.
+    if (!isCurrent()) break;
     switch (event.type) {
       case 'text':
         state.text += event.text;

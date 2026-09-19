@@ -9,21 +9,22 @@ import type { ConversationHistory } from '../components/chat/conversation-model.
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
 import { consumeSessionEvents } from './session-controller-events.ts';
 import {
+  captureHistoryToken,
+  invalidateOutstandingWork,
+  isRunRequestCurrent,
+  type SessionRunRequest,
+  type SessionRunState,
+} from './session-controller-history.ts';
+import {
   decodeTransportResult,
+  type ChatExecutionOwner,
   type ChatSessionControllerOptions,
 } from './session-controller-support.ts';
-
-export type SessionRunState = {
-  active: AbortController | undefined;
-  disposed: boolean;
-  running: boolean;
-  activeRun: Promise<void> | undefined;
-  activeUserMessageId: string | undefined;
-};
 
 type SessionRunnerDependencies = {
   options: ChatSessionControllerOptions;
   maxTurns: number;
+  executionOwner: ChatExecutionOwner;
   lifecycle: SessionRunState;
   toolOwners: Map<string, string>;
   pendingApprovals: Set<string>;
@@ -45,6 +46,7 @@ export type TurnState = {
 export function createSessionRunner({
   options,
   maxTurns,
+  executionOwner,
   lifecycle,
   toolOwners,
   pendingApprovals,
@@ -64,6 +66,15 @@ export function createSessionRunner({
     assertActive();
     lifecycle.running = true;
     lifecycle.activeUserMessageId = userMessageId;
+    // Captured ONCE, before anything is awaited. Every guard below compares
+    // against this reading, so a submission or navigation that lands while
+    // the transport is thinking is visible as a difference rather than read
+    // back as the new truth.
+    const request: SessionRunRequest = {
+      token: captureHistoryToken(lifecycle, options.getConversation().id),
+      submissionId: lifecycle.submissionId,
+      runToken: (lifecycle.activeRunToken += 1),
+    };
     let turn = 0;
     notifyStreaming(true);
     try {
@@ -89,6 +100,8 @@ export function createSessionRunner({
           before,
           messageId,
           controller,
+          executionOwner,
+          request,
         });
         if (!shouldContinue) return;
       }
@@ -114,7 +127,9 @@ export function createSessionRunner({
     }
   };
   const stopActiveRun = async (): Promise<void> => {
-    lifecycle.active?.abort();
+    // Cancelling retires outstanding work as thoroughly as a navigation does:
+    // a transport whose headers land after this must not install anything.
+    invalidateOutstandingWork(lifecycle);
     // The initiating send/retry owns any run rejection. Stop only promises
     // that the run has settled and released the controller for its next turn.
     try {
@@ -139,6 +154,8 @@ type TurnDependencies = Pick<
   before: ConversationHistory;
   messageId: string;
   controller: AbortController;
+  executionOwner: ChatExecutionOwner;
+  request: SessionRunRequest;
 };
 
 async function executeTurn({
@@ -155,6 +172,8 @@ async function executeTurn({
   before,
   messageId,
   controller,
+  executionOwner,
+  request,
 }: TurnDependencies): Promise<boolean> {
   // Two things abort the transport from inside this loop rather than
   // from the user: a protocol failure at its throw site (see
@@ -163,6 +182,8 @@ async function executeTurn({
   // reaches the catch, and remembering WHY keeps that from reading as a
   // user cancellation — which would swallow the error entirely.
   let protocolFailure = false;
+  const isCurrent = (): boolean =>
+    isRunRequestCurrent(lifecycle, options.getConversation().id, request);
   const turnState: TurnState = {
     text: '',
     toolResultSeen: false,
@@ -178,6 +199,9 @@ async function executeTurn({
         signal: controller.signal,
         turn,
         attachments,
+        submissionId: request.submissionId,
+        historyToken: request.token,
+        isCurrent: () => isCurrent() && !controller.signal.aborted,
       }),
       () => {
         // A frame can fail validation after the user has already
@@ -189,9 +213,15 @@ async function executeTurn({
         controller.abort();
       },
     );
+    // AFTER the headers, and after the body was handed over as a decodable
+    // stream: both are awaits, and either can outlive the session that asked
+    // for them. Returning here leaves the conversation exactly as whoever
+    // superseded this run left it — this run writes nothing at all.
+    if (!isCurrent()) return false;
     await consumeSessionEvents({
       events,
       controller,
+      isCurrent,
       userMessageId,
       messageId,
       state: turnState,
@@ -206,6 +236,7 @@ async function executeTurn({
         protocolFailure = true;
       },
     });
+    if (!isCurrent()) return false;
     finalizeTurn(options, update, turnState, messageId);
     if (controller.signal.aborted && !protocolFailure) return false;
   } catch (error) {
@@ -221,6 +252,11 @@ async function executeTurn({
     // has already aborted at its throw site; this covers every other
     // way the turn can fail, and aborting twice is a no-op.
     controller.abort();
+    // A failure belongs to the session that asked for it. Rolling back and
+    // marking a turn failed after something superseded this run would write
+    // this run's stale history over whatever replaced it — and would show a
+    // retry affordance for a turn nobody is looking at any more.
+    if (!isCurrent()) return false;
     update(
       markMessageDeliveryFailed(
         cancelStreamingMessage(turnState.committed, messageId),
@@ -233,7 +269,7 @@ async function executeTurn({
     emit((handlers) => handlers.onStreamEnd());
     if (lifecycle.active === controller) lifecycle.active = undefined;
   }
-  if (shouldStopAfterTurn(turnState)) return false;
+  if (shouldStopAfterTurn(turnState, executionOwner)) return false;
   return true;
 }
 
@@ -251,7 +287,12 @@ function finalizeTurn(
   );
 }
 
-function shouldStopAfterTurn(state: TurnState): boolean {
+function shouldStopAfterTurn(state: TurnState, executionOwner: ChatExecutionOwner): boolean {
+  // The server-owned check comes FIRST and looks at nothing else. Every other
+  // clause here reads the turn's content to decide whether the client still
+  // owes the host a step; when the host owns execution it never does, so
+  // consulting the content at all would let a frame decide ownership.
+  if (executionOwner === 'server') return true;
   if (!state.toolResultSeen || state.approvalRequired) return true;
   return [...state.toolCalls].some((id) => !state.toolResults.has(id));
 }
