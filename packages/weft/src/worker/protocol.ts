@@ -40,6 +40,7 @@ import type {
   RemoteWorkerJsonValue,
   ShutdownMessage,
   TaskMessage,
+  TaskResultAckMessage,
 } from './protocol-messages.ts';
 import {
   REMOTE_WORKER_MESSAGE_SCHEMAS,
@@ -81,6 +82,7 @@ export type {
   RemoteWorkerProtocolVersion,
   ShutdownMessage,
   TaskMessage,
+  TaskResultAckMessage,
   TaskResultMessage,
 };
 
@@ -112,7 +114,8 @@ export type ServerToWorkerMessage =
   | ProtocolErrorMessage
   | TaskMessage
   | CancelMessage
-  | ShutdownMessage;
+  | ShutdownMessage
+  | TaskResultAckMessage;
 
 const WORKER_TO_SERVER_TYPES = new Set(['register', 'heartbeat', 'taskResult']);
 const SERVER_TO_WORKER_TYPES = new Set([
@@ -122,6 +125,7 @@ const SERVER_TO_WORKER_TYPES = new Set([
   'task',
   'cancel',
   'shutdown',
+  'taskResultAck',
 ]);
 
 // --- parseRegisterMessage ---------------------------------------------------
@@ -351,6 +355,38 @@ function parseProtocolErrorMessage(
   return { ok: true, message: { type: 'protocolError', code, message } };
 }
 
+function isTaskResultAckDisposition(value: unknown): value is TaskResultAckMessage['disposition'] {
+  return value === 'applied' || value === 'duplicate' || value === 'dead-lettered';
+}
+
+function parseTaskResultAckMessage(
+  record: Record<string, unknown>,
+): RemoteWorkerProtocolParseResult<TaskResultAckMessage> {
+  const operationId = record['operationId'];
+  if (!isNonEmptyString(operationId)) {
+    return protocolFailure(
+      'invalid_message',
+      'taskResultAck.operationId must be a non-empty string',
+    );
+  }
+  const attemptToken = record['attemptToken'];
+  if (!isNonEmptyString(attemptToken)) {
+    return protocolFailure(
+      'invalid_message',
+      'taskResultAck.attemptToken must be a non-empty string',
+    );
+  }
+  const disposition = record['disposition'];
+  if (!isTaskResultAckDisposition(disposition)) {
+    return protocolFailure(
+      'invalid_message',
+      'taskResultAck.disposition must be "applied", "duplicate", or "dead-lettered"',
+    );
+  }
+
+  return { ok: true, message: { type: 'taskResultAck', operationId, attemptToken, disposition } };
+}
+
 /**
  * Parse and validate a worker-to-server protocol message.
  * @example
@@ -422,6 +458,8 @@ export function parseServerToWorkerMessage(
       return parseCancelMessage(value);
     case 'shutdown':
       return parseShutdownMessage();
+    case 'taskResultAck':
+      return parseTaskResultAckMessage(value);
     default:
       return protocolFailure('unknown_message_type', `Unknown server message type: ${type}`);
   }

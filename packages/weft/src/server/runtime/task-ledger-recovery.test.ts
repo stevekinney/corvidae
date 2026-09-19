@@ -342,7 +342,7 @@ describe('runTaskLedgerRecovery — completing', () => {
       value: 'done',
     });
     expect(resumed.ok).toBe(true);
-    expect(resumed.ok && resumed.terminal.state).toBe('terminal');
+    expect(resumed.ok && resumed.terminal?.state).toBe('terminal');
   });
 });
 

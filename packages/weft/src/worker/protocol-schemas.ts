@@ -207,6 +207,17 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
       message: { type: 'string' },
     },
   },
+  taskResultAck: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['type', 'operationId', 'attemptToken', 'disposition'],
+    properties: {
+      type: { const: 'taskResultAck' },
+      operationId: { type: 'string', minLength: 1 },
+      attemptToken: { type: 'string', minLength: 1 },
+      disposition: { enum: ['applied', 'duplicate', 'dead-lettered'] },
+    },
+  },
 } as const satisfies Record<string, JsonSchemaObject>;
 
 /**

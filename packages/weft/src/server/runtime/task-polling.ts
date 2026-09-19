@@ -5,16 +5,10 @@ import { claimQueued } from '../task-ledger-transitions.ts';
 import { decodeRemoteTaskRecord, taskLedgerKey, type RemoteTaskRecord } from '../task-ledger.ts';
 import type { PendingTask } from '../task-queue-types.ts';
 import type { ServerContext } from './context.ts';
-import {
-  commitTaskLedgerCompletion,
-  dispatchTaskDeadLetteredEvent,
-} from './task-ledger-completion.ts';
+import type { TaskResultDisposition } from './task-ledger-completion.ts';
 import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
-import {
-  recordTaskBacklogMetric,
-  recordTaskExecutionLatencyMetric,
-  recordTaskQueueLatencyMetric,
-} from './task-metrics.ts';
+import { recordTaskBacklogMetric, recordTaskQueueLatencyMetric } from './task-metrics.ts';
+import { applyWorkerTaskResult } from './task-result-application.ts';
 import { taskResultPayloadSizeError } from './task-result-resolution.ts';
 
 const TASK_POLL_RE = /^\/v1\/tasks\/([\w-]+)$/;
@@ -136,13 +130,21 @@ function validateTaskResultBody(body: Record<string, unknown>): ValidatedTaskRes
  * about the field") the way the WebSocket path does, so once ANY caller
  * starts supplying `workflowRevision` on `TaskDispatch` for a given
  * operation, every worker completing it must echo the value back.
+ *
+ * `queue` is the `:queue` path segment the result POST arrived on. It must
+ * match the record's own `queue` exactly (COR-240) — otherwise a result
+ * submitted against the wrong queue path could still authorize a completion
+ * as long as the rest of the body matched, which is not the contract the
+ * queue segment exists to enforce.
  */
 function isLongPollCompletionAuthorized(
   record: RemoteTaskRecord | null,
   validated: ValidatedTaskResult,
+  queue: string,
 ): boolean {
   if (record === null) return false;
   if (record.state !== 'leased' && record.state !== 'completing') return false;
+  if (record.queue !== queue) return false;
   if (validated.workerId === undefined || record.workerSessionId !== validated.workerId) {
     return false;
   }
@@ -157,8 +159,9 @@ function isLongPollCompletionAuthorized(
 }
 
 /**
- * Apply a validated task result: commit it through the durable ledger, then
- * update the in-memory bookkeeping the durable write does not own —
+ * Apply a validated task result through the shared result-application
+ * implementation (`applyWorkerTaskResult`, COR-240 acceptance criterion 12),
+ * then update the in-memory bookkeeping the durable write does not own —
  * resolving any parked local completion waiters and clearing the deadline
  * tracker entry.
  */
@@ -166,40 +169,38 @@ async function applyTaskResult(
   context: ServerContext,
   options: ServeOptions,
   result: ValidatedTaskResult,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+): Promise<{ ok: true; disposition: TaskResultDisposition } | { ok: false; reason: string }> {
   const { operationId, status, value, error } = result;
 
-  const committed = await commitTaskLedgerCompletion(options.engine.storage, {
-    operationId,
-    attemptToken: result.attemptToken,
-    status,
-    ...(status === 'completed' ? { value } : {}),
-    ...(status === 'failed' && error !== undefined ? { error } : {}),
-  });
-  if (!committed.ok) {
-    if (committed.deadLettered !== undefined) {
-      // Dead-lettered is terminal-ish: no further heartbeat/visibility
-      // extension will arrive for this operation, so stop tracking its
-      // deadline. taskQueue.complete() is deliberately not called — that
-      // signals a normal delivered result to whatever is waiting, and a
-      // dead letter is the opposite: the result could not be durably
-      // applied.
-      context.deadlineTracker.remove(operationId);
-      dispatchTaskDeadLetteredEvent(options, operationId, committed.deadLettered, result.workerId);
-    }
-    return { ok: false, reason: committed.reason };
+  const applied = await applyWorkerTaskResult(
+    options,
+    context.metricsCollector,
+    {
+      operationId,
+      attemptToken: result.attemptToken,
+      status,
+      ...(status === 'completed' ? { value } : {}),
+      ...(status === 'failed' && error !== undefined ? { error } : {}),
+    },
+    result.workerId,
+  );
+  if (!applied.ok) {
+    return { ok: false, reason: applied.reason };
   }
 
-  recordTaskExecutionLatencyMetric(
-    context.metricsCollector,
-    { startedAt: committed.completing.startedAt },
-    Date.now(),
-  );
-  context.taskQueue.complete({ operationId, status, value, error });
+  // Dead-lettered is terminal-ish: no further heartbeat/visibility extension
+  // will arrive for this operation, so stop tracking its deadline either
+  // way. taskQueue.complete() is deliberately skipped for a dead letter —
+  // that signals a normal delivered result to whatever is waiting, and a
+  // dead letter is the opposite: the result could not be durably applied as
+  // completed/failed.
   context.deadlineTracker.remove(operationId);
-  recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
+  if (applied.disposition !== 'dead-lettered') {
+    context.taskQueue.complete({ operationId, status, value, error });
+    recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
+  }
 
-  return { ok: true };
+  return { ok: true, disposition: applied.disposition };
 }
 
 function payloadSizeExceededResponse(error: {
@@ -366,6 +367,7 @@ export async function handleTaskResultRequest(
   if (!completeMatch?.[1]) {
     return null;
   }
+  const queue = decodeURIComponent(completeMatch[1]);
 
   const authorizationResponse = authorizeWorkerPrincipal(principal);
   if (authorizationResponse !== null) return authorizationResponse;
@@ -392,7 +394,7 @@ export async function handleTaskResultRequest(
   const record = decodeRemoteTaskRecord(
     await options.engine.storage.get(taskLedgerKey(validated.operationId)),
   );
-  if (!isLongPollCompletionAuthorized(record, validated)) {
+  if (!isLongPollCompletionAuthorized(record, validated, queue)) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -406,38 +408,32 @@ export async function handleTaskResultRequest(
     context.payloadSizeMaxBytes,
   );
   if (payloadError !== null) {
-    const rejected = await commitTaskLedgerCompletion(options.engine.storage, {
-      operationId: validated.operationId,
-      attemptToken: validated.attemptToken,
-      status: 'failed',
-      error: payloadError.message,
-    });
-    if (rejected.ok) {
-      recordTaskExecutionLatencyMetric(
-        context.metricsCollector,
-        { startedAt: rejected.completing.startedAt },
-        Date.now(),
-      );
-      context.taskQueue.complete({
+    const rejected = await applyWorkerTaskResult(
+      options,
+      context.metricsCollector,
+      {
         operationId: validated.operationId,
+        attemptToken: validated.attemptToken,
         status: 'failed',
         error: payloadError.message,
-      });
+      },
+      validated.workerId,
+    );
+    if (rejected.ok) {
       context.deadlineTracker.remove(validated.operationId);
-      recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
+      if (rejected.disposition !== 'dead-lettered') {
+        context.taskQueue.complete({
+          operationId: validated.operationId,
+          status: 'failed',
+          error: payloadError.message,
+        });
+        recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
+      }
     } else {
       console.error(
         `[weft] Failed to persist oversized task result rejection for task "${validated.operationId}":`,
         rejected.reason,
       );
-      if (rejected.deadLettered !== undefined) {
-        dispatchTaskDeadLetteredEvent(
-          options,
-          validated.operationId,
-          rejected.deadLettered,
-          validated.workerId,
-        );
-      }
     }
     return payloadSizeExceededResponse(payloadError);
   }
@@ -450,5 +446,5 @@ export async function handleTaskResultRequest(
     );
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, disposition: applied.disposition });
 }

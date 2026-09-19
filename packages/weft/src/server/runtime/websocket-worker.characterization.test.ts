@@ -1056,7 +1056,7 @@ describe('handleWorkerWebSocketMessage', () => {
       );
     });
 
-    it('logs, dead-letters, and dispatches TaskResultDeadLetteredEvent when the durable completion commit loses its CAS', async () => {
+    it('acknowledges dead-lettered and dispatches TaskResultDeadLetteredEvent when the durable completion commit loses its CAS', async () => {
       const storage = new FailingTerminalCommitStorage('op-commit-loses-cas');
       const context = minimalServerContext();
       const options = minimalServeOptions(storage);
@@ -1086,7 +1086,7 @@ describe('handleWorkerWebSocketMessage', () => {
         workerSessionId: 'w-commit-loses-cas',
       });
 
-      using errorSpy = spyOn(console, 'error').mockImplementation(() => {});
+      const sentBeforeResult = ws.sentMessages.length;
 
       handleWorkerWebSocketMessage(
         context,
@@ -1102,16 +1102,23 @@ describe('handleWorkerWebSocketMessage', () => {
         NOOP_CLEANUP,
       );
 
-      await waitForCondition(async () => errorSpy.mock.calls.length > 0, {
+      // COR-240: a sustained terminal-commit persistence failure that
+      // escalates to a dead letter is acknowledged, not logged as a raw
+      // console.error — the worker gets a `taskResultAck` with disposition
+      // `dead-lettered` instead of an opaque silence.
+      await waitForCondition(async () => ws.sentMessages.length > sentBeforeResult, {
         timeoutMs: 1000,
         intervalMs: 10,
-        label: 'lost-CAS completion commit to be logged',
+        label: 'lost-CAS completion commit to be acknowledged',
       });
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        '[weft] Failed to commit task result for "op-commit-loses-cas" through the durable ledger:',
-        expect.any(String),
-      );
+      const ack = JSON.parse(ws.sentMessages.at(-1)!);
+      expect(ack).toEqual({
+        type: 'taskResultAck',
+        operationId: 'op-commit-loses-cas',
+        attemptToken: 'attempt-token',
+        disposition: 'dead-lettered',
+      });
 
       // WFT-24: FailingTerminalCommitStorage only blocks writes whose next
       // state is `terminal`, so the best-effort Completing --> DeadLettered
@@ -1130,7 +1137,7 @@ describe('handleWorkerWebSocketMessage', () => {
       expect(dispatchedEvent.operationId).toBe('op-commit-loses-cas');
     });
 
-    it('logs, dead-letters, and dispatches TaskResultDeadLetteredEvent when the durable oversized-rejection commit loses its CAS', async () => {
+    it('acknowledges dead-lettered and dispatches TaskResultDeadLetteredEvent when the durable oversized-rejection commit loses its CAS', async () => {
       const storage = new FailingTerminalCommitStorage('op-rejection-loses-cas');
       const context = minimalServerContext();
       setPayloadSizeLimit(context, 64);
@@ -1161,7 +1168,7 @@ describe('handleWorkerWebSocketMessage', () => {
         workerSessionId: 'w-rejection-loses-cas',
       });
 
-      using errorSpy = spyOn(console, 'error').mockImplementation(() => {});
+      const sentBeforeResult = ws.sentMessages.length;
 
       handleWorkerWebSocketMessage(
         context,
@@ -1177,16 +1184,29 @@ describe('handleWorkerWebSocketMessage', () => {
         NOOP_CLEANUP,
       );
 
-      await waitForCondition(async () => errorSpy.mock.calls.length > 0, {
+      // COR-240: the oversized-payload protocolError still fires synchronously
+      // (unchanged), but the substitute "failed" result's own persistence
+      // failure is now acknowledged with disposition `dead-lettered` instead
+      // of logged as a raw console.error.
+      await waitForCondition(async () => ws.sentMessages.length > sentBeforeResult + 1, {
         timeoutMs: 1000,
         intervalMs: 10,
-        label: 'lost-CAS oversized-rejection commit to be logged',
+        label: 'lost-CAS oversized-rejection commit to be acknowledged',
       });
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        '[weft] Failed to persist oversized task result rejection for task "op-rejection-loses-cas":',
-        expect.any(String),
-      );
+      const protocolErrorMessage = JSON.parse(ws.sentMessages[sentBeforeResult]!);
+      expect(protocolErrorMessage).toMatchObject({
+        type: 'protocolError',
+        code: 'invalid_message',
+      });
+
+      const ack = JSON.parse(ws.sentMessages.at(-1)!);
+      expect(ack).toEqual({
+        type: 'taskResultAck',
+        operationId: 'op-rejection-loses-cas',
+        attemptToken: 'attempt-token',
+        disposition: 'dead-lettered',
+      });
 
       const deadLettered = decodeRemoteTaskRecord(
         await storage.get(taskLedgerKey('op-rejection-loses-cas')),

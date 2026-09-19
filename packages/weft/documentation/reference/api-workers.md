@@ -105,18 +105,19 @@ If `signal` is already aborted when called, returns a failed result immediately 
 
 ### `RemoteWorker`
 
-WebSocket-based remote worker client. Connects to the Weft server, sends a v3 registration, waits for `registerAck`, and then processes tasks dispatched by the server. Implements `Disposable`.
+WebSocket-based remote worker client. Connects to the Weft server, sends a v4 registration, waits for `registerAck`, and then processes tasks dispatched by the server. Implements `Disposable`.
 
 ```ts partial
 class RemoteWorker implements Disposable {
   constructor(options: RemoteWorkerOptions);
 
   async connect(): Promise<void>;
-  async disconnect(): Promise<void>;
+  async disconnect(): Promise<{ unacknowledgedResults: number }>;
 
   get inFlight(): number;
   get connected(): boolean;
   get shuttingDown(): boolean;
+  get unacknowledgedResultCount(): number;
 
   [Symbol.dispose](): void;
 }
@@ -125,11 +126,12 @@ class RemoteWorker implements Disposable {
 | Method / Property | Returns | Description |
 | --- | --- | --- |
 | `connect()` | `Promise<void>` | Open the WebSocket, register with the server, wait for `registerAck`, and start processing |
-| `disconnect()` | `Promise<void>` | Graceful shutdown -- finish in-flight tasks, then close |
+| `disconnect()` | `Promise<{ unacknowledgedResults: number }>` | Graceful shutdown -- finish in-flight tasks, then close. Resolves with the number of buffered results still awaiting a `taskResultAck` (COR-240, v4) |
 | `inFlight` | `number` | Number of tasks currently being executed |
 | `connected` | `boolean` | Whether the WebSocket is open |
 | `shuttingDown` | `boolean` | Whether a graceful shutdown is in progress |
-| `[Symbol.dispose]()` | `void` | Immediate shutdown -- abort all listeners and close |
+| `unacknowledgedResultCount` | `number` | Number of buffered results still awaiting a `taskResultAck` (COR-240, v4) |
+| `[Symbol.dispose]()` | `void` | Immediate shutdown -- abort all listeners and close. Unlike `disconnect()`, this discards any unacknowledged results rather than preserving them for a later reconnect |
 
 #### `RemoteWorkerOptions`
 
@@ -401,7 +403,7 @@ import { WORKER_MANIFEST_VERSION, type WorkerManifest } from '@corvidae/weft';
 
 const manifest: WorkerManifest = {
   manifestVersion: WORKER_MANIFEST_VERSION,
-  protocolVersion: 3,
+  protocolVersion: 4,
   sdkVersion: '0.18.0',
   runtime: { name: 'bun', version: '1.3.14' },
   deployment: { name: 'billing', buildId: '2026.08.18-3', artifactDigest: 'sha256:41d0e2' },
@@ -460,7 +462,7 @@ const requirement: WorkerExecutionRequirement = { deploymentName: 'billing' };
 const identity: WorkerExecutionIdentity = {
   workerId: 'worker-1',
   manifestDigest: 'sha256:deadbeef',
-  protocolVersion: 3,
+  protocolVersion: 4,
   sdkVersion: '0.18.0',
   runtimeName: 'bun',
   runtimeVersion: '1.3.14',
@@ -487,7 +489,7 @@ import { computeWorkerManifestDigest, WORKER_MANIFEST_VERSION } from '@corvidae/
 
 const digest = await computeWorkerManifestDigest({
   manifestVersion: WORKER_MANIFEST_VERSION,
-  protocolVersion: 3,
+  protocolVersion: 4,
   sdkVersion: '0.18.0',
   runtime: { name: 'bun', version: '1.3.14' },
   deployment: { name: 'billing', buildId: '2026.08.18-3', artifactDigest: 'sha256:41d0e2' },

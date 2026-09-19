@@ -14,15 +14,10 @@ import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import { renewAttemptLease } from '../task-ledger-transitions.ts';
 import type { ServerContext } from './context.ts';
 import { withRetry } from './retry.ts';
-import {
-  commitTaskLedgerCompletion,
-  dispatchTaskDeadLetteredEvent,
-} from './task-ledger-completion.ts';
+import type { TaskLedgerCompletionInput } from './task-ledger-completion.ts';
 import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
-import {
-  recordTaskExecutionLatencyMetric,
-  recordWorkerCapacitySaturationMetric,
-} from './task-metrics.ts';
+import { recordWorkerCapacitySaturationMetric } from './task-metrics.ts';
+import { applyWorkerTaskResult } from './task-result-application.ts';
 import { taskResultPayloadSizeError } from './task-result-resolution.ts';
 import { WORKER_STREAM_RE } from './websocket-upgrade.ts';
 import {
@@ -115,50 +110,42 @@ function onTaskResultMessage(
         code: 'invalid_message',
         message: payloadError.message,
       });
-      const rejected = await commitTaskLedgerCompletion(options.engine.storage, {
-        operationId,
-        attemptToken: message.attemptToken,
-        status: 'failed',
-        error: payloadError.message,
-      });
+      const rejected = await applyWorkerTaskResult(
+        options,
+        context.metricsCollector,
+        {
+          operationId,
+          attemptToken: message.attemptToken,
+          status: 'failed',
+          error: payloadError.message,
+        },
+        workerId,
+      );
       if (rejected.ok) {
-        recordTaskExecutionLatencyMetric(
-          context.metricsCollector,
-          { startedAt: rejected.completing.startedAt },
-          Date.now(),
-        );
+        sendTaskResultAck(ws, operationId, message.attemptToken, rejected.disposition);
       } else {
         console.error(
           `[weft] Failed to persist oversized task result rejection for task "${operationId}":`,
           rejected.reason,
         );
-        if (rejected.deadLettered !== undefined) {
-          dispatchTaskDeadLetteredEvent(options, operationId, rejected.deadLettered, workerId);
-        }
       }
       return;
     }
 
-    const committed = await commitTaskLedgerCompletion(options.engine.storage, {
+    const input: TaskLedgerCompletionInput = {
       operationId,
       attemptToken: message.attemptToken,
       status: resolvedStatus,
       ...(message.status === 'completed' ? { value: message.value } : { error: message.error }),
-    });
-    if (committed.ok) {
-      recordTaskExecutionLatencyMetric(
-        context.metricsCollector,
-        { startedAt: committed.completing.startedAt },
-        Date.now(),
-      );
+    };
+    const applied = await applyWorkerTaskResult(options, context.metricsCollector, input, workerId);
+    if (applied.ok) {
+      sendTaskResultAck(ws, operationId, message.attemptToken, applied.disposition);
     } else {
       console.error(
         `[weft] Failed to commit task result for "${operationId}" through the durable ledger:`,
-        committed.reason,
+        applied.reason,
       );
-      if (committed.deadLettered !== undefined) {
-        dispatchTaskDeadLetteredEvent(options, operationId, committed.deadLettered, workerId);
-      }
     }
   })().catch((error) => {
     console.error(
@@ -166,6 +153,23 @@ function onTaskResultMessage(
       error,
     );
   });
+}
+
+/**
+ * Acknowledge a worker's `taskResult` (COR-240, protocol v4). Sent only when
+ * `commitTaskLedgerCompletion` produced an applied, duplicate, or
+ * dead-lettered disposition — never for a hard rejection (unknown
+ * operation, stale attempt, conflicting content, queued/newer attempt),
+ * which the caller already reported via `protocolError` before this would
+ * be reached.
+ */
+function sendTaskResultAck(
+  ws: ServerWebSocket<WebSocketData>,
+  operationId: string,
+  attemptToken: string,
+  disposition: 'applied' | 'duplicate' | 'dead-lettered',
+): void {
+  sendWorkerProtocolMessage(ws, { type: 'taskResultAck', operationId, attemptToken, disposition });
 }
 
 /** Handle a validated `heartbeat` message from a worker. */

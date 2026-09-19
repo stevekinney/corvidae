@@ -32,7 +32,7 @@ import {
 const EXECUTION_IDENTITY: WorkerExecutionIdentity = {
   workerId: 'worker-1',
   manifestDigest: 'sha256:abc',
-  protocolVersion: 3,
+  protocolVersion: 4,
   sdkVersion: '0.18.0',
   runtimeName: 'bun',
   runtimeVersion: '1.3.14',

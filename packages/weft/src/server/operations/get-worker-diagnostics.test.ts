@@ -97,7 +97,7 @@ describe('weft.workers.diagnostics — REST GET /v1/workers/:workerId/diagnostic
       runtimeVersion: '1.3.14',
       sdkVersion: '0.18.0',
       manifestVersion: 1,
-      protocolVersion: 3,
+      protocolVersion: 4,
       manifestDigest: 'sha256:accepted',
       workflows: {
         checkout: {

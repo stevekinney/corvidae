@@ -60,7 +60,7 @@ export type RemoteWorkerCapabilities = Readonly<Record<string, RemoteWorkerJsonV
  *
  * const message: RegisterMessage = {
  *   type: 'register',
- *   protocolVersion: 3,
+ *   protocolVersion: 4,
  *   workerId: 'worker-1',
  *   manifest: { manifestVersion: 1 },
  * };
@@ -192,7 +192,7 @@ export type CancelledTaskResultMessage = {
  *
  * const message: RegisterAckMessage = {
  *   type: 'registerAck',
- *   protocolVersion: 3,
+ *   protocolVersion: 4,
  *   workerId: 'worker-1',
  *   queue: 'default',
  *   concurrency: 10,
@@ -230,7 +230,7 @@ export type RegisterAckMessage = {
  *   type: 'registerError',
  *   code: 'unsupported_protocol_version',
  *   message: 'Unsupported RemoteWorker protocol version: 1',
- *   supportedProtocolVersions: [3],
+ *   supportedProtocolVersions: [4],
  *   requestedProtocolVersion: 1,
  * };
  * ```
@@ -331,4 +331,44 @@ export type CancelMessage = {
  */
 export type ShutdownMessage = {
   readonly type: 'shutdown';
+};
+
+/**
+ * Server acknowledgement of a worker's `taskResult` (COR-240, protocol v4).
+ *
+ * Echoes the `operationId` and `attemptToken` from the `taskResult` this
+ * acknowledges, so a worker can match it against its attempt-keyed outbox.
+ * `disposition` reports how the durable ledger resolved the submission:
+ * `applied` — this attempt's first successful commit; `duplicate` — the
+ * ledger already held a terminal record for this exact `(operationId,
+ * attemptToken)` and content, re-affirmed without a new write (a resend
+ * after an ambiguous send, or after a process restart); `dead-lettered` —
+ * the result could not be durably applied (or already wasn't) and was
+ * recorded as a dead letter instead. A hard rejection (unknown operation,
+ * stale attempt, conflicting content under one attempt token, or a
+ * queued/newer attempt already in progress) never produces this message —
+ * the worker instead sees `protocolError`, as before v4.
+ *
+ * Only a `taskResultAck` removes the matching entry from the worker's
+ * outbox — `WebSocket.send()` returning is not enough, since the frame may
+ * never have reached the server, or the server's own response may never
+ * have reached the worker.
+ *
+ * @example
+ * ```ts
+ * import type { TaskResultAckMessage } from '@corvidae/weft';
+ *
+ * const message: TaskResultAckMessage = {
+ *   type: 'taskResultAck',
+ *   operationId: 'op-1',
+ *   attemptToken: 'attempt-token',
+ *   disposition: 'applied',
+ * };
+ * ```
+ */
+export type TaskResultAckMessage = {
+  readonly type: 'taskResultAck';
+  readonly operationId: string;
+  readonly attemptToken: string;
+  readonly disposition: 'applied' | 'duplicate' | 'dead-lettered';
 };

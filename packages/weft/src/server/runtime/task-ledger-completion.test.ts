@@ -67,8 +67,9 @@ describe('commitTaskLedgerCompletion', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected commitTaskLedgerCompletion to resume successfully');
     expect(result.completing).toEqual(completing);
-    expect(result.terminal.state).toBe('terminal');
-    expect(result.terminal.resultDigest).toBe(resultDigest);
+    expect(result.disposition).toBe('applied');
+    expect(result.terminal?.state).toBe('terminal');
+    expect(result.terminal?.resultDigest).toBe(resultDigest);
 
     const persisted = decodeRemoteTaskRecord(
       await storage.get(taskLedgerKey(completing.operationId)),

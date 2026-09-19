@@ -4,10 +4,10 @@ This document describes the versioned worker transports Weft uses to dispatch ac
 
 ## At a glance
 
-- **Protocol version**: v3. `register.protocolVersion` is required and must be exactly `3`.
+- **Protocol version**: v4. `register.protocolVersion` is required and must be exactly `4`.
 - **Transport**: WebSocket text frames containing JSON objects.
 - **Endpoint**: `/api/v1/tasks/:queue/stream` on the Weft server. Connect to one queue per WebSocket.
-- **Direction**: bidirectional. Workers send `register`, `heartbeat`, `taskResult`. Server sends `task`, `cancel`, `shutdown`, `registerAck`, `registerError`, `protocolError`.
+- **Direction**: bidirectional. Workers send `register`, `heartbeat`, `taskResult`. Server sends `task`, `cancel`, `shutdown`, `registerAck`, `registerError`, `protocolError`, `taskResultAck`.
 - **Heartbeat**: workers heartbeat every 10 seconds after registration is acknowledged.
 - **Authentication**: not part of the protocol envelope. Auth happens at the WebSocket transport layer.
 - **Frame limit**: every server WebSocket endpoint is capped at a fixed 4 MiB raw frame size before JSON parsing. This transport ceiling is separate from `payloadSize.maxBytes`, which applies to codec-encoded workflow values at admission time.
@@ -72,11 +72,13 @@ Worker                              Server
   |                                   |
   |   <---------------- task ------   |
   |--- taskResult ----------------->  |
+  |   <-------- taskResultAck -----   |
   |                                   |
   |--- heartbeat ------------------>  |   extends visibility for in-flight tasks
   |                                   |
   |   <---- cancel (operationId) --   |
   |--- taskResult ----------------->  |
+  |   <-------- taskResultAck -----   |
   |                                   |
   |   <---- shutdown -------------    |
   |--- WebSocket close ------------>  |
@@ -92,7 +94,7 @@ Worker                              Server
   |   <-------- close 1008 --------   |
 ```
 
-Malformed JSON, malformed message shapes, worker-to-server message types not defined by v3, and `heartbeat` or `taskResult` before registration are fatal protocol errors:
+Malformed JSON, malformed message shapes, worker-to-server message types not defined by v4, and `heartbeat` or `taskResult` before registration are fatal protocol errors:
 
 ```text
 Worker                              Server
@@ -120,11 +122,11 @@ Sent immediately after the WebSocket opens.
 ```json
 {
   "type": "register",
-  "protocolVersion": 3,
+  "protocolVersion": 4,
   "workerId": "<string>",
   "manifest": {
     "manifestVersion": 1,
-    "protocolVersion": 3,
+    "protocolVersion": 4,
     "sdkVersion": "0.18.0",
     "runtime": { "name": "bun", "version": "1.3.14" },
     "deployment": {
@@ -155,7 +157,7 @@ Sent immediately after the WebSocket opens.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"register"` | Yes | Message discriminator. |
-| `protocolVersion` | `3` | Yes | Required v3 protocol version. Missing or unsupported versions receive `registerError`. |
+| `protocolVersion` | `4` | Yes | Required v4 protocol version. Missing or unsupported versions receive `registerError`. |
 | `workerId` | string | Yes | Stable identifier for this worker. Must be non-empty. |
 | `manifest` | `WorkerManifest` | Yes | Canonical worker manifest — deployment, runtime, workflows, activities, and capabilities. Deeply validated by `parseWorkerManifest()` server-side, not by this wire-shape layer; see [Canonical worker manifest](api-workers.md#canonical-worker-manifest). Routing `activities` are derived from `manifest.workflows`, not sent as a separate field. |
 | `concurrency` | number | No | Maximum concurrent tasks. Server clamps finite numbers to `[1, 1000]`. Defaults to `10`. |
@@ -250,6 +252,8 @@ Workers must echo the token from every `task` frame:
 }
 ```
 
+**Outbox and acknowledgement (COR-240, v4).** `RemoteWorker` buffers every `taskResult` it produces in an outbox keyed by `(operationId, attemptToken)` before attempting to send it, and `WebSocket.send()` returning does not remove that entry — a frame can be sent but never reach the server, or the server's `taskResultAck` can be sent but never reach the worker. Only a matching `taskResultAck` (see below) removes the entry. A reconnect resends every still-buffered result, in insertion order, over the fresh socket; the server's ledger makes a resend idempotent (see `taskResultAck`'s `duplicate` disposition) rather than re-executing the activity a second time.
+
 ### Server -> Worker
 
 #### `task`
@@ -321,7 +325,7 @@ Server acknowledgement that registration succeeded.
 ```json
 {
   "type": "registerAck",
-  "protocolVersion": 3,
+  "protocolVersion": 4,
   "workerId": "<string>",
   "queue": "default",
   "concurrency": 10,
@@ -333,7 +337,7 @@ Server acknowledgement that registration succeeded.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"registerAck"` | Yes | Message discriminator. |
-| `protocolVersion` | `3` | Yes | Effective protocol version. |
+| `protocolVersion` | `4` | Yes | Effective protocol version. |
 | `workerId` | string | Yes | Accepted worker identifier. |
 | `queue` | string | Yes | Effective queue from the WebSocket URL. |
 | `concurrency` | number | Yes | Effective concurrency after server clamping to the supported capacity. |
@@ -351,7 +355,7 @@ Server rejection of registration. The server sends this message, then closes the
   "type": "registerError",
   "code": "unsupported_protocol_version",
   "message": "Unsupported RemoteWorker protocol version: 1",
-  "supportedProtocolVersions": [3],
+  "supportedProtocolVersions": [4],
   "requestedProtocolVersion": 1
 }
 ```
@@ -381,6 +385,28 @@ Server rejection of a malformed worker-to-server frame after the WebSocket is op
 | `type` | `"protocolError"` | Yes | Message discriminator. |
 | `code` | `"invalid_json" \| "invalid_message" \| "unknown_message_type" \| "registration_required"` | Yes | Machine-readable protocol failure. |
 | `message` | string | Yes | Human-readable diagnostic. |
+
+#### `taskResultAck`
+
+Server acknowledgement of a worker's `taskResult` (COR-240, v4). Sent after the durable task ledger has resolved the submission — after a hard rejection (unknown operation, stale attempt, conflicting content under one attempt token, or a queued/newer attempt already in progress) the worker instead receives `protocolError`, exactly as before v4.
+
+```json
+{
+  "type": "taskResultAck",
+  "operationId": "<string>",
+  "attemptToken": "<string>",
+  "disposition": "applied"
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `"taskResultAck"` | Yes | Message discriminator. |
+| `operationId` | non-empty string | Yes | The `operationId` from the `taskResult` this acknowledges. |
+| `attemptToken` | non-empty string | Yes | The `attemptToken` from the `taskResult` this acknowledges — matched against the worker's outbox entry. |
+| `disposition` | `"applied" \| "duplicate" \| "dead-lettered"` | Yes | `applied`: the ledger recorded this attempt's result for the first time. `duplicate`: the ledger already held a terminal record for this exact `(operationId, attemptToken)` and content — a resend after an ambiguous send, or after a server restart, re-affirmed without a new write. `dead-lettered`: the result could not be durably applied (or already couldn't be) and was recorded as a dead letter instead. |
+
+Only this message removes the matching entry from the worker's outbox — see the outbox note under `taskResult` above.
 
 ## Conformance
 
@@ -493,9 +519,9 @@ Failure body:
 
 | Response | Meaning |
 | --- | --- |
-| `200` | Result accepted. Body is `{ "ok": true }`. |
+| `200` | Result accepted. Body is `{ "ok": true, "disposition": "applied" \| "duplicate" \| "dead-lettered" }` (COR-240, v4) — see `taskResultAck`'s disposition table above; the same three outcomes apply here, since both transports commit through the same durable-ledger implementation. |
 | `400` | Invalid JSON, missing required fields, unsupported status, or malformed `attemptToken`. |
-| `403` | The echoed `workerId`, `attemptToken`, or `workflowRevision` does not match the current in-flight record. |
+| `403` | The echoed `workerId`, `attemptToken`, or `workflowRevision` does not match the current in-flight record, or the URL's `:queue` segment does not match the record's actual queue. |
 | `413` | The result body or serialized activity result exceeds `maxRequestBodyBytes` or `payloadSize.maxBytes`. |
 
 **Revision staleness is STRICT for long-poll (WFT-20)**, unlike the WebSocket transport's additive policy above: when the stored ledger record for this task carries a `workflowRevision`, the result request must echo it back EXACTLY — a missing echo is rejected the same as a mismatched one. Long-poll has no live in-flight registry entry to fall back on the way the WebSocket transport does, so once ANY `TaskDispatch` caller starts supplying `workflowRevision` for a given operation, every worker completing it must echo the value back or receive `403`.

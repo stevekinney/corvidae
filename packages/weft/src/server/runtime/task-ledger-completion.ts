@@ -35,6 +35,27 @@
  * a worker resubmitting the identical result can still resume through the
  * `resuming` branch above, and no data is lost.
  *
+ * COR-240 adds a `disposition` (`applied | duplicate | dead-lettered`) to
+ * every successful result and two more idempotent-resubmission branches
+ * ahead of the `resuming` one above, so a worker's outbox retry after an
+ * ambiguous send — or after a full server restart — gets an accurate,
+ * non-mutating answer instead of a confusing rejection:
+ *
+ *   - Same `attemptToken` against an already-`terminal` record, matching
+ *     content digest: `duplicate`. No new write; the existing terminal
+ *     record is re-affirmed.
+ *   - Same `attemptToken` against an already-`deadLettered` record, matching
+ *     pending digest: `dead-lettered`. No new write, same reasoning.
+ *   - Same `attemptToken` against either state with a DIFFERENT digest is
+ *     conflicting content submitted under one attempt token, and is
+ *     rejected outright — a genuinely different result can never overwrite
+ *     one the ledger already recorded.
+ *   - A different `attemptToken` (a stale attempt, or the current record
+ *     already moved past this attempt — `queued` for a retry, `leased` under
+ *     a newer attempt, and so on) falls through unchanged to `beginCompletion`
+ *     below, whose "expected task state leased" / "attempt token mismatch"
+ *     preconditions already reject it without creating a second durable state.
+ *
  * @module server/runtime/task-ledger-completion
  */
 
@@ -68,8 +89,20 @@ export type TaskLedgerCompletionInput = Readonly<{
   error?: string;
 }>;
 
+/** How the durable ledger resolved a submitted task result (COR-240). Mirrors `TaskResultAckMessage.disposition`. */
+export type TaskResultDisposition = 'applied' | 'duplicate' | 'dead-lettered';
+
 export type TaskLedgerCompletionResult =
-  | Readonly<{ ok: true; completing: RemoteTaskCompleting; terminal: RemoteTaskTerminal }>
+  | Readonly<{
+      ok: true;
+      disposition: TaskResultDisposition;
+      /** Present only when `disposition` is `'applied'` — the `completing` record this commit transitioned out of. */
+      completing?: RemoteTaskCompleting;
+      /** Present when `disposition` is `'applied'` or `'duplicate'`. */
+      terminal?: RemoteTaskTerminal;
+      /** Present only when `disposition` is `'dead-lettered'`. */
+      deadLettered?: RemoteTaskDeadLettered;
+    }>
   | Readonly<{ ok: false; reason: string; deadLettered?: RemoteTaskDeadLettered }>;
 
 /** Content digest of the pending result — computed once and proven to match by `commitTerminalResult`. */
@@ -173,6 +206,33 @@ export async function commitTaskLedgerCompletion(
   const resultDigest = await pendingResultDigest(input);
 
   const existing = decodeRemoteTaskRecord(await storage.get(taskLedgerKey(input.operationId)));
+
+  // Idempotent resubmission against a record that already left `leased`
+  // under this exact attempt (COR-240) — see the module doc comment for the
+  // full rationale. A record whose attemptToken differs from this submission
+  // falls straight through to beginCompletion's ordinary preconditions below.
+  if (existing !== null && existing.state === 'terminal') {
+    if (existing.attemptToken === input.attemptToken) {
+      if (existing.resultDigest === resultDigest) {
+        return { ok: true, disposition: 'duplicate', terminal: existing };
+      }
+      return {
+        ok: false,
+        reason: `conflicting content resubmitted for operation "${input.operationId}" under attempt token "${input.attemptToken}"`,
+      };
+    }
+  } else if (existing !== null && existing.state === 'deadLettered') {
+    if (existing.attemptToken === input.attemptToken) {
+      if (existing.pendingResultDigest === resultDigest) {
+        return { ok: true, disposition: 'dead-lettered', deadLettered: existing };
+      }
+      return {
+        ok: false,
+        reason: `conflicting content resubmitted for operation "${input.operationId}" under attempt token "${input.attemptToken}"`,
+      };
+    }
+  }
+
   const resuming =
     existing !== null &&
     existing.state === 'completing' &&
@@ -185,7 +245,7 @@ export async function commitTaskLedgerCompletion(
       const deadLettered = await attemptDeadLetter(storage, input, resultDigest, committed.reason);
       return { ...committed, ...(deadLettered !== undefined ? { deadLettered } : {}) };
     }
-    return { ok: true, completing: existing, terminal: committed.record };
+    return { ok: true, disposition: 'applied', completing: existing, terminal: committed.record };
   }
 
   const begun = await commitTaskLedgerTransition(
@@ -207,5 +267,5 @@ export async function commitTaskLedgerCompletion(
     return { ...committed, ...(deadLettered !== undefined ? { deadLettered } : {}) };
   }
 
-  return { ok: true, completing: begun.record, terminal: committed.record };
+  return { ok: true, disposition: 'applied', completing: begun.record, terminal: committed.record };
 }

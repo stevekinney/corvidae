@@ -276,6 +276,14 @@ async function compileContract(
       JSON.stringify({
         extends: join(root, 'internal/typescript', configurationName),
         include: ['./contract.ts'],
+        // `base.json` leaves `types` unset, which every real consumer in
+        // this workspace resolves by explicitly opting into `["bun"]` (see
+        // the root and per-package tsconfigs). TypeScript 6 no longer
+        // auto-discovers `@types/bun` for an unset `types` array the way
+        // 5.9 did, so this isolated contract needs the same explicit
+        // opt-in — `browser.json` already sets `types: []` on purpose, to
+        // assert Bun/Node globals are absent, and must keep doing so.
+        ...(configurationName === 'base.json' ? { compilerOptions: { types: ['bun'] } } : {}),
       }),
     );
     const process = Bun.spawn([join(root, 'node_modules/.bin/tsc'), '--project', configuration], {

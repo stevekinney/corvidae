@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import type { ActivityInterceptor } from '../core/interceptor.ts';
 import {
   restoreRealTimers,
@@ -33,7 +33,7 @@ function createTestServer(options?: {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 3,
+                  protocolVersion: 4,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: parsed.concurrency ?? 10,
@@ -207,7 +207,7 @@ describe('RemoteWorker', () => {
       registerMessage = messages.find((m) => m.type === 'register');
     }
     expect(registerMessage).toBeDefined();
-    expect(registerMessage.protocolVersion).toBe(3);
+    expect(registerMessage.protocolVersion).toBe(4);
     expect(registerMessage.workerId).toBe('test-worker-1');
     expect(registerMessage.concurrency).toBe(5);
     expect(Object.keys(registerMessage.manifest.workflows['orders'].activities)).toEqual([
@@ -322,7 +322,7 @@ describe('RemoteWorker', () => {
 
     const realManifest = {
       manifestVersion: 1,
-      protocolVersion: 3,
+      protocolVersion: 4,
       sdkVersion: '9.9.9',
       runtime: { name: 'bun', version: '1.3.14' },
       deployment: { name: 'payments', buildId: 'build-real', artifactDigest: 'sha256:real-bytes' },
@@ -370,7 +370,7 @@ describe('RemoteWorker', () => {
           buildId: 'build-1',
           manifest: {
             manifestVersion: 1,
-            protocolVersion: 3,
+            protocolVersion: 4,
             sdkVersion: '1.0.0',
             runtime: { name: 'bun', version: '1.3.14' },
             deployment: { name: 'payments', buildId: 'build-1', artifactDigest: 'sha256:x' },
@@ -391,7 +391,7 @@ describe('RemoteWorker', () => {
           buildId: 'build-1',
           manifest: {
             manifestVersion: 1,
-            protocolVersion: 3,
+            protocolVersion: 4,
             sdkVersion: '1.0.0',
             runtime: { name: 'bun', version: '1.3.14' },
             deployment: { name: 'payments', buildId: 'build-1', artifactDigest: 'sha256:x' },
@@ -562,7 +562,7 @@ describe('RemoteWorker', () => {
       serverSocket.send(
         JSON.stringify({
           type: 'registerAck',
-          protocolVersion: 3,
+          protocolVersion: 4,
           workerId: 'ack-gated-heartbeat-worker',
           queue: 'default',
           concurrency: 10,
@@ -1910,7 +1910,7 @@ describe('RemoteWorker — connect URL resolution', () => {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 3,
+                  protocolVersion: 4,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: parsed.concurrency ?? 10,
@@ -2077,7 +2077,7 @@ function createTrackingServer(options?: {
           ws.send(
             JSON.stringify({
               type: 'registerAck',
-              protocolVersion: 3,
+              protocolVersion: 4,
               workerId: parsed.workerId,
               queue: 'default',
               concurrency: parsed.concurrency ?? 10,
@@ -2104,7 +2104,18 @@ function createTrackingServer(options?: {
  * so reconnect tests never have to stop/restart the listener (which races on
  * port reuse). Frames other than `register` are recorded per registration index.
  */
-function createReconnectServer(onRegister?: (ws: any, index: number) => void): {
+function createReconnectServer(
+  onRegister?: (ws: any, index: number) => void,
+  options?: {
+    /**
+     * Reply to every `taskResult` with a matching `taskResultAck` (COR-240),
+     * so tests exercising the ack-driven outbox can assert a duplicate-free
+     * reconnect the way a real server would produce one. Defaults to `false`
+     * to keep every other call site's frame counts unchanged.
+     */
+    ackTaskResults?: boolean;
+  },
+): {
   server: ReturnType<typeof Bun.serve>;
   /** Frames received on the Nth registration (always an array, even if empty). */
   framesFor: (index: number) => any[];
@@ -2135,7 +2146,7 @@ function createReconnectServer(onRegister?: (ws: any, index: number) => void): {
           ws.send(
             JSON.stringify({
               type: 'registerAck',
-              protocolVersion: 3,
+              protocolVersion: 4,
               workerId: parsed.workerId,
               queue: 'default',
               concurrency: 10,
@@ -2148,6 +2159,16 @@ function createReconnectServer(onRegister?: (ws: any, index: number) => void): {
           const idx = (ws as any).__index as number;
           messagesByRegistration[idx] = messagesByRegistration[idx] ?? [];
           messagesByRegistration[idx].push(parsed);
+          if (options?.ackTaskResults === true && parsed.type === 'taskResult') {
+            ws.send(
+              JSON.stringify({
+                type: 'taskResultAck',
+                operationId: parsed.operationId,
+                attemptToken: parsed.attemptToken,
+                disposition: 'applied',
+              }),
+            );
+          }
         }
       },
       close(_ws) {},
@@ -2218,7 +2239,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     ackSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 3,
+        protocolVersion: 4,
         workerId: 'reentrancy-worker',
         queue: 'default',
         concurrency: 10,
@@ -2245,7 +2266,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
             ws.send(
               JSON.stringify({
                 type: 'registerAck',
-                protocolVersion: 3,
+                protocolVersion: 4,
                 workerId: parsed.workerId,
                 queue: 'default',
                 concurrency: 10,
@@ -2361,7 +2382,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     firstSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 3,
+        protocolVersion: 4,
         workerId: 'late',
         queue: 'default',
         concurrency: 10,
@@ -2376,7 +2397,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     secondSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 3,
+        protocolVersion: 4,
         workerId: 'current',
         queue: 'default',
         concurrency: 10,
@@ -2473,17 +2494,80 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
     await worker.disconnect();
   });
 
-  it('sends a result immediately when connected and registered (no later duplicate)', async () => {
+  it('sends a result immediately when connected and registered (no later duplicate once acknowledged)', async () => {
+    // COR-240: WebSocket.send() returning is no longer what removes an
+    // outbox entry — only a matching taskResultAck does. Without an ack this
+    // result would legitimately resend on every reconnect (see the dedicated
+    // "resends an unacknowledged result" test below); this test instead
+    // proves the other half — once the ack lands, a later reconnect does NOT
+    // duplicate it.
     const allFrames: any[] = [];
     // Deliver the task only on the first registration so a later reconnect
     // cannot re-deliver it; any second taskResult would have to come from the
-    // outbox re-flushing an already-sent result.
+    // outbox re-flushing an already-acknowledged result.
+    const harness = createReconnectServer(
+      (ws, idx) => {
+        if (idx === 0) {
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-immediate',
+              attemptToken: 'attempt-token',
+              activityName: 'orders.echo',
+              input: 'hi',
+            }),
+          );
+        }
+      },
+      { ackTaskResults: true },
+    );
+    server = harness.server;
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workflows: workflowsOf({ echo: async (input) => input }),
+    });
+
+    await worker.connect();
+    await waitForCondition(() => harness.framesFor(0).some((m) => m.type === 'taskResult'), {
+      timeoutMs: 1_000,
+      label: 'immediate result',
+    });
+    allFrames.push(...harness.allFrames());
+    const count = allFrames.filter((m) => m.type === 'taskResult').length;
+    expect(count).toBe(1);
+
+    // Wait for the worker to actually process the server's taskResultAck
+    // before disconnecting, so the outbox entry is gone by the time the
+    // reconnect below would otherwise re-flush it.
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
+      timeoutMs: 1_000,
+      label: 'result acknowledged',
+    });
+
+    // A subsequent reconnect must not re-flush an already-acknowledged result.
+    await worker.disconnect();
+    await worker.connect();
+    await sleepForTesting(50);
+    const total = harness.allFrames().filter((m) => m.type === 'taskResult').length;
+    expect(total).toBe(1);
+
+    await worker.disconnect();
+  });
+
+  it('resends an unacknowledged result on every reconnect until a taskResultAck arrives', async () => {
+    // COR-240 acceptance: sending does not delete the outbox entry — only a
+    // matching taskResultAck does. A server that never acknowledges (or an
+    // ack that never arrives) means the worker keeps resending the exact
+    // same result on every subsequent reconnect.
     const harness = createReconnectServer((ws, idx) => {
       if (idx === 0) {
         ws.send(
           JSON.stringify({
             type: 'task',
-            operationId: 'op-immediate',
+            operationId: 'op-never-acked',
             attemptToken: 'attempt-token',
             activityName: 'orders.echo',
             input: 'hi',
@@ -2503,20 +2587,135 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
     await worker.connect();
     await waitForCondition(() => harness.framesFor(0).some((m) => m.type === 'taskResult'), {
       timeoutMs: 1_000,
-      label: 'immediate result',
+      label: 'first send',
     });
-    allFrames.push(...harness.allFrames());
-    const count = allFrames.filter((m) => m.type === 'taskResult').length;
-    expect(count).toBe(1);
+    expect(worker.unacknowledgedResultCount).toBe(1);
 
-    // A subsequent reconnect must not re-flush an already-sent result.
     await worker.disconnect();
     await worker.connect();
-    await sleepForTesting(50);
-    const total = harness.allFrames().filter((m) => m.type === 'taskResult').length;
-    expect(total).toBe(1);
+    await waitForCondition(() => harness.framesFor(1).some((m) => m.type === 'taskResult'), {
+      timeoutMs: 1_000,
+      label: 'resend on reconnect',
+    });
+    expect(worker.unacknowledgedResultCount).toBe(1);
+    const resent = harness.framesFor(1).find((m) => m.type === 'taskResult');
+    expect(resent.operationId).toBe('op-never-acked');
+    expect(resent.value).toBe('hi');
 
     await worker.disconnect();
+  });
+
+  it('disconnect() reports how many results are still unacknowledged (COR-240 criterion 13)', async () => {
+    const harness = createReconnectServer((ws, idx) => {
+      if (idx === 0) {
+        ws.send(
+          JSON.stringify({
+            type: 'task',
+            operationId: 'op-disconnect-report',
+            attemptToken: 'attempt-token',
+            activityName: 'orders.echo',
+            input: 'hi',
+          }),
+        );
+      }
+    });
+    server = harness.server;
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workflows: workflowsOf({ echo: async (input) => input }),
+    });
+
+    await worker.connect();
+    await waitForCondition(() => harness.framesFor(0).some((m) => m.type === 'taskResult'), {
+      timeoutMs: 1_000,
+      label: 'result sent, never acked',
+    });
+
+    const report = await worker.disconnect();
+    expect(report).toEqual({ unacknowledgedResults: 1 });
+  });
+
+  it('disconnect() reports zero once every result has been acknowledged', async () => {
+    const harness = createReconnectServer(
+      (ws, idx) => {
+        if (idx === 0) {
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-disconnect-clean',
+              attemptToken: 'attempt-token',
+              activityName: 'orders.echo',
+              input: 'hi',
+            }),
+          );
+        }
+      },
+      { ackTaskResults: true },
+    );
+    server = harness.server;
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workflows: workflowsOf({ echo: async (input) => input }),
+    });
+
+    await worker.connect();
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
+      timeoutMs: 1_000,
+      label: 'result acknowledged',
+    });
+
+    const report = await worker.disconnect();
+    expect(report).toEqual({ unacknowledgedResults: 0 });
+  });
+
+  it('a server-initiated graceful shutdown warns when unacknowledged results remain (COR-240 criterion 13)', async () => {
+    const harness = createReconnectServer((ws, idx) => {
+      if (idx === 0) {
+        ws.send(
+          JSON.stringify({
+            type: 'task',
+            operationId: 'op-shutdown-warns',
+            attemptToken: 'attempt-token',
+            activityName: 'orders.echo',
+            input: 'hi',
+          }),
+        );
+      }
+    });
+    server = harness.server;
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workflows: workflowsOf({ echo: async (input) => input }),
+    });
+
+    using warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+
+    await worker.connect();
+    await waitForCondition(() => harness.framesFor(0).some((m) => m.type === 'taskResult'), {
+      timeoutMs: 1_000,
+      label: 'result sent, never acked',
+    });
+
+    // Server-initiated shutdown has no caller to hand the count back to
+    // (unlike disconnect()), so it warns instead.
+    harness.socketFor(0).send(JSON.stringify({ type: 'shutdown' }));
+    await waitForCondition(() => !worker.connected, {
+      timeoutMs: 1_000,
+      label: 'worker disconnected',
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('RemoteWorker shut down with 1 result(s) still unacknowledged'),
+    );
   });
 
   it('buffers a failed result and flushes it on reconnect', async () => {
@@ -2632,6 +2831,54 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
     expect(worker.connect()).rejects.toThrow('RemoteWorker has been disposed and cannot reconnect');
     await sleepForTesting(50);
     expect(harness.framesFor(1).some((m) => m.type === 'taskResult')).toBe(false);
+  });
+
+  it('forced disposal discards an already-buffered unacknowledged result rather than leaking it', async () => {
+    // COR-240 fixture: forced disposal ([Symbol.dispose]) is a different exit
+    // from graceful disconnect() — it never reports the unacknowledged count
+    // (there is no caller left to hand it to) and it never resends on a later
+    // connect(), because a disposed worker cannot reconnect at all. The
+    // buffered-but-unacknowledged entry is discarded cleanly, not leaked or
+    // retried forever against a socket that no longer exists.
+    const harness = createReconnectServer((ws, idx) => {
+      if (idx === 0) {
+        ws.send(
+          JSON.stringify({
+            type: 'task',
+            operationId: 'op-forced-disposal',
+            attemptToken: 'attempt-token',
+            activityName: 'orders.echo',
+            input: 'hi',
+          }),
+        );
+      }
+    });
+    server = harness.server;
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workflows: workflowsOf({ echo: async (input) => input }),
+    });
+
+    await worker.connect();
+    await waitForCondition(() => harness.framesFor(0).some((m) => m.type === 'taskResult'), {
+      timeoutMs: 1_000,
+      label: 'result sent before ack ever arrives',
+    });
+    // The server harness never acks, so the result is still buffered.
+    expect(worker.unacknowledgedResultCount).toBe(1);
+
+    expect(() => worker[Symbol.dispose]()).not.toThrow();
+    expect(worker.unacknowledgedResultCount).toBe(0);
+
+    // A disposed worker cannot reconnect, so the discarded entry can never
+    // resend — this is the intentional difference from disconnect()/
+    // #gracefulShutdown(), which preserve the outbox for the next connect().
+    await expect(worker.connect()).rejects.toThrow(
+      'RemoteWorker has been disposed and cannot reconnect',
+    );
   });
 });
 
@@ -2824,7 +3071,7 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 3,
+                  protocolVersion: 4,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: 10,
@@ -2846,7 +3093,7 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
                 ws.send(
                   JSON.stringify({
                     type: 'registerAck',
-                    protocolVersion: 3,
+                    protocolVersion: 4,
                     workerId: parsed.workerId,
                     queue: 'default',
                     concurrency: 10,
