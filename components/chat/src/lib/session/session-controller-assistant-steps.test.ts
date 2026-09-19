@@ -258,3 +258,54 @@ describe('legacy and rich projections of the same content', () => {
     expect(results).toHaveLength(1);
   });
 });
+
+describe('a settlement that outruns the call it settles', () => {
+  test('tool.settled before its tool_call is left for the transcript-ordered frame', async () => {
+    let conversation = createConversationHistory({ id: 'settled-early' });
+    const results: unknown[] = [];
+    const controller = createChatSessionController({
+      executionOwner: 'server',
+      getConversation: () => conversation,
+      setConversation: (next) => {
+        conversation = next;
+      },
+      hooks: { onToolResult: (result) => results.push(result) },
+      transport: async () =>
+        events([
+          // Emitted when the tool FINISHES EXECUTING, which is before the
+          // step that owns it completes — so it reaches the wire ahead of the
+          // `tool_call` frame describing the call it settles.
+          {
+            type: 'tool.settled',
+            toolCallId: 'call-1',
+            toolName: 'note',
+            result: { callId: 'call-1', outcome: 'success', content: 'ok' },
+            wireVersion: 1,
+            sequence: 0,
+          },
+          {
+            type: 'tool_call',
+            id: 'call-1',
+            name: 'note',
+            arguments: {},
+            wireVersion: 1,
+            sequence: 1,
+          },
+          {
+            type: 'tool_result',
+            callId: 'call-1',
+            outcome: 'success',
+            content: 'ok',
+            wireVersion: 1,
+            sequence: 2,
+          },
+          { type: 'run.aborted', wireVersion: 1, sequence: 3 },
+        ]),
+    });
+    await controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []);
+    // A result row may not precede the call it belongs to: the conversation
+    // model rejects a tool result that references a call it cannot see.
+    expect(rolesOf(conversation)).toEqual(['user', 'tool-call', 'tool-result']);
+    expect(results).toHaveLength(1);
+  });
+});

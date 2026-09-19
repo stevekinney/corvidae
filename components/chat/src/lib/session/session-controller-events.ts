@@ -63,6 +63,14 @@ export async function consumeSessionEvents(dependencies: SessionEventDependencie
         applyToolResult(dependencies, event.callId, event);
         break;
       case 'tool.settled':
+        // A settlement is only reducible once the call it settles has a row.
+        // `tool.settled` reports that a tool FINISHED EXECUTING, which a
+        // producer can know before the step owning the call has completed —
+        // so it legitimately reaches the wire ahead of the `tool_call` frame.
+        // Appending a result for a call the transcript cannot see is rejected
+        // by the conversation model itself, so an early settlement is left to
+        // the transcript-ordered `tool_result` that follows the call.
+        if (!state.toolCalls.has(event.toolCallId)) break;
         applyToolResult(dependencies, event.toolCallId, event.result);
         break;
       case 'assistant.step.started':
