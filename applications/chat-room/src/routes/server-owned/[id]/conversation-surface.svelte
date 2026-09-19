@@ -217,6 +217,25 @@
   let synchronizer: ServerOwnedSynchronizer | undefined;
 
   const session = createChatSessionController({
+    // THE SERVER OWNS EXECUTION, said once, about the submission.
+    //
+    // One durable run drives every model and tool step of a turn inside one
+    // response, so there is never a next step for the client to ask for.
+    // `shouldStopAfterTurn` consults this first and nothing else, which means
+    // the controller ends the submission when the stream closes rather than
+    // reading the turn's contents to guess whether it still owes the host a
+    // step.
+    //
+    // This REPLACED a defense in the transport below, which used to answer a
+    // continuation with an empty stream after finding a tool result rather
+    // than user text as the last message. That worked, but it made
+    // one-submission behaviour a consequence of inspecting a turn: the
+    // controller still opened a second turn, appended an assistant row,
+    // cancelled it again and spent two history revisions doing so, and the
+    // route's correctness rested on a role check a differently-shaped turn
+    // could have answered the other way. Declaring the owner removes the
+    // second turn instead of absorbing it.
+    executionOwner: 'server',
     getConversation: () => $state.snapshot(conversation),
     setConversation: (next) => (conversation = withUnsavedFailures(next, unsavedFailures)),
     transport: async ({ conversation: history, signal }) => {
@@ -224,34 +243,22 @@
       // history because the browser owns it there; here the server holds
       // it, and only the turn the user just typed has to cross — the
       // server cannot know it any other way.
-      // The LAST message must be the user turn being sent. The session
-      // controller also calls this transport to CONTINUE a run after a
-      // tool result, and on that call the last message is a tool result,
-      // not a user turn — sending the previous user text again would
-      // duplicate it as a new turn.
       //
-      // A CONTINUATION HAS NOTHING TO FETCH HERE, and that is a property of
-      // this family rather than a gap in it.
+      // So the last message is the user turn being sent, and with the
+      // execution owner declared above that is an invariant rather than a
+      // hope: this transport is reached once per submission, immediately
+      // after the controller appended that message, and never again for a
+      // continuation.
       //
-      // The session controller calls the transport again whenever a turn
-      // ended with every tool call resolved, because in the browser-owned
-      // route the client drives the next step. Here the server ran the
-      // whole turn: the approved tool settled, the loop issued a second
-      // generate, and the assistant's reply arrived in the SAME response.
-      // There is no next step to ask for — and no user text to send if
-      // there were, since the last message on this call is a tool result.
-      //
-      // An empty stream is the honest answer. It used to throw, which was
-      // right while the toolbox was empty and a continuation could only
-      // mean a wiring mistake; once a real tool could succeed, that same
-      // throw marked the turn FAILED right after its side effect had
-      // succeeded. The run options this family uses drop
-      // `stopAfterAnyToolCall` precisely so the turn is complete by the
-      // time this is reached.
-      const messages = getMessages(history);
-      const last = messages.at(-1);
+      // ANYTHING ELSE IS A WIRING MISTAKE, and is raised as one. Returning an
+      // empty stream here was right while a continuation could still happen
+      // and had nothing to fetch; now that it cannot, the same silence would
+      // hide the bug it used to absorb.
+      const last = getMessages(history).at(-1);
       if (last?.role !== 'user' || typeof last.content !== 'string') {
-        return (async function* () {})();
+        throw new Error(
+          'The server-owned transport was called without a trailing user message to send.',
+        );
       }
       const text = last.content;
 
