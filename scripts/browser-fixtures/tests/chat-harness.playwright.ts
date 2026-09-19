@@ -1411,7 +1411,16 @@ test.describe('chat harness — composer acceptance matrix', () => {
         buffer: Buffer.from(wideImage),
       });
       await expect(send).toBeEnabled();
-      await send.click();
+      await expect(send).toHaveAttribute('aria-label', 'Send message');
+      const box = await send.boundingBox();
+      expect(box).not.toBeNull();
+      await page.touchscreen.tap(
+        (box?.x ?? 0) + (box?.width ?? 0) / 2,
+        (box?.y ?? 0) + (box?.height ?? 0) / 2,
+      );
+      await expect(
+        harness.locator('[data-testid="event-log-entry"][data-event="onsubmit"]').first(),
+      ).toHaveAttribute('data-payload', '{"content":"","attachments":1}');
       await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
       const unrelated = harness.getByTestId('unrelated-tooltip-trigger');
       await unrelated.hover();
@@ -1441,7 +1450,7 @@ test.describe('chat harness — composer acceptance matrix', () => {
           ),
         ).toBeLessThanOrEqual(1);
         await harness.screenshot({
-          path: `/Users/stevekinney/.codex/artifacts/chef-corvidae-ui-01a0b754-7538-7491-8f63-3a00c2a66ed0/chat-composer-dark-${width}.png`,
+          path: test.info().outputPath(`chat-composer-dark-${width}.png`),
         });
       } finally {
         await dispose();
@@ -1461,7 +1470,7 @@ test.describe('chat harness — composer acceptance matrix', () => {
       const footer = harness.locator('#harness-chat .chat-input-footer');
       await expect(footer).toBeVisible();
       await harness.screenshot({
-        path: '/Users/stevekinney/.codex/artifacts/chef-corvidae-ui-01a0b754-7538-7491-8f63-3a00c2a66ed0/chat-composer-light-320.png',
+        path: test.info().outputPath('chat-composer-light-320.png'),
       });
     } finally {
       await dispose();

@@ -20,6 +20,7 @@
     type ConversationHistory,
     type JSONValue,
     type Message,
+    type MultiModalContent,
     type ToolErrorCategory,
   } from '@corvidae/chat';
   import {
@@ -406,9 +407,23 @@
   function handleSubmit(event: ChatSubmitEvent): void {
     const content = typeof event.message.content === 'string' ? event.message.content : '';
     record('onsubmit', JSON.stringify({ content, attachments: event.attachments.length }));
+    const imageParts: MultiModalContent[] = event.attachments
+      .filter((attachment) => attachment.kind === 'image')
+      .map((attachment) => ({
+        type: 'image',
+        url: attachment.previewUrl,
+        mimeType: attachment.file.type,
+      }));
+    const messageContent =
+      imageParts.length > 0
+        ? [
+            ...(content ? [{ type: 'text', text: content } satisfies MultiModalContent] : []),
+            ...imageParts,
+          ]
+        : event.message.content;
     conversation = appendMessages(conversation, {
       role: 'user',
-      content: event.message.content,
+      content: messageContent,
     });
     if (autoReply) sendReply(replyText);
   }
