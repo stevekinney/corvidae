@@ -51,7 +51,7 @@ const requestSchema = z.object({
   resolution: resolutionSchema,
 });
 
-export async function handleResumeRequest(request: Request): Promise<Response> {
+const resumeRequest: RequestHandler = async ({ request }) => {
   let body: unknown;
 
   try {
@@ -84,4 +84,4 @@ export async function handleResumeRequest(request: Request): Promise<Response> {
   });
 }
 
-export const POST: RequestHandler = async ({ request }) => handleResumeRequest(request);
+export const POST = resumeRequest;

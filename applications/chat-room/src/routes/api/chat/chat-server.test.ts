@@ -2,9 +2,10 @@ import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import type { SignedPendingToolApproval } from '@corvidae/armorer';
+import type { RequestEvent } from '@sveltejs/kit';
 import { updatePendingApproval } from '../../../lib/pending-approval.ts';
-import { toolbox } from '../../../lib/toolbox.ts';
-import { handleResumeRequest } from './resume/+server.ts';
+import { requestContext, toolbox } from '../../../lib/toolbox.ts';
+import { POST } from './resume/+server.ts';
 
 const resumeSource = readFileSync(new URL('./resume/+server.ts', import.meta.url), 'utf8');
 /**
@@ -20,6 +21,56 @@ const streamSource = readFileSync(
   new URL('../../../lib/chat-run-response.ts', import.meta.url),
   'utf8',
 );
+
+function requestEvent(request: Request): RequestEvent {
+  const span = {
+    spanContext: () => ({ traceId: '0'.repeat(32), spanId: '0'.repeat(16), traceFlags: 0 }),
+    setAttribute: (..._arguments: never[]) => span,
+    setAttributes: (..._arguments: never[]) => span,
+    addEvent: (..._arguments: never[]) => span,
+    addLink: (..._arguments: never[]) => span,
+    addLinks: (..._arguments: never[]) => span,
+    setStatus: (..._arguments: never[]) => span,
+    updateName: (..._arguments: never[]) => span,
+    end: () => undefined,
+    isRecording: () => false,
+    recordException: () => undefined,
+  } satisfies RequestEvent['tracing']['root'];
+  return {
+    cookies: {
+      get: () => undefined,
+      getAll: () => [],
+      set: () => undefined,
+      delete: () => undefined,
+      serialize: () => '',
+    },
+    fetch,
+    getClientAddress: () => '127.0.0.1',
+    locals: {},
+    params: {},
+    platform: undefined,
+    request,
+    route: { id: '/api/chat/resume' },
+    setHeaders: () => undefined,
+    url: new URL(request.url),
+    isDataRequest: false,
+    isSubRequest: false,
+    tracing: { enabled: false, root: span, current: span },
+    isRemoteRequest: false,
+  };
+}
+
+function post(body: unknown): Promise<Response> {
+  return POST(
+    requestEvent(
+      new Request('http://localhost/api/chat/resume', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+      }),
+    ),
+  );
+}
 
 describe('chat stream cancellation guard', () => {
   test('registers the request signal on the same one-shot abort path cancel() uses', () => {
@@ -172,13 +223,7 @@ describe('chat approval continuation response', () => {
     const resolveApproval = spyOn(toolbox, 'resolveApproval').mockResolvedValue(result);
 
     try {
-      const response = await handleResumeRequest(
-        new Request('http://localhost/api/chat/resume', {
-          method: 'POST',
-          body: JSON.stringify({ approval, resolution }),
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
+      const response = await post({ approval, resolution });
 
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(result);
@@ -191,18 +236,26 @@ describe('chat approval continuation response', () => {
   });
 
   test('rejects legacy and malformed resolution bodies before the toolbox', async () => {
+    const approval = {
+      callId: 'call-malformed',
+      toolName: 'remember_note',
+      arguments: { text: 'before' },
+      action: {
+        type: 'approval' as const,
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        policyVersion: 'policy-1',
+        idempotencyKey: 'malformed-1',
+      },
+      approvalToken: 'token-malformed',
+    } satisfies SignedPendingToolApproval;
     const resolveApproval = spyOn(toolbox, 'resolveApproval');
     try {
       for (const body of [
-        { approval: {}, decision: 'deny' },
-        { approval: {}, resolution: { decision: 'deny' } },
+        { approval, decision: 'deny' },
+        { approval, resolution: { decision: 'deny' } },
       ]) {
-        const response = await handleResumeRequest(
-          new Request('http://localhost/api/chat/resume', {
-            method: 'POST',
-            body: JSON.stringify(body),
-          }),
-        );
+        const response = await post(body);
         expect(response.status).toBe(400);
       }
       expect(resolveApproval).not.toHaveBeenCalled();
@@ -242,12 +295,7 @@ describe('chat approval continuation response', () => {
     try {
       for (const decision of ['deny', 'cancel'] as const) {
         const resolution = { decision, reason: `${decision} reason`, remember: false };
-        const response = await handleResumeRequest(
-          new Request('http://localhost/api/chat/resume', {
-            method: 'POST',
-            body: JSON.stringify({ approval, resolution }),
-          }),
-        );
+        const response = await post({ approval, resolution });
         expect(await response.json()).toMatchObject({
           callId: approval.callId,
           outcome: 'error',
@@ -267,6 +315,53 @@ describe('chat approval continuation response', () => {
     }
   });
 
+  test('resolves real signed approvals for every decision and rejects tampering', async () => {
+    async function pendingApproval(callId: string): Promise<SignedPendingToolApproval> {
+      const result = await toolbox.execute(
+        { id: callId, name: 'remember_note', arguments: { text: 'before' } },
+        { requestContext },
+      );
+      expect(result.outcome).toBe('action_required');
+      if (!result.pendingApproval) throw new Error('Expected a signed pending approval.');
+      return result.pendingApproval;
+    }
+
+    const approved = await post({
+      approval: await pendingApproval('endpoint-approve'),
+      resolution: { decision: 'approve', remember: false },
+    });
+    const approvedBody = await approved.json();
+    expect(approvedBody.outcome).toBe('success');
+
+    const editedApproval = await pendingApproval('endpoint-edited');
+    const edited = await post({
+      approval: editedApproval,
+      resolution: { decision: 'approve_with_edits', editedArgs: { text: 'after' }, remember: true },
+    });
+    const editedBody = await edited.json();
+    expect(editedBody.outcome).toBe('action_required');
+
+    const denied = await post({
+      approval: await pendingApproval('endpoint-deny'),
+      resolution: { decision: 'deny', reason: 'no', remember: false },
+    });
+    const deniedBody = await denied.json();
+    expect(deniedBody.error).toMatchObject({ code: 'denied' });
+
+    const cancelled = await post({
+      approval: await pendingApproval('endpoint-cancel'),
+      resolution: { decision: 'cancel', reason: 'stop', remember: false },
+    });
+    const cancelledBody = await cancelled.json();
+    expect(cancelledBody.error).toMatchObject({ code: 'CANCELLED' });
+
+    const tampered = await pendingApproval('endpoint-tampered');
+    tampered.approvalToken = `${tampered.approvalToken}tampered`;
+    await expect(
+      post({ approval: tampered, resolution: { decision: 'approve', remember: false } }),
+    ).rejects.toThrow();
+  });
+
   test('forwards another pending approval stage to the client', () => {
     expect(resumeSource).toContain('...(result.action ? { action: result.action } : {})');
     expect(resumeSource).toContain(
@@ -280,14 +375,26 @@ describe('chat approval continuation response', () => {
       callId: 'call',
       toolName: 'remember_note',
       arguments: {},
-      action: { type: 'approval' as const },
+      action: {
+        type: 'approval' as const,
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        policyVersion: 'policy-1',
+        idempotencyKey: 'first-1',
+      },
       approvalToken: 'first',
     } satisfies SignedPendingToolApproval;
     const second = {
       callId: 'call',
       toolName: 'remember_note',
       arguments: {},
-      action: { type: 'approval' as const },
+      action: {
+        type: 'approval' as const,
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        policyVersion: 'policy-1',
+        idempotencyKey: 'second-1',
+      },
       approvalToken: 'second',
     } satisfies SignedPendingToolApproval;
 
