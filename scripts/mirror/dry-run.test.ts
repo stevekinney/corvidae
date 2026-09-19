@@ -5,6 +5,8 @@ import { join } from 'node:path';
 
 import {
   assertInstallationCoverage,
+  CheckRunFailureError,
+  CheckRunTimeoutError,
   deleteScratchRepository,
   ensureScratchRepository,
   InstallationCoverageError,
@@ -15,6 +17,7 @@ import {
   type StageTransform,
 } from './dry-run.ts';
 import type {
+  CheckRunRecord,
   CreatePullRequestInput,
   CreateRepositoryInput,
   GitHubApi,
@@ -587,6 +590,145 @@ describe('runDryRun', () => {
   });
 });
 
+/**
+ * Drive the real driver against a fake whose CI answers whatever a test needs.
+ *
+ * The GitHub fake is spread rather than rebuilt, so `deleteRepository` is still the original
+ * closure and `calls.deleted` still records. That matters: "the run failed" and "the repository
+ * survived" are two different claims, and a test that only asserts the first would pass against a
+ * driver that threw *after* deleting the evidence.
+ */
+async function runWithCheckRuns(options: {
+  checkRuns: readonly CheckRunRecord[];
+  appearanceAttempts?: number;
+  completionAttempts?: number;
+}): Promise<{ failure: unknown; calls: Recorded; probes: ProbeHarness }> {
+  const { api, calls } = fakeGitHub();
+  const harness = fakeRunner();
+  const probes = fakeProbe();
+  const answering: GitHubApi = {
+    ...api,
+    async readCheckRuns() {
+      return options.checkRuns;
+    },
+  };
+  const failure = await withWorkDirectory((workDirectory) =>
+    runDryRun({
+      api: answering,
+      corvidaeRoot: workDirectory,
+      target: 'weft',
+      workDirectory: join(workDirectory, 'clone'),
+      scratchDirectory: join(workDirectory, 'scratch'),
+      corvidaeCommit: 'abc123',
+      scratchRepository: validName,
+      run: harness.run,
+      stage: fakeStage('1.0.0'),
+      probe: probes.probe,
+      checkRunAppearanceAttempts: options.appearanceAttempts ?? 2,
+      checkRunCompletionAttempts: options.completionAttempts ?? 3,
+      sleep: async () => {},
+    }),
+  ).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  return { failure, calls, probes };
+}
+
+/**
+ * The gate COR-1191 needs, which the driver did not have.
+ *
+ * A live run of this driver exited 0 against a pull request on which `audit` had completed
+ * `failure` and seventeen other checks had never finished, and then deleted the repository that
+ * held the only record of why. Each test here fails one of those two ways and asserts both halves
+ * of the fix: the run refuses, and the scratch repository is still there to read.
+ */
+describe('runDryRun check run verdict', () => {
+  test('fails the run and keeps the scratch repository when a check run completes with failure', async () => {
+    const { failure, calls, probes } = await runWithCheckRuns({
+      checkRuns: [
+        { name: 'build', status: 'completed', conclusion: 'success' },
+        { name: 'audit', status: 'completed', conclusion: 'failure' },
+      ],
+    });
+    expect(failure).toBeInstanceOf(CheckRunFailureError);
+    const message = failure instanceof Error ? failure.message : '';
+    expect(message).toContain('audit: failure');
+    expect(message).toContain(`https://github.com/${validName}/pull/1`);
+    expect(message).toContain(`--phase delete --scratch-repository ${validName}`);
+    // The whole point: the repository that holds the failing run's logs is still there.
+    expect(calls.deleted).toEqual([]);
+    // And the refusal happened before the publish rehearsal, so the failure that is reported is
+    // the CI failure rather than whatever the probe would have said about it afterwards.
+    expect(probes.calls).toEqual([]);
+  });
+
+  test('fails the run and keeps the scratch repository when check runs never finish', async () => {
+    const { failure, calls } = await runWithCheckRuns({
+      checkRuns: [
+        { name: 'ui-e2e', status: 'queued', conclusion: null },
+        { name: 'postgres-test', status: 'in_progress', conclusion: null },
+      ],
+    });
+    expect(failure).toBeInstanceOf(CheckRunTimeoutError);
+    const message = failure instanceof Error ? failure.message : '';
+    expect(message).toContain('2 of 2 check run(s)');
+    expect(message).toContain('ui-e2e: queued');
+    expect(message).toContain('postgres-test: in_progress');
+    expect(message).toContain(`--phase delete --scratch-repository ${validName}`);
+    expect(calls.deleted).toEqual([]);
+  });
+
+  test('fails the run and keeps the scratch repository when no check run ever appears', async () => {
+    const { failure, calls } = await runWithCheckRuns({ checkRuns: [] });
+    expect(failure).toBeInstanceOf(CheckRunTimeoutError);
+    const message = failure instanceof Error ? failure.message : '';
+    expect(message).toContain('No check run appeared');
+    expect(message).toContain(`https://github.com/${validName}/pull/1`);
+    expect(calls.deleted).toEqual([]);
+  });
+
+  test('fails the run when a check run completes without saying how', async () => {
+    const { failure, calls } = await runWithCheckRuns({
+      checkRuns: [{ name: 'build', status: 'completed', conclusion: null }],
+    });
+    expect(failure).toBeInstanceOf(CheckRunFailureError);
+    expect(failure instanceof Error ? failure.message : '').toContain(
+      'build: completed without a conclusion',
+    );
+    expect(calls.deleted).toEqual([]);
+  });
+
+  test.each([['cancelled'], ['timed_out'], ['action_required'], ['stale']])(
+    'fails the run on a check run concluded %s',
+    async (conclusion) => {
+      const { failure, calls } = await runWithCheckRuns({
+        checkRuns: [{ name: 'build', status: 'completed', conclusion }],
+      });
+      expect(failure).toBeInstanceOf(CheckRunFailureError);
+      expect(calls.deleted).toEqual([]);
+    },
+  );
+
+  /**
+   * GitHub's own required-check semantics treat both of these as satisfying a required check, so
+   * refusing them here would make this driver stricter than the branch protection it rehearses.
+   */
+  test.each([['skipped'], ['neutral']])(
+    'passes a check run concluded %s, as a required check would',
+    async (conclusion) => {
+      const { failure, calls } = await runWithCheckRuns({
+        checkRuns: [
+          { name: 'build', status: 'completed', conclusion: 'success' },
+          { name: 'browser-smoke', status: 'completed', conclusion },
+        ],
+      });
+      expect(failure).toBeUndefined();
+      expect(calls.deleted).toEqual([validName]);
+    },
+  );
+});
+
 describe('waitForCheckRuns', () => {
   test('polls until every check run is completed', async () => {
     const answers = [
@@ -604,17 +746,23 @@ describe('waitForCheckRuns', () => {
         return answer;
       },
     };
-    const checkRuns = await waitForCheckRuns({
+    const wait = await waitForCheckRuns({
       api: polling,
       scratchRepository: validName,
       ref: 'c0ffee',
       sleep: async () => {},
     });
     expect(reads).toBe(3);
-    expect(checkRuns).toEqual([{ name: 'build', status: 'completed', conclusion: 'success' }]);
+    expect(wait.stop).toBe('completed');
+    expect(wait.checkRuns).toEqual([{ name: 'build', status: 'completed', conclusion: 'success' }]);
   });
 
-  test('gives up after five attempts and reports what it has', async () => {
+  /**
+   * The bound elapsing is reported as its own outcome rather than as a list of unfinished checks
+   * that reads exactly like a list of finished ones. `assertCheckRunsPassed` turns it into a
+   * refusal; what is pinned here is that the poll says which bound it hit.
+   */
+  test('reports the completion bound elapsing rather than calling unfinished checks a result', async () => {
     let reads = 0;
     const { api } = fakeGitHub();
     const stuck: GitHubApi = {
@@ -624,14 +772,89 @@ describe('waitForCheckRuns', () => {
         return [{ name: 'build', status: 'in_progress', conclusion: null }];
       },
     };
-    const checkRuns = await waitForCheckRuns({
+    const wait = await waitForCheckRuns({
       api: stuck,
       scratchRepository: validName,
       ref: 'c0ffee',
+      appearanceAttempts: 2,
+      completionAttempts: 5,
       sleep: async () => {},
     });
     expect(reads).toBe(5);
-    expect(checkRuns).toEqual([{ name: 'build', status: 'in_progress', conclusion: null }]);
+    expect(wait.stop).toBe('never-completed');
+    expect(wait.checkRuns).toEqual([{ name: 'build', status: 'in_progress', conclusion: null }]);
+  });
+
+  /**
+   * The appearance bound is the short one and it is separate on purpose: a head commit carrying
+   * no check run at all is a workflow that never triggered, which is diagnosed differently from a
+   * workflow that is slow, and waiting the full completion bound to say so wastes half an hour on
+   * a question answered in the first minute.
+   */
+  test('stops at the shorter appearance bound when no check run ever appears', async () => {
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const silent: GitHubApi = {
+      ...api,
+      async readCheckRuns() {
+        reads += 1;
+        return [];
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: silent,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 3,
+      completionAttempts: 50,
+      sleep: async () => {},
+    });
+    expect(reads).toBe(3);
+    expect(wait.stop).toBe('never-appeared');
+    expect(wait.checkRuns).toEqual([]);
+  });
+
+  test('never applies a completion bound shorter than the appearance bound', async () => {
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const silent: GitHubApi = {
+      ...api,
+      async readCheckRuns() {
+        reads += 1;
+        return [];
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: silent,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 4,
+      completionAttempts: 1,
+      sleep: async () => {},
+    });
+    expect(reads).toBe(4);
+    expect(wait.stop).toBe('never-appeared');
+  });
+
+  test('reports the wait a live run would have spent, so a timeout can name it', async () => {
+    const { api } = fakeGitHub();
+    const stuck: GitHubApi = {
+      ...api,
+      async readCheckRuns() {
+        return [{ name: 'build', status: 'queued', conclusion: null }];
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: stuck,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 2,
+      completionAttempts: 7,
+      delayMilliseconds: 10_000,
+      sleep: async () => {},
+    });
+    // Six sleeps between seven reads, at ten seconds each.
+    expect(wait.waitedMilliseconds).toBe(60_000);
   });
 });
 
@@ -753,5 +976,57 @@ describe('runDryRunCommand', () => {
     expect(await runDryRunCommand(['--phase', 'nuke'], api)).toBe(1);
     expect(calls.deleted).toEqual([]);
     expect(calls.created).toEqual([]);
+  });
+
+  /**
+   * `--check-run-timeout-minutes` is the knob that exists so the completion bound can be set from
+   * an observed CI duration rather than from the default's estimate. A value that is not a
+   * duration has to be refused before the run starts: silently falling back to the default would
+   * let someone believe they had widened a bound they had not, and the run that then timed out
+   * would be diagnosed against a number nobody chose.
+   */
+  test.each([
+    ['a word', 'abc'],
+    ['zero', '0'],
+    ['a negative duration', '-5'],
+    ['an empty value', ''],
+  ])('refuses %s for --check-run-timeout-minutes before the run starts', async (_label, value) => {
+    const { api, calls } = fakeGitHub();
+    const original = process.stderr.write.bind(process.stderr);
+    let captured = '';
+    process.stderr.write = (chunk: unknown) => {
+      captured += String(chunk);
+      return true;
+    };
+    try {
+      const code = await runDryRunCommand(
+        [
+          '--phase',
+          'all',
+          '--target',
+          'weft',
+          '--scratch-repository',
+          validName,
+          '--work',
+          '/nonexistent/work',
+          '--scratch',
+          '/nonexistent/scratch',
+          '--corvidae-commit',
+          'abc123',
+          '--check-run-timeout-minutes',
+          value,
+        ],
+        api,
+      );
+      expect(code).toBe(1);
+    } finally {
+      process.stderr.write = original;
+    }
+    // The message names the option, so this cannot pass on some other refusal that also exits 1.
+    expect(captured).toContain('--check-run-timeout-minutes must be a positive number');
+    // And nothing reached GitHub, so no repository was created for a run that could not start.
+    expect(calls.coverageReads).toBe(0);
+    expect(calls.created).toEqual([]);
+    expect(calls.deleted).toEqual([]);
   });
 });

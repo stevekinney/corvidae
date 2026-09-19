@@ -53,6 +53,19 @@ export class DryRunError extends Error {}
 /** A refusal to proceed because the App installation cannot reach the scratch repository. */
 export class InstallationCoverageError extends DryRunError {}
 
+/** A check run on the head commit reached a conclusion that is not a pass. */
+export class CheckRunFailureError extends DryRunError {}
+
+/**
+ * CI never started, or never finished, inside the bound the run was willing to wait.
+ *
+ * Its own class rather than a flavour of `CheckRunFailureError` because the two diagnose
+ * different things: a failure means CI ran and said no, and this means CI never got as far as
+ * saying anything, which is a question about the workflows and the runners rather than about the
+ * transform.
+ */
+export class CheckRunTimeoutError extends DryRunError {}
+
 /** The base branch of the scratch repository. */
 const baseBranch = 'main';
 
@@ -177,8 +190,12 @@ export interface DryRunOptions {
    */
   probe?: typeof proveNpmPublishDryRun;
   installArguments?: readonly string[];
-  /** How many times the check runs are polled before the report takes what it has. */
-  checkRunAttempts?: number;
+  /** Reads allowed before a head commit carrying no check run fails the run. */
+  checkRunAppearanceAttempts?: number;
+  /** Reads allowed in total before an unfinished CI run fails the run. */
+  checkRunCompletionAttempts?: number;
+  /** How long the poll waits between reads. */
+  checkRunDelayMilliseconds?: number;
   /** How the poll waits between attempts. */
   sleep?: (milliseconds: number) => Promise<void>;
 }
@@ -357,33 +374,176 @@ export async function transformAndOpenPullRequest(options: {
   return { branch, changed: changed.length, pullRequest, outcome };
 }
 
+/** How long the poll waits between reads of the check runs on the head commit. */
+export const checkRunPollDelayMilliseconds = 10_000;
+
 /**
- * Wait for the target's CI to say something about the head commit.
+ * How long a head commit may carry no check run at all before that is the answer.
  *
- * A pull request opened a second ago has no check runs yet, so reading once and reporting
- * "none" would let a run claim CI was exercised when nothing had started. The poll is bounded at
- * five attempts and then reports whatever it has: a check that is still queued after five rounds
- * is a fact worth printing, not a reason to keep waiting.
+ * This bounds *did CI start*, which is a question about whether the target's workflows trigger on
+ * this pull request. Workflows register within seconds of a pull request opening, so two minutes
+ * is generous for the question being asked and short enough that a target whose workflows never
+ * trigger fails quickly instead of occupying the completion bound.
+ */
+export const checkRunAppearanceAttempts = 12;
+
+/**
+ * How long every registered check run may stay unfinished before that is the answer.
+ *
+ * This bounds *did CI pass*, which is a different question, and thirty minutes is an estimate
+ * rather than a measurement: the observed run registered twenty check runs — a build, a browser
+ * smoke test, an end-to-end matrix, a Postgres suite, coverage — over a change touching 945
+ * paths, and no live run has yet been watched to completion to say what that actually costs.
+ * `--check-run-timeout-minutes` exists so the number can be set from an observed duration rather
+ * than from this guess, and raising it is only correct when a target's CI genuinely takes longer:
+ * a longer wait is not a repair for a check that is stuck.
+ */
+export const checkRunCompletionAttempts = 180;
+
+/**
+ * The conclusions that count as a pass.
+ *
+ * `success` is the obvious one. `skipped` and `neutral` join it because GitHub's own required
+ * check semantics treat both as satisfying a required check, so refusing them here would make
+ * this driver stricter than the branch protection it exists to rehearse. Every other conclusion
+ * GitHub can report — `failure`, `cancelled`, `timed_out`, `action_required`, `stale` — fails, as
+ * does a completed check run carrying no conclusion at all, because a run that finished without
+ * saying how is not evidence that it passed.
+ */
+const passingConclusions = new Set(['success', 'skipped', 'neutral']);
+
+/** Why the poll stopped. */
+export type CheckRunWaitStop = 'completed' | 'never-appeared' | 'never-completed';
+
+export interface CheckRunWait {
+  stop: CheckRunWaitStop;
+  checkRuns: readonly CheckRunRecord[];
+  /** How long a live run would have spent waiting, which is what a timeout message reports. */
+  waitedMilliseconds: number;
+}
+
+/**
+ * Poll the check runs on the head commit until they settle, or until a bound says they will not.
+ *
+ * Two questions share this one poll and they are bounded separately, because they have different
+ * right answers. *Has CI started* is answered by the first check run appearing, and a head commit
+ * that still carries none after the appearance bound means the workflows did not trigger. *Did CI
+ * finish* is answered by every registered check run reaching `completed`, and that is a CI run's
+ * worth of waiting, not a handful of seconds.
+ *
+ * Neither bound elapsing is a shrug. This function reports which bound it hit and
+ * `assertCheckRunsPassed` turns both into refusals: a driver that stops waiting and calls the
+ * result a pass is the same false green as one that never looked at a conclusion.
  */
 export async function waitForCheckRuns(options: {
   api: GitHubApi;
   scratchRepository: string;
   ref: string;
-  attempts?: number;
+  /** Reads allowed before a head commit carrying no check run is the answer. */
+  appearanceAttempts?: number;
+  /** Reads allowed in total before an unfinished CI run is the answer. */
+  completionAttempts?: number;
   delayMilliseconds?: number;
   sleep?: (milliseconds: number) => Promise<void>;
-}): Promise<readonly CheckRunRecord[]> {
-  const attempts = options.attempts ?? 5;
-  const delay = options.delayMilliseconds ?? 10_000;
+}): Promise<CheckRunWait> {
+  const appearance = options.appearanceAttempts ?? checkRunAppearanceAttempts;
+  // Never shorter than the appearance bound: a completion bound inside it would report "still
+  // unfinished" about check runs the poll had not yet given itself time to see.
+  const completion = Math.max(options.completionAttempts ?? checkRunCompletionAttempts, appearance);
+  const delay = options.delayMilliseconds ?? checkRunPollDelayMilliseconds;
   const sleep = options.sleep ?? ((milliseconds) => Bun.sleep(milliseconds));
   let latest: readonly CheckRunRecord[] = [];
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  for (let attempt = 1; attempt <= completion; attempt += 1) {
     latest = await options.api.readCheckRuns(options.scratchRepository, options.ref);
-    const settled = latest.length > 0 && latest.every((check) => check.status === 'completed');
-    if (settled) return latest;
-    if (attempt < attempts) await sleep(delay);
+    const waitedMilliseconds = (attempt - 1) * delay;
+    if (latest.length > 0 && latest.every((check) => check.status === 'completed')) {
+      return { stop: 'completed', checkRuns: latest, waitedMilliseconds };
+    }
+    if (latest.length === 0 && attempt >= appearance) {
+      return { stop: 'never-appeared', checkRuns: latest, waitedMilliseconds };
+    }
+    if (attempt < completion) await sleep(delay);
   }
-  return latest;
+  return {
+    stop: 'never-completed',
+    checkRuns: latest,
+    waitedMilliseconds: (completion - 1) * delay,
+  };
+}
+
+function minutes(milliseconds: number): string {
+  const value = milliseconds / 60_000;
+  const rounded = Number.isInteger(value) ? value.toString() : value.toFixed(1);
+  return `${rounded} minute(s)`;
+}
+
+/**
+ * What a failing run leaves behind, said in the failure itself.
+ *
+ * Every refusal below throws out of `runDryRun` before the delete at the end of it, so the
+ * repository survives — and a surviving repository nobody is told about is just litter. The pull
+ * request URL is here because the acceptance criterion this driver serves is that a run URL is
+ * recorded, and on the failing path this message is the only place it can be recorded: the
+ * report is never built, so `describe` never prints it.
+ */
+function survivingRepository(
+  scratchRepository: string,
+  pullRequest: PullRequestRecord,
+): readonly string[] {
+  return [
+    `The scratch repository was kept rather than deleted, because a failed run is exactly the one worth reading: ${pullRequest.htmlUrl}`,
+    `Remove it once you have: bun scripts/mirror/dry-run.ts --phase delete --scratch-repository ${scratchRepository}`,
+  ];
+}
+
+/**
+ * Rule on what the poll saw, and refuse anything that is not a pass.
+ *
+ * This is the assertion the round trip was missing. `waitForCheckRuns` answers what CI said, and
+ * without something reading the conclusions a run in which every check completed `failure` was
+ * indistinguishable from one in which every check completed `success`: both returned a list, and
+ * the driver stored the list on the report and carried on to delete the evidence.
+ */
+export function assertCheckRunsPassed(options: {
+  wait: CheckRunWait;
+  scratchRepository: string;
+  pullRequest: PullRequestRecord;
+}): void {
+  const { wait, pullRequest } = options;
+  const surviving = survivingRepository(options.scratchRepository, pullRequest);
+  if (wait.stop === 'never-appeared') {
+    throw new CheckRunTimeoutError(
+      [
+        `No check run appeared on ${pullRequest.htmlUrl} within ${minutes(wait.waitedMilliseconds)}, so this run cannot claim CI passed: nothing ran.`,
+        `Either the target's workflows do not trigger on a pull request from this branch, or the App that opened it cannot dispatch them.`,
+        ...surviving,
+      ].join('\n'),
+    );
+  }
+  if (wait.stop === 'never-completed') {
+    const pending = wait.checkRuns.filter((check) => check.status !== 'completed');
+    throw new CheckRunTimeoutError(
+      [
+        `${pending.length} of ${wait.checkRuns.length} check run(s) on ${pullRequest.htmlUrl} were still unfinished after ${minutes(wait.waitedMilliseconds)}, so this run cannot claim CI passed:`,
+        ...pending.map((check) => `  ${check.name}: ${check.status}`),
+        `Raise --check-run-timeout-minutes only if this target's CI genuinely takes longer than that. A check that is stuck does not finish because the wait got longer.`,
+        ...surviving,
+      ].join('\n'),
+    );
+  }
+  const failed = wait.checkRuns.filter(
+    (check) => !passingConclusions.has(check.conclusion ?? 'none'),
+  );
+  if (failed.length === 0) return;
+  throw new CheckRunFailureError(
+    [
+      `${failed.length} of ${wait.checkRuns.length} check run(s) on ${pullRequest.htmlUrl} did not pass, so the transform this run produced does not build on the target's own CI:`,
+      ...failed.map(
+        (check) => `  ${check.name}: ${check.conclusion ?? 'completed without a conclusion'}`,
+      ),
+      ...surviving,
+    ].join('\n'),
+  );
 }
 
 /** The whole round trip, in the order the guards require. */
@@ -417,13 +577,25 @@ export async function runDryRun(options: DryRunOptions): Promise<DryRunReport> {
     branch: `mirror-dry-run-${scratchStamp(scratchRepository)}`,
     ...(options.installArguments ? { installArguments: options.installArguments } : {}),
   });
-  const checkRuns = await waitForCheckRuns({
+  const wait = await waitForCheckRuns({
     api: options.api,
     scratchRepository,
     ref: transformed.pullRequest.headSha,
-    ...(options.checkRunAttempts === undefined ? {} : { attempts: options.checkRunAttempts }),
+    ...(options.checkRunAppearanceAttempts === undefined
+      ? {}
+      : { appearanceAttempts: options.checkRunAppearanceAttempts }),
+    ...(options.checkRunCompletionAttempts === undefined
+      ? {}
+      : { completionAttempts: options.checkRunCompletionAttempts }),
+    ...(options.checkRunDelayMilliseconds === undefined
+      ? {}
+      : { delayMilliseconds: options.checkRunDelayMilliseconds }),
     ...(options.sleep ? { sleep: options.sleep } : {}),
   });
+  // Before the publish probe and, more to the point, before the delete below. Throwing here is
+  // what keeps the scratch repository: the delete is the last statement of this function, so a
+  // refusal never reaches it, and the pull request whose CI just failed is still there to read.
+  assertCheckRunsPassed({ wait, scratchRepository, pullRequest: transformed.pullRequest });
   const publish = await (options.probe ?? proveNpmPublishDryRun)({
     run,
     workDirectory: options.workDirectory,
@@ -440,7 +612,7 @@ export async function runDryRun(options: DryRunOptions): Promise<DryRunReport> {
     branch: transformed.branch,
     changed: transformed.changed,
     pullRequest: transformed.pullRequest,
-    checkRuns,
+    checkRuns: wait.checkRuns,
     publish,
     deleted: options.keep !== true,
   };
@@ -457,6 +629,25 @@ function required(argv: readonly string[], name: string): string {
   return value;
 }
 
+/**
+ * `--check-run-timeout-minutes`, as a count of polls.
+ *
+ * The bound is expressed in minutes on the command line because that is the unit the thing being
+ * bounded is measured in — how long this target's CI takes — and converted here rather than
+ * asking whoever runs this to divide by the poll interval themselves.
+ */
+function checkRunCompletionAttemptsFrom(argv: readonly string[]): number | undefined {
+  const supplied = readOption(argv, 'check-run-timeout-minutes');
+  if (supplied === undefined) return undefined;
+  const parsed = Number(supplied);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new DryRunError(
+      `--check-run-timeout-minutes must be a positive number of minutes, not ${JSON.stringify(supplied)}`,
+    );
+  }
+  return Math.ceil((parsed * 60_000) / checkRunPollDelayMilliseconds);
+}
+
 export const dryRunPhases = ['preflight', 'create', 'all', 'delete'] as const;
 
 export type DryRunPhase = (typeof dryRunPhases)[number];
@@ -468,16 +659,22 @@ function liveApi(): GitHubApi {
   });
 }
 
+/**
+ * The report of a run that got here, which is only ever a run whose CI passed.
+ *
+ * There is no "no check runs reported yet" branch any more, and that absence is the point: the
+ * only way past `assertCheckRunsPassed` is every check run completed with a passing conclusion,
+ * so a summary describing anything else would be describing a state this function cannot be
+ * reached in.
+ */
 function describe(report: DryRunReport): string {
-  const checks =
-    report.checkRuns.length === 0
-      ? '  check runs: none reported yet on the head commit'
-      : report.checkRuns
-          .map((check) => `  check run: ${check.name} ${check.status} ${check.conclusion ?? ''}`)
-          .join('\n');
+  const checks = report.checkRuns
+    .map((check) => `  check run: ${check.name} ${check.status} ${check.conclusion ?? ''}`)
+    .join('\n');
   return [
     `${report.scratchRepository}: pull request #${report.pullRequest.number} ${report.pullRequest.htmlUrl}`,
     `  branch ${report.branch} with ${report.changed} changed path(s)`,
+    `  ${report.checkRuns.length} check run(s) completed, all passing:`,
     checks,
     `  publish dry run: ${report.publish.publicName}@${report.publish.version} built (exit ${report.publish.buildExitCode}), linted by publint (exit ${report.publish.publintExitCode}) and attw (exit ${report.publish.typeResolutionExitCode}), then \`${report.publish.command}\` exited ${report.publish.exitCode} shipping ${report.publish.entries.length} file(s) covering ${report.publish.entryPoints.length} entry point(s)`,
     report.deleted
@@ -522,7 +719,11 @@ export async function runDryRunCommand(
     const seedRemote = readOption(argv, 'seed-remote');
     const packageName = readOption(argv, 'package');
     const version = readOption(argv, 'version');
+    const completionAttempts = checkRunCompletionAttemptsFrom(argv);
     const report = await runDryRun({
+      ...(completionAttempts === undefined
+        ? {}
+        : { checkRunCompletionAttempts: completionAttempts }),
       api,
       corvidaeRoot:
         readOption(argv, 'corvidae-root') ?? new URL('../../', import.meta.url).pathname,
