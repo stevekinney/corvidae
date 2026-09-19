@@ -85,8 +85,10 @@ function projectApprovalOperation(
   operation: Extract<ToolAction, { type: 'approval' }>['operation'],
 ): Record<string, unknown> {
   const source = ownFields(operation);
+  const filesTouched = source.filesTouched;
   const projected: Record<string, unknown> = { kind: source.kind };
-  if (source.filesTouched !== undefined) projected['filesTouched'] = [...source.filesTouched];
+  if (filesTouched !== undefined)
+    projected['filesTouched'] = projectStringArray(filesTouched, 'action.operation.filesTouched');
   if (source.argsPreview !== undefined) {
     projected['argsPreview'] = assertFiniteJSONValue(
       source.argsPreview,
@@ -95,6 +97,21 @@ function projectApprovalOperation(
   }
   if (source.kind === 'command') projected['command'] = source.command;
   if (source.kind === 'patch') projected['diff'] = source.diff;
+  return projected;
+}
+
+function projectStringArray(value: unknown, context: string): string[] {
+  if (!Array.isArray(value))
+    throw new Error(`Invalid chat stream event: ${context} is not an array`);
+  const projected: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const item: unknown = value[index];
+    if (item === undefined || !Object.hasOwn(value, index))
+      throw new Error(`Invalid chat stream event: ${context}[${index}] is missing`);
+    if (typeof item !== 'string')
+      throw new Error(`Invalid chat stream event: ${context}[${index}] must be a string`);
+    projected.push(item);
+  }
   return projected;
 }
 
@@ -127,7 +144,8 @@ export function projectChatToolAction(
   projected['operation'] = projectApprovalOperation(action.operation);
   const sandbox = projectApprovalSandbox(action.sandbox);
   if (sandbox !== undefined) projected['sandbox'] = sandbox;
-  if (action.env !== undefined) projected['env'] = [...action.env];
+  const env = action.env;
+  if (env !== undefined) projected['env'] = projectStringArray(env, 'action.env');
   if (action.snapshotId !== undefined) projected['snapshotId'] = action.snapshotId;
   if (action.expiresAt !== undefined) projected['expiresAt'] = action.expiresAt;
   if (action.editableArgs !== undefined) projected['editableArgs'] = action.editableArgs;

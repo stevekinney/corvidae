@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { expectRejected } from './stream-event-codec-test-helpers.ts';
+import { expectRejected, hostileEvent } from './stream-event-codec-test-helpers.ts';
 import {
   decodeChatStreamEvent,
   decodeChatStreamEvents,
@@ -73,6 +73,60 @@ describe('chat stream event codec', () => {
 
     expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual(event);
   });
+
+  test.each([
+    {
+      name: 'filesTouched string',
+      operationPatch: { filesTouched: 'abc' },
+      error: /action\.operation\.filesTouched is not an array/,
+    },
+    {
+      name: 'filesTouched object',
+      operationPatch: { filesTouched: { 0: 'file.ts', length: 1 } },
+      error: /action\.operation\.filesTouched is not an array/,
+    },
+    {
+      name: 'filesTouched non-string item',
+      operationPatch: { filesTouched: ['file.ts', 42] },
+      error: /action\.operation\.filesTouched\[1\] must be a string/,
+    },
+    {
+      name: 'env string',
+      actionPatch: { env: 'TOKEN' },
+      error: /action\.env is not an array/,
+    },
+    {
+      name: 'env object',
+      actionPatch: { env: { 0: 'TOKEN=1', length: 1 } },
+      error: /action\.env is not an array/,
+    },
+    {
+      name: 'env non-string item',
+      actionPatch: { env: ['TZ=UTC', 7] },
+      error: /action\.env\[1\] must be a string/,
+    },
+  ])(
+    'rejects malformed approval array metadata before encoding: $name',
+    ({ actionPatch, operationPatch, error }) => {
+      const action = {
+        ...completeApprovalAction,
+        ...actionPatch,
+        operation: {
+          ...completeApprovalAction.operation,
+          ...operationPatch,
+        },
+      };
+      const event = hostileEvent({
+        type: 'tool_result',
+        callId: 'call-approval',
+        outcome: 'action_required',
+        content: 'Approve workspace edits?',
+        action,
+      });
+
+      expect(() => encodeChatStreamEvent(event)).toThrow(error);
+    },
+  );
 
   test('preserves a JSON-safe signed pending approval extension', () => {
     const event = {

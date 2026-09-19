@@ -129,6 +129,33 @@ describe('tool.* members key by toolCallId (CIN-507)', () => {
     expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual(event);
   });
 
+  test('rejects malformed nested approval array metadata before encoding', () => {
+    const event = hostileEvent({
+      type: 'tool.settled',
+      toolCallId: 'call-1',
+      toolName: 'write_file',
+      result: {
+        callId: 'call-1',
+        outcome: 'action_required',
+        content: 'Approve file write?',
+        action: {
+          ...completeApprovalAction,
+          env: ['TZ=UTC', false],
+          operation: {
+            ...completeApprovalAction.operation,
+            filesTouched: ['file.ts', null],
+          },
+        },
+      },
+      wireVersion: 1,
+      sequence: 4,
+    });
+
+    expect(() => encodeChatStreamEvent(event)).toThrow(
+      /action\.operation\.filesTouched\[1\] must be a string/,
+    );
+  });
+
   test('rejects tool.settled when result is not a valid ChatToolResult', () => {
     expect(() =>
       decodeChatStreamEvent({

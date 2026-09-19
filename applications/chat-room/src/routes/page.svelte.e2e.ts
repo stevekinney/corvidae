@@ -271,5 +271,10 @@ test('a forged approvalToken is rejected by the real resume route', async ({ pag
   // never rolled back. Consumer-side behavior, not a Chat defect — Chat rolls
   // back on a REJECTED adapter call, and this adapter does not reject.
   await expect(page.getByTestId('demo-error')).not.toBeEmpty();
-  await expect(chat.locator('.tool-call-group')).toHaveAttribute('data-status', 'action-required');
+  const toolActivity = chat.getByRole('region', { name: 'Called 1 tool' });
+  await expect(toolActivity).toContainText('remember_note: Action required');
+  await expect(toolActivity).toContainText('remember_note Waiting approval');
+  await expect(
+    chat.getByRole('article', { name: 'Approval required for remember_note' }),
+  ).toBeVisible();
 });
