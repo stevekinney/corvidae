@@ -5,7 +5,14 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { parseFrontMatter, stringifyFrontMatter } from './index';
+import { parseFrontMatter, serializeYaml, stringifyFrontMatter } from './index';
+
+function assertPublicSerializeYamlOptions() {
+  // @ts-expect-error keyOrder is recovered privately from original raw front matter.
+  serializeYaml({ first: 'one' }, { keyOrder: ['first'] });
+}
+
+void assertPublicSerializeYamlOptions;
 
 describe('parseFrontMatter', () => {
   test('parses valid YAML front matter', () => {

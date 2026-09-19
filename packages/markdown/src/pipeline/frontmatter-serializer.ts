@@ -2,9 +2,7 @@ import { JSON_SCHEMA, load } from 'js-yaml';
 import { sortKeys as sortObjectKeys } from '../utilities/sort-keys.js';
 import type { FrontMatterSerializeOptions } from './types.js';
 
-type YamlSerializeOptions = Pick<FrontMatterSerializeOptions, 'sortKeys'> & {
-  keyOrder?: string[];
-};
+type YamlSerializeOptions = Pick<FrontMatterSerializeOptions, 'sortKeys'>;
 
 type ListenerNode = {
   children: ListenerNode[];
@@ -67,12 +65,11 @@ export function stringifyFrontMatter(
   } else {
     // Generate new YAML. Deterministic top-level key ordering remains the
     // default; edit flows can opt into the parsed mapping's insertion order.
-    const serializeOptions: YamlSerializeOptions = { sortKeys };
     const keyOrder =
       !sortKeys && originalRaw ? recoverTopLevelKeyOrder(originalRaw, originalData) : undefined;
-    if (keyOrder) serializeOptions.keyOrder = keyOrder;
+    const keys = getOrderedKeys(data, { sortKeys }, keyOrder);
 
-    yamlContent = serializeYaml(data, serializeOptions);
+    yamlContent = serializeYamlWithOrderedKeys(data, keys);
   }
 
   // Combine front matter and body
@@ -108,9 +105,12 @@ export function serializeYaml(
   data: Record<string, unknown>,
   options: YamlSerializeOptions = {},
 ): string {
-  const lines: string[] = [];
   const keys = getOrderedKeys(data, options);
+  return serializeYamlWithOrderedKeys(data, keys);
+}
 
+function serializeYamlWithOrderedKeys(data: Record<string, unknown>, keys: string[]): string {
+  const lines: string[] = [];
   for (const key of keys) {
     const value = data[key];
     lines.push(formatYamlLine(key, value));
@@ -216,11 +216,15 @@ function formatValue(value: unknown): string {
   return JSON.stringify(value) ?? 'null';
 }
 
-function getOrderedKeys(data: Record<string, unknown>, options: YamlSerializeOptions): string[] {
+function getOrderedKeys(
+  data: Record<string, unknown>,
+  options: YamlSerializeOptions,
+  keyOrder?: string[],
+): string[] {
   const keys = Object.keys(data);
-  if (options.sortKeys === false && options.keyOrder) {
+  if (options.sortKeys === false && keyOrder) {
     const seenKeys = new Set<string>();
-    const orderedKeys = options.keyOrder.filter((key) => {
+    const orderedKeys = keyOrder.filter((key) => {
       if (!Object.hasOwn(data, key) || seenKeys.has(key)) return false;
       seenKeys.add(key);
       return true;
