@@ -389,7 +389,7 @@ Server rejection of a malformed worker-to-server frame after the WebSocket is op
 | `code` | `"invalid_json" \| "invalid_message" \| "unknown_message_type" \| "registration_required"` | Yes | Machine-readable protocol failure. |
 | `message` | string | Yes | Human-readable diagnostic. |
 
-#### `taskResultAck`
+### `taskResultAck`
 
 Server acknowledgement of a worker's `taskResult` (COR-240, v4). Sent after the durable task ledger has resolved the submission — after a hard rejection (unknown operation, stale attempt, conflicting content under one attempt token, or a queued/newer attempt already in progress) the worker instead receives `protocolError`, exactly as before v4.
 
