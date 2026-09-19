@@ -111,7 +111,7 @@
     getMessageRoleLabel,
     getMessageText,
   } from '../utilities/utilities.ts';
-  import { Pencil, RotateCcw, CopyButton } from '@corvidae/cinder';
+  import { Button, Pencil, RotateCcw, CopyButton } from '@corvidae/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
 
@@ -239,11 +239,28 @@
   );
   const isFailed = $derived(deliveryStatus === 'failed');
 
+  const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  function formatMessageTimestamp(value: unknown): string | undefined {
+    if (typeof value !== 'string' || value.length === 0) return undefined;
+    const timestamp = new Date(value);
+    if (Number.isNaN(timestamp.getTime())) return undefined;
+    return messageTimestampFormatter.format(timestamp);
+  }
+
   // Derived values for content processing. `textContent` drives message chrome
   // (copy, edit, the Show more/less control) — the rendered body itself flows
   // through deriveMessageParts + the parts renderer below.
   const textContent = $derived(getMessageText(message));
   const roleLabel = $derived(getMessageRoleLabel(message));
+  const formattedCreatedAt = $derived(formatMessageTimestamp(message.createdAt));
+  const createdAtValue = $derived(
+    typeof message.createdAt === 'string' && formattedCreatedAt ? message.createdAt : undefined,
+  );
+  const hasMetadata = $derived(Boolean(formattedCreatedAt || status));
 
   // Role detection — kept for wrapper-level layout + a11y (data-tool-pair,
   // aria-label). The body branches that used to live here are now derived parts.
@@ -354,15 +371,11 @@
     data-message-role={message.role}
     aria-labelledby={isToolCall && toolPair ? undefined : roleId}
     aria-label={isToolCall && toolPair ? `Tool call: ${toolPair.call.name}` : undefined}
+    aria-busy={streaming ? 'true' : undefined}
     {tabindex}
   >
     <header class="chat-message-header">
       <span id={roleId} class="chat-message-role">{roleLabel}</span>
-      {#if status}
-        <div class="chat-message-status">
-          {@render status()}
-        </div>
-      {/if}
     </header>
 
     <div class="chat-message-body">
@@ -379,12 +392,24 @@
             aria-label="Edit message content"
             rows={Math.min(Math.max(editContent.split('\n').length, 2), 10)}></textarea>
           <div class="chat-message-edit-actions">
-            <button type="button" class="chat-message-edit-save" onclick={saveEdit}>
-              Save & Resend
-            </button>
-            <button type="button" class="chat-message-edit-cancel" onclick={cancelEditing}>
+            <Button
+              type="button"
+              class="chat-message-edit-save"
+              size="xs"
+              variant="primary"
+              onclick={saveEdit}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              class="chat-message-edit-cancel"
+              size="xs"
+              variant="secondary"
+              onclick={cancelEditing}
+            >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       {:else}
@@ -427,15 +452,35 @@
     {#if isFailed && onretry}
       <div class="chat-message-failed-actions">
         <span class="chat-message-failed-label" role="alert">Failed to send</span>
-        <button type="button" class="chat-message-retry" onclick={() => onretry(message.id)}>
+        <Button
+          type="button"
+          class="chat-message-retry"
+          size="xs"
+          variant="ghost-danger"
+          iconOnly
+          label="Retry"
+          onclick={() => onretry(message.id)}
+        >
           <RotateCcw class="cinder-icon-xs" />
-          Retry
-        </button>
+        </Button>
       </div>
     {/if}
   </article>
 
-  {#if actions || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onrollback)}
+  {#if hasMetadata}
+    <div class="chat-message-metadata">
+      {#if createdAtValue && formattedCreatedAt}
+        <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+      {/if}
+      {#if status}
+        <div class="chat-message-status">
+          {@render status()}
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  {#if !isEditing && (actions || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onrollback))}
     <footer class="chat-message-footer" role="none">
       <div class="chat-message-actions" role="group" aria-label="Message actions">
         {#if actions}
@@ -580,9 +625,12 @@
 
   .chat-message-wrapper[data-role='assistant'] {
     margin-inline-end: auto;
+    inline-size: min(100%, var(--cinder-chat-message-max-width, 48rem));
   }
 
   .chat-message-wrapper[data-role='assistant'] .chat-message {
+    box-sizing: border-box;
+    inline-size: min(100%, var(--cinder-chat-message-max-width, 48rem));
     background: var(--cinder-surface);
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg) var(--cinder-radius-lg) var(--cinder-radius-lg)
@@ -735,6 +783,38 @@
     border: 0;
   }
 
+  .chat-message-metadata {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-height: 1rem;
+    margin-block-start: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-1);
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    line-height: 1.2;
+  }
+
+  .chat-message-metadata time {
+    opacity: 1;
+    transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .chat-message-metadata time {
+      opacity: 0;
+    }
+
+    .chat-message-wrapper:hover .chat-message-metadata time,
+    .chat-message-wrapper:focus-within .chat-message-metadata time {
+      opacity: 1;
+    }
+  }
+
+  .chat-message-wrapper[data-role='user'] .chat-message-metadata {
+    justify-content: flex-end;
+  }
+
   .chat-message-status {
     display: flex;
     align-items: center;
@@ -804,33 +884,23 @@
     font-weight: var(--cinder-font-medium);
   }
 
-  .chat-message-retry {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
-    padding: var(--cinder-space-0-5) var(--cinder-space-2);
-    min-height: var(--cinder-touch-target-min);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-status-danger-solid);
-    background: transparent;
-    border: 1px solid var(--cinder-status-danger-border);
-    border-radius: var(--cinder-radius-sm);
-    cursor: pointer;
-    transition:
-      background var(--cinder-duration-fast) var(--cinder-ease-standard),
-      border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  :global(.chat-message-retry) {
+    inline-size: 2rem;
+    min-inline-size: 2rem;
+    max-inline-size: 2rem;
+    block-size: 2rem;
+    min-block-size: 2rem;
+    padding: 0;
   }
 
-  @media (hover: hover) {
-    .chat-message-retry:hover {
-      background: var(--cinder-status-danger-background);
-      border-color: var(--cinder-status-danger-solid);
-    }
-  }
-
-  .chat-message-retry:focus-visible {
+  .chat-message-retry:focus-visible,
+  .chat-message-edit-save:focus-visible,
+  .chat-message-edit-cancel:focus-visible,
+  :global(.chat-message-retry:focus-visible),
+  :global(.chat-message-edit-save:focus-visible),
+  :global(.chat-message-edit-cancel:focus-visible) {
     outline: var(--cinder-ring-width) solid transparent;
+    outline-offset: var(--cinder-ring-offset);
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
@@ -1081,57 +1151,6 @@
     align-items: center;
   }
 
-  .chat-message-edit-save {
-    padding: var(--cinder-space-1) var(--cinder-space-3);
-    min-height: var(--cinder-touch-target-min);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-accent-contrast);
-    background: var(--cinder-accent-solid);
-    border: none;
-    border-radius: var(--cinder-radius-sm);
-    cursor: pointer;
-    transition: background var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  @media (hover: hover) {
-    .chat-message-edit-save:hover {
-      background: color-mix(in oklch, var(--cinder-accent-solid), black 15%);
-    }
-  }
-
-  .chat-message-edit-save:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
-  .chat-message-edit-cancel {
-    padding: var(--cinder-space-1) var(--cinder-space-3);
-    min-height: var(--cinder-touch-target-min);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-text-muted);
-    background: transparent;
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-sm);
-    cursor: pointer;
-    transition:
-      background var(--cinder-duration-fast) var(--cinder-ease-standard),
-      color var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  @media (hover: hover) {
-    .chat-message-edit-cancel:hover {
-      color: var(--cinder-text-default);
-      background: var(--cinder-surface-hover);
-    }
-  }
-
-  .chat-message-edit-cancel:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
   /* Responsive sizing for narrow viewports */
   @media (max-width: 480px) {
     .chat-message-wrapper {
@@ -1157,9 +1176,12 @@
     .chat-message:focus-visible,
     .chat-message-expand:focus-visible,
     .chat-message-retry:focus-visible,
-    :global(.chat-message-action-button:focus-visible),
     .chat-message-edit-save:focus-visible,
-    .chat-message-edit-cancel:focus-visible {
+    .chat-message-edit-cancel:focus-visible,
+    :global(.chat-message-retry:focus-visible),
+    :global(.chat-message-action-button:focus-visible),
+    :global(.chat-message-edit-save:focus-visible),
+    :global(.chat-message-edit-cancel:focus-visible) {
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: 3px;
     }

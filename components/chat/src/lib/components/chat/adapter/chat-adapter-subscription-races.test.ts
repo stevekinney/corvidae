@@ -188,7 +188,7 @@ describe('Chat adapter subscription replacement races', () => {
       secondHandlers.onStreamBegin(assistantId);
       secondHandlers.onTokenPush('live');
       flushFrames();
-      const liveCursor = view.target.querySelector('.message-content-cursor');
+      const liveCursor = view.target.querySelector('.chat-message-streaming-progress');
       expect(liveCursor).not.toBeNull();
       expect(view.target.querySelector('.message-content-streaming')?.textContent).toContain(
         'live',
@@ -204,10 +204,10 @@ describe('Chat adapter subscription replacement races', () => {
       expect(view.target.querySelector('.message-content-streaming')?.textContent).toBe(liveText);
       oldHandlers.onStreamEnd();
       flushSync();
-      expect(view.target.querySelector('.message-content-cursor')).not.toBeNull();
+      expect(view.target.querySelector('.chat-message-streaming-progress')).not.toBeNull();
 
       oldHandlers.onMessage(staleMessage);
-      oldHandlers.onTypingChange(true);
+      oldHandlers.onTypingChange([{ id: 'adapter-alice', name: 'Alice' }]);
       oldHandlers.onReadReceipt({ messageId: userId, readAt: new Date().toISOString() });
       flushSync();
       expect(pushed).toHaveLength(0);

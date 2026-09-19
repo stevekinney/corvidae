@@ -23,7 +23,7 @@ export type ChatAdapterSubscriptionOptions = {
   getAdapter: () => ChatAdapter | undefined;
   getConversationId: () => string;
   getOnMessage: () => ((message: Message) => void) | undefined;
-  getOnTypingChange: () => ((isTyping: boolean) => void) | undefined;
+  getOnTypingChange: () => ChatPushHandlers['onTypingChange'] | undefined;
   getOnReadReceipt: () => ChatPushHandlers['onReadReceipt'] | undefined;
   getStreamingActions: () => StreamingActions;
   getTypingActions: () => TypingActions;
@@ -42,10 +42,10 @@ export function useChatAdapterSubscription(options: ChatAdapterSubscriptionOptio
       onMessage: (message) => {
         if (active) untrack(() => options.getOnMessage())?.(message);
       },
-      onTypingChange: (isTyping) => {
+      onTypingChange: (participants) => {
         if (!active) return;
-        options.getTypingActions().handleAdapterTypingChange(isTyping);
-        untrack(() => options.getOnTypingChange())?.(isTyping);
+        options.getTypingActions().handleAdapterTypingChange(participants);
+        untrack(() => options.getOnTypingChange())?.(participants);
       },
       onReadReceipt: (event) => {
         if (!active) return;

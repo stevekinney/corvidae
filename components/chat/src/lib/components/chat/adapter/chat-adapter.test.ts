@@ -22,7 +22,7 @@ import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@corvidae/testing';
 import { SubscribeEventLog } from '../../../test/subscribe-event-log.svelte.ts';
-import type { ChatRowContext } from '../chat.types.ts';
+import type { ChatRowContext, TypingParticipant } from '../chat.types.ts';
 import type { ConversationHistory, Message, MessageInput } from '../conversation-model.ts';
 import type { ChatAdapter, ChatPushHandlers } from './chat-adapter.ts';
 
@@ -1632,14 +1632,14 @@ describe('ChatAdapter — subscribe lifecycle', () => {
       captured!.onStreamBegin('a1');
       captured!.onTokenPush('streaming…');
       flushFrames();
-      expect(target.querySelector('.message-content-cursor')).not.toBeNull();
+      expect(target.querySelector('.chat-message-streaming-progress')).not.toBeNull();
 
       // Switch to a different conversation whose a1 is NOT streaming. The effect
       // teardown must clear the stream so the cursor is gone and the new row shows
       // its own content, not the leaked stream buffer.
       instance.setConversation(withAssistant('conversation-b'));
       flushSync();
-      expect(target.querySelector('.message-content-cursor')).toBeNull();
+      expect(target.querySelector('.chat-message-streaming-progress')).toBeNull();
       expect(target.textContent).toContain('final content');
 
       unmount(instance);
@@ -1798,7 +1798,7 @@ describe('ChatAdapter — subscribe lifecycle', () => {
       // onStreamEnd clears the buffer; the message keeps its own (empty) content.
       captured!.onStreamEnd();
       flushSync();
-      expect(container.querySelector('.message-content-cursor')).toBeNull();
+      expect(container.querySelector('.chat-message-streaming-progress')).toBeNull();
 
       unmount(instance);
     } finally {
@@ -1819,7 +1819,7 @@ describe('ChatAdapter — push forwarding', () => {
       },
     };
     const pushedMessages: Message[] = [];
-    let typing: boolean | undefined;
+    let typing: TypingParticipant[] | undefined;
     const receipts: Array<{ messageId: string; readAt: string }> = [];
 
     const conversation = failedConversation('forward-conversation');
@@ -1828,8 +1828,8 @@ describe('ChatAdapter — push forwarding', () => {
       conversation,
       adapter,
       onpushmessage: (message: Message) => pushedMessages.push(message),
-      ontypingchange: (isTyping: boolean) => {
-        typing = isTyping;
+      ontypingchange: (participants: TypingParticipant[]) => {
+        typing = participants;
       },
       onreadreceipt: (event: { messageId: string; readAt: string }) => receipts.push(event),
     });
@@ -1844,11 +1844,11 @@ describe('ChatAdapter — push forwarding', () => {
       hidden: false,
     };
     captured!.onMessage(incoming);
-    captured!.onTypingChange(true);
+    captured!.onTypingChange([{ id: 'adapter-alice', name: 'Alice' }]);
     captured!.onReadReceipt({ messageId: 'failed-1', readAt: '2026-06-02T00:01:00.000Z' });
 
     expect(pushedMessages).toEqual([incoming]);
-    expect(typing).toBe(true);
+    expect(typing).toEqual([{ id: 'adapter-alice', name: 'Alice' }]);
     expect(receipts).toEqual([{ messageId: 'failed-1', readAt: '2026-06-02T00:01:00.000Z' }]);
 
     // The rendered transcript is unchanged — Chat forwarded, it did not append.

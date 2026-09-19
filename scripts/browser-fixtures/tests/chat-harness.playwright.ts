@@ -14,7 +14,14 @@
  * streaming cadence reliably observable.
  */
 import { loadManifest, runAxe, THEME_STORAGE_KEY } from '@corvidae/testing';
-import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Browser,
+  type BrowserContextOptions,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import { PNG } from 'pngjs';
 import { environmentConfiguration } from '../environment-configuration.ts';
 import { fixtureRoute } from './overlay-fixture.ts';
@@ -39,16 +46,21 @@ async function openHarness(
     colorScheme?: 'dark' | 'light';
     viewport?: { width: number; height: number };
     hasTouch?: boolean;
+    locale?: string;
+    timezoneId?: string;
   },
 ): Promise<{ page: Page; harness: Locator; dispose: () => Promise<void> }> {
   const colorScheme = options?.colorScheme ?? 'dark';
-  const context = await browser.newContext({
+  const contextOptions: BrowserContextOptions = {
     baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
     colorScheme,
     reducedMotion: options?.reducedMotion ?? 'reduce',
     viewport: options?.viewport ?? { width: 1280, height: 900 },
     hasTouch: options?.hasTouch ?? false,
-  });
+  };
+  if (options?.locale !== undefined) contextOptions.locale = options.locale;
+  if (options?.timezoneId !== undefined) contextOptions.timezoneId = options.timezoneId;
+  const context = await browser.newContext(contextOptions);
   // A failure below (bad route, load regression, the harness never becoming
   // visible) would otherwise leak this context: nothing else here closes a
   // context whose owning `openHarness` call never returned. Close it on any
@@ -170,6 +182,56 @@ async function expectNoInternalHorizontalOverflow(locator: Locator, label: strin
       { message: `${label} must not hide horizontal overflow` },
     )
     .toBeLessThanOrEqual(1);
+}
+
+async function useHarnessAdapter(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessUseAdapter?: () => void;
+    };
+    harnessWindow.corvidaeChatHarnessUseAdapter?.();
+  });
+}
+
+async function pushHarnessTypingSnapshot(
+  page: Page,
+  participants: Array<{ id: string; name: string }>,
+): Promise<void> {
+  await page.evaluate((nextParticipants) => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessPushTypingSnapshot?: (
+        participants: Array<{ id: string; name: string }>,
+      ) => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessPushTypingSnapshot === undefined) {
+      throw new Error('Chat harness typing push hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessPushTypingSnapshot(nextParticipants);
+  }, participants);
+}
+
+async function setHarnessDirectTypingParticipants(
+  page: Page,
+  participants: Array<{ id: string; name: string }> | undefined,
+): Promise<void> {
+  await page.evaluate((nextParticipants) => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessSetDirectTypingParticipants?: (
+        participants: Array<{ id: string; name: string }> | undefined,
+      ) => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants === undefined) {
+      throw new Error('Chat harness direct typing hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants(nextParticipants);
+  }, participants);
+}
+
+async function renderedBox(locator: Locator, label: string) {
+  const box = await locator.boundingBox();
+  expect(box, `${label} must have a rendered box`).not.toBeNull();
+  if (box === null) throw new Error(`${label} did not render.`);
+  return box;
 }
 
 function expectContainedWithin(
@@ -322,6 +384,58 @@ test.describe('chat harness — typing indicator', () => {
       await dispose();
     }
   });
+
+  test('adapter typing identity replaces the empty transcript state', async ({ browser }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      viewport: { width: 512, height: 900 },
+    });
+    try {
+      await useHarnessAdapter(page);
+      await expect.poll(() => page.evaluate(() => document.readyState)).toBe('complete');
+      await harness.locator('[data-testid="clear"]').click();
+      await expect(harness.locator('.chat-empty')).toBeVisible();
+
+      await pushHarnessTypingSnapshot(page, [
+        { id: 'p1', name: 'Old name' },
+        { id: 'p1', name: 'Avery' },
+      ]);
+      const typingLabel = harness.locator('.chat-participant-typing-label');
+      await expect(typingLabel).toHaveText('Avery is typing…');
+      await expect(harness.locator('.chat-empty')).toHaveCount(0);
+      await expect(harness.locator('#harness-chat')).not.toContainText('Someone');
+
+      await pushHarnessTypingSnapshot(page, [
+        { id: 'p1', name: 'Avery' },
+        { id: 'p2', name: 'Blake' },
+      ]);
+      await expect(typingLabel).toHaveText('Avery and Blake are typing…');
+
+      await pushHarnessTypingSnapshot(page, [
+        { id: 'p2', name: 'Blake' },
+        { id: 'p3', name: 'Casey' },
+        { id: 'p4', name: 'Devon' },
+      ]);
+      await expect(typingLabel).toHaveText('3 people are typing…');
+
+      await pushHarnessTypingSnapshot(page, [{ id: 'p2', name: 'Blake' }]);
+      await expect(typingLabel).toHaveText('Blake is typing…');
+      await expect(harness.locator('#harness-chat')).not.toContainText('Avery is typing');
+
+      await setHarnessDirectTypingParticipants(page, [{ id: 'direct', name: 'Dana' }]);
+      await expect(typingLabel).toHaveText('Dana is typing…');
+      await pushHarnessTypingSnapshot(page, [{ id: 'adapter', name: 'Elliot' }]);
+      await expect(typingLabel).toHaveText('Dana is typing…');
+
+      await setHarnessDirectTypingParticipants(page, undefined);
+      await expect(typingLabel).toHaveText('Elliot is typing…');
+      await pushHarnessTypingSnapshot(page, []);
+      await expect(harness.locator('.chat-participant-typing-indicator')).toHaveCount(0);
+      await expect(harness.locator('.chat-empty')).toBeVisible();
+    } finally {
+      await dispose();
+    }
+  });
 });
 
 for (const mechanism of ['imperative', 'content-mutation'] as const) {
@@ -366,6 +480,59 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
     });
   });
 }
+
+test.describe('chat harness — streaming presentation', () => {
+  for (const width of [320, 512, 848] as const) {
+    test(`partial streaming uses one stable in-message progress surface at ${width}px`, async ({
+      browser,
+    }) => {
+      const { page, harness, dispose } = await openHarness(browser, {
+        colorScheme: width === 512 ? 'dark' : 'light',
+        viewport: { width, height: 1100 },
+      });
+      try {
+        await harness
+          .locator('#harness-reply-mode')
+          .getByText('Streaming', { exact: true })
+          .click();
+        await harness
+          .locator('#harness-stream-mechanism')
+          .getByText('Imperative', { exact: true })
+          .click();
+        await harness.locator('[data-testid="send-reply"]').click();
+
+        const assistant = harness.locator('[data-role="assistant"]').last();
+        const message = assistant.locator('.chat-message');
+        await expect.poll(() => trimmedLength(assistant), { timeout: 3_000 }).toBeGreaterThan(0);
+        await expect(harness.locator('.chat-typing-indicator')).toHaveCount(0);
+        await expect(message).toHaveAttribute('aria-busy', 'true');
+        const progress = assistant.locator('.chat-message-streaming-progress');
+        await expect(progress).toBeVisible();
+        await expect(progress).toHaveAttribute('aria-hidden', 'true');
+        const partialBox = await renderedBox(message, 'streaming assistant message');
+        const partialWidth = partialBox.width;
+
+        await expect(harness.locator('.chat-input-send[data-stop]')).toHaveCount(0, {
+          timeout: 5_000,
+        });
+        await expect(progress).toHaveCount(0);
+        await expect(message).not.toHaveAttribute('aria-busy', 'true');
+        const finalBox = await renderedBox(message, 'final assistant message');
+        const finalWidth = finalBox.width;
+        expect(Math.abs(partialWidth - finalWidth)).toBeLessThanOrEqual(1);
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              Math.ceil(document.documentElement.scrollHeight - window.innerHeight),
+            ),
+          )
+          .toBeLessThanOrEqual(1);
+      } finally {
+        await dispose();
+      }
+    });
+  }
+});
 
 test.describe('chat harness — tool calls', () => {
   for (const { outcome, status } of [
@@ -529,6 +696,54 @@ test.describe('chat harness — snippets', () => {
   });
 });
 
+test.describe('chat harness — message metadata', () => {
+  test('message metadata reveals timestamps without receipt overlap', async ({ browser }) => {
+    for (const { colorScheme, hasTouch } of [
+      { colorScheme: 'light' as const, hasTouch: false },
+      { colorScheme: 'dark' as const, hasTouch: true },
+    ]) {
+      const { harness, dispose } = await openHarness(browser, {
+        colorScheme,
+        hasTouch,
+        locale: 'en-US',
+        timezoneId: 'UTC',
+        viewport: { width: hasTouch ? 320 : 848, height: 900 },
+      });
+      try {
+        await harness.locator('[data-testid="seed-metadata"]').click();
+        const wrapper = harness.locator('[data-role="user"]').filter({
+          hasText: 'Timestamped message with enough text',
+        });
+        await expect(wrapper).toHaveCount(1);
+        const metadata = wrapper.locator('.chat-message-metadata');
+        const timestamp = metadata.locator('time');
+        const receipt = metadata.locator('.chat-read-receipt');
+        await expect(timestamp).toHaveAttribute('datetime', '2026-01-01T12:34:00Z');
+        await expect(timestamp).toHaveText('12:34 PM');
+        await expect(receipt).toHaveAccessibleName('Read by Avery');
+
+        if (!hasTouch) {
+          await expect(timestamp).not.toBeVisible();
+          await wrapper.locator('.chat-message').hover();
+        }
+        await expect(timestamp).toBeVisible();
+
+        const [messageBox, metadataBox, receiptBox, bodyBox] = await Promise.all([
+          renderedBox(wrapper.locator('.chat-message'), 'metadata message bubble'),
+          renderedBox(metadata, 'metadata row'),
+          renderedBox(receipt, 'read receipt'),
+          renderedBox(wrapper.locator('.chat-message-body'), 'message body'),
+        ]);
+        expect(metadataBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height - 1);
+        expect(receiptBox.y).toBeGreaterThanOrEqual(metadataBox.y - 1);
+        expect(bodyBox.y + bodyBox.height).toBeLessThanOrEqual(metadataBox.y + 1);
+      } finally {
+        await dispose();
+      }
+    }
+  });
+});
+
 test.describe('chat harness — search', () => {
   test('searching a known repeated token reports the match count and navigates', async ({
     browser,
@@ -576,6 +791,59 @@ test.describe('chat harness — copy, edit, retry', () => {
       await expect(retry).toBeVisible();
       await retry.click();
       await expectLoggedEvent(harness, 'onretry');
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('message retry and edit actions stay reachable and compact', async ({ browser }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'dark',
+      viewport: { width: 512, height: 900 },
+    });
+    try {
+      await harness.locator('[data-testid="seed-failed"]').click();
+      const failed = harness.locator('[data-role="user"]').filter({
+        hasText: 'This message failed to send.',
+      });
+      const retry = failed.getByRole('button', { name: 'Retry' });
+      await expect(retry).toBeVisible();
+      await retry.hover();
+      const retryBox = await renderedBox(retry, 'retry action');
+      expect(retryBox.width).toBeLessThanOrEqual(36);
+      expect(retryBox.height).toBeLessThanOrEqual(36);
+      await retry.focus();
+      await page.keyboard.press('Enter');
+      await expectLoggedEvent(harness, 'onretry');
+
+      await harness.locator('[data-testid="seed-thread"]').click();
+      const userMessage = harness.locator('[data-role="user"]').filter({
+        hasText: 'Tell me about alpha.',
+      });
+      await userMessage.locator('.chat-message').hover();
+      const edit = userMessage.getByRole('button', { name: 'Edit message' });
+      await expect(edit).toBeVisible();
+      await edit.click();
+
+      await expect(userMessage.locator('.chat-message-edit-textarea')).toBeVisible();
+      await expect(userMessage.locator('.chat-message-copy')).toHaveCount(0);
+      await expect(userMessage.locator('.chat-message-edit-button')).toHaveCount(0);
+      const [textareaBox, bubbleBox] = await Promise.all([
+        renderedBox(userMessage.locator('.chat-message-edit-textarea'), 'edit textarea'),
+        renderedBox(userMessage.locator('.chat-message'), 'editing message bubble'),
+      ]);
+      expect(textareaBox.width).toBeGreaterThanOrEqual(bubbleBox.width - 32);
+
+      for (const button of [
+        userMessage.getByRole('button', { name: 'Save' }),
+        userMessage.getByRole('button', { name: 'Cancel' }),
+      ]) {
+        await expect(button).toBeVisible();
+        const buttonBox = await renderedBox(button, 'edit action');
+        expect(buttonBox.height).toBeLessThanOrEqual(36);
+      }
+      await page.keyboard.press('Escape');
+      await expect(userMessage.locator('.chat-message-edit-textarea')).toHaveCount(0);
     } finally {
       await dispose();
     }

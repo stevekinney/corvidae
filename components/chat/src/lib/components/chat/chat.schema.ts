@@ -321,7 +321,8 @@ const schema = {
       {
         name: 'ontypingchange',
         reason: 'function-or-snippet',
-        description: "Forwarded from the adapter's real-time `onTypingChange` push.",
+        description:
+          "Forwarded from the adapter's real-time `onTypingChange` participant snapshot push.",
       },
       {
         name: 'onunreadindicatorchange',

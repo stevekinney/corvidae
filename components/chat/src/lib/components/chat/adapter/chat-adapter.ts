@@ -19,6 +19,7 @@
  * @module
  */
 
+import type { TypingParticipant } from '../chat.types.ts';
 import type {
   JSONValue,
   Message,
@@ -85,8 +86,8 @@ export type ChatToolResult = ToolResult & {
 export type ChatPushHandlers = {
   /** A new (or updated) message arrived. Forwarded to the consumer; Chat does not mutate the transcript. */
   onMessage: (message: Message) => void;
-  /** A participant's typing state changed. Forwarded to the consumer. */
-  onTypingChange: (isTyping: boolean) => void;
+  /** Complete snapshot of participants currently typing. Forwarded to the consumer. */
+  onTypingChange: (participants: TypingParticipant[]) => void;
   /** A read receipt arrived. Forwarded to the consumer. */
   onReadReceipt: (event: ChatReadReceiptEvent) => void;
   /** Streaming began for a message — drives Chat's `beginStreaming(messageId)`. */

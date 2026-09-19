@@ -4,6 +4,7 @@ import type { Component } from 'svelte';
 import { flushSync, mount, unmount } from 'svelte';
 
 import { setupHappyDom } from '@corvidae/testing';
+import type { TypingParticipant } from '../chat.types.ts';
 import type { ConversationHistory, Message } from '../conversation-model.ts';
 import type { ChatAdapter, ChatPushHandlers, ChatReadReceiptEvent } from './chat-adapter.ts';
 
@@ -136,8 +137,8 @@ describe('Chat adapter subscription owner', () => {
     const events: string[] = [];
     const oldMessages: Message[] = [];
     const newMessages: Message[] = [];
-    const firstTyping: boolean[] = [];
-    const secondTyping: boolean[] = [];
+    const firstTyping: TypingParticipant[][] = [];
+    const secondTyping: TypingParticipant[][] = [];
     const currentAdapter = adapter('stable', subscriptions, events);
     const initial = conversation('callback-conversation');
     const messageId = initial.ids[0]!;
@@ -166,7 +167,7 @@ describe('Chat adapter subscription owner', () => {
     flushSync();
     const handlers = subscriptions[0]!.handlers;
     handlers.onMessage(incoming);
-    handlers.onTypingChange(true);
+    handlers.onTypingChange([{ id: 'adapter-alice', name: 'Alice' }]);
     const receipt: ChatReadReceiptEvent = { messageId, readAt: '2026-09-16T00:00:00.000Z' };
     handlers.onReadReceipt(receipt);
     flushSync();
@@ -176,7 +177,7 @@ describe('Chat adapter subscription owner', () => {
     expect(newMessages).toEqual([incoming]);
     expect(newMessages[0]).toBe(incoming);
     expect(firstTyping).toEqual([]);
-    expect(secondTyping).toEqual([true]);
+    expect(secondTyping).toEqual([[{ id: 'adapter-alice', name: 'Alice' }]]);
     expect(firstReceipts).toEqual([]);
     expect(secondReceipts).toEqual([receipt]);
   });
@@ -217,11 +218,11 @@ describe('Chat adapter subscription owner', () => {
       ?.getAttribute('data-message-id');
     if (!messageId) throw new Error('Missing mounted message id');
     const handlers = subscriptions[0]!.handlers;
-    handlers.onTypingChange(true);
+    handlers.onTypingChange([{ id: 'adapter-alice', name: 'Alice' }]);
     handlers.onReadReceipt({ messageId, readAt: new Date().toISOString() });
     flushSync();
     expect(view.target.querySelector('.chat-participant-typing-label')?.textContent).toContain(
-      'Someone is typing',
+      'Alice is typing',
     );
     expect(view.target.querySelector('[data-cinder-receipt-status]')).not.toBeNull();
 

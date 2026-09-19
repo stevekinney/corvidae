@@ -1,12 +1,13 @@
 <script lang="ts" module>
   import type { ChatAdapter, ChatReadReceiptEvent } from './chat-adapter.ts';
   import type { ConversationHistory, Message } from '../conversation-model.ts';
+  import type { TypingParticipant } from '../chat.types.ts';
 
   export type AdapterSwitchFixtureProps = {
     initial: ConversationHistory;
     adapter: ChatAdapter;
     onpushmessage?: (message: Message) => void;
-    ontypingchange?: (isTyping: boolean) => void;
+    ontypingchange?: (participants: TypingParticipant[]) => void;
     onreadreceipt?: (event: ChatReadReceiptEvent) => void;
     onerror?: (error: unknown) => void;
   };
@@ -42,7 +43,7 @@
 
   export function setCallbacks(callbacks: {
     onpushmessage?: (message: Message) => void;
-    ontypingchange?: (isTyping: boolean) => void;
+    ontypingchange?: (participants: TypingParticipant[]) => void;
     onreadreceipt?: (event: ChatReadReceiptEvent) => void;
   }): void {
     onpushmessage = callbacks.onpushmessage ?? (() => {});

@@ -242,8 +242,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   onadaptererror?: (event: ChatAdapterErrorEvent) => void;
   /** Forwarded from the adapter's real-time `onMessage` push (consumer owns the transcript). */
   onpushmessage?: (message: Message) => void;
-  /** Forwarded from the adapter's real-time `onTypingChange` push. */
-  ontypingchange?: (isTyping: boolean) => void;
+  /** Forwarded from the adapter's real-time `onTypingChange` participant snapshot push. */
+  ontypingchange?: (participants: TypingParticipant[]) => void;
   /** Forwarded from the adapter's real-time `onReadReceipt` push. */
   onreadreceipt?: (event: ChatReadReceiptEvent) => void;
   onsubmit?: (event: ChatSubmitEvent) => void;

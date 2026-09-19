@@ -1516,7 +1516,8 @@
         {#snippet status()}
           {#if messageStatus}
             {@render messageStatus(rowContext)}
-          {:else if receipt}
+          {/if}
+          {#if receipt}
             <ChatReadReceipt {receipt} />
           {/if}
         {/snippet}
@@ -1598,7 +1599,7 @@
         />
       {/if}
 
-      {#if messages.length === 0}
+      {#if messages.length === 0 && typingIndicatorState.participantCount === 0}
         {#if empty}
           {@render empty()}
         {:else}

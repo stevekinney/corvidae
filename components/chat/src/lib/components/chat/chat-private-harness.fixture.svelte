@@ -15,12 +15,17 @@
     appendMessages,
     appendUserMessage,
     createConversation,
+    type ChatAdapter,
+    type ChatPushHandlers,
+    type ChatReadReceiptEvent,
     type ChatRowContext,
     type ChatSubmitEvent,
     type ConversationHistory,
     type JSONValue,
     type Message,
     type MultiModalContent,
+    type ReadReceipt,
+    type TypingParticipant,
     type ToolErrorCategory,
   } from '@corvidae/chat';
   import {
@@ -63,6 +68,10 @@
   let historyGeneration = 0;
   let pendingHistoryRequest = $state<{ generation: number; resolve: () => void } | undefined>();
   let historyPage = 0;
+  let readReceipts = $state<Map<string, ReadReceipt> | undefined>(undefined);
+  let directTypingParticipants = $state<TypingParticipant[] | undefined>(undefined);
+  let adapterEnabled = $state(false);
+  let adapterHandlers: ChatPushHandlers | undefined;
 
   // --- Reply controls ---
   let replyText = $state('Here is the answer, delivered in a few deliberate chunks.');
@@ -356,6 +365,8 @@
   function seedThread(): void {
     cancelPending('discard');
     cancelPendingHistoryRequest();
+    readReceipts = undefined;
+    directTypingParticipants = undefined;
     let next = createConversation({ id: 'harness-seeded' });
     // Repeated token "alpha" for deterministic search assertions, plus enough
     // messages to overflow the fixed-height viewport.
@@ -379,6 +390,8 @@
   function seedLongThread(): void {
     cancelPending('discard');
     cancelPendingHistoryRequest();
+    readReceipts = undefined;
+    directTypingParticipants = undefined;
     let next = createConversation({ id: 'harness-seeded-long' });
     for (let index = 0; index < 150; index += 1) {
       next = appendUserMessage(next, `Question ${index + 1}: tell me about alpha.`);
@@ -393,6 +406,7 @@
   }
 
   function seedFailedMessage(): void {
+    readReceipts = undefined;
     conversation = appendMessages(conversation, {
       role: 'user',
       content: 'This message failed to send.',
@@ -400,11 +414,40 @@
     });
   }
 
+  function seedMetadataMessage(): void {
+    cancelPending('discard');
+    cancelPendingHistoryRequest();
+    directTypingParticipants = undefined;
+    const createdAt = '2026-01-01T12:34:00Z';
+    const message: Message = {
+      id: 'metadata-message',
+      role: 'user',
+      content: 'Timestamped message with enough text to prove the receipt stays outside content.',
+      position: 0,
+      createdAt,
+      metadata: {},
+      hidden: false,
+    };
+    conversation = {
+      schemaVersion: 4,
+      id: 'harness-metadata',
+      status: 'active',
+      metadata: {},
+      ids: [message.id],
+      messages: { [message.id]: message },
+      createdAt,
+      updatedAt: createdAt,
+    };
+    readReceipts = new Map([[message.id, { status: 'read', readBy: ['Avery'] }]]);
+  }
+
   function clearConversation(): void {
     cancelPending('discard');
     cancelPendingHistoryRequest();
     revokeSubmittedImageUrls();
     conversation = createConversation({ id: 'harness-cleared' });
+    readReceipts = undefined;
+    directTypingParticipants = undefined;
     delayedHistory = false;
     historyPage = 0;
   }
@@ -415,6 +458,21 @@
   };
   type ChatHarnessWindow = Window & {
     corvidaeChatHarnessAppendImages?: (images: HarnessImageContent[]) => void;
+    corvidaeChatHarnessUseAdapter?: () => void;
+    corvidaeChatHarnessPushTypingSnapshot?: (participants: TypingParticipant[]) => void;
+    corvidaeChatHarnessSetDirectTypingParticipants?: (
+      participants: TypingParticipant[] | undefined,
+    ) => void;
+  };
+
+  const harnessAdapter: ChatAdapter = {
+    sendMessage: async () => {},
+    subscribe: (_conversationId, handlers) => {
+      adapterHandlers = handlers;
+      return () => {
+        if (adapterHandlers === handlers) adapterHandlers = undefined;
+      };
+    },
   };
 
   function createSubmittedImageContent(attachment: { file: File }): HarnessImageContent {
@@ -441,8 +499,21 @@
         content: images,
       });
     };
+    harnessWindow.corvidaeChatHarnessUseAdapter = () => {
+      adapterEnabled = true;
+    };
+    harnessWindow.corvidaeChatHarnessPushTypingSnapshot = (participants) => {
+      if (!adapterHandlers) throw new Error('Chat harness adapter is not subscribed.');
+      adapterHandlers.onTypingChange(participants);
+    };
+    harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants = (participants) => {
+      directTypingParticipants = participants;
+    };
     return () => {
       delete harnessWindow.corvidaeChatHarnessAppendImages;
+      delete harnessWindow.corvidaeChatHarnessUseAdapter;
+      delete harnessWindow.corvidaeChatHarnessPushTypingSnapshot;
+      delete harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants;
     };
   });
 
@@ -524,6 +595,20 @@
   );
   const historyProps = $derived(
     historyEnabled ? { moreHistoryAvailable: true, onLoadHistory: handleLoadHistory } : {},
+  );
+  const readReceiptProps = $derived(readReceipts ? { readReceipts } : {});
+  const directTypingProps = $derived(
+    directTypingParticipants !== undefined ? { typingParticipants: directTypingParticipants } : {},
+  );
+  const adapterProps = $derived(
+    adapterEnabled
+      ? {
+          adapter: harnessAdapter,
+          ontypingchange: (participants: TypingParticipant[]) =>
+            record('ontypingchange', participants),
+          onreadreceipt: (event: ChatReadReceiptEvent) => record('onreadreceipt', event),
+        }
+      : {},
   );
 </script>
 
@@ -683,6 +768,9 @@
         <Button data-testid="seed-long" variant="secondary" onclick={seedLongThread}
           >Seed long thread</Button
         >
+        <Button data-testid="seed-metadata" variant="secondary" onclick={seedMetadataMessage}
+          >Seed metadata message</Button
+        >
         <Button data-testid="clear" variant="secondary" onclick={clearConversation}>Clear</Button>
         <Button data-testid="scroll-top" variant="ghost" onclick={() => chat?.scrollToTop()}
           >Scroll to top</Button
@@ -741,6 +829,9 @@
       virtualizationOverscan={2}
       {...emptyPromptsProp}
       {...historyProps}
+      {...readReceiptProps}
+      {...directTypingProps}
+      {...adapterProps}
       onsubmit={handleSubmit}
       onedit={handleEdit}
       onretry={(messageId: string) => record('onretry', messageId)}
