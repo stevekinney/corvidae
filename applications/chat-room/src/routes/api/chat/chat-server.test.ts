@@ -261,6 +261,34 @@ describe('chat approval continuation response', () => {
     }
   });
 
+  test('rejects top-level signed input actions before resolving approvals', async () => {
+    const inputAction = {
+      callId: 'call-input',
+      toolName: 'remember_note',
+      arguments: { text: 'before' },
+      action: {
+        type: 'input' as const,
+        message: 'Provide more input',
+        schema: { type: 'object', properties: { text: { type: 'string' } } },
+      },
+      approvalToken: 'token-input',
+    } satisfies SignedPendingToolApproval;
+    const resolveApproval = spyOn(toolbox, 'resolveApproval');
+
+    try {
+      const response = await post({
+        approval: inputAction,
+        resolution: { decision: 'approve', remember: false },
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'Invalid request body' });
+      expect(resolveApproval).not.toHaveBeenCalled();
+    } finally {
+      resolveApproval.mockRestore();
+    }
+  });
+
   test('rejects legacy and malformed resolution bodies before the toolbox', async () => {
     const approval = {
       callId: 'call-malformed',

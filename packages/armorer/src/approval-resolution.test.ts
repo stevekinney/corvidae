@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { createProcessLocalApprovalStateStore } from './approval-binding';
+import { createProcessLocalApprovalStateStore, type ApprovalStateStore } from './approval-binding';
 import {
   approvalResolutionSecret as approvalSecret,
   createApprovalResolutionMapStore,
@@ -246,6 +246,75 @@ describe('approval resolution foundation metadata', () => {
     expect(callbackCount).toBe(1);
     expect(resolved.idempotency?.outcome).toBe('fresh');
   });
+
+  it.each(['approve', 'approve_with_edits', 'deny', 'cancel'] as const)(
+    'rejects signed input actions before dispatching %s as an approval resolution',
+    async (decision) => {
+      let executedCount = 0;
+      let firstPolicyCheck = true;
+      const innerStore = createProcessLocalApprovalStateStore();
+      const approvalStateCounts = { reserve: 0, revoke: 0, consume: 0 };
+      const approvalStateStore: ApprovalStateStore = {
+        ...innerStore,
+        async reserve(binding, context, validationTime) {
+          approvalStateCounts.reserve += 1;
+          await innerStore.reserve(binding, context, validationTime);
+        },
+        async revoke(binding) {
+          approvalStateCounts.revoke += 1;
+          await innerStore.revoke(binding);
+        },
+        async consume(binding, context, validationTime) {
+          approvalStateCounts.consume += 1;
+          await innerStore.consume(binding, context, validationTime);
+        },
+      };
+      const tool = createTool({
+        name: `input-resolution-${decision}`,
+        version: '1.0.0',
+        description: 'Input action resolution guard test tool',
+        input: z.object({ value: z.string() }),
+        policy: {
+          beforeExecute: () => {
+            if (!firstPolicyCheck) return { status: 'allow' };
+            firstPolicyCheck = false;
+            return {
+              status: 'needs_input',
+              reason: 'Need input before continuing',
+              action: {
+                message: 'Provide a value',
+                schema: { type: 'object', properties: { value: { type: 'string' } } },
+              },
+            };
+          },
+        },
+        execute: async () => {
+          executedCount += 1;
+          return 'executed';
+        },
+      });
+      const toolbox = createToolbox([tool], { approvalSecret, approvalStateStore });
+      const parked = await toolbox.execute(
+        createToolCall(tool.name, { value: 'before' }, `input-resolution-${decision}-call`),
+        { ownerId, requestContext: createRequestContext() },
+      );
+      const signedInputAction = requireSignedApproval(parked);
+      expect(signedInputAction.action.type).toBe('input');
+      const resolution =
+        decision === 'approve_with_edits'
+          ? { decision, editedArgs: { value: 'after' }, remember: false }
+          : { decision, remember: false };
+
+      await expect(
+        toolbox.resolveApproval(signedInputAction, resolution, {
+          requestContext: createRequestContext(),
+        }),
+      ).rejects.toThrow('Approval resolution requires an approval action.');
+
+      expect(executedCount).toBe(0);
+      expect(approvalStateCounts).toEqual({ reserve: 0, revoke: 0, consume: 0 });
+    },
+  );
 
   it('exports a structural approval resolution contract', () => {
     const resolution = {

@@ -79,7 +79,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const { approval, resolution } = parsed.data;
 
-  if (!isSignedPendingToolApproval(approval)) {
+  if (!isSignedPendingToolApproval(approval) || approval.action.type !== 'approval') {
     return json({ error: 'Invalid request body' }, { status: 400 });
   }
 

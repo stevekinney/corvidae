@@ -128,6 +128,9 @@ export function createToolboxApprovalApi(context: ToolboxApprovalContext): Toolb
   ): Promise<ToolExecutionResult> {
     const normalizedResolution = normalizeResolution(resolution);
     const verifiedApproval = verifyAndSnapshotPendingApproval(approval, context);
+    if (verifiedApproval.action.type !== 'approval') {
+      throw new Error('Approval resolution requires an approval action.');
+    }
     const resolveOptions = snapshotResolveOptions(options);
     if (normalizedResolution.decision === 'approve') {
       return resumeApproval(receiver, verifiedApproval, resolveOptions);
