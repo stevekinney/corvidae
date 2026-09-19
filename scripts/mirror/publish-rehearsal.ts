@@ -34,14 +34,25 @@ import { cloneTarget, stageSurface, type StageOutcome } from './sync.ts';
  * preference: every package the mirror publishes fails `attw` today in the form it is published
  * in. `@lostgradient/weft@0.25.0`, `@lostgradient/chat@0.14.0`, `@lostgradient/editor@0.14.0` and
  * `@lostgradient/cinder@0.26.2` were each packed from the registry and checked, and all four exit
- * 1 — they are ESM-only packages with no `require` condition, so every one of them trips
- * `CJSResolvesToESM`. Gating a publish rehearsal on that would make the thing being rehearsed
- * unprovable for every package, transformed or not, which says nothing about the transform. The
- * two rulings are different questions: whether the tarball is *complete* is publint's, and it is
- * the one this module exists to answer; whether its *resolution semantics* serve every consumer is
- * `attw`'s, and `verifyTarget` in `sync.ts` still gates every package on it, untouched. That gate
- * failing for every target today is a finding about the packages, recorded against them rather
- * than worked around here.
+ * 1.
+ *
+ * They fail on *three* independently ignorable rules, not one, and the distinction matters enough
+ * that collapsing it would mislead whoever rules on the gate. For weft: `CJSResolvesToESM` (31),
+ * because these are ESM-only packages with no `require` condition; `NoResolution` (30), every one
+ * `resolutionKind: node10` on a subpath entry point, which `typesVersions` could satisfy and no
+ * workspace here declares; and `InternalResolutionError` (157), declaration files importing
+ * extensionless specifiers that node16 ESM will not resolve. The first two are consequences of
+ * choosing not to support legacy resolution. The third is a genuine defect — and the tarball this
+ * module produces carries **zero** of them, against 157 in the published artifact, because this
+ * workspace's build emits correct declarations. The mirror's output is better than what is on npm.
+ *
+ * Gating a publish rehearsal on any of that would make the thing being rehearsed unprovable for
+ * every package, transformed or not, which says nothing about the transform. The two rulings are
+ * different questions: whether the tarball is *complete* is publint's, and it is the one this
+ * module exists to answer; whether its *resolution semantics* serve every consumer is `attw`'s,
+ * and `verifyTarget` in `sync.ts` still gates every package on it, untouched. That gate failing
+ * for every target today is a finding about the packages, recorded against them rather than
+ * worked around here.
  *
  * One thing `npm publish --dry-run` does reach the registry for, which is easy to miss because a
  * package that has never been published never shows it: the version. `@lostgradient/weft@0.25.0`
