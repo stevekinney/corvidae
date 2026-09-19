@@ -169,6 +169,14 @@
   // Internal active thread tracking (not exposed as bindable prop)
   let activeThreadId = $state<string | null>(null);
 
+  // Selecting a successor after deletion must update the sidebar's active row
+  // without scheduling a popover, and that intent has to survive controlled
+  // thread-array refreshes that retrigger the deep-linking effect below. This is
+  // intentionally non-reactive: activeThreadId/threads changes already rerun the
+  // effect, and explicit open/navigation handlers clear this marker before they
+  // schedule a popover.
+  let threadSelectedWithoutPopoverId: ThreadId | null = null;
+
   // Comment sidebar toggle state
   let sidebarOpen = $state(false);
 
@@ -371,6 +379,9 @@
   // Clear internal active thread if it no longer exists
   $effect(() => {
     if (activeThreadId && !threads.some((t) => t.id === activeThreadId)) {
+      if (threadSelectedWithoutPopoverId === activeThreadId) {
+        threadSelectedWithoutPopoverId = null;
+      }
       activeThreadId = null;
     }
   });
@@ -380,6 +391,8 @@
     let positionTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     if (activeThreadId && popoverThreadId !== activeThreadId) {
+      if (threadSelectedWithoutPopoverId === activeThreadId) return;
+
       const thread = threads.find((t) => t.id === activeThreadId);
       if (thread) {
         const threadIdToOpen = activeThreadId;
@@ -539,6 +552,7 @@
     selectionPopoverExpanded = false;
 
     // Set active thread and open popover
+    threadSelectedWithoutPopoverId = null;
     activeThreadId = threadId;
 
     // Find the thread to show the popover
@@ -967,7 +981,10 @@
    * Handle thread selection from the comment sidebar.
    * Scrolls to the thread and opens its popover.
    */
-  function handleSidebarThreadSelect(threadId: string): void {
+  function handleSidebarThreadSelect(
+    threadId: string,
+    options: { openPopover?: boolean } = {},
+  ): void {
     // Re-selecting a thread whose popover is ALREADY open is a no-op.
     // Deliberately checks BOTH activeThreadId and popoverThreadId, not just
     // activeThreadId: guarding on activeThreadId alone would also block a
@@ -997,6 +1014,13 @@
 
     const thread = threads.find((t) => t.id === threadId);
     if (!thread) return;
+
+    if (options.openPopover === false) {
+      selectSidebarThreadWithoutPopover(threadId);
+      return;
+    }
+
+    threadSelectedWithoutPopoverId = null;
 
     // Cancel any timer from a PREVIOUS sidebar selection still in flight.
     // Without this, choosing a second thread within POSITION_DELAY_MS of the
@@ -1046,6 +1070,21 @@
     }, POSITION_DELAY_MS);
   }
 
+  function selectSidebarThreadWithoutPopover(threadId: string): void {
+    const thread = threads.find((t) => t.id === threadId);
+    if (!thread) return;
+
+    if (selectTimeoutId !== null) {
+      clearTimeout(selectTimeoutId);
+      selectTimeoutId = null;
+    }
+
+    threadSelectedWithoutPopoverId = threadId;
+    activeThreadId = threadId;
+    popoverThreadId = null;
+    popoverPosition = null;
+  }
+
   /**
    * Resolve the sidebar row for the currently active thread, scoped to this
    * editor instance's own sidebar (`{id}-sidebar`) so a page with more than
@@ -1067,7 +1106,8 @@
     return (
       document
         .getElementById(`${id}-sidebar`)
-        ?.querySelector<HTMLElement>('.thread-item[data-active]') ?? null
+        ?.querySelector<HTMLElement>(`#${CSS.escape(`${id}-thread-open-${activeThreadId}`)}`) ??
+      null
     );
   }
 
@@ -2095,6 +2135,7 @@
       {activeThreadId}
       readonly={isReadonly}
       onthreadselect={handleSidebarThreadSelect}
+      onthreaddelete={deleteThread}
       onclearall={clearAllThreads}
       onadddocumentcomment={handleAddDocumentComment}
     />

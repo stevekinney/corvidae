@@ -1,6 +1,10 @@
 <script lang="ts" module>
   import type { Thread } from '../../comments/index.ts';
 
+  type ThreadSelectionOptions = {
+    openPopover?: boolean;
+  };
+
   export type CommentSidebarProps = {
     /** Unique ID for accessibility */
     id: string;
@@ -11,9 +15,11 @@
     /** Whether the sidebar is read-only */
     readonly?: boolean;
     /** Callback when a thread is selected */
-    onthreadselect?: (threadId: string) => void;
+    onthreadselect?: (threadId: string, options?: ThreadSelectionOptions) => void;
     /** Callback when all threads should be cleared */
     onclearall?: () => void;
+    /** Callback when one thread should be removed */
+    onthreaddelete?: (threadId: string) => void;
     /** Callback when user submits a document-level comment */
     onadddocumentcomment?: (body: string) => void;
     /** Additional CSS class */
@@ -50,6 +56,7 @@
     readonly = false,
     onthreadselect,
     onclearall,
+    onthreaddelete,
     onadddocumentcomment,
     class: className,
   }: CommentSidebarProps = $props();
@@ -109,6 +116,31 @@
     onthreadselect?.(threadId);
   }
 
+  function getThreadLabel(thread: Thread): string {
+    return isDocumentAnchor(thread.anchor) ? 'Document comment' : thread.anchor.quote;
+  }
+
+  async function handleThreadDelete(threadId: string): Promise<void> {
+    const displayedIndex = visibleThreads.findIndex((thread) => thread.id === threadId);
+    onthreaddelete?.(threadId);
+    await tick();
+
+    if (visibleThreads.some((thread) => thread.id === threadId)) {
+      document.getElementById(`${id}-thread-remove-${threadId}`)?.focus();
+      return;
+    }
+
+    const nextThread = visibleThreads[displayedIndex] ?? visibleThreads[displayedIndex - 1];
+    if (nextThread) {
+      onthreadselect?.(nextThread.id, { openPopover: false });
+      await tick();
+      document.getElementById(`${id}-thread-open-${nextThread.id}`)?.focus();
+      return;
+    }
+
+    document.getElementById(documentCommentTriggerId)?.focus();
+  }
+
   function handleClearAllClick() {
     showConfirmClear = true;
   }
@@ -137,55 +169,57 @@
 
 <aside {id} class={classNames('comment-sidebar', className)} aria-label="Comment threads">
   <div class="sidebar-header">
-    <MessageSquare class="cinder-icon-sm" />
-    <h2 class="sidebar-title">Comments</h2>
-    <span class="thread-count">{visibleThreads.length}</span>
+    <div class="sidebar-label-group">
+      <MessageSquare class="cinder-icon-sm" />
+      <h2 class="sidebar-title">Comments</h2>
+      <span class="thread-count">{visibleThreads.length}</span>
+    </div>
 
     {#if !readonly}
-      <Button
-        id={documentCommentTriggerId}
-        variant="ghost"
-        size="xs"
-        aria-label={composingDocumentComment ? 'Cancel document comment' : 'Add document comment'}
-        title={composingDocumentComment
-          ? 'Cancel adding document comment'
-          : 'Add comment about the entire document'}
-        onclick={composingDocumentComment
-          ? handleCancelDocumentComment
-          : handleStartDocumentComment}
-      >
-        {#if composingDocumentComment}
-          <X class="cinder-icon-sm" />
-        {:else}
-          <Plus class="cinder-icon-sm" />
-        {/if}
-      </Button>
-    {/if}
+      <div class="sidebar-action-group">
+        <Button
+          id={documentCommentTriggerId}
+          variant="ghost"
+          size="xs"
+          aria-label={composingDocumentComment ? 'Cancel document comment' : 'Add document comment'}
+          title={composingDocumentComment
+            ? 'Cancel adding document comment'
+            : 'Add comment about the entire document'}
+          onclick={composingDocumentComment
+            ? handleCancelDocumentComment
+            : handleStartDocumentComment}
+        >
+          {#if composingDocumentComment}
+            <X class="cinder-icon-sm" />
+          {:else}
+            <Plus class="cinder-icon-sm" />
+          {/if}
+        </Button>
 
-    {#if !readonly}
-      {#key visibleThreads.length > 0}
-        <Dropdown id="{id}-actions">
-          <DropdownTrigger
-            id={actionsTriggerId}
-            class="actions-trigger"
-            aria-label="Comment actions"
-            caretVisible={false}
-            disabled={visibleThreads.length === 0}
-          >
-            <MoreHorizontal class="cinder-icon-sm" />
-          </DropdownTrigger>
-          <DropdownMenu>
-            <DropdownItem
-              variant="danger"
-              onclick={handleClearAllClick}
+        {#key visibleThreads.length > 0}
+          <Dropdown id="{id}-actions">
+            <DropdownTrigger
+              id={actionsTriggerId}
+              class="actions-trigger"
+              aria-label="Comment actions"
+              caretVisible={false}
               disabled={visibleThreads.length === 0}
             >
-              <Trash2 class="cinder-icon-sm" />
-              Clear all comments
-            </DropdownItem>
-          </DropdownMenu>
-        </Dropdown>
-      {/key}
+              <MoreHorizontal class="cinder-icon-sm" />
+            </DropdownTrigger>
+            <DropdownMenu>
+              <DropdownItem
+                variant="danger"
+                onclick={handleClearAllClick}
+                disabled={visibleThreads.length === 0}
+              >
+                <Trash2 class="cinder-icon-sm" />
+                Clear all comments
+              </DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
+        {/key}
+      </div>
     {/if}
   </div>
 
@@ -215,7 +249,7 @@
     </div>
   {/if}
 
-  <div class="thread-list">
+  <div class="thread-list" role="list" aria-label="Comment threads">
     {#if visibleThreads.length === 0}
       <div class="empty-state">
         <p class="empty-message">No comments yet</p>
@@ -224,47 +258,79 @@
     {:else}
       <!-- Document-level comments first -->
       {#each documentThreads as thread (thread.id)}
-        <button
-          type="button"
-          class="thread-item"
-          data-document="true"
-          data-active={activeThreadId === thread.id || undefined}
-          onclick={() => handleThreadClick(thread.id)}
-          aria-current={activeThreadId === thread.id ? 'true' : undefined}
-        >
-          <div class="thread-document-label">
-            <FileText class="cinder-icon-xs" />
-            <span>Document comment</span>
-          </div>
-          <p class="thread-preview">{getPreview(thread)}</p>
-        </button>
+        <div class="thread-row" role="listitem">
+          <button
+            id="{id}-thread-open-{thread.id}"
+            type="button"
+            class="thread-item"
+            data-document="true"
+            data-active={activeThreadId === thread.id || undefined}
+            onclick={() => handleThreadClick(thread.id)}
+            aria-current={activeThreadId === thread.id ? 'true' : undefined}
+            aria-label="Open comment thread: {getThreadLabel(thread)}"
+          >
+            <div class="thread-document-label">
+              <FileText class="cinder-icon-xs" />
+              <span>Document comment</span>
+            </div>
+            <p class="thread-preview">{getPreview(thread)}</p>
+          </button>
+          {#if !readonly}
+            <Button
+              id="{id}-thread-remove-{thread.id}"
+              class="thread-remove"
+              variant="ghost"
+              size="xs"
+              aria-label="Remove comment thread: {getThreadLabel(thread)}"
+              onclick={() => void handleThreadDelete(thread.id)}
+            >
+              <Trash2 class="cinder-icon-sm" />
+            </Button>
+          {/if}
+        </div>
       {/each}
 
       <!-- Text-anchored comments -->
       {#each textThreads as thread (thread.id)}
-        <button
-          type="button"
-          class="thread-item"
-          data-active={activeThreadId === thread.id || undefined}
-          data-orphaned={thread.anchor.status === 'orphaned' || undefined}
-          onclick={() => handleThreadClick(thread.id)}
-          aria-current={activeThreadId === thread.id ? 'true' : undefined}
-        >
-          <blockquote class="thread-quote">
-            {truncate(thread.anchor.quote, 60)}
-          </blockquote>
-          <!--
-            An orphaned thread's quote is not in the document, so it has no
-            highlight to jump to. Saying so is the difference between a comment
-            that looks broken and one the reader knows is waiting for its text
-            to come back — the text often does, since a cut-and-paste orphans an
-            anchor until the paste lands (cinder#1284).
-          -->
-          {#if thread.anchor.status === 'orphaned'}
-            <p class="thread-orphaned">Quoted text is not in the document</p>
+        <div class="thread-row" role="listitem">
+          <button
+            id="{id}-thread-open-{thread.id}"
+            type="button"
+            class="thread-item"
+            data-active={activeThreadId === thread.id || undefined}
+            data-orphaned={thread.anchor.status === 'orphaned' || undefined}
+            onclick={() => handleThreadClick(thread.id)}
+            aria-current={activeThreadId === thread.id ? 'true' : undefined}
+            aria-label="Open comment thread: {getThreadLabel(thread)}"
+          >
+            <blockquote class="thread-quote">
+              {truncate(thread.anchor.quote, 60)}
+            </blockquote>
+            <!--
+              An orphaned thread's quote is not in the document, so it has no
+              highlight to jump to. Saying so is the difference between a comment
+              that looks broken and one the reader knows is waiting for its text
+              to come back — the text often does, since a cut-and-paste orphans an
+              anchor until the paste lands (cinder#1284).
+            -->
+            {#if thread.anchor.status === 'orphaned'}
+              <p class="thread-orphaned">Quoted text is not in the document</p>
+            {/if}
+            <p class="thread-preview">{getPreview(thread)}</p>
+          </button>
+          {#if !readonly}
+            <Button
+              id="{id}-thread-remove-{thread.id}"
+              class="thread-remove"
+              variant="ghost"
+              size="xs"
+              aria-label="Remove comment thread: {getThreadLabel(thread)}"
+              onclick={() => void handleThreadDelete(thread.id)}
+            >
+              <Trash2 class="cinder-icon-sm" />
+            </Button>
           {/if}
-          <p class="thread-preview">{getPreview(thread)}</p>
-        </button>
+        </div>
       {/each}
     {/if}
   </div>
@@ -287,18 +353,31 @@
   .sidebar-header {
     display: flex;
     align-items: center;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-3);
     padding: var(--cinder-space-3);
     border-bottom: 1px solid var(--cinder-border-muted);
     color: var(--cinder-text-muted);
   }
 
+  .sidebar-label-group {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    min-width: 0;
+  }
+
   .sidebar-title {
-    flex: 1;
     font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-text-default);
     margin: 0;
+  }
+
+  .sidebar-action-group {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    margin-inline-start: auto;
   }
 
   .thread-count {
@@ -367,9 +446,19 @@
   }
 
   .thread-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
     flex: 1;
     overflow-y: auto;
     padding: var(--cinder-space-2);
+  }
+
+  .thread-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+    gap: var(--cinder-space-1);
   }
 
   .thread-item {
@@ -378,7 +467,6 @@
     gap: var(--cinder-space-1);
     width: 100%;
     padding: var(--cinder-space-3);
-    margin-bottom: var(--cinder-space-2);
     background: var(--cinder-surface);
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
@@ -466,6 +554,10 @@
 
   .thread-item[data-document='true'] {
     border-inline-start: 2px solid var(--cinder-accent-solid);
+  }
+
+  .thread-row :global(.thread-remove) {
+    align-self: start;
   }
 
   .empty-state {

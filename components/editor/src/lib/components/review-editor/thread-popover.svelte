@@ -283,6 +283,11 @@
     overflow: hidden;
   }
 
+  .thread-popover[data-position-ready='false'] {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   .thread-popover-header {
     display: flex;
     flex-direction: column;
