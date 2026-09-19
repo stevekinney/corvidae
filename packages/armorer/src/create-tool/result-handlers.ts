@@ -163,7 +163,13 @@ export async function finalizeFailedExecution(input: ErrorInput): Promise<ToolEx
 }
 
 function prepareExecutionHandleForError(options: InternalToolExecuteOptions, error: unknown): void {
-  if (options.executionHandle && (isTimeoutError(error) || options.signal?.aborted)) {
+  // Only an unfinished callback can own later completion. Pre-execution
+  // cancellation must let the outer invocation settle its handle.
+  if (
+    options.callbackPending &&
+    options.executionHandle &&
+    (isTimeoutError(error) || options.signal?.aborted)
+  ) {
     options.executionHandle.cleanupPending(error);
   }
 }

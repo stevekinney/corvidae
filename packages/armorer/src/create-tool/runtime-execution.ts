@@ -78,6 +78,7 @@ function startRuntimeExecution<TInput, E extends ToolEventsMap, TReturn>(
   const toolContext = createToolContext(input, progress.reportProgress);
   input.options[executionCallbackStartSymbol]?.();
   const runner = input.runUserCallback(input.parsed, toolContext);
+  input.options.callbackPending = true;
   progress.stopWhenSettled(runner);
   trackParentCompletion(input.options, runner);
   trackExecutionHandle(input.options, runner);
@@ -135,6 +136,7 @@ function createProgressReporter(
   };
   const stopWhenSettled = (runner: Promise<unknown>) => {
     const stopTrackingProgress = () => {
+      options.callbackPending = false;
       options.signal?.removeEventListener('abort', deactivateProgress);
       deactivateProgress();
       return undefined;

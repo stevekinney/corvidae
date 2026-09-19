@@ -4,6 +4,7 @@ import type { ToolCall } from './types';
 type ToolCallWithArguments = import('./is-tool').ToolCallWithArguments;
 type ToolConfiguration = import('./is-tool').ToolConfiguration;
 type Tool = import('./is-tool').Tool;
+type ToolSettledEvent = import('./tool-lifecycle-events').ToolSettledEvent;
 type ToolExecutionIdentity = { executionId?: string; ownerId?: string };
 
 export class ToolboxStatusUpdateEvent extends Event {
@@ -155,6 +156,7 @@ export class ToolboxExecuteErrorEvent extends Event {
 
 export class ToolboxSettledEvent extends Event {
   static readonly type = 'settled' as const;
+  readonly status: ToolSettledEvent['status'];
   readonly tool: Tool;
   readonly call: ToolCall;
   readonly result: unknown;
@@ -174,6 +176,7 @@ export class ToolboxSettledEvent extends Event {
   readonly ownerId: string | undefined;
   constructor(
     detail: {
+      status?: ToolSettledEvent['status'];
       tool: Tool;
       call: ToolCall;
       result?: unknown;
@@ -182,6 +185,7 @@ export class ToolboxSettledEvent extends Event {
     } & ToolExecutionIdentity,
   ) {
     super(ToolboxSettledEvent.type);
+    this.status = detail.status ?? (detail.error !== undefined ? 'error' : 'success');
     this.tool = detail.tool;
     this.call = detail.call;
     this.result = detail.result;

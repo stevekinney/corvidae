@@ -23,6 +23,16 @@ export type InternalToolExecuteOptions = ToolExecuteOptions & {
    */
   onParentCompletionPending?: (pending: boolean) => void;
   [executionCallbackStartSymbol]?: () => void;
+  /**
+   * Set once the tool's own callback has started, and cleared once it
+   * settles. Only an unfinished callback can own later completion via
+   * `executionHandle.cleanupPending()` — pre-execution cancellation (a
+   * deadline or abort firing before the callback starts, e.g. while an
+   * async schema parse or policy hook is pending) must instead let the
+   * outer invocation settle its handle through the ordinary error/
+   * cancellation path.
+   */
+  callbackPending?: boolean;
 };
 
 export function resolveSuppliedOwnerId(options: ToolExecuteOptions): string | undefined {

@@ -36,6 +36,7 @@ import type {
   ToolPolicyContextProvider,
   ToolPolicyHooks,
 } from './is-tool';
+import type { ToolSettledEvent } from './tool-lifecycle-events';
 import type { Toolbox } from './toolbox-contracts-advanced';
 import type { ToolCall, ToolExecutionResult } from './types';
 export type ToolboxContext = Record<string, unknown>;
@@ -221,6 +222,7 @@ export interface ToolboxEvents {
   'execute-success': { tool: Tool; call: ToolCall; result: unknown } & ToolExecutionIdentity;
   'execute-error': { tool: Tool; call: ToolCall; error: unknown } & ToolExecutionIdentity;
   settled: {
+    status?: ToolSettledEvent['status'];
     tool: Tool;
     call: ToolCall;
     result?: unknown;

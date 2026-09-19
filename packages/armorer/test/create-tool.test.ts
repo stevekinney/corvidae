@@ -1989,8 +1989,18 @@ describe('isTool', () => {
     expect(schemaStarted).toBe(true);
     expect(executions).toBe(0);
     expect(tool.executions.inspect({ callId: 'deadline-pending-schema-call' })[0]).toMatchObject({
-      state: 'cleanup-pending',
+      state: 'terminal',
       abortSource: 'deadline',
+    });
+    const snapshot = tool.executions.inspect({ callId: 'deadline-pending-schema-call' })[0];
+    if (!snapshot) throw new Error('Execution snapshot is missing');
+    const handle = tool.executions.locate(snapshot.executionId);
+    expect(handle).toBeDefined();
+    if (!handle) throw new Error('Execution handle is missing');
+    await expect(handle.whenSettled()).resolves.toMatchObject({
+      state: 'terminal',
+      abortSource: 'deadline',
+      result: { outcome: 'error', errorCategory: 'timeout' },
     });
   });
 
@@ -2039,8 +2049,18 @@ describe('isTool', () => {
     expect(
       tool.executions.inspect({ callId: 'deadline-pending-policy-context-call' })[0],
     ).toMatchObject({
-      state: 'cleanup-pending',
+      state: 'terminal',
       abortSource: 'deadline',
+    });
+    const snapshot = tool.executions.inspect({ callId: 'deadline-pending-policy-context-call' })[0];
+    if (!snapshot) throw new Error('Execution snapshot is missing');
+    const handle = tool.executions.locate(snapshot.executionId);
+    expect(handle).toBeDefined();
+    if (!handle) throw new Error('Execution handle is missing');
+    await expect(handle.whenSettled()).resolves.toMatchObject({
+      state: 'terminal',
+      abortSource: 'deadline',
+      result: { outcome: 'error', errorCategory: 'timeout' },
     });
   });
 
@@ -2081,8 +2101,18 @@ describe('isTool', () => {
     expect(policyChecks).toBe(1);
     expect(executions).toBe(0);
     expect(tool.executions.inspect({ callId: 'deadline-pending-policy-call' })[0]).toMatchObject({
-      state: 'cleanup-pending',
+      state: 'terminal',
       abortSource: 'deadline',
+    });
+    const snapshot = tool.executions.inspect({ callId: 'deadline-pending-policy-call' })[0];
+    if (!snapshot) throw new Error('Execution snapshot is missing');
+    const handle = tool.executions.locate(snapshot.executionId);
+    expect(handle).toBeDefined();
+    if (!handle) throw new Error('Execution handle is missing');
+    await expect(handle.whenSettled()).resolves.toMatchObject({
+      state: 'terminal',
+      abortSource: 'deadline',
+      result: { outcome: 'error', errorCategory: 'timeout' },
     });
   });
 
@@ -2130,8 +2160,18 @@ describe('isTool', () => {
     expect(
       tool.executions.inspect({ callId: 'deadline-pending-after-execute-call' })[0],
     ).toMatchObject({
-      state: 'cleanup-pending',
+      state: 'terminal',
       abortSource: 'deadline',
+    });
+    const snapshot = tool.executions.inspect({ callId: 'deadline-pending-after-execute-call' })[0];
+    if (!snapshot) throw new Error('Execution snapshot is missing');
+    const handle = tool.executions.locate(snapshot.executionId);
+    expect(handle).toBeDefined();
+    if (!handle) throw new Error('Execution handle is missing');
+    await expect(handle.whenSettled()).resolves.toMatchObject({
+      state: 'terminal',
+      abortSource: 'deadline',
+      result: { outcome: 'error', errorCategory: 'timeout' },
     });
   });
 
@@ -2182,9 +2222,23 @@ describe('isTool', () => {
     expect(
       tool.executions.inspect({ callId: 'deadline-late-after-execute-call' })[0],
     ).toMatchObject({
-      state: 'cleanup-pending',
+      state: 'terminal',
       abortSource: 'deadline',
-      result: expect.any(Error),
+      result: {
+        outcome: 'error',
+        errorCategory: 'timeout',
+        errorMessage: 'Execution deadline exceeded',
+      },
+    });
+    const snapshot = tool.executions.inspect({ callId: 'deadline-late-after-execute-call' })[0];
+    if (!snapshot) throw new Error('Execution snapshot is missing');
+    const handle = tool.executions.locate(snapshot.executionId);
+    expect(handle).toBeDefined();
+    if (!handle) throw new Error('Execution handle is missing');
+    await expect(handle.whenSettled()).resolves.toMatchObject({
+      state: 'terminal',
+      abortSource: 'deadline',
+      result: { outcome: 'error', errorCategory: 'timeout' },
     });
   });
 
@@ -2228,8 +2282,20 @@ describe('isTool', () => {
     expect(
       tool.executions.inspect({ callId: 'caller-cancel-pending-after-execute-call' })[0],
     ).toMatchObject({
-      state: 'cleanup-pending',
+      state: 'terminal',
       abortSource: 'caller',
+    });
+    const snapshot = tool.executions.inspect({
+      callId: 'caller-cancel-pending-after-execute-call',
+    })[0];
+    if (!snapshot) throw new Error('Execution snapshot is missing');
+    const handle = tool.executions.locate(snapshot.executionId);
+    expect(handle).toBeDefined();
+    if (!handle) throw new Error('Execution handle is missing');
+    await expect(handle.whenSettled()).resolves.toMatchObject({
+      state: 'terminal',
+      abortSource: 'caller',
+      result: { outcome: 'error', errorCategory: 'cancelled' },
     });
   });
 
