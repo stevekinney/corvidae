@@ -17,6 +17,7 @@ import type {
   ExecutionSelector,
 } from './execution-lifecycle';
 import type { Tool } from './is-tool';
+import type { ToolboxResolveApprovalOptions } from './toolbox-approval-api';
 import type { GrantListFilter, ReusableApprovalGrantInput } from './toolbox-approval-contracts';
 import type {
   SerializedToolbox,
@@ -38,6 +39,7 @@ import type {
 } from './toolbox-type-inference';
 import type {
   SignedPendingToolApproval,
+  ToolApprovalResolution,
   ToolCallInput,
   ToolExecutionResult,
   ToolProvider,
@@ -56,6 +58,11 @@ export interface Toolbox<TTools extends readonly Tool[] = readonly Tool[]> {
   resumeApproval(
     approval: SignedPendingToolApproval,
     options?: ToolboxExecuteOptions & { arguments?: unknown },
+  ): Promise<ToolExecutionResult>;
+  resolveApproval(
+    approval: SignedPendingToolApproval,
+    resolution: ToolApprovalResolution,
+    options: ToolboxResolveApprovalOptions,
   ): Promise<ToolExecutionResult>;
   restoreApproval(approval: SignedPendingToolApproval): Promise<void>;
   revokeApproval(approval: SignedPendingToolApproval): Promise<void>;

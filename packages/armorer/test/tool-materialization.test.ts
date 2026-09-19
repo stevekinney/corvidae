@@ -9,6 +9,16 @@ import {
   materializeToolResultsAsync,
 } from '../src/tool-materialization';
 
+function approvalAction(message: string, idempotencyKey: string) {
+  return {
+    type: 'approval' as const,
+    message,
+    risk: 'high' as const,
+    operation: { kind: 'other' as const },
+    policyVersion: 'policy:test',
+    idempotencyKey,
+  };
+}
 describe('tool materialization helpers', () => {
   it('materializes tool calls with generated identifiers and normalized arguments', () => {
     const circularArguments: Record<string, unknown> = {};
@@ -69,9 +79,8 @@ describe('tool materialization helpers', () => {
         toolName: 'lookup',
         result: 'ignored',
         action: {
-          type: 'approval',
-          message: 'Need approval',
-          schema: Symbol('approval'),
+          ...approvalAction('Need approval', 'approval:tool-materialization'),
+          operation: { kind: 'other', argsPreview: Symbol('approval') },
         },
       } as Parameters<typeof materializeToolResult>[0]),
     ).toEqual({
@@ -79,9 +88,8 @@ describe('tool materialization helpers', () => {
       outcome: 'action_required',
       content: null,
       action: {
-        type: 'approval',
-        message: 'Need approval',
-        schema: 'Symbol(approval)',
+        ...approvalAction('Need approval', 'approval:tool-materialization'),
+        operation: { kind: 'other', argsPreview: 'Symbol(approval)' },
       },
     });
 

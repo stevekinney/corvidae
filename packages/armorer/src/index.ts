@@ -143,6 +143,7 @@ export type {
   WithToolboxIdempotencyOptions,
 } from './idempotency';
 export { jsonSchemaToZod } from './json-schema-to-zod';
+export type { ToolboxResolveApprovalOptions } from './toolbox-approval-api';
 export type { GrantListFilter, ReusableApprovalGrantInput } from './toolbox-approval-contracts';
 export { createMiddleware } from './toolbox-contracts';
 export type {

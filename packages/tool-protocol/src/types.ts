@@ -72,17 +72,91 @@ export interface ToolErrorInput {
   details?: unknown;
 }
 
-export interface ToolAction {
-  type: 'approval' | 'input';
+export type ToolApprovalRisk = 'low' | 'medium' | 'high';
+
+export type ToolApprovalSandbox = {
+  provider: string;
+  name: string;
+  workingDir: string;
+};
+
+export type ToolApprovalCommandOperation = {
+  kind: 'command';
+  command: string;
+  filesTouched?: string[] | undefined;
+  argsPreview?: JSONValue | undefined;
+};
+
+export type ToolApprovalFileWriteOperation = {
+  kind: 'file-write';
+  filesTouched: string[];
+  argsPreview?: JSONValue | undefined;
+};
+
+export type ToolApprovalPatchOperation = {
+  kind: 'patch';
+  filesTouched?: string[] | undefined;
+  argsPreview?: JSONValue | undefined;
+  diff: string;
+};
+
+export type ToolApprovalOtherOperation = {
+  kind: 'other';
+  filesTouched?: string[] | undefined;
+  argsPreview?: JSONValue | undefined;
+};
+
+export type ToolApprovalOperation =
+  | ToolApprovalCommandOperation
+  | ToolApprovalFileWriteOperation
+  | ToolApprovalPatchOperation
+  | ToolApprovalOtherOperation;
+
+export type ToolInputAction = {
+  type: 'input';
   message?: string | undefined;
   schema?: JSONValue | undefined;
-}
+};
+
+export type ToolApprovalAction = {
+  type: 'approval';
+  message?: string | undefined;
+  risk: ToolApprovalRisk;
+  operation: ToolApprovalOperation;
+  sandbox?: ToolApprovalSandbox | undefined;
+  env?: string[] | undefined;
+  snapshotId?: string | undefined;
+  expiresAt?: string | undefined;
+  editableArgs?: boolean | undefined;
+  policyVersion: string;
+  idempotencyKey: string;
+};
+
+export type ToolAction = ToolInputAction | ToolApprovalAction;
 
 export interface ToolActionInput {
   type: 'approval' | 'input';
   message?: string | undefined;
   schema?: unknown;
+  risk?: unknown;
+  operation?: unknown;
+  sandbox?: unknown;
+  env?: unknown;
+  snapshotId?: unknown;
+  expiresAt?: unknown;
+  editableArgs?: unknown;
+  policyVersion?: unknown;
+  idempotencyKey?: unknown;
 }
+
+export type ToolApprovalResolutionDecision = 'approve' | 'approve_with_edits' | 'deny' | 'cancel';
+
+export type ToolApprovalResolution = {
+  decision: ToolApprovalResolutionDecision;
+  editedArgs?: unknown;
+  reason?: string;
+  remember: boolean;
+};
 
 export interface ToolCall {
   id: string;

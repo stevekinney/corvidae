@@ -4,6 +4,16 @@ import { Conversation as ConversationHistory } from '../src/history';
 import { createConversationHistory as createConversation } from '../src/index';
 import type { ConversationHistory as ConversationState, Message } from '../src/types';
 
+function approvalAction(message: string, idempotencyKey: string) {
+  return {
+    type: 'approval' as const,
+    message,
+    risk: 'high' as const,
+    operation: { kind: 'other' as const },
+    policyVersion: 'policy:test',
+    idempotencyKey,
+  };
+}
 const getOrderedMessages = (conversation: ConversationState): Message[] =>
   conversation.ids
     .map((id) => conversation.messages[id])
@@ -147,10 +157,7 @@ describe('Conversation compaction and tool interactions', () => {
         callId: 'tool-call-4',
         outcome: 'action_required',
         content: { prompt: 'Approve request' },
-        action: {
-          type: 'approval',
-          message: 'Need approval',
-        },
+        action: approvalAction('Need approval', 'approval:history-utility'),
       },
     ]);
 
@@ -185,7 +192,7 @@ describe('Conversation compaction and tool interactions', () => {
       callId: 'call-1',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval', message: 'Approve deploy to production?' },
+      action: approvalAction('Approve deploy to production?', 'approval:history-resolve'),
     });
 
     history.resolveToolResult('call-1', {
@@ -212,7 +219,7 @@ describe('Conversation compaction and tool interactions', () => {
       callId: 'call-1',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval', message: 'Approve deploy?' },
+      action: approvalAction('Approve deploy?', 'approval:history-resolve-async'),
     });
 
     await history.resolveToolResultAsync('call-1', {

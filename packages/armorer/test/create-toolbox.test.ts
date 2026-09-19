@@ -772,7 +772,7 @@ describe('createToolbox', () => {
       toolbox.resumeApproval({
         ...signedApproval,
         action: {
-          type: 'approval',
+          ...signedApproval.action,
           message: 'Different approval',
         },
       }),
@@ -2651,7 +2651,9 @@ describe('createToolbox', () => {
       approvalExecutionOptions,
     );
 
-    expect(paused.pendingApproval?.action.schema).toEqual({
+    const pausedAction = paused.pendingApproval?.action;
+    if (pausedAction?.type !== 'input') throw new Error('expected input action');
+    expect(pausedAction.schema).toEqual({
       type: 'object',
       properties: {
         title: { type: 'string' },
@@ -7184,9 +7186,11 @@ describe('createToolbox', () => {
         type: 'input',
         message: 'Provide tool input',
       });
+      const registryAction = registryPaused.action;
+      if (!registryAction) throw new Error('missing registry approval action');
       expect(toolPaused.pendingApproval?.satisfiedPolicyPauses).toEqual([
         {
-          action: { type: 'approval', message: 'Approve registry policy' },
+          action: registryAction,
           reason: 'Registry needs approval',
           tier: 'registry',
         },
@@ -7264,9 +7268,11 @@ describe('createToolbox', () => {
       expect(registryPaused.pendingApproval?.policyPauseTier).toBe('registry');
       expect(toolPaused.outcome).toBe('action_required');
       expect(toolPaused.pendingApproval?.policyPauseTier).toBe('tool');
+      const registryAction = registryPaused.action;
+      if (!registryAction) throw new Error('missing registry approval action');
       expect(toolPaused.pendingApproval?.satisfiedPolicyPauses).toEqual([
         {
-          action: { type: 'approval', message: 'Approve operation' },
+          action: registryAction,
           reason: 'Approval required',
           tier: 'registry',
         },

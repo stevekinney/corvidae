@@ -1,10 +1,13 @@
 import type { RuntimeServices } from '@corvidae/lifecycle';
+
 import type {
+  ApprovalBindingContext,
   ApprovalStateStore,
   GrantStateStore,
   ReusableApprovalGrant,
 } from './approval-binding';
 import type { ToolError } from './core/errors';
+import type { ToolRequestContext } from './execution-context';
 import type { Tool } from './is-tool';
 import {
   issueGrant,
@@ -12,6 +15,7 @@ import {
   restoreApproval,
   revokeApproval,
   revokeGrant,
+  verifyPendingApproval,
 } from './toolbox-approval';
 import type { GrantListFilter, ReusableApprovalGrantInput } from './toolbox-approval-contracts';
 import { resumeApproval as resumeApprovalOwner } from './toolbox-approval-resume';
@@ -21,7 +25,17 @@ import {
 } from './toolbox-approval-validation';
 import type { ToolboxExecuteOptions } from './toolbox-contracts';
 import type { Toolbox } from './toolbox-interface';
-import type { SignedPendingToolApproval, ToolCallInput, ToolExecutionResult } from './types';
+import type {
+  JSONValue,
+  SignedPendingToolApproval,
+  ToolApprovalResolution,
+  ToolCallInput,
+  ToolExecutionResult,
+} from './types';
+
+export type ToolboxResolveApprovalOptions = Omit<ToolboxExecuteOptions, 'requestContext'> & {
+  requestContext: NonNullable<ToolboxExecuteOptions['requestContext']>;
+};
 
 type ToolboxExecuteReceiver = {
   execute: (call: ToolCallInput, options?: ToolboxExecuteOptions) => Promise<ToolExecutionResult>;
@@ -31,18 +45,25 @@ export type ToolboxApprovalApi = Omit<
   Pick<
     Toolbox,
     | 'resumeApproval'
+    | 'resolveApproval'
     | 'restoreApproval'
     | 'revokeApproval'
     | 'issueGrant'
     | 'revokeGrant'
     | 'listGrants'
   >,
-  'resumeApproval'
+  'resumeApproval' | 'resolveApproval'
 > & {
   resumeApproval(
     this: ToolboxExecuteReceiver,
     approval: SignedPendingToolApproval,
     options?: ToolboxExecuteOptions & { arguments?: unknown },
+  ): Promise<ToolExecutionResult>;
+  resolveApproval(
+    this: ToolboxExecuteReceiver,
+    approval: SignedPendingToolApproval,
+    resolution: ToolApprovalResolution,
+    options: ToolboxResolveApprovalOptions,
   ): Promise<ToolExecutionResult>;
 };
 
@@ -98,9 +119,34 @@ export function createToolboxApprovalApi(context: ToolboxApprovalContext): Toolb
     });
   }
 
+  async function resolveApproval(
+    receiver: ToolboxExecuteReceiver | undefined,
+    approval: SignedPendingToolApproval,
+    resolution: ToolApprovalResolution,
+    options: ToolboxResolveApprovalOptions,
+  ): Promise<ToolExecutionResult> {
+    const normalizedResolution = normalizeResolution(resolution);
+    if (normalizedResolution.decision === 'approve') {
+      return resumeApproval(receiver, approval, options);
+    }
+    if (normalizedResolution.decision === 'approve_with_edits') {
+      return resumeApproval(receiver, approval, {
+        ...options,
+        arguments: normalizedResolution.editedArgs,
+      });
+    }
+    if (isRejectionResolution(normalizedResolution)) {
+      return rejectApproval(approval, normalizedResolution, options, context);
+    }
+    throw new Error('Approval resolution decision is invalid.');
+  }
+
   return {
     resumeApproval(approval, options) {
       return resumeApproval(this, approval, options);
+    },
+    resolveApproval(approval, resolution, options) {
+      return resolveApproval(this, approval, resolution, options);
     },
     restoreApproval: (approval) =>
       restoreApproval(approval, {
@@ -132,5 +178,147 @@ export function createToolboxApprovalApi(context: ToolboxApprovalContext): Toolb
       }),
     revokeGrant: (id: string) => revokeGrant(id, context.grantStateStore),
     listGrants: (filter?: GrantListFilter) => listGrants(filter, context.grantStateStore),
+  };
+}
+
+type NormalizedResolution = ToolApprovalResolution & {
+  decision: ToolApprovalResolution['decision'];
+};
+
+type RejectionResolution = NormalizedResolution & { decision: 'deny' | 'cancel' };
+
+function normalizeResolution(resolution: ToolApprovalResolution): NormalizedResolution {
+  if (typeof resolution !== 'object' || resolution === null) {
+    throw new Error('Approval resolution must be an object.');
+  }
+  if (!isResolutionDecision(resolution.decision)) {
+    throw new Error('Approval resolution decision is invalid.');
+  }
+  if (typeof resolution.remember !== 'boolean') {
+    throw new Error('Approval resolution remember must be boolean.');
+  }
+  if (resolution.reason !== undefined && typeof resolution.reason !== 'string') {
+    throw new Error('Approval resolution reason must be a string.');
+  }
+  if (resolution.decision === 'approve_with_edits' && !('editedArgs' in resolution)) {
+    throw new Error('Approval resolution editedArgs are required for approve_with_edits.');
+  }
+  return resolution;
+}
+
+function isResolutionDecision(value: unknown): value is ToolApprovalResolution['decision'] {
+  return (
+    value === 'approve' || value === 'approve_with_edits' || value === 'deny' || value === 'cancel'
+  );
+}
+
+function isRejectionResolution(
+  resolution: NormalizedResolution,
+): resolution is RejectionResolution {
+  return resolution.decision === 'deny' || resolution.decision === 'cancel';
+}
+
+async function rejectApproval(
+  approval: SignedPendingToolApproval,
+  resolution: RejectionResolution,
+  options: ToolboxResolveApprovalOptions,
+  context: ToolboxApprovalContext,
+): Promise<ToolExecutionResult> {
+  verifyPendingApproval(approval, context);
+  if (!context.approvalStateStore || !approval.approvalBinding) {
+    throw new Error('Approval state store and binding are required to resolve approval denial.');
+  }
+  const currentTool = context.getTool(approval.toolName);
+  if (!currentTool) throw new Error(`Tool not found: ${approval.toolName}`);
+  const approvalContext = createApprovalContext(options.requestContext, currentTool, context);
+  await context.approvalStateStore.reserve(
+    approval.approvalBinding,
+    approvalContext,
+    context.approvalNow(),
+  );
+  try {
+    await context.approvalStateStore.revoke(approval.approvalBinding);
+  } catch (error) {
+    await context.approvalStateStore.release(approval.approvalBinding);
+    throw error;
+  }
+  return createRejectedApprovalResult(approval, resolution);
+}
+
+function createApprovalContext(
+  requestContext: NonNullable<ToolboxExecuteOptions['requestContext']>,
+  currentTool: Tool,
+  context: ToolboxApprovalContext,
+): ApprovalBindingContext {
+  const required = requireApprovalRequestContext(requestContext);
+  return {
+    principalId: required.authority.principalId,
+    tenantId: required.authority.tenantId,
+    ownerId: required.authority.ownerId,
+    authorizationRevision: required.authority.authorizationRevision,
+    capabilitiesRevision: JSON.stringify([...required.authority.capabilities].toSorted()),
+    audience: required.audience,
+    agentId: required.agentId,
+    runId: required.runId,
+    toolboxRevision: context.toolboxRevision,
+    toolDefinitionRevision: currentTool.id,
+    policyRevision: context.policyRevision,
+    approvalRevision: context.approvalRevision,
+  };
+}
+
+type RequiredApprovalRequestContext = Omit<ToolRequestContext, 'audience' | 'agentId' | 'runId'> & {
+  audience: NonNullable<ToolRequestContext['audience']>;
+  agentId: string;
+  runId: string;
+};
+
+function requireApprovalRequestContext(
+  requestContext: NonNullable<ToolboxExecuteOptions['requestContext']>,
+): RequiredApprovalRequestContext {
+  if (!requestContext.agentId || !requestContext.runId || !requestContext.audience) {
+    throw new Error('Request context and approval binding are required.');
+  }
+  return {
+    ...requestContext,
+    audience: requestContext.audience,
+    agentId: requestContext.agentId,
+    runId: requestContext.runId,
+  };
+}
+
+function createRejectedApprovalResult(
+  approval: SignedPendingToolApproval,
+  resolution: RejectionResolution,
+): ToolExecutionResult {
+  const denied = resolution.decision === 'deny';
+  const message = denied ? 'The user denied this request.' : 'The user cancelled this request.';
+  const error: ToolError = {
+    code: denied ? 'denied' : 'CANCELLED',
+    category: denied ? 'permission' : 'cancelled',
+    retryable: false,
+    message,
+    details: normalizeRejectionDetails(resolution),
+  };
+  return {
+    callId: approval.callId,
+    outcome: 'error',
+    content: message,
+    toolCallId: approval.callId,
+    toolName: approval.toolName,
+    result: undefined,
+    error,
+    errorMessage: error.message,
+    errorCategory: error.category,
+  };
+}
+
+function normalizeRejectionDetails(
+  resolution: NormalizedResolution & { decision: 'deny' | 'cancel' },
+): JSONValue {
+  return {
+    decision: resolution.decision,
+    remember: resolution.remember,
+    ...(resolution.reason !== undefined ? { reason: resolution.reason } : {}),
   };
 }

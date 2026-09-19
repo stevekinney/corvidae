@@ -17,6 +17,16 @@ import {
   testEnvironment,
 } from './adapter-test-fixtures';
 
+function approvalAction(message: string, idempotencyKey: string) {
+  return {
+    type: 'approval' as const,
+    message,
+    risk: 'high' as const,
+    operation: { kind: 'other' as const },
+    policyVersion: 'policy:test',
+    idempotencyKey,
+  };
+}
 function assertToolCallMessage(
   message: ReturnType<typeof toOpenAIMessages>[number] | undefined,
 ): void {
@@ -233,10 +243,7 @@ describe('OpenAI Adapter', () => {
               retryable: false,
               message: 'Approval required',
             },
-            action: {
-              type: 'approval',
-              message: 'Approve this request',
-            },
+            action: approvalAction('Approve this request', 'approval:openai-adapter'),
           },
         },
         testEnvironment,
@@ -258,10 +265,7 @@ describe('OpenAI Adapter', () => {
           retryable: false,
           message: 'Approval required',
         },
-        action: {
-          type: 'approval',
-          message: 'Approve this request',
-        },
+        action: approvalAction('Approve this request', 'approval:openai-adapter'),
       });
     });
 

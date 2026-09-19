@@ -15,7 +15,15 @@ import type { ToolEventMap, ToolExecutionIdentity } from './event-types';
 import type { EffectiveToolExecutionContext, ToolRequestContext } from './execution-context';
 import type { ExecutionHandle, ExecutionLifecycle, ExecutionSnapshot } from './execution-lifecycle';
 import { policyPauseDecisionsSymbol, policyPauseTierSymbol } from './internal/approval-resume';
-import type { PolicyPauseTier, ToolCall, ToolCallReturn, ToolExecutionResult } from './types';
+import type {
+  PolicyPauseTier,
+  ToolApprovalOperation,
+  ToolApprovalRisk,
+  ToolApprovalSandbox,
+  ToolCall,
+  ToolCallReturn,
+  ToolExecutionResult,
+} from './types';
 
 export type ToolParametersSchema = z.ZodType;
 export type {
@@ -159,6 +167,15 @@ export type ToolPolicyDecision = {
   action?: {
     message?: string;
     schema?: unknown;
+    risk?: ToolApprovalRisk;
+    operation?: ToolApprovalOperation;
+    sandbox?: ToolApprovalSandbox;
+    env?: readonly string[];
+    snapshotId?: string;
+    expiresAt?: string;
+    editableArgs?: boolean;
+    policyVersion?: string;
+    idempotencyKey?: string;
   };
 };
 

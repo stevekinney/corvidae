@@ -859,6 +859,57 @@ test.describe('chat harness — mounts cleanly', () => {
       await dispose();
     }
   });
+
+  test('Chat tool approvals use the shared Cinder approval surface', async ({ browser }) => {
+    const cinderCardCounts: number[] = [];
+    for (const colorScheme of ['dark', 'light'] as const) {
+      const context = await browser.newContext({
+        baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+        colorScheme,
+        reducedMotion: 'reduce',
+        viewport: { width: 1280, height: 900 },
+      });
+      const diagnostics: string[] = [];
+      try {
+        await context.addInitScript(
+          ([key, value]) => {
+            localStorage.setItem(key, value);
+          },
+          [THEME_STORAGE_KEY, colorScheme] as const,
+        );
+        const page = await context.newPage();
+        page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
+        page.on('console', (message) => {
+          if (message.type() === 'error' || message.type() === 'warning') {
+            diagnostics.push(`${message.type()}: ${message.text()}`);
+          }
+        });
+        await page.goto(fixtureRoute('chat'), { waitUntil: 'load' });
+        await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+        const approvalChat = page.locator('#fixture-tool-approval-chat');
+        await expect(approvalChat).toBeVisible();
+        await expect(
+          approvalChat
+            .locator('.chat-tool-approval-message')
+            .getByText('Approve running this tool before it executes?', { exact: true }),
+        ).toBeVisible();
+        await expect(
+          approvalChat.locator('.chat-tool-approval-name').getByText('deploy_to_production', {
+            exact: true,
+          }),
+        ).toBeVisible();
+        cinderCardCounts.push(await approvalChat.locator('.cinder-approval-card').count());
+        expect(
+          diagnostics,
+          'Chat approval fixture must not emit browser errors or warnings',
+        ).toEqual([]);
+      } finally {
+        await context.close();
+      }
+    }
+
+    expect(cinderCardCounts).toEqual([1, 1]);
+  });
 });
 
 test.describe('chat harness — submit and reply', () => {

@@ -31,6 +31,7 @@ type ToolboxSurfaceInput<TEntries extends ToolboxEntries> = {
   views: ToolboxViews<TEntries>;
   execute: Toolbox<ToolsFromEntries<TEntries>>['execute'];
   resumeApproval: Toolbox<ToolsFromEntries<TEntries>>['resumeApproval'];
+  resolveApproval: Toolbox<ToolsFromEntries<TEntries>>['resolveApproval'];
   restoreApproval: Toolbox<ToolsFromEntries<TEntries>>['restoreApproval'];
   revokeApproval: Toolbox<ToolsFromEntries<TEntries>>['revokeApproval'];
   issueGrant: Toolbox<ToolsFromEntries<TEntries>>['issueGrant'];
@@ -59,6 +60,7 @@ export function createToolboxPublicSurface<const TEntries extends ToolboxEntries
   return {
     execute: input.execute,
     resumeApproval: input.resumeApproval,
+    resolveApproval: input.resolveApproval,
     restoreApproval: input.restoreApproval,
     revokeApproval: input.revokeApproval,
     issueGrant: input.issueGrant,
