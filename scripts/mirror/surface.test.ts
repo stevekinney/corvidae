@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
+import { committedPlans, corvidaeRoot } from './committed-plans.ts';
 import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
 import {
   assertNothingDeferred,
@@ -14,7 +15,6 @@ import { nonSourceNames, nonSourcePrefixes } from './source.ts';
 import {
   assertPublishable,
   isExpectedPackRewrite,
-  planSurface,
   SurfaceError,
   unresolvedFindings,
   unresolvedSubpaths,
@@ -23,16 +23,17 @@ import {
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 import { configurationFiles, vendoredDirectory } from './typescript-configuration.ts';
 
-const corvidaeRoot = join(import.meta.dir, '..', '..');
-
 /**
  * The acceptance gates, run against the committed tree rather than a fixture, because what they
  * assert is a property of the real workspaces. Nothing here reaches the network: surface parity
  * reads the committed registry baseline, and `refresh-registry-baseline.ts --verify` is the
  * separate, explicit command that checks the baseline itself against npm.
+ *
+ * Both plans come from `committed-plans.ts`, built once for the process when that module loads
+ * and shared with `source-escapes.test.ts`. A test body that built one would be several seconds
+ * of planning measured against bun's per-test timeout, which is a failure about the machine
+ * rather than about the tree.
  */
-
-const plans = new Map<MirrorTarget, SurfacePlan>();
 
 /**
  * One plan entry as text. Plan contents are bytes or text since the transform started emitting
@@ -42,14 +43,6 @@ function planText(plan: SurfacePlan, path: string): string {
   const contents = plan.files[path];
   if (contents === undefined) return '{}';
   return typeof contents === 'string' ? contents : new TextDecoder().decode(contents);
-}
-
-async function planFor(target: MirrorTarget): Promise<SurfacePlan> {
-  const existing = plans.get(target);
-  if (existing) return existing;
-  const plan = await planSurface({ corvidaeRoot, target });
-  plans.set(target, plan);
-  return plan;
 }
 
 /**
@@ -77,8 +70,8 @@ const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
 
 describe('surface parity', () => {
   for (const target of mirrorTargets) {
-    test(`${target}: no published subpath disappears`, async () => {
-      const plan = await planFor(target);
+    test(`${target}: no published subpath disappears`, () => {
+      const { plan } = committedPlans[target];
       const narrowed = plan.parity.filter((result) => result.missing.length > 0);
       expect(
         narrowed.map((result) => `${result.publicName}: ${result.missing.join(', ')}`),
@@ -90,7 +83,7 @@ describe('surface parity', () => {
     const surface = await loadPackageSurface();
     const checked: string[] = [];
     for (const target of mirrorTargets) {
-      const plan = await planFor(target);
+      const { plan } = committedPlans[target];
       checked.push(...plan.parity.map((result) => result.publicName));
     }
     expect(checked.toSorted()).toEqual(
@@ -100,16 +93,16 @@ describe('surface parity', () => {
     );
   });
 
-  test('cinder is regenerated to the full published surface, not a subset', async () => {
-    const plan = await planFor('cinder');
+  test('cinder is regenerated to the full published surface, not a subset', () => {
+    const { plan } = committedPlans.cinder;
     const result = plan.parity.find((entry) => entry.publicName === '@lostgradient/cinder');
     expect(result?.baselineVersion).toBe('0.26.2');
     expect(result?.missing).toEqual([]);
     expect(result?.added).toEqual([]);
   });
 
-  test('a package with no published predecessor is a first publish, not a failure', async () => {
-    const plan = await planFor('cinder');
+  test('a package with no published predecessor is a first publish, not a failure', () => {
+    const { plan } = committedPlans.cinder;
     const results = plan.parity.filter(isFirstPublish);
     expect(results.map((result) => result.publicName).toSorted()).toEqual([
       '@lostgradient/cryptography',
@@ -130,7 +123,7 @@ describe('surface parity', () => {
 describe('target coverage', () => {
   for (const target of mirrorTargets) {
     test(`${target}: the only unpublished targets are the ones the pack script rewrites`, async () => {
-      const plan = await planFor(target);
+      const { plan } = committedPlans[target];
       const surface = await loadPackageSurface();
       const byPublicName = new Map(
         Object.values(surface.packages).map((entry) => [entry.publicName, entry] as const),
@@ -144,7 +137,7 @@ describe('target coverage', () => {
     });
 
     test(`${target}: exports targets with no source are exactly the known blockers`, async () => {
-      const plan = await planFor(target);
+      const { plan } = committedPlans[target];
       const surface = await loadPackageSurface();
       expect(unresolvedSubpaths(unresolvedFindings(plan, surface.packages))).toEqual(
         [...unresolvedByTarget[target]].toSorted(),
@@ -152,7 +145,7 @@ describe('target coverage', () => {
     });
 
     test(`${target}: the gate refuses to publish exactly while a blocker stands`, async () => {
-      const plan = await planFor(target);
+      const { plan } = committedPlans[target];
       const surface = await loadPackageSurface();
       const blockers = unresolvedByTarget[target];
       let thrown: unknown;
@@ -175,8 +168,8 @@ describe('target coverage', () => {
     });
   }
 
-  test('a plan with nothing unresolved is publishable', async () => {
-    const plan = await planFor('weft');
+  test('a plan with nothing unresolved is publishable', () => {
+    const { plan } = committedPlans.weft;
     expect(() => assertPublishable({ ...plan, coverage: [], parity: [] }, {})).not.toThrow();
   });
 });
@@ -207,7 +200,7 @@ describe('emitted manifests', () => {
     );
     let checked = 0;
     for (const target of mirrorTargets) {
-      const plan = await planFor(target);
+      const { plan } = committedPlans[target];
       for (const [workspace, entry] of Object.entries(surface.packages)) {
         const path = `${directories.get(workspace)}/package.json`;
         if (plan.files[path] === undefined) continue;
@@ -229,8 +222,8 @@ describe('emitted manifests', () => {
     );
   });
 
-  test('the build toolchain is inlined where the target has no catalog to hold it', async () => {
-    const plan = await planFor('weft');
+  test('the build toolchain is inlined where the target has no catalog to hold it', () => {
+    const { plan } = committedPlans.weft;
     const manifest = JSON.parse(planText(plan, 'packages/weft/package.json')) as {
       devDependencies?: Record<string, string>;
     };
@@ -238,8 +231,8 @@ describe('emitted manifests', () => {
     expect(manifest.devDependencies?.['chalk']).not.toBe('catalog:');
   });
 
-  test('the build toolchain stays a catalog reference where the target has a catalog', async () => {
-    const plan = await planFor('cinder');
+  test('the build toolchain stays a catalog reference where the target has a catalog', () => {
+    const { plan } = committedPlans.cinder;
     const manifest = JSON.parse(planText(plan, 'packages/chat/package.json')) as {
       devDependencies?: Record<string, string>;
     };
@@ -247,8 +240,8 @@ describe('emitted manifests', () => {
     expect(manifest.devDependencies?.['@lostgradient/bun-plugin-svelte']).toBeString();
   });
 
-  test('a private workspace keeps its source exports and never gains a files allowlist', async () => {
-    const plan = await planFor('cinder');
+  test('a private workspace keeps its source exports and never gains a files allowlist', () => {
+    const { plan } = committedPlans.cinder;
     const manifest = JSON.parse(planText(plan, 'packages/testing/package.json')) as {
       exports?: unknown;
       files?: unknown;
@@ -260,8 +253,8 @@ describe('emitted manifests', () => {
 });
 
 describe('TypeScript configuration', () => {
-  test('the weft target vendors the configuration and extends it by relative path', async () => {
-    const plan = await planFor('weft');
+  test('the weft target vendors the configuration and extends it by relative path', () => {
+    const { plan } = committedPlans.weft;
     expect(plan.typescript.vendoredInto).toEqual(['packages/weft']);
     for (const file of configurationFiles) {
       expect(plan.files[`packages/weft/${vendoredDirectory}/${file}`]).toBeString();
@@ -272,8 +265,8 @@ describe('TypeScript configuration', () => {
     expect(emitted.extends).toBe(`./${vendoredDirectory}/library.json`);
   });
 
-  test('the cinder target keeps the configuration as a workspace package', async () => {
-    const plan = await planFor('cinder');
+  test('the cinder target keeps the configuration as a workspace package', () => {
+    const { plan } = committedPlans.cinder;
     expect(plan.typescript.vendoredInto).toEqual([]);
     expect(plan.files['internal/typescript/library.json']).toBeString();
     const emitted = JSON.parse(planText(plan, 'packages/components/tsconfig.json')) as {
@@ -282,19 +275,19 @@ describe('TypeScript configuration', () => {
     expect(emitted.extends).toBe('@lostgradient/typescript/browser.json');
   });
 
-  test('COR-1188’s dropped configuration edge is the only one, and vendoring closes it', async () => {
-    const weft = await planFor('weft');
+  test('COR-1188’s dropped configuration edge is the only one, and vendoring closes it', () => {
+    const weft = committedPlans.weft.plan;
     expect(weft.droppedEdges).toEqual(['@corvidae/weft -> @corvidae/typescript']);
     // `planSurface` runs `assertTypeScriptEdgeClosed`, so reaching here is the closure.
     expect(weft.typescript.vendoredInto).toContain('packages/weft');
-    const cinder = await planFor('cinder');
+    const cinder = committedPlans.cinder.plan;
     expect(cinder.droppedEdges).toEqual([]);
   });
 });
 
 describe('emitted source', () => {
   test('every workspace the target receives brings its source, at the remapped path', async () => {
-    const plan = await planFor('cinder');
+    const { plan } = committedPlans.cinder;
     for (const workspace of plan.emitted) {
       const emitted = Object.keys(plan.files).filter((path) =>
         path.startsWith(`${workspace.targetDirectory}/src/`),
@@ -321,16 +314,16 @@ describe('emitted source', () => {
     ).toEqual([]);
   });
 
-  test('the target’s binaries keep the executable bit their source carries', async () => {
-    const plan = await planFor('weft');
+  test('the target’s binaries keep the executable bit their source carries', () => {
+    const { plan } = committedPlans.weft;
     expect(plan.source.executable).toEqual([
       'packages/weft/src/cli-main.ts',
       'packages/weft/src/cli-mcp.ts',
     ]);
   });
 
-  test('the deferred application is emitted nowhere and refuses the sync', async () => {
-    const plan = await planFor('cinder');
+  test('the deferred application is emitted nowhere and refuses the sync', () => {
+    const { plan } = committedPlans.cinder;
     expect(plan.deferred.map((entry) => entry.workspace)).toEqual(['@corvidae/chat-room']);
     expect(
       Object.keys(plan.files).filter(
@@ -340,8 +333,8 @@ describe('emitted source', () => {
     expect(() => assertNothingDeferred(plan)).toThrow(DeferredWorkspaceError);
   });
 
-  test('every emitted private workspace is checked by something', async () => {
-    const plan = await planFor('cinder');
+  test('every emitted private workspace is checked by something', () => {
+    const { plan } = committedPlans.cinder;
     for (const entry of plan.privateWorkspaces) {
       // `verifyTarget` runs `typecheck` for each of these, and throws for one that emits
       // TypeScript without declaring the script. Nothing here may be in that state.
@@ -370,7 +363,7 @@ describe('the plan and the guard on the committed tree', () => {
     // doing so; this is the two mechanisms agreeing on the committed tree rather than a fixture.
     const policy = await loadTargetOwnedPolicy();
     for (const target of mirrorTargets) {
-      const plan = await planFor(target);
+      const { plan } = committedPlans[target];
       expect(() =>
         assertWritablePaths({ policy, target, paths: Object.keys(plan.files) }),
       ).not.toThrow();
