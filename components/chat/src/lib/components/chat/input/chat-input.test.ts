@@ -689,7 +689,7 @@ describe('ChatInput', () => {
         `#${composer.getAttribute('aria-describedby')}`,
       );
       expect(shortcutDescription?.textContent).toContain('Command+Enter or Control+Enter to send');
-      expect(target.querySelector('.chat-input-hint')?.textContent).toContain('Ctrl');
+      expect(target.querySelector('.chat-input-hint')).toBeNull();
       await fireEvent.input(composer, { target: { value: 'send this' } });
 
       await fireEvent.keyDown(composer, { key: 'Enter' });
@@ -716,9 +716,7 @@ describe('ChatInput', () => {
       });
       const composer = target.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
       await fireEvent.input(composer, { target: { value: 'first\nsecond' } });
-      expect(target.querySelector('.chat-input-hint')?.textContent).toContain(
-        'Use the send button to send this multiline message',
-      );
+      expect(target.querySelector('.chat-input-hint')).toBeNull();
       await fireEvent.keyDown(composer, { key: 'Enter' });
       expect(submitCount).toBe(0);
       await fireEvent.input(composer, { target: { value: 'single line' } });
@@ -950,4 +948,50 @@ describe('ChatInput', () => {
       expect(composer?.getAttribute('aria-autocomplete')).toBe('both');
     });
   });
+});
+
+test('submits a ready ordinary attachment with an empty message', async () => {
+  const submissions: Array<{ message: MessageInput; attachments: unknown[] }> = [];
+  const target = document.createElement('div');
+  document.body.append(target);
+  const instance = mount(ChatInput, {
+    target,
+    props: {
+      id: 'ordinary-attachment-only-composer',
+      onsubmit: (message: MessageInput, attachments: unknown[]) =>
+        submissions.push({ message, attachments }),
+    },
+  });
+
+  instance.addFiles([new File(['image'], 'image.png', { type: 'image/png' })]);
+  await tick();
+  await fireEvent.submit(target.querySelector('form')!);
+
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0]?.message).toEqual({ role: 'user', content: '' });
+  expect(submissions[0]?.attachments).toHaveLength(1);
+  unmount(instance);
+  target.remove();
+});
+
+test('keeps an uploading code attachment from submitting', async () => {
+  let submitCount = 0;
+  const target = document.createElement('div');
+  document.body.append(target);
+  const instance = mount(ChatInput, {
+    target,
+    props: { id: 'pending-attachment-composer', onsubmit: () => (submitCount += 1) },
+  });
+
+  const file = new File(['const value = 1;'], 'pending.ts', { type: 'text/typescript' });
+  Object.defineProperty(file, 'text', { value: () => new Promise<string>(() => {}) });
+  instance.addFiles([file]);
+  await tick();
+
+  const send = target.querySelector<HTMLButtonElement>('.chat-input-send');
+  expect(send?.disabled).toBe(true);
+  await fireEvent.submit(target.querySelector('form')!);
+  expect(submitCount).toBe(0);
+  unmount(instance);
+  target.remove();
 });

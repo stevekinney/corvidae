@@ -403,7 +403,7 @@
   // --- Chat callbacks ---
   function handleSubmit(event: ChatSubmitEvent): void {
     const content = typeof event.message.content === 'string' ? event.message.content : '';
-    record('onsubmit', content);
+    record('onsubmit', JSON.stringify({ content, attachments: event.attachments.length }));
     conversation = appendMessages(conversation, {
       role: 'user',
       content: event.message.content,

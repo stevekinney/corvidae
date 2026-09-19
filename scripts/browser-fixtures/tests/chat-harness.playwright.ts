@@ -106,7 +106,7 @@ test.describe('chat harness — mounts cleanly', () => {
   test('renders the control panel and the chat under test with a quiet event log', async ({
     browser,
   }) => {
-    const { harness, dispose } = await openHarness(browser);
+    const { page, harness, dispose } = await openHarness(browser);
     try {
       await expect(harness.locator('[data-testid="harness-controls"]')).toBeVisible();
       await expect(harness.locator('#harness-chat')).toBeVisible();
@@ -1143,6 +1143,35 @@ test.describe('chat harness — imperative scroll + focus controls', () => {
 });
 
 test.describe('chat harness — attachments', () => {
+  test('attachment-only messages keep controls visible and use the available media width', async ({
+    browser,
+  }) => {
+    const { harness, dispose } = await openHarness(browser);
+    try {
+      const chat = harness.locator('#harness-chat');
+      const fileInput = chat.locator('input[type="file"]');
+      await fileInput.setInputFiles({
+        name: 'attachment-only.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+      });
+
+      const remove = chat.getByRole('button', { name: 'Remove attachment-only.png' });
+      await expect(remove).toBeVisible();
+      await expect(remove).toHaveCSS('opacity', '1');
+
+      const send = chat.locator('.chat-input-send');
+      await expect(send).toBeEnabled();
+      await send.click();
+      await expect(
+        harness.locator('[data-testid="event-log-entry"][data-event="onsubmit"]').first(),
+      ).toHaveAttribute('data-payload', '{"content":"","attachments":1}');
+      await expect(chat.locator('.chat-input-attachment-wrapper')).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+
   test('an accepted file fires onattachmentadd; a disallowed file fires onattachmentfailure', async ({
     browser,
   }) => {
@@ -1215,6 +1244,30 @@ test.describe('chat harness — attachments', () => {
       const describedBy = await composer.getAttribute('aria-describedby');
       expect(describedBy).toBeTruthy();
       await expect(chat.locator(`#${describedBy}`)).toContainText('Shift');
+    } finally {
+      await dispose();
+    }
+  });
+});
+
+test.describe('chat harness — composer help', () => {
+  test('composer shortcut help is contextual without shifting footer controls', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser);
+    try {
+      const chat = harness.locator('#harness-chat');
+      const composer = chat.getByRole('textbox', { name: 'Message' });
+      await composer.fill('A contextual hint');
+      await expect(chat.locator('.chat-input-hint')).toHaveCount(0);
+
+      const send = chat.locator('.chat-input-send');
+      await send.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Send (Enter)');
+      await send.focus();
+      await expect(page.getByRole('tooltip')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
     } finally {
       await dispose();
     }
