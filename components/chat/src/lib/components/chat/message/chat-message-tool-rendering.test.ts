@@ -11,7 +11,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 
 import { setupHappyDom } from '@corvidae/testing';
 import type { Message, ToolCallPair } from '../conversation-model.ts';
@@ -38,6 +38,19 @@ function toolCallMessage(): Message {
     metadata: {},
     hidden: false,
     toolCall: { id: 'call-1', name: 'lookup', arguments: {} },
+  };
+}
+
+function userMessage(overrides?: Partial<Message>): Message {
+  return {
+    id: 'user-1',
+    role: 'user',
+    content: 'Please regenerate this answer.',
+    position: 0,
+    createdAt: '2026-06-02T12:34:00.000Z',
+    metadata: {},
+    hidden: false,
+    ...overrides,
   };
 }
 
@@ -85,6 +98,70 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(source).toContain('expandedCalls.has(`${index}:${pair.call.id}`)');
     expect(source).toContain('toggleCall(`${index}:${pair.call.id}`)');
     expect(source).toContain('occurrenceKey={`${navigationMessageId}-${index}-${pair.call.id}`}');
+  });
+
+  test('renders custom message status inside the semantic article while timestamps stay below the bubble', () => {
+    const { container } = render(ChatMessage, {
+      props: {
+        message: userMessage(),
+        status: createRawSnippet(() => ({
+          render: () =>
+            '<span data-testid="custom-status">The assistant could not complete this turn.</span>',
+          setup: () => {},
+        })),
+      },
+    });
+
+    const bubble = container.querySelector('article.chat-message');
+    const status = container.querySelector('[data-testid="custom-status"]');
+    const statusRow = container.querySelector('.chat-message-status');
+    const metadata = container.querySelector('.chat-message-metadata');
+    const timestamp = metadata?.querySelector('time') ?? null;
+    expect(bubble).not.toBeNull();
+    expect(status).not.toBeNull();
+    expect(statusRow).not.toBeNull();
+    expect(metadata).not.toBeNull();
+    expect(timestamp).not.toBeNull();
+    expect(bubble!.contains(status)).toBe(true);
+    expect(statusRow!.contains(status)).toBe(true);
+    expect(metadata!.contains(timestamp)).toBe(true);
+    expect(statusRow!.contains(timestamp)).toBe(false);
+  });
+
+  test('renders metadata snippets below the visual message bubble', () => {
+    const { container } = render(ChatMessage, {
+      props: {
+        message: userMessage({ createdAt: '' }),
+        metadata: createRawSnippet(() => ({
+          render: () => '<span data-testid="read-receipt">Read</span>',
+          setup: () => {},
+        })),
+      },
+    });
+
+    const bubble = container.querySelector('article.chat-message');
+    const metadata = container.querySelector('.chat-message-metadata');
+    const receipt = container.querySelector('[data-testid="read-receipt"]');
+    expect(bubble).not.toBeNull();
+    expect(metadata).not.toBeNull();
+    expect(receipt).not.toBeNull();
+    expect(metadata!.contains(receipt)).toBe(true);
+    expect(bubble!.contains(receipt)).toBe(false);
+  });
+
+  test('compact edit save button exposes resend semantics to assistive technology', async () => {
+    const { container } = render(ChatMessage, {
+      props: {
+        message: userMessage(),
+        onedit: () => {},
+      },
+    });
+
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('.chat-message-edit-button')!);
+    const save = container.querySelector<HTMLButtonElement>('.chat-message-edit-save');
+    expect(save).not.toBeNull();
+    expect(save?.textContent?.trim()).toBe('Save');
+    expect(save?.getAttribute('aria-label')).toBe('Save & Resend');
   });
 
   test('renders the ToolCallGroup card when a resolved pair is supplied', () => {

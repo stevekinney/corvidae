@@ -2,7 +2,7 @@
   /**
    * Per-message read receipt badge for the Chat component.
    *
-   * Rendered inside the `messageStatus` snippet slot of the user's message bubble.
+   * Rendered in the message metadata row below the user's message bubble.
    * Shows delivery/read state with BOTH an icon AND a text label (never color-only).
    *
    * Three states:

@@ -1485,8 +1485,14 @@
     {#snippet renderDefaultRow()}
       {@const receipt =
         message.role === 'user' ? readReceiptsState.getReceipt(message.id) : undefined}
+      {#snippet readReceiptMetadata()}
+        {#if receipt}
+          <ChatReadReceipt {receipt} />
+        {/if}
+      {/snippet}
       <ChatMessage
         {message}
+        {...receipt ? { metadata: readReceiptMetadata } : {}}
         toolCallPairs={pairs}
         {messagePart}
         {markdownNode}
@@ -1532,9 +1538,6 @@
         {#snippet status()}
           {#if messageStatus}
             {@render messageStatus(rowContext)}
-          {/if}
-          {#if receipt}
-            <ChatReadReceipt {receipt} />
           {/if}
         {/snippet}
       </ChatMessage>

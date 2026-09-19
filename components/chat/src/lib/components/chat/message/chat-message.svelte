@@ -19,8 +19,10 @@
     searchMatch?: boolean;
     /** Actions region snippet (copy, edit, retry buttons) */
     actions?: Snippet;
-    /** Status indicator snippet (sending, delivered, error) */
+    /** Status indicator snippet that belongs to the semantic message article. */
     status?: Snippet;
+    /** Visual metadata rendered below the message bubble, such as read receipts. */
+    metadata?: Snippet;
     /**
      * Per-part render override. Forwarded to the parts renderer; lets a consumer
      * replace the rendering of an individual body part while delegating the rest
@@ -124,6 +126,7 @@
     searchMatch = false,
     actions,
     status,
+    metadata,
     messagePart,
     markdownNode,
     showDefaultActions = true,
@@ -260,7 +263,7 @@
   const createdAtValue = $derived(
     typeof message.createdAt === 'string' && formattedCreatedAt ? message.createdAt : undefined,
   );
-  const hasMetadata = $derived(Boolean(formattedCreatedAt || status));
+  const hasMetadata = $derived(Boolean(formattedCreatedAt || metadata));
 
   // Role detection — kept for wrapper-level layout + a11y (data-tool-pair,
   // aria-label). The body branches that used to live here are now derived parts.
@@ -397,6 +400,7 @@
               class="chat-message-edit-save"
               size="xs"
               variant="primary"
+              aria-label="Save & Resend"
               onclick={saveEdit}
             >
               Save
@@ -465,6 +469,12 @@
         </Button>
       </div>
     {/if}
+
+    {#if status}
+      <div class="chat-message-status">
+        {@render status()}
+      </div>
+    {/if}
   </article>
 
   {#if hasMetadata}
@@ -472,10 +482,8 @@
       {#if createdAtValue && formattedCreatedAt}
         <time datetime={createdAtValue}>{formattedCreatedAt}</time>
       {/if}
-      {#if status}
-        <div class="chat-message-status">
-          {@render status()}
-        </div>
+      {#if metadata}
+        {@render metadata()}
       {/if}
     </div>
   {/if}

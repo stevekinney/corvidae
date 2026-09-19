@@ -820,6 +820,7 @@ test.describe('chat harness — message metadata', () => {
           renderedBox(wrapper.locator('.chat-message-body'), 'message body'),
         ]);
         expect(metadataBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height - 1);
+        expect(receiptBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height - 1);
         expect(receiptBox.y).toBeGreaterThanOrEqual(metadataBox.y - 1);
         expect(bodyBox.y + bodyBox.height).toBeLessThanOrEqual(metadataBox.y + 1);
       } finally {

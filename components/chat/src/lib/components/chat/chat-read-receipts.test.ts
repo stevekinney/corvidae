@@ -132,6 +132,39 @@ describe('Chat — readReceipts prop', () => {
     unmount(instance);
   }, 20_000);
 
+  test('receipt renders in metadata below the visual message bubble', () => {
+    let conversation = createConversation();
+    conversation = appendMessage(
+      conversation,
+      'user',
+      'Receipt placement',
+      'user-receipt-placement',
+    );
+
+    const readReceipts = new Map<string, ReadReceipt>([
+      ['user-receipt-placement', { status: 'read', readBy: ['Avery'] }],
+    ]);
+
+    const { container, instance } = mountChat({
+      id: 'chat-receipt-placement',
+      conversation,
+      readReceipts,
+    });
+
+    const wrapper = container.querySelector('[data-role="user"]');
+    const bubble = wrapper?.querySelector('.chat-message') ?? null;
+    const metadata = wrapper?.querySelector('.chat-message-metadata') ?? null;
+    const receipt = wrapper?.querySelector('[data-cinder-receipt-status]') ?? null;
+    expect(wrapper).not.toBeNull();
+    expect(bubble).not.toBeNull();
+    expect(metadata).not.toBeNull();
+    expect(receipt).not.toBeNull();
+    expect(metadata!.contains(receipt)).toBe(true);
+    expect(bubble!.contains(receipt)).toBe(false);
+
+    unmount(instance);
+  });
+
   test('receipt wrapper has role="img" (accessible name via aria-label, not subtree text)', () => {
     // Regression guard: role=img makes the badge a single named widget so
     // screen readers announce the FULL "Read by Alice, Bob" label.
