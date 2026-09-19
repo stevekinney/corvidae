@@ -35,7 +35,7 @@ Below `md`, Sidebar renders inside `<Drawer placement="left" size="md">`. The `c
 - `collapsed=false` → drawer open
 - `collapsed=true` → drawer closed
 
-Mobile drawer inherits Drawer's focus trap, ESC handling, body scroll lock, and backdrop click — see [`drawer.a11y.md`](drawer.a11y.md).
+Mobile drawer inherits Drawer's focus trap, ESC handling, body scroll lock, and backdrop click — see [`drawer.a11y.md`](../drawer/drawer.a11y.md).
 
 ### Wiring the mobile trigger
 
@@ -71,6 +71,6 @@ This wires the open/close affordance into the page chrome and keeps the trigger 
 
 ## SSR behavior
 
-In desktop / inline mode the `<aside>` renders normally on the server. In mobile mode the drawer follows the [OVERLAY-POLICY](../_internal/OVERLAY-POLICY.md): no overlay markup is emitted on the server. A sidebar that should appear hydrated-open on a mobile-width SSR response will paint one frame later than the desktop counterpart.
+In desktop / inline mode the `<aside>` renders normally on the server. In mobile mode the drawer follows the [OVERLAY-POLICY](../../_internal/OVERLAY-POLICY.md): no overlay markup is emitted on the server. A sidebar that should appear hydrated-open on a mobile-width SSR response will paint one frame later than the desktop counterpart.
 
 The `MediaQuery` SSR fallback is `false`, so the server renders the desktop branch by default. On a mobile-width viewport, the user briefly sees the desktop `<aside>` before the client-side `MediaQuery` flips and the component switches to the drawer branch — a one-frame layout shift. If first-paint mobile correctness matters more than desktop, set `collapsed={true}` as a safe default so the desktop sidebar renders in icon-only mode before the swap.

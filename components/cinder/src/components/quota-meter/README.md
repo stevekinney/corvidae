@@ -36,8 +36,7 @@
 
 <!-- generated:authoring:start -->
 
-Before publishing this component, complete the live [component authoring pre-flight](../../../AGENTS.md#component-authoring-pre-flight).
-
+Before publishing this component, complete the live [component authoring pre-flight](../../../README.md#component-authoring-checklist).
 <!-- generated:authoring:end -->
 
 ## CSS Variables

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Integrate Toolbox tools with the OpenAI Agents SDK (`@openai/agents`). This integration converts Toolbox tools into live, executable SDK tool objects with tool classification (mutating/dangerous/read-only) and permission-based gating.
+Integrate Toolbox tools with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/) (`@openai/agents`). This integration converts Toolbox tools into live, executable SDK tool objects with tool classification (mutating/dangerous/read-only) and permission-based gating.
 
 > **Not the same as `toOpenAITools()`**: The [provider adapter](./provider-adapters.md) `toOpenAITools()` produces static JSON Schema definitions for the OpenAI Chat Completions API. This integration is different. It produces runnable tool objects that the OpenAI Agents SDK's `tool()` function expects, including execution handlers and tool classification. Use `toOpenAITools()` when calling the Chat Completions API directly; use this integration when building with the OpenAI Agents SDK.
 

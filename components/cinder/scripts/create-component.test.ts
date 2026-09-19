@@ -9,10 +9,10 @@
  *     generator resolves.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 
@@ -172,13 +172,32 @@ describe('renderReadme', () => {
     const experimentalReadme = renderReadme(buildContext('experimental/json-viewer'));
 
     expect(readme).toContain(
-      '[component authoring pre-flight](../../../AGENTS.md#component-authoring-pre-flight)',
+      '[component authoring pre-flight](../../../README.md#component-authoring-checklist)',
     );
     expect(experimentalReadme).toContain(
-      '[component authoring pre-flight](../../../../AGENTS.md#component-authoring-pre-flight)',
+      '[component authoring pre-flight](../../../../README.md#component-authoring-checklist)',
     );
+    expect(readme).toContain("import { MyWidget } from '@corvidae/cinder';");
     expect(readme).not.toContain(renderComponentAuthoringChecklist());
     expect(experimentalReadme).not.toContain(renderComponentAuthoringChecklist());
+  });
+
+  it('resolves both authoring links to the Cinder README checklist', () => {
+    const stable = buildContext('my-widget');
+    const experimental = buildContext('experimental/json-viewer');
+    const checklistHeading = '### Component authoring checklist';
+
+    expect(resolve(stable.directory, '../../../README.md')).toBe(
+      resolve(import.meta.dir, '..', 'README.md'),
+    );
+    expect(resolve(experimental.directory, '../../../../README.md')).toBe(
+      resolve(import.meta.dir, '..', 'README.md'),
+    );
+    expect(existsSync(resolve(stable.directory, '../../../README.md'))).toBe(true);
+    expect(existsSync(resolve(experimental.directory, '../../../../README.md'))).toBe(true);
+    expect(readFileSync(join(import.meta.dir, '..', 'README.md'), 'utf8')).toContain(
+      checklistHeading,
+    );
   });
 });
 

@@ -20,3 +20,5 @@ Use a bar chart when precise comparison matters more than the part-to-whole rela
 
 <DonutChart label="Workload" {data} centerLabel="Tasks" valueLabels />
 ```
+
+`label` is required because it names both the chart and its generated data table. `valueLabels` adds visible values; `centerLabel` is supplemental and should not be the only explanation of the total. Use `scrollable` when the legend or ring cannot fit the container, and provide `onSeriesClick` only when a series is actionable—otherwise keep the chart informational. The data table remains the non-visual fallback for comparison and screen-reader users.

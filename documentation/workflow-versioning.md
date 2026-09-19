@@ -2,6 +2,8 @@
 
 `@corvidae/operative` uses a caller-supplied version stamp to make workflow drift visible during durable recovery. This is an observation mechanism. It does not migrate checkpoints, pin a run to old code, or block recovery.
 
+For execution routing by a persisted Weft revision, use the [workflow revision guide](../packages/weft/documentation/guides/workflow-revisions.md). Operative’s version stamp here is a separate diagnostic value; setting it does not enable that routing.
+
 ## Configure one value in both places
 
 Pass the same deploy identifier to the workflow definition and the engine:

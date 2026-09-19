@@ -4,6 +4,50 @@ Shared source-level test utilities for Corvidae's [Svelte](https://svelte.dev/) 
 
 The package provides Svelte compilation and DOM setup for [Bun tests](https://bun.sh/docs/test), server rendering and hydration helpers, timer lifecycle assertions, fixture extraction, [Playwright](https://playwright.dev/) interactions, theme and focus checks, accessibility scans, and screenshot artifact utilities. Each consuming test suite owns its browser server, routes, and Playwright configuration.
 
+## Deterministic test boundaries
+
+The runtime ownership table and cleanup terminology used by these helpers are collected in [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md).
+
+The helpers in this package are intentionally small building blocks. They do not replace a package's lifecycle contract, hide an unfinished asynchronous operation, or make a visual assertion pass by changing its baseline. A useful test owns the resource it starts and asserts the observable boundary it promises.
+
+For browser component tests, `setupHappyDom()` provides the DOM surface, `renderThenHydrate()` checks that server output and client hydration agree, and `trackTimers()` plus `expectNoLeakedTimers()` catches timers that outlive the test. The timer tracker must be created before the code under test schedules work:
+
+```typescript
+import { expectNoLeakedTimers, trackTimers } from '@corvidae/testing';
+
+const timers = trackTimers();
+const handle = setTimeout(() => {}, 10);
+clearTimeout(handle);
+try {
+  expectNoLeakedTimers(timers.active());
+} finally {
+  timers.release();
+}
+```
+
+`trackTimers()` observes the host's `setTimeout`, `setInterval`, and matching clear calls for the current test process. It does not prove that a promise, event listener, browser animation, or server process has stopped. Pair it with the owning package's `dispose()`, `complete()`, or shutdown report when the fixture starts those resources.
+
+## Accessibility and visual evidence
+
+`evaluateAxeGate()` turns the blocking `critical` and `serious` buckets from an axe scan into a binary decision. An allow-list entry may explain an intentional exception, but a new rule identifier still fails the gate. Keep the key stable so the failure identifies the same component, theme, viewport, and fixture in every run:
+
+```typescript
+import { evaluateAxeGate } from '@corvidae/testing';
+
+const decision = evaluateAxeGate(
+  { slug: 'button', theme: 'light', viewport: 'desktop', fixture: 'default' },
+  { critical: [], serious: [], moderate: [], minor: [] },
+);
+
+if (decision.status === 'fail') throw new Error(decision.message);
+```
+
+`loadManifest()` and `manifestDigest()` read the generated browser fixture manifest. The path must be explicit or supplied through `BROWSER_FIXTURE_MANIFEST`; a missing or malformed manifest is an error rather than an empty test set. The manifest's standard matrix is light and dark themes across mobile, tablet, and desktop viewports, but the consuming suite decides which entries it runs.
+
+## Failure diagnosis
+
+When a test reports a leaked timer, inspect the code that owns the timer and await its cleanup before asserting. When a browser test cannot load its manifest, run the owning application's manifest preparation command and check `BROWSER_FIXTURE_MANIFEST`. When a screenshot differs, compare the browser, operating system, fonts, viewport, and theme before updating a baseline. A passing interaction test and a matching screenshot answer different questions.
+
 ## Source checks
 
 From `packages/testing`, run:

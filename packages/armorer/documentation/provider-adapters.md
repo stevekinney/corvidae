@@ -2,7 +2,7 @@
 
 ## Overview
 
-Export tools as static JSON Schema definitions for use with LLM provider SDKs. Each adapter is available from the `@corvidae/armorer` entry point.
+Export tools as static JSON Schema definitions for use with [OpenAI](https://platform.openai.com/docs/api-reference), [Anthropic](https://docs.anthropic.com/en/api/messages), and [Google Gemini](https://ai.google.dev/gemini-api/docs) SDKs. Each adapter is available from the `@corvidae/armorer` entry point.
 
 These adapters are **schema-only converters**. They serialize your tool definitions (name, description, and Zod schema) into the JSON format each provider expects, but they do not execute tools or handle results. You pass the output directly to the provider SDK when making API calls.
 

@@ -12,11 +12,11 @@ Imagine you're building an e-commerce checkout: charge the customer's credit car
 
 **Durable execution** solves this. You write a normal-looking function around durable boundaries; with durable storage, Weft checkpoints those boundaries and automatically resumes persisted work after a process restart. The activity crash-window limit is described under [Durability Guarantee](#durability-guarantee).
 
-[Temporal](https://temporal.io/) is the best-known durable execution engine. Weft makes a different tradeoff for this workspace: TypeScript workflows, Bun-native storage and servers, and checkpointed generator state instead of replay determinism.
+Weft combines TypeScript workflows, Bun-native storage and servers, and persisted operation results. Recovery rebuilds workflow execution from those results; it does not serialize a live JavaScript stack.
 
 ## What Is Weft?
 
-Weft runs async workflows to completion across crashes, retries, and arbitrary stretches of wall-clock time. You write what looks like a normal generator function; the engine persists a checkpoint at every `yield*` boundary and resumes from the last checkpoint on recovery. No replay, no determinism constraints, no special imports.
+Weft runs async workflows to completion across crashes, retries, and arbitrary stretches of wall-clock time. You write what looks like a normal generator function; the engine persists a checkpoint at every `yield*` boundary and resumes from the last checkpoint on recovery. During recovery, the engine starts a fresh generator and reuses recorded operation results as it advances to unfinished work.
 
 It supports long-running business processes such as checkouts, onboarding, and fulfillment, where a process crash must not lose the persisted workflow state.
 
@@ -29,7 +29,7 @@ Weft is deliberately narrower than a polyglot workflow platform. These constrain
 - **Runs in the browser.** The core engine (minus the server shell) runs in Web Workers with a Service Worker as its persistence backbone. Same workflow code, different environment.
 - **Human-in-the-loop.** Workflows can pause at any checkpoint and surface a decision to a human reviewer via `ctx.review()`. The workflow resumes with the reviewer's decision—approved or rejected—without any special infrastructure.
 
-> [!IMPORTANT] Workflows run in TypeScript on the engine; activities can run in any language via the `RemoteWorker` protocol. This split is intentional—the checkpoint model requires single-process generator state, so workflow code is TypeScript-only by design. See [ADR 0001](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md) for the design rationale.
+> [!IMPORTANT] Workflows run in TypeScript on the engine; activities can run in any language via the `RemoteWorker` protocol. This split is intentional: the engine implements the TypeScript generator protocol, while remote activities exchange versioned JSON messages. See [ADR 0001](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md) for the design rationale.
 
 ## Internal development status
 
@@ -41,7 +41,7 @@ Weft's durability promise is checkpoint-level and explicit:
 
 - Every `yield*` boundary is persisted before the workflow advances to the next durable step.
 - `Engine.create()` recovers by default after registering workflow definitions, so fresh processes resume persisted running workflows without a separate boot hook.
-- Recovery resumes from the last checkpoint position instead of replaying the workflow from the beginning.
+- Recovery starts a new generator and rebuilds its execution using durable operation results. Ordinary code between those operations runs again.
 - External activity side effects still need idempotency keys, provider lookup, verifier logic, or external write fencing. Without that, a crash after the external side effect but before Weft commits the activity result can dispatch the activity again. Weft exposes `workflowExecutionToken` and per-attempt `activityAttemptToken` values so databases you control can reject stale writes from older attempts or replaced runs.
 
 ## Hello, World
@@ -102,9 +102,9 @@ When recovery also needs to rebuild live host surfaces such as progress emitters
 
 ## How It Works
 
-Weft uses a **checkpoint model**, not a replay model. At each `yield*`, the engine snapshots the workflow's current state, including live local variables and the generator position, then resumes from that snapshot after a crash. The checkpoint is the source of truth for "where am I and what do I know."
+A **checkpoint** records the engine’s step counter, durable context state, operation results, and recovery metadata. It does not capture the JavaScript generator object, closures, or arbitrary local variables. Recovery creates a new generator and feeds it previously recorded outcomes until it reaches unfinished work.
 
-Because recovery never re-executes the workflow from the beginning, your workflow code does not inherit replay determinism rules. `Date.now()`, `Math.random()`, dynamic imports, and normal TypeScript control flow are all fine; side effects still belong in activities.
+Keep the sequence of durable operations compatible with the stored run. Reading the clock, generating a random value, or performing I/O directly between operations can change a branch when that code runs again. Put side effects in activities and use `ctx.memo()` for values that must remain stable across recovery. Worker execution also checks stored operation signatures before reusing cached results. A completed external effect can still repeat if the process dies before its result is committed, so activities need their own idempotency or reconciliation strategy.
 
 ## Core Concepts
 
@@ -112,7 +112,7 @@ Because recovery never re-executes the workflow from the beginning, your workflo
 | --- | --- |
 | **Workflow** | A generator function the engine drives to completion. Every `yield*` is a checkpoint. |
 | **Activity** | A named unit of side-effecting work registered with the engine and dispatched by a workflow with `ctx.run(activity, input)`. |
-| **Checkpoint** | A serialized snapshot of a workflow's position and local variables, written at every yield. |
+| **Checkpoint** | Persisted engine state and operation results used to rebuild execution after a restart. |
 | **Signal** | A fire-and-forget message sent _into_ a running workflow. Workflows pause at `ctx.waitForSignal()` until one arrives. |
 | **Update** | A request-response message sent into a running workflow. The caller blocks until the workflow returns a result. |
 | **Query** | A read-only request sent with `engine.query()` or `handle.query()` to inspect workflow state without mutating it. |
@@ -416,7 +416,9 @@ await using server = serve({ engine, port: 7233 });
 // server.url is e.g. "http://0.0.0.0:7233"
 ```
 
-Endpoints under `/api/v1/` cover the full lifecycle: start workflows, list, signal, update, query, cancel, fork, and stream events. JSON-RPC over WebSocket also exposes workflow and fleet event subscriptions for operator UIs that need live state without polling. Content negotiation supports JSON and MessagePack. `engine.workflows` and the matching `/v1/registry/` operations expose the durable workflow catalog for admin tooling—install a revision's manifest and activate it as the advertised active revision—bookkeeping only, never workflow execution routing. `workflowSource()` pairs a typed, serializable source descriptor with a never-serialized loader capability, so one workflow can register lazily while another stays eagerly registered; `engine.registerSource()` records the candidate without importing it, and `engine.resolveWorkflowSource()` (or its `engine.workflows.preload()` alias) loads, validates, and installs it into the same catalog with single-flight deduplication per `(name, revision)`. Every execution entry point—`start()`, `startOrSignal()`, `schedule()`, `fork()`, `resume()`, and recovery—awaits resolution for a lazy type before running any handler code, with bounded diagnostics and process-local events for the load pipeline. The server can also mount an externally supplied dashboard shell at known page routes.
+Endpoints under `/api/v1/` cover the full lifecycle: start workflows, list, signal, update, query, cancel, fork, and stream events. JSON-RPC over WebSocket also exposes workflow and fleet event subscriptions for operator UIs that need live state without polling. Content negotiation supports JSON and MessagePack. The server can also mount an externally supplied dashboard shell at known page routes.
+
+The durable workflow catalog records installed manifests and an active revision. Catalog activation does not load code or replace an eagerly registered function. With revision-specific `workflowSource()` registrations, lazy execution resolves the selected source and persists its revision so recovery can request that exact definition. The [workflow revision guide](documentation/guides/workflow-revisions.md) covers loading, guarded activation, pinned schedules, retention, and generated client contracts.
 
 ### Remote Workers
 
@@ -566,25 +568,22 @@ Each `ctx.step()` is a checkpoint boundary. Completed steps replay from storage 
 
 ## Weft vs. Temporal
 
-| Concept | Temporal | Weft |
-| --- | --- | --- |
-| Core mental model | Replay determinism | Generators pause and resume |
-| Workflow language | Go, Java, TypeScript, Python, .NET, Ruby, PHP | TypeScript only (activities can be any language via `RemoteWorker`) |
-| Activity invocation | `proxyActivities()` + type import | `yield* ctx.run('activityName', input)` (declared in `.activities({...})`) |
-| Timer | Deterministic `workflow.sleep()` | `yield* ctx.sleep("1 hour")` |
-| Signal | `setHandler` + `condition` | `yield* ctx.waitForSignal(name)` |
-| Human review | Signals/queries/updates as [message-passing primitives](https://docs.temporal.io/develop/typescript/workflows/message-passing) | `yield* ctx.review(...)` with [durable review request](src/core/review/index.ts) and decision APIs |
-| Versioning | `patched()` / `deprecatePatch()` | Stored and registered versions are strict recovery guards |
-| Long-running workflows | `continueAsNew()` | None needed (checkpoint size is bounded by live state, not history length) |
-| Dev environment | Docker Compose + Temporal server | `workspace:*` dependency |
-| Bundling | Webpack for workflow sandbox | None |
+[Temporal describes workflow recovery in terms of deterministic command replay](https://github.com/temporalio/documentation/blob/main/docs/encyclopedia/event-history/python.mdx). Weft also re-executes workflow code during recovery, but its implementation here reconstructs a generator from checkpointed operation results and durable context state. Neither model makes arbitrary side effects between durable operations safe to repeat.
 
-> Weft is for teams whose primary backend language is TypeScript. If you need workflows in multiple languages, [Temporal](https://temporal.io) is the right answer. For the design rationale, see [ADR 0001—Workflows Are TypeScript-Only by Design](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md).
->
-> Weft's server runtime is Bun-only for this launch line. If you need the workflow server itself to run as a Node-native process, evaluate [Temporal](https://temporal.io).
+For this workspace, the relevant Weft boundaries are concrete:
+
+- Workflows use the TypeScript generator API; remote activities use the versioned worker protocol.
+- The server runtime uses Bun. Browser engine hosts have their own storage and scheduling requirements.
+- Workflow revision routing, strict definition-version checks, and Operative’s observational version stamp are separate contracts; start with the [revision guide](documentation/guides/workflow-revisions.md).
+- Event-log compaction does not remove the lifetime `history.maxEvents` circuit breaker. Size limits and retention still need an operating policy for long-running workflows.
+
+The [TypeScript workflow decision](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md) explains why this repository keeps one workflow runtime while allowing polyglot activities.
 
 ## Documentation
 
+- [Workflow revisions, compatibility, and lazy loading](documentation/guides/workflow-revisions.md)
+- [Shared-store ownership and crash takeover](documentation/guides/shared-store-ownership.md)
+- [Remote task recovery, adoption, and retention](documentation/guides/remote-task-recovery.md)
 - [Remote workers](documentation/guides/remote-workers.md)
 - [Worker API](documentation/reference/api-workers.md)
 - [Remote-worker wire protocol](documentation/reference/remote-worker-protocol.md)

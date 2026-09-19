@@ -3,8 +3,8 @@
  *
  * Where `migrate-component.ts` moves an existing flat `.svelte` file into the
  * per-directory layout, this script creates a brand-new component skeleton
- * from scratch — the automated form of the five manual steps documented in
- * `AGENTS.md` § "Adding a new component".
+ * from scratch—the automated form of the manual steps in the Cinder README's
+ * component authoring checklist.
  *
  * For a component name `<name>` (kebab-case, optionally `experimental/<name>`),
  * it writes:
@@ -30,19 +30,17 @@
  * `bun run components:generate` produces drift-free artifacts and the `@cinder`
  * header validates cleanly through `generate-component-metadata.ts`.
  *
- * This script does NOT regenerate schemas, the manifest, `package.json`
- * exports, the root `src/index.ts` barrel, or `src/styles/components.css`. Run
- * the central generators (`bun run components:generate`, `bun run
- * exports:generate`) and hand-edit the barrel/CSS aggregator afterward, exactly
- * as the manual flow requires.
+ * This script does NOT regenerate schemas, the manifest, the package root
+ * `src/index.ts` barrel, or `src/styles/components.css`. Run the component
+ * artifact generator and hand-edit the barrel and CSS aggregator afterward,
+ * exactly as the manual flow requires.
  *
  * Usage:
- *   bun run scripts/create-component.ts <name>
- *   bun run components:create <name>
+ *   bun scripts/create-component.ts <name>
  *
  * Examples:
- *   bun run components:create my-widget
- *   bun run components:create experimental/json-viewer
+ *   bun scripts/create-component.ts my-widget
+ *   bun scripts/create-component.ts experimental/json-viewer
  */
 
 import { existsSync } from 'node:fs';
@@ -213,8 +211,8 @@ export function renderReadme(context: CreationContext): string {
     ? `> **EXPERIMENTAL** — this component's API may change between minor versions until promoted to stable.\n\n`
     : '';
   const authoringChecklistPath = isExperimental
-    ? '../../../../AGENTS.md#component-authoring-pre-flight'
-    : '../../../AGENTS.md#component-authoring-pre-flight';
+    ? '../../../../README.md#component-authoring-checklist'
+    : '../../../README.md#component-authoring-checklist';
   return `# ${pascalName}
 
 <!-- generated:a11y-record:required -->
@@ -225,7 +223,7 @@ ${experimentalNote}TODO: one-line purpose statement for ${pascalName}.
 
 \`\`\`svelte
 <script lang="ts">
-  import ${pascalName} from '${importPath}';
+  import { ${pascalName} } from '${importPath}';
 </script>
 
 <${pascalName}>Content</${pascalName}>
@@ -427,7 +425,7 @@ async function main(): Promise<void> {
   const names = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
   if (names.length !== 1) {
     process.stderr.write('Usage: create-component.ts <name>\n');
-    process.stderr.write('  e.g. bun run components:create my-widget\n');
+    process.stderr.write('  e.g. bun scripts/create-component.ts my-widget\n');
     process.exit(1);
   }
 
@@ -454,12 +452,8 @@ async function main(): Promise<void> {
   process.stdout.write(
     `  4. Add 'export ... from ./components/${context.relativeDirectory}/index.ts' to src/index.ts.\n`,
   );
-  process.stdout.write(
-    '  5. Run: bun run --filter=@corvidae/cinder components:generate && bun run --filter=@corvidae/cinder exports:generate\n',
-  );
-  process.stdout.write(
-    '  6. Verify: bun run --filter=@corvidae/cinder components:check && bun run --filter=@corvidae/cinder exports:check\n',
-  );
+  process.stdout.write('  5. Run: bun run --filter=@corvidae/cinder components:generate\n');
+  process.stdout.write('  6. Verify: bun run --filter=@corvidae/cinder components:check\n');
 }
 
 if (import.meta.main) {
