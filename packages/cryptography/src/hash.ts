@@ -165,8 +165,22 @@ function requireNodeCrypto(): NodeCrypto {
  * Works in all environments: browsers, Node.js, Bun, Deno.
  */
 export async function sha256Hex(text: string): Promise<string> {
-  const data = new TextEncoder().encode(text);
-  const buffer = await crypto.subtle.digest('SHA-256', data);
+  return sha256BytesHex(new TextEncoder().encode(text));
+}
+
+/**
+ * Computes the SHA-256 hex digest of raw bytes using the Web Crypto API.
+ * Works in all environments: browsers, Node.js, Bun, Deno.
+ *
+ * Digesting bytes rather than a string is what lets a caller hash content it cannot decode —
+ * a bundled image or font, say — without first corrupting it through a lossy text round trip.
+ */
+export async function sha256BytesHex(data: Uint8Array): Promise<string> {
+  // Passed through without copying: `crypto.subtle.digest` honors an `ArrayBufferView`'s
+  // `byteOffset` and `byteLength`, so a `Uint8Array` that is a window into a larger buffer already
+  // hashes only its own bytes.
+  const view = new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
+  const buffer = await crypto.subtle.digest('SHA-256', view);
   const bytes = new Uint8Array(buffer);
   let hex = '';
   for (let i = 0; i < bytes.length; i++) {

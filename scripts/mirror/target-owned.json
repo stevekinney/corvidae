@@ -1,5 +1,5 @@
 {
-  "documentation": "Paths in the public mirror targets that the corvidae transform must never write. Change detection in the mirror works by transforming into a clone of the target and asking git whether anything differs: an empty `git status --porcelain` means skip the sync. That only holds when this enumeration is exhaustive, so a missing entry degrades the mirror into 'always open a pull request'. `paths` is enforced by the guard in `target-owned.ts`, over a plan's writes and, since COR-1221, over its deletions. `fields` is enumerated for the sync script that rewrites manifests and is deliberately not enforced here, because a guard over whole file writes cannot express 'preserve this key inside a file the transform does write'. `targets` names the public repositories an entry applies to; omit it when the entry applies to every target.",
+  "documentation": "Paths in the public mirror targets that the corvidae transform must never write, and the keys it must not author inside the files it does write. Change detection in the mirror works by transforming into a clone of the target and asking git whether anything differs: an empty `git status --porcelain` means skip the sync. That only holds when this enumeration is exhaustive, so a missing entry degrades the mirror into 'always open a pull request'. `paths` is enforced by the guard in `target-owned.ts`, over a plan's writes and, since COR-1221, over its deletions. `insideFiles` states the ownership default for the structured files the transform does write — manifests and tsconfigs — which a whole-file guard cannot express; it is applied by `manifests.ts` and `typescript-configuration.ts` rather than by the guard. `targets` names the public repositories an entry applies to; omit it when the entry applies to every target.",
   "targets": ["weft", "cinder"],
   "paths": [
     {
@@ -122,35 +122,74 @@
       "targets": ["cinder"]
     }
   ],
-  "fields": {
-    "policy": "Keys inside files the transform does write, which must be read from the target and carried through instead of emitted from corvidae. Enumerated here so one list stays authoritative; NOT enforced by the guard, because the guard gates whole-file writes and manifest rewriting is out of this issue's scope. `pointer` is a JSON Pointer (RFC 6901) into the parsed file.",
-    "entries": [
+  "insideFiles": {
+    "policy": "The ownership default inside a manifest or a tsconfig the transform writes, for a file the target ALREADY carries. COR-1223 inverted it. The transform used to emit corvidae's whole manifest and preserve a short enumerated list of exceptions; a live dry run against a seeded copy of the weft repository failed twelve of that repository's twenty checks, because the enumeration was a list of instances of a class it never named. Naming the class: the transform owns the *published surface* — what corvidae's source becomes once it is built and packed — and the target owns *everything that describes a repository corvidae is not*. So for an existing file the target's own copy is the base, the keys below are overlaid onto it, and anything not listed stays exactly as the target had it. A file the target does NOT carry has nothing to preserve, so corvidae's is emitted whole. The two enumerations that used to live here as `fields` pointers — `/version`, `/scripts/prepare`, `/devDependencies/husky`, `/lint-staged` — are subsumed: none of them is overlaid, so all four survive by default along with every key nobody thought to enumerate.",
+    "manifestKeys": [
       {
-        "file": "**/package.json",
-        "pointer": "/version",
-        "reason": "Versions are owned by the target's release tooling. Corvidae is unversioned internal source; every published package downstream sits at a version corvidae has no knowledge of (weft 0.25.0, cinder 0.26.2, and so on)."
+        "key": "name",
+        "reason": "The public name is the mirror's own ruling, recorded in `package-map.json`. A target carrying a different name for the same workspace is a target the map has to be corrected against, not a fact to preserve."
       },
       {
-        "file": "package.json",
-        "pointer": "/scripts/prepare",
-        "reason": "Weft's root `prepare` is `husky && bun packages/weft/scripts/husky/verify-hooks-installed.ts`; cinder's is `husky`. Both install Git hooks, which corvidae explicitly does not have."
+        "key": "private",
+        "reason": "Presence follows the disposition: stripped from anything the map publishes, forced on everything else. A published package that kept a stray `private: true` could never be released."
       },
       {
-        "file": "packages/components/package.json",
-        "pointer": "/scripts/prepare",
-        "reason": "Cinder's husky `prepare` is not only at the root: `packages/components/package.json` carries `\"prepare\": \"cd ../.. && husky\"`. A rule phrased as 'root prepare scripts' would miss it. Note the contrast with `labs/chat-room`, whose `prepare` is `svelte-kit sync` — a genuine build step that is transform-owned, which is why this list names manifests explicitly rather than protecting every `prepare` key.",
-        "targets": ["cinder"]
+        "key": "workspaces",
+        "reason": "Root only, and the transform's because `layout-map.json` is what decides where each workspace lands. Preserving the target's globs would leave a workspace the transform emits — `internal/typescript` in the cinder target — outside the graph its own siblings resolve through."
       },
       {
-        "file": "package.json",
-        "pointer": "/devDependencies/husky",
-        "reason": "Husky is only a dependency because the target installs Git hooks."
+        "key": "catalog",
+        "reason": "Root only, and the transform's because it is computed rather than copied: corvidae's catalog plus one entry per cross-target edge the plan resolved. Preserving the target's drops those additions while the package manifests that reference them still say `catalog:`, which is a root the staged install cannot resolve. Absent for a target with no workspace root to hold one, where this entry then removes it."
       },
       {
-        "file": "package.json",
-        "pointer": "/lint-staged",
-        "reason": "Cinder's root manifest carries a `lint-staged` block wired to its pre-commit hook.",
-        "targets": ["cinder"]
+        "key": "exports",
+        "reason": "The subpath map IS the published surface, regenerated from corvidae's source by `package-surface.json` and gated against the registry baseline by `checkParity`. Preserving the target's would let a subpath corvidae's source no longer provides keep being advertised."
+      },
+      {
+        "key": "files",
+        "reason": "The publish allowlist is computed alongside `exports` and checked against it by `checkTargetCoverage`; the pair only means anything when both come from the same pass."
+      },
+      {
+        "key": "bin",
+        "reason": "Executable entry points are part of what a consumer installs, and `checkTargetCoverage` rules on them against `files` exactly as it does on `exports`."
+      },
+      {
+        "key": "sideEffects",
+        "reason": "A bundler's licence to drop unreferenced modules from the built artifact. It is a claim about corvidae's source, which is the source the artifact is built from."
+      }
+    ],
+    "manifestDefaults": [
+      {
+        "key": "main",
+        "reason": "Legacy entry point. `package-surface.json` records it, but its own documentation says that record is a port of what the target publishes today — so where the target still carries the key, the target holds the authoritative copy of the same fact."
+      },
+      { "key": "module", "reason": "Same as `main`." },
+      { "key": "types", "reason": "Same as `main`." },
+      {
+        "key": "publishConfig",
+        "reason": "Registry access and tag are a release decision belonging to whoever publishes, which is the target's release tooling."
+      },
+      {
+        "key": "engines",
+        "reason": "The runtime floor a published package advertises is a support commitment the target makes to its consumers; corvidae's floor tracks whatever Bun the workspace happens to run."
+      },
+      {
+        "key": "peerDependencies",
+        "reason": "Peer ranges are a packaging decision, and they are only half of one: `peerDependenciesMeta` marks which are optional and is target-owned by default. Authoring one and preserving the other would let the pair drift apart."
+      }
+    ],
+    "dependencies": {
+      "policy": "Classification is the target's, ranges follow the package that declares them, and nothing is silently dropped. Three cases, applied to the union of corvidae's `dependencies`, `devDependencies` and `optionalDependencies` and the target's. `peerDependencies` is deliberately not one of them: a peer range is not a statement about what this package imports but half of a packaging declaration whose other half, `peerDependenciesMeta`, is target-owned outright, so it is listed under `manifestDefaults` and the pair is preserved or supplied together. (1) A package that ships from this mirror is the transform's outright — name, block and specifier — because only the transform knows what it is called downstream and whether the edge stays a `workspace:*`. Its stale entries are removed first, so an edge corvidae dropped does not linger. (2) A third-party package the target declares anywhere keeps the target's block and the target's range. Weft putting `better-sqlite3` in `optionalDependencies` and `peerDependencies` is a packaging decision of weft's; corvidae having it in `dependencies` is an artifact of being an internal workspace where every dependency is a plain one, and emitting that moves seven storage drivers into every consumer's install. (3) A third-party package the target declares nowhere is added in corvidae's own block at corvidae's own range, and reported as `addedDependencies`: a package legitimately gains a dependency, and the alternative to adding it is emitting source that cannot resolve its own imports. The asymmetry with `scripts`, which are never unioned, is deliberate: a dependency is a fact about the source, while a script is a choice about the repository."
+    },
+    "typeScriptTargetOwnedPolicy": "The keys below are read back out of the target's own `tsconfig*.json`; everything else in the emitted file comes from the transform. That is one key in practice, `extends`, and it is not enumerated because it is not a choice the transform makes per target: `@corvidae/typescript` is what corvidae's source is written against — `exactOptionalPropertyTypes` alone is why hundreds of weft files differ from upstream's — so the compiler options always come from the shared configuration, vendored where the target cannot hold the package. Enumerating it would be a list nothing reads.",
+    "typeScriptTargetOwned": [
+      {
+        "key": "include",
+        "reason": "Which trees a repository type-checks is that repository's decision about its own working directories. Weft's `include` is `src` plus five named `scripts/*.ts` files; corvidae's is `src`, `tests`, `scripts`, `examples`. Emitting corvidae's widened it over the target's `examples/`, which import the package by its public name and resolve through `exports` to a `dist/` that does not exist when `typecheck` runs, and over the target's own `scripts/`, which it had deliberately never checked."
+      },
+      {
+        "key": "exclude",
+        "reason": "The other half of `include`; the two only mean anything together."
       }
     ]
   },
@@ -159,7 +198,7 @@
     "entries": []
   },
   "openQuestions": [
-    "Root tooling configuration — `turbo.json`, `bunfig.toml`, `tsconfig*.json`, `.oxlintrc.json`, `.prettierrc.json`, `.prettierignore`, `.stylelintrc.json`, `.editorconfig`, `.env.example` — is unresolved. Cinder carries four root tsconfigs where corvidae has one plus `internal/typescript`, so whether the transform generates these or the target owns them depends on the layout mapping, which is a different issue. Resolve before the first real sync run; leaving them out of `paths` is not a ruling that they are transform-owned.",
+    "Root tooling configuration — `turbo.json`, `bunfig.toml`, root `tsconfig*.json`, `.oxlintrc.json`, `.prettierrc.json`, `.prettierignore`, `.stylelintrc.json`, `.editorconfig`, `.env.example` — is unresolved. Cinder carries four root tsconfigs where corvidae has one plus `internal/typescript`, so whether the transform generates these or the target owns them depends on the layout mapping, which is a different issue. Resolve before the first real sync run; leaving them out of `paths` is not a ruling that they are transform-owned. COR-1223 settled only the per-workspace `tsconfig*.json` the transform already writes, and only partly: `insideFiles.typeScriptTargetOwned` gives the target its `include` and `exclude`, while everything else in the emitted file comes from the shared configuration. What that discards is the rest of the target's own `compilerOptions`, which weft inlines rather than extending — `paths`, `rootDir`, `typeRoots`, `incremental`, `tsBuildInfoFile`, `assumeChangesOnlyAffectDirectDependencies`, `diagnostics`. None of them is load-bearing today (`@/*` is imported by nothing in either checkout, and the rest are caching and reporting), but the ruling is 'the shared configuration wins', not 'the target had nothing worth keeping'; a target that adds a compiler option corvidae's configuration cannot express reopens this.",
     "One-off target working documents (cinder's `AB-429-final-contract-review.md` is the current example) cannot be enumerated ahead of time. COR-1221 settled what that means: the transform now deletes, but only beneath the paths it owns, which are the source trees it emits. A path outside those — a working document, a build script, anything nobody enumerated — is never deleted, so this class never needed enumerating. The enumeration itself is no longer write-only either: `assertDeletablePaths` runs the same list over a plan's deletions, so a target-owned path inside a source tree is refused as a delete exactly as it is refused as a write."
   ]
 }

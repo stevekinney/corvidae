@@ -1,6 +1,7 @@
 export {
   createIncrementalHash,
   hmacSha256HexSync,
+  sha256BytesHex,
   sha256Hex,
   sha256HexSync,
   timingSafeEqualHex,

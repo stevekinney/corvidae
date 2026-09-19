@@ -46,6 +46,7 @@ import type {
   Store,
   TokenUsage,
 } from '@corvidae/operative';
+import type { SkillActivationRecord, SkillCatalogRevision } from '@corvidae/skills';
 import type { ToolPolicy } from '@corvidae/tool-protocol';
 import type {
   ConditionalTextValueStore,
@@ -148,13 +149,30 @@ export interface SkillRuntimeConfiguration {
    * a `.persistence()` / `storage` backend configured, the bureau automatically
    * constructs a storage-backed provider via `createStorageSkillProvider(kv)`.
    * Supply an explicit provider to use a static catalog or a custom backend.
+   *
+   * Ignored when {@link SkillRuntimeConfiguration.sources} is supplied: a run draws its skills
+   * from one place, and composing both would leave "which catalog is this skill from" unanswerable.
    */
   provider?: SkillProvider;
+  /**
+   * An already-discovered catalog revision (COR-889).
+   *
+   * Supplying one puts the run on the catalog-backed client: activation validates against this
+   * revision and verifies each bundle's digest before admitting it, and the persisted snapshot
+   * carries provenance a provider cannot supply — a provider knows a skill's name and body, and
+   * nothing about where it came from or whether anyone admitted it.
+   *
+   * A *revision*, not a set of sources, for two reasons. Discovery reads approved filesystem roots
+   * and remote URLs, which COR-752's Decision 1 puts on the host rather than on Bureau. And a
+   * revision is an immutable input to a run: a caller that hands one in has already decided which
+   * generation this run sees, so the catalog cannot move underneath it mid-conversation.
+   */
+  catalog?: SkillCatalogRevision;
   includeTools?: boolean;
   skillPolicy?: ToolPolicy;
 }
 
-export type { FlowControlPolicy, ToolPolicy };
+export type { FlowControlPolicy, SkillActivationRecord, SkillCatalogRevision, ToolPolicy };
 
 export interface SkillCatalogEntry {
   name: string;
@@ -176,7 +194,14 @@ export interface SkillProvider {
   saveSkill?(name: string, skill: LoadedSkill): Promise<void>;
   deleteSkill?(name: string): Promise<void>;
   listResources(name: string): Promise<string[]>;
-  loadResource(name: string, path: string): Promise<string | undefined>;
+  /**
+   * Loads a resource as raw bytes.
+   *
+   * Bytes, not text, because a skill bundle carries images, fonts and other binary assets, and
+   * decoding one as UTF-8 corrupts it irreversibly. Decoding happens at the model-facing tool,
+   * which is the only place text is actually required.
+   */
+  loadResource(name: string, path: string): Promise<Uint8Array | undefined>;
   isEnabled(name: string): Promise<boolean>;
 }
 

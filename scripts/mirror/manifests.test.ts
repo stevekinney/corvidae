@@ -4,16 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
 import {
-  applyPreservedFields,
   assertNothingDeferred,
+  composeManifest,
   discoverWorkspaces,
   ManifestTransformError,
   planManifests,
   publicNameFor,
-  readPointer,
   stageTarget,
   targetFor,
-  writePointer,
   type ManifestPlan,
   type MirrorTarget,
 } from './manifests.ts';
@@ -377,39 +375,172 @@ describe('per-package LICENSE fan-out', () => {
   });
 });
 
-describe('target-owned fields', () => {
-  test('JSON Pointers read, write and delete', () => {
-    const document: Record<string, unknown> = { scripts: { prepare: 'husky' } };
-    expect(readPointer(document, '/scripts/prepare')).toBe('husky');
-    expect(readPointer(document, '/scripts/missing')).toBeUndefined();
-    writePointer(document, '/devDependencies/husky', '^9.1.7');
-    expect(document['devDependencies']).toEqual({ husky: '^9.1.7' });
-    writePointer(document, '/scripts/prepare', undefined);
-    expect(document['scripts']).toEqual({});
+describe('composition against a manifest the target already carries', () => {
+  /**
+   * COR-1223's four defects, each one a key the old rule emitted from corvidae over an answer the
+   * target already had. They are asserted through `composeManifest` directly rather than through a
+   * plan, because the unit is the rule: a plan would prove the rule fires for weft's manifest and
+   * say nothing about whether the rule itself is right.
+   */
+  const target = {
+    name: '@lostgradient/weft',
+    version: '0.25.0',
+    description: 'Durable workflows',
+    license: 'MIT',
+    repository: { type: 'git', url: 'git+https://github.com/stevekinney/weft.git' },
+    'lint-staged': { '*.ts': ['prettier --write'] },
+    scripts: {
+      'test:coverage': 'bun run scripts/check-coverage.ts',
+      'verify:documentation': 'bun run scripts/verify-documentation.ts',
+      prepare: 'husky',
+    },
+    dependencies: { '@msgpack/msgpack': '^3.1.3', zod: '^4.3.6' },
+    devDependencies: {
+      husky: '^9.1.7',
+      oxlint: '^1.79.0',
+      'oxlint-tsgolint': '^7.0.2001',
+      valibot: '^1.4.0',
+    },
+    optionalDependencies: { 'better-sqlite3': '^12.8.0' },
+    peerDependencies: { 'better-sqlite3': '^12.8.0' },
+    peerDependenciesMeta: { 'better-sqlite3': { optional: true } },
+    engines: { bun: '>=1.3.13' },
+  };
+
+  /** Corvidae's manifest for the same workspace, as `rewriteWorkspaceManifest` leaves it. */
+  const corvidae = {
+    name: '@lostgradient/weft',
+    version: '0.0.0',
+    scripts: { test: "bun test --path-ignore-patterns='scripts/benchmarks/**'" },
+    dependencies: {
+      '@msgpack/msgpack': '^3.1.3',
+      'better-sqlite3': '^12.8.0',
+      valibot: '^1.4.0',
+      zod: '^4.6.5',
+      'newly-imported': '^1.0.0',
+    },
+    devDependencies: { oxlint: '^1.83.0' },
+    engines: { bun: '>=1.4.2' },
+  };
+
+  async function compose(): Promise<ReturnType<typeof composeManifest>> {
+    return composeManifest({
+      policy: await loadTargetOwnedPolicy(),
+      target: 'weft',
+      emitted: structuredClone(corvidae),
+      existing: structuredClone(target),
+      mirrorPackages: new Set(['@lostgradient/weft']),
+    });
+  }
+
+  test('a target-owned script survives, and corvidae’s never replaces the block', async () => {
+    const { manifest } = await compose();
+    expect(manifest['scripts']).toEqual(target.scripts);
   });
 
-  test('every enumerated pointer is carried out of the target manifest', async () => {
-    const policy = await loadTargetOwnedPolicy();
-    const emitted: Record<string, unknown> = { name: 'weft-monorepo', version: '0.0.0' };
-    applyPreservedFields(policy, 'weft', 'package.json', emitted, {
-      version: '9.9.9',
-      scripts: { prepare: 'husky && bun packages/weft/scripts/husky/verify-hooks-installed.ts' },
-      devDependencies: { husky: '^9.1.7' },
-    });
-    expect(emitted['version']).toBe('9.9.9');
-    expect(emitted['scripts']).toEqual({
-      prepare: 'husky && bun packages/weft/scripts/husky/verify-hooks-installed.ts',
-    });
-    expect(emitted['devDependencies']).toEqual({ husky: '^9.1.7' });
+  test('a target-owned devDependency survives even though corvidae has no such edge', async () => {
+    const { manifest } = await compose();
+    const devDependencies = manifest['devDependencies'] as Record<string, string>;
+    // `oxlint --type-aware` shells out to this one; without it every lint job fails outright.
+    expect(devDependencies['oxlint-tsgolint']).toBe('^7.0.2001');
+    expect(devDependencies['husky']).toBe('^9.1.7');
+    // A devDependency both carry keeps the target's pin, because the target's scripts run it.
+    expect(devDependencies['oxlint']).toBe('^1.79.0');
   });
 
-  test('a target-scoped pointer does not bind the other target', async () => {
-    const policy = await loadTargetOwnedPolicy();
-    const emitted: Record<string, unknown> = { 'lint-staged': { '*.ts': ['prettier --write'] } };
-    applyPreservedFields(policy, 'weft', 'package.json', emitted, { name: 'weft-monorepo' });
-    expect(emitted['lint-staged']).toEqual({ '*.ts': ['prettier --write'] });
-    applyPreservedFields(policy, 'cinder', 'package.json', emitted, { name: 'cinder-workspace' });
-    expect('lint-staged' in emitted).toBe(false);
+  test('the target’s classification of a third-party dependency survives', async () => {
+    const { manifest } = await compose();
+    // Corvidae lists both as plain runtime dependencies because every internal edge is one.
+    // The target's packaging says otherwise, and the target is the repository that publishes.
+    expect(manifest['optionalDependencies']).toEqual({ 'better-sqlite3': '^12.8.0' });
+    expect(manifest['devDependencies']).toHaveProperty('valibot', '^1.4.0');
+    expect(manifest['dependencies']).not.toHaveProperty('better-sqlite3');
+    expect(manifest['dependencies']).not.toHaveProperty('valibot');
+    // Range follows the block it is kept in, so a sync never retunes a pin the target chose.
+    expect(manifest['dependencies']).toHaveProperty('zod', '^4.3.6');
+  });
+
+  test('every piece of package metadata survives', async () => {
+    const { manifest } = await compose();
+    for (const key of ['description', 'license', 'repository', 'lint-staged'] as const) {
+      expect([key, manifest[key]]).toEqual([key, target[key]]);
+    }
+    expect(manifest['peerDependencies']).toEqual(target.peerDependencies);
+    expect(manifest['peerDependenciesMeta']).toEqual(target.peerDependenciesMeta);
+    expect(manifest['engines']).toEqual(target.engines);
+  });
+
+  test('a dependency the target declares nowhere is added, in corvidae’s block, and reported', async () => {
+    const { manifest, added } = await compose();
+    expect(manifest['dependencies']).toHaveProperty('newly-imported', '^1.0.0');
+    expect(added).toEqual(['newly-imported (dependencies)']);
+  });
+
+  test('a manifest the target does not carry is emitted whole, since nothing can be preserved', async () => {
+    const { manifest, added } = composeManifest({
+      policy: await loadTargetOwnedPolicy(),
+      target: 'weft',
+      emitted: structuredClone(corvidae),
+      existing: undefined,
+      mirrorPackages: new Set(),
+    });
+    expect(manifest).toEqual(corvidae);
+    expect(added).toEqual([]);
+  });
+
+  test('an existing target root keeps neither its own workspaces nor its own catalog', async () => {
+    // Both are computed rather than copied. The catalog the transform emits is corvidae's plus
+    // one entry per cross-target edge the plan resolved, and every emitted package manifest
+    // referencing one says `catalog:` — so a root that kept the target's would name a catalog
+    // entry nothing declares, and the staged install would fail to resolve it. The weft target
+    // cannot show this (it holds no catalog and its globs already match), which is exactly why
+    // it is asserted here rather than left to the dry run.
+    const versioned: Record<string, unknown> = {
+      'package.json': {
+        name: 'cinder-workspace',
+        private: true,
+        workspaces: ['packages/*'],
+        catalog: { svelte: '^5.0.0' },
+      },
+    };
+    for (const manifest of Object.values(workspaces)) {
+      const layout = await layoutFor(String(manifest['name']));
+      if (layout.disposition !== 'emit') continue;
+      versioned[`${layout.targetDirectory}/package.json`] = {
+        name: manifest['name'],
+        version: '1.2.3',
+      };
+    }
+    await withTree(versioned, async (targetDirectory) => {
+      const plan = await planFor('cinder', { targetDirectory });
+      const root = parse(plan, 'package.json');
+      expect(root['workspaces']).toEqual([
+        'applications/*',
+        'components/*',
+        'packages/*',
+        'internal/*',
+      ]);
+      const emittedCatalog = root['catalog'] as Record<string, string>;
+      expect(emittedCatalog['@lostgradient/weft']).toBe('^0.25.0');
+      expect(emittedCatalog['svelte']).toBe(catalog.svelte);
+    });
+  });
+
+  test('a stale edge to a package this mirror ships is replaced, not kept alongside', async () => {
+    const { manifest } = composeManifest({
+      policy: await loadTargetOwnedPolicy(),
+      target: 'cinder',
+      emitted: {
+        name: '@lostgradient/cinder',
+        dependencies: { '@lostgradient/markdown': '^2.0.0' },
+      },
+      existing: {
+        name: '@lostgradient/cinder',
+        dependencies: { '@lostgradient/markdown': '^1.0.0', '@lostgradient/retired': '^1.0.0' },
+      },
+      mirrorPackages: new Set(['@lostgradient/markdown', '@lostgradient/retired']),
+    });
+    expect(manifest['dependencies']).toEqual({ '@lostgradient/markdown': '^2.0.0' });
   });
 
   test("an existing target version is carried through, not overwritten with corvidae's", async () => {

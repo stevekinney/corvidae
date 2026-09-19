@@ -178,6 +178,8 @@ export type {
   ContextSourceTrust,
   CreateContextEpochSealerOptions,
   EffectiveContextEpoch,
+  SkillActivationBinding,
+  SkillActivationContext,
 } from './context-epoch';
 // C3 — session verb events
 export {

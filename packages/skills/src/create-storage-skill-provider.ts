@@ -2,7 +2,27 @@ import type { TextValueStore } from '@corvidae/weft';
 import { z } from 'zod';
 
 import { isValidSkillName, SkillParseError } from './parse-skill-markdown';
+
 import type { SkillCatalogEntry, SkillContent, SkillMetadata, SkillProvider } from './types';
+
+/**
+ * Resources cross a string-only key-value boundary, so bytes are base64-encoded on the way in and
+ * decoded on the way out. Storing them as text instead would corrupt every binary asset, which is
+ * the defect this encoding exists to prevent; base64 costs a third more storage and keeps the
+ * bytes exact.
+ */
+function encodeResourceBytes(content: Uint8Array): string {
+  let binary = '';
+  for (const byte of content) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function decodeResourceBytes(encoded: string): Uint8Array {
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
 
 const toolPolicySchema = z.object({
   allowList: z.array(z.string()).optional(),
@@ -151,16 +171,16 @@ export function createStorageSkillProvider(adapter: TextValueStore): SkillProvid
       return keys.map((key) => key.slice(prefix.length));
     },
 
-    async loadResource(name: string, path: string): Promise<string | undefined> {
+    async loadResource(name: string, path: string): Promise<Uint8Array | undefined> {
       const raw = await adapter.get(resourceKey(name, path));
-      return raw ?? undefined;
+      return raw === null || raw === undefined ? undefined : decodeResourceBytes(raw);
     },
 
-    async saveResource(name: string, path: string, content: string): Promise<void> {
+    async saveResource(name: string, path: string, content: Uint8Array): Promise<void> {
       if (!isValidSkillName(name)) {
         throw new SkillParseError(`Skill name "${name}" is not valid kebab-case.`);
       }
-      await adapter.set(resourceKey(name, path), content);
+      await adapter.set(resourceKey(name, path), encodeResourceBytes(content));
     },
 
     async isEnabled(name: string): Promise<boolean> {

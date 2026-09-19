@@ -19,6 +19,7 @@ export const environmentBoundaries = [
       'applications/chat-room/src/lib/environment-configuration.ts',
       'applications/chat-room/src/lib/server/environment-configuration.ts',
       'packages/operative/src/environment-configuration.ts',
+      'packages/skills/src/environment-configuration.ts',
       'packages/testing/src/environment-configuration.ts',
       'packages/weft/src/runtime/environment-configuration.ts',
       'packages/weft/src/storage/environment-configuration.ts',

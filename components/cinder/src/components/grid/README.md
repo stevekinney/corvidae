@@ -15,6 +15,8 @@ Grid renders a low-chrome CSS grid container for explicit columns, intrinsic aut
 </Grid>
 ```
 
+A numeric `columns` renders `repeat(<columns>, minmax(0, 1fr))`, not bare `1fr` tracks — a deliberate overflow-safe choice, so a child with intrinsically wide content (a long unbreakable string, a fixed-width image) cannot force a column past its share of the available space. Pass a full `grid-template-columns` string instead when you need bare `1fr` tracks or another sizing function.
+
 Use `minItemWidth` for intrinsic responsive grids without adding media queries:
 
 ```svelte

@@ -82,18 +82,22 @@ import {
   withMinimumTripwireConfidence,
   WorkflowVersionMismatchEvent,
 } from '@corvidae/operative';
-import type {
-  SkillEventMap,
-  SkillGuardrailOptions,
-  SkillSession,
-  SkillProvider as SkillsPackageProvider,
-  ToolPolicy,
-} from '@corvidae/skills';
 import {
+  createFilesystemArtifactLoader,
   createSkillCatalogHook,
+  createSkillClient,
+  createSkillClientToolbox,
   createSkillSession,
   createSkillToolbox,
   createStorageSkillProvider,
+  renderActiveSkillInstructions,
+  renderClientCatalog,
+  type SkillActivationRecord,
+  type SkillEventMap,
+  type SkillGuardrailOptions,
+  type SkillSession,
+  type SkillProvider as SkillsPackageProvider,
+  type ToolPolicy,
 } from '@corvidae/skills';
 import {
   type ConditionalTextValueStore,
@@ -1361,6 +1365,40 @@ function createTrackedSkillSession(): TrackedSkillSession {
  * recovery re-fires because the payload is deterministic for a given step boundary
  * (completed steps replay identically, producing the same active-skill set).
  */
+/**
+ * Snapshots the catalog revision and every activation record after each step.
+ *
+ * The provider-backed snapshot carries a name and a tool policy. That is enough to re-activate
+ * something with the same name and nothing at all to prove it is the same skill — COR-752 named
+ * exactly this gap ("neither carries source, trust decision, digest, or admitted instructions").
+ * These records carry the source, the trust decision, the artifact digest and the instructions
+ * digest, which is what lets recovery refuse a skill whose content drifted rather than silently
+ * resurrecting different text under a reviewed name.
+ */
+function createSkillRecordSnapshotHook(
+  client: { activationRecords(): readonly SkillActivationRecord[] },
+  catalog: { revision: number; digest: string },
+  sessionId: string,
+  store: SessionStore,
+  runId?: string,
+): OnStepHook {
+  return async (context) => {
+    try {
+      await store.updateMetadata(sessionId, {
+        activeSkillRecords: client.activationRecords() as unknown as JSONValue,
+        skillCatalogRevision: catalog.revision,
+        skillCatalogDigest: catalog.digest,
+        ...(runId === undefined
+          ? {}
+          : { activeSkillRecordsRunId: runId, activeSkillRecordsStep: context.step }),
+      });
+    } catch {
+      // Non-fatal, same as the entry-based hook: a failed snapshot must not abort the step. The
+      // cost is that recovery starts from an empty active set, which is the safe direction.
+    }
+  };
+}
+
 function createSkillStateSnapshotHook(
   trackedSession: TrackedSkillSession,
   sessionId: string,
@@ -1584,6 +1622,14 @@ export interface RuntimeComposition {
       liveStreaming?: boolean;
       /** Active-skill entries to pre-seed the run's SkillSession for durable recovery. */
       initialActiveSkills?: ReadonlyArray<ActiveSkillEntry> | undefined;
+      /**
+       * Provenance-carrying records for the catalog-backed path.
+       *
+       * Distinct from `initialActiveSkills`, which carries only a name and tool policy. Recovery
+       * re-validates these against the live catalog and re-checks each digest, so a skill whose
+       * source was revoked or whose content drifted does not come back.
+       */
+      initialActiveSkillRecords?: ReadonlyArray<SkillActivationRecord> | undefined;
     },
   ): Promise<{
     generate: GenerateFunction;
@@ -1931,9 +1977,18 @@ export async function createRuntimeComposition(
   // package interface with `saveResource`/`setEnabled`) so it is accepted by
   // `createSkillCatalogHook`, which expects the full interface. The bureau's
   // local `SkillProvider` type is a structural subset and is compatible.
-  const resolvedSkillProvider: SkillsPackageProvider | undefined =
-    (options.skills?.provider as SkillsPackageProvider | undefined) ??
-    (options.skills !== undefined && kv !== undefined ? createStorageSkillProvider(kv) : undefined);
+  // Sources win over a provider, and the two never compose. A run draws its skills from one
+  // place: mixing a discovered catalog with a provider's listing would leave "which catalog is
+  // this skill from" unanswerable, and provenance that cannot answer that question is decoration.
+  const skillCatalog = options.skills?.catalog;
+  const usesCatalogSources = skillCatalog !== undefined;
+
+  const resolvedSkillProvider: SkillsPackageProvider | undefined = usesCatalogSources
+    ? undefined
+    : ((options.skills?.provider as SkillsPackageProvider | undefined) ??
+      (options.skills !== undefined && kv !== undefined
+        ? createStorageSkillProvider(kv)
+        : undefined));
 
   // AB-384 (Codex P2 review finding, PR #592, "Mint incarnations from the
   // Bureau's injected runtime"): `runtimeServices` (resolved above from
@@ -2092,6 +2147,14 @@ export async function createRuntimeComposition(
        * (those steps are memoized and do not re-run their `activate_skill` calls).
        */
       initialActiveSkills?: ReadonlyArray<ActiveSkillEntry> | undefined;
+      /**
+       * Provenance-carrying records for the catalog-backed path.
+       *
+       * Distinct from `initialActiveSkills`, which carries only a name and tool policy. Recovery
+       * re-validates these against the live catalog and re-checks each digest, so a skill whose
+       * source was revoked or whose content drifted does not come back.
+       */
+      initialActiveSkillRecords?: ReadonlyArray<SkillActivationRecord> | undefined;
     },
   ) {
     const liveStreaming = runtimeOptions?.liveStreaming ?? true;
@@ -2210,7 +2273,98 @@ export async function createRuntimeComposition(
           }
         : undefined;
 
-    if (options.skills && resolvedSkillProvider) {
+    let skillRecovery: Promise<unknown> | undefined;
+    if (options.skills && skillCatalog !== undefined) {
+      // COR-892 — the catalog-backed path. Bureau composes policy and durability *around*
+      // Agent-owned behaviour rather than reimplementing it: discovery, trust admission,
+      // digest-verified activation and the active set all live in `@corvidae/skills`, and what
+      // Bureau adds here is the run and session correlation the client cannot see, plus durable
+      // persistence of what the client decided.
+      const skillClient = createSkillClient({
+        catalog: skillCatalog,
+        loadArtifact: createFilesystemArtifactLoader(),
+        ...(skillEvents === undefined ? {} : { events: skillEvents }),
+        correlation: {
+          ...(request.runId === undefined ? {} : { runId: request.runId }),
+          sessionId: request.sessionId,
+          ...(request.agentName === undefined ? {} : { agentName: request.agentName }),
+        },
+      });
+
+      // Recovery before anything else reads the active set: a resumed run must re-validate every
+      // stored record against the live catalog and re-check its digest, so a skill whose source
+      // was revoked or whose content drifted while the run was away does not come back.
+      const recoverable = runtimeOptions?.initialActiveSkillRecords;
+      if (recoverable !== undefined && recoverable.length > 0) {
+        // Detached deliberately: composition is synchronous, and recovery re-reads bundles. The
+        // first step's `prepareStep` awaits the same promise below, so nothing reads a half-filled
+        // active set.
+        skillRecovery = skillClient.recover(recoverable);
+      }
+
+      getActiveSkillEntries = () =>
+        skillClient.activationRecords().map((record: SkillActivationRecord) => ({
+          name: record.name,
+          ...(record.requestedTools.length === 0
+            ? {}
+            : { toolPolicy: { allowList: [...record.requestedTools] } }),
+        }));
+      getActiveSkillToolPolicy = () => {
+        const narrowed = skillClient.narrowedTools();
+        return narrowed === undefined ? undefined : { allowList: [...narrowed] };
+      };
+
+      if (options.skills.includeTools !== false) {
+        const skillToolset = createSkillClientToolbox(skillClient);
+        // `undefined` when the admitted catalog is empty, so no skill tool is exposed at all —
+        // a model handed `activate_skill` against an empty catalog invents a name to pass it.
+        if (skillToolset !== undefined) {
+          prepareStep.push((context) => {
+            if (context.step !== 0) return Promise.resolve();
+            const rendered = renderClientCatalog(skillClient);
+            if (rendered !== undefined) {
+              context.conversation.appendSystemMessage(rendered, {
+                _skillCatalogInjected: true,
+              });
+            }
+            return Promise.resolve();
+          });
+
+          toolbox = combineToolboxes(
+            toolbox,
+            createToolbox([
+              skillToolset.activateSkill,
+              skillToolset.loadSkillResource,
+              skillToolset.deactivateSkill,
+            ]) as AnyToolbox,
+          );
+        }
+      }
+
+      // Active instructions are re-rendered every step rather than left in the transcript, which
+      // is what makes them survive a compaction strategy that rewrote the whole history.
+      prepareStep.push(async (context) => {
+        // Recovery settles before the first step reads the active set, so nothing renders a
+        // half-filled one.
+        if (skillRecovery !== undefined) await skillRecovery;
+        const instructions = renderActiveSkillInstructions(skillClient.active());
+        if (instructions !== undefined) {
+          context.conversation.appendSystemMessage(instructions, { _skillContentInjected: true });
+        }
+      });
+
+      if (sessionStore) {
+        onStep.push(
+          createSkillRecordSnapshotHook(
+            skillClient,
+            skillCatalog,
+            request.sessionId,
+            sessionStore,
+            request.runId,
+          ),
+        );
+      }
+    } else if (options.skills && resolvedSkillProvider) {
       // Use a policy-tracking session so getActiveEntries() can reconstruct the
       // per-skill policy for the durable snapshot hook (see createTrackedSkillSession).
       const skillSession = createTrackedSkillSession();

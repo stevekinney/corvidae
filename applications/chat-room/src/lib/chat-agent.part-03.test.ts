@@ -149,7 +149,28 @@ describe('pumpChatRun: roll_dice tool path', () => {
 
     const [toolError] = ofType(frames, 'tool.error');
     expect(toolError).toMatchObject({ toolCallId: 'call-bad', toolName: 'roll_dice' });
-    expect(toolError?.error).toMatchObject({ name: 'ZodError', message: expect.any(String) });
+    // COR-1261. This frame is derived from the toolbox `settled` event
+    // (`operative/src/create-run.ts`), which now carries the normalized
+    // `ToolError` the execution result carries rather than the raw thrown
+    // value. It used to arrive here as a flattened `{name, message}` view of
+    // the ZodError.
+    //
+    // The claim in this test's name is better served by the new shape, not
+    // merely compatible with it: it is still not the raw cause, it is still
+    // JSON-safe, and the validation issues now survive as structured data
+    // instead of only as text inside `message`.
+    expect(toolError?.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      category: 'validation',
+      retryable: false,
+      message: expect.any(String),
+    });
+    expect(toolError?.error).not.toMatchObject({ name: 'ZodError' });
+    const issues = (toolError?.error as { details?: { issues?: unknown[] } })?.details?.issues;
+    expect(Array.isArray(issues)).toBe(true);
+    expect(issues?.length).toBeGreaterThan(0);
+    // The point of the frame: whatever it carries has to survive the wire.
+    expect(() => JSON.parse(JSON.stringify(toolError?.error))).not.toThrow();
     expect(ofType(frames, 'tool.settled')[0]).toMatchObject({
       toolCallId: 'call-bad',
       result: { callId: 'call-bad', outcome: 'error' },

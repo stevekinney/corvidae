@@ -122,7 +122,14 @@ describe('temporary exceptions', () => {
     documentation: 'fixture',
     targets: ['weft'],
     paths: [{ glob: 'LICENSE', reason: 'root license is target-owned' }],
-    fields: { policy: 'fixture', entries: [] },
+    insideFiles: {
+      policy: 'fixture',
+      manifestKeys: [{ key: 'name', reason: 'fixture' }],
+      manifestDefaults: [{ key: 'engines', reason: 'fixture' }],
+      dependencies: { policy: 'fixture' },
+      typeScriptTargetOwnedPolicy: 'fixture',
+      typeScriptTargetOwned: [{ key: 'include', reason: 'fixture' }],
+    },
     openQuestions: [],
   };
   const exception = {

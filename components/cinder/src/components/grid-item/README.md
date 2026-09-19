@@ -15,6 +15,18 @@ GridItem is the optional `Grid.Item` placement leaf. Use it when a grid child ne
 </Grid>
 ```
 
+Combine `span`, `rowSpan`, and `rowEnd` to build an asymmetric mosaic layout — a tall, wide featured tile alongside regular ones — without a separate layout component:
+
+```svelte
+<Grid columns={4} gap="var(--cinder-space-4)">
+  <Grid.Item span={2} rowSpan={2}>Featured tile</Grid.Item>
+  <Grid.Item span={2}>Regular tile</Grid.Item>
+  <Grid.Item span={2}>Regular tile</Grid.Item>
+</Grid>
+```
+
+`rowEnd` takes precedence over `rowSpan` when both are set on the same item, so use whichever reads more clearly for a given tile: a span count for "how many rows," or an explicit end line for "stop at this row."
+
 ## Props
 
 <!-- generated:props:start -->

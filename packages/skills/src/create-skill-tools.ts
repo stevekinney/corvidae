@@ -2,8 +2,9 @@ import { createTool } from '@corvidae/armorer';
 import type { TypedEventTarget } from '@corvidae/lifecycle';
 import { z } from 'zod';
 
+import { refusedByAdmissionPolicy } from './admission';
 import { escapeXml } from './create-skill-catalog-hook';
-import type { SkillAdmissionRule, SkillEventCorrelation, SkillEventMap } from './events';
+import type { SkillEventCorrelation, SkillEventMap } from './events';
 import {
   SkillActivatedEvent,
   SkillDeactivatedEvent,
@@ -66,22 +67,6 @@ export interface CreateSkillToolsOptions {
  * activation. A blocked skill is never marked active and its content never
  * reaches the model.
  */
-/**
- * Which admission rule refuses this skill, or undefined when the policy admits
- * it. Deny wins over allow: a name on both lists is refused, because the deny
- * list is the more restrictive statement and a policy that admitted it would
- * be honouring the weaker half of its own configuration.
- */
-function refusedByAdmissionPolicy(
-  name: string,
-  policy: ToolPolicy | undefined,
-): SkillAdmissionRule | undefined {
-  if (!policy) return undefined;
-  if (policy.denyList?.includes(name)) return 'deny-list';
-  if (policy.allowList && !policy.allowList.includes(name)) return 'allow-list';
-  return undefined;
-}
-
 export function createActivateSkillTool(options: CreateSkillToolsOptions) {
   const { provider, session, guardrail, events, correlation = {}, admissionPolicy } = options;
 
@@ -177,10 +162,30 @@ export function createLoadSkillResourceTool(options: CreateSkillToolsOptions) {
         return { error: 'Skill is not active', skillName: params.skillName };
       }
 
-      const content = await provider.loadResource(params.skillName, params.path);
-      if (content === undefined) {
+      const bytes = await provider.loadResource(params.skillName, params.path);
+      if (bytes === undefined) {
         return {
           error: 'Resource not found',
+          skillName: params.skillName,
+          path: params.path,
+        };
+      }
+
+      // Decoded here and only here: the model consumes text, while storage keeps the exact bytes
+      // so a binary asset survives the round trip.
+      //
+      // `fatal: true` is the security-relevant part, not a nicety. A lossy decode would turn a
+      // binary asset into replacement characters and then hand *that* to the guardrail, which
+      // scans it as meaningless garbage and passes it — a resource effectively skipping the scan
+      // while appearing to have been scanned. Refusing instead means the rule has no hole in it:
+      // either a resource decodes losslessly and is scanned, or it does not reach the model at
+      // all. A model cannot consume a PNG anyway, so nothing legitimate is lost.
+      let content: string;
+      try {
+        content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch {
+        return {
+          error: 'Resource is not UTF-8 text and cannot be admitted to context',
           skillName: params.skillName,
           path: params.path,
         };

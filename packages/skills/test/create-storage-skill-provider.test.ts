@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'bun:test';
 import { createStorageSkillProvider } from '../src/create-storage-skill-provider';
 import { createMockKeyValueStore } from '../src/index';
 import type { SkillContent, SkillProvider } from '../src/types';
+import { resourceBytes, resourceText } from './support/resource-bytes';
 
 function makeSkillContent(name: string, description = `Description for ${name}`): SkillContent {
   return {
@@ -95,7 +96,7 @@ describe('createStorageSkillProvider', () => {
   describe('deleteSkill', () => {
     it('removes metadata, body, resources, and enabled flag', async () => {
       await provider.saveSkill('doomed', makeSkillContent('doomed'));
-      await provider.saveResource('doomed', 'scripts/helper.py', 'print("help")');
+      await provider.saveResource('doomed', 'scripts/helper.py', resourceBytes('print("help")'));
       await provider.setEnabled('doomed', false);
 
       await provider.deleteSkill('doomed');
@@ -121,21 +122,25 @@ describe('createStorageSkillProvider', () => {
 
   describe('resources', () => {
     it('saves and loads resources', async () => {
-      await provider.saveResource('my-skill', 'scripts/extract.py', 'print("extract")');
-      const content = await provider.loadResource('my-skill', 'scripts/extract.py');
+      await provider.saveResource(
+        'my-skill',
+        'scripts/extract.py',
+        resourceBytes('print("extract")'),
+      );
+      const content = resourceText(await provider.loadResource('my-skill', 'scripts/extract.py'));
       expect(content).toBe('print("extract")');
     });
 
     it('rejects invalid skill names when saving resources', async () => {
       expect(
-        provider.saveResource('NOT VALID', 'scripts/extract.py', 'print("extract")'),
+        provider.saveResource('NOT VALID', 'scripts/extract.py', resourceBytes('print("extract")')),
       ).rejects.toThrow('not valid kebab-case');
     });
 
     it('lists resources for a skill', async () => {
-      await provider.saveResource('my-skill', 'scripts/a.py', 'a');
-      await provider.saveResource('my-skill', 'scripts/b.py', 'b');
-      await provider.saveResource('my-skill', 'templates/c.md', 'c');
+      await provider.saveResource('my-skill', 'scripts/a.py', resourceBytes('a'));
+      await provider.saveResource('my-skill', 'scripts/b.py', resourceBytes('b'));
+      await provider.saveResource('my-skill', 'templates/c.md', resourceBytes('c'));
 
       const listed = await provider.listResources('my-skill');
       const resources = listed.toSorted();
@@ -188,9 +193,14 @@ describe('createStorageSkillProvider', () => {
     });
 
     it('stores resources under skill:{name}:resource:{path}', async () => {
-      await provider.saveResource('ns-test', 'scripts/run.sh', '#!/bin/bash');
+      await provider.saveResource('ns-test', 'scripts/run.sh', resourceBytes('#!/bin/bash'));
       const raw = await adapter.get('skill:ns-test:resource:scripts/run.sh');
-      expect(raw).toBe('#!/bin/bash');
+      // Base64 at the boundary: the adapter stores strings, and resources are bytes so a bundled
+      // image or font is not destroyed by a UTF-8 round trip on the way through.
+      expect(raw).toBe(btoa('#!/bin/bash'));
+      expect(resourceText(await provider.loadResource('ns-test', 'scripts/run.sh'))).toBe(
+        '#!/bin/bash',
+      );
     });
 
     it('stores enabled flag under skill:{name}:enabled', async () => {
@@ -220,16 +230,18 @@ describe('createStorageSkillProvider', () => {
 
       await provider.saveSkill('alpha', alpha);
       await provider.saveSkill('beta', beta);
-      await provider.saveResource('alpha', 'data.json', '{"alpha": true}');
-      await provider.saveResource('beta', 'data.json', '{"beta": true}');
+      await provider.saveResource('alpha', 'data.json', resourceBytes('{"alpha": true}'));
+      await provider.saveResource('beta', 'data.json', resourceBytes('{"beta": true}'));
       await provider.setEnabled('alpha', false);
       await provider.setEnabled('beta', true);
 
       // Verify isolation
       expect(await provider.loadSkill('alpha')).toEqual(alpha);
       expect(await provider.loadSkill('beta')).toEqual(beta);
-      expect(await provider.loadResource('alpha', 'data.json')).toBe('{"alpha": true}');
-      expect(await provider.loadResource('beta', 'data.json')).toBe('{"beta": true}');
+      expect(resourceText(await provider.loadResource('alpha', 'data.json'))).toBe(
+        '{"alpha": true}',
+      );
+      expect(resourceText(await provider.loadResource('beta', 'data.json'))).toBe('{"beta": true}');
       expect(await provider.isEnabled('alpha')).toBe(false);
       expect(await provider.isEnabled('beta')).toBe(true);
 
@@ -237,7 +249,7 @@ describe('createStorageSkillProvider', () => {
       await provider.deleteSkill('alpha');
       expect(await provider.loadSkill('alpha')).toBeUndefined();
       expect(await provider.loadSkill('beta')).toBeDefined();
-      expect(await provider.loadResource('beta', 'data.json')).toBe('{"beta": true}');
+      expect(resourceText(await provider.loadResource('beta', 'data.json'))).toBe('{"beta": true}');
     });
   });
 });
