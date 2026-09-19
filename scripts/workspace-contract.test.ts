@@ -89,7 +89,10 @@ describe('internal workspace architecture', () => {
     expect(scripts['test']?.split(' && ').filter((stage) => stage === 'bun run test:self')).toEqual(
       ['bun run test:self'],
     );
-    expect(scripts['test:self']).toBe('bun test ./scripts/*.test.ts');
+    // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
+    // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
+    // the separate `test:browser-fixtures` gate.
+    expect(scripts['test:self']).toBe('bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts');
     expect(scripts['audit']).toBe('bun audit --audit-level=high');
   });
 
