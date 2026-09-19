@@ -6,7 +6,7 @@ import { admitToolCall, createDeadlineResult } from './toolbox-execution-admissi
 import { processPendingApproval } from './toolbox-execution-approval';
 import { bindPendingApproval } from './toolbox-execution-approval-binding';
 import { createChildExecution } from './toolbox-execution-child';
-import { subscribeToolEvents } from './toolbox-execution-events';
+import { type DeferredSettlement, subscribeToolEvents } from './toolbox-execution-events';
 import { normalizeToolCall } from './toolbox-execution-helpers';
 import { createToolExecuteOptions } from './toolbox-execution-options';
 import { settleToolResult } from './toolbox-execution-settlement';
@@ -92,9 +92,22 @@ export function createExecutionTask(
       initialEffectiveContext,
     });
     const { cleanup, childExecutionId } = child;
-    subscribeToolEvents(tool, childExecutionId, toolCall, emit, cleanup);
+    const deferredSettlement = subscribeToolEvents(
+      tool,
+      childExecutionId,
+      toolCall,
+      emit,
+      cleanup,
+    );
 
-    return runToolInvocation(context, tool, toolCall, child, initialEffectiveContext);
+    return runToolInvocation(
+      context,
+      tool,
+      toolCall,
+      child,
+      initialEffectiveContext,
+      deferredSettlement,
+    );
   };
 }
 
@@ -104,6 +117,7 @@ async function runToolInvocation(
   toolCall: ToolCall,
   child: import('./toolbox-execution-child').ChildExecution,
   initialEffectiveContext: import('./execution-context').EffectiveToolExecutionContext | undefined,
+  deferredSettlement: DeferredSettlement,
 ): Promise<ToolExecutionResult> {
   const {
     runtime,
@@ -184,7 +198,26 @@ async function runToolInvocation(
       runtime,
       interruptedResult: createInterruptedResumeApprovalValidationResult,
     });
-    if (interruptedApproval) return interruptedApproval;
+    // COR-45: issuance has now either failed or become authoritative, so the
+    // withheld `paused` settlement can be released with its real outcome.
+    // Both calls are no-ops unless this call actually paused.
+    if (interruptedApproval) {
+      deferredSettlement.flush({
+        status: 'error',
+        result: undefined,
+        error: interruptedApproval.error,
+      });
+      // COR-45: this exit used to return without releasing the bubbled tool
+      // event subscriptions or terminating the child execution, so every
+      // gated call interrupted during issuance leaked one tool listener per
+      // bubbled event type and left its child handle unsettled. The tool
+      // callback never ran on this path, so settling here cannot report a
+      // completion while real work is still in flight.
+      cleanup.forEach((fn) => fn());
+      settleChildExecution(interruptedApproval);
+      return interruptedApproval;
+    }
+    deferredSettlement.flush({ status: 'paused', result: undefined, error: undefined });
     settleToolResult({
       result,
       tool,
@@ -204,7 +237,7 @@ async function runToolInvocation(
     });
     return result;
   } catch (error) {
-    return handleInvocationError(error, context, tool, toolCall, child);
+    return handleInvocationError(error, context, tool, toolCall, child, deferredSettlement);
   }
 }
 
@@ -214,13 +247,10 @@ function handleInvocationError(
   tool: import('./is-tool').Tool,
   toolCall: ToolCall,
   child: import('./toolbox-execution-child').ChildExecution,
+  deferredSettlement: DeferredSettlement,
 ): ToolExecutionResult {
   const { cleanup, childExecutionId, settleChildExecution } = child;
   cleanup.forEach((fn) => fn());
-  if (context.errorMode === 'failFast') {
-    settleChildExecution(error);
-    throw error;
-  }
   const message = error instanceof Error ? error.message : String(error);
   const toolError = isToolError(error)
     ? error
@@ -230,6 +260,16 @@ function handleInvocationError(
         context.extractErrorCode(error) ?? 'EXECUTION_ERROR',
         false,
       );
+  // COR-45: a call that paused and then failed to have its approval issued
+  // still owes exactly one toolbox settlement, in both error modes. The
+  // normalization above is hoisted so `failFast` can carry the same
+  // `ToolError` the collect path reports while still rejecting with the
+  // original error below.
+  deferredSettlement.flush({ status: 'error', result: undefined, error: toolError });
+  if (context.errorMode === 'failFast') {
+    settleChildExecution(error);
+    throw error;
+  }
   const errResult: ToolExecutionResult = {
     callId: toolCall.id,
     outcome: 'error',
