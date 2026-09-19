@@ -18,6 +18,7 @@ import {
   type SurfaceExportsMap,
 } from './package-surface.ts';
 import { checkParity, loadRegistryBaseline, type ParityResult } from './registry-baseline.ts';
+import { assertNoSourceEscapes } from './source-escapes.ts';
 import { assertSingleOwner, planSource, type EmittedWorkspace, type SourcePlan } from './source.ts';
 import {
   assertTypeScriptEdgeClosed,
@@ -39,6 +40,12 @@ import {
  * configuration, which is also where the three producers' claims on the plan's keys are checked
  * against each other. The merge is a spread, so an overlap would otherwise be a silent
  * last-writer-wins on a file one half of the transform thought it owned.
+ *
+ * The composed file set is also where the closure gate belongs. `assertNoSourceEscapes` asks
+ * whether every module specifier in the emitted source lands on something the plan emits, which
+ * is a question only this merge can answer: the source half alone would call a specifier into a
+ * manifest an escape. It runs here rather than in `assertPublishable` because an unresolvable
+ * import is not a finding to report alongside others — it is a plan that cannot be written.
  *
  * Nothing here writes. `stageTarget` in `manifests.ts` is still what puts a plan on disk, and the
  * target-owned guard still runs over the whole file set before any of it lands.
@@ -285,9 +292,15 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     { owner: 'source', paths: Object.keys(source.files) },
   ]);
 
+  const merged = { ...files, ...typescript.files, ...source.files };
+  // Over the merged set rather than the source half alone: a specifier that names a manifest or a
+  // tsconfig is satisfied by the other two producers, and the question the gate asks is whether
+  // the *target* can resolve it, not which half of the transform wrote it.
+  assertNoSourceEscapes(merged);
+
   return {
     ...manifestPlan,
-    files: { ...files, ...typescript.files, ...source.files },
+    files: merged,
     parity,
     coverage,
     typescript,
