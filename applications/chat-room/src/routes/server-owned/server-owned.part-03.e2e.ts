@@ -170,6 +170,14 @@ test('a person approves the note in the browser and the turn completes', async (
   expect(resolved?.['requestId']).toBe(requested?.['requestId']);
   expect(resolved?.['accepted']).toBe(true);
 
+  // THE CALL THE QUESTION IS ABOUT travels with it. Without this the frame
+  // says a question exists and what it asks, but not which call it is about —
+  // and the answering POST is keyed on exactly that id, so a client reading
+  // only the stream would have a question it could display and could not
+  // answer.
+  expect(requested?.['toolCallId']).toBeTruthy();
+  expect(resolved?.['toolCallId']).toBe(requested?.['toolCallId']);
+
   // TWO STEPS, and the second one's reply is bracketed by its own boundary —
   // after the tool frames rather than inside the row that precedes them.
   const steps = wire.filter((frame) => frame['type'] === 'assistant.step.started');

@@ -262,7 +262,18 @@ function createElicitationGate(
         // The SCHEMA is what Operative validates the answer against, and
         // it is the host's own shape rather than the tool's input: the
         // person is answering "may this run", not re-authoring the note.
-        const answer = await elicit(ELICITATION_MESSAGE, z.object({ approved: z.literal(true) }));
+        //
+        // The CALL ID is passed through Operative's own `ElicitationOptions`
+        // as well as held in `asking` above, and the difference matters now
+        // that the question also reaches the browser on the stream: only the
+        // option puts the id onto `ElicitationRequestedEvent`, and from there
+        // onto the `elicitation.requested` frame. The `asking` closure serves
+        // the registry, which a second request reads; the option serves the
+        // client, which would otherwise be shown a question it had no way to
+        // answer — the POST is keyed on exactly this id.
+        const answer = await elicit(ELICITATION_MESSAGE, z.object({ approved: z.literal(true) }), {
+          toolCallId: call.id,
+        });
         if (answer === null) denied.add(call.id);
       } finally {
         asking = undefined;
