@@ -1413,6 +1413,9 @@ test.describe('chat harness — composer acceptance matrix', () => {
       await expect(send).toBeEnabled();
       await send.click();
       await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
+      const unrelated = harness.getByTestId('unrelated-tooltip-trigger');
+      await unrelated.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Unrelated tooltip remains available');
     } finally {
       await dispose();
     }

@@ -29,6 +29,7 @@
     SegmentedControl,
     Select,
     Textarea,
+    Tooltip,
     Toggle,
   } from '@corvidae/cinder';
   import { onDestroy } from 'svelte';
@@ -66,6 +67,7 @@
   let replyText = $state('Here is the answer, delivered in a few deliberate chunks.');
   let replyMode = $state<'instant' | 'typing' | 'streaming'>('typing');
   let streamMechanism = $state<'imperative' | 'content-mutation'>('imperative');
+  let unrelatedTooltipTrigger = $state<HTMLButtonElement | null>(null);
   let streaming = $state(false);
   let streamingStatus = $state('');
 
@@ -489,6 +491,20 @@
     tabindex={0}
     style="flex: 1 1 20rem; min-width: 0; max-height: min(80vh, 44rem); overflow-y: auto; display: grid; gap: 1rem; padding: 1rem; border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-md); background: var(--cinder-surface-inset);"
   >
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+      <button
+        bind:this={unrelatedTooltipTrigger}
+        type="button"
+        data-testid="unrelated-tooltip-trigger"
+      >
+        Unrelated tooltip
+      </button>
+      <Tooltip
+        text="Unrelated tooltip remains available"
+        triggerRef={unrelatedTooltipTrigger}
+        class="unrelated-tooltip"
+      />
+    </div>
     <section style="display: grid; gap: 0.5rem;">
       <strong>Reply as the other side</strong>
       <Textarea

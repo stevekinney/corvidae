@@ -182,6 +182,7 @@
   let formElement = $state<HTMLFormElement | null>(null);
   let editorElement = $state<HTMLTextAreaElement | null>(null);
   let fileInputRef = $state<HTMLInputElement | null>(null);
+  let sendButtonRef = $state<HTMLButtonElement | null>(null);
 
   // Internal state
   let attachments = $state<ChatAttachment[]>([]);
@@ -896,55 +897,65 @@
 
       {#if showStopButton}
         <!-- Stop button: replaces send button during streaming when onstop is provided -->
-        <Tooltip text={sendTooltipText} class="chat-input-tooltip" placement="top">
-          <button
-            type="button"
-            class="chat-input-send"
-            data-stop
-            onclick={onstop}
-            aria-label="Stop generating"
-            aria-describedby={shortcutDescriptionId}
-          >
-            <Square class="cinder-icon-sm" />
-          </button>
-        </Tooltip>
+        <button
+          bind:this={sendButtonRef}
+          type="button"
+          class="chat-input-send"
+          data-stop
+          onclick={onstop}
+          aria-label="Stop generating"
+          aria-describedby={shortcutDescriptionId}
+        >
+          <Square class="cinder-icon-sm" />
+        </button>
+        <Tooltip
+          text={sendTooltipText}
+          class="chat-input-tooltip"
+          placement="top"
+          triggerRef={sendButtonRef}
+        />
       {:else}
         <!-- Send button: shows spinner when sending (without onstop), otherwise arrow -->
-        <Tooltip text={sendTooltipText} class="chat-input-tooltip" placement="top">
-          <button
-            type="submit"
-            class="chat-input-send"
-            disabled={!canSubmit}
-            aria-label={sending ? 'Sending message' : 'Send message'}
-            aria-describedby={shortcutDescriptionId}
-          >
-            {#if sending}
-              <svg
-                class="chat-input-spinner"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <circle
-                  class="spinner-track"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="spinner-head"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-            {:else}
-              <ArrowUp class="cinder-icon-sm" />
-            {/if}
-          </button>
-        </Tooltip>
+        <button
+          bind:this={sendButtonRef}
+          type="submit"
+          class="chat-input-send"
+          disabled={!canSubmit}
+          aria-label={sending ? 'Sending message' : 'Send message'}
+          aria-describedby={shortcutDescriptionId}
+        >
+          {#if sending}
+            <svg
+              class="chat-input-spinner"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <circle
+                class="spinner-track"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="spinner-head"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+          {:else}
+            <ArrowUp class="cinder-icon-sm" />
+          {/if}
+        </button>
+        <Tooltip
+          text={sendTooltipText}
+          class="chat-input-tooltip"
+          placement="top"
+          triggerRef={sendButtonRef}
+        />
       {/if}
     </div>
   </div>
@@ -1122,10 +1133,7 @@
   }
 
   @media (pointer: coarse) {
-    /* Wrapping Tooltip portals its panel to body, where the consumer class is
-     * not retained. Scope the coarse-pointer suppression to pages containing
-     * this composer while leaving the trigger itself usable. */
-    :global(body:has(.chat-input-tooltip) .cinder-tooltip) {
+    :global(.chat-input-tooltip.cinder-tooltip) {
       display: none !important;
     }
   }
