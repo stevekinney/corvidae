@@ -89,6 +89,7 @@ import {
   KEYS,
   type ListFilter,
   type ListOptions,
+  Mailbox,
   type RecoveredWorkflowInfo,
   type ScheduleSpec,
   type WorkflowState,
@@ -170,13 +171,6 @@ import {
   serializeUnknownError,
 } from './serialization';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
-import { Mailbox } from '@corvidae/weft';
-
-import {
-  createSteeringMailbox,
-  persistSteeringCommand,
-  recoverSteeringCommands,
-} from './steering-durability';
 import {
   type BureauSteeringGate,
   createSteeringCommandLedger,
@@ -186,6 +180,11 @@ import {
   type SteeringCommandAdmissionOutcome,
   type SteeringCommandRequest,
 } from './steering';
+import {
+  createSteeringMailbox,
+  persistSteeringCommand,
+  recoverSteeringCommands,
+} from './steering-durability';
 import type {
   AbortingRun,
   Bureau,

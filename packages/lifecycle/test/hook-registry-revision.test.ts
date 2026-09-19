@@ -84,7 +84,7 @@ describe('HookRegistry.revision', () => {
       off();
       seen.push(registry.revision);
     }
-    const sorted = [...seen].sort((a, b) => a - b);
+    const sorted = seen.toSorted((a, b) => a - b);
     expect(seen).toEqual(sorted);
     expect(new Set(seen).size).toBe(seen.length);
   });

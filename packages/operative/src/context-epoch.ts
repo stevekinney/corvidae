@@ -191,10 +191,6 @@ function conversationTrustVector(conversation: Conversation): string {
   return `operator=${counts.operator},agent=${counts.agent},retrieved=${counts.retrieved}`;
 }
 
-function source(record: ContextSourceRecord): ContextSourceRecord {
-  return record;
-}
-
 const INCLUDED: ContextSourceDisposition = { kind: 'included' };
 const ABSENT: ContextSourceDisposition = { kind: 'absent-by-composition' };
 
@@ -212,7 +208,7 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
     .join('\n');
 
   const sources: ContextSourceRecord[] = [
-    source({
+    {
       sourceId: 'conversation',
       trust: 'per-message',
       precedence: 5,
@@ -221,8 +217,8 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
       disposition: INCLUDED,
       revision: messages.length,
       digest: conversationTrustVector(input.conversation),
-    }),
-    source({
+    },
+    {
       sourceId: 'steering-desired',
       trust: 'trusted-operator',
       precedence: 2,
@@ -230,8 +226,8 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
       redaction: 'none',
       disposition: input.steering === undefined ? ABSENT : INCLUDED,
       revision: input.steering?.configVersion,
-    }),
-    source({
+    },
+    {
       sourceId: 'selection-plan',
       trust: 'trusted-operator',
       precedence: 0,
@@ -245,8 +241,8 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
           : digestText(
               `${input.plan.outcome}|${input.plan.catalogRevision}|${input.plan.policyRevision}|${input.plan.selectorRevision}`,
             ),
-    }),
-    source({
+    },
+    {
       sourceId: 'hook-plan',
       trust: 'trusted-operator',
       precedence: 2,
@@ -254,8 +250,8 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
       redaction: 'digest-only',
       disposition: input.hookPlanRevision === undefined ? ABSENT : INCLUDED,
       revision: input.hookPlanRevision,
-    }),
-    source({
+    },
+    {
       sourceId: 'toolbox',
       trust: 'trusted-operator',
       precedence: 4,
@@ -268,9 +264,9 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
       digest:
         input.toolNames === undefined
           ? undefined
-          : digestText([...input.toolNames].sort().join(',')),
-    }),
-    source({
+          : digestText(input.toolNames.toSorted().join(',')),
+    },
+    {
       sourceId: 'response-format',
       trust: 'trusted-operator',
       precedence: 1,
@@ -278,8 +274,8 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
       redaction: 'digest-only',
       disposition: input.responseFormatDigest === undefined ? ABSENT : INCLUDED,
       digest: input.responseFormatDigest,
-    }),
-    source({
+    },
+    {
       sourceId: 'agent-instructions',
       trust: 'trusted-operator',
       precedence: 1,
@@ -287,7 +283,7 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
       redaction: 'digest-only',
       disposition: input.agentName === undefined ? ABSENT : INCLUDED,
       revision: input.agentName,
-    }),
+    },
   ];
 
   return {

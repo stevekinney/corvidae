@@ -30,7 +30,7 @@ function steeringCommand(
     requestedValue: { target: 'model', override: 'claude-sonnet-5' },
     requestedAt: '2026-09-19T00:00:00.000Z',
     ...overrides,
-  } as ImplementedSteeringCommand;
+  };
 }
 
 describe('durable steering', () => {

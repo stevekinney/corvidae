@@ -3,6 +3,7 @@ import { Conversation } from '@corvidae/conversationalist';
 import type { RuntimeServices } from '@corvidae/lifecycle';
 import type { ZodType } from 'zod';
 
+import type { ContextEpochSealer } from './context-epoch';
 import type { AgentRunErrorKind } from './errors';
 import {
   GenerateCompletedEvent,
@@ -16,7 +17,6 @@ import { prepareStep } from './run-step-preparation';
 import { accumulateUsage } from './run-step-support';
 import { executeTools } from './run-step-tools';
 import { explicitAbortReason } from './run-step-utilities';
-import type { ContextEpochSealer } from './context-epoch';
 import type { SelectionGate } from './selection-gate';
 import type { ToolChoice } from './structured-output/types';
 import type {
