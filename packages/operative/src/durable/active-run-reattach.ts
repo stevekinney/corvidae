@@ -2,7 +2,7 @@ import type { RuntimeServices } from '@corvidae/lifecycle';
 import { CompletableEventTarget, createDefaultRuntimeServices } from '@corvidae/lifecycle';
 
 import type { ChildRunRegistry } from '../child-run';
-import { createClosedAcknowledgement } from '../closed-acknowledgement';
+import { createClosedAcknowledgement, foldTerminalCleanup } from '../closed-acknowledgement';
 import type { ActiveRun } from '../create-run';
 import type { CombinedOperativeEventMap, OperativeEventEmitter } from '../events';
 import { ToolProgressBubbleEvent, ToolSettledBubbleEvent, ToolStartedBubbleEvent } from '../events';
@@ -200,6 +200,14 @@ export function reattachDurableActiveRun(
     )
     .finally(complete);
 
+  // COR-625: the composer's terminal-cleanup step, folded in only on the
+  // paths that would otherwise report `completed` — see
+  // `createDurableActiveRun`'s identical fold and `foldTerminalCleanup`'s own
+  // doc comment for why the step only ever downgrades.
+  const terminalCleanupStep = context.terminalCleanup
+    ? (): Promise<CleanupAcknowledgement> => context.terminalCleanup!(runId)
+    : undefined;
+
   async function resolveReattachOutcome(): Promise<CleanupAcknowledgement> {
     if (reachability.unreachable) return { status: 'unresolved', reason: 'unreachable' };
     if (abortCancelled === undefined) {
@@ -207,7 +215,7 @@ export function reattachDurableActiveRun(
       // registered child's own `closed()` must settle before this
       // reattached parent reports `completed`, not merely its `result()`.
       await (childRegistry?.awaitChildrenClosed() ?? Promise.resolve());
-      return { status: 'completed' };
+      return foldTerminalCleanup({ status: 'completed' }, terminalCleanupStep);
     }
     // Wait for the SAME cancel attempt abort() fired (never rejects: it is
     // already `.then(cancelSucceeded, cancelFailed)`), then re-read the
@@ -224,7 +232,7 @@ export function reattachDurableActiveRun(
       }
       // AB-304: same children-closed fold-in as the uncancelled branch above.
       await (childRegistry?.awaitChildrenClosed() ?? Promise.resolve());
-      return { status: 'completed' };
+      return foldTerminalCleanup({ status: 'completed' }, terminalCleanupStep);
     } catch (error) {
       return { status: 'unresolved', reason: 'persistence-failed', error };
     }
@@ -236,7 +244,12 @@ export function reattachDurableActiveRun(
     // `reachability.unreachable` — otherwise the fast path could resolve
     // not-required for a run `resolveReattachOutcome` would have classified
     // unresolved/unreachable (AC8), silently hiding the teardown race.
-    disqualifiesFastPath: () => abortCancelled !== undefined || reachability.unreachable,
+    disqualifiesFastPath: () =>
+      abortCancelled !== undefined ||
+      reachability.unreachable ||
+      // COR-625: same reasoning as `createDurableActiveRun`'s identical
+      // disqualification — see `foldTerminalCleanup`'s doc comment.
+      terminalCleanupStep !== undefined,
     // No toolbox forwarding is owned by this adapter — see `reattach.stopToolboxForward`
     // above — so no in-flight-tool count is available to track here. AB-304:
     // a registered child still disqualifies the fast path the same way it

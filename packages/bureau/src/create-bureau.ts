@@ -50,6 +50,11 @@ import {
   reattachDurableActiveRun,
   type RecoveredRunHandle,
   type RequestHumanInputResult,
+  // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
+  // import because `./types` exports an unrelated string-union type under
+  // the same name (armorer's shutdown-owner outcome vocabulary). The two are
+  // genuinely different values and must not shadow each other here.
+  type CleanupAcknowledgement as RunCleanupAcknowledgement,
   type RunReport,
   ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
@@ -111,6 +116,7 @@ import { type AgentDefinitions, createAgentCatalog } from './agent-catalog';
 import {
   type AuditTrail,
   auditTrailSessionOwnerId,
+  type CheckpointRetentionOption,
   computeInitialAuditSequence,
   createAuditTrail,
 } from './audit-trail';
@@ -1070,6 +1076,33 @@ function validateAuditRetentionOption(value: { olderThan: number } | 'forever' |
   }
 }
 
+/**
+ * COR-625 — `BureauOptions.checkpointRetention`'s `{ keepLast }` form feeds
+ * weft's `Engine.pruneCheckpoints` (COR-11), whose own contract requires a
+ * non-negative integer. Bureau narrows that further to a POSITIVE integer:
+ * `keepLast: 0` would discard a terminal run's entire checkpoint history,
+ * including the newest entry a postmortem needs, which is a destructive
+ * default no operator means to configure — an operator who genuinely wants
+ * nothing retained is asking to delete the run, not to retain zero of it.
+ * `timeoutMilliseconds` bounds the step's own wait and its abort signal, so
+ * `NaN` or a negative value would arm a timer that fires immediately (or
+ * never), turning every step into a spurious `'timed-out'`. Validated here at
+ * construction time, the same boundary `validateAuditRetentionOption` above
+ * uses for the other destructive-if-malformed retention option.
+ */
+function validateCheckpointRetentionOption(value: CheckpointRetentionOption | undefined): void {
+  if (value === undefined || value === 'keep-all') return;
+  if (!Number.isInteger(value.keepLast) || value.keepLast <= 0) {
+    toBadRequest('"options.checkpointRetention.keepLast" must be a positive integer');
+  }
+  const timeout = value.timeoutMilliseconds;
+  if (timeout !== undefined && (!Number.isFinite(timeout) || timeout < 0)) {
+    toBadRequest(
+      '"options.checkpointRetention.timeoutMilliseconds" must be a finite, non-negative number',
+    );
+  }
+}
+
 export async function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
   options: BureauOptions<D>,
 ): Promise<Bureau<D>> {
@@ -1088,6 +1121,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     'principalBacklogLimit',
   );
   validateAuditRetentionOption(options.auditRetention);
+  validateCheckpointRetentionOption(options.checkpointRetention);
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
   const ownsStore = !options.store;
   // AB-260 — resolve the injectable runtime-service seam exactly once,
@@ -1519,6 +1553,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // AB-96 — terminal RunReports, cached at the moment each run's lifecycle
   // event fires so `getRunReport` never needs to re-derive them.
   const runReports = new Map<string, RunReport>();
+  // COR-625: one memoized terminal-cleanup step per run id. Every trigger
+  // MUST route through `runTerminalCheckpointCleanup` rather than calling the
+  // step directly — the exactly-once guarantee is the memo, not the triggers.
+  // Entries are released only by `deleteRun`, which a caller can reach only
+  // for an already-terminal run, so a released entry cannot be re-created by
+  // any of today's three triggers. A future API that can re-fire a terminal
+  // transition for one run id would break that and must be routed here too. This is what
+  // makes the step exactly-once across its three independent triggers — the
+  // live run's terminal listeners, a recovered run's terminal listeners, and
+  // `cancelDurableRun` on a run this process holds no `ActiveRun` for. Its
+  // entries are released alongside that run's report (`releaseRunReport`), so
+  // a long-lived bureau does not retain one promise per run forever.
+  const terminalCheckpointCleanups = new Map<string, Promise<RunCleanupAcknowledgement>>();
+  // COR-625: registered on a durable run's `closed()` only when a retention
+  // policy is actually configured. Registering it unconditionally would
+  // disqualify every durable run's `not-required` fast path (a run with a
+  // step registered genuinely has cleanup left to do — see
+  // `active-run-create.ts`'s `disqualifiesFastPath`) and so would change
+  // `closed()`'s answer for every bureau that never asked for retention. The
+  // terminal listeners still call the step unconditionally, so the
+  // `run.cleanup-settled` audit record exists either way.
+  const durableTerminalCleanup =
+    options.checkpointRetention && options.checkpointRetention !== 'keep-all'
+      ? runTerminalCheckpointCleanup
+      : undefined;
   // AB-205/AB-37 — ids `abortRun` has already requested cancellation for
   // (`ActiveRun.abort()` called) but whose teardown has not yet genuinely
   // settled. Guards `abortRun` itself against re-calling `abort()` (and
@@ -2925,6 +2984,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? {
               engine: runtime.durable.engine,
               checkpointStore: runtime.durable.checkpointStore,
+              // COR-625: this run's terminal checkpoint-retention step,
+              // folded into its `closed()`. Memoized per run id, so the
+              // listeners below firing it independently costs nothing.
+              ...(durableTerminalCleanup ? { terminalCleanup: durableTerminalCleanup } : {}),
               runId,
               // Carry the owning session in the durable input so boot recovery can
               // correlate a recovered handle back to its session without a side
@@ -3000,6 +3063,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         activeRuns.delete(activeRun);
         runToolboxes.delete(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
+        // COR-625: a terminal transition owes this run one checkpoint-
+        // retention step whether or not anyone ever calls `closed()`.
+        // Memoized per run id, so this and `closed()`'s own fold resolve the
+        // SAME step. Fire-and-forget: the step records its own
+        // acknowledgement durably and never rejects.
+        void runTerminalCheckpointCleanup(runId);
         // AB-67's ratified Abort row: a session's pause/resume never carries
         // into a future run. Any command still `accepted` and bound to this
         // run transitions to `failed`/`'run-terminal'` the moment the run
@@ -3048,6 +3117,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         activeRuns.delete(activeRun);
         runToolboxes.delete(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
+        // COR-625: a terminal transition owes this run one checkpoint-
+        // retention step whether or not anyone ever calls `closed()`.
+        // Memoized per run id, so this and `closed()`'s own fold resolve the
+        // SAME step. Fire-and-forget: the step records its own
+        // acknowledgement durably and never rejects.
+        void runTerminalCheckpointCleanup(runId);
         flowController?.settle(runId);
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
         // See the identical call in the `run.completed` listener above.
@@ -3108,6 +3183,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         activeRuns.delete(activeRun);
         runToolboxes.delete(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
+        // COR-625: a terminal transition owes this run one checkpoint-
+        // retention step whether or not anyone ever calls `closed()`.
+        // Memoized per run id, so this and `closed()`'s own fold resolve the
+        // SAME step. Fire-and-forget: the step records its own
+        // acknowledgement durably and never rejects.
+        void runTerminalCheckpointCleanup(runId);
         flowController?.settle(runId);
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
       });
@@ -3288,7 +3369,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     const recoveredRun = reattachDurableActiveRun(
-      { engine: runtime.durable!.engine, checkpointStore: runtime.durable!.checkpointStore },
+      {
+        engine: runtime.durable!.engine,
+        checkpointStore: runtime.durable!.checkpointStore,
+        // COR-625: same terminal checkpoint-retention step as the live path.
+        // A run recovered after a restart still owes its cleanup.
+        ...(durableTerminalCleanup ? { terminalCleanup: durableTerminalCleanup } : {}),
+      },
       {
         runId,
         handle,
@@ -3357,9 +3444,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // unavailable) or one interrupted by teardown fires NO terminal event — the
     // adapter stays write-free for those and the resolver/teardown owns the
     // session status; so these listeners only run for a genuinely settled run.
+    // COR-625: a reattached run whose `result` REJECTS — a recovered
+    // workflow whose stored result fails its schema-version check
+    // (`UnsupportedRunResultVersionError`, rethrown by
+    // `driveReattachedRun`) is the reachable case — dispatches no terminal
+    // event at all, so neither listener below ever fires and `closed()`'s
+    // own fold is skipped too (`createClosedAcknowledgement` classifies a
+    // rejected `result` as `failed` without consulting `resolveOutcome`).
+    // Without this the run would reach a dead end with NO
+    // `run.cleanup-settled` record, which is exactly the "cleanup failure
+    // that is invisible" this feature exists to prevent. The step re-reads
+    // the engine itself, so a run left non-terminal by the failure is
+    // recorded as unresolved rather than being pruned.
+    detachBestEffortPromise(recoveredRun.result.catch(() => runTerminalCheckpointCleanup(runId)));
+
     recoveredRun.once('run.completed', (event) => {
       activeRuns.delete(recoveredRun);
       disposeRecoveredRunFrameForwarder();
+      // COR-625: a terminal transition owes this run one checkpoint-
+      // retention step whether or not anyone ever calls `closed()`.
+      // Memoized per run id, so this and `closed()`'s own fold resolve the
+      // SAME step. Fire-and-forget: the step records its own
+      // acknowledgement durably and never rejects.
+      void runTerminalCheckpointCleanup(runId);
       const completedConversation = event.conversation;
       const finishReason = event.finishReason;
       const lastRunStatus = isRunFailureFinishReason(finishReason) ? 'error' : 'completed';
@@ -3390,6 +3497,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     recoveredRun.once('run.aborted', (event) => {
       activeRuns.delete(recoveredRun);
       disposeRecoveredRunFrameForwarder();
+      // COR-625: a terminal transition owes this run one checkpoint-
+      // retention step whether or not anyone ever calls `closed()`.
+      // Memoized per run id, so this and `closed()`'s own fold resolve the
+      // SAME step. Fire-and-forget: the step records its own
+      // acknowledgement durably and never rejects.
+      void runTerminalCheckpointCleanup(runId);
       const abortedConversation = event.conversation;
 
       const report = buildTerminalReportFromAbortedEvent(runId, {
@@ -4470,6 +4583,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // AB-96 — drop the cached terminal RunReport too, or a long-lived bureau
     // that creates/deletes many runs would retain one forever per run id.
     runReports.delete(id);
+    // COR-625: released on the same boundary as the report it belongs to.
+    // The step has already recorded its acknowledgement durably by the time
+    // a report is released, so nothing observable is lost — only the
+    // in-memory memo, whose exactly-once duty is over once every trigger for
+    // this run id has passed.
+    terminalCheckpointCleanups.delete(id);
   }
 
   /**
@@ -4505,6 +4624,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         status: 'canceled',
         principal: 'system:run-abort',
       });
+      // COR-625: the third trigger. A run cancelled here may have no live
+      // `ActiveRun` in this process at all — no terminal listener will ever
+      // fire for it — so the cancellation path owes the step directly.
+      // `'requested'` is the only outcome that proves a committed
+      // cancellation; the others describe a run this call never genuinely
+      // terminated, and pruning on those would be the exact
+      // prune-before-terminal-transition this issue names as its rollback
+      // trigger. Where a live run DOES exist, its own terminal listener
+      // reaches the same memoized step, which is what keeps
+      // cancel-then-terminal at exactly one step rather than two.
+      await runTerminalCheckpointCleanup(runId);
     }
     return outcome;
   }
@@ -5263,6 +5393,188 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       : undefined;
 
     await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
+  }
+
+  /**
+   * COR-625 — the terminal-run cleanup step: one application of
+   * `options.checkpointRetention` to a durable run's weft checkpoint history,
+   * run exactly once per run id and reported as a {@link RunCleanupAcknowledgement}.
+   *
+   * Memoized on `runId` in {@link terminalCheckpointCleanups}, which is what
+   * makes "exactly one step, never two" true across the THREE independent
+   * triggers that can observe the same run reaching a terminal state: the
+   * live run's own terminal listeners, a recovered run's terminal listeners,
+   * and `cancelDurableRun` cancelling a run this process holds no
+   * `ActiveRun` for at all. Every trigger calls this; the first one to arrive
+   * performs the step and the rest await its promise.
+   *
+   * The step re-reads the durable record before pruning anything. A bureau
+   * terminal listener fires on operative's own event emitter, which is NOT
+   * proof that the engine's final checkpoint write has committed, and weft's
+   * prune rejects on a compare-and-swap race with a concurrent write
+   * (`packages/weft/src/core/engine/checkpoint-prune.ts`). Pruning on the
+   * event alone would therefore both risk this issue's own rollback trigger
+   * — a run whose checkpoints are pruned BEFORE its terminal transition —
+   * and manufacture spurious `persistence-failed` results out of a race that
+   * is really just "too early". Gating on the same post-transition re-read
+   * `resolveCancelDurableRun` already performs removes both.
+   *
+   * Never rejects: it is folded into `closed()`, which never rejects, and a
+   * throw here would be attributed to the RUN's teardown rather than to this
+   * step.
+   */
+  async function runTerminalCheckpointCleanup(runId: string): Promise<RunCleanupAcknowledgement> {
+    const existing = terminalCheckpointCleanups.get(runId);
+    if (existing) return existing;
+    const step = performTerminalCheckpointCleanup(runId);
+    terminalCheckpointCleanups.set(runId, step);
+    return step;
+  }
+
+  /** The un-memoized body of {@link runTerminalCheckpointCleanup}. */
+  async function performTerminalCheckpointCleanup(
+    runId: string,
+  ): Promise<RunCleanupAcknowledgement> {
+    // The outer fence behind this step's "never rejects" contract. Every
+    // caller depends on it: the terminal listeners fire this as
+    // `void runTerminalCheckpointCleanup(...)`, where a rejection becomes an
+    // unhandled rejection, and `cancelDurableRun` AWAITS it while its own
+    // public doc comment promises it never rejects. `classifyTerminalCheckpointCleanup`
+    // classifies the outcomes it can see, but it also awaits a
+    // caller-supplied `shutdownTimeoutSleep`, so it cannot promise this on
+    // its own — the same reason `shutdown()` wraps its identical
+    // `shutdownTimeoutSleep` race in `settleNeverRejecting`.
+    let acknowledgement: RunCleanupAcknowledgement;
+    try {
+      acknowledgement = await classifyTerminalCheckpointCleanup(runId);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'audit-trail',
+        message: `[bureau] terminal checkpoint cleanup for run "${runId}" settled via an unexpected rejection: ${serializeUnknownError(error)}`,
+      });
+      acknowledgement = { status: 'failed', error };
+    }
+    // The acknowledgement is recorded whatever it is — including the
+    // `not-required` of the default `'keep-all'` policy. "A cleanup failure
+    // that is invisible" is this issue's other named rollback trigger, and
+    // an operator can only answer "did cleanup finish?" from a record that
+    // exists for every run, not only for the ones that pruned something.
+    await auditTrailInstance
+      ?.record({
+        runId,
+        type: 'run.cleanup-settled',
+        detail: { acknowledgement },
+      })
+      .catch((error: unknown) => {
+        // `record()` is documented best-effort and does not reject without a
+        // `dedupeKey`; a rejection nonetheless must not turn a successful
+        // prune into a failed cleanup, so it is diagnosed rather than
+        // folded into the acknowledgement.
+        diagnose({
+          level: 'warn',
+          scope: 'audit-trail',
+          message: `[bureau] run.cleanup-settled audit record failed for run "${runId}"`,
+          cause: error,
+        });
+      });
+    return acknowledgement;
+  }
+
+  /**
+   * Resolves the step's acknowledgement without recording it. Split from
+   * {@link performTerminalCheckpointCleanup} so the audit write happens on
+   * exactly one path, including the early returns.
+   */
+  async function classifyTerminalCheckpointCleanup(
+    runId: string,
+  ): Promise<RunCleanupAcknowledgement> {
+    const durable = runtime.durable;
+    // Nothing durable to retain: a process-local run has no checkpoint
+    // history, which is this issue's own documented out-of-scope case.
+    if (!durable) return { status: 'not-required' };
+    const retention = options.checkpointRetention;
+    if (!retention || retention === 'keep-all') return { status: 'not-required' };
+
+    let state: WorkflowState | null;
+    try {
+      state = await durable.engine.get(runId);
+    } catch (error) {
+      return { status: 'unresolved', reason: 'persistence-failed', error };
+    }
+    if (!state || DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status)) {
+      // Either the engine has no such run, or it is not terminal yet. Both
+      // mean this step cannot truthfully claim to have pruned a terminal
+      // run's history — see this function's own doc comment.
+      return {
+        status: 'unresolved',
+        reason: 'persistence-failed',
+        error: new Error(
+          `runTerminalCheckpointCleanup("${runId}"): refusing to prune checkpoints for a run ` +
+            `the engine reports as ${state ? `"${state.status}"` : 'missing'} — not terminal.`,
+        ),
+      };
+    }
+
+    const timeoutMilliseconds = retention.timeoutMilliseconds;
+    if (timeoutMilliseconds === undefined) {
+      try {
+        await durable.engine.pruneCheckpoints(runId, { keepLast: retention.keepLast });
+        return { status: 'completed' };
+      } catch (error) {
+        return { status: 'unresolved', reason: 'persistence-failed', error };
+      }
+    }
+
+    // The bound ABORTS the prune rather than merely abandoning the wait:
+    // weft throws the abort reason before issuing any delete, so a step that
+    // times out while still scanning leaves no unowned deletes running
+    // behind a cached `'timed-out'` acknowledgement. Weft stops rechecking
+    // the signal once its first delete chunk commits (see
+    // `checkpoint-prune.ts`'s own doc comment), so a prune large enough to
+    // span more than one chunk can still finish its remaining chunks after
+    // the abort — an abandoned wait would leave EVERY delete unowned, which
+    // is the case this actually closes. Sleeps on `shutdownTimeoutSleep`, which
+    // is `RuntimeServices.timers`-backed (never a real timer), so a manual
+    // runtime drives this exactly as it drives `shutdown()`'s own wait.
+    const pruneAbort = new AbortController();
+    const sleepAbort = new AbortController();
+    try {
+      const outcome = await Promise.race([
+        durable.engine
+          .pruneCheckpoints(runId, { keepLast: retention.keepLast, signal: pruneAbort.signal })
+          .then(
+            (): RunCleanupAcknowledgement => ({ status: 'completed' }),
+            (error: unknown): RunCleanupAcknowledgement =>
+              pruneAbort.signal.aborted
+                ? { status: 'unresolved', reason: 'timed-out' }
+                : { status: 'unresolved', reason: 'persistence-failed', error },
+          ),
+        shutdownTimeoutSleep(timeoutMilliseconds, sleepAbort.signal).then(
+          (): RunCleanupAcknowledgement => {
+            pruneAbort.abort();
+            return { status: 'unresolved', reason: 'timed-out' };
+          },
+          // `shutdownTimeoutSleep` is a public, caller-injectable seam
+          // (`BureauOptions.shutdownTimeoutSleep`), so it CAN reject even
+          // though the default never does. A rejection means the bound
+          // could not be applied at all: the prune is still stopped —
+          // leaving it running behind an answer nobody owns is precisely
+          // what this bound exists to prevent — and the failure is
+          // classified as the unresolved wait it is, carrying the error
+          // rather than being silently reported as a clean timeout.
+          (error: unknown): RunCleanupAcknowledgement => {
+            pruneAbort.abort();
+            return { status: 'unresolved', reason: 'timed-out', error };
+          },
+        ),
+      ]);
+      return outcome;
+    } finally {
+      // Release whichever side of the race lost, so neither a pending timer
+      // nor a caller-supplied sleep outlives this step.
+      sleepAbort.abort();
+    }
   }
 
   /**
