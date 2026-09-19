@@ -280,6 +280,26 @@ export interface ScheduleMetadata {
   lastMissedFireAt?: number;
   /** Lifetime count of occurrences skipped because a non-backfill timer was late. */
   missedFireCount: number;
+  /**
+   * How many occurrences the overlap policy has dropped because a prior fire
+   * was still running — in practice `overlap: 'skip'` collisions (COR-1224).
+   *
+   * Distinct from {@link ScheduleMetadata.missedFireCount}, which counts
+   * occurrences the engine's timer never evaluated because it ran late. A skip
+   * is a decision taken on a tick that WAS observed; a missed fire is a window
+   * that was not.
+   *
+   * This is a counter rather than a durable event row per dropped tick, and
+   * deliberately so: a schedule whose fires outlast its cadence collides on
+   * every tick, so a per-tick durable record would grow without bound and
+   * advance the durable event cursor for a fact whose content is "nothing
+   * happened". A counter plus {@link ScheduleMetadata.lastSkippedAt} answers
+   * the operator's actual question — is this schedule colliding, and when did
+   * it last do so — in O(1) per schedule.
+   */
+  skippedCount: number;
+  /** When the most recent occurrence was dropped by the overlap policy. */
+  lastSkippedAt?: number;
   nextFireAt: number | null;
   currentWorkflowId?: string;
   /** Ordered durable occurrences waiting behind `currentWorkflowId`. */

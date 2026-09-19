@@ -136,6 +136,7 @@ export async function schedule(
       updatedAt: now,
       nextFireAt: getNextScheduleOccurrence({ ...cadenceFields, createdAt: now }, now),
       missedFireCount: 0,
+      skippedCount: 0,
       queuedRuns: [],
     };
     await writeScheduleState(
