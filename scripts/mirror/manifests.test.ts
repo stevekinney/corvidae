@@ -2,8 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
 import {
   applyPreservedFields,
+  assertNothingDeferred,
   discoverWorkspaces,
   ManifestTransformError,
   planManifests,
@@ -242,7 +244,7 @@ describe('name mapping', () => {
 
   test('publish-as drops `private` while a private workspace keeps it', async () => {
     const plan = await planFor('cinder');
-    const cinder = parse(plan, 'components/cinder/package.json');
+    const cinder = parse(plan, 'packages/components/package.json');
     expect(cinder['name']).toBe('@lostgradient/cinder');
     expect('private' in cinder).toBe(false);
 
@@ -253,10 +255,10 @@ describe('name mapping', () => {
 
   test('exports are carried through untouched, because COR-1189 owns regenerating them', async () => {
     const plan = await planFor('cinder');
-    expect(parse(plan, 'components/cinder/package.json')['exports']).toEqual({
+    expect(parse(plan, 'packages/components/package.json')['exports']).toEqual({
       '.': './src/index.ts',
     });
-    expect('files' in parse(plan, 'components/cinder/package.json')).toBe(false);
+    expect('files' in parse(plan, 'packages/components/package.json')).toBe(false);
   });
 });
 
@@ -286,7 +288,7 @@ describe('workspace and catalog resolution', () => {
     const plan = await planFor('cinder');
     const root = parse(plan, 'package.json');
     expect(root['catalog']).toEqual({ ...catalog, '@lostgradient/weft': '^0.25.0' });
-    expect(parse(plan, 'components/cinder/package.json')['dependencies']).toEqual({
+    expect(parse(plan, 'packages/components/package.json')['dependencies']).toEqual({
       '@lostgradient/markdown': 'workspace:*',
       svelte: 'catalog:',
     });
@@ -294,11 +296,9 @@ describe('workspace and catalog resolution', () => {
 
   test('every edge into weft routes through the one root catalog entry', async () => {
     const plan = await planFor('cinder');
-    const consumers = [
-      'applications/chat-room/package.json',
-      'components/weft-ui/package.json',
-      'packages/operative/package.json',
-    ];
+    // `applications/chat-room` is absent deliberately: `layout-map.json` defers it, so nothing is
+    // emitted for it at all. The test below is what holds that.
+    const consumers = ['packages/weft-ui/package.json', 'packages/operative/package.json'];
     for (const consumer of consumers) {
       const dependencies = parse(plan, consumer)['dependencies'] as Record<string, string>;
       expect([consumer, dependencies['@lostgradient/weft']]).toEqual([consumer, 'catalog:']);
@@ -439,18 +439,63 @@ describe('target-owned fields', () => {
 
   test('only the package the target has never carried counts as a first publish', async () => {
     const versioned: Record<string, unknown> = {};
-    for (const [directory, manifest] of Object.entries(workspaces)) {
+    for (const manifest of Object.values(workspaces)) {
       if (manifest['name'] === '@corvidae/weft') continue;
       // `@corvidae/weft-ui` is the fixture's stand-in for the four the map records as never
       // published, so it is the one workspace the target clone deliberately does not carry.
       if (manifest['name'] === '@corvidae/weft-ui') continue;
-      versioned[`${directory}/package.json`] = { name: manifest['name'], version: '1.2.3' };
+      const layout = await layoutFor(String(manifest['name']));
+      // The clone is the target's tree, so its manifests sit at the target's own paths.
+      if (layout.disposition !== 'emit') continue;
+      versioned[`${layout.targetDirectory}/package.json`] = {
+        name: manifest['name'],
+        version: '1.2.3',
+        // Cinder's husky hook lives in this manifest rather than only at the root, and
+        // `target-owned.json` enumerates it by the target's path. The entry could never match
+        // while `@corvidae/cinder` was emitted at corvidae's `components/cinder`; seeded here so
+        // the remap and the enumeration are checked together.
+        ...(manifest['name'] === '@corvidae/cinder'
+          ? { scripts: { prepare: 'cd ../.. && husky' } }
+          : {}),
+      };
     }
     await withTree(versioned, async (targetDirectory) => {
       const plan = await planFor('cinder', { targetDirectory });
       expect(plan.firstPublish).toEqual(['@lostgradient/weft-ui']);
-      expect(parse(plan, 'components/cinder/package.json')['version']).toBe('1.2.3');
+      const cinder = parse(plan, 'packages/components/package.json');
+      expect(cinder['version']).toBe('1.2.3');
+      expect((cinder['scripts'] as Record<string, string>)['prepare']).toBe('cd ../.. && husky');
     });
+  });
+});
+
+describe('a deferred workspace', () => {
+  test('is emitted nowhere and refuses the sync by name', async () => {
+    const plan = await planFor('cinder');
+    expect(plan.deferred.map((entry) => entry.workspace)).toEqual(['@corvidae/chat-room']);
+    expect(
+      Object.keys(plan.files).filter((path) => path.includes('chat-room')),
+      'nothing is emitted for a workspace whose placement is unresolved',
+    ).toEqual([]);
+    expect(() => assertNothingDeferred(plan)).toThrow(DeferredWorkspaceError);
+    try {
+      assertNothingDeferred(plan);
+    } catch (error) {
+      expect((error as Error).message).toContain('@corvidae/chat-room');
+      expect((error as Error).message).toContain('applications/chat-room');
+      expect((error as Error).message).toContain('COR-1221');
+    }
+  });
+
+  test('leaves every other member of its target emitted', async () => {
+    const plan = await planFor('cinder');
+    expect(plan.emitted.map((entry) => entry.targetDirectory).toSorted()).toEqual([
+      'internal/typescript',
+      'packages/components',
+      'packages/markdown',
+      'packages/operative',
+      'packages/weft-ui',
+    ]);
   });
 });
 
@@ -489,7 +534,7 @@ describe('lockfile generation', () => {
       const directory = await mkdtemp(join(tmpdir(), 'corvidae-staged-'));
       try {
         const staged = await stageTarget({ corvidaeRoot: root, target: 'cinder', directory });
-        expect(staged.written).toContain('components/cinder/package.json');
+        expect(staged.written).toContain('packages/components/package.json');
         expect(await Bun.file(join(directory, 'bun.lock')).exists()).toBe(true);
 
         const frozen = Bun.spawn(['bun', 'install', '--frozen-lockfile', '--ignore-scripts'], {

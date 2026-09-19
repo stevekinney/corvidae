@@ -1,6 +1,13 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import {
+  DeferredWorkspaceError,
+  layoutFor,
+  type DeferredLayout,
+  type WorkspaceLayout,
+} from './layout-map.ts';
 import { dispositionFor, type WorkspaceDisposition } from './package-map.ts';
+import type { EmittedWorkspace } from './source.ts';
 import {
   loadTargetOwnedPolicy,
   writeTransformOutput,
@@ -27,6 +34,9 @@ import {
  * - `private: true` is stripped from anything the map publishes and kept on everything else.
  * - Every emitted package directory gets the root `LICENSE`, per COR-1183's ruling that
  *   per-package `LICENSE` is transform-owned while the root one is target-owned.
+ * - Every emitted path is the target's own directory for that workspace, read from
+ *   `layout-map.json`. Corvidae's `components/chat` is cinder's `packages/chat`, so reusing
+ *   corvidae's directory would write a second tree beside the target's real one.
  *
  * Versions are never authored here. `target-owned.json` enumerates the manifest keys a target
  * owns but deliberately leaves them unenforced, because a whole-file write guard cannot express
@@ -380,6 +390,12 @@ export function applyPreservedFields(
   }
 }
 
+/** A workspace `layout-map.json` defers, recorded rather than emitted. */
+export interface DeferredWorkspace {
+  workspace: string;
+  layout: DeferredLayout;
+}
+
 export interface ManifestPlan {
   target: MirrorTarget;
   /** Target-relative path to file contents, ready for `writeTransformOutput`. */
@@ -388,6 +404,22 @@ export interface ManifestPlan {
   firstPublish: string[];
   /** Internal edges dropped because the other end does not exist in this target. */
   droppedEdges: string[];
+  /** Every workspace this target receives, with the directory it lands in. */
+  emitted: EmittedWorkspace[];
+  /** Workspaces whose placement is unresolved. Nothing is emitted for them and a sync refuses. */
+  deferred: DeferredWorkspace[];
+}
+
+/**
+ * Refuse a plan that quietly left a workspace out.
+ *
+ * Planning records a deferral instead of throwing, so one pass can report every problem, and this
+ * is the call that turns it into a failure — the same split `assertPublishable` uses. Nothing is
+ * written for a deferred workspace either way: the alternative to failing is guessing a directory
+ * in somebody else's repository.
+ */
+export function assertNothingDeferred(plan: Pick<ManifestPlan, 'deferred'>): void {
+  if (plan.deferred.length > 0) throw new DeferredWorkspaceError(plan.deferred);
 }
 
 export interface PlanOptions {
@@ -425,15 +457,23 @@ export async function planManifests({
   const catalog = isJsonObject(root['catalog']) ? (root['catalog'] as Record<string, string>) : {};
 
   const workspaces = await discoverWorkspaces(corvidaeRoot);
+  const emittedWorkspaces: EmittedWorkspace[] = [];
+  const deferred: DeferredWorkspace[] = [];
   const dispositions = new Map<string, WorkspaceDisposition>();
   const publicNames = new Map<string, string>();
+  const layouts = new Map<string, WorkspaceLayout>();
   for (const workspace of workspaces) {
     // `dispositionFor` throws `PackageMapError` naming the workspace. Letting it propagate is the
-    // point: an unmapped workspace must stop the sync rather than be skipped.
+    // point: an unmapped workspace must stop the sync rather than be skipped. `layoutFor` throws
+    // the same way for a workspace with no recorded target directory.
     const disposition = await dispositionFor(workspace.name);
     dispositions.set(workspace.name, disposition);
-    if (disposition.disposition !== 'exclude') {
-      publicNames.set(workspace.name, publicNameFor(workspace.name, disposition));
+    if (disposition.disposition === 'exclude') continue;
+    publicNames.set(workspace.name, publicNameFor(workspace.name, disposition));
+    const layout = await layoutFor(workspace.name);
+    layouts.set(workspace.name, layout);
+    if (layout.disposition === 'deferred' && targetFor(workspace.name) === target) {
+      deferred.push({ workspace: workspace.name, layout });
     }
   }
   assertPublicNamesUnique(publicNames);
@@ -456,7 +496,11 @@ export async function planManifests({
     if (!disposition || disposition.disposition === 'exclude') continue;
     if (targetFor(workspace.name) !== target) continue;
 
-    const path = `${workspace.directory}/package.json`;
+    const layout = layouts.get(workspace.name);
+    if (!layout || layout.disposition === 'deferred') continue;
+    const directory = layout.targetDirectory;
+
+    const path = `${directory}/package.json`;
     const emitted = rewriteWorkspaceManifest(workspace, disposition, context);
     const existing = await readExistingManifest(targetDirectory, path);
     if (existing === undefined && disposition.disposition === 'publish-as') {
@@ -466,7 +510,12 @@ export async function planManifests({
     if (emitted['version'] === '0.0.0') firstPublish.push(String(emitted['name']));
 
     files[path] = serialize(emitted);
-    files[`${workspace.directory}/LICENSE`] = licence;
+    files[`${directory}/LICENSE`] = licence;
+    emittedWorkspaces.push({
+      workspace: workspace.name,
+      corvidaeDirectory: workspace.directory,
+      targetDirectory: directory,
+    });
   }
 
   const rootManifest = buildRootManifest(target, root, context);
@@ -479,7 +528,14 @@ export async function planManifests({
   );
   files['package.json'] = serialize(rootManifest);
 
-  return { target, files, firstPublish: firstPublish.toSorted(), droppedEdges: context.dropped };
+  return {
+    target,
+    files,
+    firstPublish: firstPublish.toSorted(),
+    droppedEdges: context.dropped,
+    emitted: emittedWorkspaces,
+    deferred,
+  };
 }
 
 /**
@@ -536,7 +592,8 @@ export async function stageTarget(
 ): Promise<StageResult> {
   const policy = options.policy ?? (await loadTargetOwnedPolicy());
   const plan = await planManifests({ ...options, policy });
-  const written = await writeTransformOutput({
+  assertNothingDeferred(plan);
+  const { written } = await writeTransformOutput({
     policy,
     target: options.target,
     directory: options.directory,

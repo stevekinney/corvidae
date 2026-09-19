@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { runInstall, type MirrorTarget } from './manifests.ts';
+import { assertNothingDeferred, runInstall, type MirrorTarget } from './manifests.ts';
 import { loadPackageSurface, missingBuildInputs } from './package-surface.ts';
 import {
   assertSucceeded,
@@ -13,7 +13,13 @@ import {
   type SmokeTestResult,
   type TarballReport,
 } from './packaging.ts';
-import { assertPublishable, planSurface, type PublishedPackage } from './surface.ts';
+import { collectPrunablePaths } from './source.ts';
+import {
+  assertPublishable,
+  planSurface,
+  type PrivateWorkspace,
+  type PublishedPackage,
+} from './surface.ts';
 import { loadTargetOwnedPolicy, writeTransformOutput } from './target-owned.ts';
 
 /**
@@ -200,10 +206,13 @@ export async function assertNoForeignCommits(directory: string): Promise<void> {
  *
  * `package-surface.json` records these because corvidae carries none of them: the emitted `build`
  * script points at `scripts/build.ts`, `tsdown.config.ts` or `vite.config.ts`, all of which exist
- * only in the public repositories. That is sound while the transform never prunes what it did not
- * write — but nothing checked it, so a clone missing one produced a manifest whose build command
- * could not run and the sync said nothing. This is the check, and it is a hard failure: a build
- * step quietly skipped is worse than a sync that stops.
+ * only in the public repositories. That premise still holds now that the transform deletes, but
+ * for a narrower reason than "the transform never prunes": it prunes only the paths it owns,
+ * which are the source trees it emits, and a build input sits at the package root outside every
+ * one of them. It is target-owned, and a target-owned path is never pruned. What was never
+ * checked is whether the clone actually has one, so a clone missing it produced a manifest whose
+ * build command could not run and the sync said nothing. This is that check, and it is a hard
+ * failure: a build step quietly skipped is worse than a sync that stops.
  */
 export function collectMissingBuildInputs(
   clone: string,
@@ -237,16 +246,21 @@ export interface StageOptions {
 export interface StageOutcome {
   plan: Awaited<ReturnType<typeof planSurface>>;
   written: string[];
+  /** Target paths removed because corvidae no longer carries them. */
+  deleted: string[];
 }
 
 /**
  * Plan the target, clear both gates, write, and regenerate the lockfile.
  *
- * The order is load-bearing. `assertPublishable` runs before anything is written, so a target that
- * would narrow a published surface or ship an exports entry with no source is refused while the
- * clone is still byte-identical. The build-input check runs after the write because it reads the
- * clone, and the lockfile install runs last because `bun.lock` is target-owned: the transform
- * never writes one, it is produced by installing the manifests that were just written.
+ * The order is load-bearing. `assertNothingDeferred` and `assertPublishable` run before anything
+ * is written, so a target that would narrow a published surface, ship an exports entry with no
+ * source, or receive a workspace nobody has placed is refused while the clone is still
+ * byte-identical. The deletions are computed before the write as well, from the clone as it
+ * arrived: a file corvidae dropped is a file the target loses, and the set is the target's own
+ * source tree minus what this plan emits. The build-input check runs after the write because it
+ * reads the clone, and the lockfile install runs last because `bun.lock` is target-owned: the
+ * transform never writes one, it is produced by installing the manifests that were just written.
  */
 export async function stageSurface({
   corvidaeRoot,
@@ -257,16 +271,20 @@ export async function stageSurface({
   const policy = await loadTargetOwnedPolicy();
   const plan = await planSurface({ corvidaeRoot, target, targetDirectory: directory, policy });
   const surface = await loadPackageSurface();
+  assertNothingDeferred(plan);
   assertPublishable(plan, surface.packages);
-  const written = await writeTransformOutput({
+  const deletions = await collectPrunablePaths(directory, plan.source, Object.keys(plan.files));
+  const { written, deleted } = await writeTransformOutput({
     policy,
     target,
     directory,
     files: plan.files,
+    deletions,
+    executable: plan.source.executable,
   });
   assertBuildInputsPresent(directory, plan.published);
   await runInstall(directory, installArguments ?? []);
-  return { plan, written };
+  return { plan, written, deleted };
 }
 
 export interface VerifyOptions {
@@ -275,6 +293,8 @@ export interface VerifyOptions {
   /** The staged clone. */
   directory: string;
   published: readonly PublishedPackage[];
+  /** The workspaces this target receives but never publishes. Their source ships, so it is checked. */
+  privateWorkspaces?: readonly PrivateWorkspace[] | undefined;
   /** Where tarballs and the consumer project go; outside the clone, so git never sees them. */
   scratchDirectory: string;
   installArguments?: readonly string[] | undefined;
@@ -283,6 +303,29 @@ export interface VerifyOptions {
 export interface VerifyResult {
   reports: TarballReport[];
   smokeTest: SmokeTestResult;
+  /** Private workspaces whose emitted source was type-checked, by public name. */
+  privateTypechecks: string[];
+}
+
+/**
+ * Refuse a target whose private workspaces ship TypeScript that nothing would check.
+ *
+ * A private workspace is never packed, so the packaging checks say nothing about it; `typecheck`
+ * is the only thing that reads its source at all. Skipping one whose manifest happens to omit the
+ * script would be a silent hole, and the hole would be invisible because the sync would pass.
+ * Checked over the whole set before any of them runs, so the message names every offender.
+ */
+export function assertPrivateWorkspacesCheckable(
+  privateWorkspaces: readonly PrivateWorkspace[],
+): void {
+  const unchecked = privateWorkspaces.filter((entry) => entry.emitsTypeScript && !entry.typechecks);
+  if (unchecked.length > 0) {
+    throw new SyncError(
+      `These workspaces emit TypeScript the mirror would publish without checking it, because their manifests declare no typecheck script:\n${unchecked
+        .map((entry) => `  ${entry.publicName} (${entry.directory})`)
+        .join('\n')}`,
+    );
+  }
 }
 
 /**
@@ -291,6 +334,10 @@ export interface VerifyResult {
  * Each command runs in its own package directory rather than at the clone root, because the root
  * manifest the transform emits deliberately carries no scripts — root tooling is the class
  * `target-owned.json` still records as unresolved — so there is no aggregate `build` to call.
+ * Verifying at the root would settle that question as a side effect, which is the wrong place for
+ * it to be settled, so the per-package loop stays and COR-1221 extended it instead: an emitted
+ * private workspace is type-checked too. Nothing packs or publishes one, but its source ships to
+ * the mirror now, and source nothing checks is source the mirror publishes blind.
  * `bun install --frozen-lockfile` at the root comes first and is a check in its own right: it
  * fails if the lockfile the staging install just produced does not satisfy the manifests the
  * transform just wrote.
@@ -299,6 +346,7 @@ export async function verifyTarget({
   toolsRoot,
   directory,
   published,
+  privateWorkspaces = [],
   scratchDirectory,
   installArguments = [],
 }: VerifyOptions): Promise<VerifyResult> {
@@ -328,6 +376,19 @@ export async function verifyTarget({
   }
   assertTarballsPublishable(reports);
 
+  assertPrivateWorkspacesCheckable(privateWorkspaces);
+  const privateTypechecks: string[] = [];
+  for (const entry of privateWorkspaces) {
+    // A workspace that emits no TypeScript has nothing for `tsc` to read: the shared configuration
+    // package is three JSON files. Every other one was just checked to declare the script.
+    if (!entry.emitsTypeScript) continue;
+    assertSucceeded(
+      await runCommand(['bun', 'run', 'typecheck'], { cwd: join(directory, entry.directory) }),
+      `running typecheck for ${entry.publicName}`,
+    );
+    privateTypechecks.push(entry.publicName);
+  }
+
   const smokeTest = await runConsumerSmokeTest({
     directory: scratchDirectory,
     packages: published.map((entry, index) => ({
@@ -337,7 +398,7 @@ export async function verifyTarget({
     })),
     installArguments,
   });
-  return { reports, smokeTest };
+  return { reports, smokeTest, privateTypechecks };
 }
 
 export type SyncDecision = 'skip' | 'pushed';
@@ -401,12 +462,17 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   // lockfile install changed. Staging afterwards would sweep build output — `dist/`, a
   // `tsconfig.tsbuildinfo`, a coverage directory — into the mirror whenever the target's
   // `.gitignore` did not happen to cover it.
+  //
+  // `--all` is what carries the transform's deletions: a source file corvidae dropped is removed
+  // from the working tree by the staging step above, and only `--all` stages a removal. It was
+  // incidental while the transform only ever wrote; it is load-bearing now.
   if (changed.length > 0) await git(clone, 'add', '--all');
 
   const verification = await verifyTarget({
     toolsRoot: options.toolsRoot,
     directory: clone,
     published: plan.published,
+    privateWorkspaces: plan.privateWorkspaces,
     scratchDirectory: options.scratchDirectory,
     installArguments: options.installArguments,
   });

@@ -1,9 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
-import { discoverWorkspaces, mirrorTargets, type MirrorTarget } from './manifests.ts';
+import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
+import {
+  assertNothingDeferred,
+  discoverWorkspaces,
+  mirrorTargets,
+  type MirrorTarget,
+} from './manifests.ts';
 import { loadPackageSurface } from './package-surface.ts';
 import { isFirstPublish } from './registry-baseline.ts';
+import { nonSourceNames, nonSourcePrefixes } from './source.ts';
 import {
   assertPublishable,
   isExpectedPackRewrite,
@@ -13,6 +20,7 @@ import {
   unresolvedSubpaths,
   type SurfacePlan,
 } from './surface.ts';
+import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 import { configurationFiles, vendoredDirectory } from './typescript-configuration.ts';
 
 const corvidaeRoot = join(import.meta.dir, '..', '..');
@@ -25,6 +33,16 @@ const corvidaeRoot = join(import.meta.dir, '..', '..');
  */
 
 const plans = new Map<MirrorTarget, SurfacePlan>();
+
+/**
+ * One plan entry as text. Plan contents are bytes or text since the transform started emitting
+ * source, and every file these tests read is a manifest or a tsconfig, which is always text.
+ */
+function planText(plan: SurfacePlan, path: string): string {
+  const contents = plan.files[path];
+  if (contents === undefined) return '{}';
+  return typeof contents === 'string' ? contents : new TextDecoder().decode(contents);
+}
 
 async function planFor(target: MirrorTarget): Promise<SurfacePlan> {
   const existing = plans.get(target);
@@ -173,8 +191,19 @@ describe('emitted manifests', () => {
   test('every published package receives an exports map, a files allowlist and a build', async () => {
     const surface = await loadPackageSurface();
     const workspaces = await discoverWorkspaces(corvidaeRoot);
+    // The target's directory for each workspace, not corvidae's: `components/chat` is emitted as
+    // `packages/chat`, so looking the manifest up by corvidae's path would find nothing and the
+    // `checked` count below would be the assertion that noticed.
     const directories = new Map(
-      workspaces.map(({ name, directory }) => [name, directory] as const),
+      await Promise.all(
+        workspaces.map(async ({ name }) => {
+          const layout = await layoutFor(name);
+          return [
+            name,
+            layout.disposition === 'emit' ? layout.targetDirectory : undefined,
+          ] as const;
+        }),
+      ),
     );
     let checked = 0;
     for (const target of mirrorTargets) {
@@ -183,7 +212,7 @@ describe('emitted manifests', () => {
         const path = `${directories.get(workspace)}/package.json`;
         if (plan.files[path] === undefined) continue;
         checked += 1;
-        const manifest = JSON.parse(plan.files[path] ?? '{}') as Record<string, unknown>;
+        const manifest = JSON.parse(planText(plan, path)) as Record<string, unknown>;
         expect(
           Object.keys(manifest['exports'] ?? {}).length,
           `${workspace} exports`,
@@ -202,7 +231,7 @@ describe('emitted manifests', () => {
 
   test('the build toolchain is inlined where the target has no catalog to hold it', async () => {
     const plan = await planFor('weft');
-    const manifest = JSON.parse(plan.files['packages/weft/package.json'] ?? '{}') as {
+    const manifest = JSON.parse(planText(plan, 'packages/weft/package.json')) as {
       devDependencies?: Record<string, string>;
     };
     expect(manifest.devDependencies?.['chalk']).toMatch(/^\^/);
@@ -211,7 +240,7 @@ describe('emitted manifests', () => {
 
   test('the build toolchain stays a catalog reference where the target has a catalog', async () => {
     const plan = await planFor('cinder');
-    const manifest = JSON.parse(plan.files['components/chat/package.json'] ?? '{}') as {
+    const manifest = JSON.parse(planText(plan, 'packages/chat/package.json')) as {
       devDependencies?: Record<string, string>;
     };
     expect(manifest.devDependencies?.['svelte']).toBe('catalog:');
@@ -220,7 +249,7 @@ describe('emitted manifests', () => {
 
   test('a private workspace keeps its source exports and never gains a files allowlist', async () => {
     const plan = await planFor('cinder');
-    const manifest = JSON.parse(plan.files['packages/testing/package.json'] ?? '{}') as {
+    const manifest = JSON.parse(planText(plan, 'packages/testing/package.json')) as {
       exports?: unknown;
       files?: unknown;
       private?: boolean;
@@ -237,7 +266,7 @@ describe('TypeScript configuration', () => {
     for (const file of configurationFiles) {
       expect(plan.files[`packages/weft/${vendoredDirectory}/${file}`]).toBeString();
     }
-    const emitted = JSON.parse(plan.files['packages/weft/tsconfig.json'] ?? '{}') as {
+    const emitted = JSON.parse(planText(plan, 'packages/weft/tsconfig.json')) as {
       extends?: string;
     };
     expect(emitted.extends).toBe(`./${vendoredDirectory}/library.json`);
@@ -247,7 +276,7 @@ describe('TypeScript configuration', () => {
     const plan = await planFor('cinder');
     expect(plan.typescript.vendoredInto).toEqual([]);
     expect(plan.files['internal/typescript/library.json']).toBeString();
-    const emitted = JSON.parse(plan.files['components/cinder/tsconfig.json'] ?? '{}') as {
+    const emitted = JSON.parse(planText(plan, 'packages/components/tsconfig.json')) as {
       extends?: string;
     };
     expect(emitted.extends).toBe('@lostgradient/typescript/browser.json');
@@ -260,5 +289,105 @@ describe('TypeScript configuration', () => {
     expect(weft.typescript.vendoredInto).toContain('packages/weft');
     const cinder = await planFor('cinder');
     expect(cinder.droppedEdges).toEqual([]);
+  });
+});
+
+describe('emitted source', () => {
+  test('every workspace the target receives brings its source, at the remapped path', async () => {
+    const plan = await planFor('cinder');
+    for (const workspace of plan.emitted) {
+      const emitted = Object.keys(plan.files).filter((path) =>
+        path.startsWith(`${workspace.targetDirectory}/src/`),
+      );
+      // `@corvidae/typescript` is three JSON files and no source tree, which is why this asks for
+      // a source tree only where corvidae has one.
+      const carries = await Bun.file(
+        join(corvidaeRoot, workspace.corvidaeDirectory, 'src', 'index.ts'),
+      ).exists();
+      expect(emitted.length > 0, `${workspace.workspace} source`).toBe(carries);
+    }
+    // The remap is what these paths are: corvidae keeps all four under `components/`.
+    for (const path of [
+      'packages/components/src/index.ts',
+      'packages/chat/src/lib/index.ts',
+      'packages/editor/src/lib/index.ts',
+      'packages/weft-ui/src/index.ts',
+    ]) {
+      expect(plan.files[path], path).toBeDefined();
+    }
+    expect(
+      Object.keys(plan.files).filter((path) => path.startsWith('components/')),
+      'corvidae’s own directory is never a target path',
+    ).toEqual([]);
+  });
+
+  test('the target’s binaries keep the executable bit their source carries', async () => {
+    const plan = await planFor('weft');
+    expect(plan.source.executable).toEqual([
+      'packages/weft/src/cli-main.ts',
+      'packages/weft/src/cli-mcp.ts',
+    ]);
+  });
+
+  test('the deferred application is emitted nowhere and refuses the sync', async () => {
+    const plan = await planFor('cinder');
+    expect(plan.deferred.map((entry) => entry.workspace)).toEqual(['@corvidae/chat-room']);
+    expect(
+      Object.keys(plan.files).filter(
+        (path) => path.startsWith('applications/') || path.startsWith('labs/'),
+      ),
+    ).toEqual([]);
+    expect(() => assertNothingDeferred(plan)).toThrow(DeferredWorkspaceError);
+  });
+
+  test('every emitted private workspace is checked by something', async () => {
+    const plan = await planFor('cinder');
+    for (const entry of plan.privateWorkspaces) {
+      // `verifyTarget` runs `typecheck` for each of these, and throws for one that emits
+      // TypeScript without declaring the script. Nothing here may be in that state.
+      expect([entry.publicName, entry.emitsTypeScript && !entry.typechecks]).toEqual([
+        entry.publicName,
+        false,
+      ]);
+    }
+    expect(plan.privateWorkspaces.map((entry) => entry.publicName).toSorted()).toEqual([
+      '@lostgradient/bureau',
+      '@lostgradient/memory',
+      '@lostgradient/skills',
+      '@lostgradient/testing',
+      '@lostgradient/typescript',
+    ]);
+  });
+});
+
+describe('the plan and the guard on the committed tree', () => {
+  test('nothing the transform would write is a path the target owns', async () => {
+    // The real tree is what makes this worth asserting: corvidae carries three
+    // `coverage-ratchet.json` files, an `AGENTS.md` in every workspace, a `.gitignore` and
+    // `CHANGELOG`-shaped files, all of which match a target-owned glob. The source filter is what
+    // keeps them out of the plan and the guard is what would refuse them if it ever stopped
+    // doing so; this is the two mechanisms agreeing on the committed tree rather than a fixture.
+    const policy = await loadTargetOwnedPolicy();
+    for (const target of mirrorTargets) {
+      const plan = await planFor(target);
+      expect(() =>
+        assertWritablePaths({ policy, target, paths: Object.keys(plan.files) }),
+      ).not.toThrow();
+    }
+  });
+
+  test('the non-source filter covers exactly the target-owned globs that reach inside a tree', async () => {
+    const policy = await loadTargetOwnedPolicy();
+    // A `**/`-rooted glob is the only kind that can match a path inside a workspace's `src/`;
+    // every other entry is anchored at the repository or a package root, where no source lives.
+    const reaching = policy.paths
+      .filter((entry) => entry.glob.startsWith('**/'))
+      .map((entry) => entry.glob.slice('**/'.length))
+      .toSorted();
+    const filtered = [
+      ...nonSourceNames,
+      ...nonSourcePrefixes.map((prefix) => `${prefix}*`),
+    ].toSorted();
+    expect(filtered).toEqual(reaching);
   });
 });

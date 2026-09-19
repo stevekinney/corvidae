@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -154,7 +154,7 @@ describe('change detection against a fixture target', () => {
   test('a no-op sync leaves git status --porcelain empty', async () => {
     await withFixtureTarget(async (directory) => {
       const policy = await loadTargetOwnedPolicy();
-      const written = await writeTransformOutput({
+      const { written } = await writeTransformOutput({
         policy,
         target: 'weft',
         directory,
@@ -237,6 +237,112 @@ describe('the guard refuses target-owned writes', () => {
       ).rejects.toThrow(TargetOwnedViolation);
       expect(await Bun.file(join(directory, 'packages/weft/src/added.ts')).exists()).toBe(false);
       expect(await runGit(directory, 'status', '--porcelain')).toBe('');
+    });
+  });
+});
+
+describe('the guard refuses target-owned deletions', () => {
+  test('a plan that would delete a target-owned path is refused whole', async () => {
+    await withFixtureTarget(async (directory) => {
+      const policy = await loadTargetOwnedPolicy();
+      let thrown: unknown;
+      try {
+        await writeTransformOutput({
+          policy,
+          target: 'weft',
+          directory,
+          files: { 'packages/weft/src/added.ts': 'export const added = true;\n' },
+          deletions: ['packages/weft/src/index.ts', 'packages/weft/CHANGELOG.md'],
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(TargetOwnedViolation);
+      expect((thrown as TargetOwnedViolation).action).toBe('delete');
+      expect((thrown as Error).message).toContain('must not delete');
+      expect((thrown as Error).message).toContain('packages/weft/CHANGELOG.md');
+      // Whole-plan-before-acting, the same property the write side has: the permitted write in
+      // the plan did not happen, the permitted deletion did not happen, and the target is
+      // byte-identical to what it was.
+      expect(await Bun.file(join(directory, 'packages/weft/src/added.ts')).exists()).toBe(false);
+      expect(await Bun.file(join(directory, 'packages/weft/src/index.ts')).exists()).toBe(true);
+      expect(await runGit(directory, 'status', '--porcelain')).toBe('');
+    });
+  });
+
+  test('a deletion the enumeration does not hold is carried out and reported', async () => {
+    await withFixtureTarget(
+      async (directory) => {
+        const policy = await loadTargetOwnedPolicy();
+        const { deleted } = await writeTransformOutput({
+          policy,
+          target: 'weft',
+          directory,
+          files: transformOwned,
+          deletions: ['packages/weft/src/retired.ts'],
+        });
+        expect(deleted).toEqual(['packages/weft/src/retired.ts']);
+        expect(await Bun.file(join(directory, 'packages/weft/src/retired.ts')).exists()).toBe(
+          false,
+        );
+        expect(await runGit(directory, 'status', '--porcelain')).toContain(
+          'packages/weft/src/retired.ts',
+        );
+      },
+      { 'packages/weft/src/retired.ts': 'export const retired = true;\n' },
+    );
+  });
+
+  test('the command line guard writes a base64 plan entry as bytes', async () => {
+    // JSON has no byte string, so a binary plan entry names its encoding. The in-process plan
+    // type is `string | Uint8Array`; this is that union surviving a round trip through a file,
+    // which is what a source tree holding a PNG fixture needs.
+    await withFixtureTarget(async (directory) => {
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+      const plan = join(directory, '..', `plan-${Bun.randomUUIDv7()}.json`);
+      await Bun.write(
+        plan,
+        JSON.stringify({
+          'packages/weft/src/fixtures/baseline.png': {
+            base64: Buffer.from(bytes).toString('base64'),
+          },
+          'packages/weft/src/index.ts': 'export const version = 1;\n',
+        }),
+      );
+      try {
+        const process_ = Bun.spawn(
+          ['bun', guard, '--target', 'weft', '--directory', directory, '--plan', plan],
+          { stdout: 'pipe', stderr: 'pipe' },
+        );
+        expect(await process_.exited).toBe(0);
+        const written = new Uint8Array(
+          await Bun.file(join(directory, 'packages/weft/src/fixtures/baseline.png')).arrayBuffer(),
+        );
+        expect(written).toEqual(bytes);
+      } finally {
+        await rm(plan, { force: true });
+      }
+    });
+  });
+
+  test('a written file keeps the executable bit the plan records for it', async () => {
+    await withFixtureTarget(async (directory) => {
+      const policy = await loadTargetOwnedPolicy();
+      await writeTransformOutput({
+        policy,
+        target: 'weft',
+        directory,
+        files: {
+          'packages/weft/src/cli-main.ts': '#!/usr/bin/env bun\nexport const main = true;\n',
+          'packages/weft/src/library.ts': 'export const library = true;\n',
+        },
+        executable: ['packages/weft/src/cli-main.ts'],
+      });
+      const executable = await stat(join(directory, 'packages/weft/src/cli-main.ts'));
+      const plain = await stat(join(directory, 'packages/weft/src/library.ts'));
+      expect(executable.mode & 0o111).not.toBe(0);
+      expect(plain.mode & 0o111).toBe(0);
     });
   });
 });
