@@ -1,7 +1,16 @@
 import { createTool } from '@corvidae/armorer';
+import type { TypedEventTarget } from '@corvidae/lifecycle';
 import { z } from 'zod';
 
 import { escapeXml } from './create-skill-catalog-hook';
+import type { SkillEventCorrelation, SkillEventMap } from './events';
+import {
+  SkillActivatedEvent,
+  SkillDeactivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from './events';
 import type { SkillGuardrailOptions } from './guardrail';
 import { scanSkillResource } from './guardrail';
 import type { SkillSession } from './skill-session';
@@ -20,6 +29,19 @@ export interface CreateSkillToolsOptions {
    * model. Omit to skip scanning entirely.
    */
   guardrail?: SkillGuardrailOptions;
+  /**
+   * Dispatch target for skill lifecycle events (COR-767). Omit to emit
+   * nothing — a caller with no event surface (a headless script, a test) gets
+   * no dispatch and no error, the same optional-emitter shape the schedule
+   * lifecycle events use in `@corvidae/operative`.
+   */
+  events?: TypedEventTarget<SkillEventMap>;
+  /**
+   * Correlation stamped onto every event this toolbox dispatches. The tools
+   * themselves have no access to the owning run or session, so the composer
+   * supplies it.
+   */
+  correlation?: SkillEventCorrelation;
 }
 
 // ── Tools ────────────────────────────────────────────────────────────
@@ -33,7 +55,7 @@ export interface CreateSkillToolsOptions {
  * reaches the model.
  */
 export function createActivateSkillTool(options: CreateSkillToolsOptions) {
-  const { provider, session, guardrail } = options;
+  const { provider, session, guardrail, events, correlation = {} } = options;
 
   return createTool({
     name: 'activate_skill',
@@ -49,17 +71,23 @@ export function createActivateSkillTool(options: CreateSkillToolsOptions) {
 
       const enabled = await provider.isEnabled(params.name);
       if (!enabled) {
+        events?.dispatch(new SkillRejectedEvent(params.name, 'disabled', correlation));
         return { error: 'Skill is disabled', name: params.name };
       }
 
       const skill = await provider.loadSkill(params.name);
       if (!skill) {
+        events?.dispatch(new SkillFailedEvent(params.name, correlation));
         return { error: 'Skill not found', name: params.name };
       }
+
+      // The instructions exist; whether they enter context is still undecided.
+      events?.dispatch(new SkillLoadedEvent(params.name, correlation));
 
       if (guardrail) {
         const scan = await scanSkillResource(skill.body, guardrail);
         if (scan.blocked) {
+          events?.dispatch(new SkillRejectedEvent(params.name, 'guardrail-blocked', correlation));
           return {
             error: 'Skill content blocked by guardrail',
             name: params.name,
@@ -71,6 +99,7 @@ export function createActivateSkillTool(options: CreateSkillToolsOptions) {
 
       const resources = await provider.listResources(params.name);
       session.activate(params.name, skill.metadata.toolPolicy);
+      events?.dispatch(new SkillActivatedEvent(params.name, correlation));
 
       const escapedName = escapeXml(params.name);
       let xml = `<skill_content name="${escapedName}">\n${skill.body}`;
@@ -142,7 +171,7 @@ export function createLoadSkillResourceTool(options: CreateSkillToolsOptions) {
  * Creates a tool that deactivates a skill.
  */
 export function createDeactivateSkillTool(options: CreateSkillToolsOptions) {
-  const { session } = options;
+  const { session, events, correlation = {} } = options;
 
   return createTool({
     name: 'deactivate_skill',
@@ -159,6 +188,7 @@ export function createDeactivateSkillTool(options: CreateSkillToolsOptions) {
       if (session.isActive(params.name)) {
         session.deactivate(params.name);
         result.deactivated = true;
+        events?.dispatch(new SkillDeactivatedEvent(params.name, correlation));
       }
 
       return Promise.resolve(result);
