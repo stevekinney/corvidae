@@ -190,6 +190,13 @@ describe('sourceCandidatesForTarget', () => {
     expect(sourceCandidatesForTarget('./dist/index.cjs', 'src')).toContain('src/index.ts');
   });
 
+  test('maps a dual-format build’s CommonJS declarations back to the same TypeScript source', () => {
+    // A `require` condition needs its own `.d.cts`, or publint and are-the-types-wrong both
+    // report the CommonJS half as masquerading as ESM. Both extensions come out of one `.ts`.
+    expect(sourceCandidatesForTarget('./dist/index.d.cts', 'src')).toContain('src/index.ts');
+    expect(sourceCandidatesForTarget('./dist/index.d.mts', 'src')).toContain('src/index.ts');
+  });
+
   test('maps a css declaration stub back to the stylesheet it sits beside', () => {
     expect(sourceCandidatesForTarget('./dist/components/button/button.css.d.ts', 'src')).toContain(
       'src/components/button/button.css',

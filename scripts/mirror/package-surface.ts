@@ -198,6 +198,11 @@ function packageRelative(target: string): string {
 /** The source extension a build output came from. A `.css.d.ts` stub is emitted beside its CSS. */
 function sourceExtensionFor(path: string): string {
   if (path.endsWith('.css.d.ts')) return path.slice(0, -'.d.ts'.length);
+  // A dual-format build emits `.d.cts` beside `.d.ts` (and `.d.mts` where the ESM half is
+  // disambiguated) from the same single `.ts` source, so all three map back to it.
+  if (path.endsWith('.d.cts') || path.endsWith('.d.mts')) {
+    return `${path.slice(0, -'.d.cts'.length)}.ts`;
+  }
   if (path.endsWith('.d.ts')) return `${path.slice(0, -'.d.ts'.length)}.ts`;
   if (path.endsWith('.cjs') || path.endsWith('.mjs') || path.endsWith('.js')) {
     return `${path.slice(0, path.lastIndexOf('.'))}.ts`;
