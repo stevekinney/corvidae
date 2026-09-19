@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { createMockSkillProvider } from '../src/index';
 import type { SkillContent } from '../src/types';
+import { resourceBytes } from './support/resource-bytes';
 
 function makeSkill(name: string, description = `Description for ${name}`): SkillContent {
   return {
@@ -15,8 +16,8 @@ describe('createMockSkillProvider', () => {
     const provider = createMockSkillProvider([makeSkill('keep-me')]);
 
     await provider.saveSkill('delete-me', makeSkill('delete-me'));
-    await provider.saveResource('delete-me', 'guide.md', 'guide');
-    await provider.saveResource('keep-me', 'guide.md', 'keep');
+    await provider.saveResource('delete-me', 'guide.md', resourceBytes('guide'));
+    await provider.saveResource('keep-me', 'guide.md', resourceBytes('keep'));
     await provider.setEnabled('delete-me', false);
 
     expect(await provider.loadSkill('delete-me')).toEqual(makeSkill('delete-me'));

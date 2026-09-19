@@ -34,6 +34,8 @@ const SUMMARY: ScheduleSummary = {
   createdAt: 0,
   updatedAt: 0,
   missedFireCount: 0,
+  // Required since COR-1224 gave schedules durable skip accounting. The decoder treats an absent
+  // value as zero, so only in-repo literals like this one need it.
   skippedCount: 0,
   nextFireAt: 1000,
   queuedRuns: [],

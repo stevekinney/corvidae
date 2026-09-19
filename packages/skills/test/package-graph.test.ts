@@ -81,9 +81,9 @@ describe('E3: skills package graph position', () => {
 
 describe('E3: SkillProvider satisfies the bureau SkillProviderLike seam (behavioral)', () => {
   it('listSkills() returns name + description for each skill', async () => {
-    const { createStaticSkillProvider } = await import('../src');
+    const { createMockSkillProvider } = await import('../src/test/index');
 
-    const provider = createStaticSkillProvider([
+    const provider = createMockSkillProvider([
       {
         metadata: { name: 'test-skill', description: 'A skill for testing.' },
         body: '## Instructions\n\nDo the thing.',
@@ -101,9 +101,9 @@ describe('E3: SkillProvider satisfies the bureau SkillProviderLike seam (behavio
   });
 
   it('listSkills() returns catalog entries for multiple skills', async () => {
-    const { createStaticSkillProvider } = await import('../src');
+    const { createMockSkillProvider } = await import('../src/test/index');
 
-    const provider = createStaticSkillProvider([
+    const provider = createMockSkillProvider([
       {
         metadata: { name: 'skill-one', description: 'First skill.' },
         body: '## Skill One',
@@ -123,24 +123,24 @@ describe('E3: SkillProvider satisfies the bureau SkillProviderLike seam (behavio
   });
 
   it('isEnabled() returns boolean — defaults to true for all skills', async () => {
-    const { createStaticSkillProvider } = await import('../src');
+    const { createMockSkillProvider } = await import('../src/test/index');
 
-    const provider = createStaticSkillProvider([
+    const provider = createMockSkillProvider([
       {
         metadata: { name: 'my-skill', description: 'My skill.' },
         body: '## My Skill',
       },
     ]);
 
-    // Static provider has no enabled/disabled state — all skills enabled by default.
+    // A provider has no disabled state until something sets one — all skills enabled by default.
     const enabled = await provider.isEnabled('my-skill');
     expect(enabled).toBe(true);
   });
 
   it('isEnabled() returns true even for non-existent skill names', async () => {
-    const { createStaticSkillProvider } = await import('../src');
+    const { createMockSkillProvider } = await import('../src/test/index');
 
-    const provider = createStaticSkillProvider([]);
+    const provider = createMockSkillProvider([]);
 
     // Non-existent skill: no explicit disabled state, defaults to true.
     const enabled = await provider.isEnabled('non-existent-skill');

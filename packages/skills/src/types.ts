@@ -54,8 +54,15 @@ export interface SkillContent {
 export interface SkillResource {
   /** Relative path within the skill directory (e.g., "scripts/extract.py"). */
   path: string;
-  /** The resource content. */
-  content: string;
+  /**
+   * Raw resource content.
+   *
+   * Bytes rather than a string because a skill bundle legitimately carries images, fonts and
+   * other binary assets, and decoding one as UTF-8 replaces every invalid sequence with U+FFFD —
+   * silent, irreversible corruption. Decoding is the caller's decision, made per resource at the
+   * point where text is actually needed.
+   */
+  content: Uint8Array;
 }
 
 // ── Skill Provider ───────────────────────────────────────────────────
@@ -76,10 +83,10 @@ export interface SkillProvider {
   deleteSkill(name: string): Promise<void>;
   /** List resources bundled with a skill. */
   listResources(name: string): Promise<string[]>;
-  /** Load a specific resource. */
-  loadResource(name: string, path: string): Promise<string | undefined>;
-  /** Save a resource. */
-  saveResource(name: string, path: string, content: string): Promise<void>;
+  /** Load a specific resource as raw bytes. */
+  loadResource(name: string, path: string): Promise<Uint8Array | undefined>;
+  /** Save a resource from raw bytes. */
+  saveResource(name: string, path: string, content: Uint8Array): Promise<void>;
   /** Get enabled status. Defaults to true if not explicitly set. */
   isEnabled(name: string): Promise<boolean>;
   /** Set enabled status. */

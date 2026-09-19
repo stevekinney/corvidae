@@ -20,7 +20,7 @@ export function createMockSkillProvider(
   initialSkills: SkillContent[] = [],
 ): SkillProvider & { calls: Array<{ method: string; args: unknown[] }> } {
   const skills = new Map<string, SkillContent>();
-  const resources = new Map<string, string>();
+  const resources = new Map<string, Uint8Array>();
   const enabled = new Map<string, boolean>();
   const calls: Array<{ method: string; args: unknown[] }> = [];
 
@@ -69,12 +69,12 @@ export function createMockSkillProvider(
         .map((key) => key.slice(prefix.length));
     },
 
-    async loadResource(name: string, path: string): Promise<string | undefined> {
+    async loadResource(name: string, path: string): Promise<Uint8Array | undefined> {
       calls.push({ method: 'loadResource', args: [name, path] });
       return resources.get(`${name}:${path}`);
     },
 
-    async saveResource(name: string, path: string, content: string): Promise<void> {
+    async saveResource(name: string, path: string, content: Uint8Array): Promise<void> {
       calls.push({ method: 'saveResource', args: [name, path, content] });
       resources.set(`${name}:${path}`, content);
     },

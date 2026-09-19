@@ -3686,7 +3686,8 @@ describe('createRuntimeComposition durable execution', () => {
         return name === 'coding' ? ['snippets/hello.py'] : [];
       },
       async loadResource(name, path) {
-        if (name === 'coding' && path === 'snippets/hello.py') return 'print("Hello")';
+        if (name === 'coding' && path === 'snippets/hello.py')
+          return new TextEncoder().encode('print("Hello")');
         return undefined;
       },
     };
@@ -3813,7 +3814,8 @@ describe('createRuntimeComposition durable execution', () => {
         return name === 'coding' ? ['snippets/hello.py'] : [];
       },
       async loadResource(name, path) {
-        if (name === 'coding' && path === 'snippets/hello.py') return 'print("Hello")';
+        if (name === 'coding' && path === 'snippets/hello.py')
+          return new TextEncoder().encode('print("Hello")');
         return undefined;
       },
     };
@@ -3937,7 +3939,8 @@ describe('createRuntimeComposition durable execution', () => {
         return name === 'coding' ? ['snippets/hello.py'] : [];
       },
       async loadResource(name, path) {
-        if (name === 'coding' && path === 'snippets/hello.py') return 'print("Hello")';
+        if (name === 'coding' && path === 'snippets/hello.py')
+          return new TextEncoder().encode('print("Hello")');
         return undefined;
       },
     };
@@ -4061,7 +4064,8 @@ describe('createRuntimeComposition durable execution', () => {
         return name === 'coding' ? ['snippets/hello.py'] : [];
       },
       async loadResource(name, path) {
-        if (name === 'coding' && path === 'snippets/hello.py') return 'print("Hello")';
+        if (name === 'coding' && path === 'snippets/hello.py')
+          return new TextEncoder().encode('print("Hello")');
         return undefined;
       },
     };
@@ -4191,7 +4195,8 @@ describe('createRuntimeComposition durable execution', () => {
         return name === 'coding' ? ['snippets/hello.py'] : [];
       },
       async loadResource(name, path) {
-        if (name === 'coding' && path === 'snippets/hello.py') return 'print("Hello")';
+        if (name === 'coding' && path === 'snippets/hello.py')
+          return new TextEncoder().encode('print("Hello")');
         return undefined;
       },
     };
@@ -4303,7 +4308,8 @@ describe('createRuntimeComposition durable execution', () => {
         return name === 'coding' ? ['snippets/hello.py'] : [];
       },
       async loadResource(name, path) {
-        if (name === 'coding' && path === 'snippets/hello.py') return 'print("Hello")';
+        if (name === 'coding' && path === 'snippets/hello.py')
+          return new TextEncoder().encode('print("Hello")');
         return undefined;
       },
     };
@@ -5511,7 +5517,7 @@ describe('PRRT_kwDORvupsc6MZ1Md: active skill session preserved across durable r
       },
       async loadResource(name, path) {
         if (name === 'coding' && path === 'snippets/hello.py') {
-          return 'print("Hello, world!")';
+          return new TextEncoder().encode('print("Hello, world!")');
         }
         return undefined;
       },

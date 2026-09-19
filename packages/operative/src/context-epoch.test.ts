@@ -61,6 +61,105 @@ describe('sealContextEpoch', () => {
     expect(hooks?.disposition.kind).toBe('absent-by-composition');
   });
 
+  it('binds active skills as their own untrusted-retrieved source', () => {
+    const epoch = sealContextEpoch({
+      epochId: 'epoch-1',
+      conversation: conversationWith([['user', 'hi']]),
+      skillActivation: {
+        catalogRevision: 3,
+        activations: [
+          {
+            name: 'code-review',
+            sourceId: 'user',
+            trust: 'trusted',
+            artifactDigest: 'a'.repeat(64),
+            instructionsDigest: 'b'.repeat(64),
+          },
+        ],
+      },
+      consumer: CONSUMER,
+    });
+
+    const skills = epoch.sources.find((source) => source.sourceId === 'skill-activation');
+    expect(skills?.disposition.kind).toBe('included');
+    // A source of its own, at the retrieved tier: skill instructions are a third party's text, and
+    // folding them into `agent-instructions` would hide them behind the operator's provenance.
+    expect(skills?.trust).toBe('untrusted-retrieved');
+    expect(skills?.redaction).toBe('digest-only');
+    // Its own counter, never conflated with the model catalog's `plan.catalogRevision`.
+    expect(skills?.revision).toBe(3);
+    expect(skills?.digest).toBeDefined();
+  });
+
+  it('records no active skills as absent-by-composition rather than excluded', () => {
+    const epoch = sealContextEpoch({
+      epochId: 'epoch-1',
+      conversation: conversationWith([['user', 'hi']]),
+      consumer: CONSUMER,
+    });
+
+    // An agent with no skills has not had a source withheld from it.
+    const skills = epoch.sources.find((source) => source.sourceId === 'skill-activation');
+    expect(skills?.disposition.kind).toBe('absent-by-composition');
+    expect(skills?.digest).toBeUndefined();
+  });
+
+  it('never carries skill instructions into the epoch, only their digest', () => {
+    const epoch = sealContextEpoch({
+      epochId: 'epoch-1',
+      conversation: conversationWith([['user', 'hi']]),
+      skillActivation: {
+        catalogRevision: 1,
+        activations: [
+          {
+            name: 'secretive',
+            sourceId: 'user',
+            trust: 'trusted',
+            artifactDigest: 'c'.repeat(64),
+            instructionsDigest: 'd'.repeat(64),
+          },
+        ],
+      },
+      consumer: CONSUMER,
+    });
+
+    // An epoch is provenance evidence that gets logged and correlated. Carrying the instructions
+    // would turn every recorded epoch into a copy of whatever a skill author wrote.
+    expect(JSON.stringify(epoch)).not.toContain('Instructions');
+    const skills = epoch.sources.find((source) => source.sourceId === 'skill-activation');
+    expect(skills?.digest).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('mints a successor epoch when the active skill set changes', () => {
+    const conversation = conversationWith([['user', 'hi']]);
+    const base = {
+      epochId: 'epoch-1',
+      conversation,
+      consumer: CONSUMER,
+    } as const;
+
+    const withoutSkills = sealContextEpoch(base);
+    const withSkills = sealContextEpoch({
+      ...base,
+      skillActivation: {
+        catalogRevision: 1,
+        activations: [
+          {
+            name: 'added',
+            sourceId: 'user',
+            trust: 'trusted',
+            artifactDigest: 'e'.repeat(64),
+            instructionsDigest: 'f'.repeat(64),
+          },
+        ],
+      },
+    });
+
+    // Activating a skill changes what the model is looking at, so the epoch may not be reused.
+    expect(epochSourcesUnchanged(withoutSkills, withSkills)).toBe(false);
+    expect(epochSourcesUnchanged(withSkills, withSkills)).toBe(true);
+  });
+
   it('declares the conversation as per-message trust, not one scalar tier', () => {
     // A transcript carries operator messages, agent turns and tool results
     // with different provenance; one tier for all three would erase the
