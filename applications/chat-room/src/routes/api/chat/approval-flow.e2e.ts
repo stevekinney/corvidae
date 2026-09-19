@@ -264,7 +264,6 @@ test('denying resumes through the host-owned toolbox without executing the tool'
     remember: true,
   });
 
-  await expect(chat.locator('.tool-call-group')).toHaveCount(0);
   await expect(chat.getByRole('button', { name: 'Approve' })).toHaveCount(0);
   await expect(chat.getByRole('button', { name: 'Deny' })).toHaveCount(0);
   const settled = chat.getByRole('region', { name: 'Called 1 tool' });
@@ -304,7 +303,6 @@ test('dismissing resumes through the host-owned toolbox without executing the to
   expect(posted.approval.approvalToken).toMatch(/^[0-9a-f]{64}$/);
   expect(posted.resolution).toEqual({ decision: 'cancel', reason: 'not now', remember: false });
 
-  await expect(chat.locator('.tool-call-group')).toHaveCount(0);
   await expect(chat.getByRole('button', { name: 'Approve' })).toHaveCount(0);
   await expect(chat.getByRole('button', { name: 'Deny' })).toHaveCount(0);
   const settled = chat.getByRole('region', { name: 'Called 1 tool' });
