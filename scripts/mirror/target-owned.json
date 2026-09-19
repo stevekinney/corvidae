@@ -1,0 +1,165 @@
+{
+  "documentation": "Paths in the public mirror targets that the corvidae transform must never write. Change detection in the mirror works by transforming into a clone of the target and asking git whether anything differs: an empty `git status --porcelain` means skip the sync. That only holds when this enumeration is exhaustive, so a missing entry degrades the mirror into 'always open a pull request'. `paths` is enforced by the guard in `target-owned.ts`. `fields` is enumerated for the sync script that rewrites manifests and is deliberately not enforced here, because a guard over whole file writes cannot express 'preserve this key inside a file the transform does write'. `targets` names the public repositories an entry applies to; omit it when the entry applies to every target.",
+  "targets": ["weft", "cinder"],
+  "paths": [
+    {
+      "glob": "LICENSE",
+      "reason": "Root license is repository-facing and target-owned. Evidence: weft ships a root LICENSE, cinder ships none at all, while every published package in both targets declares `\"license\": \"MIT\"`. A file whose presence differs between the two targets is not a transform output. Per-package LICENSE is transform-owned and stays writable: weft's `files` arrays list it and the transform fans it out to satisfy them."
+    },
+    {
+      "glob": "README.md",
+      "reason": "Root README describes the public repository, its badges and its install story. Per-package `README.md` is deliberately NOT matched by this entry: corvidae carries a README in every workspace and the targets ship them through their `files` arrays, so per-package READMEs are transform-owned."
+    },
+    {
+      "glob": "CONTRIBUTING.md",
+      "reason": "Contribution policy is written for the public repository's own workflow, which corvidae does not have."
+    },
+    {
+      "glob": "SECURITY.md",
+      "reason": "Vulnerability disclosure policy for the public repository. Present in weft; absent in cinder.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "CODE_OF_CONDUCT.md",
+      "reason": "Policy document a public repository may add at any time without a corvidae counterpart."
+    },
+    {
+      "glob": "GOVERNANCE.md",
+      "reason": "Policy document a public repository may add at any time without a corvidae counterpart."
+    },
+    {
+      "glob": "NOTICE",
+      "reason": "Attribution notice that accompanies a root license; target-owned for the same reason as the root LICENSE."
+    },
+    {
+      "glob": "ROADMAP.md",
+      "reason": "Public roadmap. Present at cinder's root and in `labs/chat-room`; corvidae keeps planning in Linear, not in the repository."
+    },
+    {
+      "glob": "**/CHANGELOG*",
+      "reason": "Release history is generated in the target by its own release tooling (changesets in cinder, hand-maintained in weft) against versions that only exist downstream."
+    },
+    {
+      "glob": ".changeset/**",
+      "reason": "Changesets configuration and pending changeset files drive the target's release pipeline. Cinder carries `.changeset/config.json` and `.changeset/README.md`; corvidae has no changesets at all."
+    },
+    {
+      "glob": ".github/**",
+      "reason": "Workflows, composite actions, CODEOWNERS, branch protection and the pull request template are target-owned and composed separately. Corvidae's AGENTS.md forbids adding CI/CD here, so there is no corvidae source for them."
+    },
+    {
+      "glob": ".husky/**",
+      "reason": "Git hook scripts. Both targets install husky hooks; corvidae explicitly has no Git hooks."
+    },
+    {
+      "glob": "packages/weft/scripts/husky/**",
+      "reason": "Weft's root `prepare` runs `husky && bun packages/weft/scripts/husky/verify-hooks-installed.ts`, so this hook-verification helper lives inside a package directory the transform otherwise writes. It is hook infrastructure, not package source.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "bun.lock",
+      "reason": "The lockfile is regenerated in the target, not copied. Corvidae's lock resolves `applications/*`, `components/*` and `internal/*` workspaces that do not exist downstream, so copying it would produce an uninstallable target."
+    },
+    {
+      "glob": "**/.gitignore",
+      "reason": "Ignore rules cover target-local build artifacts and tooling output (`dist`, `.turbo`, `.vercel`, `coverage`) whose layout is decided downstream."
+    },
+    {
+      "glob": ".worktreeinclude",
+      "reason": "Worktree bootstrap list naming target-local non-secret files. Present in cinder.",
+      "targets": ["cinder"]
+    },
+    {
+      "glob": "**/AGENTS.md",
+      "reason": "Agent instructions are per-repository operating rules. Corvidae's say 'do not add publishing, CI/CD, deployment infrastructure', which is exactly wrong for a repository whose job is to publish, so they must never overwrite a target's."
+    },
+    {
+      "glob": "**/CLAUDE.md",
+      "reason": "Same as AGENTS.md: per-repository agent instructions with no corvidae counterpart worth propagating."
+    },
+    {
+      "glob": ".agents/**",
+      "reason": "Repository-scoped agent skills. Weft carries fourteen, cinder two, corvidae its own set; none are package source."
+    },
+    {
+      "glob": ".claude/**",
+      "reason": "Repository-scoped Claude Code configuration, agents and skills."
+    },
+    {
+      "glob": ".codex/**",
+      "reason": "Repository-scoped Codex agents and environment definitions."
+    },
+    {
+      "glob": ".cursor/**",
+      "reason": "Repository-scoped editor rules."
+    },
+    {
+      "glob": ".vscode/**",
+      "reason": "Repository-scoped editor settings."
+    },
+    {
+      "glob": "**/coverage-ratchet.json",
+      "reason": "Coverage floors are target CI state, raised by the target's own runs. Present in cinder's chat, components and editor packages."
+    },
+    {
+      "glob": "AUDIT-BACKLOG.md",
+      "reason": "Target working document with no corvidae counterpart. See `openQuestions` on the one-off document class.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "BREAKING-CHANGES.md",
+      "reason": "Target-maintained migration log keyed to published versions.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "PROJECT-BRIEF.md",
+      "reason": "Target working document with no corvidae counterpart.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "MIGRATION-NOTES.md",
+      "reason": "Target-maintained migration notes keyed to published versions.",
+      "targets": ["cinder"]
+    }
+  ],
+  "fields": {
+    "policy": "Keys inside files the transform does write, which must be read from the target and carried through instead of emitted from corvidae. Enumerated here so one list stays authoritative; NOT enforced by the guard, because the guard gates whole-file writes and manifest rewriting is out of this issue's scope. `pointer` is a JSON Pointer (RFC 6901) into the parsed file.",
+    "entries": [
+      {
+        "file": "**/package.json",
+        "pointer": "/version",
+        "reason": "Versions are owned by the target's release tooling. Corvidae is unversioned internal source; every published package downstream sits at a version corvidae has no knowledge of (weft 0.25.0, cinder 0.26.2, and so on)."
+      },
+      {
+        "file": "package.json",
+        "pointer": "/scripts/prepare",
+        "reason": "Weft's root `prepare` is `husky && bun packages/weft/scripts/husky/verify-hooks-installed.ts`; cinder's is `husky`. Both install Git hooks, which corvidae explicitly does not have."
+      },
+      {
+        "file": "packages/components/package.json",
+        "pointer": "/scripts/prepare",
+        "reason": "Cinder's husky `prepare` is not only at the root: `packages/components/package.json` carries `\"prepare\": \"cd ../.. && husky\"`. A rule phrased as 'root prepare scripts' would miss it. Note the contrast with `labs/chat-room`, whose `prepare` is `svelte-kit sync` — a genuine build step that is transform-owned, which is why this list names manifests explicitly rather than protecting every `prepare` key.",
+        "targets": ["cinder"]
+      },
+      {
+        "file": "package.json",
+        "pointer": "/devDependencies/husky",
+        "reason": "Husky is only a dependency because the target installs Git hooks."
+      },
+      {
+        "file": "package.json",
+        "pointer": "/lint-staged",
+        "reason": "Cinder's root manifest carries a `lint-staged` block wired to its pre-commit hook.",
+        "targets": ["cinder"]
+      }
+    ]
+  },
+  "exceptions": {
+    "policy": "A temporary exception holds an additional path as target-owned for the duration of a transition, then disappears. Every entry requires all four keys: `glob` (the path held), `reason` (what transition requires it), `issue` (the Linear identifier that removes it) and `expires` (an ISO `YYYY-MM-DD` date). The guard fails when `expires` is on or before the current date, so an exception cannot rot silently — a reviewer must either move the date forward, which is a fresh review, or delete the entry. An exception without an expiry date is not reviewable and an expiry date without an issue is not actionable, so both are mandatory. Entries here are additive: they never relax a `paths` entry.",
+    "entries": []
+  },
+  "openQuestions": [
+    "Root tooling configuration — `turbo.json`, `bunfig.toml`, `tsconfig*.json`, `.oxlintrc.json`, `.prettierrc.json`, `.prettierignore`, `.stylelintrc.json`, `.editorconfig`, `.env.example` — is unresolved. Cinder carries four root tsconfigs where corvidae has one plus `internal/typescript`, so whether the transform generates these or the target owns them depends on the layout mapping, which is a different issue. Resolve before the first real sync run; leaving them out of `paths` is not a ruling that they are transform-owned.",
+    "One-off target working documents (cinder's `AB-429-final-contract-review.md` is the current example) cannot be enumerated ahead of time. They only matter if the transform prunes files it does not emit, so the sync script must not delete unknown target paths. The enumeration above stops writes; it does not stop deletions."
+  ]
+}
