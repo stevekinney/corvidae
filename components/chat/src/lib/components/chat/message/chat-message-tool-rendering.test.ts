@@ -414,6 +414,59 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(buttonByText(container, 'Arguments').getAttribute('aria-expanded')).toBe('false');
   });
 
+  test('tool-call timeline IDs include the ChatMessage occurrence prefix', () => {
+    const message = toolCallMessage();
+    const toolCallPairs: ToolCallPair[] = [
+      {
+        call: message.toolCall!,
+        result: { callId: 'call-1', outcome: 'success', content: { ok: true } },
+      },
+    ];
+
+    render(ChatMessage, {
+      props: {
+        message,
+        idPrefix: 'sub-session-a-tc-1',
+        toolCallPairs,
+      },
+    });
+    render(ChatMessage, {
+      props: {
+        message,
+        idPrefix: 'sub-session-b-tc-1',
+        toolCallPairs,
+      },
+    });
+    render(ChatMessage, {
+      props: {
+        message: { ...message, id: 'foo-message' },
+        toolCallPairs,
+      },
+    });
+    render(ChatMessage, {
+      props: {
+        message: { ...message, id: 'foo-message' },
+        idPrefix: 'foo',
+        toolCallPairs,
+      },
+    });
+
+    const timelines = Array.from(
+      document.body.querySelectorAll<HTMLElement>('.chat-message .chat-tool-call-timeline'),
+    );
+    const timelineIds = timelines.map((timeline) => timeline.id);
+    const headingIds = timelines.map((timeline) => timeline.getAttribute('aria-labelledby') ?? '');
+
+    expect(timelineIds).toEqual([
+      'message-sub-session-a-tc-1-message-tool-call-call-1',
+      'message-sub-session-b-tc-1-message-tool-call-call-1',
+      'message-message-foo-message-tool-call-call-1',
+      'message-foo-message-tool-call-call-1',
+    ]);
+    expect(new Set(timelineIds).size).toBe(timelineIds.length);
+    expect(new Set(headingIds).size).toBe(headingIds.length);
+  });
+
   test('tool-call disclosure is decoupled from markdown truncation (long text stays full)', () => {
     const longText = 'x'.repeat(2000);
     const message: Message = {

@@ -89,11 +89,13 @@ The component marks the currently active step with `aria-current="step"`. `runni
         {
           id: 'test-error-log',
           label: 'Error output',
+          type: 'text',
           content: 'AssertionError: expected 1 to equal 2\n  at src/math.test.ts:12',
         },
         {
           id: 'test-env',
           label: 'Environment',
+          type: 'text',
           content: 'NODE_ENV=test\nCI=true',
         },
       ],

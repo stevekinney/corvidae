@@ -191,12 +191,18 @@ describe('useChatKeyboardNav', () => {
     nav.handleKeyDown(down, viewport);
 
     expect(down.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(groupedTimeline);
-    expect(document.activeElement).not.toBe(nestedTimeline);
+    expect(document.activeElement instanceof HTMLElement ? document.activeElement.id : null).toBe(
+      groupedTimeline.id,
+    );
+    expect(
+      document.activeElement instanceof HTMLElement ? document.activeElement.id : null,
+    ).not.toBe(nestedTimeline.id);
 
     const next = keyEvent('ArrowDown');
     nav.handleKeyDown(next, viewport);
-    expect(document.activeElement).toBe(messages[2]!);
+    expect(document.activeElement instanceof HTMLElement ? document.activeElement.id : null).toBe(
+      messages[2]!.id,
+    );
     expect(scrollIntoViewCalls).toEqual(['grouped', 'third']);
   });
 

@@ -425,7 +425,7 @@
              of this body div, matching the historical structure. -->
         <ChatMessagePartsRenderer
           parts={bodyParts}
-          messageId={message.id}
+          {messageId}
           {messagePart}
           {markdownNode}
           expanded={toolCallExpanded}
@@ -451,7 +451,7 @@
     {#if imageParts.length > 0}
       <!-- Images render through the grouped default path (the attachment grid
            lays out by total count); they do not flow through `messagePart`. -->
-      <ChatMessagePartsRenderer parts={imageParts} messageId={message.id} />
+      <ChatMessagePartsRenderer parts={imageParts} {messageId} />
     {/if}
 
     {#if isFailed && onretry}
