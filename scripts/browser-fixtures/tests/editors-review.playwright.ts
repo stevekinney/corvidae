@@ -53,6 +53,15 @@ type ReadyPopoverMetrics = {
   hasInlinePosition: boolean;
 };
 
+type DiffRowSnapshot = {
+  className: string;
+  gutter: string;
+  gutterWidth: number;
+  height: number;
+  text: string;
+  ariaLabel: string | null;
+};
+
 async function openReviewCommentsFixture(page: import('@playwright/test').Page, theme = 'light') {
   await page.addInitScript((selectedTheme) => {
     localStorage.setItem('browser-fixture-theme', selectedTheme);
@@ -77,6 +86,17 @@ async function openReviewEditorFixture(page: import('@playwright/test').Page, th
       (editor) => editor.getAttribute('data-ready') === 'true',
     ),
   );
+}
+
+async function openDiffViewerFixture(page: import('@playwright/test').Page, theme = 'light') {
+  await page.addInitScript((selectedTheme) => {
+    localStorage.setItem('browser-fixture-theme', selectedTheme);
+  }, theme);
+  await page.goto('/page/diff-viewer?snapshot=1', { waitUntil: 'load' });
+  await page.waitForSelector('.diff-viewer[data-ready="true"]', {
+    state: 'visible',
+    timeout: 20_000,
+  });
 }
 
 function requireBox(box: Box | null, label: string): Box {
@@ -290,6 +310,152 @@ test.describe('review editor front matter', () => {
         });
       }
     }
+  });
+});
+
+test.describe('diff viewer rows', () => {
+  test('diff rows use compact gutters and paired modified lines', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 900, height: 760 });
+    await openDiffViewerFixture(page);
+
+    const viewer = page.locator('.diff-viewer').first();
+    await expect(viewer).toBeVisible();
+
+    async function rows(): Promise<DiffRowSnapshot[]> {
+      return viewer.locator('.diff-line').evaluateAll((elements): DiffRowSnapshot[] =>
+        elements.map((element) => {
+          const gutter = element.querySelector('.diff-gutter');
+          const gutterRect = gutter?.getBoundingClientRect();
+          const rect = element.getBoundingClientRect();
+          return {
+            className: element.className,
+            gutter: gutter?.textContent?.trim() ?? '',
+            gutterWidth: gutterRect === undefined ? 0 : Math.round(gutterRect.width),
+            height: Math.round(rect.height),
+            text: element.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+            ariaLabel: element.getAttribute('aria-label'),
+          };
+        }),
+      );
+    }
+
+    const unifiedRows = await rows();
+    const unifiedBodyRemoved = unifiedRows.find((row) =>
+      row.text.includes(
+        'The first version includes authentication, a dashboard, and export tools.',
+      ),
+    );
+    const unifiedBodyAdded = unifiedRows.find((row) =>
+      row.text.includes(
+        'The first version includes authentication, a dashboard, and CSV export tools.',
+      ),
+    );
+    const unifiedFrontMatterRemoved = unifiedRows.find((row) => row.text.includes('status: draft'));
+    const unifiedFrontMatterAdded = unifiedRows.find((row) =>
+      row.text.includes('status: published'),
+    );
+
+    expect(unifiedBodyRemoved, 'unified body renders the removed old modified row').toBeDefined();
+    expect(unifiedBodyAdded, 'unified body renders the added new modified row').toBeDefined();
+    expect(
+      unifiedRows.indexOf(unifiedBodyRemoved!),
+      'removed body row precedes added body row',
+    ).toBeLessThan(unifiedRows.indexOf(unifiedBodyAdded!));
+    expect(unifiedBodyRemoved?.gutter).toBe('-');
+    expect(unifiedBodyAdded?.gutter).toBe('+');
+    expect(unifiedBodyRemoved?.ariaLabel).toMatch(/^Removed line:/);
+    expect(unifiedBodyAdded?.ariaLabel).toMatch(/^Added line:/);
+    await expect(
+      viewer.getByRole('group', {
+        name: 'Removed line: status: draft',
+      }),
+    ).toBeVisible();
+    await expect(
+      viewer.getByRole('group', {
+        name: 'Added line: status: published',
+      }),
+    ).toBeVisible();
+
+    expect(
+      unifiedFrontMatterRemoved,
+      'unified front matter renders the removed old modified row',
+    ).toBeDefined();
+    expect(
+      unifiedFrontMatterAdded,
+      'unified front matter renders the added new modified row',
+    ).toBeDefined();
+    expect(
+      unifiedRows.indexOf(unifiedFrontMatterRemoved!),
+      'removed front matter row precedes added front matter row',
+    ).toBeLessThan(unifiedRows.indexOf(unifiedFrontMatterAdded!));
+
+    for (const row of [
+      unifiedBodyRemoved,
+      unifiedBodyAdded,
+      unifiedFrontMatterRemoved,
+      unifiedFrontMatterAdded,
+    ]) {
+      expect(row?.gutterWidth).toBe(24);
+      expect(row?.height).toBeGreaterThanOrEqual(24);
+    }
+
+    const firstChange = viewer
+      .locator('.diff-line-removed', {
+        hasText: 'The first version includes authentication, a dashboard, and export tools.',
+      })
+      .first();
+    const beforeSelection = requireBox(await firstChange.boundingBox(), 'first changed row');
+    await firstChange.click();
+    await expect(firstChange).toHaveAttribute('data-selected', 'true');
+    const afterSelection = requireBox(await firstChange.boundingBox(), 'selected changed row');
+    expect(Math.round(afterSelection.width)).toBe(Math.round(beforeSelection.width));
+    expect(Math.round(afterSelection.height)).toBe(Math.round(beforeSelection.height));
+
+    await page.keyboard.press(']');
+    await expect(viewer.locator('.diff-line[data-selected="true"]')).toHaveCount(2);
+
+    await viewer.getByRole('radio', { name: 'Final' }).click();
+    const finalText = await viewer.locator('.diff-content').textContent();
+    await expect(
+      viewer.getByRole('group', {
+        name: 'Modified line: status: published',
+      }),
+    ).toBeVisible();
+    expect(finalText).toContain('status: published');
+    expect(finalText).toContain(
+      'The first version includes authentication, a dashboard, and CSV export tools.',
+    );
+    expect(finalText).not.toContain('status: draft');
+    expect(finalText).not.toContain(
+      'The first version includes authentication, a dashboard, and export tools.',
+    );
+
+    await viewer.getByRole('radio', { name: 'Original' }).click();
+    const originalText = await viewer.locator('.diff-content').textContent();
+    await expect(
+      viewer.getByRole('group', {
+        name: 'Modified line: status: draft',
+      }),
+    ).toBeVisible();
+    expect(originalText).toContain('status: draft');
+    expect(originalText).toContain(
+      'The first version includes authentication, a dashboard, and export tools.',
+    );
+    expect(originalText).not.toContain('status: published');
+    expect(originalText).not.toContain(
+      'The first version includes authentication, a dashboard, and CSV export tools.',
+    );
+
+    const target = requireBox(await viewer.boundingBox(), 'diff viewer fixture');
+    await page.screenshot({
+      path: testInfo.outputPath('diff-viewer-rows-light.png'),
+      clip: {
+        x: Math.floor(target.x),
+        y: Math.floor(target.y),
+        width: Math.ceil(target.width),
+        height: Math.ceil(Math.min(target.height, 680)),
+      },
+    });
   });
 });
 

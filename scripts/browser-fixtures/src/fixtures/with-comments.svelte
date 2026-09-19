@@ -86,14 +86,14 @@ The editor should make source, rendered, and diff modes available without leavin
       id: 'thread-follow-up',
       createdAt: '2026-04-30T12:20:00.000Z',
       anchor: {
-        from: 254,
-        to: 263,
+        from: 133,
+        to: 140,
         quote: 'handoff',
-        prefix: 'collaborative editing and ',
-        suffix: '.\n\nFeedback',
+        prefix: 'the review workflow for collaborative editing and ',
+        suffix: '.\nFeedback\nComments should stay anchored when ne',
         status: 'anchored',
         originalQuote: 'handoff',
-        lastKnownOffset: 216,
+        lastKnownOffset: 131,
       },
       comments: [
         {

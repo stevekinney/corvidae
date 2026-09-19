@@ -22,7 +22,24 @@ type ComponentPage = {
     viewport: Viewport;
     fixtureName?: string;
     fixtureContentHash?: string;
+    onPage?: (page: import('@playwright/test').Page) => void | Promise<void>;
   }): Promise<import('@playwright/test').Page>;
+};
+type ToolbarControlBox = {
+  label: string;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+type ToolbarMetrics = {
+  toolbar: ToolbarControlBox;
+  controls: ToolbarControlBox[];
+  rows: ToolbarControlBox[][];
+  scrollWidth: number;
+  clientWidth: number;
 };
 
 function isLiveManifest(value: unknown): value is LiveManifest {
@@ -192,6 +209,385 @@ async function openAssertionFixture(
   });
   await page.setViewportSize({ width, height: 900 });
   return page;
+}
+
+const diffViewerEntry = allEntries.find((candidate) => candidate.slug === 'diff-viewer');
+expect(diffViewerEntry, 'diff-viewer must be present in the fixture manifest').toBeDefined();
+const desktopViewport = VIEWPORTS.find((viewport) => viewport.name === 'desktop');
+expect(desktopViewport, 'desktop viewport must be present').toBeDefined();
+
+async function diffToolbarMetrics(
+  page: import('@playwright/test').Page,
+  width: number,
+): Promise<ToolbarMetrics> {
+  const viewer = page.locator('.diff-viewer').first();
+  await expect(viewer).toHaveAttribute('data-ready', 'true');
+  await viewer.evaluate((element, inlineSize) => {
+    if (!(element instanceof HTMLElement)) throw new Error('Expected DiffViewer root.');
+    element.style.inlineSize = `${inlineSize}px`;
+    element.style.maxInlineSize = `${inlineSize}px`;
+  }, width);
+  return viewer.locator('.diff-toolbar').evaluate((element): ToolbarMetrics => {
+    if (!(element instanceof HTMLElement)) throw new Error('Expected toolbar element.');
+    const toolbarRect = element.getBoundingClientRect();
+    const toBox = (label: string, rect: DOMRect): ToolbarControlBox => ({
+      label,
+      left: Math.round(rect.left),
+      right: Math.round(rect.right),
+      top: Math.round(rect.top),
+      bottom: Math.round(rect.bottom),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    });
+    const controls = Array.from(
+      element.querySelectorAll<HTMLElement>('button, [role="radio"], .change-counter'),
+    )
+      .filter((control) => {
+        const rect = control.getBoundingClientRect();
+        const nestedControl = control.querySelector('button, [role="radio"], .change-counter');
+        return rect.width > 0 && rect.height > 0 && nestedControl === null;
+      })
+      .map((control) =>
+        toBox(
+          control.getAttribute('aria-label') ??
+            control.textContent?.replace(/\s+/g, ' ').trim() ??
+            '',
+          control.getBoundingClientRect(),
+        ),
+      );
+    const rows = controls.reduce<ToolbarControlBox[][]>((groups, control) => {
+      const group = groups.find((candidate) =>
+        candidate.some(
+          (member) => control.top <= member.bottom + 1 && control.bottom + 1 >= member.top,
+        ),
+      );
+      if (group === undefined) groups.push([control]);
+      else group.push(control);
+      return groups;
+    }, []);
+    return {
+      toolbar: toBox('toolbar', toolbarRect),
+      controls,
+      rows,
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+    };
+  });
+}
+
+async function expectTooltipText(
+  page: import('@playwright/test').Page,
+  trigger: import('@playwright/test').Locator,
+  text: string,
+) {
+  await trigger.hover();
+  await expect(page.getByRole('tooltip', { name: text })).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole('tooltip', { name: text })).toBeHidden();
+  await trigger.focus();
+  await expect(page.getByRole('tooltip', { name: text })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('tooltip', { name: text })).toBeHidden();
+}
+
+const DIFF_VIEWER_MODES = ['Unified', 'Final', 'Original'] as const;
+const DIFF_VIEWER_WIDTHS = [320, 512, 848] as const;
+const DIFF_VIEWER_EDITABLE_WIDTHS = [320, 848] as const;
+
+async function openDiffViewerFixturePage(
+  componentPage: ComponentPage,
+  theme: (typeof THEMES)[number],
+  editable: boolean,
+) {
+  const page = await componentPage.open({
+    entry: diffViewerEntry!,
+    theme,
+    viewport: desktopViewport!,
+    onPage: async (nextPage) => {
+      await nextPage.setViewportSize({ width: 1280, height: 720 });
+      await nextPage.addInitScript(() => {
+        const state = globalThis as typeof globalThis & {
+          __diffViewerActionCount?: number;
+          __diffViewerClipboardWrites?: string[];
+          __diffViewerRevertAllCount?: number;
+        };
+        state.__diffViewerActionCount = 0;
+        state.__diffViewerClipboardWrites = [];
+        state.__diffViewerRevertAllCount = 0;
+        Object.defineProperty(navigator, 'clipboard', {
+          configurable: true,
+          value: {
+            writeText(text: string) {
+              state.__diffViewerClipboardWrites?.push(text);
+              return Promise.resolve();
+            },
+          },
+        });
+      });
+    },
+  });
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  if (editable) {
+    await page.goto(`${diffViewerEntry!.route}?snapshot=1&editable=1`, { waitUntil: 'load' });
+    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.evaluate(
+      'const active = document.activeElement; if (active && typeof active.blur === "function") active.blur();',
+    );
+  }
+  return page;
+}
+
+function assertToolbarGeometry(metrics: ToolbarMetrics, label: string) {
+  expect(metrics.scrollWidth, `${label}: toolbar clips`).toBeLessThanOrEqual(
+    metrics.clientWidth + 1,
+  );
+  for (const control of metrics.controls) {
+    expect(control.width, `${label}: ${control.label} has width`).toBeGreaterThan(0);
+    expect(control.height, `${label}: ${control.label} has height`).toBeGreaterThan(0);
+    expect(control.left, `${label}: ${control.label} starts inside toolbar`).toBeGreaterThanOrEqual(
+      metrics.toolbar.left - 1,
+    );
+    expect(control.right, `${label}: ${control.label} ends inside toolbar`).toBeLessThanOrEqual(
+      metrics.toolbar.right + 1,
+    );
+    expect(
+      control.top,
+      `${label}: ${control.label} starts vertically inside toolbar`,
+    ).toBeGreaterThanOrEqual(metrics.toolbar.top - 1);
+    expect(
+      control.bottom,
+      `${label}: ${control.label} ends vertically inside toolbar`,
+    ).toBeLessThanOrEqual(metrics.toolbar.bottom + 1);
+  }
+  for (const row of metrics.rows) {
+    const rowTop = Math.min(...row.map((control) => control.top));
+    const rowBottom = Math.max(...row.map((control) => control.bottom));
+    const rowCenter = (rowTop + rowBottom) / 2;
+    for (const control of row) {
+      const controlCenter = (control.top + control.bottom) / 2;
+      expect(
+        Math.abs(controlCenter - rowCenter),
+        `${label}: ${control.label} center aligns with its toolbar row`,
+      ).toBeLessThanOrEqual(2);
+    }
+  }
+  for (let outerIndex = 0; outerIndex < metrics.controls.length; outerIndex += 1) {
+    for (let innerIndex = outerIndex + 1; innerIndex < metrics.controls.length; innerIndex += 1) {
+      const first = metrics.controls[outerIndex]!;
+      const second = metrics.controls[innerIndex]!;
+      const separatedHorizontally =
+        first.right <= second.left + 1 || second.right <= first.left + 1;
+      const separatedVertically = first.bottom <= second.top + 1 || second.bottom <= first.top + 1;
+      expect(
+        separatedHorizontally || separatedVertically,
+        `${label}: ${first.label} overlaps ${second.label}`,
+      ).toBe(true);
+    }
+  }
+}
+
+async function expectDiffRow(
+  row: import('@playwright/test').Locator,
+  expectedGutter: string,
+  label: string,
+) {
+  await expect(row, `${label}: row is visible`).toBeVisible();
+  await expect(row.locator('.diff-gutter'), `${label}: gutter symbol`).toHaveText(expectedGutter);
+  const gutterWidth = await row
+    .locator('.diff-gutter')
+    .evaluate((element) => Math.round(element.getBoundingClientRect().width));
+  expect(gutterWidth, `${label}: gutter width`).toBe(24);
+}
+
+async function expectDiffRowsForMode(
+  viewer: import('@playwright/test').Locator,
+  mode: (typeof DIFF_VIEWER_MODES)[number],
+  label: string,
+) {
+  const oldBody = 'The first version includes authentication, a dashboard, and export tools.';
+  const newBody = 'The first version includes authentication, a dashboard, and CSV export tools.';
+  const selectedBodyRow =
+    mode === 'Unified'
+      ? viewer.getByRole('button', { name: `Removed line: ${oldBody}` })
+      : mode === 'Final'
+        ? viewer.getByRole('button', { name: `Modified line: ${newBody}` })
+        : viewer.getByRole('button', { name: `Modified line: ${oldBody}` });
+
+  if (mode === 'Unified') {
+    await expectDiffRow(selectedBodyRow, '-', `${label}: unified removed body row`);
+    await expectDiffRow(
+      viewer.getByRole('button', { name: `Added line: ${newBody}` }),
+      '+',
+      `${label}: unified added body row`,
+    );
+    await expectDiffRow(
+      viewer.getByRole('group', { name: 'Removed line: status: draft' }),
+      '-',
+      `${label}: unified removed front matter row`,
+    );
+    await expectDiffRow(
+      viewer.getByRole('group', { name: 'Added line: status: published' }),
+      '+',
+      `${label}: unified added front matter row`,
+    );
+  } else if (mode === 'Final') {
+    await expectDiffRow(selectedBodyRow, '+', `${label}: final body row`);
+    await expectDiffRow(
+      viewer.getByRole('group', { name: 'Modified line: status: published' }),
+      '+',
+      `${label}: final front matter row`,
+    );
+  } else {
+    await expectDiffRow(selectedBodyRow, '-', `${label}: original body row`);
+    await expectDiffRow(
+      viewer.getByRole('group', { name: 'Modified line: status: draft' }),
+      '-',
+      `${label}: original front matter row`,
+    );
+  }
+
+  const beforeSelection = await selectedBodyRow.boundingBox();
+  if (beforeSelection === null) throw new Error(`${label}: selected body row has no box.`);
+  await selectedBodyRow.click();
+  await expect(selectedBodyRow).toHaveAttribute('data-selected', 'true');
+  const afterSelection = await selectedBodyRow.boundingBox();
+  if (afterSelection === null) throw new Error(`${label}: selected body row lost its box.`);
+  expect(Math.round(afterSelection.width), `${label}: selection keeps row width`).toBe(
+    Math.round(beforeSelection.width),
+  );
+  expect(Math.round(afterSelection.height), `${label}: selection keeps row height`).toBe(
+    Math.round(beforeSelection.height),
+  );
+}
+
+function expectedChangeCount(mode: (typeof DIFF_VIEWER_MODES)[number]): number {
+  return mode === 'Original' ? 3 : 4;
+}
+
+for (const theme of THEMES) {
+  for (const width of DIFF_VIEWER_WIDTHS) {
+    for (const mode of DIFF_VIEWER_MODES) {
+      test(`DiffViewer toolbar geometry readonly ${theme}-${width}-${mode}`, async ({
+        componentPage,
+      }, testInfo) => {
+        const page = await openDiffViewerFixturePage(componentPage, theme, false);
+        const viewer = page.locator('.diff-viewer').first();
+        await expect(viewer).toBeVisible();
+        await viewer.getByRole('radio', { name: mode }).click();
+
+        const label = `${theme}-${width}-${mode}-readonly`;
+        const metrics = await diffToolbarMetrics(page, width);
+        assertToolbarGeometry(metrics, label);
+        await expectDiffRowsForMode(viewer, mode, label);
+
+        await expect(viewer.locator('.nav-kbd')).toHaveCount(0);
+        const copyButton = viewer.getByRole('button', { name: 'Copy unified diff' });
+        const previousButton = viewer.getByRole('button', { name: 'Previous change ([)' });
+        const nextButton = viewer.getByRole('button', { name: 'Next change (])' });
+        await expect(copyButton).toBeVisible();
+        await expectTooltipText(page, copyButton, 'Copy unified diff');
+        await expectTooltipText(page, previousButton, 'Previous change ([)');
+        await expectTooltipText(page, nextButton, 'Next change (])');
+
+        const total = expectedChangeCount(mode);
+        const counter = viewer.locator('.change-counter');
+        await expect(counter).toHaveText(`1 / ${total}`);
+        await previousButton.click();
+        await expect(counter).toHaveText(`${total} / ${total}`);
+        await nextButton.click();
+        await expect(counter).toHaveText(`1 / ${total}`);
+        await nextButton.click();
+        await expect(counter).toHaveText(`2 / ${total}`);
+        await viewer.press(']');
+        await expect(counter).toHaveText(`3 / ${total}`);
+        await previousButton.click();
+        await expect(counter).toHaveText(`2 / ${total}`);
+        await viewer.press('[');
+        await expect(counter).toHaveText(`1 / ${total}`);
+        await copyButton.click();
+        await expect(viewer.getByText('Unified diff copied.')).toHaveCount(1);
+        await expect(
+          viewer.locator('.diff-toolbar button', { hasText: /^Copy diff$/ }),
+          `${label}: copy control is icon-only`,
+        ).toHaveCount(0);
+
+        const writes = await page.evaluate(() => {
+          const state = globalThis as typeof globalThis & {
+            __diffViewerClipboardWrites?: string[];
+          };
+          return state.__diffViewerClipboardWrites ?? [];
+        });
+        expect(writes).toHaveLength(1);
+        expect(writes[0]).toContain('--- a/document.md');
+        expect(writes[0]).toContain('+++ b/document.md');
+        expect(writes[0]).toContain('-status: draft');
+        expect(writes[0]).toContain('+status: published');
+        expect(writes[0]).toContain(
+          '-The first version includes authentication, a dashboard, and export tools.',
+        );
+        expect(writes[0]).toContain(
+          '+The first version includes authentication, a dashboard, and CSV export tools.',
+        );
+
+        await page.screenshot({
+          path: testInfo.outputPath(
+            `diff-viewer-toolbar-${theme}-${width}-${mode.toLowerCase()}-readonly.png`,
+          ),
+          fullPage: true,
+        });
+      });
+    }
+  }
+}
+
+for (const theme of THEMES) {
+  for (const width of DIFF_VIEWER_EDITABLE_WIDTHS) {
+    test(`DiffViewer toolbar geometry editable actions ${theme}-${width}`, async ({
+      componentPage,
+    }, testInfo) => {
+      const page = await openDiffViewerFixturePage(componentPage, theme, true);
+      const viewer = page.locator('.diff-viewer').first();
+      await expect(viewer).toBeVisible();
+      await viewer.getByRole('radio', { name: 'Unified' }).click();
+
+      const label = `${theme}-${width}-Unified-editable`;
+      const metrics = await diffToolbarMetrics(page, width);
+      assertToolbarGeometry(metrics, label);
+      const labels = metrics.controls.map((control) => control.label);
+      expect(
+        labels.indexOf('Mark reviewed'),
+        `${label}: custom action precedes revert`,
+      ).toBeLessThan(labels.indexOf('Revert All'));
+      expect(labels.indexOf('Revert All'), `${label}: revert precedes copy`).toBeLessThan(
+        labels.indexOf('Copy unified diff'),
+      );
+      expect(
+        labels.indexOf('Copy unified diff'),
+        `${label}: copy precedes navigation`,
+      ).toBeLessThan(labels.indexOf('Previous change ([)'));
+
+      await expectDiffRowsForMode(viewer, 'Unified', label);
+      await viewer.getByRole('button', { name: 'Mark reviewed' }).click();
+      await viewer.getByRole('button', { name: 'Revert All' }).click();
+      const callbackCounts = await page.evaluate(() => {
+        const state = globalThis as typeof globalThis & {
+          __diffViewerActionCount?: number;
+          __diffViewerRevertAllCount?: number;
+        };
+        return {
+          action: state.__diffViewerActionCount ?? 0,
+          revertAll: state.__diffViewerRevertAllCount ?? 0,
+        };
+      });
+      expect(callbackCounts).toEqual({ action: 1, revertAll: 1 });
+
+      await page.screenshot({
+        path: testInfo.outputPath(`diff-viewer-toolbar-${theme}-${width}-editable-actions.png`),
+        fullPage: true,
+      });
+    });
+  }
 }
 
 for (const theme of THEMES) {

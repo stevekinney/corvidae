@@ -57,6 +57,12 @@ function isExampleSet(value: unknown): value is ExampleSet {
   );
 }
 
+const sharedCommentsFixtureSource = await Bun.file(
+  new URL(
+    '../../../../../../scripts/browser-fixtures/src/fixtures/with-comments.svelte',
+    import.meta.url,
+  ).pathname,
+).text();
 const parsedExampleSet: unknown = await Bun.file(here('review-editor.examples.json')).json();
 if (!isExampleSet(parsedExampleSet)) throw new Error('Invalid review editor examples');
 const exampleSet = parsedExampleSet;
@@ -352,15 +358,26 @@ describe('the shipped examples seed anchors in the documented coordinate space',
    * in sync with the playground source, and re-derives the arithmetic against a
    * real ProseMirror document.
    */
-  for (const example of exampleSet.examples) {
-    const anchorBlocks = [...example.code.matchAll(/anchor: \{([\s\S]*?)\n {6}\},/g)].map(
+  const sources = [
+    ...exampleSet.examples.map((example) => ({
+      id: example.id,
+      code: example.code,
+    })),
+    {
+      id: 'shared-with-comments-fixture',
+      code: sharedCommentsFixtureSource,
+    },
+  ];
+
+  for (const source of sources) {
+    const anchorBlocks = [...source.code.matchAll(/anchor: \{([\s\S]*?)\n {6}\},/g)].map(
       (match) => match[1]!,
     );
     const textAnchors = anchorBlocks.filter((block) => !block.includes("type: 'document'"));
     if (textAnchors.length === 0) continue;
 
-    test(`${example.id} anchors resolve to their quotes`, async () => {
-      const valueMatch = example.code.match(/let value = \$state\(`([\s\S]*?)`\)/);
+    test(`${source.id} anchors resolve to their quotes`, async () => {
+      const valueMatch = source.code.match(/let value = \$state\(`([\s\S]*?)`\)/);
       expect(valueMatch).not.toBeNull();
       const { body, bodyOffset } = parseReviewEditorFrontMatter(valueMatch![1]!);
       const { doc, destroy } = await createDocFromMarkdown(body);
