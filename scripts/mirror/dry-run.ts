@@ -1,12 +1,10 @@
 import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
 
 import {
   createGitHubApi,
   installationTokenFromApp,
   userTokenFromEnvironmentOrCli,
   type CheckRunRecord,
-  type CommandRunner,
   type GitHubApi,
   type InstallationCoverage,
   type PullRequestRecord,
@@ -14,7 +12,8 @@ import {
 } from './github-api.ts';
 import { installationSettingsUrl, mirrorAppId, mirrorInstallationId } from './github-app.ts';
 import { mirrorTargets, type MirrorTarget } from './manifests.ts';
-import { runCommand, type CommandResult } from './packaging.ts';
+import { runCommand, type CommandResult, type CommandRunner } from './packaging.ts';
+import { proveNpmPublishDryRun, type PublishProbe } from './publish-rehearsal.ts';
 import {
   assertScratchName,
   assertScratchRepository,
@@ -151,6 +150,8 @@ export interface DryRunOptions {
   seedRemote?: string;
   /** A disposable working tree. */
   workDirectory: string;
+  /** Where the publish probe's tarball goes; outside the clone, so git never sees it. */
+  scratchDirectory: string;
   /** The corvidae commit recorded in the provenance trailer. */
   corvidaeCommit: string;
   scratchRepository?: string;
@@ -158,22 +159,28 @@ export interface DryRunOptions {
   keep?: boolean;
   /** Which published package the publish dry run uses; the first one by default. */
   packageName?: string;
+  /**
+   * The version the publish probe rehearses instead of the target's own.
+   *
+   * A released package cannot be published over, so a rehearsal of one is a rehearsal of its next
+   * version; see `publish-rehearsal.ts`. It is applied after the sync commit is pushed, so it
+   * never reaches the pull request this run opened.
+   */
+  version?: string;
   now?: Date;
   run?: CommandRunner;
   stage?: StageTransform;
+  /**
+   * How the publish is proven. Injectable for the same reason `stage` is: the tests in this file
+   * are about the order the driver puts the round trip in, and the probe builds, packs and lints
+   * a real package, which is `publish-rehearsal.test.ts`'s subject rather than this one's.
+   */
+  probe?: typeof proveNpmPublishDryRun;
   installArguments?: readonly string[];
   /** How many times the check runs are polled before the report takes what it has. */
   checkRunAttempts?: number;
   /** How the poll waits between attempts. */
   sleep?: (milliseconds: number) => Promise<void>;
-}
-
-export interface PublishProbe {
-  publicName: string;
-  version: string;
-  /** The argument vector, so the report says exactly what was proven. */
-  command: string;
-  exitCode: number;
 }
 
 export interface DryRunReport {
@@ -351,67 +358,6 @@ export async function transformAndOpenPullRequest(options: {
 }
 
 /**
- * Prove `npm publish --dry-run` against one package of the transformed tree.
- *
- * Two things this rehearsal has to get right, both established by running the command rather than
- * by reading about it. A prerelease version is refused outright unless a tag is named — npm exits
- * 1 with "You must specify a tag using --tag when publishing a prerelease version" — so the tag
- * is chosen here from the version rather than left to npm's default. And `--ignore-scripts`
- * matches what the packing check already does for the same reason: two packages declare a
- * `prepack` gate whose inputs the transform does not carry, and this command is being used to
- * inspect the tarball npm would build, not to rehearse the gate.
- *
- * The result is judged by exit code. The output carries ANSI escapes, so a grep for an error
- * string reports a false green against output that plainly contains errors.
- */
-export async function proveNpmPublishDryRun(options: {
-  run: CommandRunner;
-  workDirectory: string;
-  outcome: StageOutcome;
-  packageName?: string;
-}): Promise<PublishProbe> {
-  const published = options.outcome.plan.published.toSorted((left, right) =>
-    left.publicName.localeCompare(right.publicName),
-  );
-  const chosen = options.packageName
-    ? published.find((entry) => entry.publicName === options.packageName)
-    : published.at(0);
-  if (!chosen) {
-    throw new DryRunError(
-      options.packageName
-        ? `No published package named ${options.packageName} in this target; it publishes ${published.map((entry) => entry.publicName).join(', ')}`
-        : 'The transform planned no published package, so there is nothing to prove a publish against',
-    );
-  }
-  const packageDirectory = join(options.workDirectory, chosen.directory);
-  const manifest = (await Bun.file(join(packageDirectory, 'package.json')).json()) as {
-    version?: string;
-  };
-  const version = manifest.version ?? '';
-  const prerelease = version.includes('-');
-  const command = [
-    'npm',
-    'publish',
-    '--dry-run',
-    '--ignore-scripts',
-    '--tag',
-    prerelease ? 'next' : 'latest',
-  ];
-  const result = await options.run(command, { cwd: packageDirectory });
-  if (result.exitCode !== 0) {
-    throw new DryRunError(
-      `${chosen.publicName}: \`${command.join(' ')}\` exited ${result.exitCode}\n${result.stdout}${result.stderr}`,
-    );
-  }
-  return {
-    publicName: chosen.publicName,
-    version,
-    command: command.join(' '),
-    exitCode: result.exitCode,
-  };
-}
-
-/**
  * Wait for the target's CI to say something about the head commit.
  *
  * A pull request opened a second ago has no check runs yet, so reading once and reporting
@@ -478,11 +424,13 @@ export async function runDryRun(options: DryRunOptions): Promise<DryRunReport> {
     ...(options.checkRunAttempts === undefined ? {} : { attempts: options.checkRunAttempts }),
     ...(options.sleep ? { sleep: options.sleep } : {}),
   });
-  const publish = await proveNpmPublishDryRun({
+  const publish = await (options.probe ?? proveNpmPublishDryRun)({
     run,
     workDirectory: options.workDirectory,
     outcome: transformed.outcome,
+    scratchDirectory: options.scratchDirectory,
     ...(options.packageName ? { packageName: options.packageName } : {}),
+    ...(options.version ? { version: options.version } : {}),
   });
   if (options.keep !== true) await deleteScratchRepository(options.api, scratchRepository);
   return {
@@ -531,7 +479,7 @@ function describe(report: DryRunReport): string {
     `${report.scratchRepository}: pull request #${report.pullRequest.number} ${report.pullRequest.htmlUrl}`,
     `  branch ${report.branch} with ${report.changed} changed path(s)`,
     checks,
-    `  publish dry run: ${report.publish.publicName}@${report.publish.version} via \`${report.publish.command}\` exited ${report.publish.exitCode}`,
+    `  publish dry run: ${report.publish.publicName}@${report.publish.version} built (exit ${report.publish.buildExitCode}), linted by publint (exit ${report.publish.publintExitCode}) and attw (exit ${report.publish.typeResolutionExitCode}), then \`${report.publish.command}\` exited ${report.publish.exitCode} shipping ${report.publish.entries.length} file(s) covering ${report.publish.entryPoints.length} entry point(s)`,
     report.deleted
       ? `  scratch repository deleted`
       : `  scratch repository kept; remove it with --phase delete`,
@@ -573,17 +521,20 @@ export async function runDryRunCommand(
     }
     const seedRemote = readOption(argv, 'seed-remote');
     const packageName = readOption(argv, 'package');
+    const version = readOption(argv, 'version');
     const report = await runDryRun({
       api,
       corvidaeRoot:
         readOption(argv, 'corvidae-root') ?? new URL('../../', import.meta.url).pathname,
       target: target as MirrorTarget,
       workDirectory: required(argv, 'work'),
+      scratchDirectory: required(argv, 'scratch'),
       corvidaeCommit: required(argv, 'corvidae-commit'),
       scratchRepository,
       keep: argv.includes('--keep'),
       ...(seedRemote ? { seedRemote } : {}),
       ...(packageName ? { packageName } : {}),
+      ...(version ? { version } : {}),
     });
     process.stdout.write(`${describe(report)}\n`);
     return 0;

@@ -53,6 +53,17 @@ export async function runCommand(
   return { command: command.join(' '), exitCode, stdout, stderr };
 }
 
+/**
+ * How a command is run, so a caller can drive one without spawning a process.
+ *
+ * Declared next to `runCommand` rather than in whichever module first needed to inject one: the
+ * shape belongs to the runner, and three modules now take one.
+ */
+export type CommandRunner = (
+  command: readonly string[],
+  options: CommandOptions,
+) => Promise<CommandResult>;
+
 /** `PackagingError` naming the command and both streams, so a failure is diagnosable in one read. */
 export function assertSucceeded(result: CommandResult, context: string): void {
   if (result.exitCode === 0) return;
