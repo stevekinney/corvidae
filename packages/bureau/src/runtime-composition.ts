@@ -57,6 +57,7 @@ import {
   createOpenAIProvider,
   createOpenAIProviderStream,
   createOutputPIIValidator,
+  createPolicyEnforcementHook,
   createPromptInjectionDetector,
   createRequestHumanInputTool,
   createRoutingGenerate,
@@ -416,6 +417,46 @@ export function createSchedulerServiceRequestContext(
     // independent of scope or sessionId.
     ...(sessionId !== undefined ? { sessionId } : {}),
   } satisfies ToolRequestContext;
+}
+
+/**
+ * COR-1228 — makes an active skill's `allowed-tools` actually narrow the tool
+ * set the model sees.
+ *
+ * Two halves of a designed mechanism existed and were never connected:
+ * `SkillSession.getActiveToolPolicy()` produced the merged policy and had no
+ * consumer, and `@corvidae/operative`'s `createPolicyEnforcementHook` consumes
+ * exactly that shape through its `getActiveSkillToolPolicy` option and had no
+ * consumer either. This wires them together.
+ *
+ * Deliberately a FILTER, not a per-call gate. `@corvidae/armorer`'s own
+ * `PermissionGate` documentation draws the line: "a filter removes a tool from
+ * the array before the model ever sees it exists. A gate runs per call against
+ * the actual arguments the model chose." `ToolPolicy` is named there as the
+ * filter, so implementing it as one is faithful to the contract rather than
+ * inventing a stronger promise than the type makes. The per-call gate remains
+ * `createHeadlessPermissionPolicyHooks`, a complementary layer — the two
+ * compose, and this adds no second narrowing path.
+ *
+ * The policy is read live on each `tools()` call rather than captured, because
+ * the active skill set changes during a run as the model activates and
+ * deactivates skills. A proxy is used rather than rebuilding the toolbox so the
+ * emitter, approval wiring, and request context all survive untouched.
+ */
+function withActiveSkillToolPolicy(
+  toolbox: AnyToolbox,
+  getActiveSkillToolPolicy: () => ToolPolicy | undefined,
+): AnyToolbox {
+  const filterTools = createPolicyEnforcementHook({ getActiveSkillToolPolicy });
+
+  return new Proxy(toolbox, {
+    get(target, property, receiver) {
+      if (property === 'tools') {
+        return () => filterTools([...target.tools()]);
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
 }
 
 function withDefaultToolboxRequestContext(
@@ -2110,6 +2151,7 @@ export async function createRuntimeComposition(
     const onStep: OnStepHook[] = [];
     const validateResponse: ValidateResponseHook[] = [];
     let getActiveSkillEntries = (): ActiveSkillEntry[] => [];
+    let getActiveSkillToolPolicy: (() => ToolPolicy | undefined) | undefined;
 
     if (options.identity) {
       prepareStep.push(createIdentityHook(options.identity));
@@ -2187,6 +2229,8 @@ export async function createRuntimeComposition(
         }
       }
       getActiveSkillEntries = () => skillSession.getActiveEntries();
+      // COR-1228 — the live policy source for the tool filter applied below.
+      getActiveSkillToolPolicy = () => skillSession.getActiveToolPolicy();
 
       if (options.skills.includeTools !== false) {
         // Inject the skill catalog on step 0 — same hook pattern as identity.
@@ -2269,7 +2313,13 @@ export async function createRuntimeComposition(
     }
 
     const runToolbox = withDefaultToolboxRequestContext(
-      toolbox,
+      // COR-1228 — narrow by active-skill policy first, then apply the request
+      // context. Order matters only for readability here: both are proxies and
+      // neither observes the other, but filtering nearest the toolbox keeps the
+      // request-context wrapper the outermost thing a caller sees.
+      getActiveSkillToolPolicy
+        ? withActiveSkillToolPolicy(toolbox, getActiveSkillToolPolicy)
+        : toolbox,
       requestContext,
       () => requestAuthorityValidator,
       runtimeServices,

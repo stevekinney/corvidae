@@ -20922,3 +20922,135 @@ describe('skill lifecycle events reach the bureau emitter (COR-767)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// COR-1228 — an active skill's `allowed-tools` must actually narrow the tool
+// set the model sees. Before this, the field was parsed, merged and persisted
+// but consulted by nothing.
+// ---------------------------------------------------------------------------
+describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
+  function makeToolbox() {
+    return createToolbox([
+      createTool({
+        name: 'read_file',
+        description: 'Read a file',
+        input: z.object({}),
+        execute: () => Promise.resolve('read'),
+      }),
+      createTool({
+        name: 'delete_file',
+        description: 'Delete a file',
+        input: z.object({}),
+        execute: () => Promise.resolve('deleted'),
+      }),
+    ]) as unknown as Toolbox;
+  }
+
+  const narrowingProvider: SkillProvider = {
+    listSkills: async () => [{ name: 'reader', description: 'Read only' }],
+    loadSkill: async (name) =>
+      name === 'reader'
+        ? {
+            metadata: {
+              name: 'reader',
+              description: 'Read only',
+              toolPolicy: { allowList: ['read_file'] },
+            },
+            body: 'Read things.',
+          }
+        : undefined,
+    saveSkill: async () => {},
+    deleteSkill: async () => {},
+    listResources: async () => [],
+    loadResource: async () => undefined,
+    saveResource: async () => {},
+    isEnabled: async () => true,
+    setEnabled: async () => {},
+  };
+
+  it('hides a tool outside the active skill allow list, and restores it on deactivation', async () => {
+    // The filter reads the active policy live on each `tools()` call, so one
+    // step is enough: activate, observe, deactivate, observe.
+    let before: string[] = [];
+    let whileActive: string[] = [];
+    let afterDeactivate: string[] = [];
+
+    const bureau = await createBureau({
+      agents: {},
+      generate: async ({ toolbox }) => {
+        before = toolbox.tools().map((tool) => tool.name);
+
+        await toolbox.execute({ name: 'activate_skill', arguments: { name: 'reader' } });
+        whileActive = toolbox.tools().map((tool) => tool.name);
+
+        await toolbox.execute({ name: 'deactivate_skill', arguments: { name: 'reader' } });
+        afterDeactivate = toolbox.tools().map((tool) => tool.name);
+
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: makeToolbox(),
+      skills: { provider: narrowingProvider },
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    try {
+      await bureau.createRun({ message: 'narrow me' });
+      await pollUntil(() => afterDeactivate.length > 0);
+
+      // Nothing active: both domain tools visible.
+      expect(before).toContain('read_file');
+      expect(before).toContain('delete_file');
+
+      // `reader` allows only read_file, so delete_file disappears. This is the
+      // assertion that failed before COR-1228 — the policy was inert.
+      expect(whileActive).toContain('read_file');
+      expect(whileActive).not.toContain('delete_file');
+
+      // Narrowing lifts when the skill is deactivated.
+      expect(afterDeactivate).toContain('delete_file');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('cannot make a tool available that the run toolbox never had', async () => {
+    let visible: string[] = [];
+
+    const widenProvider: SkillProvider = {
+      ...narrowingProvider,
+      loadSkill: async () => ({
+        metadata: {
+          name: 'reader',
+          description: 'Tries to widen',
+          // Names a tool the run's toolbox does not contain.
+          toolPolicy: { allowList: ['read_file', 'launch_missiles'] },
+        },
+        body: 'Try to widen.',
+      }),
+    };
+
+    const bureau = await createBureau({
+      agents: {},
+      generate: async ({ toolbox }) => {
+        await toolbox.execute({ name: 'activate_skill', arguments: { name: 'reader' } });
+        visible = toolbox.tools().map((tool) => tool.name);
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: makeToolbox(),
+      skills: { provider: widenProvider },
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    try {
+      await bureau.createRun({ message: 'try to widen' });
+      await pollUntil(() => visible.length > 0);
+
+      // An allow list only ever narrows. A tool the owner never granted stays
+      // absent no matter what a skill asks for.
+      expect(visible).not.toContain('launch_missiles');
+      expect(visible).toContain('read_file');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
