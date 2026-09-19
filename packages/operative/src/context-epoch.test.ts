@@ -76,8 +76,10 @@ describe('sealContextEpoch', () => {
     const conversation = epoch.sources.find((source) => source.sourceId === 'conversation');
     expect(conversation?.trust).toBe('per-message');
     expect(conversation?.redaction).toBe('reference-only');
-    // The vector separates operator-authored from agent-authored turns.
-    expect(conversation?.digest).toBe('operator=1,agent=1,retrieved=0');
+    // The vector separates operator-authored from agent-authored turns,
+    // and carries an order digest so two transcripts with the same mix in
+    // a different arrangement do not look identical.
+    expect(conversation?.digest).toMatch(/^operator=1,agent=1,retrieved=0,order=[0-9a-f]{16}$/);
   });
 
   it('records the steering configVersion without redacting it', () => {
@@ -308,5 +310,32 @@ describe('provider-retry mutation (COR-581 gap closure)', () => {
 
     expect(sealed).toEqual([]);
     expect(calls).toBe(2);
+  });
+});
+
+describe('conversation source digest ordering', () => {
+  it('distinguishes two transcripts with the same tier mix in a different order', () => {
+    // Counts alone reported these as identical, which is weaker evidence
+    // than a `reference-only` source's digest is supposed to carry.
+    const userFirst = sealContextEpoch({
+      epochId: 'a',
+      conversation: conversationWith([
+        ['user', 'one'],
+        ['assistant', 'two'],
+      ]),
+      consumer: CONSUMER,
+    });
+    const assistantFirst = sealContextEpoch({
+      epochId: 'b',
+      conversation: conversationWith([
+        ['assistant', 'two'],
+        ['user', 'one'],
+      ]),
+      consumer: CONSUMER,
+    });
+
+    const digestOf = (epoch: typeof userFirst) =>
+      epoch.sources.find((source) => source.sourceId === 'conversation')?.digest;
+    expect(digestOf(userFirst)).not.toBe(digestOf(assistantFirst));
   });
 });
