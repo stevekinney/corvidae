@@ -34,13 +34,19 @@ if (privateHarnessFixture === undefined || privateHistoryPrependStressFixture ==
 /** Opens /page/chat and returns a Locator scoped to the harness mount. */
 async function openHarness(
   browser: Browser,
-  options?: { reducedMotion?: 'reduce' | 'no-preference' },
+  options?: {
+    reducedMotion?: 'reduce' | 'no-preference';
+    colorScheme?: 'dark' | 'light';
+    viewport?: { width: number; height: number };
+    hasTouch?: boolean;
+  },
 ): Promise<{ page: Page; harness: Locator; dispose: () => Promise<void> }> {
   const context = await browser.newContext({
     baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
-    colorScheme: 'dark',
+    colorScheme: options?.colorScheme ?? 'dark',
     reducedMotion: options?.reducedMotion ?? 'reduce',
-    viewport: { width: 1280, height: 900 },
+    viewport: options?.viewport ?? { width: 1280, height: 900 },
+    hasTouch: options?.hasTouch ?? false,
   });
   // A failure below (bad route, load regression, the harness never becoming
   // visible) would otherwise leak this context: nothing else here closes a
@@ -1268,6 +1274,151 @@ test.describe('chat harness — composer help', () => {
       await expect(page.getByRole('tooltip')).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(page.getByRole('tooltip')).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+});
+
+test.describe('chat harness — composer acceptance matrix', () => {
+  const wideImage =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="400"><rect width="1600" height="400" fill="navy"/></svg>';
+  const tallImage =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="1600"><rect width="400" height="1600" fill="teal"/></svg>';
+
+  test('bounds known-wide, known-tall, and missing-ratio images at 320px', async ({ browser }) => {
+    const { harness, dispose } = await openHarness(browser, {
+      viewport: { width: 320, height: 900 },
+    });
+    try {
+      const chat = harness.locator('#harness-chat');
+      const fileInput = chat.locator('input[type="file"]');
+      await fileInput.setInputFiles([
+        { name: 'wide.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(wideImage) },
+        { name: 'tall.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(tallImage) },
+        {
+          name: 'missing-ratio.png',
+          mimeType: 'image/png',
+          buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+        },
+      ]);
+      await expect(chat.locator('.chat-input-send')).toBeEnabled();
+      await chat.locator('.chat-input-send').click();
+      const attachments = harness.locator('[data-role="user"] .message-attachments').last();
+      await expect(attachments).toHaveAttribute('data-count', '3');
+      const figures = attachments.locator('.message-attachment');
+      await expect(figures).toHaveCount(3);
+      for (let index = 0; index < 3; index += 1) {
+        const box = await figures.nth(index).boundingBox();
+        expect(box, `attachment ${index + 1} must have a rendered box`).not.toBeNull();
+        expect(box?.width).toBeLessThanOrEqual(288);
+        expect(box?.height).toBeLessThanOrEqual(384);
+      }
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('keeps maximize pointer and keyboard activation available', async ({ browser }) => {
+    const { harness, page, dispose } = await openHarness(browser);
+    try {
+      const chat = harness.locator('#harness-chat');
+      await chat.locator('input[type="file"]').setInputFiles({
+        name: 'maximize.svg',
+        mimeType: 'image/svg+xml',
+        buffer: Buffer.from(wideImage),
+      });
+      await chat.locator('.chat-input-send').click();
+      const maximize = harness.locator('.message-attachment-button').last();
+      const box = await maximize.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box?.width).toBeGreaterThanOrEqual(44);
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+      await maximize.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await maximize.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await maximize.focus();
+      await page.keyboard.press('Space');
+      await expect(page.getByRole('dialog')).toBeVisible();
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('blocks pending attachments and gives the disabled trigger full tooltip context', async ({
+    browser,
+  }) => {
+    const { harness, page, dispose } = await openHarness(browser);
+    try {
+      const chat = harness.locator('#harness-chat');
+      await page.evaluate(() => {
+        const input = document.querySelector('#harness-chat input[type="file"]');
+        if (!(input instanceof HTMLInputElement)) throw new Error('file input missing');
+        const file = new File(['pending'], 'pending.ts', { type: 'text/typescript' });
+        Object.defineProperty(file, 'text', { value: () => new Promise<string>(() => {}) });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const send = chat.locator('.chat-input-send');
+      await expect(send).toBeDisabled();
+      await send.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Wait for attachments');
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+
+  for (const width of [320, 512, 848]) {
+    test(`centers footer controls at ${width}px in dark reduced-motion mode`, async ({
+      browser,
+    }) => {
+      const { harness, dispose } = await openHarness(browser, {
+        viewport: { width, height: 900 },
+        reducedMotion: 'reduce',
+      });
+      try {
+        const footer = harness.locator('#harness-chat .chat-input-footer');
+        const left = await footer.locator('.chat-input-footer-left').boundingBox();
+        const right = await footer.locator('.chat-input-footer-right').boundingBox();
+        expect(left).not.toBeNull();
+        expect(right).not.toBeNull();
+        expect(
+          Math.abs(
+            (left?.y ?? 0) + (left?.height ?? 0) / 2 - ((right?.y ?? 0) + (right?.height ?? 0) / 2),
+          ),
+        ).toBeLessThanOrEqual(1);
+        await harness.screenshot({
+          path: `/Users/stevekinney/.codex/artifacts/chef-corvidae-ui-01a0b754-7538-7491-8f63-3a00c2a66ed0/chat-composer-dark-${width}.png`,
+        });
+      } finally {
+        await dispose();
+      }
+    });
+  }
+
+  test('keeps footer centered in light no-preference mode without browser diagnostics', async ({
+    browser,
+  }) => {
+    const { harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      reducedMotion: 'no-preference',
+      viewport: { width: 320, height: 900 },
+    });
+    try {
+      const footer = harness.locator('#harness-chat .chat-input-footer');
+      await expect(footer).toBeVisible();
+      await harness.screenshot({
+        path: '/Users/stevekinney/.codex/artifacts/chef-corvidae-ui-01a0b754-7538-7491-8f63-3a00c2a66ed0/chat-composer-light-320.png',
+      });
     } finally {
       await dispose();
     }
