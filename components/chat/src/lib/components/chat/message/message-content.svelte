@@ -95,6 +95,7 @@
 
   // The raw tail text during streaming (displayed with pre-wrap + cursor)
   const streamingTail = $derived(streaming ? (streamingSplit?.tail ?? '') : '');
+  const hasStreamingProgress = $derived(streaming && effectiveContent.trim().length > 0);
 
   // Whether truncation is active (used by parent to show ellipsis indicator)
   const isTruncated = $derived(!streaming && !expanded && effectiveContent.length > threshold);
@@ -110,7 +111,7 @@
   {#if streaming && streamingTail}
     <span class="message-content-tail">{streamingTail}</span>
   {/if}
-  {#if streaming}
+  {#if hasStreamingProgress}
     <span class="chat-message-streaming-progress" aria-hidden="true">
       <span class="chat-message-streaming-dot"></span>
       <span class="chat-message-streaming-dot"></span>

@@ -42,7 +42,7 @@ function conversation(messages: Message[]): ConversationHistory {
 describe('useChatTranscript live inputs', () => {
   test('reacts to conversation, unread, typing, grouping, and reasoning changes', async () => {
     const fixture = createTranscriptFixture(
-      conversation([message('first', 'assistant', { streaming: true })]),
+      conversation([{ ...message('first', 'assistant', { streaming: true }), content: '' }]),
     );
     const { transcript } = fixture;
 
@@ -88,18 +88,78 @@ describe('useChatTranscript live inputs', () => {
     ).toBe(true);
 
     fixture.setReasoning(undefined);
-    fixture.setConversation(conversation([message('first', 'assistant', { streaming: true })]));
+    fixture.setConversation(
+      conversation([{ ...message('first', 'assistant', { streaming: true }), content: '' }]),
+    );
     fixture.setStreamingMessageId(null);
     await tick();
     expect(transcript.reasoningStreaming).toBe(false);
     expect(transcript.showTypingIndicator).toBe(true);
 
     fixture.setStreamingMessageId('first');
+    fixture.setStreamingContent('first token');
     fixture.setConversation(conversation([message('first'), message('second')]));
     fixture.setUngroupAllToolCalls(true);
     await tick();
 
     expect(transcript.messages).toHaveLength(2);
     expect(transcript.showTypingIndicator).toBe(false);
+  });
+
+  test('keeps the separate typing row when streaming starts before an assistant row exists', async () => {
+    const fixture = createTranscriptFixture(conversation([message('user-first', 'user')]));
+    const { transcript } = fixture;
+
+    fixture.setStreaming(true);
+    await tick();
+
+    expect(transcript.showTypingIndicator).toBe(true);
+    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
+  });
+
+  test('keeps the separate typing row after beginStreaming reserves a row before content arrives', async () => {
+    const fixture = createTranscriptFixture(
+      conversation([{ ...message('first', 'assistant', { streaming: true }), content: '' }]),
+    );
+    const { transcript } = fixture;
+
+    fixture.setStreaming(true);
+    fixture.setStreamingMessageId('first');
+    await tick();
+
+    expect(transcript.showTypingIndicator).toBe(true);
+    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
+
+    fixture.setStreamingContent('first token');
+    await tick();
+
+    expect(transcript.showTypingIndicator).toBe(false);
+    expect(transcript.renderRows.map((item) => item.type)).not.toContain('typing');
+  });
+
+  test('keeps content-driven streaming typing until the active message has text', async () => {
+    const fixture = createTranscriptFixture(
+      conversation([{ ...message('first', 'assistant', { streaming: true }), content: '' }]),
+    );
+    const { transcript } = fixture;
+
+    fixture.setStreaming(true);
+    await tick();
+
+    expect(transcript.showTypingIndicator).toBe(true);
+    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
+
+    fixture.setConversation(
+      conversation([
+        {
+          ...message('first', 'assistant', { streaming: true }),
+          content: 'first token',
+        },
+      ]),
+    );
+    await tick();
+
+    expect(transcript.showTypingIndicator).toBe(false);
+    expect(transcript.renderRows.map((item) => item.type)).not.toContain('typing');
   });
 });

@@ -21,6 +21,7 @@ import {
   type BrowserContextOptions,
   type Locator,
   type Page,
+  type TestInfo,
 } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { environmentConfiguration } from '../environment-configuration.ts';
@@ -130,6 +131,11 @@ async function trimmedLength(locator: Locator): Promise<number> {
   return text?.trim().length ?? 0;
 }
 
+async function messageBodyText(locator: Locator): Promise<string> {
+  const text = await locator.locator('.chat-message-body').textContent();
+  return text?.trim() ?? '';
+}
+
 const validPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
   'base64',
@@ -193,6 +199,28 @@ async function useHarnessAdapter(page: Page): Promise<void> {
   });
 }
 
+async function holdNextFirstStreamToken(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessHoldNextFirstStreamToken?: () => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessHoldNextFirstStreamToken === undefined) {
+      throw new Error('Chat harness first-token hold hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessHoldNextFirstStreamToken();
+  });
+}
+
+async function captureHarnessScreenshot(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+): Promise<void> {
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+}
+
 async function pushHarnessTypingSnapshot(
   page: Page,
   participants: Array<{ id: string; name: string }>,
@@ -225,6 +253,10 @@ async function setHarnessDirectTypingParticipants(
     }
     harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants(nextParticipants);
   }, participants);
+}
+
+async function computedOpacity(locator: Locator): Promise<number> {
+  return locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
 }
 
 async function renderedBox(locator: Locator, label: string) {
@@ -463,8 +495,11 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
         // The assistant message text grows across the deterministic cadence:
         // observe an intermediate partial that is non-empty but not yet final.
         const assistant = harness.locator('[data-role="assistant"]').last();
-        await expect.poll(() => trimmedLength(assistant), { timeout: 3_000 }).toBeGreaterThan(0);
-        const partialLength = await trimmedLength(assistant);
+        await expect.poll(() => messageBodyText(assistant), { timeout: 3_000 }).not.toBe('');
+        await expect(harness.locator('.chat-typing-indicator')).toHaveCount(0);
+        await expect(assistant.locator('.chat-message')).toHaveAttribute('aria-busy', 'true');
+        await expect(assistant.locator('.chat-message-streaming-progress')).toBeVisible();
+        const partialText = await messageBodyText(assistant);
 
         // Click Stop: it preserves the partial content and fires onstopgenerating.
         await stop.click();
@@ -472,8 +507,11 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
         await expect(harness.locator('.chat-input-send[data-stop]')).toHaveCount(0);
         // Exactly one assistant message remains (no stray blank/duplicate).
         await expect(harness.locator('[data-role="assistant"]')).toHaveCount(1);
-        const afterStopLength = await trimmedLength(assistant);
-        expect(afterStopLength).toBeGreaterThanOrEqual(partialLength);
+        const afterStopText = await messageBodyText(assistant);
+        expect(afterStopText.length).toBeGreaterThanOrEqual(partialText.length);
+        expect(partialText.startsWith(afterStopText) || afterStopText.startsWith(partialText)).toBe(
+          true,
+        );
       } finally {
         await dispose();
       }
@@ -482,10 +520,46 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
 }
 
 test.describe('chat harness — streaming presentation', () => {
+  test('beginStreaming keeps the separate typing indicator until the first non-empty token', async ({
+    browser,
+  }, testInfo) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      viewport: { width: 512, height: 900 },
+    });
+    try {
+      await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
+      await harness
+        .locator('#harness-stream-mechanism')
+        .getByText('Imperative', { exact: true })
+        .click();
+      await holdNextFirstStreamToken(page);
+      await harness.locator('[data-testid="send-reply"]').click();
+
+      const assistant = harness.locator('[data-role="assistant"]').last();
+      const message = assistant.locator('.chat-message');
+      const externalTyping = harness.locator('.chat-typing-indicator');
+      const progress = assistant.locator('.chat-message-streaming-progress');
+
+      await expect(externalTyping).toBeVisible();
+      await expect(message).not.toHaveAttribute('aria-busy', 'true');
+      await expect(progress).toHaveCount(0);
+      await captureHarnessScreenshot(page, testInfo, 'held-first-token-before');
+
+      await expect.poll(() => trimmedLength(assistant), { timeout: 3_000 }).toBeGreaterThan(0);
+      await expect(externalTyping).toHaveCount(0);
+      await expect(message).toHaveAttribute('aria-busy', 'true');
+      await expect(progress).toBeVisible();
+      await captureHarnessScreenshot(page, testInfo, 'held-first-token-after');
+    } finally {
+      await dispose();
+    }
+  });
+
   for (const width of [320, 512, 848] as const) {
     test(`partial streaming uses one stable in-message progress surface at ${width}px`, async ({
       browser,
-    }) => {
+    }, testInfo) => {
       const { page, harness, dispose } = await openHarness(browser, {
         colorScheme: width === 512 ? 'dark' : 'light',
         viewport: { width, height: 1100 },
@@ -509,6 +583,7 @@ test.describe('chat harness — streaming presentation', () => {
         const progress = assistant.locator('.chat-message-streaming-progress');
         await expect(progress).toBeVisible();
         await expect(progress).toHaveAttribute('aria-hidden', 'true');
+        await captureHarnessScreenshot(page, testInfo, `streaming-progress-${width}`);
         const partialBox = await renderedBox(message, 'streaming assistant message');
         const partialWidth = partialBox.width;
 
@@ -523,7 +598,7 @@ test.describe('chat harness — streaming presentation', () => {
         await expect
           .poll(() =>
             page.evaluate(() =>
-              Math.ceil(document.documentElement.scrollHeight - window.innerHeight),
+              Math.ceil(document.documentElement.scrollWidth - window.innerWidth),
             ),
           )
           .toBeLessThanOrEqual(1);
@@ -697,12 +772,14 @@ test.describe('chat harness — snippets', () => {
 });
 
 test.describe('chat harness — message metadata', () => {
-  test('message metadata reveals timestamps without receipt overlap', async ({ browser }) => {
+  test('message metadata reveals timestamps without receipt overlap', async ({
+    browser,
+  }, testInfo) => {
     for (const { colorScheme, hasTouch } of [
       { colorScheme: 'light' as const, hasTouch: false },
       { colorScheme: 'dark' as const, hasTouch: true },
     ]) {
-      const { harness, dispose } = await openHarness(browser, {
+      const { page, harness, dispose } = await openHarness(browser, {
         colorScheme,
         hasTouch,
         locale: 'en-US',
@@ -723,10 +800,16 @@ test.describe('chat harness — message metadata', () => {
         await expect(receipt).toHaveAccessibleName('Read by Avery');
 
         if (!hasTouch) {
-          await expect(timestamp).not.toBeVisible();
+          await expect.poll(() => computedOpacity(timestamp)).toBe(0);
           await wrapper.locator('.chat-message').hover();
+          await expect.poll(() => computedOpacity(timestamp)).toBe(1);
+          await wrapper.locator('.chat-message').focus();
+          await expect.poll(() => computedOpacity(timestamp)).toBe(1);
+        } else {
+          await expect.poll(() => computedOpacity(timestamp)).toBe(1);
         }
         await expect(timestamp).toBeVisible();
+        await captureHarnessScreenshot(page, testInfo, `metadata-${colorScheme}`);
 
         const [messageBox, metadataBox, receiptBox, bodyBox] = await Promise.all([
           renderedBox(wrapper.locator('.chat-message'), 'metadata message bubble'),
@@ -820,30 +903,34 @@ test.describe('chat harness — copy, edit, retry', () => {
       const userMessage = harness.locator('[data-role="user"]').filter({
         hasText: 'Tell me about alpha.',
       });
-      await userMessage.locator('.chat-message').hover();
-      const edit = userMessage.getByRole('button', { name: 'Edit message' });
+      const userMessageId = await userMessage.locator('.chat-message').getAttribute('id');
+      expect(userMessageId).not.toBeNull();
+      const stableUserMessage = harness.locator(`#${userMessageId}`);
+      const stableUserWrapper = stableUserMessage.locator('xpath=..');
+      await stableUserMessage.hover();
+      const edit = stableUserWrapper.getByRole('button', { name: 'Edit message' });
       await expect(edit).toBeVisible();
       await edit.click();
 
-      await expect(userMessage.locator('.chat-message-edit-textarea')).toBeVisible();
-      await expect(userMessage.locator('.chat-message-copy')).toHaveCount(0);
-      await expect(userMessage.locator('.chat-message-edit-button')).toHaveCount(0);
+      await expect(stableUserMessage.locator('.chat-message-edit-textarea')).toBeVisible();
+      await expect(stableUserMessage.locator('.chat-message-copy')).toHaveCount(0);
+      await expect(stableUserMessage.locator('.chat-message-edit-button')).toHaveCount(0);
       const [textareaBox, bubbleBox] = await Promise.all([
-        renderedBox(userMessage.locator('.chat-message-edit-textarea'), 'edit textarea'),
-        renderedBox(userMessage.locator('.chat-message'), 'editing message bubble'),
+        renderedBox(stableUserMessage.locator('.chat-message-edit-textarea'), 'edit textarea'),
+        renderedBox(stableUserMessage, 'editing message bubble'),
       ]);
       expect(textareaBox.width).toBeGreaterThanOrEqual(bubbleBox.width - 32);
 
       for (const button of [
-        userMessage.getByRole('button', { name: 'Save' }),
-        userMessage.getByRole('button', { name: 'Cancel' }),
+        stableUserMessage.getByRole('button', { name: 'Save' }),
+        stableUserMessage.getByRole('button', { name: 'Cancel' }),
       ]) {
         await expect(button).toBeVisible();
         const buttonBox = await renderedBox(button, 'edit action');
         expect(buttonBox.height).toBeLessThanOrEqual(36);
       }
       await page.keyboard.press('Escape');
-      await expect(userMessage.locator('.chat-message-edit-textarea')).toHaveCount(0);
+      await expect(stableUserMessage.locator('.chat-message-edit-textarea')).toHaveCount(0);
     } finally {
       await dispose();
     }

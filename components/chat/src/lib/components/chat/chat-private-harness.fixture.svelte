@@ -126,6 +126,7 @@
   // chunk captures the token active when it was queued and bails if a newer op
   // has started — so an already-dequeued timer can't write into a fresh stream.
   let activeOperation = 0;
+  let holdNextFirstStreamToken = false;
 
   function later(callback: () => void, delay: number): void {
     const handle = setTimeout(() => {
@@ -272,9 +273,20 @@
       chat?.beginStreaming(messageId);
     }
     // Deterministic cadence: a fixed number of chunks at a fixed delay so an
-    // intermediate partial state is reliably observable before completion.
+    // intermediate partial state is reliably observable before completion. A
+    // one-shot test hook can hold the first chunk long enough to observe the
+    // post-beginStreaming, pre-first-token presentation state.
     const chunks = splitIntoChunks(trimmed, 5);
-    streamChunk(chunks, 0, activeOperation);
+    if (holdNextFirstStreamToken) {
+      later(() => releaseFirstStreamToken(chunks, activeOperation), 600);
+    } else {
+      streamChunk(chunks, 0, activeOperation);
+    }
+  }
+
+  function releaseFirstStreamToken(chunks: string[], operation: number): void {
+    holdNextFirstStreamToken = false;
+    streamChunk(chunks, 0, operation);
   }
 
   function streamChunk(chunks: string[], index: number, operation: number): void {
@@ -459,6 +471,7 @@
   type ChatHarnessWindow = Window & {
     corvidaeChatHarnessAppendImages?: (images: HarnessImageContent[]) => void;
     corvidaeChatHarnessUseAdapter?: () => void;
+    corvidaeChatHarnessHoldNextFirstStreamToken?: () => void;
     corvidaeChatHarnessPushTypingSnapshot?: (participants: TypingParticipant[]) => void;
     corvidaeChatHarnessSetDirectTypingParticipants?: (
       participants: TypingParticipant[] | undefined,
@@ -502,6 +515,9 @@
     harnessWindow.corvidaeChatHarnessUseAdapter = () => {
       adapterEnabled = true;
     };
+    harnessWindow.corvidaeChatHarnessHoldNextFirstStreamToken = () => {
+      holdNextFirstStreamToken = true;
+    };
     harnessWindow.corvidaeChatHarnessPushTypingSnapshot = (participants) => {
       if (!adapterHandlers) throw new Error('Chat harness adapter is not subscribed.');
       adapterHandlers.onTypingChange(participants);
@@ -512,6 +528,7 @@
     return () => {
       delete harnessWindow.corvidaeChatHarnessAppendImages;
       delete harnessWindow.corvidaeChatHarnessUseAdapter;
+      delete harnessWindow.corvidaeChatHarnessHoldNextFirstStreamToken;
       delete harnessWindow.corvidaeChatHarnessPushTypingSnapshot;
       delete harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants;
     };
@@ -597,9 +614,6 @@
     historyEnabled ? { moreHistoryAvailable: true, onLoadHistory: handleLoadHistory } : {},
   );
   const readReceiptProps = $derived(readReceipts ? { readReceipts } : {});
-  const directTypingProps = $derived(
-    directTypingParticipants !== undefined ? { typingParticipants: directTypingParticipants } : {},
-  );
   const adapterProps = $derived(
     adapterEnabled
       ? {
@@ -830,7 +844,7 @@
       {...emptyPromptsProp}
       {...historyProps}
       {...readReceiptProps}
-      {...directTypingProps}
+      typingParticipants={directTypingParticipants}
       {...adapterProps}
       onsubmit={handleSubmit}
       onedit={handleEdit}

@@ -31,6 +31,7 @@
   import { classNames } from '../../../utilities/class-names.ts';
   import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import {
+    getMessageText,
     resolveMessageArtifact,
     resolveMessageReasoning,
     resolveMessageTranscriptEntries,
@@ -370,6 +371,7 @@
     getRollbackMessageId: () => rollbackMessageId,
     getStreaming: () => streaming,
     getStreamingMessageId: () => streamingState.messageId,
+    getStreamingContent: () => streamingState.content,
     getMessageReasoning: () => messageReasoning,
     getFirstUnreadId: () => unreadState.firstUnreadId,
     getUngroupAllToolCalls: () =>
@@ -1444,7 +1446,20 @@
         resolveMessageArtifact(message) ??
         (pairedResultMessage ? resolveMessageArtifact(pairedResultMessage) : undefined),
     }}
-    {@const isStreamingMessage = streamingState.messageId === message.id}
+    {@const isImperativeStreamingMessage = streamingState.messageId === message.id}
+    {@const isContentDrivenStreamingMessage =
+      streaming &&
+      streamingState.messageId === null &&
+      message.id === lastMessageId &&
+      message.role === 'assistant' &&
+      message.metadata['streaming'] === true &&
+      getMessageText(message).trim().length > 0}
+    {@const isPresentingStreamingMessage =
+      (isImperativeStreamingMessage && streamingState.content.trim().length > 0) ||
+      isContentDrivenStreamingMessage}
+    {@const streamingOverrideContent = isImperativeStreamingMessage
+      ? streamingState.content
+      : undefined}
     {@const isCurrentSearchMatch =
       searchState.isOpen &&
       searchState.currentMatch !== null &&
@@ -1482,8 +1497,8 @@
           (messageIndexById.get(message.id) ?? -1) >= rollbackBoundaryIndex}
         showDefaultActions={allowCopy}
         {onExpandedChange}
-        streaming={isStreamingMessage}
-        overrideContent={isStreamingMessage ? streamingState.content : undefined}
+        streaming={isPresentingStreamingMessage}
+        overrideContent={isPresentingStreamingMessage ? streamingOverrideContent : undefined}
         searchMatch={isCurrentSearchMatch}
         tabindex={-1}
         approvedToolCallIds={commandActions.approvedToolCallIds.size > 0

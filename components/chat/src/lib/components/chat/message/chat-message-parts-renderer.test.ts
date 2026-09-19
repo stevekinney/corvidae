@@ -442,12 +442,19 @@ describe('renderer — stable DOM identity', () => {
 
     const before = target.querySelector('.message-content')!;
     expect(before).not.toBeNull();
+    expect(target.querySelector('.chat-message-streaming-progress')).toBeNull();
     before.setAttribute('data-identity-probe', 'kept');
+
+    instance.setParts([
+      { type: 'markdown', key: 'm:body', content: 'He', streaming: true, expanded: true },
+    ]);
+    flushSync();
+    expect(target.querySelector('.chat-message-streaming-progress')).not.toBeNull();
 
     // Simulate token-by-token streaming: the body key is constant, only the
     // content grows. The markdown node must persist across every update (so a
     // mid-render rAF / focus / selection is never torn down).
-    for (const content of ['He', 'Hello', 'Hello wor', 'Hello world']) {
+    for (const content of ['Hello', 'Hello wor', 'Hello world']) {
       instance.setParts([
         { type: 'markdown', key: 'm:body', content, streaming: true, expanded: true },
       ]);
