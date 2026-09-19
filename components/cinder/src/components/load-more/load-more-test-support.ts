@@ -16,12 +16,14 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 
   readonly root: Element | null;
   readonly rootMargin: string;
+  readonly scrollMargin: string;
   readonly thresholds: readonly number[];
   private readonly record: ObserverRecord;
 
   constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
     this.root = options?.root instanceof Element ? options.root : null;
     this.rootMargin = options?.rootMargin ?? '';
+    this.scrollMargin = options?.scrollMargin ?? '';
     const threshold = options?.threshold ?? 0;
     this.thresholds = Array.isArray(threshold) ? threshold : [threshold];
     this.record = {

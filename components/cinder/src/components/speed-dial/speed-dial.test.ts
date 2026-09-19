@@ -792,7 +792,7 @@ describe('SpeedDial', () => {
       return selector === ':popover-open'
         ? this.dataset['testOpenPopover'] === 'true'
         : nativeMatches.call(this, selector);
-    });
+    } as HTMLElement['matches']);
 
     try {
       render(SpeedDialFixture, { target: innerPopover });

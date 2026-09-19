@@ -367,7 +367,8 @@ describe('Popover — portal and arrow', () => {
     const dialog = document.createElement('dialog');
     dialog.setAttribute('open', '');
     const nativeMatches = dialog.matches.bind(dialog);
-    dialog.matches = (selector: string) => selector === ':modal' || nativeMatches(selector);
+    dialog.matches = ((selector: string) =>
+      selector === ':modal' || nativeMatches(selector)) as Element['matches'];
     const triggerButton = document.createElement('button');
     triggerButton.type = 'button';
     dialog.append(triggerButton);
@@ -1152,7 +1153,8 @@ describe('Popover — floating-ui wiring', () => {
     const dialog = document.createElement('dialog');
     dialog.setAttribute('open', '');
     const nativeMatches = dialog.matches.bind(dialog);
-    dialog.matches = (selector: string) => selector === ':modal' || nativeMatches(selector);
+    dialog.matches = ((selector: string) =>
+      selector === ':modal' || nativeMatches(selector)) as Element['matches'];
     const triggerButton = document.createElement('button');
     triggerButton.type = 'button';
     dialog.append(triggerButton);

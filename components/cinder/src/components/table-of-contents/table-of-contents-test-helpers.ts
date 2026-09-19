@@ -18,6 +18,7 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 
   readonly root: Element | Document | null = null;
   readonly rootMargin = '';
+  readonly scrollMargin = '';
   readonly thresholds: readonly number[] = [];
 
   private readonly record: ObserverRecord;

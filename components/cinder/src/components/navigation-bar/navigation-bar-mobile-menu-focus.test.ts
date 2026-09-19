@@ -129,7 +129,8 @@ describe('NavigationBar', () => {
       const dialog = document.createElement('dialog');
       dialog.setAttribute('open', '');
       const nativeMatches = dialog.matches.bind(dialog);
-      dialog.matches = (selector: string) => selector === ':modal' || nativeMatches(selector);
+      dialog.matches = ((selector: string) =>
+        selector === ':modal' || nativeMatches(selector)) as Element['matches'];
       document.body.append(dialog);
       const { container } = render(NavigationBar, {
         items: keyboardNavigationSnippet({}),

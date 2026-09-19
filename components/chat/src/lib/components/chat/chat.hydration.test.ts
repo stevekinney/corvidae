@@ -41,6 +41,7 @@ class TestResizeObserver {
 class TestIntersectionObserver {
   readonly root: Element | null = null;
   readonly rootMargin = '';
+  readonly scrollMargin = '';
   readonly thresholds: readonly number[] = [];
 
   constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
