@@ -1,5 +1,7 @@
 # Documentation Index
 
+Start with the [Armorer README](../README.md) for the package boundary and the [runtime contracts guide](../../../documentation/runtime-contracts.md) for how tool execution, cleanup, steering, and provider selection fit together across Corvidae. The examples below focus on Armorer-specific APIs and assume the package is consumed through `@corvidae/armorer`.
+
 ## Core Guides
 
 - [Public API Reference](api-reference.md)

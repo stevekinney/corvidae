@@ -9,6 +9,7 @@ import {
 import { dispositionFor, type WorkspaceDisposition } from './package-map.ts';
 import type { EmittedWorkspace } from './source.ts';
 import {
+  keysFor,
   loadTargetOwnedPolicy,
   writeTransformOutput,
   type TargetOwnedPolicy,
@@ -38,10 +39,12 @@ import {
  *   `layout-map.json`. Corvidae's `components/chat` is cinder's `packages/chat`, so reusing
  *   corvidae's directory would write a second tree beside the target's real one.
  *
- * Versions are never authored here. `target-owned.json` enumerates the manifest keys a target
- * owns but deliberately leaves them unenforced, because a whole-file write guard cannot express
- * "preserve this key inside a file you do write". `applyPreservedFields` closes that gap by
- * reading each enumerated JSON Pointer back out of the target's own manifest.
+ * None of that applies to a key the target already has an answer for. `composeManifest` is the
+ * rule for those, and COR-1223 inverted it: for a manifest the target already carries, the
+ * target's own copy is the base and only `target-owned.json`'s `insideFiles` keys are overlaid
+ * onto it. Versions were always handled this way; twenty-six scripts, thirteen devDependencies,
+ * every piece of package metadata and the classification of seven storage drivers were not, and a
+ * live dry run failed twelve of the weft repository's twenty checks because of it.
  */
 
 export type MirrorTarget = 'weft' | 'cinder';
@@ -301,6 +304,8 @@ function buildRootManifest(
   target: MirrorTarget,
   root: JsonObject,
   context: RewriteContext,
+  /** Whether the target already has a root manifest, and so already has its own answers. */
+  targetHasRoot: boolean,
 ): JsonObject {
   const definition = targetDefinitions[target];
   const emitted: JsonObject = {
@@ -308,8 +313,15 @@ function buildRootManifest(
     private: true,
     workspaces: [...definition.workspaces],
   };
-  for (const key of ['type', 'license', 'author', 'packageManager', 'engines', 'overrides']) {
-    if (key in root) emitted[key] = root[key];
+  // Root tooling, seeded from corvidae's root for a target that has no root manifest yet and
+  // left entirely alone for one that does. A root manifest is `private: true` and publishes
+  // nothing, so none of these describes an artifact corvidae's source produces: they are how one
+  // repository is set up. Weft pins `bun@1.4.0` here and in the `bun-version` its workflows
+  // install with, and corvidae's `bun@1.4.2` has no standing to move either.
+  if (!targetHasRoot) {
+    for (const key of ['type', 'license', 'author', 'packageManager', 'engines', 'overrides']) {
+      if (key in root) emitted[key] = root[key];
+    }
   }
   if (definition.catalog) {
     const catalog: Record<string, string> = { ...context.catalog };
@@ -325,69 +337,135 @@ function buildRootManifest(
   return emitted;
 }
 
-/** Read a JSON Pointer (RFC 6901) out of a parsed document. */
-export function readPointer(document: unknown, pointer: string): unknown {
-  let current = document;
-  for (const token of decodePointer(pointer)) {
-    if (!isJsonObject(current)) return undefined;
-    current = current[token];
-  }
-  return current;
-}
+/**
+ * The blocks whose entries say what the source needs installed, and which the dependency rule
+ * therefore composes entry by entry.
+ *
+ * `peerDependencies` is deliberately absent. A peer range is not a statement about what this
+ * package imports; it is half of a packaging declaration whose other half, `peerDependenciesMeta`,
+ * is target-owned outright. `target-owned.json` lists it under `manifestDefaults` instead, so the
+ * pair is preserved or supplied together and can never drift apart.
+ */
+const installedDependencyFields = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+] as const;
 
-/** Write a JSON Pointer, creating intermediate objects, or delete it when `value` is `undefined`. */
-export function writePointer(document: JsonObject, pointer: string, value: unknown): void {
-  const tokens = decodePointer(pointer);
-  const last = tokens.pop();
-  if (last === undefined) throw new ManifestTransformError('Cannot write the whole document');
-  let current = document;
-  for (const token of tokens) {
-    const next = current[token];
-    if (isJsonObject(next)) {
-      current = next;
-      continue;
-    }
-    if (value === undefined) return;
-    const created: JsonObject = {};
-    current[token] = created;
-    current = created;
-  }
-  if (value === undefined) delete current[last];
-  else current[last] = value;
-}
-
-function decodePointer(pointer: string): string[] {
-  if (pointer === '') return [];
-  if (!pointer.startsWith('/')) {
-    throw new ManifestTransformError(`"${pointer}" is not a JSON Pointer`);
-  }
-  return pointer
-    .slice(1)
-    .split('/')
-    .map((token) => token.replaceAll('~1', '/').replaceAll('~0', '~'));
+/** A manifest composed against the target's own, with whatever the composition had to add. */
+export interface ComposedManifest {
+  manifest: JsonObject;
+  /** Third-party packages the target declared nowhere, as `name (block)`. */
+  added: string[];
 }
 
 /**
- * Carry every enumerated target-owned key out of the target's own manifest and into the emitted
- * one, so a file the transform does write still leaves those keys exactly as the target had them.
+ * Compose one emitted manifest against the target's own.
  *
- * A key the target does not carry is removed from the emitted manifest rather than left at
- * corvidae's value, because "the target owns this key" and "the target chose not to set it" are
- * the same statement.
+ * For a manifest the target does not carry there is nothing to preserve and corvidae's is all
+ * there is. For one it does, the target's copy is the base: the transform overlays the keys
+ * `target-owned.json` says it owns, supplies the ones it only defaults, composes the dependency
+ * blocks by that file's rule, and leaves every other key — scripts, metadata, `lint-staged`,
+ * `peerDependenciesMeta`, the lot — exactly as the target had it.
+ *
+ * An owned key absent from the emitted manifest is removed rather than left at the target's value,
+ * because "the transform owns this key" and "corvidae's source does not have one" together say the
+ * key should not be there.
  */
-export function applyPreservedFields(
-  policy: TargetOwnedPolicy,
-  target: MirrorTarget,
-  file: string,
-  emitted: JsonObject,
-  existing: JsonObject | undefined,
-): void {
-  if (existing === undefined) return;
-  for (const entry of policy.fields.entries) {
-    if (entry.targets !== undefined && !entry.targets.includes(target)) continue;
-    if (!new Bun.Glob(entry.file).match(file)) continue;
-    writePointer(emitted, entry.pointer, readPointer(existing, entry.pointer));
+export function composeManifest({
+  policy,
+  target,
+  emitted,
+  existing,
+  mirrorPackages,
+}: {
+  policy: TargetOwnedPolicy;
+  target: MirrorTarget;
+  emitted: JsonObject;
+  existing: JsonObject | undefined;
+  /** Public names of every workspace this mirror ships; their edges are the transform's outright. */
+  mirrorPackages: ReadonlySet<string>;
+}): ComposedManifest {
+  if (existing === undefined) return { manifest: emitted, added: [] };
+
+  const manifest: JsonObject = { ...existing };
+  for (const key of keysFor(policy.insideFiles.manifestKeys, target)) {
+    if (key in emitted) manifest[key] = emitted[key];
+    else delete manifest[key];
   }
+  for (const key of keysFor(policy.insideFiles.manifestDefaults, target)) {
+    if (!(key in manifest) && key in emitted) manifest[key] = emitted[key];
+  }
+
+  const { blocks, added } = composeDependencies(emitted, existing, mirrorPackages);
+  for (const field of installedDependencyFields) {
+    const block = blocks[field];
+    if (block === undefined) delete manifest[field];
+    else manifest[field] = block;
+  }
+  return { manifest, added };
+}
+
+/**
+ * Compose the three installed-dependency blocks, by `target-owned.json`'s three cases: a package
+ * this mirror ships is the transform's outright, a third-party package the target declares
+ * anywhere keeps the target's block and range, and one the target declares nowhere is added from
+ * corvidae and reported.
+ */
+function composeDependencies(
+  emitted: JsonObject,
+  existing: JsonObject,
+  mirrorPackages: ReadonlySet<string>,
+): {
+  blocks: Partial<Record<(typeof installedDependencyFields)[number], Record<string, string>>>;
+  added: string[];
+} {
+  // Where the target declares each package. A package in more than one block stays in all of them.
+  const declaredByTarget = new Set<string>();
+  const blocks: Partial<
+    Record<(typeof installedDependencyFields)[number], Record<string, string>>
+  > = {};
+  for (const field of installedDependencyFields) {
+    const block = existing[field];
+    if (!isJsonObject(block)) continue;
+    const kept: Record<string, string> = {};
+    for (const [name, specifier] of Object.entries(block)) {
+      declaredByTarget.add(name);
+      // A mirror-internal entry is re-derived below from the plan, so a stale one cannot linger.
+      if (mirrorPackages.has(name)) continue;
+      kept[name] = String(specifier);
+    }
+    blocks[field] = kept;
+  }
+
+  const added: string[] = [];
+  for (const field of installedDependencyFields) {
+    const block = emitted[field];
+    if (!isJsonObject(block)) continue;
+    for (const [name, specifier] of Object.entries(block)) {
+      if (!mirrorPackages.has(name)) {
+        if (declaredByTarget.has(name)) continue;
+        added.push(`${name} (${field})`);
+      }
+      (blocks[field] ??= {})[name] = String(specifier);
+    }
+  }
+
+  for (const field of installedDependencyFields) {
+    const block = blocks[field];
+    if (block === undefined) continue;
+    // A block emptied by the pruning above is dropped rather than emitted as `{}`, which is what
+    // both targets' `sort-package-json` would do to it anyway.
+    if (Object.keys(block).length === 0) {
+      delete blocks[field];
+      continue;
+    }
+    // Both targets sort their manifests, and an appended entry would otherwise land out of order.
+    blocks[field] = Object.fromEntries(
+      Object.entries(block).toSorted(([left], [right]) => left.localeCompare(right)),
+    );
+  }
+  return { blocks, added };
 }
 
 /** A workspace `layout-map.json` defers, recorded rather than emitted. */
@@ -404,6 +482,12 @@ export interface ManifestPlan {
   firstPublish: string[];
   /** Internal edges dropped because the other end does not exist in this target. */
   droppedEdges: string[];
+  /**
+   * Third-party dependencies the target declared nowhere, added from corvidae, as
+   * `path: name (block)`. Reported rather than refused: a package legitimately gains a dependency,
+   * and the alternative to adding it is emitting source that cannot resolve its own imports.
+   */
+  addedDependencies: string[];
   /** Every workspace this target receives, with the directory it lands in. */
   emitted: EmittedWorkspace[];
   /** Workspaces whose placement is unresolved. Nothing is emitted for them and a sync refuses. */
@@ -431,7 +515,13 @@ export interface PlanOptions {
   policy?: TargetOwnedPolicy | undefined;
 }
 
-async function readExistingManifest(
+/**
+ * The target's own copy of one manifest, or `undefined` where the target has none.
+ *
+ * Exported because the surface half needs the same answer: whether a key it carries is a fact the
+ * target already holds the authoritative copy of, or one only corvidae can supply.
+ */
+export async function readExistingManifest(
   targetDirectory: string | undefined,
   path: string,
 ): Promise<JsonObject | undefined> {
@@ -490,6 +580,8 @@ export async function planManifests({
   const licence = await Bun.file(join(corvidaeRoot, 'LICENSE')).text();
   const files: Record<string, string> = {};
   const firstPublish: string[] = [];
+  const addedDependencies: string[] = [];
+  const mirrorPackages = new Set(publicNames.values());
 
   for (const workspace of workspaces) {
     const disposition = dispositions.get(workspace.name);
@@ -506,10 +598,19 @@ export async function planManifests({
     if (existing === undefined && disposition.disposition === 'publish-as') {
       assertNoPublishedPredecessor(workspace.name, disposition, targetDirectory, path);
     }
-    applyPreservedFields(resolvedPolicy, target, path, emitted, existing);
-    if (emitted['version'] === '0.0.0') firstPublish.push(String(emitted['name']));
+    const composed = composeManifest({
+      policy: resolvedPolicy,
+      target,
+      emitted,
+      existing,
+      mirrorPackages,
+    });
+    for (const entry of composed.added) addedDependencies.push(`${path}: ${entry}`);
+    if (composed.manifest['version'] === '0.0.0') {
+      firstPublish.push(String(composed.manifest['name']));
+    }
 
-    files[path] = serialize(emitted);
+    files[path] = serialize(composed.manifest);
     files[`${directory}/LICENSE`] = licence;
     emittedWorkspaces.push({
       workspace: workspace.name,
@@ -518,21 +619,23 @@ export async function planManifests({
     });
   }
 
-  const rootManifest = buildRootManifest(target, root, context);
-  applyPreservedFields(
-    resolvedPolicy,
+  const existingRoot = await readExistingManifest(targetDirectory, 'package.json');
+  const composedRoot = composeManifest({
+    policy: resolvedPolicy,
     target,
-    'package.json',
-    rootManifest,
-    await readExistingManifest(targetDirectory, 'package.json'),
-  );
-  files['package.json'] = serialize(rootManifest);
+    emitted: buildRootManifest(target, root, context, existingRoot !== undefined),
+    existing: existingRoot,
+    mirrorPackages,
+  });
+  for (const entry of composedRoot.added) addedDependencies.push(`package.json: ${entry}`);
+  files['package.json'] = serialize(composedRoot.manifest);
 
   return {
     target,
     files,
     firstPublish: firstPublish.toSorted(),
     droppedEdges: context.dropped,
+    addedDependencies: addedDependencies.toSorted(),
     emitted: emittedWorkspaces,
     deferred,
   };
@@ -657,6 +760,13 @@ export async function runManifestTransform(argv: readonly string[]): Promise<num
     }
     if (result.droppedEdges.length > 0) {
       process.stdout.write(`Dropped cross-target edges: ${result.droppedEdges.join(', ')}\n`);
+    }
+    if (result.addedDependencies.length > 0) {
+      process.stdout.write(
+        `Dependencies the target did not declare, added from corvidae:\n${result.addedDependencies
+          .map((entry) => `  ${entry}`)
+          .join('\n')}\n`,
+      );
     }
     return 0;
   } catch (error) {

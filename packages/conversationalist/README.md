@@ -68,6 +68,12 @@ const openAIRequest = await conversation.toProvider('openai');
 - **`Message`**: ordered conversation entry with roles such as `user`, `assistant`, `system`, `developer`, `tool-call`, `tool-result`, and `snapshot`.
 - **`ToolCall`** and **`ToolResult`**: canonical, JSON-safe tool interaction payloads shared with `armorer` through `@corvidae/tool-protocol`.
 
+### State integrity and restoration
+
+Conversation state is revisioned, deeply frozen, and owned by the `Conversation` controller. A mutation either commits a new revision or returns a rejected result; callers never patch `current` in place. For a client that can race with another writer, pass the expected revision to `applyMutation()` and treat a rejected result as a signal to re-read and reconcile.
+
+`Conversation.snapshot()` and `Conversation.from()` are the durable boundary. Snapshot format version 1 verifies its digest, branch identities, current path, revision, and fork lineage before restoring. Unsupported versions, partial envelopes, and mismatched identities throw `error:serialization`; there is no implicit migration. Persist the snapshot as JSON and keep provider payloads at the edge—provider adapters are not a substitute for restoring the authoritative conversation.
+
 ## Identifiers and Timestamps
 
 Every function that mints a conversation id or timestamp—`createConversationHistory`, `createConversationHistoryUnsafe`, `buildMessage`, and the `Conversation` class—reads them through a `ConversationEnvironment`. By default, that environment reads through `runtime`, an injectable `RuntimeServices` seam (`lifecycle`'s AB-92/AB-252 contract, exposing `clock` and `identifiers`) that defaults to a real-globals implementation. Pass a manual runtime—for example `lifecycle`'s `createManualRuntimeServices()`—to make a conversation's id and timestamps reproducible across two identically-seeded runs:
@@ -932,6 +938,8 @@ Shared tool types and materializers are provided by `@corvidae/tool-protocol` an
 
 ## Events
 
+For how conversation observation and disposal fit with run, tool, and runtime ownership, see [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md).
+
 `Conversation` is both a framework-neutral external store and a typed event source. Store subscriptions never start work or invoke the listener during setup, so the standard read-subscribe-read pattern closes the setup race and React Strict Mode setup-cleanup-setup remains safe:
 
 ```typescript
@@ -1033,6 +1041,7 @@ if (result.compacted) {
 ## Documentation
 
 - [API Reference](documentation/api-reference.md)
+- [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md) - Cross-package state, tool, run, and cleanup ownership
 
 ## Development
 

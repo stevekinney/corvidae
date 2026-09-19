@@ -2,6 +2,10 @@
 
 COR-1186. Decided between the two candidate strategies for getting `@lostgradient/cinder`'s published subpath exports out of corvidae and into the public repository the mirror transform builds and publishes from.
 
+## Current implementation
+
+This document records the COR-1186 decision and its experiments. The chosen generator now lives in [cinder/generate-exports.ts](cinder/generate-exports.ts), with contract coverage in [cinder-exports.test.ts](cinder-exports.test.ts) and published-surface checks in [surface.test.ts](surface.test.ts). `bun run test:self` includes both `scripts/*.test.ts` and `scripts/mirror/*.test.ts`. Statements below about proposed locations or unresolved work describe the decision-time snapshot, not the current implementation status.
+
 ## Decision
 
 **Regenerate.** The transform owns the exports map. Corvidae's `components/cinder/package.json` keeps its one-line `{".": "./src/index.ts"}` map unchanged, and no generated map or drift check lands in this repository under this issue.

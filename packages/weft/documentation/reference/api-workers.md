@@ -4,8 +4,6 @@ The workers module provides both in-process worker pools (Web Workers for CPU is
 
 For a guided walkthrough, see the [Remote Workers guide](../guides/remote-workers.md).
 
----
-
 ## In-Process Workers
 
 ### `WorkerPool`
@@ -38,7 +36,7 @@ class WorkerPool implements Disposable, AsyncDisposable {
 | `[Symbol.dispose]()` | `void` | Immediate termination -- terminates all workers |
 | `[Symbol.asyncDispose]()` | `Promise<void>` | Graceful shutdown -- waits for in-flight workers, then terminates |
 
-#### `WorkerPoolOptions`
+### `WorkerPoolOptions`
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -75,7 +73,7 @@ async function executeActivity(
 ): Promise<ActivityExecutionResult>;
 ```
 
-#### `ActivityExecutionRequest`
+### `ActivityExecutionRequest`
 
 ```ts
 interface ActivityExecutionRequest {
@@ -86,7 +84,7 @@ interface ActivityExecutionRequest {
 }
 ```
 
-#### `ActivityExecutionResult`
+### `ActivityExecutionResult`
 
 ```ts
 interface ActivityExecutionResult {
@@ -98,8 +96,6 @@ interface ActivityExecutionResult {
 ```
 
 If `signal` is already aborted when called, returns a failed result immediately without invoking the function.
-
----
 
 ## Remote Workers
 
@@ -133,7 +129,7 @@ class RemoteWorker implements Disposable {
 | `unacknowledgedResultCount` | `number` | Number of buffered results still awaiting a `taskResultAck` (COR-240, v4) |
 | `[Symbol.dispose]()` | `void` | Immediate shutdown -- abort all listeners and close. Unlike `disconnect()`, this discards any unacknowledged results rather than preserving them for a later reconnect |
 
-#### `RemoteWorkerOptions`
+### `RemoteWorkerOptions`
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -147,7 +143,7 @@ class RemoteWorker implements Disposable {
 | `deploymentName` | `string` | (required) | Logical service this worker instance belongs to, included in its manifest |
 | `buildId` | `string` | (required) | Operator-visible release this worker instance is running, included in its manifest |
 | `artifactDigest` | `string` | derived | Trusted digest of the executable artifact. When omitted, a placeholder tagged `declared-shape:<hash>` is derived from the declared workflow and activity names. Ignored when `manifest` is supplied |
-| `manifest` | `WorkerManifest` | derived | A complete, real manifest — typically from [`buildWorkerManifestFromRegistry`](#buildworkermanifestfromregistryengine-options) — advertised verbatim instead of the `declared-shape:` placeholder. `manifest.workflows` must declare exactly the workflow types in `workflows`, checked at construction |
+| `manifest` | `WorkerManifest` | derived | A complete, real manifest—typically from [`buildWorkerManifestFromRegistry`](#buildworkermanifestfromregistryengine-options)—advertised verbatim instead of the `declared-shape:` placeholder. `manifest.workflows` must declare exactly the workflow types in `workflows`, checked at construction |
 | `runtimeVersion` | `string` | `detectRuntimeVersion()` | Runtime or SDK version reported during registration |
 | `startedAt` | `number` | `Date.now()` | Worker process start time in epoch milliseconds |
 | `capabilities` | `Record<string, JSON value>` | `{}` | JSON metadata such as region, hardware class, or feature flags |
@@ -186,8 +182,6 @@ await worker.connect();
 await worker.disconnect();
 ```
 
----
-
 ### `HeartbeatManager`
 
 Manages periodic heartbeat signals for keeping visibility timeouts alive.
@@ -213,11 +207,9 @@ class HeartbeatManager {
 | `stop()`         | Stop the periodic interval.                                  |
 | `beat(details?)` | Send a one-off heartbeat with optional details payload.      |
 
----
-
 ### `LongPollWorker`
 
-HTTP long-poll fallback for environments without WebSocket support. Polls the server's `/poll` endpoint for tasks and reports results via `/complete`. Implements `Disposable`.
+HTTP long-poll fallback for environments without WebSocket support. Polls `/api/v1/tasks/:queue` for tasks and reports results through `/api/v1/tasks/:queue/result`. Implements `Disposable`.
 
 ```ts partial
 class LongPollWorker implements Disposable {
@@ -233,7 +225,7 @@ class LongPollWorker implements Disposable {
 }
 ```
 
-#### `LongPollWorkerOptions`
+### `LongPollWorkerOptions`
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -261,8 +253,6 @@ worker.start();
 // Later:
 await worker.stop();
 ```
-
----
 
 ### `WorkerRegistry`
 
@@ -302,7 +292,7 @@ class WorkerRegistry {
 }
 ```
 
-#### `WorkerRegistryOptions`
+### `WorkerRegistryOptions`
 
 ```ts partial
 interface WorkerRegistryOptions {
@@ -314,7 +304,7 @@ interface WorkerRegistryOptions {
 | -------- | --------------- | ---------------- | ------------------------------ |
 | `policy` | `RoutingPolicy` | `'least-loaded'` | Worker routing policy to apply |
 
-#### `WorkerInfo`
+### `WorkerInfo`
 
 ```ts
 interface WorkerInfo {
@@ -334,7 +324,7 @@ interface WorkerInfo {
 }
 ```
 
-#### `RoutingOptions`
+### `RoutingOptions`
 
 ```ts
 interface RoutingOptions {
@@ -350,7 +340,7 @@ Draining workers are excluded from `findWorker()` so no new tasks are assigned t
 
 `isAssignedToWorker(operationId, workerId)` returns whether an in-flight task is currently owned by a specific worker. The server checks it before accepting `taskResult` frames so stale completions from a displaced worker are rejected instead of mutating engine state.
 
-#### `WorkerDrainOptions`
+### `WorkerDrainOptions`
 
 ```ts
 interface WorkerDrainOptions {
@@ -361,7 +351,7 @@ interface WorkerDrainOptions {
 
 `updatedAt` records the drain start time in epoch milliseconds. When omitted, the registry uses `Date.now()`.
 
-#### `InFlightTask`
+### `InFlightTask`
 
 ```ts
 interface InFlightTask {
@@ -421,7 +411,7 @@ const manifest: WorkerManifest = {
 console.log(manifest.deployment.buildId);
 ```
 
-Activity keys are canonical runtime activity names, qualified structurally by the workflow that contains them rather than only through a dotted string — so the same activity name may appear under two workflows without collision.
+Activity keys are canonical runtime activity names, qualified structurally by the workflow that contains them rather than only through a dotted string—so the same activity name may appear under two workflows without collision.
 
 `capabilities` is bounded descriptive data. It never grants authorization and never affects routing without an explicit host policy.
 
@@ -439,7 +429,7 @@ if (!result.ok) {
 }
 ```
 
-Prefer `parseWorkerManifestJson()` wherever the received JSON _text_ is still available. Duplicate object keys are only visible before parsing — `JSON.parse` resolves `{"artifactDigest":"a","artifactDigest":"b"}` to one of the two silently — and a manifest that could mean two different artifacts must be rejected, not resolved.
+Prefer `parseWorkerManifestJson()` wherever the received JSON _text_ is still available. Duplicate object keys are only visible before parsing—`JSON.parse` resolves `{"artifactDigest":"a","artifactDigest":"b"}` to one of the two silently—and a manifest that could mean two different artifacts must be rejected, not resolved.
 
 Rejection reasons are a closed union (`WorkerManifestRejectionReason`) precisely so operators can count manifest failures by reason without a high-cardinality metric label. The accompanying `message` and `path` are for diagnostics and must never be used as labels.
 
@@ -478,7 +468,7 @@ const identity: WorkerExecutionIdentity = {
 console.log(executionIdentitySatisfies(requirement, identity)); // true
 ```
 
-An omitted requirement field means policy may choose any eligible value. It is _not_ an empty-string wildcard. Once a task is leased its execution identity is complete and derived from the accepted manifest plus the live session — a worker cannot self-report a different execution identity in its result, which is what makes the identity safe to persist as provenance.
+An omitted requirement field means policy may choose any eligible value. It is _not_ an empty-string wildcard. Once a task is leased its execution identity is complete and derived from the accepted manifest plus the live session—a worker cannot self-report a different execution identity in its result, which is what makes the identity safe to persist as provenance.
 
 ### `computeWorkerManifestDigest(manifest)`
 
@@ -502,7 +492,7 @@ console.log(digest.startsWith('sha256:')); // true
 
 This is a content digest rather than one of the package's FNV-1a helpers, which are documented as cache-key quality: `(deploymentName, buildId)` consistency depends on two different artifacts not colliding.
 
-Use `digestCanonicalWorkerManifest()` when a canonical serialization is already in hand — `parseWorkerManifest()` returns one — to avoid serializing twice.
+Use `digestCanonicalWorkerManifest()` when a canonical serialization is already in hand—`parseWorkerManifest()` returns one—to avoid serializing twice.
 
 ### `buildWorkerManifestFromRegistry(engine, options)`
 
@@ -524,11 +514,11 @@ console.log(manifest.workflows['checkout']?.workflowVersion); // '2.1.0'
 engine[Symbol.dispose]();
 ```
 
-`options.workflows` maps each workflow type to the activity names that instance can execute — the one association the registry cannot supply on its own, since the engine's activity registry is a flat namespace rather than partitioned per workflow. Every key must name a workflow the source `Engine` has registered, and every activity name must be one the same `Engine` has registered; an unregistered name throws `WorkerManifestBuildError` rather than silently omitting the entry.
+`options.workflows` maps each workflow type to the activity names that instance can execute—the one association the registry cannot supply on its own, since the engine's activity registry is a flat namespace rather than partitioned per workflow. Every key must name a workflow the source `Engine` has registered, and every activity name must be one the same `Engine` has registered; an unregistered name throws `WorkerManifestBuildError` rather than silently omitting the entry.
 
-`contractHash` is a real `sha256:`-tagged digest of the workflow's payload schemas (input, output, signals, updates, queries) — `description` and `tags` are excluded so a documentation edit never changes contract identity. `workflowRevision` answers a broader question — "which exact definition was loaded" — so it digests the full registry entry (schemas, `description`, and `tags`) plus the registered `version`; a description/tag edit or a version bump changes `workflowRevision` without necessarily changing `contractHash`, which is the intended distinction between the two fields, not drift in either one. `implementationRevision` on each activity contract is set to `options.deployment.buildId`: a schema identifies the contract, not the code behind it, so there is no honest schema-derived source for "which implementation" is bound.
+`contractHash` is a real `sha256:`-tagged digest of the workflow's payload schemas (input, output, signals, updates, queries)—`description` and `tags` are excluded so a documentation edit never changes contract identity. `workflowRevision` answers a broader question—"which exact definition was loaded"—so it digests the full registry entry (schemas, `description`, and `tags`) plus the registered `version`; a description/tag edit or a version bump changes `workflowRevision` without necessarily changing `contractHash`, which is the intended distinction between the two fields, not drift in either one. `implementationRevision` on each activity contract is set to `options.deployment.buildId`: a schema identifies the contract, not the code behind it, so there is no honest schema-derived source for "which implementation" is bound.
 
-`options.deployment` and `options.runtime` are required, never derived — a build script knows its own deploy target; live runtime detection at build time would assert the wrong identity when the build and deploy environments differ.
+`options.deployment` and `options.runtime` are required, never derived—a build script knows its own deploy target; live runtime detection at build time would assert the wrong identity when the build and deploy environments differ.
 
 ## Fleet and queue observability
 
@@ -683,7 +673,7 @@ type WorkerDiagnosticsResponse = {
 };
 ```
 
-Deliberately excludes `capabilities` and every raw payload schema backing a `contractHash` — this surfaces identity for drift detection, not a schema dump.
+Deliberately excludes `capabilities` and every raw payload schema backing a `contractHash`—this surfaces identity for drift detection, not a schema dump.
 
 The JSON-RPC operation name is `weft.workers.diagnostics`.
 
@@ -711,7 +701,7 @@ type ListWorkerRegistrationRejectionsResponse = {
 };
 ```
 
-Deliberately excludes the free-text rejection message and any manifest content — this is a bounded, auditable event log, not a diagnostic dump. The log is in-memory and capped at the 200 most recent entries per server process; it is not persisted.
+Deliberately excludes the free-text rejection message and any manifest content—this is a bounded, auditable event log, not a diagnostic dump. The log is in-memory and capped at the 200 most recent entries per server process; it is not persisted.
 
 The JSON-RPC operation name is `weft.workers.rejections`.
 

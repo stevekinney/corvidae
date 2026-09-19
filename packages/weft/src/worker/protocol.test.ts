@@ -903,7 +903,7 @@ describe('RemoteWorker protocol contract', () => {
     const documentation = await Bun.file(
       'documentation/reference/remote-worker-protocol.md',
     ).text();
-    const documentedMessages = [...documentation.matchAll(/^#### `([^`]+)`/gm)].map(
+    const documentedMessages = [...documentation.matchAll(/^### `([^`]+)`/gm)].map(
       (match) => match[1],
     );
 

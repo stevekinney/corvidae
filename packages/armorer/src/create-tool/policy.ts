@@ -21,10 +21,67 @@ export function createToolAction(
   context: ToolActionContext,
 ): ToolAction {
   if (type === 'approval') return createApprovalAction(decision, reason, context);
-  const action: ToolAction = { type, message: decision.action?.message ?? reason };
+  const action: ToolAction = {
+    type,
+    message: coerceActionMessage(decision.action?.message, reason),
+  };
   if (decision.action?.schema !== undefined)
     action.schema = normalizeToolContent(decision.action.schema);
   return action;
+}
+
+/**
+ * Coerces an action's `message` to the `string` its type declares.
+ *
+ * `ToolAction.message` is declared `message?: string | undefined`, so a
+ * non-string here is already a type violation — an untyped or JavaScript
+ * policy, or a cast. It still has to be handled, because this value reaches
+ * `signPendingApproval`, whose payload normalization runs the whole approval
+ * through `JSON.stringify`. A BigInt there throws, and the throw surfaces as a
+ * failed tool call rather than as the policy bug it is.
+ *
+ * Coercion rather than `normalizeToolContent`, which the sibling `schema` field
+ * uses: that returns `JsonValue`, which is right for a field declared
+ * `JSONValue` and wrong for one declared `string`. It would pass a plain object
+ * or a bare number through unchanged — both survive it intact — leaving a
+ * non-string in a field every consumer treats as a string.
+ *
+ * Nothing here may throw. `createToolAction` has two callers and only one is
+ * issuance: the other is `policyPauseMatchesDescriptor`, which compares a
+ * previously satisfied pause against a current decision on the resume path.
+ * Neither wraps the call, and resume matching tolerates a non-serializable
+ * message today. A guard that threw would introduce a new failure there.
+ *
+ * Coercion is a pure function of the value, so resume matching still compares
+ * equal: the stored action was coerced when it was created, and the freshly
+ * created one coerces the same input to the same string.
+ *
+ * Anything that cannot be turned into a useful string becomes the reason, which
+ * is already the value this field takes when a policy supplies no message.
+ */
+function coerceActionMessage(value: unknown, fallback: string): string {
+  if (typeof value === 'string') return value;
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (typeof value === 'symbol') return value.description ?? fallback;
+  try {
+    // Objects and functions. Serializing preserves the content of a structured
+    // message, which is the likeliest real mistake. `JSON.stringify` returns
+    // undefined for a function and throws on a circular structure or a throwing
+    // `toJSON`; both land on the fallback.
+    //
+    // Deliberately not `String(value)` here. It would yield `[object Object]`
+    // for the common case and a function's whole source text for the other —
+    // neither belongs in a message a human reads to decide on an approval — and
+    // `no-base-to-string` rejects it, correctly.
+    const serialized = JSON.stringify(value);
+    if (typeof serialized === 'string') return serialized;
+  } catch {
+    /* falls through to the reason */
+  }
+  return fallback;
 }
 
 export function policyPauseMatchesSatisfiedPause(
@@ -51,7 +108,7 @@ function createApprovalAction(
   const policyVersion = decision.action?.policyVersion ?? context.policyVersion ?? 'policy:1';
   const actionInput = {
     type: 'approval' as const,
-    message: decision.action?.message ?? reason,
+    message: coerceActionMessage(decision.action?.message, reason),
     risk: decision.action?.risk ?? 'high',
     operation: decision.action?.operation ?? {
       kind: 'other' as const,

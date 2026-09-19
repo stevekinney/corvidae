@@ -112,3 +112,15 @@ export interface Proposal {
   /** If rejected, the reason. */
   rejectionReason?: string;
 }
+
+// ── Events (COR-767) ─────────────────────────────────────────────────
+// COR-767 requires the EventMap to be exported from this module, matching the
+// package rule that type re-exports live here rather than in a barrel.
+export type {
+  SkillAdmissionRule,
+  SkillEventClassMap,
+  SkillEventCorrelation,
+  SkillEventMap,
+  SkillEventType,
+  SkillRejectionReason,
+} from './events';

@@ -1,7 +1,17 @@
+import { TypedEventTarget } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { createSkillToolbox, isSkillContent } from '../src/create-skill-tools';
+import type { SkillEventMap } from '../src/events';
+import {
+  SkillActivatedEvent,
+  SkillDeactivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from '../src/events';
 import type { SkillGuardrailOptions } from '../src/guardrail';
+import { parseSkillMarkdown, serializeSkillMarkdown } from '../src/parse-skill-markdown';
 import { createSkillSession } from '../src/skill-session';
 import { createMockSkillProvider } from '../src/test/index';
 import type { SkillContent } from '../src/types';
@@ -363,5 +373,266 @@ describe('createSkillTools', () => {
       expect(isSkillContent('Just a regular message')).toBe(false);
       expect(isSkillContent('<available_skills>catalog</available_skills>')).toBe(false);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COR-767 — skill lifecycle events. Before these, every skill transition was
+// silent; AB-87's matrix recorded the skills surface as a declared gap.
+// ---------------------------------------------------------------------------
+describe('skill lifecycle events (COR-767)', () => {
+  function setup(options: { skill?: SkillContent; guardrail?: SkillGuardrailOptions } = {}) {
+    const skill = options.skill ?? makeSkill('coding', 'Write code');
+    const provider = createMockSkillProvider([skill]);
+    const session = createSkillSession();
+    const events = new TypedEventTarget<SkillEventMap>();
+    const seen: Array<{ type: string; skillName: string; reason?: string }> = [];
+    for (const type of [
+      SkillLoadedEvent.type,
+      SkillActivatedEvent.type,
+      SkillDeactivatedEvent.type,
+      SkillRejectedEvent.type,
+      SkillFailedEvent.type,
+    ] as const) {
+      events.addEventListener(type, (event) => {
+        seen.push({
+          type: event.type,
+          skillName: event.skillName,
+          ...('reason' in event ? { reason: event.reason } : {}),
+        });
+      });
+    }
+    const toolbox = createSkillToolbox({
+      provider,
+      session,
+      events,
+      correlation: { runId: 'run-1', sessionId: 'session-1' },
+      ...(options.guardrail ? { guardrail: options.guardrail } : {}),
+    });
+    return { provider, session, events, seen, toolbox };
+  }
+
+  it('emits loaded then activated, in that order, for a successful activation', async () => {
+    const { toolbox, seen } = setup();
+
+    await toolbox.activateSkill.execute({ name: 'coding' });
+
+    expect(seen.map((entry) => entry.type)).toEqual(['skill.loaded', 'skill.activated']);
+    expect(seen.every((entry) => entry.skillName === 'coding')).toBe(true);
+  });
+
+  it('carries the runId and sessionId the composer supplied', async () => {
+    const provider = createMockSkillProvider([makeSkill('coding', 'Write code')]);
+    const session = createSkillSession();
+    const events = new TypedEventTarget<SkillEventMap>();
+    let activated: SkillActivatedEvent | undefined;
+    events.addEventListener(SkillActivatedEvent.type, (event) => {
+      activated = event;
+    });
+    const toolbox = createSkillToolbox({
+      provider,
+      session,
+      events,
+      correlation: { runId: 'run-7', sessionId: 'session-9' },
+    });
+
+    await toolbox.activateSkill.execute({ name: 'coding' });
+
+    expect(activated?.correlation).toEqual({ runId: 'run-7', sessionId: 'session-9' });
+  });
+
+  it('emits rejected with reason "disabled" and never activated, when the skill is disabled', async () => {
+    const { toolbox, provider, seen } = setup();
+    await provider.setEnabled('coding', false);
+
+    await toolbox.activateSkill.execute({ name: 'coding' });
+
+    expect(seen).toEqual([{ type: 'skill.rejected', skillName: 'coding', reason: 'disabled' }]);
+  });
+
+  it('emits loaded then rejected with reason "guardrail-blocked", and never activated, when the body trips the guardrail', async () => {
+    const { toolbox, seen } = setup({
+      guardrail: { detectors: [createAlwaysTriggersDetector()] },
+    });
+
+    await toolbox.activateSkill.execute({ name: 'coding' });
+
+    // Loaded fires before the scan; activation never happens. That ordering is
+    // what separates "the provider had it" from "it entered context".
+    expect(seen.map((entry) => entry.type)).toEqual(['skill.loaded', 'skill.rejected']);
+    expect(seen.at(-1)?.reason).toBe('guardrail-blocked');
+  });
+
+  it('emits failed, not rejected, when the provider has no such skill', async () => {
+    const { toolbox, seen } = setup();
+
+    await toolbox.activateSkill.execute({ name: 'missing' });
+
+    expect(seen).toEqual([{ type: 'skill.failed', skillName: 'missing' }]);
+  });
+
+  it('never emits both rejected and failed for one activation attempt', async () => {
+    // Every deny path, exercised in turn: disabled, absent, guardrail-blocked.
+    for (const scenario of ['disabled', 'absent', 'blocked'] as const) {
+      const { toolbox, provider, seen } = setup(
+        scenario === 'blocked'
+          ? { guardrail: { detectors: [createAlwaysTriggersDetector()] } }
+          : {},
+      );
+      if (scenario === 'disabled') await provider.setEnabled('coding', false);
+
+      await toolbox.activateSkill.execute({
+        name: scenario === 'absent' ? 'missing' : 'coding',
+      });
+
+      const rejected = seen.filter((entry) => entry.type === 'skill.rejected');
+      const failed = seen.filter((entry) => entry.type === 'skill.failed');
+      expect(rejected.length + failed.length).toBe(1);
+    }
+  });
+
+  it('emits deactivated only when a skill was actually active', async () => {
+    const { toolbox, seen } = setup();
+
+    // Deactivating an inactive skill is a no-op and must stay silent.
+    await toolbox.deactivateSkill.execute({ name: 'coding' });
+    expect(seen).toEqual([]);
+
+    await toolbox.activateSkill.execute({ name: 'coding' });
+    seen.length = 0;
+    await toolbox.deactivateSkill.execute({ name: 'coding' });
+
+    expect(seen).toEqual([{ type: 'skill.deactivated', skillName: 'coding' }]);
+  });
+
+  it('dispatches nothing at all when no event target is supplied', async () => {
+    const provider = createMockSkillProvider([makeSkill('coding', 'Write code')]);
+    const session = createSkillSession();
+    const toolbox = createSkillToolbox({ provider, session });
+
+    // A caller with no event surface gets no dispatch and no error.
+    const result = await toolbox.activateSkill.execute({ name: 'coding' });
+    expect(typeof result).toBe('string');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COR-767 final criterion, via COR-752's admission decision. `skill.rejected`
+// now fires for an ownership-policy denial and names the rule that refused it.
+// ---------------------------------------------------------------------------
+describe('skill admission policy (COR-752 Decision 1, closing COR-767)', () => {
+  function setupAdmission(admissionPolicy: { allowList?: string[]; denyList?: string[] }) {
+    const provider = createMockSkillProvider([makeSkill('coding', 'Write code')]);
+    const session = createSkillSession();
+    const events = new TypedEventTarget<SkillEventMap>();
+    const rejections: SkillRejectedEvent[] = [];
+    const other: string[] = [];
+    events.addEventListener(SkillRejectedEvent.type, (event) => rejections.push(event));
+    for (const type of [SkillLoadedEvent.type, SkillActivatedEvent.type] as const) {
+      events.addEventListener(type, (event) => other.push(event.type));
+    }
+    const toolbox = createSkillToolbox({ provider, session, events, admissionPolicy });
+    return { toolbox, session, rejections, other };
+  }
+
+  it('refuses a deny-listed skill, naming the deny-list rule, and never activates it', async () => {
+    const { toolbox, session, rejections, other } = setupAdmission({ denyList: ['coding'] });
+
+    const result = await toolbox.activateSkill.execute({ name: 'coding' });
+
+    expect(result).toEqual({ error: 'Skill is not permitted', name: 'coding' });
+    expect(rejections).toHaveLength(1);
+    expect(rejections[0]).toMatchObject({
+      skillName: 'coding',
+      reason: 'ownership-policy',
+      rule: 'deny-list',
+    });
+    // Refused before load, so neither loaded nor activated fires.
+    expect(other).toEqual([]);
+    expect(session.isActive('coding')).toBe(false);
+  });
+
+  it('refuses a skill absent from a configured allow list, naming the allow-list rule', async () => {
+    const { toolbox, rejections } = setupAdmission({ allowList: ['something-else'] });
+
+    await toolbox.activateSkill.execute({ name: 'coding' });
+
+    expect(rejections[0]).toMatchObject({ reason: 'ownership-policy', rule: 'allow-list' });
+  });
+
+  it('lets deny win over allow when a name is on both lists', async () => {
+    const { toolbox, rejections } = setupAdmission({
+      allowList: ['coding'],
+      denyList: ['coding'],
+    });
+
+    await toolbox.activateSkill.execute({ name: 'coding' });
+
+    // The more restrictive half of the configuration governs.
+    expect(rejections[0]).toMatchObject({ reason: 'ownership-policy', rule: 'deny-list' });
+  });
+
+  it('admits a skill the policy permits, and carries no rule on other rejection reasons', async () => {
+    const { toolbox, session, rejections, other } = setupAdmission({ allowList: ['coding'] });
+
+    await toolbox.activateSkill.execute({ name: 'coding' });
+
+    expect(rejections).toEqual([]);
+    expect(other).toEqual(['skill.loaded', 'skill.activated']);
+    expect(session.isActive('coding')).toBe(true);
+  });
+
+  it('leaves rule undefined for a non-ownership rejection', async () => {
+    const provider = createMockSkillProvider([makeSkill('coding', 'Write code')]);
+    await provider.setEnabled('coding', false);
+    const events = new TypedEventTarget<SkillEventMap>();
+    const rejections: SkillRejectedEvent[] = [];
+    events.addEventListener(SkillRejectedEvent.type, (event) => rejections.push(event));
+    const toolbox = createSkillToolbox({ provider, session: createSkillSession(), events });
+
+    await toolbox.activateSkill.execute({ name: 'coding' });
+
+    expect(rejections[0]?.reason).toBe('disabled');
+    expect(rejections[0]?.rule).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COR-752 Decision 2 — a portable `denied-tools` confers no authority.
+// ---------------------------------------------------------------------------
+describe('portable denied-tools is not honoured (COR-752 Decision 2)', () => {
+  it('drops denied-tools from the parsed tool policy while keeping allowed-tools', () => {
+    const parsed = parseSkillMarkdown(
+      [
+        '---',
+        'name: coding',
+        'description: Write code',
+        'allowed-tools: read_file, list_files',
+        'denied-tools: delete_file',
+        '---',
+        '',
+        'Body.',
+      ].join('\n'),
+    );
+
+    expect(parsed.metadata.toolPolicy?.allowList).toEqual(['read_file', 'list_files']);
+    // The author cannot disable a tool for the agent that loaded them.
+    expect(parsed.metadata.toolPolicy?.denyList).toBeUndefined();
+  });
+
+  it('does not round-trip denied-tools back into serialized frontmatter', () => {
+    const parsed = parseSkillMarkdown(
+      [
+        '---',
+        'name: coding',
+        'description: Write code',
+        'denied-tools: delete_file',
+        '---',
+        '',
+        'Body.',
+      ].join('\n'),
+    );
+
+    expect(serializeSkillMarkdown(parsed)).not.toContain('denied-tools');
   });
 });

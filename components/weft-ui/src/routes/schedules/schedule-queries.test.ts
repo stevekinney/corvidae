@@ -34,6 +34,7 @@ const SUMMARY: ScheduleSummary = {
   createdAt: 0,
   updatedAt: 0,
   missedFireCount: 0,
+  skippedCount: 0,
   nextFireAt: 1000,
   queuedRuns: [],
 };

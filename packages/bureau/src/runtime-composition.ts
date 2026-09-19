@@ -57,6 +57,7 @@ import {
   createOpenAIProvider,
   createOpenAIProviderStream,
   createOutputPIIValidator,
+  createPolicyEnforcementHook,
   createPromptInjectionDetector,
   createRequestHumanInputTool,
   createRoutingGenerate,
@@ -82,6 +83,8 @@ import {
   WorkflowVersionMismatchEvent,
 } from '@corvidae/operative';
 import type {
+  SkillEventMap,
+  SkillGuardrailOptions,
   SkillSession,
   SkillProvider as SkillsPackageProvider,
   ToolPolicy,
@@ -89,8 +92,8 @@ import type {
 import {
   createSkillCatalogHook,
   createSkillSession,
+  createSkillToolbox,
   createStorageSkillProvider,
-  escapeXml,
 } from '@corvidae/skills';
 import {
   type ConditionalTextValueStore,
@@ -109,7 +112,6 @@ import {
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
 } from '@corvidae/weft';
-import { z } from 'zod';
 
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import type {
@@ -121,8 +123,6 @@ import type {
   RedactedProviderConfiguration,
   RedactedProviderRouteConfiguration,
   RoutingConfiguration,
-  SkillCatalogEntry,
-  SkillProvider,
   ToolSummary,
 } from './types';
 
@@ -417,6 +417,46 @@ export function createSchedulerServiceRequestContext(
     // independent of scope or sessionId.
     ...(sessionId !== undefined ? { sessionId } : {}),
   } satisfies ToolRequestContext;
+}
+
+/**
+ * COR-1228 — makes an active skill's `allowed-tools` actually narrow the tool
+ * set the model sees.
+ *
+ * Two halves of a designed mechanism existed and were never connected:
+ * `SkillSession.getActiveToolPolicy()` produced the merged policy and had no
+ * consumer, and `@corvidae/operative`'s `createPolicyEnforcementHook` consumes
+ * exactly that shape through its `getActiveSkillToolPolicy` option and had no
+ * consumer either. This wires them together.
+ *
+ * Deliberately a FILTER, not a per-call gate. `@corvidae/armorer`'s own
+ * `PermissionGate` documentation draws the line: "a filter removes a tool from
+ * the array before the model ever sees it exists. A gate runs per call against
+ * the actual arguments the model chose." `ToolPolicy` is named there as the
+ * filter, so implementing it as one is faithful to the contract rather than
+ * inventing a stronger promise than the type makes. The per-call gate remains
+ * `createHeadlessPermissionPolicyHooks`, a complementary layer — the two
+ * compose, and this adds no second narrowing path.
+ *
+ * The policy is read live on each `tools()` call rather than captured, because
+ * the active skill set changes during a run as the model activates and
+ * deactivates skills. A proxy is used rather than rebuilding the toolbox so the
+ * emitter, approval wiring, and request context all survive untouched.
+ */
+function withActiveSkillToolPolicy(
+  toolbox: AnyToolbox,
+  getActiveSkillToolPolicy: () => ToolPolicy | undefined,
+): AnyToolbox {
+  const filterTools = createPolicyEnforcementHook({ getActiveSkillToolPolicy });
+
+  return new Proxy(toolbox, {
+    get(target, property, receiver) {
+      if (property === 'tools') {
+        return () => filterTools([...target.tools()]);
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
 }
 
 function withDefaultToolboxRequestContext(
@@ -1342,103 +1382,6 @@ function createSkillStateSnapshotHook(
   };
 }
 
-function createSkillManagementToolbox(provider: SkillProvider, session: SkillSession): AnyToolbox {
-  return createToolbox([
-    createTool({
-      name: 'activate_skill',
-      description:
-        'Activate a skill by name. Returns the skill instructions and available resources.',
-      input: z.object({
-        name: z.string().describe('The skill name to activate'),
-      }),
-      async execute(params) {
-        if (session.isActive(params.name)) {
-          return { alreadyActive: true, name: params.name };
-        }
-
-        const enabled = await provider.isEnabled(params.name);
-        if (!enabled) {
-          return { error: 'Skill is disabled', name: params.name };
-        }
-
-        const skill = await provider.loadSkill(params.name);
-        if (!skill) {
-          return { error: 'Skill not found', name: params.name };
-        }
-
-        const resources = await provider.listResources(params.name);
-        session.activate(params.name, skill.metadata.toolPolicy);
-
-        const escapedName = escapeXml(params.name);
-        let xml = `<skill_content name="${escapedName}">\n${skill.body}`;
-
-        if (resources.length > 0) {
-          const resourceElements = resources
-            .map((path) => `  <file>${escapeXml(path)}</file>`)
-            .join('\n');
-          xml += `\n\nSkill resources:\n<skill_resources>\n${resourceElements}\n</skill_resources>`;
-        }
-
-        xml += '\n</skill_content>';
-        return xml;
-      },
-    }),
-    createTool({
-      name: 'load_skill_resource',
-      description: 'Load a resource file from an active skill.',
-      input: z.object({
-        skillName: z.string().describe('The skill name'),
-        path: z.string().describe('The resource path within the skill'),
-      }),
-      async execute(params) {
-        if (!session.isActive(params.skillName)) {
-          return { error: 'Skill is not active', skillName: params.skillName };
-        }
-
-        const content = await provider.loadResource(params.skillName, params.path);
-        if (content === undefined) {
-          return {
-            error: 'Resource not found',
-            skillName: params.skillName,
-            path: params.path,
-          };
-        }
-
-        return { content };
-      },
-    }),
-    createTool({
-      name: 'deactivate_skill',
-      description: 'Deactivate a skill and remove it from the active set.',
-      input: z.object({
-        name: z.string().describe('The skill name to deactivate'),
-      }),
-      execute(params) {
-        const deactivated = session.isActive(params.name);
-        if (deactivated) {
-          session.deactivate(params.name);
-        }
-
-        return Promise.resolve({ deactivated, name: params.name });
-      },
-    }),
-    createTool({
-      name: 'list_skills',
-      description: 'List available skills and whether they are active.',
-      input: z.object({}),
-      async execute() {
-        const entries = await provider.listSkills();
-        return {
-          skills: entries.map((entry: SkillCatalogEntry) => ({
-            ...entry,
-            active: session.isActive(entry.name),
-          })),
-        };
-      },
-    }),
-  ]);
-}
-
 function createUnavailableToolbox(): BureauToolbox {
   const emptyToolbox = createToolbox([], { context: {} });
   const execute = ((
@@ -1510,6 +1453,14 @@ export interface RuntimeComposition {
    * silently ignored.
    */
   scheduleFireEvents: TypedEventTarget<ScheduleFireEventMap>;
+  /**
+   * Skill lifecycle events (COR-767), dispatched by the `@corvidae/skills`
+   * tool factories each run's toolbox is built from. One bureau-level target
+   * rather than one per run, matching `scheduleFireEvents`: each event carries
+   * its own `runId`/`sessionId` correlation, so a shared target loses nothing
+   * and `createBureau` forwards from exactly one place.
+   */
+  skillEvents: TypedEventTarget<SkillEventMap>;
   /**
    * Run ids the durable engine flagged, during boot recovery, as resuming
    * under a DIFFERENT workflow version than the one they were checkpointed
@@ -1757,6 +1708,7 @@ export async function createRuntimeComposition(
   // state.
   const catalogRunRecoveryCache = new Map<string, CatalogRunRecoveryRecord>();
   const scheduleFireEvents = new TypedEventTarget<ScheduleFireEventMap>();
+  const skillEvents = new TypedEventTarget<SkillEventMap>();
 
   // Resolve the `persistence` option into its components. The three forms are:
   // - PersistenceOptions { store, history?, observability?, onLog? }
@@ -2199,6 +2151,7 @@ export async function createRuntimeComposition(
     const onStep: OnStepHook[] = [];
     const validateResponse: ValidateResponseHook[] = [];
     let getActiveSkillEntries = (): ActiveSkillEntry[] => [];
+    let getActiveSkillToolPolicy: (() => ToolPolicy | undefined) | undefined;
 
     if (options.identity) {
       prepareStep.push(createIdentityHook(options.identity));
@@ -2208,6 +2161,54 @@ export async function createRuntimeComposition(
       prepareStep.push(createMemoryRecallHook(memory, request.sessionId));
       onStep.push(createMemoryPersistHook(memory, request.sessionId, request.runId));
     }
+
+    // COR-1226 — resolved here rather than at the hook-push site below, because
+    // the skill toolbox needs the same detectors and the same session taint
+    // tracker, and it is constructed before that point. `createGuardrails` is a
+    // pure function of its options, so moving the call earlier changes nothing
+    // about what it returns.
+    //
+    // AB-40 — `undefined` (not configured) wires the enabled-by-default
+    // preset; `false` opts out entirely; anything else replaces the preset.
+    const resolvedGuardrailsConfig = usingDefaultGuardrailsPreset
+      ? defaultGuardrailsPreset()
+      : options.guardrails;
+    // `false` is the explicit opt-out; narrow it away so the skill guardrail
+    // below sees only a real configuration or nothing.
+    const guardrailsConfig =
+      resolvedGuardrailsConfig === false ? undefined : resolvedGuardrailsConfig;
+    const guardrails = guardrailsConfig ? createGuardrails(guardrailsConfig) : undefined;
+
+    // COR-1226 — skill bodies and skill resources are untrusted instruction
+    // input and must pass the same detector pipeline as anything else entering
+    // context. `GuardrailHooks.taint`'s own doc comment names skill resources
+    // as one of the retrieval surfaces that cannot reach the model through
+    // `prepareStep`/`validateResponse` and so must scan directly and fold its
+    // detections back into the session-wide taint state. The taint wiring below
+    // mirrors `create-guardrails.ts`'s own input-guardrail wiring, including its
+    // confidence threshold check.
+    const skillGuardrail: SkillGuardrailOptions | undefined =
+      guardrails && guardrailsConfig?.input
+        ? {
+            detectors: guardrailsConfig.input.detectors,
+            ...(guardrailsConfig.input.action !== undefined
+              ? { action: guardrailsConfig.input.action === 'warn' ? 'warn' : 'block' }
+              : {}),
+            getSessionTainted: () => guardrails.taint.isTainted(),
+            onTriggered: (event) => {
+              if (event.confidence >= (guardrailsConfig.taint?.taintThreshold ?? 0.8)) {
+                guardrails.taint.taint({
+                  reason: event.detail ?? `Detection by ${event.detector}`,
+                  detector: event.detector,
+                  confidence: event.confidence,
+                  step: 0,
+                  provenance: event.provenance,
+                });
+              }
+              guardrailsConfig.input?.onTriggered?.(event);
+            },
+          }
+        : undefined;
 
     if (options.skills && resolvedSkillProvider) {
       // Use a policy-tracking session so getActiveEntries() can reconstruct the
@@ -2228,6 +2229,8 @@ export async function createRuntimeComposition(
         }
       }
       getActiveSkillEntries = () => skillSession.getActiveEntries();
+      // COR-1228 — the live policy source for the tool filter applied below.
+      getActiveSkillToolPolicy = () => skillSession.getActiveToolPolicy();
 
       if (options.skills.includeTools !== false) {
         // Inject the skill catalog on step 0 — same hook pattern as identity.
@@ -2256,7 +2259,33 @@ export async function createRuntimeComposition(
           }
         });
 
-        const skillToolbox = createSkillManagementToolbox(resolvedSkillProvider, skillSession);
+        // COR-1226 — the `@corvidae/skills` factories, not a second inline copy.
+        // The previous inline implementation produced byte-identical results for
+        // every path except the guardrail scan, which it omitted entirely.
+        const skillTools = createSkillToolbox({
+          provider: resolvedSkillProvider,
+          session: skillSession,
+          ...(skillGuardrail !== undefined ? { guardrail: skillGuardrail } : {}),
+          // COR-767 — the tools have no view of the owning run or session, so
+          // the correlation is stamped here, where both are in scope.
+          events: skillEvents,
+          // COR-752, Decision 1 — the same policy that filters the catalog now
+          // gates activation. Previously it filtered only the listing, so a
+          // denied skill remained activatable by name.
+          ...(options.skills.skillPolicy !== undefined
+            ? { admissionPolicy: options.skills.skillPolicy }
+            : {}),
+          correlation: {
+            ...(request.runId !== undefined ? { runId: request.runId } : {}),
+            sessionId: request.sessionId,
+          },
+        });
+        const skillToolbox = createToolbox([
+          skillTools.activateSkill,
+          skillTools.loadSkillResource,
+          skillTools.deactivateSkill,
+          skillTools.listSkills,
+        ]) as AnyToolbox;
         toolbox = combineToolboxes(toolbox, skillToolbox);
       }
 
@@ -2278,17 +2307,19 @@ export async function createRuntimeComposition(
 
     // AB-40 — `undefined` (not configured) wires the enabled-by-default
     // preset; `false` opts out entirely; anything else replaces the preset.
-    const guardrailsConfig = usingDefaultGuardrailsPreset
-      ? defaultGuardrailsPreset()
-      : options.guardrails;
-    if (guardrailsConfig) {
-      const guardrails = createGuardrails(guardrailsConfig);
+    if (guardrails) {
       prepareStep.push(guardrails.prepareStep);
       validateResponse.push(guardrails.validateResponse);
     }
 
     const runToolbox = withDefaultToolboxRequestContext(
-      toolbox,
+      // COR-1228 — narrow by active-skill policy first, then apply the request
+      // context. Order matters only for readability here: both are proxies and
+      // neither observes the other, but filtering nearest the toolbox keeps the
+      // request-context wrapper the outermost thing a caller sees.
+      getActiveSkillToolPolicy
+        ? withActiveSkillToolPolicy(toolbox, getActiveSkillToolPolicy)
+        : toolbox,
       requestContext,
       () => requestAuthorityValidator,
       runtimeServices,
@@ -3240,6 +3271,7 @@ export async function createRuntimeComposition(
     durable,
     workflowVersionMismatches,
     scheduleFireEvents,
+    skillEvents,
     disposeStorage:
       durableStorage && ownsDurableStorage ? () => durableStorage[Symbol.dispose]() : undefined,
     durableStorage,

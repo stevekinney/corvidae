@@ -1,6 +1,6 @@
 # Remote Workers
 
-Your workflow engine runs on one machine, but your activities need to run on GPU nodes, region-specific servers, or isolated containers. Remote workers connect to the Weft server over WebSocket (or HTTP long-polling as a fallback) and execute activities wherever they're deployed.
+Your workflow engine runs on one machine, but your activities need to run on GPU nodes, region-specific servers, or isolated containers. Remote workers connect to the Weft server over WebSocket (or HTTP long-polling as a fallback) and execute activities wherever they're deployed. The [recovery and adoption guide](remote-task-recovery.md) explains how the server retains task ownership and outcomes across restarts.
 
 > [!NOTE] [`RemoteWorker`](../reference/api-workers.md#remoteworker) is an internal workspace API. The v4 task transport requires clients to match the [wire protocol](../reference/remote-worker-protocol.md), including its version and storage-capability requirements.
 
@@ -40,13 +40,15 @@ await worker.connect();
 
 Use `wss://` for deployed workers. Plain `ws://` is only appropriate for localhost or trusted development networks because task metadata and propagated headers travel over that connection.
 
-The `RemoteWorkerOptions` interface:
+The following subset shows the required identity and common execution options. The [worker API reference](../reference/api-workers.md#remoteworkeroptions) also covers complete manifests, artifact digests, authentication headers, and runtime metadata:
 
-```typescript
+```typescript partial
 import type { ActivityInterceptor } from '@corvidae/weft';
 
 interface RemoteWorkerOptions {
   serverUrl: string;
+  deploymentName: string;
+  buildId: string;
   workerId?: string; // default: crypto.randomUUID()
   workflows: Record<
     string,
@@ -69,6 +71,7 @@ When the engine needs to execute an activity, the server finds a worker that has
 {
   "type": "task",
   "operationId": "abc-123",
+  "attemptToken": "attempt-1",
   "activityName": "media.transcribe",
   "input": { "audioUrl": "..." }
 }
@@ -80,6 +83,7 @@ The worker looks up the activity function, executes it, and sends back a result:
 {
   "type": "taskResult",
   "operationId": "abc-123",
+  "attemptToken": "attempt-1",
   "status": "completed",
   "value": { "transcript": "..." }
 }
@@ -87,11 +91,11 @@ The worker looks up the activity function, executes it, and sends back a result:
 
 If the activity function throws, the result message carries `"status": "failed"` with an error string. If the activity name isn't registered on this worker, an error result is sent immediately.
 
-`task` optionally carries `workflowRevision` (WFT-20) — the dispatching workflow run's persisted revision, when the `TaskDispatch` caller supplied one. Echo it back on `taskResult` unchanged; the server rejects a completion whose echoed revision disagrees with the dispatch's as stale. See [the protocol reference](../reference/remote-worker-protocol.md#taskresult) for the exact WebSocket-additive-versus-long-poll-strict authorization rule.
+`task` optionally carries `workflowRevision`—the dispatching workflow run's persisted revision, when the `TaskDispatch` caller supplied one. Echo it back on `taskResult` unchanged; the server rejects a completion whose echoed revision disagrees with the dispatch's as stale. See [the protocol reference](../reference/remote-worker-protocol.md#taskresult) for the exact WebSocket-additive-versus-long-poll-strict authorization rule.
 
 ## Activity interceptors
 
-You want to trace every remote activity with OpenTelemetry, log timing for the on-call dashboard, or validate that the headers coming across the wire carry the metadata you expect before anything touches your business logic. Sprinkling that code into every activity function is exactly the kind of duplication interceptors exist to solve.
+You want to trace every remote activity with [OpenTelemetry](https://opentelemetry.io/), log timing for the on-call dashboard, or validate that the headers coming across the wire carry the metadata you expect before anything touches your business logic. Sprinkling that code into every activity function is exactly the kind of duplication interceptors exist to solve.
 
 Pass an array of `ActivityInterceptor` objects to `RemoteWorker`, and they wrap every task execution on this worker. The chain runs _after_ the task arrives off the WebSocket but _before_ your activity function sees the input, which means interceptors can read propagated headers, transform inputs, observe failures, and record timing without your activities knowing anything about them.
 
@@ -276,14 +280,15 @@ await worker.disconnect();
 
 The server can also initiate shutdown by sending a `{ type: 'shutdown' }` message. The worker stops accepting new tasks, waits for in-flight work to complete, then closes.
 
-Both classes implement `Disposable` for use with `using`:
+Both classes implement `Disposable` for immediate cleanup with `using`. That synchronous cleanup is not an awaited drain. Call `disconnect()` for a remote worker or `stop()` for a long-poll worker before leaving the scope when in-flight work must settle:
 
 ```typescript partial
 {
   using worker = new RemoteWorker(options);
   await worker.connect();
   // Worker runs...
-} // Automatically cleaned up
+  await worker.disconnect();
+} // Immediate disposal after the awaited drain
 ```
 
 The `connected`, `inFlight`, and `shuttingDown` properties let you monitor worker status for health checks and dashboards.

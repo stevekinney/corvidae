@@ -18,7 +18,7 @@ Skills use progressive disclosure:
 
 This keeps normal runs cheap and focused while still making specialized procedures available when the task calls for them.
 
-## Why It Is Important
+## Runtime composition
 
 Corvidae has several extension points: `@corvidae/armorer` tools, `@corvidae/operative` hooks, `@corvidae/memory` recall, and application-owned runtime composition. Skills connect those extension points into one workflow:
 
@@ -91,6 +91,12 @@ const skillTools = createSkillToolbox({ provider, session });
 ```
 
 In an agent loop, call `catalogHook.prepareStep(context)` on step 0; it returns `string | undefined` (`undefined` when no skills are available or the provider errors), so inject the value only when it is defined. `createSkillToolbox` returns a plain object of four `Tool` instances, so spread them into your toolbox—`createToolbox([...Object.values(skillTools)])`—so the agent can activate skills and load resources when the catalog says one is relevant.
+
+## Session ownership
+
+Create a separate `SkillSession` for each run or conversation whose activations should be isolated. Providers own skill content; sessions own which skills are active. Reusing a provider shares the catalog, while reusing a session shares activation state and merged tool policy.
+
+Skill text is executable guidance for an agent, not an authorization grant. The host remains responsible for which tools exist, what those tools may do, and whether a principal can accept a proposal. Signature or hash verification establishes the fetched bytes' provenance; it does not make their instructions appropriate for every run.
 
 ## Ingesting Skills
 
@@ -166,7 +172,7 @@ Use the session, hooks, and tool factories below to wire this behavior into the 
 
 ## Memory and Learning
 
-`createSkillMemory(memory, skillName)` wraps any compatible memory implementation and forces reads and writes into the `skill:{name}` namespace. This prevents skill-specific learning from leaking into unrelated memory queries.
+`createSkillMemory(memory, skillName)` wraps any compatible memory implementation and forces reads and writes into the `skill:{name}` namespace. The wrapper overrides the namespace on its `remember` and `recall` calls. The host still owns authorization: callers with direct access to the underlying memory can choose that namespace themselves.
 
 `createSkillMemoryHooks()` can recall skill-specific memories on the first step and store final responses as experiential skill learning. The hooks degrade gracefully: memory failures should not crash an agent run.
 
@@ -245,7 +251,7 @@ import {
 
 **Memory:**
 
-- **`createSkillMemory(memory, skillName)`**: Wraps a `MemoryLike` to namespace all reads and writes under `skill:{skillName}:`.
+- **`createSkillMemory(memory, skillName)`**: Wraps a `MemoryLike` to namespace all reads and writes under `skill:{skillName}`.
 - **`createSkillMemoryHooks(options)`**: Returns a `{ prepareStep, onStep }` hook pair that recalls and stores skill-specific memory.
 
 **Proposals:**

@@ -406,6 +406,8 @@ console.log(result); // 'https://example.com/api?plugin=true'
 
 ### `createManualRuntimeServices()` identifier seeding
 
+The cross-package ownership and cleanup matrix is collected in [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md).
+
 **Signature:** `function createManualRuntimeServices(options?: CreateManualRuntimeServicesOptions): ManualRuntimeServices`
 
 `createManualRuntimeServices()` is the deterministic, injectable implementation of the `RuntimeServices` contract—a test or a durable-recovery path swaps it in for `createDefaultRuntimeServices()`'s real-globals implementation. Every identifier its `identifiers.next(kind)` mints has the shape `` `${identifierPrefix}-${kind}-${n}` ``, where `n` is a per-`kind` counter starting at 1 and `identifierPrefix` is a short, stable hash-derivation of the instance's `identifierSeed` (Coordinator ruling on AB-337).
@@ -424,6 +426,20 @@ b.identifiers.next('conversation'); // `${b.identifierPrefix}-conversation-1`—
 const c = createManualRuntimeServices({ identifierSeed: 'runtime-a' });
 c.identifiers.next('conversation'); // identical to a's own first `conversation` id
 ```
+
+The runtime service is also the ownership seam for cleanup. `deferred.track(promise, label)` records fire-and-forget work, and `await deferred.drain()` returns both settled outcomes and labels that remain outstanding. Use the returned `outstanding` list in a test or shutdown report; do not turn a still-running promise into a successful cleanup result merely because its abort signal fired.
+
+```typescript
+import { createManualRuntimeServices } from '@corvidae/lifecycle';
+
+const runtime = createManualRuntimeServices({ identifierSeed: 'test' });
+runtime.deferred.track(Promise.resolve(), 'audit-write');
+const report = await runtime.deferred.drain();
+// report.settled[0] is { label: 'audit-write', outcome: 'resolved' }
+// report.outstanding is []
+```
+
+Use `createDefaultRuntimeServices()` at an application boundary and pass that value down. Use a manual runtime in deterministic tests so clocks, identifiers, timers, randomness, and deferred work share one explicit owner. The package does not provide a global clock or a second cleanup protocol.
 
 Omitting `identifierSeed` gets a generated, process-unique value instead—this is what keeps two independently constructed runtimes with no explicit seed from colliding too, most concretely a durable run rehydrated in a freshly recovered process (AB-321): the recovered process's runtime never reuses the seed (and therefore the identifier prefix) the crashed process's runtime used. A caller that needs a reproducible sequence across processes or test runs still passes an explicit `identifierSeed`; both `identifierSeed` and the derived `identifierPrefix` are exposed on the returned `ManualRuntimeServices` so a test can derive an expected identifier instead of pinning a literal string that would drift with the seed.
 

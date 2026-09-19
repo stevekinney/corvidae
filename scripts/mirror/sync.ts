@@ -331,11 +331,14 @@ export function assertPrivateWorkspacesCheckable(
 /**
  * Build, type-check, pack and inspect every package the target publishes.
  *
- * Each command runs in its own package directory rather than at the clone root, because the root
- * manifest the transform emits deliberately carries no scripts — root tooling is the class
- * `target-owned.json` still records as unresolved — so there is no aggregate `build` to call.
- * Verifying at the root would settle that question as a side effect, which is the wrong place for
- * it to be settled, so the per-package loop stays and COR-1221 extended it instead: an emitted
+ * Each command runs in its own package directory rather than at the clone root. It used to be
+ * that the root manifest carried no scripts at all, so there was no aggregate `build` to call;
+ * since COR-1223 a target that already has a root manifest keeps its own scripts, and weft's root
+ * does define `build`, `test` and `typecheck` as `turbo run` fan-outs. The per-package loop stays
+ * anyway, for the reason it was written: a root fan-out would verify whatever the target's task
+ * graph happens to include, which is the target's decision, whereas this loop verifies exactly
+ * the packages this plan emits. Root tooling for a target that has none is still the class
+ * `target-owned.json` records as unresolved. COR-1221 extended the loop instead: an emitted
  * private workspace is type-checked too. Nothing packs or publishes one, but its source ships to
  * the mirror now, and source nothing checks is source the mirror publishes blind.
  * `bun install --frozen-lockfile` at the root comes first and is a check in its own right: it

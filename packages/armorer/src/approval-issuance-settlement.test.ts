@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { type ApprovalStateStore, createProcessLocalApprovalStateStore } from './approval-binding';
 import { createTool, createToolCall } from './create-tool';
 import { createToolbox } from './create-toolbox';
-import type { Tool, ToolPolicyDecision } from './is-tool';
+import type { Tool } from './is-tool';
 import type { ToolboxExecuteOptions } from './toolbox-contracts';
 import type { ToolboxSettledEvent } from './toolbox-lifecycle-events';
 import type { SignedPendingToolApproval } from './types';
@@ -257,32 +257,45 @@ describe('approval issuance settlement ordering', () => {
     expect(log.records[0]?.error).toEqual(result.error);
   });
 
-  it('settles error when the pending approval cannot be signed', async () => {
-    const callbacks = { count: 0 };
-    const tool = createTool({
-      name: 'issuance-unsignable',
-      version: '1.0.0',
-      description: 'Approval issuance settlement test tool',
-      input: z.object({}),
-      policy: {
-        // `ToolAction.message` is declared `string`, and unlike `action.schema`
-        // it never passes through `normalizeToolContent`, so a policy that
-        // violates that declaration reaches `signPendingApproval` intact and
-        // makes its `JSON.stringify` throw.
-        beforeExecute: () =>
-          ({
-            status: 'needs_approval',
-            reason: 'Approve this call',
-            action: { message: 1n },
-          }) as unknown as ToolPolicyDecision,
-      },
-      execute: async () => {
-        callbacks.count += 1;
-        return 'must not execute';
-      },
-    });
+  /**
+   * This test used to induce the failure with `action: { message: 1n }`, which
+   * reached `signPendingApproval` intact and made its `JSON.stringify` throw,
+   * because `ToolAction.message` was the one action field that never passed
+   * through normalization. COR-1220 coerces it, so that input can no longer
+   * reach signing and the original premise is gone.
+   *
+   * The signing-error branch appears unreachable now. `signPendingApproval` has
+   * two throw sources: a missing `approvalSecret`, which
+   * `signPendingApprovalIfConfigured` already makes unreachable by returning
+   * early, and the `JSON.stringify` in its payload normalization. Six candidate
+   * carriers for a non-serializable value were probed against the coerced build
+   * — `message`, `operation.argsPreview`, `metadata`, `editableArgs`,
+   * `expiresAt`, and the call arguments — and none reaches it: the first three
+   * normalize, and the last three are rejected by earlier validation. That is a
+   * failure to find a trigger rather than a proof none exists, so the branch
+   * stays.
+   *
+   * What this test owes COR-45 is the settlement behavior, not the trigger: one
+   * settlement per call, an error path that settles `error` rather than
+   * `paused`, and an approval store never touched when issuance fails. It now
+   * induces the failure through approval binding, which is the same region of
+   * issuance the signing failure came from.
+   *
+   * Action validation was tried first and rejected as the trigger. It fails
+   * earlier, and on that path the settled event carries a raw `Error` while
+   * `result.error` carries the structured shape, so `log.records[0]?.error`
+   * and `result.error` are not equal. That asymmetry between two failure paths
+   * looks like a real inconsistency, but it is out of this issue's scope and
+   * is not something to paper over by relaxing the assertion here.
+   */
+  it('settles error once and never reaches the approval store when binding fails', async () => {
     const { store, probe } = createProbeStore();
-    const toolbox = createToolbox([tool], { approvalSecret, approvalStateStore: store });
+    const { tool, callbacks } = createGatedTool('issuance-unsignable');
+    const toolbox = createToolbox([tool], {
+      approvalSecret,
+      approvalStateStore: store,
+      approvalNow: () => Number.MAX_VALUE,
+    });
     const log = createSettlementLog(1);
     toolbox.addEventListener('settled', (event) => log.record(event));
     const call = createToolCall(tool.name, {}, 'issuance-unsignable-call');

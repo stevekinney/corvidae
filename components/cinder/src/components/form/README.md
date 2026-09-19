@@ -20,3 +20,5 @@ Use native validation and form controls as usual. The component owns only submit
   {/snippet}
 </Form>
 ```
+
+`onSubmit` may return a promise. While it is pending, the child snippet receives `{ submitting: true }`; duplicate submits are ignored until the handler settles. Native form serialization, constraint validation, reset behavior, and the submit event remain the browser's responsibility. If the handler rejects, catch it in the host and keep the controls mounted so the user can correct and resubmit.

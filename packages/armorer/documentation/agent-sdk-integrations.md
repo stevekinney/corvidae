@@ -2,7 +2,7 @@
 
 ## Overview
 
-Toolbox supports OpenAI Agents workflows through MCP and a direct adapter. You can either:
+Toolbox supports the [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/) workflows through [Model Context Protocol](https://modelcontextprotocol.io/) and a direct adapter. You can either:
 
 1. Connect to a Toolbox MCP server
 2. Use the direct OpenAI Agents adapter (`@corvidae/armorer`)

@@ -1,5 +1,7 @@
 # Bun optimization results
 
+These measurements describe the revision and host recorded below. They explain the retained concurrency setting; they are not current performance guarantees. Use the [workspace commands](../README.md#working-locally) for present-day validation.
+
 Measured on September 18, 2026. Keep workspace test concurrency at one: concurrency two reduced median runtime by 42.1%, but increased peak sampled memory by 43.2%, exceeding the agreed 25% allowance. All six runs passed the same 36,816 tests. Private libraries remain source-only.
 
 ## Validation changes

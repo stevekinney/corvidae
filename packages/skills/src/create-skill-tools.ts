@@ -1,11 +1,20 @@
 import { createTool } from '@corvidae/armorer';
+import type { TypedEventTarget } from '@corvidae/lifecycle';
 import { z } from 'zod';
 
 import { escapeXml } from './create-skill-catalog-hook';
+import type { SkillAdmissionRule, SkillEventCorrelation, SkillEventMap } from './events';
+import {
+  SkillActivatedEvent,
+  SkillDeactivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from './events';
 import type { SkillGuardrailOptions } from './guardrail';
 import { scanSkillResource } from './guardrail';
 import type { SkillSession } from './skill-session';
-import type { SkillProvider } from './types';
+import type { SkillProvider, ToolPolicy } from './types';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -20,6 +29,31 @@ export interface CreateSkillToolsOptions {
    * model. Omit to skip scanning entirely.
    */
   guardrail?: SkillGuardrailOptions;
+  /**
+   * Dispatch target for skill lifecycle events (COR-767). Omit to emit
+   * nothing — a caller with no event surface (a headless script, a test) gets
+   * no dispatch and no error, the same optional-emitter shape the schedule
+   * lifecycle events use in `@corvidae/operative`.
+   */
+  events?: TypedEventTarget<SkillEventMap>;
+  /**
+   * Admission policy over skill NAMES (COR-752, Decision 1: Bureau owns "global
+   * restriction of which skills exist for a run"). Before this, the same policy
+   * was applied only to the rendered catalog, so a skill filtered out of the
+   * listing could still be activated by name — the listing was cosmetic, not a
+   * gate. Activation now consults it.
+   *
+   * Note the members are skill names, not tool names, even though the shape is
+   * currently `ToolPolicy`. COR-752's Decision 3 calls for a distinct
+   * skill-scoped type; that rename is its own boundary and is not done here.
+   */
+  admissionPolicy?: ToolPolicy;
+  /**
+   * Correlation stamped onto every event this toolbox dispatches. The tools
+   * themselves have no access to the owning run or session, so the composer
+   * supplies it.
+   */
+  correlation?: SkillEventCorrelation;
 }
 
 // ── Tools ────────────────────────────────────────────────────────────
@@ -32,8 +66,24 @@ export interface CreateSkillToolsOptions {
  * activation. A blocked skill is never marked active and its content never
  * reaches the model.
  */
+/**
+ * Which admission rule refuses this skill, or undefined when the policy admits
+ * it. Deny wins over allow: a name on both lists is refused, because the deny
+ * list is the more restrictive statement and a policy that admitted it would
+ * be honouring the weaker half of its own configuration.
+ */
+function refusedByAdmissionPolicy(
+  name: string,
+  policy: ToolPolicy | undefined,
+): SkillAdmissionRule | undefined {
+  if (!policy) return undefined;
+  if (policy.denyList?.includes(name)) return 'deny-list';
+  if (policy.allowList && !policy.allowList.includes(name)) return 'allow-list';
+  return undefined;
+}
+
 export function createActivateSkillTool(options: CreateSkillToolsOptions) {
-  const { provider, session, guardrail } = options;
+  const { provider, session, guardrail, events, correlation = {}, admissionPolicy } = options;
 
   return createTool({
     name: 'activate_skill',
@@ -47,19 +97,35 @@ export function createActivateSkillTool(options: CreateSkillToolsOptions) {
         return { alreadyActive: true, name: params.name };
       }
 
+      // Admission before existence: a skill the policy refuses must not reveal
+      // through a different error whether it exists at all.
+      const refusedBy = refusedByAdmissionPolicy(params.name, admissionPolicy);
+      if (refusedBy) {
+        events?.dispatch(
+          new SkillRejectedEvent(params.name, 'ownership-policy', correlation, refusedBy),
+        );
+        return { error: 'Skill is not permitted', name: params.name };
+      }
+
       const enabled = await provider.isEnabled(params.name);
       if (!enabled) {
+        events?.dispatch(new SkillRejectedEvent(params.name, 'disabled', correlation));
         return { error: 'Skill is disabled', name: params.name };
       }
 
       const skill = await provider.loadSkill(params.name);
       if (!skill) {
+        events?.dispatch(new SkillFailedEvent(params.name, correlation));
         return { error: 'Skill not found', name: params.name };
       }
+
+      // The instructions exist; whether they enter context is still undecided.
+      events?.dispatch(new SkillLoadedEvent(params.name, correlation));
 
       if (guardrail) {
         const scan = await scanSkillResource(skill.body, guardrail);
         if (scan.blocked) {
+          events?.dispatch(new SkillRejectedEvent(params.name, 'guardrail-blocked', correlation));
           return {
             error: 'Skill content blocked by guardrail',
             name: params.name,
@@ -71,6 +137,7 @@ export function createActivateSkillTool(options: CreateSkillToolsOptions) {
 
       const resources = await provider.listResources(params.name);
       session.activate(params.name, skill.metadata.toolPolicy);
+      events?.dispatch(new SkillActivatedEvent(params.name, correlation));
 
       const escapedName = escapeXml(params.name);
       let xml = `<skill_content name="${escapedName}">\n${skill.body}`;
@@ -142,7 +209,7 @@ export function createLoadSkillResourceTool(options: CreateSkillToolsOptions) {
  * Creates a tool that deactivates a skill.
  */
 export function createDeactivateSkillTool(options: CreateSkillToolsOptions) {
-  const { session } = options;
+  const { session, events, correlation = {} } = options;
 
   return createTool({
     name: 'deactivate_skill',
@@ -159,6 +226,7 @@ export function createDeactivateSkillTool(options: CreateSkillToolsOptions) {
       if (session.isActive(params.name)) {
         session.deactivate(params.name);
         result.deactivated = true;
+        events?.dispatch(new SkillDeactivatedEvent(params.name, correlation));
       }
 
       return Promise.resolve(result);

@@ -164,7 +164,7 @@ describe('parseSkillMarkdown', () => {
     expect(result.metadata.toolPolicy?.allowList).toEqual(['Read', 'Write', 'Bash', 'Edit']);
   });
 
-  it('parses YAML tool arrays and drops blank or non-string entries', () => {
+  it('parses YAML tool arrays, drops blank or non-string entries, and ignores denied-tools', () => {
     const markdown = [
       '---',
       'name: array-tool-policy',
@@ -185,9 +185,13 @@ describe('parseSkillMarkdown', () => {
 
     const result = parseSkillMarkdown(markdown);
 
+    // COR-752, Decision 2: array normalization still applies to `allowed-tools`,
+    // but the portable `denied-tools` key confers no authority and must not
+    // reach the policy — a skill author cannot disable a tool for the agent
+    // that loaded them. This assertion previously expected
+    // `denyList: ['Bash', 'Edit']`; that was the contract the decision reverses.
     expect(result.metadata.toolPolicy).toEqual({
       allowList: ['Read', 'Write'],
-      denyList: ['Bash', 'Edit'],
     });
   });
 
