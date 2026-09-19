@@ -40,48 +40,20 @@ async function planFor(target: MirrorTarget): Promise<SurfacePlan> {
  * restore-or-accept ruling before a sync can run. The list is pinned rather than tolerated: a new
  * orphan fails this test, and so does resolving one without deleting its line.
  *
- * COR-1186 predicted the ten cinder exports entries. The other eleven are new, and two of them
- * are `bin` targets rather than subpaths: a published binary is a path into the same build output
- * and breaks the same way, so it is walked alongside the exports map.
+ * COR-1189's walk found twenty-one, two of them `bin` targets rather than subpaths — a published
+ * binary is a path into the same build output and breaks the same way, so it is walked alongside
+ * the exports map. Nineteen were restored: each now has a source file at the path the emitted
+ * manifest names, re-exporting whatever corvidae renamed or relocated the implementation to. The
+ * two below are the accepted narrowings, and they are the only entries left.
  */
 const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
-  weft: [
-    // upstream `src/storage/sqlite.ts`; corvidae keeps only `sqlite-key-value-queries.ts`
-    '@lostgradient/weft ./storage/sqlite',
-    // upstream `src/mcp/cli.ts`; corvidae renamed it `src/cli-mcp.ts`, so the binary has no source
-    '@lostgradient/weft bin:weft-mcp',
-  ],
+  weft: [],
   cinder: [
-    // the two promoted components' shims: `src/components/experimental/` is absent here
+    // The two promoted components' deprecated shims: `src/components/experimental/` is absent
+    // here, and only the bare component entry narrows — each one's `/schema`, `/variables` and
+    // `/styles` facets resolve against the promoted component. Accepted rather than restored.
     '@lostgradient/cinder ./experimental/json-viewer',
     '@lostgradient/cinder ./experimental/message',
-    // `src/cli/` relocated to `components/cinder/scripts/knowledge/`, outside the published surface
-    '@lostgradient/cinder ./knowledge',
-    // six `src/styles/*.css.d.ts` declaration companions; the CSS itself resolves
-    '@lostgradient/cinder ./styles',
-    '@lostgradient/cinder ./styles/all',
-    '@lostgradient/cinder ./styles/foundation',
-    '@lostgradient/cinder ./styles/json-highlight',
-    '@lostgradient/cinder ./styles/tokens',
-    '@lostgradient/cinder ./styles/utilities',
-    // `src/styles/base-guard.ts` is absent here
-    '@lostgradient/cinder ./styles/guard',
-    // the published `cinder` binary, built from the same relocated `src/cli/`
-    '@lostgradient/cinder bin:cinder',
-    // corvidae moved the barrel to `src/index.ts`; the published tree builds from `src/lib/index.ts`
-    '@lostgradient/editor .',
-    // upstream `component-runtime.ts`; corvidae renamed it `milkdown-plugin-runtime.ts`
-    '@lostgradient/editor ./editor/component-runtime',
-    // upstream `src/rendering/async.ts`; corvidae renamed it `render-async.ts`
-    '@lostgradient/markdown ./rendering/async',
-    // upstream `src/{anthropic,openai,gemini}.ts`; corvidae moved them under `src/providers/`
-    '@lostgradient/operative ./anthropic',
-    '@lostgradient/operative ./gemini',
-    '@lostgradient/operative ./openai',
-    // never published, so no parity risk, but `src/mount.ts` is absent here
-    '@lostgradient/weft-ui .',
-    // upstream `src/sort/`; absent here
-    'conversationalist ./sort',
   ],
 };
 
@@ -161,10 +133,27 @@ describe('target coverage', () => {
       );
     });
 
-    test(`${target}: the gate refuses to publish while those blockers stand`, async () => {
+    test(`${target}: the gate refuses to publish exactly while a blocker stands`, async () => {
       const plan = await planFor(target);
       const surface = await loadPackageSurface();
-      expect(() => assertPublishable(plan, surface.packages)).toThrow(SurfaceError);
+      const blockers = unresolvedByTarget[target];
+      let thrown: unknown;
+      try {
+        assertPublishable(plan, surface.packages);
+      } catch (error) {
+        thrown = error;
+      }
+      if (blockers.length === 0) {
+        // Every restore landed, so nothing in this target is unresolved and the gate has no
+        // account to refuse on. A parity narrowing would still throw, which is the point of
+        // asserting the absence rather than skipping the target.
+        expect(thrown).toBeUndefined();
+        return;
+      }
+      expect(thrown).toBeInstanceOf(SurfaceError);
+      for (const blocker of blockers) {
+        expect((thrown as SurfaceError).message).toContain(blocker);
+      }
     });
   }
 
