@@ -172,6 +172,7 @@
         density="toolbar"
         value={activeView}
         onValueChange={handleViewChange}
+        class="controls-view-mode"
       >
         <!--
           `controls` is only passed for the ACTIVE segment (cinder#1303). The view
@@ -189,31 +190,33 @@
           controls={activeView === 'editor' ? viewPanelIds?.editor : undefined}
         >
           {#snippet leading()}<Pencil class="cinder-icon-xs" />{/snippet}
-          Editor
+          <span class="controls-view-mode-label">Editor</span>
         </Segment>
         <Segment value="diff" controls={activeView === 'diff' ? viewPanelIds?.diff : undefined}>
           {#snippet leading()}<GitBranch class="cinder-icon-xs" />{/snippet}
-          Diff
+          <span class="controls-view-mode-label">Diff</span>
         </Segment>
         <Segment
           value="summary"
           controls={activeView === 'summary' ? viewPanelIds?.summary : undefined}
         >
           {#snippet leading()}<FileText class="cinder-icon-xs" />{/snippet}
-          Summary
+          <span class="controls-view-mode-label">Summary</span>
         </Segment>
       </SegmentedControl>
     {/if}
 
     {#if diffStats && (diffStats.added > 0 || diffStats.removed > 0 || diffStats.modified > 0)}
-      <DiffStatistics
-        variant="compact"
-        density="toolbar"
-        added={diffStats.added}
-        removed={diffStats.removed}
-        modified={diffStats.modified}
-        zeroVisible={false}
-      />
+      <div class="controls-diff-statistics">
+        <DiffStatistics
+          variant="compact"
+          density="toolbar"
+          added={diffStats.added}
+          removed={diffStats.removed}
+          modified={diffStats.modified}
+          zeroVisible={false}
+        />
+      </div>
     {/if}
 
     {#if formatting}
@@ -372,8 +375,16 @@
     padding: 0;
     min-block-size: auto;
     min-width: 0;
+    inline-size: 100%;
+    max-inline-size: 100%;
     flex: 1 1 0;
     overflow: hidden;
+  }
+
+  .controls-diff-statistics {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
   }
 
   .controls-diff-mode {
@@ -421,7 +432,35 @@
     gap: var(--cinder-space-1);
   }
 
+  @container (max-width: 24rem) {
+    .controls-view-mode-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .controls-diff-statistics {
+      display: none;
+    }
+  }
+
   @container (max-width: 34rem) {
+    .controls-formatting {
+      flex: 0 0 auto;
+    }
+
+    .controls-formatting :global(.editor-toolbar) {
+      inline-size: var(--cinder-control-height-sm);
+      max-inline-size: var(--cinder-control-height-sm);
+      flex: 0 0 auto;
+    }
+
     .controls-diff-mode-inline {
       display: none;
     }

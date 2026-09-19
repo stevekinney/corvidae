@@ -35,8 +35,6 @@ function fixtureRoute(slug: string): string {
 const SIZING_ROUTE = fixtureRoute('segmented-control');
 const REVIEW_EDITOR_ROUTE = fixtureRoute('review-editor');
 const reviewEditorEntry = fixtureEntry('review-editor');
-const ARTIFACT_ROOT =
-  '/Users/stevekinney/.codex/artifacts/chef-corvidae-ui-01a0b754-7538-7491-8f63-3a00c2a66ed0';
 
 // Match Playwright's bounding box / padding numerics within a sub-pixel
 // tolerance. Browsers can return fractional pixel values for box metrics.
@@ -82,10 +80,16 @@ type Box = {
   height: number;
 };
 
+type ToolbarChildBox = Box & {
+  label: string;
+};
+
 type ReviewToolbarMetrics = {
   row: Box;
   leading: Box;
   trailing: Box;
+  leadingChildren: ToolbarChildBox[];
+  trailingChildren: ToolbarChildBox[];
   scrollWidth: number;
   clientWidth: number;
 };
@@ -134,10 +138,24 @@ async function reviewToolbarMetrics(reviewEditor: Locator): Promise<ReviewToolba
     if (!(leading instanceof HTMLElement) || !(trailing instanceof HTMLElement)) {
       throw new Error('ReviewEditor toolbar clusters must be present.');
     }
+    const visibleChildrenFrom = (target: Element): ToolbarChildBox[] =>
+      Array.from(target.children)
+        .map((child, index) => ({ child, index, box: boxFrom(child) }))
+        .filter(({ box }) => box.width > 0 && box.height > 0)
+        .map(({ child, index, box }) => ({
+          ...box,
+          label:
+            child.getAttribute('aria-label') ??
+            child.getAttribute('class') ??
+            `${target.className}-child-${index}`,
+        }));
+
     return {
       row: boxFrom(element),
       leading: boxFrom(leading),
       trailing: boxFrom(trailing),
+      leadingChildren: visibleChildrenFrom(leading),
+      trailingChildren: visibleChildrenFrom(trailing),
       scrollWidth: element.scrollWidth,
       clientWidth: element.clientWidth,
     };
@@ -155,25 +173,105 @@ function viewLabel(view: ReviewView): string {
   return 'Summary';
 }
 
-async function assertReviewToolbarActionAccess(reviewEditor: Locator, width: number) {
-  const formattingToolbar = reviewEditor.getByRole('toolbar', { name: 'Formatting toolbar' });
-  const overflowTrigger = reviewEditor.getByRole('button', { name: 'More formatting' });
-  const visibleOverflowTrigger =
-    (await overflowTrigger.count()) > 0 && (await overflowTrigger.isVisible());
+async function assertToolbarButtonHitbox(
+  locator: Locator,
+  toolbarBox: Box,
+  label: string,
+): Promise<boolean> {
+  if ((await locator.count()) === 0 || !(await locator.first().isVisible())) return false;
+  const box = await locator.first().boundingBox();
+  if (box === null || box.width <= 0 || box.height <= 0) return false;
+  expect(box.x, `${label}: action starts inside toolbar`).toBeGreaterThanOrEqual(
+    toolbarBox.left - 1,
+  );
+  expect(box.x + box.width, `${label}: action ends inside toolbar`).toBeLessThanOrEqual(
+    toolbarBox.right + 1,
+  );
+  await locator.first().click({ trial: true });
+  return true;
+}
 
-  if (width === 848) {
-    for (const name of ['Bold', 'Italic', 'Inline Code', 'Insert Link']) {
-      await expect(formattingToolbar.getByRole('button', { name })).toBeVisible();
-    }
+async function assertReviewToolbarActionAccess(reviewEditor: Locator, width: number) {
+  const requiredActions = ['Bold', 'Italic', 'Inline Code', 'Insert Link'];
+  const formattingToolbar = reviewEditor.getByRole('toolbar', { name: 'Formatting toolbar' });
+  await expect
+    .poll(
+      async () => {
+        const inlineActions = await formattingToolbar
+          .getByRole('button')
+          .evaluateAll(
+            (buttons, names) =>
+              buttons.some((button) => {
+                const name = button.getAttribute('aria-label') ?? button.textContent ?? '';
+                const rect = button.getBoundingClientRect();
+                return (
+                  (names as string[]).includes(name.trim()) && rect.width > 0 && rect.height > 0
+                );
+              }),
+            requiredActions,
+          )
+          .catch(() => false);
+        const overflowTrigger = await formattingToolbar
+          .getByRole('button', { name: 'More formatting', exact: true })
+          .evaluate((button) => {
+            const rect = button.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          })
+          .catch(() => false);
+        return inlineActions || overflowTrigger;
+      },
+      { message: 'Formatting toolbar must expose inline actions or a visible overflow trigger' },
+    )
+    .toBe(true);
+  const toolbarBox = await formattingToolbar.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    } satisfies Box;
+  });
+
+  const missingInlineActions: string[] = [];
+  for (const name of requiredActions) {
+    const isReachable = await assertToolbarButtonHitbox(
+      formattingToolbar.getByRole('button', { name, exact: true }),
+      toolbarBox,
+      name,
+    );
+    if (!isReachable) missingInlineActions.push(name);
   }
 
-  if (!visibleOverflowTrigger) return;
+  if (width === 848) {
+    expect(missingInlineActions, '848px should keep primary formatting actions inline').toEqual([]);
+  }
 
+  if (missingInlineActions.length === 0) return;
+
+  const overflowTrigger = formattingToolbar.getByRole('button', {
+    name: 'More formatting',
+    exact: true,
+  });
+  await expect(
+    overflowTrigger,
+    `Missing inline actions: ${missingInlineActions.join(', ')}`,
+  ).toBeVisible();
+  await assertToolbarButtonHitbox(overflowTrigger, toolbarBox, 'More formatting');
   await overflowTrigger.focus();
   await expect(overflowTrigger).toBeFocused();
   await overflowTrigger.press('Enter');
+
   const overflowPanel = reviewEditor.page().getByRole('group', { name: 'Additional formatting' });
   await expect(overflowPanel).toBeVisible();
+  for (const name of missingInlineActions) {
+    const overflowAction = overflowPanel.getByRole('button', { name, exact: true });
+    await expect(overflowAction).toBeVisible();
+    await overflowAction.focus();
+    await expect(overflowAction).toBeFocused();
+  }
   await overflowPanel.page().keyboard.press('Escape');
   await expect(overflowPanel).toBeHidden();
   await expect(overflowTrigger).toBeFocused();
@@ -375,7 +473,7 @@ test.describe('SegmentedControl — sizing and density', () => {
     for (const width of [320, 512, 848]) {
       test(`ReviewEditor controls preserve row geometry at ${width}px in ${theme}`, async ({
         componentPage,
-      }) => {
+      }, testInfo) => {
         const page = await componentPage.open({
           entry: reviewEditorEntry,
           theme,
@@ -415,9 +513,25 @@ test.describe('SegmentedControl — sizing and density', () => {
           expect(metrics.leading.right, `${view}: clusters must not overlap`).toBeLessThanOrEqual(
             metrics.trailing.left + 1,
           );
+          for (const child of [...metrics.leadingChildren, ...metrics.trailingChildren]) {
+            expect(child.left, `${view}: ${child.label} starts inside row`).toBeGreaterThanOrEqual(
+              metrics.row.left - 1,
+            );
+            expect(child.right, `${view}: ${child.label} ends inside row`).toBeLessThanOrEqual(
+              metrics.row.right + 1,
+            );
+          }
+          for (const leadingChild of metrics.leadingChildren) {
+            for (const trailingChild of metrics.trailingChildren) {
+              expect(
+                leadingChild.right,
+                `${view}: ${leadingChild.label} must not overlap ${trailingChild.label}`,
+              ).toBeLessThanOrEqual(trailingChild.left + 1);
+            }
+          }
 
           await page.screenshot({
-            path: `${ARTIFACT_ROOT}/editor-toolbar-review-${theme}-${width}-${view}.png`,
+            path: testInfo.outputPath(`editor-toolbar-review-${theme}-${width}-${view}.png`),
             fullPage: true,
           });
         }

@@ -51,7 +51,7 @@ describe('EditorToolbar lifecycle', () => {
 
     emitResize(record, toolbar, 10000);
     await tick();
-    expect(toolbar.querySelectorAll('[data-toolbar-flex-group-id]').length).toBe(4);
+    expect(toolbar.querySelectorAll('[data-toolbar-flex-group-id]').length).toBe(5);
     expect(record.disconnected).toBe(false);
     expect(RecordingResizeObserver.records).toHaveLength(observerCount);
     await unmount(view);
@@ -64,7 +64,7 @@ describe('EditorToolbar lifecycle', () => {
 
     const toolbar = toolbarElement('toolbar-zero');
     configureMeasurements(toolbar, 0);
-    expect(toolbar.querySelectorAll('[data-toolbar-flex-group-id]').length).toBe(4);
+    expect(toolbar.querySelectorAll('[data-toolbar-flex-group-id]').length).toBe(5);
     expect(toolbar.querySelector('button[aria-label="More formatting"]')).toBeNull();
 
     let record = observedToolbar();
@@ -72,6 +72,34 @@ describe('EditorToolbar lifecycle', () => {
     await tick();
 
     expect(toolbar.querySelectorAll('[data-toolbar-flex-group-id]').length).toBe(0);
+    expect(toolbar.querySelector('button[aria-label="More formatting"]')).not.toBeNull();
+    await unmount(view);
+  });
+  test('keeps overflowed leading controls measured while the popover is closed', async () => {
+    const view = render(EditorToolbar, { props: toolbarProps('toolbar-leading-measurement') });
+    await tick();
+    const toolbar = toolbarElement('toolbar-leading-measurement');
+    configureMeasurements(toolbar, 1000);
+    const leading = requiredElement(
+      toolbar.querySelector<HTMLElement>('[data-toolbar-flex-group-id="leading"]'),
+    );
+    setMeasuredWidth(leading, 80);
+    const record = observedToolbar();
+    emitResize(record, toolbar, 1000);
+    await tick();
+
+    emitResize(record, toolbar, 30);
+    await tick();
+
+    expect(toolbar.querySelector('[data-toolbar-flex-group-id="leading"]')).toBeNull();
+    expect(document.body.querySelector('[data-toolbar-flex-group-id="leading"]')).toBeNull();
+    expect(toolbar.querySelector('button[aria-label="More formatting"]')).not.toBeNull();
+
+    emitResize(record, toolbar, 30);
+    await tick();
+
+    expect(toolbar.querySelector('[data-toolbar-flex-group-id="leading"]')).toBeNull();
+    expect(document.body.querySelector('[data-toolbar-flex-group-id="leading"]')).toBeNull();
     expect(toolbar.querySelector('button[aria-label="More formatting"]')).not.toBeNull();
     await unmount(view);
   });

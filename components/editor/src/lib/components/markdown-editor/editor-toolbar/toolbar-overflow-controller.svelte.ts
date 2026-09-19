@@ -2,7 +2,7 @@ import { on } from 'svelte/events';
 
 import { computeToolbarOverflow, resolveFocusPinnedOverflow } from './toolbar-overflow.ts';
 
-export type FlexGroupId = 'text-formatting' | 'links' | 'lists' | 'block-operations';
+export type FlexGroupId = 'leading' | 'text-formatting' | 'links' | 'lists' | 'block-operations';
 
 type ToolbarElements = {
   leading: HTMLDivElement | null;
@@ -13,6 +13,7 @@ type ToolbarElements = {
 };
 
 const flexGroupOrder: readonly FlexGroupId[] = [
+  'leading',
   'text-formatting',
   'links',
   'lists',
@@ -46,11 +47,11 @@ function flexGroupIdFromTarget(
 /** Owns toolbar measurement, overflow, and focus placement state. */
 export class ToolbarOverflowController {
   private containerWidth = $state<number | null>(null);
-  private leadingWidth = $state(0);
   private gap = $state(0);
   private triggerWidth = $state(0);
   private actionsReservedWidth = $state(0);
   private groupWidths = $state<Record<FlexGroupId, number>>({
+    leading: 0,
     'text-formatting': 0,
     links: 0,
     lists: 0,
@@ -66,9 +67,7 @@ export class ToolbarOverflowController {
     () =>
       computeToolbarOverflow({
         availableWidth:
-          this.containerWidth === null
-            ? null
-            : this.containerWidth - this.leadingWidth - this.actionsReservedWidth,
+          this.containerWidth === null ? null : this.containerWidth - this.actionsReservedWidth,
         gap: this.gap,
         triggerWidth: this.triggerWidth,
         groups: flexGroupOrder.map((id) => ({ id, width: this.groupWidths[id] })),
@@ -90,7 +89,12 @@ export class ToolbarOverflowController {
   ) {}
 
   setLeadingElement(element: HTMLDivElement | null): () => void {
-    this.leadingWidth = element?.getBoundingClientRect().width ?? 0;
+    if (element) {
+      const width = element.getBoundingClientRect().width;
+      if (width > 0 || this.groupWidths.leading === 0) {
+        this.groupWidths = { ...this.groupWidths, leading: width };
+      }
+    }
     const observer = this.toolbarResizeObserver;
     if (element) observer?.observe(element);
     return () => {
@@ -191,7 +195,8 @@ export class ToolbarOverflowController {
       for (const entry of entries) {
         const current = elements();
         if (entry.target === node) this.containerWidth = entry.contentRect.width;
-        else if (entry.target === current.leading) this.leadingWidth = entry.contentRect.width;
+        else if (entry.target === current.leading)
+          this.groupWidths = { ...this.groupWidths, leading: entry.contentRect.width };
         else if (entry.target === current.actionsMeasure) measureActions();
       }
       measureGroups();
@@ -207,7 +212,10 @@ export class ToolbarOverflowController {
     );
 
     this.gap = readGap();
-    this.leadingWidth = elements().leading?.getBoundingClientRect().width ?? 0;
+    const leadingWidth = elements().leading?.getBoundingClientRect().width ?? 0;
+    if (leadingWidth > 0 || this.groupWidths.leading === 0) {
+      this.groupWidths = { ...this.groupWidths, leading: leadingWidth };
+    }
     this.triggerWidth = elements().triggerGhost?.getBoundingClientRect().width ?? 0;
     measureActions();
     measureGroups();
