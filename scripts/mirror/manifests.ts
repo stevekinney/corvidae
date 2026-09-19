@@ -546,8 +546,15 @@ export async function stageTarget(
   return { ...plan, directory: options.directory, written };
 }
 
-async function runInstall(directory: string): Promise<void> {
-  const install = Bun.spawn(['bun', 'install', '--ignore-scripts'], {
+/**
+ * Regenerate a staged target's lockfile.
+ *
+ * Exported because the surface half of the transform stages through its own path — it has two
+ * gates to run between planning and writing — and a second copy of this would be a second place
+ * for the `--ignore-scripts` reasoning above to drift.
+ */
+export async function runInstall(directory: string, extra: readonly string[] = []): Promise<void> {
+  const install = Bun.spawn(['bun', 'install', '--ignore-scripts', ...extra], {
     cwd: directory,
     stdout: 'pipe',
     stderr: 'pipe',

@@ -40,12 +40,34 @@ import {
 
 type JsonObject = Record<string, unknown>;
 
+/**
+ * One package the target publishes, as the plan resolved it.
+ *
+ * The plan is otherwise a flat path-to-contents map, which is all a write needs but not enough to
+ * pack, lint or smoke-test a package afterwards: those need to know which directory holds a
+ * publishable manifest, what it is called on the registry, and which `exports` map it ended up
+ * with. Everything here is already computed while building the plan, so it is recorded rather
+ * than recovered by a second pass over the workspaces.
+ */
+export interface PublishedPackage {
+  /** The `@corvidae/*` workspace name. */
+  workspace: string;
+  /** Target-relative directory, the same one the manifest was written to. */
+  directory: string;
+  publicName: string;
+  entry: PackageSurfaceEntry;
+  exports: SurfaceExportsMap;
+  files: string[];
+}
+
 export interface SurfacePlan extends ManifestPlan {
   /** One result per published package, including the ones with no published predecessor. */
   parity: ParityResult[];
   /** Every exports target that cannot be shipped or has no source. Empty is the goal, not a given. */
   coverage: CoverageFinding[];
   typescript: TypeScriptPlan;
+  /** The packages this target publishes, in discovery order. Private workspaces are absent. */
+  published: PublishedPackage[];
 }
 
 function isJsonObject(value: unknown): value is JsonObject {
@@ -145,6 +167,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
 
   const parity: ParityResult[] = [];
   const coverage: CoverageFinding[] = [];
+  const published: PublishedPackage[] = [];
   const files = { ...manifestPlan.files };
   const directories: string[] = [];
 
@@ -182,6 +205,15 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     applyToolchain(manifest, entry.build.toolchain, catalog, targetHasCatalog, workspace.name);
     files[path] = serialize(manifest);
 
+    published.push({
+      workspace: workspace.name,
+      directory: workspace.directory,
+      publicName: resolved.publicName,
+      entry,
+      exports: resolved.exports,
+      files: resolved.files,
+    });
+
     parity.push(checkParity(baseline, resolved.publicName, resolved.exports));
     coverage.push(
       ...checkTargetCoverage({
@@ -208,6 +240,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     parity,
     coverage,
     typescript,
+    published,
   };
 }
 

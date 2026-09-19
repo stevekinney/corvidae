@@ -13,6 +13,7 @@
   ],
   "catalog": {
     "@anthropic-ai/sdk": "^0.122.0",
+    "@arethetypeswrong/cli": "^0.18.5",
     "@axe-core/playwright": "^4.10.0",
     "@electric-sql/pglite": "^0.5.1",
     "@floating-ui/dom": "1.7.6",
@@ -94,6 +95,7 @@
     "prosemirror-model": "^1.25.4",
     "prosemirror-state": "^1.4.4",
     "prosemirror-view": "^1.41.3",
+    "publint": "^0.3.24",
     "qrcode": "^1.5.4",
     "rehype-katex": "^7.0.1",
     "rehype-sanitize": "^6.0.0",
@@ -141,6 +143,7 @@
     "test:browser:update": "CINDER_VISUAL_DIFF=block CINDER_UPDATE_SNAPSHOTS=1 bun run test:browser --update-snapshots=all"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
     "@corvidae/chat": "workspace:*",
     "@corvidae/cinder": "workspace:*",
     "@corvidae/conversationalist": "workspace:*",
@@ -161,6 +164,7 @@
     "prettier": "catalog:",
     "prettier-plugin-organize-imports": "catalog:",
     "prettier-plugin-svelte": "catalog:",
+    "publint": "catalog:",
     "shiki": "catalog:",
     "stylelint": "catalog:",
     "stylelint-use-logical": "catalog:",
