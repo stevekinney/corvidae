@@ -237,6 +237,12 @@
   // Attachment Handling
   // =========================================================================
 
+  function handleSendButtonClick(event: MouseEvent): void {
+    if (!showStopButton) return;
+    event.preventDefault();
+    onstop?.();
+  }
+
   function isValidType(file: File): boolean {
     return acceptedTypes.some((type) => {
       if (type.endsWith('/*')) {
@@ -895,68 +901,55 @@
         {@render actions()}
       {/if}
 
-      {#if showStopButton}
-        <!-- Stop button: replaces send button during streaming when onstop is provided -->
-        <button
-          bind:this={sendButtonRef}
-          type="button"
-          class="chat-input-send"
-          data-stop
-          onclick={onstop}
-          aria-label="Stop generating"
-          aria-describedby={shortcutDescriptionId}
-        >
+      <!-- Send/Stop trigger stays mounted so Tooltip does not tear down while focus leaves it. -->
+      <button
+        bind:this={sendButtonRef}
+        type={showStopButton ? 'button' : 'submit'}
+        class="chat-input-send"
+        data-stop={showStopButton ? '' : undefined}
+        disabled={showStopButton ? false : !canSubmit}
+        onclick={handleSendButtonClick}
+        aria-label={showStopButton
+          ? 'Stop generating'
+          : sending
+            ? 'Sending message'
+            : 'Send message'}
+        aria-describedby={shortcutDescriptionId}
+      >
+        {#if showStopButton}
           <Square class="cinder-icon-sm" />
-        </button>
-        <Tooltip
-          text={sendTooltipText}
-          class="chat-input-tooltip"
-          placement="top"
-          triggerRef={sendButtonRef}
-        />
-      {:else}
-        <!-- Send button: shows spinner when sending (without onstop), otherwise arrow -->
-        <button
-          bind:this={sendButtonRef}
-          type="submit"
-          class="chat-input-send"
-          disabled={!canSubmit}
-          aria-label={sending ? 'Sending message' : 'Send message'}
-          aria-describedby={shortcutDescriptionId}
-        >
-          {#if sending}
-            <svg
-              class="chat-input-spinner"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <circle
-                class="spinner-track"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="spinner-head"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-          {:else}
-            <ArrowUp class="cinder-icon-sm" />
-          {/if}
-        </button>
-        <Tooltip
-          text={sendTooltipText}
-          class="chat-input-tooltip"
-          placement="top"
-          triggerRef={sendButtonRef}
-        />
-      {/if}
+        {:else if sending}
+          <svg
+            class="chat-input-spinner"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <circle
+              class="spinner-track"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="spinner-head"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+        {:else}
+          <ArrowUp class="cinder-icon-sm" />
+        {/if}
+      </button>
+      <Tooltip
+        text={sendTooltipText}
+        class="chat-input-tooltip"
+        placement="top"
+        triggerRef={sendButtonRef}
+      />
     </div>
   </div>
 

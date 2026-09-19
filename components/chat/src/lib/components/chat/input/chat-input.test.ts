@@ -70,6 +70,44 @@ describe('ChatInput', () => {
     expect(composer?.readOnly).toBe(false);
   });
 
+  test('keeps the send trigger stable when it becomes Stop and routes one click only to onstop', async () => {
+    let submitCount = 0;
+    let stopCount = 0;
+    const props = {
+      id: 'stable-stop-trigger',
+      value: 'ready to send',
+      onsubmit: () => {
+        submitCount += 1;
+      },
+      onstop: () => {
+        stopCount += 1;
+      },
+    };
+    const rendered = render(ChatInput, props);
+    const sendTrigger = rendered.container.querySelector<HTMLButtonElement>('.chat-input-send')!;
+    expect(sendTrigger.type).toBe('submit');
+    expect(sendTrigger.hasAttribute('data-stop')).toBe(false);
+
+    await rendered.rerender({ ...props, sending: true });
+    await tick();
+    const stopTrigger = rendered.container.querySelector<HTMLButtonElement>('.chat-input-send')!;
+    expect(stopTrigger).toBe(sendTrigger);
+    expect(stopTrigger.type).toBe('button');
+    expect(stopTrigger.hasAttribute('data-stop')).toBe(true);
+
+    await fireEvent.click(stopTrigger);
+    expect(stopCount).toBe(1);
+    expect(submitCount).toBe(0);
+
+    await rendered.rerender({ ...props, sending: false });
+    await tick();
+    const restoredSendTrigger =
+      rendered.container.querySelector<HTMLButtonElement>('.chat-input-send')!;
+    expect(restoredSendTrigger).toBe(sendTrigger);
+    expect(restoredSendTrigger.type).toBe('submit');
+    expect(restoredSendTrigger.hasAttribute('data-stop')).toBe(false);
+  });
+
   test('hides the programmatic file picker from the accessibility tree', () => {
     const { container } = render(ChatInput, { id: 'attachment-a11y' });
     const picker = container.querySelector<HTMLInputElement>('input[type="file"]');

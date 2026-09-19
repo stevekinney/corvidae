@@ -61,7 +61,7 @@ async function openHarness(
     );
     const page = await context.newPage();
     const diagnostics: string[] = [];
-    page.on('pageerror', (error) => diagnostics.push(error.message));
+    page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
     page.on('console', (message) => {
       if (message.type() === 'error' || message.type() === 'warning') {
         diagnostics.push(`${message.type()}: ${message.text()}`);
@@ -108,11 +108,66 @@ async function trimmedLength(locator: Locator): Promise<number> {
   return text?.trim().length ?? 0;
 }
 
+const validPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+  'base64',
+);
+
+function svgMarkup(width: number, height: number, fill: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="${fill}"/></svg>`;
+}
+
+function svgDataUrl(width: number, height: number, fill: string): string {
+  return `data:image/svg+xml,${encodeURIComponent(svgMarkup(width, height, fill))}`;
+}
+
+type HarnessImageContent = {
+  type: 'image';
+  url: string;
+  mimeType: string;
+  text: string;
+  width?: number;
+  height?: number;
+};
+
+async function appendHarnessImages(page: Page, images: HarnessImageContent[]): Promise<void> {
+  await page.evaluate((nextImages) => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessAppendImages?: (images: HarnessImageContent[]) => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessAppendImages === undefined) {
+      throw new Error('Chat harness image append hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessAppendImages(nextImages);
+  }, images);
+}
+
+async function expectNoHorizontalOverflow(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(() => Math.ceil(document.documentElement.scrollWidth - window.innerWidth)),
+    )
+    .toBeLessThanOrEqual(1);
+}
+
+async function expectSingleImageGeometry(
+  figure: Locator,
+  expected: { maxWidth: number; maxHeight: number; ratio: number },
+): Promise<void> {
+  const box = await figure.boundingBox();
+  expect(box, 'single image must have a rendered box').not.toBeNull();
+  expect(box?.width ?? 0).toBeGreaterThan(0);
+  expect(box?.height ?? 0).toBeGreaterThan(0);
+  expect(box?.width ?? 0).toBeLessThanOrEqual(expected.maxWidth);
+  expect(box?.height ?? 0).toBeLessThanOrEqual(expected.maxHeight);
+  expect(Math.abs((box?.width ?? 0) / (box?.height ?? 1) - expected.ratio)).toBeLessThan(0.06);
+}
+
 test.describe('chat harness — mounts cleanly', () => {
   test('renders the control panel and the chat under test with a quiet event log', async ({
     browser,
   }) => {
-    const { page, harness, dispose } = await openHarness(browser);
+    const { harness, dispose } = await openHarness(browser);
     try {
       await expect(harness.locator('[data-testid="harness-controls"]')).toBeVisible();
       await expect(harness.locator('#harness-chat')).toBeVisible();
@@ -1149,29 +1204,89 @@ test.describe('chat harness — imperative scroll + focus controls', () => {
 });
 
 test.describe('chat harness — attachments', () => {
-  test('attachment-only messages keep controls visible and use the available media width', async ({
-    browser,
-  }) => {
-    const { harness, dispose } = await openHarness(browser);
+  for (const attachment of [
+    {
+      label: 'image',
+      name: 'attachment-only.png',
+      mimeType: 'image/png',
+      buffer: validPng,
+    },
+    {
+      label: 'document',
+      name: 'attachment-only.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n% attachment only\n'),
+    },
+    {
+      label: 'code',
+      name: 'attachment-only.ts',
+      mimeType: 'text/typescript',
+      buffer: Buffer.from('const attachmentOnly = true;\n'),
+    },
+  ] as const) {
+    test(`submits a ready ${attachment.label} attachment with empty text`, async ({ browser }) => {
+      const { harness, dispose } = await openHarness(browser);
+      try {
+        const chat = harness.locator('#harness-chat');
+        const fileInput = chat.locator('input[type="file"]');
+        await fileInput.setInputFiles({
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          buffer: attachment.buffer,
+        });
+
+        const remove = chat.getByRole('button', { name: `Remove ${attachment.name}` });
+        await expect(remove).toBeVisible();
+        await expect(remove).toHaveCSS('opacity', '1');
+
+        const send = chat.locator('.chat-input-send');
+        await expect(send).toBeEnabled();
+        await send.click();
+        await expect(
+          harness.locator('[data-testid="event-log-entry"][data-event="onsubmit"]').first(),
+        ).toHaveAttribute('data-payload', '{"content":"","attachments":1}');
+        await expect(chat.locator('.chat-input-attachment-wrapper')).toHaveCount(0);
+      } finally {
+        await dispose();
+      }
+    });
+  }
+
+  test('keeps the remove control inside the preview with keyboard access', async ({ browser }) => {
+    const { page, harness, dispose } = await openHarness(browser);
     try {
       const chat = harness.locator('#harness-chat');
       const fileInput = chat.locator('input[type="file"]');
       await fileInput.setInputFiles({
-        name: 'attachment-only.png',
+        name: 'remove-target.png',
         mimeType: 'image/png',
-        buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+        buffer: validPng,
       });
 
-      const remove = chat.getByRole('button', { name: 'Remove attachment-only.png' });
+      const wrapper = chat.locator('.chat-input-attachment-wrapper').first();
+      const remove = chat.getByRole('button', { name: 'Remove remove-target.png' });
       await expect(remove).toBeVisible();
       await expect(remove).toHaveCSS('opacity', '1');
+      const [wrapperBox, removeBox] = await Promise.all([
+        wrapper.boundingBox(),
+        remove.boundingBox(),
+      ]);
+      expect(wrapperBox).not.toBeNull();
+      expect(removeBox).not.toBeNull();
+      expect(removeBox?.width).toBeGreaterThanOrEqual(44);
+      expect(removeBox?.height).toBeGreaterThanOrEqual(44);
+      expect(removeBox?.x ?? 0).toBeGreaterThanOrEqual(wrapperBox?.x ?? 0);
+      expect(removeBox?.y ?? 0).toBeGreaterThanOrEqual(wrapperBox?.y ?? 0);
+      expect((removeBox?.x ?? 0) + (removeBox?.width ?? 0)).toBeLessThanOrEqual(
+        (wrapperBox?.x ?? 0) + (wrapperBox?.width ?? 0),
+      );
+      expect((removeBox?.y ?? 0) + (removeBox?.height ?? 0)).toBeLessThanOrEqual(
+        (wrapperBox?.y ?? 0) + (wrapperBox?.height ?? 0),
+      );
 
-      const send = chat.locator('.chat-input-send');
-      await expect(send).toBeEnabled();
-      await send.click();
-      await expect(
-        harness.locator('[data-testid="event-log-entry"][data-event="onsubmit"]').first(),
-      ).toHaveAttribute('data-payload', '{"content":"","attachments":1}');
+      await remove.focus();
+      await expect(remove).toBeFocused();
+      await page.keyboard.press('Enter');
       await expect(chat.locator('.chat-input-attachment-wrapper')).toHaveCount(0);
     } finally {
       await dispose();
@@ -1188,7 +1303,7 @@ test.describe('chat harness — attachments', () => {
       await fileInput.setInputFiles({
         name: 'pic.png',
         mimeType: 'image/png',
-        buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+        buffer: validPng,
       });
       await expectLoggedEvent(harness, 'onattachmentadd');
 
@@ -1263,15 +1378,27 @@ test.describe('chat harness — composer help', () => {
     const { page, harness, dispose } = await openHarness(browser);
     try {
       const chat = harness.locator('#harness-chat');
+      const send = chat.locator('.chat-input-send');
+      await expect(send).toBeDisabled();
+      await send.hover({ force: true });
+      await expect(page.getByRole('tooltip')).toHaveText('Add a message or attachment');
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+
       const composer = chat.getByRole('textbox', { name: 'Message' });
       await composer.fill('A contextual hint');
       await expect(chat.locator('.chat-input-hint')).toHaveCount(0);
 
-      const send = chat.locator('.chat-input-send');
+      await expect(send).toBeEnabled();
+      await page.mouse.move(0, 0);
       await send.hover();
       await expect(page.getByRole('tooltip')).toHaveText('Send (Enter)');
       await send.focus();
-      await expect(page.getByRole('tooltip')).toBeVisible();
+      await expect(page.getByRole('tooltip')).toHaveText('Send (Enter)');
+      await send.blur();
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+      await send.focus();
+      await expect(page.getByRole('tooltip')).toHaveText('Send (Enter)');
       await page.keyboard.press('Escape');
       await expect(page.getByRole('tooltip')).toHaveCount(0);
     } finally {
@@ -1281,39 +1408,117 @@ test.describe('chat harness — composer help', () => {
 });
 
 test.describe('chat harness — composer acceptance matrix', () => {
-  const wideImage =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="400"><rect width="1600" height="400" fill="navy"/></svg>';
-  const tallImage =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="1600"><rect width="400" height="1600" fill="teal"/></svg>';
+  const wideImageMarkup = svgMarkup(1600, 400, 'navy');
+  const wideImage = `data:image/svg+xml,${encodeURIComponent(wideImageMarkup)}`;
+  const tallImage = svgDataUrl(400, 1600, 'teal');
+  const missingRatioImage = `data:image/png;base64,${validPng.toString('base64')}`;
 
-  test('bounds known-wide, known-tall, and missing-ratio images at 320px', async ({ browser }) => {
-    const { harness, dispose } = await openHarness(browser, {
+  for (const imageCase of [
+    {
+      name: 'known-wide',
+      image: {
+        type: 'image',
+        url: wideImage,
+        mimeType: 'image/svg+xml',
+        text: 'Known wide image',
+        width: 1600,
+        height: 400,
+      },
+      expected: { maxWidth: 512, maxHeight: 384, ratio: 4 },
+    },
+    {
+      name: 'known-tall',
+      image: {
+        type: 'image',
+        url: tallImage,
+        mimeType: 'image/svg+xml',
+        text: 'Known tall image',
+        width: 400,
+        height: 1600,
+      },
+      expected: { maxWidth: 512, maxHeight: 384, ratio: 0.25 },
+    },
+    {
+      name: 'missing-ratio',
+      image: {
+        type: 'image',
+        url: missingRatioImage,
+        mimeType: 'image/png',
+        text: 'Missing ratio image',
+      },
+      expected: { maxWidth: 512, maxHeight: 384, ratio: 4 / 3 },
+    },
+  ] satisfies Array<{
+    name: string;
+    image: HarnessImageContent;
+    expected: { maxWidth: number; maxHeight: number; ratio: number };
+  }>) {
+    test(`bounds a single ${imageCase.name} image at 320px`, async ({ browser }) => {
+      const { page, harness, dispose } = await openHarness(browser, {
+        viewport: { width: 320, height: 900 },
+      });
+      try {
+        await appendHarnessImages(page, [imageCase.image]);
+        const attachments = harness.locator('[data-role="user"] .message-attachments').last();
+        await expect(attachments).toHaveAttribute('data-count', '1');
+        await expectSingleImageGeometry(
+          attachments.locator('.message-attachment').first(),
+          imageCase.expected,
+        );
+        await expectNoHorizontalOverflow(page);
+      } finally {
+        await dispose();
+      }
+    });
+  }
+
+  test('keeps the existing multi-image grid rules unchanged', async ({ browser }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
       viewport: { width: 320, height: 900 },
     });
     try {
-      const chat = harness.locator('#harness-chat');
-      const fileInput = chat.locator('input[type="file"]');
-      await fileInput.setInputFiles([
-        { name: 'wide.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(wideImage) },
-        { name: 'tall.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(tallImage) },
+      await appendHarnessImages(page, [
         {
-          name: 'missing-ratio.png',
+          type: 'image',
+          url: wideImage,
+          mimeType: 'image/svg+xml',
+          text: 'Wide image in grid',
+          width: 1600,
+          height: 400,
+        },
+        {
+          type: 'image',
+          url: tallImage,
+          mimeType: 'image/svg+xml',
+          text: 'Tall image in grid',
+          width: 400,
+          height: 1600,
+        },
+        {
+          type: 'image',
+          url: missingRatioImage,
           mimeType: 'image/png',
-          buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+          text: 'Missing ratio grid image',
         },
       ]);
-      await expect(chat.locator('.chat-input-send')).toBeEnabled();
-      await chat.locator('.chat-input-send').click();
       const attachments = harness.locator('[data-role="user"] .message-attachments').last();
       await expect(attachments).toHaveAttribute('data-count', '3');
       const figures = attachments.locator('.message-attachment');
       await expect(figures).toHaveCount(3);
+      await expect
+        .poll(() => attachments.evaluate((node) => getComputedStyle(node).display))
+        .toBe('grid');
+      await expect
+        .poll(() => attachments.evaluate((node) => getComputedStyle(node).gridTemplateColumns))
+        .not.toBe('none');
       for (let index = 0; index < 3; index += 1) {
         const box = await figures.nth(index).boundingBox();
         expect(box, `attachment ${index + 1} must have a rendered box`).not.toBeNull();
-        expect(box?.width).toBeLessThanOrEqual(288);
-        expect(box?.height).toBeLessThanOrEqual(384);
+        expect(box?.width).toBeGreaterThan(0);
+        expect(box?.height).toBeGreaterThan(0);
+        expect(box?.height).toBeLessThanOrEqual(400);
       }
+      await expectNoHorizontalOverflow(page);
     } finally {
       await dispose();
     }
@@ -1326,14 +1531,34 @@ test.describe('chat harness — composer acceptance matrix', () => {
       await chat.locator('input[type="file"]').setInputFiles({
         name: 'maximize.svg',
         mimeType: 'image/svg+xml',
-        buffer: Buffer.from(wideImage),
+        buffer: Buffer.from(wideImageMarkup),
       });
       await chat.locator('.chat-input-send').click();
       const maximize = harness.locator('.message-attachment-button').last();
-      const box = await maximize.boundingBox();
-      expect(box).not.toBeNull();
-      expect(box?.width).toBeGreaterThanOrEqual(44);
-      expect(box?.height).toBeGreaterThanOrEqual(44);
+      const overlay = maximize.locator('.message-attachment-maximize');
+      await expect(overlay).toBeVisible();
+      const [buttonBox, overlayBox] = await Promise.all([
+        maximize.boundingBox(),
+        overlay.boundingBox(),
+      ]);
+      expect(buttonBox).not.toBeNull();
+      expect(overlayBox).not.toBeNull();
+      expect(overlayBox?.width).toBeGreaterThanOrEqual(44);
+      expect(overlayBox?.height).toBeGreaterThanOrEqual(44);
+      expect(overlayBox?.x ?? 0).toBeGreaterThanOrEqual(buttonBox?.x ?? 0);
+      expect(overlayBox?.y ?? 0).toBeGreaterThanOrEqual(buttonBox?.y ?? 0);
+      expect((overlayBox?.x ?? 0) + (overlayBox?.width ?? 0)).toBeLessThanOrEqual(
+        (buttonBox?.x ?? 0) + (buttonBox?.width ?? 0),
+      );
+      expect((overlayBox?.y ?? 0) + (overlayBox?.height ?? 0)).toBeLessThanOrEqual(
+        (buttonBox?.y ?? 0) + (buttonBox?.height ?? 0),
+      );
+      expect((overlayBox?.x ?? 0) + (overlayBox?.width ?? 0) / 2).toBeGreaterThan(
+        (buttonBox?.x ?? 0) + (buttonBox?.width ?? 0) / 2,
+      );
+      expect((overlayBox?.y ?? 0) + (overlayBox?.height ?? 0) / 2).toBeLessThan(
+        (buttonBox?.y ?? 0) + (buttonBox?.height ?? 0) / 2,
+      );
       await maximize.click();
       await expect(page.getByRole('dialog')).toBeVisible();
       await page.keyboard.press('Escape');
@@ -1377,12 +1602,23 @@ test.describe('chat harness — composer acceptance matrix', () => {
     }
   });
 
-  test('keeps the stop tooltip highest priority and dismisses it on blur', async ({ browser }) => {
+  test('keeps empty guidance ahead of stop, then shows the stop tooltip when text is present', async ({
+    browser,
+  }) => {
     const { harness, page, dispose } = await openHarness(browser);
     try {
       await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
       await harness.locator('[data-testid="send-reply"]').click();
       const stop = harness.locator('.chat-input-send[data-stop]');
+      await expect(stop).toBeVisible();
+      await stop.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Add a message or attachment');
+      await page.keyboard.press('Escape');
+      await stop.click();
+
+      const composer = harness.locator('#harness-chat').getByRole('textbox', { name: 'Message' });
+      await composer.fill('draft while streaming');
+      await harness.locator('[data-testid="send-reply"]').click();
       await expect(stop).toBeVisible();
       await stop.hover();
       await expect(page.getByRole('tooltip')).toHaveText('Stop generating');
@@ -1408,19 +1644,22 @@ test.describe('chat harness — composer acceptance matrix', () => {
       await chat.locator('input[type="file"]').setInputFiles({
         name: 'touch-submit.svg',
         mimeType: 'image/svg+xml',
-        buffer: Buffer.from(wideImage),
+        buffer: Buffer.from(wideImageMarkup),
       });
       await expect(send).toBeEnabled();
       await expect(send).toHaveAttribute('aria-label', 'Send message');
-      const box = await send.boundingBox();
-      expect(box).not.toBeNull();
-      await page.touchscreen.tap(
-        (box?.x ?? 0) + (box?.width ?? 0) / 2,
-        (box?.y ?? 0) + (box?.height ?? 0) / 2,
-      );
+      await send.tap();
       await expect(
         harness.locator('[data-testid="event-log-entry"][data-event="onsubmit"]').first(),
       ).toHaveAttribute('data-payload', '{"content":"","attachments":1}');
+      await expect
+        .poll(() =>
+          harness
+            .locator('[data-role="user"] .message-attachment-image')
+            .last()
+            .evaluate((node) => (node as HTMLImageElement).naturalWidth),
+        )
+        .toBeGreaterThan(0);
       await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
       const unrelated = harness.getByTestId('unrelated-tooltip-trigger');
       await unrelated.hover();
@@ -1430,52 +1669,38 @@ test.describe('chat harness — composer acceptance matrix', () => {
     }
   });
 
-  for (const width of [320, 512, 848]) {
-    test(`centers footer controls at ${width}px in dark reduced-motion mode`, async ({
-      browser,
-    }) => {
-      const { harness, dispose } = await openHarness(browser, {
-        viewport: { width, height: 900 },
-        reducedMotion: 'reduce',
-      });
-      try {
-        const footer = harness.locator('#harness-chat .chat-input-footer');
-        const left = await footer.locator('.chat-input-footer-left').boundingBox();
-        const right = await footer.locator('.chat-input-footer-right').boundingBox();
-        expect(left).not.toBeNull();
-        expect(right).not.toBeNull();
-        expect(
-          Math.abs(
-            (left?.y ?? 0) + (left?.height ?? 0) / 2 - ((right?.y ?? 0) + (right?.height ?? 0) / 2),
-          ),
-        ).toBeLessThanOrEqual(1);
-        await harness.screenshot({
-          path: test.info().outputPath(`chat-composer-dark-${width}.png`),
+  for (const colorScheme of ['dark', 'light'] as const) {
+    for (const width of [320, 512, 848]) {
+      test(`centers footer controls at ${width}px in ${colorScheme} reduced-motion mode`, async ({
+        browser,
+      }) => {
+        const { harness, dispose } = await openHarness(browser, {
+          colorScheme,
+          viewport: { width, height: 900 },
+          reducedMotion: 'reduce',
         });
-      } finally {
-        await dispose();
-      }
-    });
-  }
-
-  test('keeps footer centered in light no-preference mode without browser diagnostics', async ({
-    browser,
-  }) => {
-    const { harness, dispose } = await openHarness(browser, {
-      colorScheme: 'light',
-      reducedMotion: 'no-preference',
-      viewport: { width: 320, height: 900 },
-    });
-    try {
-      const footer = harness.locator('#harness-chat .chat-input-footer');
-      await expect(footer).toBeVisible();
-      await harness.screenshot({
-        path: test.info().outputPath('chat-composer-light-320.png'),
+        try {
+          const footer = harness.locator('#harness-chat .chat-input-footer');
+          const left = await footer.locator('.chat-input-footer-left').boundingBox();
+          const right = await footer.locator('.chat-input-footer-right').boundingBox();
+          expect(left).not.toBeNull();
+          expect(right).not.toBeNull();
+          expect(
+            Math.abs(
+              (left?.y ?? 0) +
+                (left?.height ?? 0) / 2 -
+                ((right?.y ?? 0) + (right?.height ?? 0) / 2),
+            ),
+          ).toBeLessThanOrEqual(1);
+          await harness.screenshot({
+            path: test.info().outputPath(`chat-composer-${colorScheme}-${width}.png`),
+          });
+        } finally {
+          await dispose();
+        }
       });
-    } finally {
-      await dispose();
     }
-  });
+  }
 });
 
 test.describe('chat harness — accessibility', () => {

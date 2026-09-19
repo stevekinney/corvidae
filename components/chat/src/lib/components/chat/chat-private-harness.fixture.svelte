@@ -33,7 +33,7 @@
     Tooltip,
     Toggle,
   } from '@corvidae/cinder';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
 
   // Out of scope for this harness (documented, not silently dropped):
   // bottomThreshold / jumpThreshold (kept at defaults so overflow + jump are
@@ -71,6 +71,7 @@
   let unrelatedTooltipTrigger = $state<HTMLButtonElement | null>(null);
   let streaming = $state(false);
   let streamingStatus = $state('');
+  const submittedImageUrls = new Set<string>();
 
   // --- Tool-call controls ---
   let toolName = $state('exports_check');
@@ -219,6 +220,10 @@
   }
 
   // --- Reply as the other side ---
+  function handleSendReplyClick(): void {
+    sendReply(replyText);
+  }
+
   function sendReply(text: string): void {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -398,10 +403,48 @@
   function clearConversation(): void {
     cancelPending('discard');
     cancelPendingHistoryRequest();
+    revokeSubmittedImageUrls();
     conversation = createConversation({ id: 'harness-cleared' });
     delayedHistory = false;
     historyPage = 0;
   }
+
+  type HarnessImageContent = Extract<MultiModalContent, { type: 'image' }> & {
+    width?: number;
+    height?: number;
+  };
+  type ChatHarnessWindow = Window & {
+    corvidaeChatHarnessAppendImages?: (images: HarnessImageContent[]) => void;
+  };
+
+  function createSubmittedImageContent(attachment: { file: File }): HarnessImageContent {
+    const url = URL.createObjectURL(attachment.file);
+    submittedImageUrls.add(url);
+    return {
+      type: 'image',
+      url,
+      mimeType: attachment.file.type,
+      text: attachment.file.name,
+    };
+  }
+
+  function revokeSubmittedImageUrls(): void {
+    for (const url of submittedImageUrls) URL.revokeObjectURL(url);
+    submittedImageUrls.clear();
+  }
+
+  onMount(() => {
+    const harnessWindow = window as ChatHarnessWindow;
+    harnessWindow.corvidaeChatHarnessAppendImages = (images) => {
+      conversation = appendMessages(conversation, {
+        role: 'user',
+        content: images,
+      });
+    };
+    return () => {
+      delete harnessWindow.corvidaeChatHarnessAppendImages;
+    };
+  });
 
   // --- Chat callbacks ---
   function handleSubmit(event: ChatSubmitEvent): void {
@@ -409,11 +452,7 @@
     record('onsubmit', JSON.stringify({ content, attachments: event.attachments.length }));
     const imageParts: MultiModalContent[] = event.attachments
       .filter((attachment) => attachment.kind === 'image')
-      .map((attachment) => ({
-        type: 'image',
-        url: attachment.previewUrl,
-        mimeType: attachment.file.type,
-      }));
+      .map((attachment) => createSubmittedImageContent(attachment));
     const messageContent =
       imageParts.length > 0
         ? [
@@ -431,6 +470,11 @@
   function handleEdit(event: { messageId: string; content: string }): void {
     record('onedit', event);
     conversation = replaceMessageContent(conversation, event.messageId, event.content);
+  }
+
+  function handleStopGenerating(event: { messageId: string }): void {
+    cancelPending('preservePartial');
+    record('onstopgenerating', event.messageId);
   }
 
   function cancelPendingHistoryRequest(): void {
@@ -466,6 +510,7 @@
   onDestroy(() => {
     cancelPending('destroy');
     cancelPendingHistoryRequest();
+    revokeSubmittedImageUrls();
   });
 
   const surfaceMode = $derived<'default' | 'transparent'>(
@@ -550,7 +595,7 @@
           <Segment value="content-mutation">Content</Segment>
         </SegmentedControl>
       {/if}
-      <Button data-testid="send-reply" onclick={() => sendReply(replyText)}>Send reply</Button>
+      <Button data-testid="send-reply" onclick={handleSendReplyClick}>Send reply</Button>
     </section>
 
     <section
@@ -699,10 +744,7 @@
       onsubmit={handleSubmit}
       onedit={handleEdit}
       onretry={(messageId: string) => record('onretry', messageId)}
-      onstopgenerating={(event: { messageId: string }) => {
-        cancelPending('preservePartial');
-        record('onstopgenerating', event.messageId);
-      }}
+      onstopgenerating={handleStopGenerating}
       onjumptolatest={() => record('onjumptolatest')}
       onscrollstatechange={(event: { atBottom: boolean }) =>
         record('onscrollstatechange', { atBottom: event.atBottom })}
