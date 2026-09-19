@@ -266,7 +266,12 @@ export async function seedScratchRepository(options: {
     '--message',
     `Seed ${options.target} from ${options.seedRemote}`,
   );
-  const pushEnvironment = { ...environment, ...(await options.api.pushEnvironment()) };
+  // As the account, not the App. The seed carries the target's own `.github/workflows/**`, and
+  // GitHub refuses a workflow file pushed by an App without the `workflows` permission — which
+  // this App deliberately does not hold, because `target-owned.json` reserves `.github/` for the
+  // target and the transform never writes it. Only the seed needs this; the transform branch and
+  // the pull request below still go through the App, which is what this whole run exists to prove.
+  const pushEnvironment = { ...environment, ...(await options.api.accountPushEnvironment()) };
   await runGit(
     run,
     workDirectory,

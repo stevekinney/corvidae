@@ -1,5 +1,6 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
+  import type { ApprovalResolution, ApprovalState } from '@corvidae/cinder';
   import type { HTMLAttributes } from 'svelte/elements';
   import type { Message, ToolCallPair } from '../conversation-model.ts';
   import type { MarkdownNodeOverride, MessagePartOverride } from './chat-message-parts.ts';
@@ -51,14 +52,13 @@
     onrollback?: ((messageId: string) => void) | undefined;
     /** Visually marks this row as content that a pending rollback will discard. */
     rollbackDiscarded?: boolean;
-    /** The set of approved tool call IDs for deriving approval state. */
-    approvedToolCallIds?: ReadonlySet<string> | undefined;
-    /** The set of denied tool call IDs for deriving denial state. */
-    deniedToolCallIds?: ReadonlySet<string> | undefined;
-    /** Called when the user approves an action-required tool call. */
-    onapprove?: ((toolCallId: string) => void) | undefined;
-    /** Called when the user denies an action-required tool call. */
-    ondeny?: ((toolCallId: string) => void) | undefined;
+    /** UI-only approval states keyed by tool-call id. */
+    approvalStates?: ReadonlyMap<string, ApprovalState> | undefined;
+    /** Tool-call ids currently submitting a resolution. */
+    approvalResolutionInFlightIds?: ReadonlySet<string> | undefined;
+    /** Called when the user resolves an action-required approval. */
+    onapprovalresolve?:
+      ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
     toolCallPresentation?: import('../utilities/types.ts').ToolCallPresentation | undefined;
     /**
      * Reasoning text to surface as a collapsible block before the body.
@@ -139,10 +139,9 @@
     oneditingchange,
     onrollback,
     rollbackDiscarded = false,
-    approvedToolCallIds,
-    deniedToolCallIds,
-    onapprove,
-    ondeny,
+    approvalStates,
+    approvalResolutionInFlightIds,
+    onapprovalresolve,
     toolCallPresentation,
     reasoning,
     entries,
@@ -280,16 +279,16 @@
   // The cinder-owned render parts for this message. The streaming override and
   // expanded state are resolved into the parts here so the renderer + part
   // components stay dumb (no override/streaming plumbing leaks into them).
-  // C3: approval id sets are threaded in so tool-approval parts derive their
-  // `approved` state without mutating the transcript.
+  // Approval state is UI-only and is threaded in so tool-approval parts
+  // derive their Cinder state without mutating the transcript.
   const messageParts = $derived(
     deriveMessageParts(message, {
       toolCallPair: toolPair ?? undefined,
       overrideContent,
       streaming,
       expanded,
-      approvedToolCallIds,
-      deniedToolCallIds,
+      approvalStates,
+      approvalResolutionInFlightIds,
       toolCallPresentation,
       // C4: reasoning and steps are UI-only overlays derived from metadata or
       // explicit per-message props; never written back to the transcript.
@@ -430,8 +429,7 @@
           {markdownNode}
           expanded={toolCallExpanded}
           onToggle={toggleToolCallExpanded}
-          {onapprove}
-          {ondeny}
+          {onapprovalresolve}
           {reasoningExpanded}
           {onreasoning}
           {stepsExpanded}

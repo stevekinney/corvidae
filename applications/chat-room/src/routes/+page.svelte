@@ -38,32 +38,21 @@
       onToolResult: (result) => {
         updatePendingApproval(pendingApprovals, result);
       },
-      approveToolCall: async (toolCallId) => {
+      resolveToolApproval: async (toolCallId, resolution) => {
         const approval = pendingApprovals.get(toolCallId);
         if (!approval) return undefined;
         const response = await fetch('/api/chat/resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ approval, decision: 'approve' }),
+          body: JSON.stringify({
+            approval,
+            resolution,
+          }),
         });
         if (!response.ok) throw new Error(await response.text());
         const result = (await response.json()) as PendingApprovalResult;
         updatePendingApproval(pendingApprovals, result);
         return result;
-      },
-      denyToolCall: async (toolCallId) => {
-        pendingApprovals.delete(toolCallId);
-        return {
-          callId: toolCallId,
-          outcome: 'error',
-          content: null,
-          error: {
-            code: 'denied',
-            category: 'permission',
-            retryable: false,
-            message: 'The user denied this request.',
-          },
-        };
       },
       onError: (cause) => (failure = toBannerFailure(cause)),
     },

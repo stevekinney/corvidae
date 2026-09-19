@@ -24,7 +24,7 @@ import {
 import { createOperationRegistry } from './operation-catalog.ts';
 import { workflowEventsSubscriptionOperation } from './operations/workflow-events-subscription.ts';
 import { principalFromApiKey } from './principal.ts';
-import { jsonRecord, propertyRecord } from './protocol-test-support.ts';
+import { jsonRecord, propertyRecord } from './protocol.test-support.ts';
 import {
   createWorkflowEventFeed,
   encodeCursor,

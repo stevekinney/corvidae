@@ -1,4 +1,8 @@
-import type { ChatAdapter, ChatPushHandlers } from '../components/chat/adapter/chat-adapter.ts';
+import type {
+  ChatAdapter,
+  ChatPushHandlers,
+  ChatToolApprovalResolution,
+} from '../components/chat/adapter/chat-adapter.ts';
 import {
   appendMessages,
   appendUserMessage,
@@ -9,6 +13,7 @@ import {
 import type {
   ConversationHistory,
   MessageInput,
+  ToolAction,
   ToolResult,
 } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
@@ -31,6 +36,41 @@ import {
   type ChatSessionController,
   type ChatSessionControllerOptions,
 } from './session-controller-support.ts';
+
+function fingerprintApprovalAction(action: ToolAction | undefined): string | undefined {
+  if (action?.type !== 'approval') return undefined;
+  try {
+    return JSON.stringify(action);
+  } catch {
+    return undefined;
+  }
+}
+
+function currentApprovalFingerprint(
+  history: ConversationHistory,
+  toolCallId: string,
+): string | undefined {
+  for (let index = history.ids.length - 1; index >= 0; index -= 1) {
+    const result = history.messages[history.ids[index]!]?.toolResult;
+    if (result?.callId === toolCallId && result.outcome === 'action_required') {
+      return fingerprintApprovalAction(result.action);
+    }
+  }
+  return undefined;
+}
+
+function isApprovalOwnerCurrent(
+  historyToken: ChatHistoryToken,
+  toolCallId: string,
+  actionFingerprint: string,
+  getConversation: () => ConversationHistory,
+  isHistoryTokenCurrent: (token: ChatHistoryToken) => boolean,
+): boolean {
+  return (
+    isHistoryTokenCurrent(historyToken) &&
+    currentApprovalFingerprint(getConversation(), toolCallId) === actionFingerprint
+  );
+}
 
 /** Creates an SSR-safe controller for send, retry, edit, stop, and tool approval flows. */
 export function createChatSessionController(
@@ -223,9 +263,9 @@ export function createChatSessionController(
         subscribers.delete(handlers);
       };
     },
-    ...(options.hooks?.approveToolCall
+    ...(options.hooks?.resolveToolApproval
       ? {
-          approveToolCall: async (id: string) => {
+          resolveToolApproval: async (id: string, resolution) => {
             assertActive();
             rebuildApprovalState(
               options.getConversation(),
@@ -233,46 +273,54 @@ export function createChatSessionController(
               pendingApprovals,
               lifecycle.activeUserMessageId,
             );
+            if (!pendingApprovals.has(id)) {
+              throw new Error('Cannot resolve a tool approval that is not pending');
+            }
+            const actionFingerprint = currentApprovalFingerprint(options.getConversation(), id);
+            if (actionFingerprint === undefined) {
+              throw new Error('Cannot resolve a tool approval without a current approval action');
+            }
             const owner = toolOwners.get(id) ?? lifecycle.activeUserMessageId;
+            const historyToken = captureHistoryToken();
             lifecycle.running = true;
             let result: ToolResult | undefined;
             try {
-              result = await options.hooks?.approveToolCall?.(id);
+              result = await options.hooks?.resolveToolApproval?.(id, resolution);
             } catch (error) {
+              if (
+                !isApprovalOwnerCurrent(
+                  historyToken,
+                  id,
+                  actionFingerprint,
+                  options.getConversation,
+                  isHistoryTokenCurrent,
+                )
+              ) {
+                return 'pending' satisfies ChatToolApprovalResolution;
+              }
               reportError(error);
               throw error;
             } finally {
               lifecycle.running = false;
             }
             assertNotDisposed();
-            if (!result) throw new Error('Approval hook must return a tool result');
-            return completeToolDecision(id, owner, result);
-          },
-        }
-      : {}),
-    ...(options.hooks?.denyToolCall
-      ? {
-          denyToolCall: async (id: string) => {
-            assertActive();
-            rebuildApprovalState(
-              options.getConversation(),
-              toolOwners,
-              pendingApprovals,
-              lifecycle.activeUserMessageId,
-            );
-            const owner = toolOwners.get(id) ?? lifecycle.activeUserMessageId;
-            lifecycle.running = true;
-            let result: ToolResult | undefined;
-            try {
-              result = await options.hooks?.denyToolCall?.(id);
-            } catch (error) {
-              reportError(error);
-              throw error;
-            } finally {
-              lifecycle.running = false;
+            if (!result) throw new Error('Approval resolution hook must return a tool result');
+            if (result.callId !== id) {
+              throw new Error(
+                'Approval resolution hook returned a result for a different tool call',
+              );
             }
-            assertNotDisposed();
-            if (!result) throw new Error('Denial hook must return a tool result');
+            if (
+              !isApprovalOwnerCurrent(
+                historyToken,
+                id,
+                actionFingerprint,
+                options.getConversation,
+                isHistoryTokenCurrent,
+              )
+            ) {
+              return 'pending';
+            }
             return completeToolDecision(id, owner, result);
           },
         }

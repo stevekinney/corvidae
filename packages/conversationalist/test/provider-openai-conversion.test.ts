@@ -4,6 +4,16 @@ import { fromOpenAIMessages } from '../src/adapters/openai/inbound';
 import type { OpenAIMessage } from '../src/adapters/openai/types';
 import type { Message } from '../src/types';
 
+function approvalAction(message: string, idempotencyKey: string) {
+  return {
+    type: 'approval' as const,
+    message,
+    risk: 'high' as const,
+    operation: { kind: 'other' as const },
+    policyVersion: 'policy:test',
+    idempotencyKey,
+  };
+}
 const getOrderedMessages = (messages: {
   ids: ReadonlyArray<string>;
   messages: Readonly<Record<string, Message>>;
@@ -39,7 +49,7 @@ describe('OpenAI provider conversion', () => {
         content: JSON.stringify({
           outcome: 'action_required',
           content: { prompt: 'Approve tool' },
-          action: { type: 'approval', message: 'Need approval' },
+          action: approvalAction('Need approval', 'approval:openai-provider'),
         }),
       },
     ];
@@ -63,7 +73,7 @@ describe('OpenAI provider conversion', () => {
       callId: 'call-1',
       outcome: 'action_required',
       content: { prompt: 'Approve tool' },
-      action: { type: 'approval', message: 'Need approval' },
+      action: approvalAction('Need approval', 'approval:openai-provider'),
     });
   });
 

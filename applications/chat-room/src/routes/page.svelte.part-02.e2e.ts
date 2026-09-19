@@ -116,17 +116,19 @@ test.describe('production streaming path', () => {
     // incrementally-delivered transcript.
     const approve = chat.getByRole('button', { name: 'Approve' });
     await expect(approve).toBeVisible();
-    await expect(chat.locator('.tool-call-group')).toHaveAttribute(
-      'data-status',
-      'action-required',
-    );
+    const toolActivity = chat.getByRole('region', { name: 'Called 1 tool' });
+    await expect(toolActivity).toContainText('remember_note: Action required');
+    await expect(toolActivity).toContainText('remember_note Waiting approval');
+    await expect(
+      chat.getByRole('article', { name: 'Approval required for remember_note' }),
+    ).toBeVisible();
 
     const resumed = page.waitForResponse('**/api/chat/resume');
     await approve.click();
     const response = await resumed;
 
     const posted = JSON.parse(response.request().postData() ?? '{}');
-    expect(posted.decision).toBe('approve');
+    expect(posted.resolution).toEqual({ decision: 'approve', remember: false });
     expect(posted.approval.toolName).toBe('remember_note');
     expect(posted.approval.arguments).toEqual({ text: APPROVAL_NOTE_TEXT });
     // A 64-character hex digest is what armorer's HMAC-SHA256 signing

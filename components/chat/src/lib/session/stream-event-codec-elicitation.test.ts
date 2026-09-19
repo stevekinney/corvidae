@@ -1,6 +1,29 @@
 import { describe, expect, test } from 'bun:test';
 import { decodeChatStreamEvent, encodeChatStreamEvent } from './stream-event-codec.ts';
 
+const completeApprovalAction = {
+  type: 'approval' as const,
+  message: 'Approve patch?',
+  risk: 'high' as const,
+  operation: {
+    kind: 'patch' as const,
+    diff: 'diff --git a/file.ts b/file.ts\n+approved\n',
+    filesTouched: ['components/chat/src/lib/session/stream-event-codec-elicitation.test.ts'],
+    argsPreview: { hunks: 1 },
+  },
+  sandbox: {
+    provider: 'codex',
+    name: 'workspace-write',
+    workingDir: '/Users/stevekinney/Developer/corvidae',
+  },
+  env: ['TZ=UTC', 'LANG=en_US.UTF-8'],
+  snapshotId: 'snapshot-elicitation',
+  expiresAt: '2026-09-19T20:00:00+00:00',
+  editableArgs: true,
+  policyVersion: 'approval-policy:elicitation',
+  idempotencyKey: 'approval-codec-elicitation',
+};
+
 /**
  * The elicitation vocabulary: a question a run is waiting on, and the human's
  * answer to it.
@@ -38,10 +61,31 @@ describe('elicitation.* frames', () => {
       type: 'elicitation.requested',
       requestId: 'elicitation-1',
       message: 'Save this note?',
-      action: { type: 'approval', message: 'Approve this call' },
+      action: {
+        type: 'approval',
+        message: 'Approve this call',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
       wireVersion: 2,
       sequence: 0,
     } as const;
+    expect(decodeChatStreamEvent(JSON.parse(encodeChatStreamEvent(event)))).toEqual(event);
+  });
+
+  test('preserves complete approval metadata on a requested frame', () => {
+    const event = {
+      type: 'elicitation.requested',
+      requestId: 'elicitation-approval-1',
+      toolCallId: 'call-1',
+      message: 'Approve patch?',
+      action: completeApprovalAction,
+      wireVersion: 2,
+      sequence: 1,
+    } as const;
+
     expect(decodeChatStreamEvent(JSON.parse(encodeChatStreamEvent(event)))).toEqual(event);
   });
 

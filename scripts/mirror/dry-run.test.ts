@@ -123,6 +123,13 @@ function fakeGitHub(options: FakeOptions = {}): { api: GitHubApi; calls: Recorde
         GIT_CONFIG_VALUE_0: 'Authorization: Basic app-token',
       };
     },
+    async accountPushEnvironment() {
+      return {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+        GIT_CONFIG_VALUE_0: 'Authorization: Basic account-token',
+      };
+    },
   };
   return { api, calls };
 }
@@ -456,6 +463,16 @@ describe('runDryRun', () => {
       expect(environment?.['GIT_CONFIG_VALUE_0']).toContain('Authorization: Basic');
       expect(command.join(' ')).not.toContain('Authorization');
     }
+
+    // The two pushes carry different credentials on purpose, and which one goes where is the
+    // whole claim. The seed carries the target's `.github/workflows/**`, which GitHub refuses
+    // from an App without the `workflows` permission this App deliberately does not hold; the
+    // transform branch is the push COR-1191 exists to prove the App can make. Asserting only
+    // "both are authenticated" would pass with the routing reversed.
+    expect(pushes.map(({ environment }) => environment?.['GIT_CONFIG_VALUE_0'])).toEqual([
+      'Authorization: Basic account-token',
+      'Authorization: Basic app-token',
+    ]);
     const clone = harness.commands.find((command) => command.includes('clone'));
     expect(clone?.join(' ')).not.toContain('Authorization');
   });
@@ -640,16 +657,23 @@ describe('seedScratchRepository', () => {
       }
 
       const { api } = fakeGitHub();
+      // The seed pushes as the *account*, so this is the environment the seed actually uses.
+      // `pushEnvironment` is overridden identically so a future change routing the seed back
+      // through the App cannot silently reach the real github.com from this test.
+      const localRemote = {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: `url.${remote}.insteadOf`,
+        GIT_CONFIG_VALUE_0: `https://github.com/${validName}.git`,
+        GIT_ALLOW_PROTOCOL: 'file',
+        GIT_TERMINAL_PROMPT: '0',
+      };
       const localOnly: GitHubApi = {
         ...api,
         async pushEnvironment() {
-          return {
-            GIT_CONFIG_COUNT: '1',
-            GIT_CONFIG_KEY_0: `url.${remote}.insteadOf`,
-            GIT_CONFIG_VALUE_0: `https://github.com/${validName}.git`,
-            GIT_ALLOW_PROTOCOL: 'file',
-            GIT_TERMINAL_PROMPT: '0',
-          };
+          return localRemote;
+        },
+        async accountPushEnvironment() {
+          return localRemote;
         },
       };
 

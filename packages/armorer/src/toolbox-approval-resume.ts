@@ -8,7 +8,7 @@ import type { ToolError, ToolErrorCategory } from './core/errors';
 import type { ToolRequestContext } from './execution-context';
 import { approvalConsumeSymbol, approvalResumeSymbol } from './internal/approval-resume';
 import type { Tool } from './is-tool';
-import { verifyPendingApproval } from './toolbox-approval';
+import { verifyAndSnapshotPendingApproval } from './toolbox-approval';
 import {
   createApprovalConsumption,
   throwApprovalConsumptionError,
@@ -75,13 +75,13 @@ export async function resumeApproval(
   resumeOptions: (ToolboxExecuteOptions & { arguments?: unknown }) | undefined,
   context: ApprovalResumeContext,
 ): Promise<ToolExecutionResult> {
-  verifyPendingApproval(approval, context);
-  const preparation = await prepareResume(approval, resumeOptions, context);
+  const verifiedApproval = verifyAndSnapshotPendingApproval(approval, context);
+  const preparation = await prepareResume(verifiedApproval, resumeOptions, context);
   if (preparation.status === 'interrupted') return preparation.result;
   const { executeOptions, executeArguments, requestDeadline, currentTool, approvalContext } =
     preparation;
   const validation = await context.validateArguments(
-    approval,
+    verifiedApproval,
     currentTool.input.safeParseAsync(executeArguments),
     executeOptions,
     context.runtime,
@@ -89,13 +89,19 @@ export async function resumeApproval(
   if (validation.outcome === 'interrupted') return validation.result;
   if (!validation.parsedArguments.success) throw validation.parsedArguments.error;
   const consumption = createApprovalConsumption(
-    approval,
+    verifiedApproval,
     approvalContext,
     executeOptions,
     requestDeadline,
     context,
   );
-  return executeResumedCall(approval, executeOptions, executeArguments, consumption, context);
+  return executeResumedCall(
+    verifiedApproval,
+    executeOptions,
+    executeArguments,
+    consumption,
+    context,
+  );
 }
 
 async function executeResumedCall(

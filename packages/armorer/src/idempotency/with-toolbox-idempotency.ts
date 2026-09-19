@@ -10,7 +10,7 @@ import {
   policyAuthorizationOnlySymbol,
 } from '../internal/approval-resume';
 import type { AnyToolbox } from '../toolbox-interface';
-import type { ToolCallInput, ToolExecutionResult } from '../types';
+import type { ToolApprovalAction, ToolCallInput, ToolExecutionResult } from '../types';
 import { normalizeConcurrency } from '../utilities/concurrency';
 import { claimCacheStarted, getCacheEntry } from './cache-operations';
 import { fullInputKey, namespacedKey } from './key-generators';
@@ -242,6 +242,33 @@ export function withToolboxIdempotency(
     };
   }
 
+  function createIdempotencyApprovalAction(
+    fields: { id: string },
+    cacheKey: string,
+    toolName: string,
+    purpose: 'authorization-required' | 'unknown-outcome',
+    message: string,
+  ): ToolApprovalAction {
+    const keyPayload = {
+      cacheKey,
+      callId: fields.id,
+      policyRevision,
+      purpose,
+      toolName,
+    } satisfies JsonValue;
+    return {
+      type: 'approval',
+      message,
+      risk: 'high',
+      operation: {
+        kind: 'other',
+        argsPreview: { cacheKey, purpose },
+      },
+      policyVersion: policyRevision,
+      idempotencyKey: `approval:${sha256HexSync(stableStringifyJson(keyPayload))}`,
+    };
+  }
+
   function createUnknownOutcomeResult(
     fields: { id: string },
     cacheKey: string,
@@ -264,11 +291,13 @@ export function withToolboxIdempotency(
           ? { legacyStartedAt: outcomeOptions.legacyStartedAt }
           : {}),
       },
-      action: {
-        type: 'approval',
-        message:
-          'This idempotency key has an unknown outcome. Re-approve before retrying the side effect.',
-      },
+      action: createIdempotencyApprovalAction(
+        fields,
+        cacheKey,
+        toolName,
+        'unknown-outcome',
+        'This idempotency key has an unknown outcome. Re-approve before retrying the side effect.',
+      ),
     };
   }
 
@@ -413,10 +442,13 @@ export function withToolboxIdempotency(
       toolName,
       result: undefined,
       idempotency: { key: cacheKey, outcome: 'authorization-required' },
-      action: {
-        type: 'approval',
-        message: 'Re-authorize this cached result under the current policy revision.',
-      },
+      action: createIdempotencyApprovalAction(
+        fields,
+        cacheKey,
+        toolName,
+        'authorization-required',
+        'Re-authorize this cached result under the current policy revision.',
+      ),
     };
   }
 
@@ -1004,11 +1036,11 @@ export function withToolboxIdempotency(
           return executeWithCache(input, originalExecute, executeOptions);
         };
       }
-      if (prop === 'resumeApproval') {
+      if (prop === 'resumeApproval' || prop === 'resolveApproval') {
         // Keep approval resumption bound to this proxy so the toolbox's
         // internal execute call is intercepted by the idempotency wrapper,
         // including when callers destructure the method as a callback.
-        return target.resumeApproval.bind(receiver);
+        return target[prop].bind(receiver);
       }
       return Reflect.get(target, prop, receiver as object) as unknown;
     },

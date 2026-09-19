@@ -1,4 +1,4 @@
-import { record, records } from './protocol-test-support.ts';
+import { record, records } from './protocol.test-support.ts';
 /**
  * Tests for the OpenRPC 1.3.2 document generator.
  *

@@ -128,8 +128,7 @@
     onretry,
     onedit,
     onartifactopen,
-    onapprove,
-    ondeny,
+    onapprovalresolve,
     messageReasoning,
     messageSteps,
     messageSuggestions,
@@ -280,8 +279,7 @@
     getOnSubmit: () => onsubmit,
     getOnRetry: () => onretry,
     getOnEdit: () => onedit,
-    getOnApprove: () => onapprove,
-    getOnDeny: () => ondeny,
+    getOnApprovalResolve: () => onapprovalresolve,
     getOnStop: () => onstopgenerating,
     invalidateHistory: () => getHistoryRestoration().invalidate(),
     afterSubmit: (editing) => {
@@ -778,8 +776,7 @@
     getMessages: () => messages,
     getRenderRows: () => renderRows,
     getConversationId: () => conversationId,
-    getApprovedToolCallIds: () => commandActions.approvedToolCallIds,
-    getDeniedToolCallIds: () => commandActions.deniedToolCallIds,
+    getApprovalStates: () => commandActions.approvalStates,
     getHistoryAnnouncement: () => historyLifecycle.announcement,
     getUnreadAnnouncement: () => unreadState.announcerMessage,
   });
@@ -1011,12 +1008,10 @@
   const handleSubmit = commandActions.handleSubmit;
   const handleRetry = commandActions.handleRetry;
   const handleEdit = commandActions.handleEdit;
-  const handleApprove = commandActions.handleApprove;
-  const handleDeny = commandActions.handleDeny;
+  const handleApprovalResolve = commandActions.resolveToolApproval;
   const handleStopGenerating = commandActions.handleStopGenerating;
   const handleEditingChange = commandActions.handleEditingChange;
-  const canApprove = $derived(commandActions.canApprove);
-  const canDeny = $derived(commandActions.canDeny);
+  const canResolveToolApproval = $derived(commandActions.canResolveToolApproval);
 
   async function handleLoadHistory(): Promise<void> {
     await historyLifecycle.loadHistory();
@@ -1603,15 +1598,14 @@
           overrideContent={isPresentingStreamingMessage ? streamingOverrideContent : undefined}
           searchMatch={isCurrentSearchMatch}
           tabindex={-1}
-          approvedToolCallIds={commandActions.approvedToolCallIds.size > 0
-            ? commandActions.approvedToolCallIds
+          approvalStates={commandActions.approvalStates.size > 0
+            ? commandActions.approvalStates
             : undefined}
-          deniedToolCallIds={commandActions.deniedToolCallIds.size > 0
-            ? commandActions.deniedToolCallIds
+          approvalResolutionInFlightIds={commandActions.approvalResolutionInFlightIds.size > 0
+            ? commandActions.approvalResolutionInFlightIds
             : undefined}
           {toolCallPresentation}
-          onapprove={canApprove ? handleApprove : undefined}
-          ondeny={canDeny ? handleDeny : undefined}
+          onapprovalresolve={canResolveToolApproval ? handleApprovalResolve : undefined}
           reasoning={derivedReasoning}
           entries={derivedEntries}
           steps={derivedSteps}

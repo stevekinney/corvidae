@@ -25,7 +25,13 @@ describe('chat session controller', () => {
         callId: 'call',
         outcome: 'action_required',
         content: null,
-        action: { type: 'approval' },
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'test-approval',
+        },
       },
     );
     let continuations = 0;
@@ -39,7 +45,7 @@ describe('chat session controller', () => {
         return events([{ type: 'text', text: 'continued' }]);
       },
       hooks: {
-        approveToolCall: async (callId) => ({
+        resolveToolApproval: async (callId) => ({
           callId,
           outcome: 'action_required',
           content: null,
@@ -48,7 +54,9 @@ describe('chat session controller', () => {
     });
 
     await Promise.resolve(
-      expect(controller.adapter.approveToolCall?.('call')).resolves.toBe('resolved'),
+      expect(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
+      ).resolves.toBe('resolved'),
     );
     expect(continuations).toBe(1);
   });
@@ -63,7 +71,13 @@ describe('chat session controller', () => {
         callId: 'call',
         outcome: 'action_required',
         content: null,
-        action: { type: 'approval' },
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'test-approval',
+        },
       },
     );
     let continuations = 0;
@@ -77,7 +91,7 @@ describe('chat session controller', () => {
         return events([{ type: 'text', text: 'continued' }]);
       },
       hooks: {
-        denyToolCall: async (callId) => ({
+        resolveToolApproval: async (callId) => ({
           callId,
           outcome: 'action_required',
           content: null,
@@ -86,7 +100,9 @@ describe('chat session controller', () => {
     });
 
     await Promise.resolve(
-      expect(controller.adapter.denyToolCall?.('call')).resolves.toBe('resolved'),
+      expect(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'deny', remember: false }),
+      ).resolves.toBe('resolved'),
     );
     expect(continuations).toBe(1);
   });
@@ -104,7 +120,13 @@ describe('chat session controller', () => {
         callId: 'older-call',
         outcome: 'action_required',
         content: null,
-        action: { type: 'approval' },
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'test-approval',
+        },
       },
     );
     conversation = appendUserMessage(conversation, 'newer');
@@ -120,7 +142,13 @@ describe('chat session controller', () => {
         callId: 'newer-call',
         outcome: 'action_required',
         content: null,
-        action: { type: 'approval' },
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'test-approval',
+        },
       },
     );
     const markFailed = (id: string): void => {
@@ -148,13 +176,19 @@ describe('chat session controller', () => {
         return events([{ type: 'text', text: 'continued latest turn' }]);
       },
       hooks: {
-        approveToolCall: async (id) => ({ callId: id, outcome: 'success', content: 'allowed' }),
+        resolveToolApproval: async (id) => ({ callId: id, outcome: 'success', content: 'allowed' }),
       },
     });
 
-    await controller.adapter.approveToolCall?.('newer-call');
+    await controller.adapter.resolveToolApproval?.('newer-call', {
+      decision: 'approve',
+      remember: false,
+    });
     expect(calls).toBe(0);
-    await controller.adapter.approveToolCall?.('older-call');
+    await controller.adapter.resolveToolApproval?.('older-call', {
+      decision: 'approve',
+      remember: false,
+    });
 
     expect(calls).toBe(1);
     expect(conversation.messages[olderUser]?.metadata['_deliveryStatus']).toBe('failed');
@@ -170,7 +204,18 @@ describe('chat session controller', () => {
         ),
         { id: 'call', name: 'write', arguments: {} },
       ),
-      { callId: 'call', outcome: 'action_required', content: null, action: { type: 'approval' } },
+      {
+        callId: 'call',
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'test-approval',
+        },
+      },
     );
     let resolveApproval!: (result: ToolResult) => void;
     const controller = createChatSessionController({
@@ -180,14 +225,17 @@ describe('chat session controller', () => {
       },
       transport: async () => events([{ type: 'text', text: 'unexpected' }]),
       hooks: {
-        approveToolCall: async () =>
+        resolveToolApproval: async () =>
           new Promise<ToolResult>((resolve) => {
             resolveApproval = resolve;
           }),
       },
     });
     const original = conversation;
-    const approval = controller.adapter.approveToolCall?.('call');
+    const approval = controller.adapter.resolveToolApproval?.('call', {
+      decision: 'approve',
+      remember: false,
+    });
     await Promise.resolve();
     controller.dispose();
     resolveApproval({ callId: 'call', outcome: 'success', content: 'allowed' });
@@ -205,7 +253,18 @@ describe('chat session controller', () => {
         ),
         { id: 'call', name: 'write', arguments: {} },
       ),
-      { callId: 'call', outcome: 'action_required', content: null, action: { type: 'approval' } },
+      {
+        callId: 'call',
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'test-approval',
+        },
+      },
     );
     let calls = 0;
     const controller = createChatSessionController({
@@ -218,7 +277,7 @@ describe('chat session controller', () => {
         return events([{ type: 'text', text: 'approved after reload' }]);
       },
       hooks: {
-        approveToolCall: async (toolCallId) => ({
+        resolveToolApproval: async (toolCallId) => ({
           callId: toolCallId,
           outcome: 'success',
           content: 'allowed',
@@ -226,7 +285,10 @@ describe('chat session controller', () => {
       },
     });
 
-    await controller.adapter.approveToolCall?.('call');
+    await controller.adapter.resolveToolApproval?.('call', {
+      decision: 'approve',
+      remember: false,
+    });
 
     expect(calls).toBe(1);
     expect(

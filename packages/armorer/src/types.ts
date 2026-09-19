@@ -2,6 +2,11 @@ import type {
   JSONValue as SharedJSONValue,
   ToolAction as SharedToolAction,
   ToolActionInput as SharedToolActionInput,
+  ToolApprovalAction as SharedToolApprovalAction,
+  ToolApprovalOperation as SharedToolApprovalOperation,
+  ToolApprovalResolution as SharedToolApprovalResolution,
+  ToolApprovalRisk as SharedToolApprovalRisk,
+  ToolApprovalSandbox as SharedToolApprovalSandbox,
   ToolCall as SharedToolCall,
   ToolCallInput as SharedToolCallInput,
   ToolError as SharedToolError,
@@ -20,6 +25,11 @@ export type ToolErrorCategory = SharedToolErrorCategory;
 export type ToolErrorInput = SharedToolErrorInput;
 export type ToolAction = SharedToolAction;
 export type ToolActionInput = SharedToolActionInput;
+export type ToolApprovalAction = SharedToolApprovalAction;
+export type ToolApprovalOperation = SharedToolApprovalOperation;
+export type ToolApprovalResolution = SharedToolApprovalResolution;
+export type ToolApprovalRisk = SharedToolApprovalRisk;
+export type ToolApprovalSandbox = SharedToolApprovalSandbox;
 export type ToolCall = SharedToolCall;
 export type ToolCallInput = SharedToolCallInput;
 export type ToolResult = SharedToolResult;

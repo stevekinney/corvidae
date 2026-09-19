@@ -11,6 +11,16 @@ import {
 } from '../src/conversation/index';
 import type { ConversationHistory as Conversation, Message } from '../src/types';
 
+function approvalAction(message: string, idempotencyKey: string) {
+  return {
+    type: 'approval' as const,
+    message,
+    risk: 'high' as const,
+    operation: { kind: 'other' as const },
+    policyVersion: 'policy:test',
+    idempotencyKey,
+  };
+}
 const testEnvironment = {
   now: () => '2024-01-01T00:00:00.000Z',
   randomId: (() => {
@@ -112,8 +122,8 @@ describe('tool interaction streaming', () => {
         outcome: 'action_required',
         content: { allowed: true },
         action: {
-          type: 'approval',
-          schema: { approved: true },
+          ...approvalAction('Approve request', 'approval:streaming-normalize'),
+          operation: { kind: 'other', argsPreview: { approved: true } },
         },
         error: {
           code: 'TOOL_ERROR',
@@ -128,8 +138,8 @@ describe('tool interaction streaming', () => {
       outcome: 'action_required',
       content: { allowed: true },
       action: {
-        type: 'approval',
-        schema: { approved: true },
+        ...approvalAction('Approve request', 'approval:streaming-normalize'),
+        operation: { kind: 'other', argsPreview: { approved: true } },
       },
       error: {
         code: 'TOOL_ERROR',
@@ -148,8 +158,8 @@ describe('tool interaction streaming', () => {
         outcome: 'action_required',
         content: undefined,
         action: {
-          type: 'approval',
-          schema: Symbol('schema'),
+          ...approvalAction('Approve request', 'approval:streaming-async'),
+          operation: { kind: 'other', argsPreview: Symbol('schema') },
         },
         result: 'ignored runtime payload',
       }),
@@ -158,8 +168,8 @@ describe('tool interaction streaming', () => {
       outcome: 'action_required',
       content: null,
       action: {
-        type: 'approval',
-        schema: 'Symbol(schema)',
+        ...approvalAction('Approve request', 'approval:streaming-async'),
+        operation: { kind: 'other', argsPreview: 'Symbol(schema)' },
       },
     });
   });

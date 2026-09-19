@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { ChatAdapter, ChatReadReceiptEvent } from './chat-adapter.ts';
+  import type { ChatAdapter, ChatCommand, ChatReadReceiptEvent } from './chat-adapter.ts';
   import type { ConversationHistory, Message } from '../conversation-model.ts';
   import type { TypingParticipant } from '../chat.types.ts';
 
@@ -9,6 +9,7 @@
     onpushmessage?: (message: Message) => void;
     ontypingchange?: (participants: TypingParticipant[]) => void;
     onreadreceipt?: (event: ChatReadReceiptEvent) => void;
+    onadaptererror?: (event: { command: ChatCommand; error: unknown }) => void;
     onerror?: (error: unknown) => void;
   };
 </script>
@@ -23,6 +24,7 @@
     onpushmessage = () => {},
     ontypingchange = () => {},
     onreadreceipt = () => {},
+    onadaptererror = () => {},
     onerror = (error) => {
       throw error;
     },
@@ -61,6 +63,7 @@
       {onpushmessage}
       {ontypingchange}
       {onreadreceipt}
+      {onadaptererror}
     />
   </div>
   {#snippet failed(error)}

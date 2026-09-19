@@ -196,7 +196,75 @@ describe('renderer — per-part rendering', () => {
     expect(alert?.textContent).toContain('it failed');
   });
 
-  test('renders a tool-approval part with group role (not alertdialog) and action buttons', () => {
+  test('renders standalone input action prompt and schema on the neutral tool-result view', () => {
+    const { container } = render(ChatMessagePartsRenderer, {
+      props: {
+        parts: [
+          {
+            type: 'tool-result',
+            key: 'm:tool-result:input',
+            result: {
+              callId: 'input',
+              outcome: 'action_required',
+              content: null,
+              action: {
+                type: 'input',
+                message: 'Provide a deployment reason',
+                schema: {
+                  type: 'object',
+                  properties: { reason: { type: 'string' } },
+                  required: ['reason'],
+                },
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(container.querySelector('[data-cinder-tool-approval]')).toBeNull();
+    expect(container.textContent).toContain('Provide a deployment reason');
+    expect(container.querySelector('[aria-label="Requested input schema"]')).not.toBeNull();
+    expect(container.textContent).toContain('reason');
+  });
+
+  test('renders paired input action prompt and schema inside the neutral tool-call details', () => {
+    const { container } = render(ChatMessagePartsRenderer, {
+      props: {
+        expanded: true,
+        parts: [
+          {
+            type: 'tool-call',
+            key: 'm:tool-call:input',
+            pair: {
+              call: { id: 'input', name: 'collect_input', arguments: {} },
+              result: {
+                callId: 'input',
+                outcome: 'action_required',
+                content: null,
+                action: {
+                  type: 'input',
+                  message: 'Provide a deployment reason',
+                  schema: {
+                    type: 'object',
+                    properties: { reason: { type: 'string' } },
+                    required: ['reason'],
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(container.querySelector('[data-cinder-tool-approval]')).toBeNull();
+    expect(container.textContent).toContain('Provide a deployment reason');
+    expect(container.textContent).toContain('Input schema');
+    expect(container.textContent).toContain('reason');
+  });
+
+  test('renders a tool-approval part through the shared Cinder card', () => {
     const { container } = render(ChatMessagePartsRenderer, {
       props: {
         parts: [
@@ -205,24 +273,31 @@ describe('renderer — per-part rendering', () => {
             key: 'm:tool-approval:c1',
             toolCallId: 'c1',
             toolName: 'deploy_to_production',
-            action: { type: 'approval', message: 'Deploy to production?' },
-            approved: undefined,
+            action: {
+              type: 'approval',
+              message: 'Deploy to production?',
+              risk: 'high',
+              operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+              policyVersion: 'test-policy',
+              idempotencyKey: 'test-approval',
+            },
+            state: 'pending',
+            resolutionInFlight: false,
           },
         ],
-        onapprove: () => {},
-        ondeny: () => {},
+        onapprovalresolve: () => {},
       },
     });
     const dialog = container.querySelector('[data-cinder-tool-approval]');
     expect(dialog).not.toBeNull();
-    expect(dialog?.getAttribute('role')).toBe('group');
+    expect(dialog?.classList.contains('cinder-approval-card')).toBe(true);
     expect(container.textContent).toContain('deploy_to_production');
-    expect(container.textContent).toContain('Deploy to production?');
-    // Approve and Reject buttons appear for pending state
+    expect(container.textContent).toContain('echo approval');
+    // Approve and Deny buttons appear for pending state
     const buttons = container.querySelectorAll('button');
     const labels = Array.from(buttons).map((button) => button.textContent?.trim());
     expect(labels).toContain('Approve');
-    expect(labels).toContain('Reject');
+    expect(labels).toContain('Deny');
   });
 
   test('renders an image group through the attachments grid with the right count', () => {

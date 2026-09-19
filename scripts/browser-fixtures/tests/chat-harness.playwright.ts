@@ -38,6 +38,16 @@ const privateHarnessFixture = chatEntry.fixtures?.find(
 const privateHistoryPrependStressFixture = chatEntry.fixtures?.find(
   (fixture) => fixture.name === 'private-history-prepend-stress',
 );
+
+function themeInitScriptPayload(colorScheme: 'dark' | 'light'): [string, string, string] {
+  const baseUrl = environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN;
+  return [THEME_STORAGE_KEY, colorScheme, new URL(baseUrl).origin];
+}
+
+function setFixtureThemeOnOrigin([key, value, origin]: [string, string, string]): void {
+  if (globalThis.location.origin !== origin) return;
+  localStorage.setItem(key, value);
+}
 if (privateHarnessFixture === undefined || privateHistoryPrependStressFixture === undefined) {
   throw new Error('Chat private fixtures are missing from the application manifest.');
 }
@@ -69,12 +79,7 @@ async function openHarness(
   // context whose owning `openHarness` call never returned. Close it on any
   // failure and rethrow.
   try {
-    await context.addInitScript(
-      ([key, value]) => {
-        localStorage.setItem(key, value);
-      },
-      [THEME_STORAGE_KEY, colorScheme] as const,
-    );
+    await context.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload(colorScheme));
     const page = await context.newPage();
     const diagnostics: string[] = [];
     page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
@@ -239,10 +244,8 @@ async function openChatFixture(
   const diagnostics: string[] = [];
   try {
     await context.addInitScript(
-      ([key, value]) => {
-        localStorage.setItem(key, value);
-      },
-      [THEME_STORAGE_KEY, options.colorScheme] as const,
+      setFixtureThemeOnOrigin,
+      themeInitScriptPayload(options.colorScheme),
     );
     const page = await context.newPage();
     page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
@@ -859,8 +862,117 @@ test.describe('chat harness — mounts cleanly', () => {
       await dispose();
     }
   });
-});
 
+  test('Chat tool approvals use the shared Cinder approval surface', async ({ browser }) => {
+    const cinderCardCounts: number[] = [];
+    for (const colorScheme of ['dark', 'light'] as const) {
+      const context = await browser.newContext({
+        baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+        colorScheme,
+        reducedMotion: 'reduce',
+        viewport: { width: 1280, height: 900 },
+      });
+      const diagnostics: string[] = [];
+      try {
+        await context.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload(colorScheme));
+        const page = await context.newPage();
+        page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
+        page.on('console', (message) => {
+          if (message.type() === 'error' || message.type() === 'warning') {
+            diagnostics.push(`${message.type()}: ${message.text()}`);
+          }
+        });
+
+        async function openApprovalFixture(): Promise<Locator> {
+          await page.goto(fixtureRoute('chat'), { waitUntil: 'load' });
+          await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+          const approvalChat = page.locator('#fixture-tool-approval-chat');
+          await expect(approvalChat).toBeVisible();
+          return approvalChat;
+        }
+
+        async function expectLastResolution(expected: unknown): Promise<void> {
+          await expect
+            .poll(async () => {
+              const logText = await page.getByTestId('approval-resolution-log').textContent();
+              const log = JSON.parse(logText ?? '[]') as unknown[];
+              return log.at(-1);
+            })
+            .toEqual(expected);
+        }
+
+        const approvalChat = await openApprovalFixture();
+        const card = approvalChat.locator('.cinder-approval-card');
+        cinderCardCounts.push(await card.count());
+        await expect(card.getByText('Approval required for', { exact: false })).toBeVisible();
+        await expect(card.getByRole('heading', { name: 'deploy_to_production' })).toBeVisible();
+        await expect(
+          card.getByText('deploy_to_production --environment production --version 2.4.1', {
+            exact: true,
+          }),
+        ).toBeVisible();
+        const detailsButton = card.getByRole('button', { name: 'Details' });
+        await expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
+        await detailsButton.click();
+        await expect(detailsButton).toHaveAttribute('aria-expanded', 'true');
+        await expect(
+          card
+            .getByRole('list', { name: 'Environment variable names only; values are never shown' })
+            .getByText('DEPLOY_TOKEN', { exact: true }),
+        ).toBeVisible();
+        const policyMetadata = card
+          .locator('.cinder-approval-card__metadata-item')
+          .filter({ hasText: 'Policy version' });
+        await expect(policyMetadata.locator('dt')).toHaveText('Policy version');
+        await expect(policyMetadata.locator('dd')).toContainText('approval-fixture-policy-v1');
+        await approvalChat.getByRole('button', { name: 'Approve', exact: true }).click();
+        await expectLastResolution({
+          toolCallId: 'call-deploy-prod',
+          resolution: { decision: 'approve', remember: false },
+        });
+
+        const denyChat = await openApprovalFixture();
+        await denyChat.getByRole('textbox', { name: 'Reason' }).fill('Too risky right now.');
+        await denyChat.getByRole('button', { name: 'Deny' }).click();
+        await expectLastResolution({
+          toolCallId: 'call-deploy-prod',
+          resolution: { decision: 'deny', remember: false, reason: 'Too risky right now.' },
+        });
+
+        const cancelChat = await openApprovalFixture();
+        await cancelChat.locator('.cinder-approval-card').press('Escape');
+        await expectLastResolution({
+          toolCallId: 'call-deploy-prod',
+          resolution: { decision: 'cancel', remember: false },
+        });
+
+        const editedChat = await openApprovalFixture();
+        await editedChat.getByRole('button', { name: 'Approve with edits' }).click();
+        await editedChat
+          .getByRole('textbox', { name: 'Edited arguments JSON' })
+          .fill('{"environment":"production","version":"2.4.1","replicas":2}');
+        await editedChat.getByRole('button', { name: 'Confirm edited approval' }).click();
+        await expectLastResolution({
+          toolCallId: 'call-deploy-prod',
+          resolution: {
+            decision: 'approve_with_edits',
+            editedArgs: { environment: 'production', version: '2.4.1', replicas: 2 },
+            remember: false,
+          },
+        });
+
+        expect(
+          diagnostics,
+          'Chat approval fixture must not emit browser errors or warnings',
+        ).toEqual([]);
+      } finally {
+        await context.close();
+      }
+    }
+
+    expect(cinderCardCounts).toEqual([1, 1]);
+  });
+});
 test.describe('chat harness — submit and reply', () => {
   test('a composer submit appends a user message and an auto-reply lands', async ({ browser }) => {
     const { harness, dispose } = await openHarness(browser);
@@ -3215,12 +3327,7 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
     // nothing else here would have closed it. Both now run inside the same
     // try that already closes `context` in its `finally`.
     try {
-      await context.addInitScript(
-        ([key, value]) => {
-          localStorage.setItem(key, value);
-        },
-        [THEME_STORAGE_KEY, 'dark'] as const,
-      );
+      await context.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload('dark'));
       const page = await context.newPage();
       await page.goto(fixtureRoute('chat', { fixtureName: 'private-history-prepend-stress' }), {
         waitUntil: 'load',

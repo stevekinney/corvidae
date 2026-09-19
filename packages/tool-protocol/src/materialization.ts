@@ -3,6 +3,10 @@ import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/li
 import type {
   JSONValue,
   ToolAction,
+  ToolApprovalAction,
+  ToolApprovalOperation,
+  ToolApprovalRisk,
+  ToolApprovalSandbox,
   ToolCall,
   ToolCallInput,
   ToolResult,
@@ -103,11 +107,250 @@ function stripRuntimeToolResultFields(toolResult: ToolResultInput, content: JSON
 function normalizeToolAction(
   action: NonNullable<ToolResultInput['action']>,
 ): NonNullable<ToolAction> {
+  if (action.type === 'input') {
+    return {
+      type: 'input',
+      ...(action.message ? { message: action.message } : {}),
+      ...(action.schema !== undefined ? { schema: normalizeJSONValue(action.schema) } : {}),
+    };
+  }
+  if (action.type !== 'approval') {
+    throw new Error('Tool action type must be "approval" or "input".');
+  }
+  return normalizeApprovalAction(action);
+}
+
+function normalizeApprovalAction(
+  action: NonNullable<ToolResultInput['action']>,
+): ToolApprovalAction {
+  assertKnownKeys(action, 'approval action', [
+    'type',
+    'message',
+    'risk',
+    'operation',
+    'sandbox',
+    'env',
+    'snapshotId',
+    'expiresAt',
+    'editableArgs',
+    'policyVersion',
+    'idempotencyKey',
+  ]);
+  const risk = normalizeApprovalRisk(action.risk);
+  const operation = normalizeApprovalOperation(action.operation);
+  const policyVersion = requiredString(action.policyVersion, 'approval action policyVersion');
+  const idempotencyKey = requiredString(action.idempotencyKey, 'approval action idempotencyKey');
   return {
-    type: action.type,
+    type: 'approval',
     ...(action.message ? { message: action.message } : {}),
-    ...(action.schema !== undefined ? { schema: normalizeJSONValue(action.schema) } : {}),
+    risk,
+    operation,
+    ...(action.sandbox !== undefined ? { sandbox: normalizeApprovalSandbox(action.sandbox) } : {}),
+    ...(action.env !== undefined
+      ? { env: normalizeStringArray(action.env, 'approval action env') }
+      : {}),
+    ...(action.snapshotId !== undefined
+      ? { snapshotId: requiredString(action.snapshotId, 'approval action snapshotId') }
+      : {}),
+    ...(action.expiresAt !== undefined
+      ? { expiresAt: normalizeApprovalExpiresAt(action.expiresAt) }
+      : {}),
+    ...(action.editableArgs !== undefined
+      ? { editableArgs: requiredBoolean(action.editableArgs, 'approval action editableArgs') }
+      : {}),
+    policyVersion,
+    idempotencyKey,
   };
+}
+
+function normalizeApprovalRisk(value: unknown): ToolApprovalRisk {
+  if (value === 'low' || value === 'medium' || value === 'high') return value;
+  throw new Error('Approval action risk must be "low", "medium", or "high".');
+}
+
+function normalizeApprovalOperation(value: unknown): ToolApprovalOperation {
+  const operation = requiredRecord(value, 'approval action operation');
+  const kind = operation['kind'];
+  switch (kind) {
+    case 'command':
+      assertKnownKeys(operation, 'approval command operation', [
+        'kind',
+        'command',
+        'filesTouched',
+        'argsPreview',
+      ]);
+      return {
+        kind,
+        command: requiredString(operation['command'], 'approval command operation command'),
+        ...optionalFilesTouched(operation),
+        ...optionalArgsPreview(operation),
+      };
+    case 'file-write':
+      assertKnownKeys(operation, 'approval file-write operation', [
+        'kind',
+        'filesTouched',
+        'argsPreview',
+      ]);
+      return {
+        kind,
+        filesTouched: normalizeFilesTouched(operation['filesTouched'], {
+          required: true,
+          label: 'approval file-write operation filesTouched',
+        }),
+        ...optionalArgsPreview(operation),
+      };
+    case 'patch':
+      assertKnownKeys(operation, 'approval patch operation', [
+        'kind',
+        'filesTouched',
+        'argsPreview',
+        'diff',
+      ]);
+      return {
+        kind,
+        ...optionalFilesTouched(operation),
+        ...optionalArgsPreview(operation),
+        diff: requiredString(operation['diff'], 'approval patch operation diff'),
+      };
+    case 'other':
+      assertKnownKeys(operation, 'approval other operation', [
+        'kind',
+        'filesTouched',
+        'argsPreview',
+      ]);
+      return {
+        kind,
+        ...optionalFilesTouched(operation),
+        ...optionalArgsPreview(operation),
+      };
+    default:
+      throw new Error('Approval action operation kind is invalid.');
+  }
+}
+
+function optionalFilesTouched(operation: Record<string, unknown>): {
+  filesTouched?: string[];
+} {
+  if (operation['filesTouched'] === undefined) return {};
+  return {
+    filesTouched: normalizeFilesTouched(operation['filesTouched'], {
+      required: false,
+      label: 'approval operation filesTouched',
+    }),
+  };
+}
+
+function normalizeFilesTouched(
+  value: unknown,
+  options: { required: boolean; label: string },
+): string[] {
+  const files = normalizeStringArray(value, options.label);
+  if (options.required && files.length === 0) {
+    throw new Error(`${options.label} must contain at least one path.`);
+  }
+  return files;
+}
+
+function optionalArgsPreview(operation: Record<string, unknown>): {
+  argsPreview?: JSONValue | undefined;
+} {
+  if (operation['argsPreview'] === undefined) return {};
+  return { argsPreview: normalizeJSONValue(operation['argsPreview']) };
+}
+
+function normalizeApprovalSandbox(value: unknown): ToolApprovalSandbox {
+  const sandbox = requiredRecord(value, 'approval action sandbox');
+  assertKnownKeys(sandbox, 'approval action sandbox', ['provider', 'name', 'workingDir']);
+  return {
+    provider: requiredString(sandbox['provider'], 'approval action sandbox provider'),
+    name: requiredString(sandbox['name'], 'approval action sandbox name'),
+    workingDir: requiredString(sandbox['workingDir'], 'approval action sandbox workingDir'),
+  };
+}
+
+function normalizeStringArray(value: unknown, label: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`${label} must be an array of strings.`);
+  }
+  return [...value];
+}
+
+function normalizeApprovalExpiresAt(value: unknown): string {
+  const expiresAt = requiredString(value, 'approval action expiresAt');
+  if (!isExplicitTimezoneIsoDateTime(expiresAt)) {
+    throw new Error('Approval action expiresAt must be a valid ISO8601 date-time with timezone.');
+  }
+  return expiresAt;
+}
+
+function isExplicitTimezoneIsoDateTime(value: string): boolean {
+  const match =
+    /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})T(?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2})(?<fraction>\.\d+)?(?<timezone>Z|[+-]\d{2}:\d{2})$/.exec(
+      value,
+    );
+  if (!match?.groups) return false;
+  const year = Number(match.groups['year']);
+  const month = Number(match.groups['month']);
+  const day = Number(match.groups['day']);
+  const hour = Number(match.groups['hour']);
+  const minute = Number(match.groups['minute']);
+  const second = Number(match.groups['second']);
+  const timezone = match.groups['timezone']!;
+  if (
+    !Number.isInteger(year) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return false;
+  }
+  if (timezone !== 'Z') {
+    const timezoneHour = Number(timezone.slice(1, 3));
+    const timezoneMinute = Number(timezone.slice(4, 6));
+    if (timezoneHour > 23 || timezoneMinute > 59) return false;
+  }
+  const utc = new Date(0);
+  utc.setUTCFullYear(year, month - 1, day);
+  utc.setUTCHours(hour, minute, second, 0);
+  return (
+    utc.getUTCFullYear() === year &&
+    utc.getUTCMonth() === month - 1 &&
+    utc.getUTCDate() === day &&
+    (timezone !== 'Z' || utc.getUTCHours() === hour) &&
+    (timezone !== 'Z' || utc.getUTCMinutes() === minute) &&
+    (timezone !== 'Z' || utc.getUTCSeconds() === second)
+  );
+}
+
+function requiredRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function assertKnownKeys(value: object, label: string, keys: readonly string[]): void {
+  const allowed = new Set(keys);
+  const unknownKey = Object.keys(value).find((key) => !allowed.has(key));
+  if (unknownKey !== undefined) {
+    throw new Error(`${label} has unknown field "${unknownKey}".`);
+  }
+}
+
+function requiredString(value: unknown, label: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${label} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function requiredBoolean(value: unknown, label: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${label} must be a boolean.`);
+  return value;
 }
 
 function hasStreamingPayload(toolResult: ToolResultInput): boolean {

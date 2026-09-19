@@ -1,8 +1,13 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import type { SignedPendingToolApproval } from '@corvidae/armorer';
+import type { SignedPendingToolApproval, ToolExecutionResult } from '@corvidae/armorer';
+import { createTool, createToolbox } from '@corvidae/armorer';
+import { z } from 'zod';
 import { updatePendingApproval } from '../../../lib/pending-approval.ts';
+import { requestContext, toolbox } from '../../../lib/toolbox.ts';
+import type { RequestEvent } from './resume/$types';
+import { POST } from './resume/+server.ts';
 
 const resumeSource = readFileSync(new URL('./resume/+server.ts', import.meta.url), 'utf8');
 /**
@@ -18,6 +23,73 @@ const streamSource = readFileSync(
   new URL('../../../lib/chat-run-response.ts', import.meta.url),
   'utf8',
 );
+
+function createSpan(): RequestEvent['tracing']['root'] {
+  const span: RequestEvent['tracing']['root'] = {
+    spanContext: () => ({ traceId: '0'.repeat(32), spanId: '0'.repeat(16), traceFlags: 0 }),
+    setAttribute: () => span,
+    setAttributes: () => span,
+    addEvent: () => span,
+    addLink: () => span,
+    addLinks: () => span,
+    setStatus: () => span,
+    updateName: () => span,
+    end: () => undefined,
+    isRecording: () => false,
+    recordException: () => undefined,
+  };
+  return span;
+}
+
+function requestEvent(request: Request): RequestEvent {
+  const span = createSpan();
+  return {
+    cookies: {
+      get: () => undefined,
+      getAll: () => [],
+      set: () => undefined,
+      delete: () => undefined,
+      serialize: () => '',
+    },
+    fetch,
+    getClientAddress: () => '127.0.0.1',
+    locals: {},
+    params: {},
+    platform: undefined,
+    request,
+    route: { id: '/api/chat/resume' },
+    setHeaders: () => undefined,
+    url: new URL(request.url),
+    isDataRequest: false,
+    isSubRequest: false,
+    tracing: { enabled: false, root: span, current: span },
+    isRemoteRequest: false,
+  };
+}
+
+async function post(body: unknown): Promise<Response> {
+  return await POST(
+    requestEvent(
+      new Request('http://localhost/api/chat/resume', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+      }),
+    ),
+  );
+}
+
+function hasSignedPendingApproval(result: {
+  pendingApproval?: unknown;
+}): result is { pendingApproval: SignedPendingToolApproval } {
+  const approval = result.pendingApproval;
+  return (
+    typeof approval === 'object' &&
+    approval !== null &&
+    'approvalToken' in approval &&
+    typeof approval.approvalToken === 'string'
+  );
+}
 
 describe('chat stream cancellation guard', () => {
   test('registers the request signal on the same one-shot abort path cancel() uses', () => {
@@ -108,6 +180,266 @@ describe('chat stream cancellation guard', () => {
 });
 
 describe('chat approval continuation response', () => {
+  test('accepts the unified resolution endpoint contract', () => {
+    expect(resumeSource).toContain(
+      "import { toolActionSchema } from '@corvidae/conversationalist';",
+    );
+    expect(resumeSource).toContain('resolutionSchema');
+    expect(resumeSource).toContain(
+      'toolbox.resolveApproval(approval, resolution, { requestContext })',
+    );
+    expect(resumeSource).not.toContain("decision: z.enum(['approve', 'deny'])");
+    expect(resumeSource).not.toContain("if (decision === 'deny')");
+  });
+
+  test('forwards the complete approval and resolution unchanged', async () => {
+    const approval = {
+      callId: 'call-1',
+      toolName: 'remember_note',
+      arguments: { text: 'before' },
+      action: {
+        type: 'approval' as const,
+        message: 'Save this note?',
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        sandbox: { provider: 'bun', name: 'chat', workingDir: '/tmp/chat' },
+        env: ['A=1'],
+        snapshotId: 'snapshot-1',
+        expiresAt: '2099-01-02T03:04:05Z',
+        editableArgs: true,
+        policyVersion: 'policy-1',
+        idempotencyKey: 'idempotency-1',
+      },
+      metadata: { signed: true },
+      satisfiedPolicyPauses: [
+        {
+          action: {
+            type: 'approval' as const,
+            risk: 'low' as const,
+            operation: { kind: 'other' as const },
+            policyVersion: 'policy-1',
+            idempotencyKey: 'nested-1',
+          },
+          reason: 'already satisfied',
+          tier: 'registry' as const,
+        },
+      ],
+      approvalToken: 'token-1',
+    } satisfies SignedPendingToolApproval;
+    const resolution = {
+      decision: 'approve_with_edits' as const,
+      editedArgs: { text: 'after' },
+      reason: 'updated note',
+      remember: true,
+    };
+    const result: ToolExecutionResult = {
+      callId: approval.callId,
+      outcome: 'action_required',
+      content: null,
+      toolCallId: approval.callId,
+      toolName: approval.toolName,
+      result: undefined,
+      action: approval.action,
+      pendingApproval: { ...approval, approvalToken: 'token-2' },
+    };
+    const resolveApproval = spyOn(toolbox, 'resolveApproval').mockResolvedValue(result);
+
+    try {
+      const response = await post({ approval, resolution });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        callId: result.callId,
+        outcome: result.outcome,
+        content: result.content,
+        action: result.action,
+        pendingApproval: result.pendingApproval,
+      });
+      expect(resolveApproval).toHaveBeenCalledWith(approval, resolution, {
+        requestContext: expect.any(Object),
+      });
+    } finally {
+      resolveApproval.mockRestore();
+    }
+  });
+
+  test('rejects top-level signed input actions before resolving approvals', async () => {
+    let executedCount = 0;
+    const inputTool = createTool({
+      name: 'needs_input_endpoint_guard',
+      version: '1.0.0',
+      description: 'Endpoint input action guard fixture',
+      input: z.object({ text: z.string() }),
+      policy: {
+        beforeExecute: () => ({
+          status: 'needs_input',
+          reason: 'Provide more input',
+          action: {
+            message: 'Provide more input',
+            schema: { type: 'object', properties: { text: { type: 'string' } } },
+          },
+        }),
+      },
+      execute: async () => {
+        executedCount += 1;
+        return { executed: true };
+      },
+    });
+    const inputToolbox = createToolbox([inputTool], { approvalSecret: 'endpoint-input-secret' });
+    const parked = await inputToolbox.execute(
+      { id: 'call-input', name: inputTool.name, arguments: { text: 'before' } },
+      { requestContext },
+    );
+    if (!hasSignedPendingApproval(parked)) throw new Error('Expected a signed input descriptor.');
+    expect(parked.pendingApproval.action.type).toBe('input');
+    expect(executedCount).toBe(0);
+    const resolveApproval = spyOn(toolbox, 'resolveApproval');
+
+    try {
+      const response = await post({
+        approval: parked.pendingApproval,
+        resolution: { decision: 'approve', remember: false },
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'Invalid request body' });
+      expect(resolveApproval).not.toHaveBeenCalled();
+      expect(executedCount).toBe(0);
+    } finally {
+      resolveApproval.mockRestore();
+    }
+  });
+
+  test('rejects legacy and malformed resolution bodies before the toolbox', async () => {
+    const approval = {
+      callId: 'call-malformed',
+      toolName: 'remember_note',
+      arguments: { text: 'before' },
+      action: {
+        type: 'approval' as const,
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        policyVersion: 'policy-1',
+        idempotencyKey: 'malformed-1',
+      },
+      approvalToken: 'token-malformed',
+    } satisfies SignedPendingToolApproval;
+    const resolveApproval = spyOn(toolbox, 'resolveApproval');
+    try {
+      for (const body of [
+        { approval, decision: 'deny' },
+        { approval, resolution: { decision: 'deny' } },
+      ]) {
+        const response = await post(body);
+        expect(response.status).toBe(400);
+      }
+      expect(resolveApproval).not.toHaveBeenCalled();
+    } finally {
+      resolveApproval.mockRestore();
+    }
+  });
+
+  test('forwards negative decisions without fabricating a denial result', async () => {
+    const approval = {
+      callId: 'call-negative',
+      toolName: 'remember_note',
+      arguments: { text: 'before' },
+      action: {
+        type: 'approval' as const,
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        policyVersion: 'policy-1',
+        idempotencyKey: 'negative-1',
+      },
+      approvalToken: 'token-negative',
+    } satisfies SignedPendingToolApproval;
+    const resolveApproval = spyOn(toolbox, 'resolveApproval').mockImplementation(
+      async (_approval, resolution): Promise<ToolExecutionResult> => ({
+        callId: approval.callId,
+        outcome: 'error',
+        content: null,
+        toolCallId: approval.callId,
+        toolName: approval.toolName,
+        result: undefined,
+        error: {
+          code: resolution.decision === 'cancel' ? 'CANCELLED' : 'denied',
+          category: resolution.decision === 'cancel' ? 'cancelled' : 'permission',
+          retryable: false,
+          message: resolution.reason ?? 'authoritative result',
+        },
+      }),
+    );
+
+    try {
+      for (const decision of ['deny', 'cancel'] as const) {
+        const resolution = { decision, reason: `${decision} reason`, remember: false };
+        const response = await post({ approval, resolution });
+        expect(await response.json()).toMatchObject({
+          callId: approval.callId,
+          outcome: 'error',
+          error: {
+            code: decision === 'cancel' ? 'CANCELLED' : 'denied',
+            message: resolution.reason,
+          },
+        });
+      }
+      expect(resolveApproval).toHaveBeenCalledTimes(2);
+      expect(resolveApproval.mock.calls.map((call) => call[1])).toEqual([
+        { decision: 'deny', reason: 'deny reason', remember: false },
+        { decision: 'cancel', reason: 'cancel reason', remember: false },
+      ]);
+    } finally {
+      resolveApproval.mockRestore();
+    }
+  });
+
+  test('resolves real signed approvals for every decision and rejects tampering', async () => {
+    async function pendingApproval(callId: string): Promise<SignedPendingToolApproval> {
+      const result = await toolbox.execute(
+        { id: callId, name: 'remember_note', arguments: { text: 'before' } },
+        { requestContext },
+      );
+      expect(result.outcome).toBe('action_required');
+      if (!hasSignedPendingApproval(result)) throw new Error('Expected a signed pending approval.');
+      return result.pendingApproval;
+    }
+
+    const approved = await post({
+      approval: await pendingApproval('endpoint-approve'),
+      resolution: { decision: 'approve', remember: false },
+    });
+    const approvedBody = await approved.json();
+    expect(approvedBody.outcome).toBe('success');
+
+    const editedApproval = await pendingApproval('endpoint-edited');
+    const edited = await post({
+      approval: editedApproval,
+      resolution: { decision: 'approve_with_edits', editedArgs: { text: 'after' }, remember: true },
+    });
+    const editedBody = await edited.json();
+    expect(editedBody.outcome).toBe('action_required');
+
+    const denied = await post({
+      approval: await pendingApproval('endpoint-deny'),
+      resolution: { decision: 'deny', reason: 'no', remember: false },
+    });
+    const deniedBody = await denied.json();
+    expect(deniedBody.error).toMatchObject({ code: 'denied' });
+
+    const cancelled = await post({
+      approval: await pendingApproval('endpoint-cancel'),
+      resolution: { decision: 'cancel', reason: 'stop', remember: false },
+    });
+    const cancelledBody = await cancelled.json();
+    expect(cancelledBody.error).toMatchObject({ code: 'CANCELLED' });
+
+    const tampered = await pendingApproval('endpoint-tampered');
+    tampered.approvalToken = `${tampered.approvalToken}tampered`;
+    await expect(
+      post({ approval: tampered, resolution: { decision: 'approve', remember: false } }),
+    ).rejects.toThrow();
+  });
+
   test('forwards another pending approval stage to the client', () => {
     expect(resumeSource).toContain('...(result.action ? { action: result.action } : {})');
     expect(resumeSource).toContain(
@@ -121,14 +453,26 @@ describe('chat approval continuation response', () => {
       callId: 'call',
       toolName: 'remember_note',
       arguments: {},
-      action: { type: 'approval' as const },
+      action: {
+        type: 'approval' as const,
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        policyVersion: 'policy-1',
+        idempotencyKey: 'first-1',
+      },
       approvalToken: 'first',
     } satisfies SignedPendingToolApproval;
     const second = {
       callId: 'call',
       toolName: 'remember_note',
       arguments: {},
-      action: { type: 'approval' as const },
+      action: {
+        type: 'approval' as const,
+        risk: 'high' as const,
+        operation: { kind: 'other' as const },
+        policyVersion: 'policy-1',
+        idempotencyKey: 'second-1',
+      },
       approvalToken: 'second',
     } satisfies SignedPendingToolApproval;
 

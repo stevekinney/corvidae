@@ -1,3 +1,4 @@
+import type { ApprovalResolution } from '@corvidae/cinder';
 import type { ChatAdapter, ChatToolResult } from '../components/chat/adapter/chat-adapter.ts';
 import { removeMessage } from '../components/chat/builders.ts';
 import type { ConversationHistory, ToolResult } from '../components/chat/conversation-model.ts';
@@ -84,8 +85,10 @@ export type ChatExecutionOwner = 'browser' | 'server';
 /** Optional observers and approval handlers for controller lifecycle events. */
 export type ChatSessionHooks = {
   onToolResult?: (result: ChatToolResult) => void;
-  approveToolCall?: (toolCallId: string) => Promise<ToolResult | undefined>;
-  denyToolCall?: (toolCallId: string) => Promise<ToolResult | undefined>;
+  resolveToolApproval?: (
+    toolCallId: string,
+    resolution: ApprovalResolution,
+  ) => Promise<ToolResult | undefined>;
   onError?: (error: unknown) => void;
   onStreamingChange?: (streaming: boolean) => void;
 };
