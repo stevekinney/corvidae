@@ -1232,6 +1232,185 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
       'idempotency-run:1',
     ]);
   });
+
+  async function compositionWithOneSkill(sessionId: string) {
+    const catalog = await createMockSkillCatalog([
+      { name: 'research', description: 'Deep research' },
+    ]);
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      skills: { catalog },
+      persistence: textValueStore(new MemoryStorage()),
+    });
+    await runtime.sessionStore!.save(
+      createAgentSession({
+        id: sessionId,
+        agentName: 'researcher',
+        conversationHistory: createConversationHistory(),
+      }),
+    );
+    return runtime;
+  }
+
+  it('bureau:skill-record-snapshot writes one record set when the same step replays', async () => {
+    const sessionId = 'skill-snapshot-replay-session';
+    const runtime = await compositionWithOneSkill(sessionId);
+    const runRuntime = await runtime.createRunRuntime({
+      message: 'Hello',
+      sessionId,
+      runId: 'skill-snapshot-replay-run',
+    });
+    await runRuntime.toolbox.execute({ name: 'activate_skill', arguments: { name: 'research' } });
+
+    const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:skill-record-snapshot');
+    expect(entry.options.replay).toBe('effectful');
+
+    const conversation = new Conversation();
+    await entry.handler(stepContext(0, 'ok', conversation));
+    const afterFirst = await runtime.sessionStore!.load(sessionId);
+    await entry.handler(stepContext(0, 'ok', conversation));
+    const afterSecond = await runtime.sessionStore!.load(sessionId);
+
+    // An overwrite of fixed keys, not an append: the replayed step rewrites the
+    // same `activeSkillRecords` value rather than adding a second copy of the
+    // active set. Comparing the whole metadata object, not just the length,
+    // catches a write that grew a sibling key instead.
+    expect(
+      (afterSecond!.metadata['activeSkillRecords'] as readonly unknown[] | undefined) ?? [],
+    ).toHaveLength(1);
+    expect(afterSecond!.metadata).toEqual(afterFirst!.metadata);
+  });
+
+  it('bureau:skill-record-snapshot still tracks the live set, so the overwrite is not inertia', async () => {
+    const sessionId = 'skill-snapshot-control-session';
+    const runtime = await compositionWithOneSkill(sessionId);
+    const runRuntime = await runtime.createRunRuntime({
+      message: 'Hello',
+      sessionId,
+      runId: 'skill-snapshot-control-run',
+    });
+    const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:skill-record-snapshot');
+    const conversation = new Conversation();
+
+    await runRuntime.toolbox.execute({ name: 'activate_skill', arguments: { name: 'research' } });
+    await entry.handler(stepContext(0, 'ok', conversation));
+    await runRuntime.toolbox.execute({ name: 'deactivate_skill', arguments: { name: 'research' } });
+    await entry.handler(stepContext(1, 'ok', conversation));
+
+    // The control for the test above. Without it, a hook that had stopped
+    // writing altogether would pass the idempotency assertion: two invocations
+    // producing identical metadata is exactly what a no-op looks like.
+    const session = await runtime.sessionStore!.load(sessionId);
+    expect(session!.metadata['activeSkillRecords']).toEqual([]);
+  });
+
+  it('bureau:scheduled-session-write-back appends one transcript when the same step replays', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      const sessionId = 'scheduled-writeback-idempotency';
+      const resolution = await runtime.buildScheduledRunServices(
+        {
+          workflowId: 'scheduled-writeback-run',
+          workflowType: 'agentRun',
+          input: {
+            agentName: 'researcher',
+            input: 'nightly digest',
+            scheduleId: 'nightly-digest',
+            sessionId,
+          },
+          schedule: { id: 'nightly-digest' },
+        },
+        runtime.sessionStore!,
+      );
+      if (resolution.status !== 'available') {
+        throw new Error(`Expected scheduled services to be available: ${resolution.reason}`);
+      }
+      const services = resolution.services as DurableRunDeps;
+      const hooks = services.options.hooks;
+      if (!hooks) throw new Error('scheduled run services carried no hook registry');
+      const entry = handlerById(hooks, 'onStep', 'bureau:scheduled-session-write-back');
+      expect(entry.options.replay).toBe('effectful');
+
+      // The fire's own conversation, already seeded with the scheduled prompt.
+      const conversation = services.options.conversation as Conversation;
+      conversation.appendAssistantMessage('the digest');
+
+      await entry.handler(stepContext(0, 'the digest', conversation));
+      await entry.handler(stepContext(0, 'the digest', conversation));
+
+      // `appendConversationMessages` filters the candidate's ids against the
+      // ids already stored, so re-appending the identical transcript adds
+      // nothing. Asserting on the assistant turn specifically, because the user
+      // prompt is also seeded by the scheduled input.
+      const session = await runtime.sessionStore!.load(sessionId);
+      const digests = getMessages(session!.conversationHistory).filter(
+        (message) => message.role === 'assistant',
+      );
+      expect(digests).toHaveLength(1);
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  it('bureau:scheduled-session-write-back still appends a genuinely new turn', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      const sessionId = 'scheduled-writeback-control';
+      const resolution = await runtime.buildScheduledRunServices(
+        {
+          workflowId: 'scheduled-writeback-control-run',
+          workflowType: 'agentRun',
+          input: {
+            agentName: 'researcher',
+            input: 'nightly digest',
+            scheduleId: 'nightly-digest',
+            sessionId,
+          },
+          schedule: { id: 'nightly-digest' },
+        },
+        runtime.sessionStore!,
+      );
+      if (resolution.status !== 'available') {
+        throw new Error(`Expected scheduled services to be available: ${resolution.reason}`);
+      }
+      const services = resolution.services as DurableRunDeps;
+      const entry = handlerById(
+        services.options.hooks!,
+        'onStep',
+        'bureau:scheduled-session-write-back',
+      );
+
+      const conversation = services.options.conversation as Conversation;
+      conversation.appendAssistantMessage('first digest');
+      await entry.handler(stepContext(0, 'first digest', conversation));
+      conversation.appendAssistantMessage('second digest');
+      await entry.handler(stepContext(1, 'second digest', conversation));
+
+      // The control: the id filter collapses a REPLAY, not a second step. A
+      // write-back that had stopped appending entirely would pass the test
+      // above and silently lose every turn after the first.
+      const session = await runtime.sessionStore!.load(sessionId);
+      const digests = getMessages(session!.conversationHistory)
+        .filter((message) => message.role === 'assistant')
+        .map((message) => message.content);
+      expect(digests).toEqual(['first digest', 'second digest']);
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
 });
 
 describe('active skill metadata validation', () => {

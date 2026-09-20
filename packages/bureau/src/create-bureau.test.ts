@@ -10,6 +10,8 @@ import {
   createTool,
   createToolbox,
   type InputDetector,
+  type PendingToolApproval,
+  type ToolExecutionResult,
 } from '@corvidae/armorer';
 import { Conversation, createConversationHistory, getMessages } from '@corvidae/conversationalist';
 import type { RuntimeTimeoutHandle } from '@corvidae/lifecycle';
@@ -57,6 +59,7 @@ import {
   ScheduleSkippedEvent,
   startDurableRunResult,
   StepCompletedEvent,
+  type StepResult,
   stopWhen,
   type StreamEventMap,
   TaskCancelledEvent,
@@ -92,6 +95,7 @@ import {
   classifyRecoveredRunDetailed,
   createBureau,
   createDefaultSessionPersistenceSleep,
+  createPendingApprovalPersistHook,
   dedupeRecoveryPerRunFailures,
   detachBestEffortPromise,
   emptyRecoveredStepMetadata,
@@ -21096,5 +21100,125 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
     } finally {
       await bureau.dispose();
     }
+  });
+});
+
+describe('bureau:pending-approval-persist idempotency under crash replay (COR-1267)', () => {
+  // COR-567 classifies this registration `effectful`: a crashed in-flight step
+  // re-runs, so the hook fires again, and the decision's mitigation is that the
+  // handler writes idempotently rather than that replay skips it. Both of its
+  // writes are keyed on `approval:${runId}:${callId}` — an id derived from the
+  // step's own tool call, so a replayed step produces the same key.
+
+  function approval(callId: string, toolName: string): PendingToolApproval {
+    return {
+      callId,
+      toolName,
+      arguments: { cents: 425 },
+      action: { type: 'input' },
+    };
+  }
+
+  function pausedResult(pendingApproval: PendingToolApproval): ToolExecutionResult {
+    return {
+      callId: pendingApproval.callId,
+      toolCallId: pendingApproval.callId,
+      toolName: pendingApproval.toolName,
+      outcome: 'action_required',
+      content: null,
+      result: null,
+      pendingApproval,
+    };
+  }
+
+  function stepWith(...pending: PendingToolApproval[]): StepResult {
+    return {
+      step: 0,
+      conversation: new Conversation(),
+      content: '',
+      toolCalls: [],
+      results: pending.map(pausedResult),
+      final: false,
+    };
+  }
+
+  it('writes one override when the same step replays', async () => {
+    const overrides = new Map<string, PendingToolApproval>();
+    const persisted: Array<{ sessionId: string; reviewId: string }> = [];
+    const hook = createPendingApprovalPersistHook(
+      'replay-run',
+      'replay-session',
+      overrides,
+      async (sessionId, reviewId) => {
+        persisted.push({ sessionId, reviewId });
+      },
+    );
+
+    const step = stepWith(approval('charge-call', 'charge-card'));
+    await hook(step);
+    await hook(step);
+
+    // Two invocations, one override. The in-memory map is keyed, so the second
+    // `set` replaces rather than adds; the persist is called twice but under
+    // the identical review id, and its own write is a keyed metadata write.
+    expect([...overrides.keys()]).toEqual(['approval:replay-run:charge-call']);
+    expect(persisted).toEqual([
+      { sessionId: 'replay-session', reviewId: 'approval:replay-run:charge-call' },
+      { sessionId: 'replay-session', reviewId: 'approval:replay-run:charge-call' },
+    ]);
+  });
+
+  it('keys by call, so two genuinely distinct approvals are two overrides', async () => {
+    const overrides = new Map<string, PendingToolApproval>();
+    const hook = createPendingApprovalPersistHook(
+      'replay-run',
+      'replay-session',
+      overrides,
+      async () => {},
+    );
+
+    await hook(stepWith(approval('charge-call', 'charge-card'), approval('refund-call', 'refund')));
+
+    // The control for the test above: the key collapses a REPLAY, not two
+    // different tool calls. Without it, a handler that wrote one constant key
+    // would pass the idempotency assertion and silently lose an approval.
+    expect([...overrides.keys()]).toEqual([
+      'approval:replay-run:charge-call',
+      'approval:replay-run:refund-call',
+    ]);
+  });
+
+  it('ignores a step whose results carry no pending approval', async () => {
+    const overrides = new Map<string, PendingToolApproval>();
+    let persistCalls = 0;
+    const hook = createPendingApprovalPersistHook(
+      'replay-run',
+      'replay-session',
+      overrides,
+      async () => {
+        persistCalls += 1;
+      },
+    );
+
+    await hook({
+      step: 0,
+      conversation: new Conversation(),
+      content: 'done',
+      toolCalls: [],
+      results: [
+        {
+          callId: 'charge-call',
+          toolCallId: 'charge-call',
+          toolName: 'charge-card',
+          outcome: 'success',
+          content: 'ok',
+          result: 'ok',
+        },
+      ],
+      final: true,
+    });
+
+    expect(overrides.size).toBe(0);
+    expect(persistCalls).toBe(0);
   });
 });

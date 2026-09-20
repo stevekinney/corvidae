@@ -45,6 +45,7 @@ import {
   isScheduledAgentRunInput,
   type JSONValue,
   type LivenessSnapshot,
+  type OnStepHook,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   readGenerationProfile,
   reattachDurableActiveRun,
@@ -1118,6 +1119,45 @@ function validateCheckpointRetentionOption(value: CheckpointRetentionOption | un
       '"options.checkpointRetention.timeoutMilliseconds" must be a finite, non-negative number',
     );
   }
+}
+
+/**
+ * The trailing `onStep` hook that records a step's pending tool approvals —
+ * registered as `bureau:pending-approval-persist`.
+ *
+ * A named factory rather than the inline closure it was, because COR-567
+ * classifies this registration `effectful` and COR-1267 requires each
+ * `effectful` registration to be provable idempotent by a test that invokes it
+ * twice. A closure written inline inside `createBureau` is reachable only by
+ * dispatching a whole interactive run and then contriving a second execution of
+ * the same step; the handler itself is the unit under test, so it has a name.
+ *
+ * Idempotent by key, not by append: the review id is
+ * `approval:${runId}:${callId}`, derived from the step's own tool call, so a
+ * crashed step re-running from its boundary produces the SAME id, and both
+ * writes it performs — the in-memory override map and the session-metadata
+ * persist — are keyed writes.
+ */
+export function createPendingApprovalPersistHook(
+  runId: string,
+  sessionId: string,
+  overrides: Map<string, Extract<PendingReview, { kind: 'tool-approval' }>['approval']>,
+  persist: (
+    sessionId: string,
+    reviewId: string,
+    approval: Extract<PendingReview, { kind: 'tool-approval' }>['approval'],
+  ) => Promise<void>,
+): OnStepHook {
+  return async (stepResult) => {
+    for (const stepResultItem of stepResult.results) {
+      if (stepResultItem.outcome !== 'action_required' || !stepResultItem.pendingApproval) {
+        continue;
+      }
+      const reviewId = `approval:${runId}:${stepResultItem.pendingApproval.callId}`;
+      overrides.set(reviewId, stepResultItem.pendingApproval);
+      await persist(sessionId, reviewId, stepResultItem.pendingApproval);
+    }
+  };
 }
 
 export async function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
@@ -3021,23 +3061,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           hooks: registerTrailingOnStep(
             runRuntime.hooks,
             'bureau:pending-approval-persist',
-            async (stepResult) => {
-              for (const stepResultItem of stepResult.results) {
-                if (
-                  stepResultItem.outcome !== 'action_required' ||
-                  !stepResultItem.pendingApproval
-                ) {
-                  continue;
-                }
-                const reviewId = `approval:${runId}:${stepResultItem.pendingApproval.callId}`;
-                pendingApprovalOverrides.set(reviewId, stepResultItem.pendingApproval);
-                await persistPendingApprovalOverrideWithRetry(
-                  sessionId,
-                  reviewId,
-                  stepResultItem.pendingApproval,
-                );
-              }
-            },
+            createPendingApprovalPersistHook(
+              runId,
+              sessionId,
+              pendingApprovalOverrides,
+              persistPendingApprovalOverrideWithRetry,
+            ),
           ),
           executeOptions: requestContext === undefined ? {} : { requestContext },
           // Thread agentName and runId so curated tool.* bubble events are stamped
