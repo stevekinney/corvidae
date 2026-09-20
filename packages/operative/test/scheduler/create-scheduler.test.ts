@@ -1,10 +1,12 @@
 import { createTestToolbox } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from '../assert-defined';
 
 import { OutputSchemaConversionError } from '../../src/errors';
+import type { OperativeHookMap } from '../../src/hooks';
 import { createScheduler } from '../../src/scheduler/create-scheduler';
 import type { SchedulerEventType } from '../../src/scheduler/events';
 import { sleep } from '../../src/scheduler/sleep';
@@ -590,7 +592,7 @@ describe('createScheduler', () => {
     expect(failedTaskIds).toHaveLength(0);
   });
 
-  it('dispatch() propagates a genuinely rejected result (an uncaught array-form selectTools hook) and emits task.failed', async () => {
+  it('dispatch() propagates a genuinely rejected result (an uncaught selectTools hook) and emits task.failed', async () => {
     const scheduler = createMinimalScheduler({ idleDelay: 1 });
     const failedTaskIds: string[] = [];
 
@@ -598,22 +600,34 @@ describe('createScheduler', () => {
       failedTaskIds.push(event.taskId);
     });
 
-    // The array-form `selectTools` hook (unlike the HookRegistry `selectTools`
-    // event, and unlike every other per-step hook array) is invoked directly
-    // in `runStep` with no surrounding try/catch, so a throwing hook here is
-    // one of the few remaining ways `executeLoop`'s promise — and therefore
-    // `activeRun.result` — genuinely rejects rather than resolving with an
-    // error `RunResult`. This is what distinguishes this test from an IN-RUN
-    // error (a throwing `generate`), which resolves with `finishReason:
-    // 'error'` instead of rejecting.
+    // `selectTools` is dispatched in `run-step-preparation.ts` with no
+    // surrounding try/catch, and the registry rethrows a handler's error when
+    // no `onError` is configured. So a throwing `selectTools` handler is one
+    // of the few remaining ways `executeLoop`'s promise — and therefore
+    // `activeRun.result` — genuinely REJECTS rather than resolving with an
+    // error `RunResult`. That is what distinguishes this test from an IN-RUN
+    // error (a throwing `generate`), which resolves with
+    // `finishReason: 'error'` instead of rejecting.
+    //
+    // COR-1268: this used the array-form `selectTools` field until that
+    // surface was removed. The property under test is unchanged — the
+    // registry path is uncaught in exactly the same way — but the mechanism
+    // had to move, and the move was NOT caught by `tsc`: `SchedulerRunOptions`
+    // is a `DistributiveOmit<RunOptions, …>` intersected with a `Partial<Pick<…>>`,
+    // and TypeScript does not excess-property-check an object literal against
+    // that shape. The stale field compiled, went inert, and the promise
+    // resolved instead of rejecting.
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('selectTools', () => {
+      throw new Error('selectTools boom');
+    });
+
     const { result } = scheduler.dispatch(() => ({
       generate: createMockGenerate([textResponse('unused')]),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       maximumSteps: 1,
-      selectTools: () => {
-        throw new Error('selectTools boom');
-      },
+      hooks,
     }));
 
     await expect(result).rejects.toThrow('selectTools boom');

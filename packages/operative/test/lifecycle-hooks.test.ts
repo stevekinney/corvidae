@@ -504,14 +504,17 @@ describe('onRunError hook', () => {
   });
 
   it('preserves output phase for validation hook failures', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async () => {
+      throw new Error('invalid response');
+    });
+
     const activeRun = createActiveRun({
       generate: createMockGenerate([textResponse('Hello')]),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateResponse: async () => {
-        throw new Error('invalid response');
-      },
+      hooks,
     });
     const errors: string[] = [];
     activeRun.addEventListener('run.error', (event) => {
@@ -788,25 +791,28 @@ describe('existing hooks still work unchanged (regression)', () => {
       textResponse('Done'),
     ]);
 
+    const regressionHooks = new HookRegistry<OperativeHookMap>();
+    regressionHooks.on('prepareStep', async () => {
+      log.push('prepareStep');
+      return undefined;
+    });
+    regressionHooks.on('beforeToolExecution', async ({ toolCalls }) => {
+      log.push('beforeToolExecution');
+      return toolCalls;
+    });
+    regressionHooks.on('afterToolExecution', async () => {
+      log.push('afterToolExecution');
+    });
+    regressionHooks.on('onStep', async () => {
+      log.push('onStep');
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([trackingTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async () => {
-        log.push('prepareStep');
-        return undefined;
-      },
-      beforeToolExecution: async ({ toolCalls }) => {
-        log.push('beforeToolExecution');
-        return toolCalls;
-      },
-      afterToolExecution: async () => {
-        log.push('afterToolExecution');
-      },
-      onStep: async () => {
-        log.push('onStep');
-      },
+      hooks: regressionHooks,
     });
 
     expect(log).toEqual([

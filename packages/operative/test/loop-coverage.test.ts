@@ -34,6 +34,11 @@ describe('loop helper coverage', () => {
     hooks.on('onRunComplete', async () => {
       hookCalls.push('complete:ok');
     });
+    hooks.on('prepareStep', async ({ elicit }) => {
+      if (!elicit) return;
+      const response = await elicit('Approve execution?', approvalSchema);
+      expect(response).toEqual({ approved: true });
+    });
 
     const approvalSchema = z.object({ approved: z.boolean() });
     const conversation = new Conversation();
@@ -70,11 +75,6 @@ describe('loop helper coverage', () => {
           toolCallId: request.toolCallId,
           data: { approved: true },
         } as never;
-      },
-      prepareStep: async ({ elicit }) => {
-        if (!elicit) return;
-        const response = await elicit('Approve execution?', approvalSchema);
-        expect(response).toEqual({ approved: true });
       },
       contextManagement: {
         maxTokens: 10,
@@ -627,6 +627,9 @@ describe('executeLoop onStepToolbox (AB-239)', () => {
     };
 
     let generateCalls = 0;
+    const selectToolsHooks = new HookRegistry<OperativeHookMap>();
+    // Every step resolves to the swapped toolbox.
+    selectToolsHooks.on('selectTools', async () => swappedToolbox);
     await executeLoop(
       {
         generate: async () => {
@@ -644,8 +647,7 @@ describe('executeLoop onStepToolbox (AB-239)', () => {
         toolbox: baseToolbox,
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        // Every step resolves to the swapped toolbox.
-        selectTools: () => swappedToolbox,
+        hooks: selectToolsHooks,
       },
       undefined,
       undefined,

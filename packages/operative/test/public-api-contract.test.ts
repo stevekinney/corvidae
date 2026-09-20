@@ -21,12 +21,13 @@ import { assertDefined } from './assert-defined';
 
 import { createTool, createToolbox } from '@corvidae/armorer';
 import { createConversationHistory } from '@corvidae/conversationalist';
-import { CompletableEventTarget } from '@corvidae/lifecycle';
+import { CompletableEventTarget, HookRegistry } from '@corvidae/lifecycle';
 import type {
   CombinedOperativeEventMap,
   DurableRunDeps,
   GenerateFunction,
   OperativeEventEmitter,
+  OperativeHookMap,
   RunOptions,
 } from '@corvidae/operative';
 import {
@@ -235,17 +236,20 @@ describe('abort propagation — aborting a run finalizes as aborted and stops ge
 
     // Step 0: return a tool call to continue the loop
     // onStep: abort AFTER step 0 completes (onStep fires post-step)
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('onStep', async ({ step }) => {
+      if (step === 0) {
+        controller.abort('cancelled after step 0');
+      }
+    });
+
     const result = await run({
       ...baseRunOptions(async () => {
         generateCallCount++;
         return { content: 'step', toolCalls: [{ name: 'next', arguments: {} }] };
       }),
       signal: controller.signal,
-      onStep: async ({ step }) => {
-        if (step === 0) {
-          controller.abort('cancelled after step 0');
-        }
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('aborted');

@@ -1,5 +1,6 @@
 import { createTestToolbox, createTool } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';
@@ -7,6 +8,7 @@ import { assertDefined } from './assert-defined';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import { StepCompletedEvent, ToolSettledBubbleEvent } from '../src/events';
+import type { OperativeHookMap } from '../src/hooks';
 import { executeLoop } from '../src/loop';
 import { createMockGenerate } from '../src/test/index';
 import type { GenerateResponse } from '../src/types';
@@ -44,19 +46,22 @@ describe('step hooks', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ conversation, step, signal }) => {
+      prepareStepCalls.push({
+        step,
+        hasConversation: conversation instanceof Conversation,
+        hasSignal: signal instanceof AbortSignal,
+      });
+      return undefined;
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([tool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async ({ conversation, step, signal }) => {
-        prepareStepCalls.push({
-          step,
-          hasConversation: conversation instanceof Conversation,
-          hasSignal: signal instanceof AbortSignal,
-        });
-        return undefined;
-      },
+      hooks,
     });
 
     expect(prepareStepCalls).toHaveLength(2);
@@ -68,14 +73,17 @@ describe('step hooks', () => {
   it('prepareStep returns GenerateResponse to skip the LLM call', async () => {
     const generate = createMockGenerate([textResponse('Should not be called')]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async () => {
+      return { content: 'Intercepted', toolCalls: [], usage: undefined };
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([tool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async () => {
-        return { content: 'Intercepted', toolCalls: [], usage: undefined };
-      },
+      hooks,
     });
 
     expect(generate.callCount).toBe(0);
@@ -102,17 +110,20 @@ describe('step hooks', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('beforeToolExecution', async ({ toolCalls }) => {
+      return toolCalls.filter((call) => {
+        const args = call.arguments as { location: string };
+        return args.location === 'Denver';
+      });
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([trackingTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      beforeToolExecution: async ({ toolCalls }) => {
-        return toolCalls.filter((call) => {
-          const args = call.arguments as { location: string };
-          return args.location === 'Denver';
-        });
-      },
+      hooks,
     });
 
     expect(executedLocations).toEqual(['Denver']);
@@ -132,6 +143,11 @@ describe('step hooks', () => {
         },
       });
       const conversation = new Conversation();
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('beforeToolExecution', async ({ toolCalls }) => {
+        if (mode === 'hook-failure') throw new Error('hook failure');
+        return mode === 'mixed' ? toolCalls.slice(0, 1) : [];
+      });
       const activeRun = createActiveRun({
         generate: async () => ({
           content: '',
@@ -143,10 +159,7 @@ describe('step hooks', () => {
         toolbox: createTestToolbox([trackingTool]),
         conversation,
         maximumSteps: 1,
-        beforeToolExecution: async ({ toolCalls }) => {
-          if (mode === 'hook-failure') throw new Error('hook failure');
-          return mode === 'mixed' ? toolCalls.slice(0, 1) : [];
-        },
+        hooks,
       });
       const settled: ToolSettledBubbleEvent[] = [];
       const completed: StepCompletedEvent[] = [];
@@ -200,17 +213,20 @@ describe('step hooks', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('beforeToolExecution', async ({ toolCalls }) => {
+      return toolCalls.filter((call) => {
+        const args = call.arguments as { location: string };
+        return args.location === 'Denver';
+      });
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([tool]),
       conversation,
       stopWhen: noToolCalls(),
-      beforeToolExecution: async ({ toolCalls }) => {
-        return toolCalls.filter((call) => {
-          const args = call.arguments as { location: string };
-          return args.location === 'Denver';
-        });
-      },
+      hooks,
     });
 
     expect(conversation.getPendingToolCalls()).toHaveLength(0);
@@ -247,12 +263,15 @@ describe('step hooks', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('beforeToolExecution', async () => []);
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([trackingTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      beforeToolExecution: async () => [],
+      hooks,
     });
 
     expect(executedLocations).toEqual([]);
@@ -267,12 +286,15 @@ describe('step hooks', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('beforeToolExecution', async () => []);
+
     await run({
       generate,
       toolbox: createTestToolbox([tool]),
       conversation,
       stopWhen: noToolCalls(),
-      beforeToolExecution: async () => [],
+      hooks,
     });
 
     expect(conversation.getPendingToolCalls()).toHaveLength(0);
@@ -293,18 +315,21 @@ describe('step hooks', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('afterToolExecution', async ({ step, toolCalls, results }) => {
+      afterCalls.push({
+        step,
+        toolCallNames: toolCalls.map((call) => call.name),
+        resultCount: results.length,
+      });
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([tool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      afterToolExecution: async ({ step, toolCalls, results }) => {
-        afterCalls.push({
-          step,
-          toolCallNames: toolCalls.map((call) => call.name),
-          resultCount: results.length,
-        });
-      },
+      hooks,
     });
 
     expect(afterCalls).toHaveLength(1);
@@ -323,18 +348,21 @@ describe('step hooks', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('beforeToolExecution', async ({ toolCalls }) => toolCalls.slice(0, 1));
+    hooks.on('afterToolExecution', async ({ toolCalls, results }) => {
+      pairs.push({
+        callId: `${toolCalls.length}:${toolCalls[0]?.id ?? ''}`,
+        resultId: `${results.length}:${results[0]?.toolCallId ?? ''}`,
+      });
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([tool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      beforeToolExecution: async ({ toolCalls }) => toolCalls.slice(0, 1),
-      afterToolExecution: async ({ toolCalls, results }) => {
-        pairs.push({
-          callId: `${toolCalls.length}:${toolCalls[0]?.id ?? ''}`,
-          resultId: `${results.length}:${results[0]?.toolCallId ?? ''}`,
-        });
-      },
+      hooks,
     });
 
     expect(pairs).toHaveLength(1);
@@ -378,18 +406,21 @@ describe('step hooks', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('onStep', async (result) => {
+      stepResults.push({
+        step: result.step,
+        content: result.content,
+        toolCallCount: result.toolCalls.length,
+      });
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([tool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      onStep: async (result) => {
-        stepResults.push({
-          step: result.step,
-          content: result.content,
-          toolCallCount: result.toolCalls.length,
-        });
-      },
+      hooks,
     });
 
     expect(stepResults).toHaveLength(2);
@@ -424,25 +455,28 @@ describe('step hooks', () => {
       { calls: generate.calls, callCount: generate.callCount },
     );
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async () => {
+      log.push('prepareStep');
+      return undefined;
+    });
+    hooks.on('beforeToolExecution', async ({ toolCalls }) => {
+      log.push('beforeToolExecution');
+      return toolCalls;
+    });
+    hooks.on('afterToolExecution', async () => {
+      log.push('afterToolExecution');
+    });
+    hooks.on('onStep', async () => {
+      log.push('onStep');
+    });
+
     await run({
       generate: wrappedGenerate,
       toolbox: createTestToolbox([trackingTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async () => {
-        log.push('prepareStep');
-        return undefined;
-      },
-      beforeToolExecution: async ({ toolCalls }) => {
-        log.push('beforeToolExecution');
-        return toolCalls;
-      },
-      afterToolExecution: async () => {
-        log.push('afterToolExecution');
-      },
-      onStep: async () => {
-        log.push('onStep');
-      },
+      hooks,
     });
 
     expect(log).toEqual([
@@ -480,29 +514,32 @@ describe('step hooks', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async () => {
+      await delay(10);
+      log.push('prepareStep');
+      return undefined;
+    });
+    hooks.on('beforeToolExecution', async ({ toolCalls }) => {
+      await delay(10);
+      log.push('beforeToolExecution');
+      return toolCalls;
+    });
+    hooks.on('afterToolExecution', async () => {
+      await delay(10);
+      log.push('afterToolExecution');
+    });
+    hooks.on('onStep', async () => {
+      await delay(10);
+      log.push('onStep');
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([trackingTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async () => {
-        await delay(10);
-        log.push('prepareStep');
-        return undefined;
-      },
-      beforeToolExecution: async ({ toolCalls }) => {
-        await delay(10);
-        log.push('beforeToolExecution');
-        return toolCalls;
-      },
-      afterToolExecution: async () => {
-        await delay(10);
-        log.push('afterToolExecution');
-      },
-      onStep: async () => {
-        await delay(10);
-        log.push('onStep');
-      },
+      hooks,
     });
 
     expect(log).toEqual([
@@ -520,14 +557,17 @@ describe('step hooks', () => {
     it('prepareStep error terminates with error', async () => {
       const generate = createMockGenerate([textResponse('Hello')]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        throw new Error('prepareStep failed');
+      });
+
       const result = await run({
         generate,
         toolbox: createTestToolbox([tool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        prepareStep: async () => {
-          throw new Error('prepareStep failed');
-        },
+        hooks,
       });
 
       expect(result.finishReason).toBe('error');
@@ -540,15 +580,18 @@ describe('step hooks', () => {
         textResponse('Done'),
       ]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('beforeToolExecution', async () => {
+        throw new Error('beforeToolExecution failed');
+      });
+
       const result = await run({
         generate,
         toolbox: createTestToolbox([tool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
         collectAsync: true,
-        beforeToolExecution: async () => {
-          throw new Error('beforeToolExecution failed');
-        },
+        hooks,
       });
 
       expect(result.finishReason).toBe('error');
@@ -561,14 +604,17 @@ describe('step hooks', () => {
         textResponse('Done'),
       ]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('afterToolExecution', async () => {
+        throw new Error('afterToolExecution failed');
+      });
+
       const result = await run({
         generate,
         toolbox: createTestToolbox([tool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        afterToolExecution: async () => {
-          throw new Error('afterToolExecution failed');
-        },
+        hooks,
       });
 
       expect(result.finishReason).toBe('error');
@@ -581,14 +627,17 @@ describe('step hooks', () => {
         textResponse('Done'),
       ]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('onStep', async () => {
+        throw new Error('onStep failed');
+      });
+
       const result = await run({
         generate,
         toolbox: createTestToolbox([tool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        onStep: async () => {
-          throw new Error('onStep failed');
-        },
+        hooks,
       });
 
       expect(result.finishReason).toBe('error');

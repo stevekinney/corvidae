@@ -19,14 +19,15 @@ import {
   AgentRunError,
   classifyError,
   createAgent,
+  HookRegistry,
   stopWhen,
   withEnhancedStreaming,
   type AgentRunErrorKind,
   type AnyToolbox,
-  type BeforeToolExecutionHook,
   type ConversationHistory,
   type EnhancedStreamingOptions,
   type OnElicitation,
+  type OperativeHookMap,
   type StepResult,
   type StopCondition,
   type StreamBlock,
@@ -357,14 +358,22 @@ export function createChatRunOptions(options: {
    */
   onElicitation?: OnElicitation;
   /**
-   * Hooks the caller wants to run before tools execute, appended after none
-   * of this module's own — it registers none.
+   * The caller's hook plan. This module registers none of its own, so
+   * whatever arrives here is the whole plan for the run.
    *
-   * A hook here can filter calls out of the array it returns, which Operative
-   * supports explicitly: it seals a filtered call with an error result so no
-   * dangling tool call is left to break a later replay.
+   * A `beforeToolExecution` handler can filter calls out of the array it
+   * returns, which Operative supports explicitly: it seals a filtered call
+   * with an error result so no dangling tool call is left to break a later
+   * replay.
+   *
+   * COR-1268: this was `beforeToolExecution?: BeforeToolExecutionHook[]`
+   * until `HookRegistry` became the only hook surface on a run. The array
+   * field kept type-checking after that surface was removed — it reached
+   * `RunOptions` through a spread, which TypeScript does not
+   * excess-property-check — so the hook silently stopped firing rather than
+   * failing to build.
    */
-  beforeToolExecution?: BeforeToolExecutionHook[];
+  hooks?: HookRegistry<OperativeHookMap>;
   /**
    * Replaces the default stop conditions entirely rather than adding to them,
    * because the thing a caller needs to change here is which conditions are
@@ -377,7 +386,7 @@ export function createChatRunOptions(options: {
   executeOptions: { requestContext: ToolRequestContext };
   stopWhen: StopCondition[];
   onElicitation?: OnElicitation;
-  beforeToolExecution?: BeforeToolExecutionHook[];
+  hooks?: HookRegistry<OperativeHookMap>;
 } {
   // Operative's `TypedEventTarget` class is not a public export, only its
   // type (through `EnhancedStreamingOptions`); the wrapper dispatches via
@@ -416,9 +425,7 @@ export function createChatRunOptions(options: {
     // contexts carry no `elicit` at all, while a present-but-undefined one
     // would not type-check against `RunOptions`.
     ...(options.onElicitation === undefined ? {} : { onElicitation: options.onElicitation }),
-    ...(options.beforeToolExecution === undefined
-      ? {}
-      : { beforeToolExecution: options.beforeToolExecution }),
+    ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
   };
 }
 
@@ -428,7 +435,7 @@ export function createChatAgent(options: {
   toolbox: AnyToolbox;
   requestContext: ToolRequestContext;
   writer: ChatStreamWriter;
-  beforeToolExecution?: BeforeToolExecutionHook[];
+  hooks?: HookRegistry<OperativeHookMap>;
 }) {
   return createAgent(createChatRunOptions(options));
 }

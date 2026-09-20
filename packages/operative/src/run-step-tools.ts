@@ -64,41 +64,13 @@ export async function executeTools(
     let callsToExecute = materializedToolCalls;
     let filteredResults: ToolExecutionResult[] = [];
 
-    if (deps.beforeToolExecutionHooks.length > 0) {
-      try {
-        for (const hook of deps.beforeToolExecutionHooks) {
-          callsToExecute = await hook({
-            conversation,
-            step,
-            toolCalls: [...callsToExecute],
-            elicit,
-          });
-        }
-      } catch (error) {
-        const sealedResults = await sealDanglingToolCalls(
-          conversation,
-          deps.collectAsync,
-          'Tool execution aborted before a result could be produced (beforeToolExecution hook failed)',
-        );
-        dispatchSettledResults(
-          emitter,
-          deps,
-          step,
-          materializedToolCalls,
-          sealedResults,
-          emittedSettledCallIds,
-        );
-        emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));
-        return { kind: 'error', error, errorKind: 'tool' };
-      }
-    }
     if (hooks?.has('beforeToolExecution')) {
       try {
         // Iterated by hand rather than dispatched: `beforeToolExecution`
         // waterfalls a FIELD of its context (`toolCalls`) while the rest of
         // the context stays fixed, so the context is rebuilt around each
-        // handler's result — exactly what the legacy array loop above does.
-        // `run()` would instead replace the whole context with a bare
+        // handler's result. `run()` would instead replace the whole context
+        // with a bare
         // `ToolCall[]` for the second handler. Invocations still go through
         // `runHandler` so an observer sees them like any dispatched hook.
         for (const entry of hooks.getHandlers('beforeToolExecution')) {
@@ -331,26 +303,12 @@ export async function executeTools(
       }
 
       // Validate tool results guardrail
-      if (deps.validateToolResultHooks.length > 0 || hooks?.has('validateToolResult')) {
+      if (hooks?.has('validateToolResult')) {
         try {
           const validatedResults: ToolExecutionResult[] = [];
           for (const originalResult of results) {
             let currentResult = originalResult;
-            for (const hook of deps.validateToolResultHooks) {
-              const snapshot = { ...currentResult };
-              const validated = await hook(currentResult, {
-                conversation,
-                step,
-                toolCalls: callsToExecute,
-                results,
-                elicit,
-              });
-              if (validated) {
-                emitter?.dispatch(new ToolResultValidatedEvent(step, snapshot, validated));
-                currentResult = validated;
-              }
-            }
-            if (hooks?.has('validateToolResult')) {
+            {
               const snapshot = { ...currentResult };
               const validated = await hooks.run('validateToolResult', currentResult, {
                 conversation,
@@ -396,22 +354,6 @@ export async function executeTools(
         return { kind: 'continue' };
       }
 
-      if (deps.afterToolExecutionHooks.length > 0) {
-        try {
-          for (const hook of deps.afterToolExecutionHooks) {
-            await hook({
-              conversation,
-              step,
-              toolCalls: callsToExecute,
-              results,
-              elicit,
-            });
-          }
-        } catch (error) {
-          emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));
-          return { kind: 'error', error, errorKind: 'tool' };
-        }
-      }
       if (hooks?.has('afterToolExecution')) {
         try {
           await hooks.run('afterToolExecution', {

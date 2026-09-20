@@ -262,14 +262,10 @@ export async function prepareStep(
 
   // Resolve per-step toolbox
   let stepToolbox: AnyToolbox = deps.toolbox;
-  for (const hook of deps.selectToolsHooks) {
-    stepToolbox = await hook({ conversation, step, signal: stepSignal, abortStep, elicit });
-  }
   if (hooks?.has('selectTools')) {
     const selectContext = { conversation, step, signal: stepSignal, abortStep, elicit };
-    // `runLast`: every handler is consulted against the same context and the
-    // lowest-priority one to answer wins because it ran last — the legacy
-    // array loop's `stepToolbox = await hook(...)` semantics.
+    // `runLast`: every handler is consulted against the same context and
+    // the lowest-priority one to answer wins, because it ran last.
     const registryToolbox = await hooks.runLast('selectTools', selectContext);
     if (registryToolbox !== undefined) {
       stepToolbox = registryToolbox;

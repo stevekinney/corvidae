@@ -106,7 +106,7 @@ describe('pumpChatRun: provider failure', () => {
       providerFailedGenerate,
       createToolbox([]),
       lines,
-      [],
+      undefined,
       async () => {
         startedResolve();
         expect(lines.some((line) => line.includes('run.error'))).toBe(false);
@@ -124,7 +124,7 @@ describe('pumpChatRun: provider failure', () => {
       providerExplodedGenerate,
       createToolbox([]),
       [],
-      [],
+      undefined,
       async () => {
         throw new Error('storage unavailable');
       },
@@ -165,7 +165,7 @@ describe('pumpChatRun: provider failure', () => {
       providerExplodedGenerate,
       createToolbox([]),
       [],
-      [],
+      undefined,
       async () => {
         throw new Error('storage unavailable');
       },

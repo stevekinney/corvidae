@@ -13,13 +13,15 @@ import {
 import {
   AbortAgentRunError,
   AgentRunError,
-  OutputValidationError,
   createAgent,
+  HookRegistry,
+  OutputValidationError,
   stopWhen,
   withEnhancedStreaming,
   type AgentRun,
   type BeforeToolExecutionHook,
   type EnhancedStreamingOptions,
+  type OperativeHookMap,
   type StreamingGenerateFunction,
 } from '@corvidae/operative';
 import { expect } from 'bun:test';
@@ -39,7 +41,6 @@ import {
 export {
   AbortAgentRunError,
   AgentRunError,
-  OutputValidationError,
   appendUserMessage,
   classifyChatRunFailure,
   createAgent,
@@ -49,6 +50,8 @@ export {
   createTool,
   createToolbox,
   decodeChatStreamEvent,
+  HookRegistry,
+  OutputValidationError,
   parseServerOwnedPersistenceFailureHint,
   pumpChatRun,
   serverOwnedPersistenceFailureHint,
@@ -63,6 +66,7 @@ export type {
   BeforeToolExecutionHook,
   ChatStreamEvent,
   EnhancedStreamingOptions,
+  OperativeHookMap,
   StreamingGenerateFunction,
   ToolRequestContext,
 };
@@ -180,7 +184,7 @@ export async function runAndCollect(
   generate: StreamingGenerateFunction,
   toolbox: AnyToolbox = createToolbox([]),
   lines: string[] = [],
-  beforeToolExecution?: BeforeToolExecutionHook[],
+  hooks?: HookRegistry<OperativeHookMap>,
   beforeFailure?: NonNullable<Parameters<typeof pumpChatRun>[2]>['beforeFailure'],
   conversation = conversationWith('hello'),
 ): Promise<{ frames: ChatStreamEvent[]; envelope: Awaited<ReturnType<typeof pumpChatRun>> }> {
@@ -193,7 +197,7 @@ export async function runAndCollect(
     toolbox,
     requestContext,
     writer,
-    ...(beforeToolExecution === undefined ? {} : { beforeToolExecution }),
+    ...(hooks === undefined ? {} : { hooks }),
   });
   const run = startChatRun(agent, conversation);
   // Disposed like the route disposes it, so a run's listeners cannot outlive

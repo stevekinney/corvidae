@@ -5,6 +5,7 @@ import {
   type ToolContext,
 } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -17,6 +18,7 @@ import type {
   ToolSettledBubbleEvent,
   ToolStartedBubbleEvent,
 } from '../src/events';
+import type { OperativeHookMap } from '../src/hooks';
 import { createMockGenerate } from '../src/test/index';
 import type { GenerateResponse } from '../src/types';
 
@@ -351,13 +353,16 @@ describe('event forwarding — selectTools-swapped step toolbox (AB-239)', () =>
       textResponse('Done.'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    // Every step uses the swapped toolbox, never the base one.
+    hooks.on('selectTools', async () => swappedToolbox);
+
     const activeRun = createActiveRun({
       generate,
       toolbox: baseToolbox,
       conversation,
       stopWhen: noToolCalls(),
-      // Every step uses the swapped toolbox, never the base one.
-      selectTools: () => swappedToolbox,
+      hooks,
     });
 
     const forwardedEvents: string[] = [];
@@ -392,12 +397,15 @@ describe('event forwarding — selectTools-swapped step toolbox (AB-239)', () =>
     responses.push(textResponse('Done.'));
     const generate = createMockGenerate(responses);
 
+    const loopBlockedHooks = new HookRegistry<OperativeHookMap>();
+    loopBlockedHooks.on('selectTools', async () => swappedToolbox);
+
     const activeRun = createActiveRun({
       generate,
       toolbox: baseToolbox,
       conversation,
       stopWhen: noToolCalls(),
-      selectTools: () => swappedToolbox,
+      hooks: loopBlockedHooks,
     });
 
     const forwardedErrorEvents: Array<{ originalEvent: unknown }> = [];
@@ -428,14 +436,17 @@ describe('event forwarding — selectTools-swapped step toolbox (AB-239)', () =>
       textResponse('Done.'),
     ]);
 
+    const noSwapHooks = new HookRegistry<OperativeHookMap>();
+    // Explicitly returns the SAME instance as `options.toolbox` — this is
+    // the "no swap" case the forwarder must not double-subscribe for.
+    noSwapHooks.on('selectTools', async () => toolbox);
+
     const activeRun = createActiveRun({
       generate,
       toolbox,
       conversation,
       stopWhen: noToolCalls(),
-      // Explicitly returns the SAME instance as `options.toolbox` — this is
-      // the "no swap" case the forwarder must not double-subscribe for.
-      selectTools: () => toolbox,
+      hooks: noSwapHooks,
     });
 
     const callEvents: unknown[] = [];
@@ -466,6 +477,11 @@ describe('curated tool.* bubble events — selectTools-swapped step toolbox (AB-
       markGenerateStarted = resolve;
     });
 
+    const curatedHooks = new HookRegistry<OperativeHookMap>();
+    // Every step uses the swapped toolbox, never the base one — the base
+    // toolbox's own listeners must never see these injected events.
+    curatedHooks.on('selectTools', async () => swappedToolbox);
+
     const activeRun = createActiveRun({
       runId: 'swapped-toolbox-forward-run',
       generate: () =>
@@ -476,9 +492,7 @@ describe('curated tool.* bubble events — selectTools-swapped step toolbox (AB-
       toolbox: baseToolbox,
       conversation,
       stopWhen: noToolCalls(),
-      // Every step uses the swapped toolbox, never the base one — the base
-      // toolbox's own listeners must never see these injected events.
-      selectTools: () => swappedToolbox,
+      hooks: curatedHooks,
     });
 
     const started: ToolStartedBubbleEvent[] = [];
@@ -551,14 +565,17 @@ describe('curated tool.* bubble events — selectTools-swapped step toolbox (AB-
       textResponse('Done.'),
     ]);
 
+    const curatedNoSwapHooks = new HookRegistry<OperativeHookMap>();
+    // Explicitly returns the SAME instance as `options.toolbox` — this is
+    // the "no swap" case the forwarder must not double-subscribe for.
+    curatedNoSwapHooks.on('selectTools', async () => toolbox);
+
     const activeRun = createActiveRun({
       generate,
       toolbox,
       conversation,
       stopWhen: noToolCalls(),
-      // Explicitly returns the SAME instance as `options.toolbox` — this is
-      // the "no swap" case the forwarder must not double-subscribe for.
-      selectTools: () => toolbox,
+      hooks: curatedNoSwapHooks,
     });
 
     const started: ToolStartedBubbleEvent[] = [];

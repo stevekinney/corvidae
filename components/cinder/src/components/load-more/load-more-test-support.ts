@@ -16,14 +16,19 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 
   readonly root: Element | null;
   readonly rootMargin: string;
-  readonly scrollMargin: string;
+  // `IntersectionObserverInit` declares no `scrollMargin` (the installed DOM
+  // lib has the property on no IntersectionObserver type at all), so no caller
+  // can supply one and `options?.scrollMargin ?? ''` was always `''`. Declared
+  // as the constant it already resolved to, matching the other fake observers
+  // in this workspace. Restore the options read only once the DOM lib gains
+  // the field, and only if a test actually needs to set it.
+  readonly scrollMargin = '';
   readonly thresholds: readonly number[];
   private readonly record: ObserverRecord;
 
   constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
     this.root = options?.root instanceof Element ? options.root : null;
     this.rootMargin = options?.rootMargin ?? '';
-    this.scrollMargin = options?.scrollMargin ?? '';
     const threshold = options?.threshold ?? 0;
     this.thresholds = Array.isArray(threshold) ? threshold : [threshold];
     this.record = {

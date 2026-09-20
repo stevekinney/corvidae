@@ -1,11 +1,13 @@
 import { createTestToolbox, createTool } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from '../assert-defined';
 
 import { stopWhen } from '../../src/conditions';
 import { createActiveRun } from '../../src/create-run';
+import type { OperativeHookMap } from '../../src/hooks';
 import { createStore } from '../../src/store';
 import { createMockGenerate } from '../../src/test';
 import type { GenerateResponse } from '../../src/types';
@@ -227,16 +229,19 @@ describe('run lifecycle and cleanup', () => {
         textResponse('Done'),
       ]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('onStep', async ({ step }) => {
+        if (step === 0) {
+          activeRun.abort('user cancelled');
+        }
+      });
+
       const activeRun = createActiveRun({
         generate,
         toolbox,
         conversation,
         stopWhen: stopWhen.noToolCalls(),
-        onStep: async ({ step }) => {
-          if (step === 0) {
-            activeRun.abort('user cancelled');
-          }
-        },
+        hooks,
       });
       const id = store.register(activeRun);
 
@@ -260,14 +265,17 @@ describe('run lifecycle and cleanup', () => {
         textResponse('Done'),
       ]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('onStep', async () => {
+        activeRun.abort('cancelled');
+      });
+
       const activeRun = createActiveRun({
         generate,
         toolbox,
         conversation,
         stopWhen: stopWhen.noToolCalls(),
-        onStep: async () => {
-          activeRun.abort('cancelled');
-        },
+        hooks,
       });
       const id = store.register(activeRun);
 
@@ -290,14 +298,17 @@ describe('run lifecycle and cleanup', () => {
         textResponse('Done'),
       ]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('onStep', async () => {
+        activeRun.abort('test abort');
+      });
+
       const activeRun = createActiveRun({
         generate,
         toolbox,
         conversation,
         stopWhen: stopWhen.noToolCalls(),
-        onStep: async () => {
-          activeRun.abort('test abort');
-        },
+        hooks,
       });
       const id = store.register(activeRun);
 

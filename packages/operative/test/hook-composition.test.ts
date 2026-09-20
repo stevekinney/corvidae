@@ -1,11 +1,12 @@
 import { createTestToolbox, createTool } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices, HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
+import type { OperativeHookMap } from '../src/hooks';
 import { withTimeout } from '../src/hooks/composition';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import type { GenerateResponse, Toolbox } from '../src/types';
@@ -39,21 +40,22 @@ describe('hook composition (array-valued hooks)', () => {
       const calls: string[] = [];
       const generate = createMockGenerate([textResponse('Hello')]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        calls.push('first');
+        return undefined;
+      });
+      hooks.on('prepareStep', async () => {
+        calls.push('second');
+        return undefined;
+      });
+
       await run({
         generate,
         toolbox: createTestToolbox([tool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        prepareStep: [
-          async () => {
-            calls.push('first');
-            return undefined;
-          },
-          async () => {
-            calls.push('second');
-            return undefined;
-          },
-        ],
+        hooks,
       });
 
       expect(calls).toEqual(['first', 'second']);
@@ -64,21 +66,22 @@ describe('hook composition (array-valued hooks)', () => {
       const calls: string[] = [];
       const generate = createMockGenerate([textResponse('Should not be called')]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        calls.push('first');
+        return undefined;
+      });
+      hooks.on('prepareStep', async () => {
+        calls.push('second');
+        return { content: 'Intercepted', toolCalls: [] };
+      });
+
       const result = await run({
         generate,
         toolbox: createTestToolbox([tool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        prepareStep: [
-          async () => {
-            calls.push('first');
-            return undefined;
-          },
-          async () => {
-            calls.push('second');
-            return { content: 'Intercepted', toolCalls: [] };
-          },
-        ],
+        hooks,
       });
 
       expect(calls).toEqual(['first', 'second']);
@@ -90,21 +93,22 @@ describe('hook composition (array-valued hooks)', () => {
       const calls: string[] = [];
       const generate = createMockGenerate([textResponse('Should not be called')]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        calls.push('first');
+        return { content: 'Early return', toolCalls: [] };
+      });
+      hooks.on('prepareStep', async () => {
+        calls.push('second');
+        return undefined;
+      });
+
       const result = await run({
         generate,
         toolbox: createTestToolbox([tool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        prepareStep: [
-          async () => {
-            calls.push('first');
-            return { content: 'Early return', toolCalls: [] };
-          },
-          async () => {
-            calls.push('second');
-            return undefined;
-          },
-        ],
+        hooks,
       });
 
       expect(calls).toEqual(['first']);
@@ -136,21 +140,22 @@ describe('hook composition (array-valued hooks)', () => {
         textResponse('Done'),
       ]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      // First hook: remove Portland
+      hooks.on('beforeToolExecution', async ({ toolCalls }) =>
+        toolCalls.filter((tc) => (tc.arguments as { location: string }).location !== 'Portland'),
+      );
+      // Second hook: remove Seattle
+      hooks.on('beforeToolExecution', async ({ toolCalls }) =>
+        toolCalls.filter((tc) => (tc.arguments as { location: string }).location !== 'Seattle'),
+      );
+
       await run({
         generate,
         toolbox: createTestToolbox([trackingTool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        beforeToolExecution: [
-          // First hook: remove Portland
-          async ({ toolCalls }) =>
-            toolCalls.filter(
-              (tc) => (tc.arguments as { location: string }).location !== 'Portland',
-            ),
-          // Second hook: remove Seattle
-          async ({ toolCalls }) =>
-            toolCalls.filter((tc) => (tc.arguments as { location: string }).location !== 'Seattle'),
-        ],
+        hooks,
       });
 
       expect(executedLocations).toEqual(['Denver']);
@@ -169,23 +174,24 @@ describe('hook composition (array-valued hooks)', () => {
       const generate = createMockGenerate([textResponse('Done')]);
 
       const toolboxes: Toolbox[] = [];
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('selectTools', async () => {
+        const tb = createTestToolbox([tool]);
+        toolboxes.push(tb);
+        return tb;
+      });
+      hooks.on('selectTools', async () => {
+        const tb = createTestToolbox([tool2]);
+        toolboxes.push(tb);
+        return tb;
+      });
+
       await run({
         generate,
         toolbox: createTestToolbox([tool, tool2]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        selectTools: [
-          async () => {
-            const tb = createTestToolbox([tool]);
-            toolboxes.push(tb);
-            return tb;
-          },
-          async () => {
-            const tb = createTestToolbox([tool2]);
-            toolboxes.push(tb);
-            return tb;
-          },
-        ],
+        hooks,
       });
 
       expect(toolboxes).toHaveLength(2);
@@ -196,21 +202,22 @@ describe('hook composition (array-valued hooks)', () => {
     it('array: chained transformation', async () => {
       const generate = createMockGenerate([textResponse('original')]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('validateResponse', async (response) => ({
+        ...response,
+        content: response.content + '-first',
+      }));
+      hooks.on('validateResponse', async (response) => ({
+        ...response,
+        content: response.content + '-second',
+      }));
+
       const result = await run({
         generate,
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        validateResponse: [
-          async (response) => ({
-            ...response,
-            content: response.content + '-first',
-          }),
-          async (response) => ({
-            ...response,
-            content: response.content + '-second',
-          }),
-        ],
+        hooks,
       });
 
       expect(result.content).toBe('original-first-second');
@@ -225,19 +232,20 @@ describe('hook composition (array-valued hooks)', () => {
         textResponse('Done'),
       ]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('afterToolExecution', async () => {
+        calls.push('first');
+      });
+      hooks.on('afterToolExecution', async () => {
+        calls.push('second');
+      });
+
       await run({
         generate,
         toolbox: createTestToolbox([tool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        afterToolExecution: [
-          async () => {
-            calls.push('first');
-          },
-          async () => {
-            calls.push('second');
-          },
-        ],
+        hooks,
       });
 
       expect(calls).toEqual(['first', 'second']);
@@ -249,19 +257,20 @@ describe('hook composition (array-valued hooks)', () => {
       const calls: string[] = [];
       const generate = createMockGenerate([textResponse('Hello')]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('onStep', async () => {
+        calls.push('first');
+      });
+      hooks.on('onStep', async () => {
+        calls.push('second');
+      });
+
       await run({
         generate,
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        onStep: [
-          async () => {
-            calls.push('first');
-          },
-          async () => {
-            calls.push('second');
-          },
-        ],
+        hooks,
       });
 
       expect(calls).toEqual(['first', 'second']);
@@ -277,25 +286,28 @@ describe('hook composition (array-valued hooks)', () => {
         textResponse('Done'),
       ]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        calls.push('prepareStep');
+        return undefined;
+      });
+      hooks.on('beforeToolExecution', async ({ toolCalls }) => {
+        calls.push('beforeToolExecution');
+        return toolCalls;
+      });
+      hooks.on('afterToolExecution', async () => {
+        calls.push('afterToolExecution');
+      });
+      hooks.on('onStep', async () => {
+        calls.push('onStep');
+      });
+
       await run({
         generate,
         toolbox: createTestToolbox([tool]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        prepareStep: async () => {
-          calls.push('prepareStep');
-          return undefined;
-        },
-        beforeToolExecution: async ({ toolCalls }) => {
-          calls.push('beforeToolExecution');
-          return toolCalls;
-        },
-        afterToolExecution: async () => {
-          calls.push('afterToolExecution');
-        },
-        onStep: async () => {
-          calls.push('onStep');
-        },
+        hooks,
       });
 
       expect(calls).toContain('prepareStep');
@@ -309,19 +321,20 @@ describe('hook composition (array-valued hooks)', () => {
     it('error in any hook member terminates the loop with run.error', async () => {
       const generate = createMockGenerate([textResponse('Hello')]);
 
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('onStep', async () => {
+        throw new Error('hook failed');
+      });
+      hooks.on('onStep', async () => {
+        // should not be called
+      });
+
       const activeRun = createActiveRun({
         generate,
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        onStep: [
-          async () => {
-            throw new Error('hook failed');
-          },
-          async () => {
-            // should not be called
-          },
-        ],
+        hooks,
       });
 
       const recorder = createRunRecorder(activeRun);

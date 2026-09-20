@@ -262,6 +262,11 @@ export function reattachDurableActiveRun(
   return {
     result,
     abort,
+    // COR-1270/COR-1267 — always `undefined`, and meaningfully so: a
+    // reattachment to an already-terminal run rebuilds no hook plan, because
+    // no further execution happens for one to govern. See
+    // `active-run-reattach-driver.ts`'s `hooks: undefined`.
+    describeHookPlan: () => undefined,
     closed,
     // AB-361: a reattached/recovered run's durable record was committed
     // before this process even started — nothing left to await.

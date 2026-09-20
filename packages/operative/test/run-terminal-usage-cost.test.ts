@@ -7,10 +7,12 @@
  */
 import { createTestToolbox } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { createCostBudgetMonitor } from '../src/cost-budget-monitor';
 import { GuardrailTripwireError } from '../src/errors';
+import type { OperativeHookMap } from '../src/hooks';
 import { executeLoop } from '../src/loop';
 import type { GenerateResponse } from '../src/types';
 
@@ -139,19 +141,22 @@ describe('RunResult terminal usage + costEstimate parity', () => {
     // result BEFORE runStep's usage-accumulation block ever ran, so a
     // tripwire-halted run reported zero usage/cost despite the generate call
     // having actually happened.
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', () => {
+      throw new GuardrailTripwireError('blocked', {
+        guardrailName: 'test-output-guardrail',
+        category: 'test',
+        phase: 'output',
+        confidence: 1,
+      });
+    });
+
     const result = await executeLoop({
       generate: async () =>
         usageResponse('flagged output', { prompt: 300, completion: 40, total: 340 }),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
-      validateResponse: () => {
-        throw new GuardrailTripwireError('blocked', {
-          guardrailName: 'test-output-guardrail',
-          category: 'test',
-          phase: 'output',
-          confidence: 1,
-        });
-      },
+      hooks,
       costEstimation: { model: 'gpt-4o' },
     });
 

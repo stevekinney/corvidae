@@ -373,6 +373,10 @@ export function createSessionRun(
     // can subscribe to events and abort the run.
     const activeRunWrapper: ActiveRun = {
       result: resultPromise,
+      // COR-1270 — forwarded from the inner run once it exists. Before that
+      // there is no plan to describe, and saying so is more honest than
+      // reporting an empty one.
+      describeHookPlan: () => activeInnerRun?.describeHookPlan(),
       // AB-361: this wrapper deliberately leaves `durablyStarted`
       // unset. `SessionHandle` is not `createRunFromRequest`'s durable
       // branch — no caller of this wrapper awaits it — and a forwarding

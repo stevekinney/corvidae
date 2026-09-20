@@ -1,5 +1,6 @@
 import { createTestToolbox, createTool } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';
@@ -7,6 +8,7 @@ import { assertDefined } from './assert-defined';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import { type ElicitationRequestedEvent, ElicitationResolvedEvent } from '../src/events';
+import type { OperativeHookMap } from '../src/hooks';
 import { createRunRecorder } from '../src/test/index';
 import type {
   ElicitationRequest,
@@ -48,6 +50,11 @@ function weatherToolCall(location = 'Denver') {
 describe('elicitation', () => {
   it('assigns an immutable request identity and validates the response correlation', async () => {
     let seenRequest: ElicitationRequest | undefined;
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ elicit }) => {
+      await elicit?.('Do you confirm?', z.object({ confirmed: z.boolean() }));
+    });
+
     const result = await run({
       generate: async () => textResponse('Done'),
       toolbox: createTestToolbox([]),
@@ -57,9 +64,7 @@ describe('elicitation', () => {
         seenRequest = request;
         return elicitationResponse(request, { confirmed: true });
       },
-      prepareStep: async ({ elicit }) => {
-        await elicit?.('Do you confirm?', z.object({ confirmed: z.boolean() }));
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -71,6 +76,13 @@ describe('elicitation', () => {
     const requests: ElicitationRequest[] = [];
     const confirmationSchema = z.object({ confirmed: z.boolean() });
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ elicit }) => {
+      if (elicit) {
+        await elicit('Do you confirm?', confirmationSchema);
+      }
+    });
+
     await run({
       generate: async () => textResponse('Hello'),
       toolbox: createTestToolbox([]),
@@ -80,11 +92,7 @@ describe('elicitation', () => {
         requests.push(request);
         return elicitationResponse(request, { confirmed: true });
       },
-      prepareStep: async ({ elicit }) => {
-        if (elicit) {
-          await elicit('Do you confirm?', confirmationSchema);
-        }
-      },
+      hooks,
     });
 
     expect(requests).toHaveLength(1);
@@ -97,6 +105,14 @@ describe('elicitation', () => {
   it('loop pauses and resumes with validated data', async () => {
     const confirmationSchema = z.object({ approved: z.boolean() });
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ elicit }) => {
+      if (elicit) {
+        const response = await elicit('Approve?', confirmationSchema);
+        expect(response).toEqual({ approved: true });
+      }
+    });
+
     const result = await run({
       generate: async () => textResponse('Done'),
       toolbox: createTestToolbox([]),
@@ -105,12 +121,7 @@ describe('elicitation', () => {
       onElicitation: async (request) => {
         return elicitationResponse(request, { approved: true });
       },
-      prepareStep: async ({ elicit }) => {
-        if (elicit) {
-          const response = await elicit('Approve?', confirmationSchema);
-          expect(response).toEqual({ approved: true });
-        }
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -118,6 +129,14 @@ describe('elicitation', () => {
 
   it('returns null when user declines', async () => {
     const confirmationSchema = z.object({ confirmed: z.boolean() });
+
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ elicit }) => {
+      if (elicit) {
+        const response = await elicit('Do you confirm?', confirmationSchema);
+        expect(response).toBeNull();
+      }
+    });
 
     const result = await run({
       generate: async () => textResponse('Done'),
@@ -127,12 +146,7 @@ describe('elicitation', () => {
       onElicitation: async () => {
         return null;
       },
-      prepareStep: async ({ elicit }) => {
-        if (elicit) {
-          const response = await elicit('Do you confirm?', confirmationSchema);
-          expect(response).toBeNull();
-        }
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -140,6 +154,13 @@ describe('elicitation', () => {
 
   it('emits elicitation.requested and elicitation.resolved events', async () => {
     const confirmationSchema = z.object({ confirmed: z.boolean() });
+
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ elicit }) => {
+      if (elicit) {
+        await elicit('Do you confirm?', confirmationSchema);
+      }
+    });
 
     const activeRun = createActiveRun({
       generate: async () => textResponse('Done'),
@@ -149,11 +170,7 @@ describe('elicitation', () => {
       onElicitation: async (request) => {
         return elicitationResponse(request, { confirmed: true });
       },
-      prepareStep: async ({ elicit }) => {
-        if (elicit) {
-          await elicit('Do you confirm?', confirmationSchema);
-        }
-      },
+      hooks,
     });
 
     const recorder = createRunRecorder(activeRun);
@@ -176,6 +193,13 @@ describe('elicitation', () => {
   it('emits elicitation.resolved with accepted false when declined', async () => {
     const confirmationSchema = z.object({ confirmed: z.boolean() });
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ elicit }) => {
+      if (elicit) {
+        await elicit('Do you confirm?', confirmationSchema);
+      }
+    });
+
     const activeRun = createActiveRun({
       generate: async () => textResponse('Done'),
       toolbox: createTestToolbox([]),
@@ -184,11 +208,7 @@ describe('elicitation', () => {
       onElicitation: async () => {
         return null;
       },
-      prepareStep: async ({ elicit }) => {
-        if (elicit) {
-          await elicit('Do you confirm?', confirmationSchema);
-        }
-      },
+      hooks,
     });
 
     const recorder = createRunRecorder(activeRun);
@@ -204,14 +224,17 @@ describe('elicitation', () => {
   it('elicit is undefined when no onElicitation callback is configured', async () => {
     let elicitValue: unknown = 'not-set';
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ elicit }) => {
+      elicitValue = elicit;
+    });
+
     const result = await run({
       generate: async () => textResponse('Done'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async ({ elicit }) => {
-        elicitValue = elicit;
-      },
+      hooks,
     });
 
     expect(elicitValue).toBeUndefined();
@@ -229,6 +252,14 @@ describe('elicitation', () => {
       return textResponse('Done');
     };
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('beforeToolExecution', async ({ toolCalls, elicit }) => {
+      if (elicit) {
+        elicitedValue = await elicit('Proceed with tool calls?', confirmationSchema);
+      }
+      return toolCalls;
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
@@ -237,12 +268,7 @@ describe('elicitation', () => {
       onElicitation: async (request) => {
         return elicitationResponse(request, { proceed: true });
       },
-      beforeToolExecution: async ({ toolCalls, elicit }) => {
-        if (elicit) {
-          elicitedValue = await elicit('Proceed with tool calls?', confirmationSchema);
-        }
-        return toolCalls;
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -260,6 +286,13 @@ describe('elicitation', () => {
       return textResponse('Done');
     };
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('afterToolExecution', async ({ elicit }) => {
+      if (elicit) {
+        elicitedValue = await elicit('Rate this result', feedbackSchema);
+      }
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
@@ -268,11 +301,7 @@ describe('elicitation', () => {
       onElicitation: async (request) => {
         return elicitationResponse(request, { rating: 5 });
       },
-      afterToolExecution: async ({ elicit }) => {
-        if (elicit) {
-          elicitedValue = await elicit('Rate this result', feedbackSchema);
-        }
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -283,6 +312,14 @@ describe('elicitation', () => {
     const approvalSchema = z.object({ approved: z.boolean() });
     let elicitedValue: unknown = null;
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async (response, { elicit }) => {
+      if (elicit) {
+        elicitedValue = await elicit('Approve this response?', approvalSchema);
+      }
+      return response;
+    });
+
     const result = await run({
       generate: async () => textResponse('Sensitive content'),
       toolbox: createTestToolbox([]),
@@ -291,12 +328,7 @@ describe('elicitation', () => {
       onElicitation: async (request) => {
         return elicitationResponse(request, { approved: true });
       },
-      validateResponse: async (response, { elicit }) => {
-        if (elicit) {
-          elicitedValue = await elicit('Approve this response?', approvalSchema);
-        }
-        return response;
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -314,6 +346,14 @@ describe('elicitation', () => {
       return textResponse('Done');
     };
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async (toolResult, { elicit }) => {
+      if (elicit) {
+        elicitedValue = await elicit('Accept this tool result?', reviewSchema);
+      }
+      return toolResult;
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
@@ -322,12 +362,7 @@ describe('elicitation', () => {
       onElicitation: async (request) => {
         return elicitationResponse(request, { accepted: true });
       },
-      validateToolResult: async (toolResult, { elicit }) => {
-        if (elicit) {
-          elicitedValue = await elicit('Accept this tool result?', reviewSchema);
-        }
-        return toolResult;
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -335,6 +370,11 @@ describe('elicitation', () => {
   });
 
   it('rejects a response correlated to a different request', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ elicit }) => {
+      await elicit?.('Confirm?', z.object({ confirmed: z.boolean() }));
+    });
+
     const result = await run({
       generate: async () => textResponse('Done'),
       toolbox: createTestToolbox([]),
@@ -347,9 +387,7 @@ describe('elicitation', () => {
         toolCallId: request.toolCallId,
         data: request.schema.parse({ confirmed: true }),
       }),
-      prepareStep: async ({ elicit }) => {
-        await elicit?.('Confirm?', z.object({ confirmed: z.boolean() }));
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('error');
@@ -358,6 +396,11 @@ describe('elicitation', () => {
 
   it('keeps the request tool identity when the caller mutates options while awaiting', async () => {
     const options: { toolCallId?: string } = { toolCallId: 'originating-call' };
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ elicit }) => {
+      await elicit?.('Confirm?', z.object({ confirmed: z.boolean() }), options);
+    });
+
     const result = await run({
       generate: async () => textResponse('Done'),
       toolbox: createTestToolbox([]),
@@ -367,9 +410,7 @@ describe('elicitation', () => {
         options.toolCallId = 'mutated-call';
         return elicitationResponse(request, { confirmed: true });
       },
-      prepareStep: async ({ elicit }) => {
-        await elicit?.('Confirm?', z.object({ confirmed: z.boolean() }), options);
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -402,6 +443,11 @@ describe('elicitation', () => {
         data: request.schema.parse({ confirmed: true }),
       };
     };
+    const firstHooks = new HookRegistry<OperativeHookMap>();
+    firstHooks.on('prepareStep', async ({ elicit }) => {
+      cancelledAnswer = await elicit?.('Confirm?', z.object({ confirmed: z.boolean() }));
+    });
+
     const firstActiveRun = createActiveRun({
       generate: async () => textResponse('Done'),
       toolbox: createTestToolbox([]),
@@ -409,9 +455,7 @@ describe('elicitation', () => {
       stopWhen: noToolCalls(),
       signal: controller.signal,
       onElicitation,
-      prepareStep: async ({ elicit }) => {
-        cancelledAnswer = await elicit?.('Confirm?', z.object({ confirmed: z.boolean() }));
-      },
+      hooks: firstHooks,
     });
     firstActiveRun.addEventListener(ElicitationResolvedEvent.type, (event) => {
       resolvedEvents.push(event);
@@ -430,15 +474,18 @@ describe('elicitation', () => {
     expect(resolvedEvents[0]?.accepted).toBe(false);
     expect(resolvedEvents[0]?.requestId).toBe(requestIds[0]);
 
+    const secondHooks = new HookRegistry<OperativeHookMap>();
+    secondHooks.on('prepareStep', async ({ elicit }) => {
+      await elicit?.('Confirm?', z.object({ confirmed: z.boolean() }));
+    });
+
     const secondResultPromise = run({
       generate: async () => textResponse('Done'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
       onElicitation,
-      prepareStep: async ({ elicit }) => {
-        await elicit?.('Confirm?', z.object({ confirmed: z.boolean() }));
-      },
+      hooks: secondHooks,
     });
     for (;;) {
       if (secondReady) break;

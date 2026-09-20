@@ -20,22 +20,15 @@ import { explicitAbortReason } from './run-step-utilities';
 import type { SelectionGate } from './selection-gate';
 import type { ToolChoice } from './structured-output/types';
 import type {
-  AfterToolExecutionHook,
-  BeforeToolExecutionHook,
   ContextManagementOptions,
   GenerateContext,
   OnElicitation,
-  OnStepHook,
-  PrepareStepHook,
   RetryOptions,
   RunOptions,
-  SelectToolsHook,
   SteeringGate,
   StepResult,
   StopCondition,
   TokenUsage,
-  ValidateResponseHook,
-  ValidateToolResultHook,
 } from './types';
 
 export { awaitResumeOrAbort, normalizeToArray, runHookSilently } from './run-step-utilities';
@@ -120,13 +113,6 @@ export interface StepDeps {
    */
   readonly contextEpoch: ContextEpochSealer | undefined;
   readonly stopConditions: StopCondition[];
-  readonly prepareStepHooks: PrepareStepHook[];
-  readonly beforeToolExecutionHooks: BeforeToolExecutionHook[];
-  readonly afterToolExecutionHooks: AfterToolExecutionHook[];
-  readonly onStepHooks: OnStepHook[];
-  readonly selectToolsHooks: SelectToolsHook[];
-  readonly validateResponseHooks: ValidateResponseHook[];
-  readonly validateToolResultHooks: ValidateToolResultHook[];
   /** Maximum number of retries the onError hook can request per step. */
   readonly maxErrorRetries: number;
   /**
@@ -358,33 +344,6 @@ export async function runStep(
   if (stepSkipped) return { kind: 'continue' };
 
   // Validate response guardrail
-  if (deps.validateResponseHooks.length > 0) {
-    try {
-      for (const hook of deps.validateResponseHooks) {
-        const originalResponse = { ...response };
-        const validated = await hook(response, {
-          conversation,
-          step,
-          signal: stepSignal,
-          abortStep,
-          elicit,
-        });
-        if (validated) {
-          emitter?.dispatch(new ResponseValidatedEvent(step, originalResponse, validated));
-          response = validated;
-        }
-      }
-    } catch (error) {
-      // The provider call already completed (and may have been metered)
-      // before this hook ran — e.g. the default output-guardrail tripwire
-      // throws GuardrailTripwireError here. Accumulate the response's usage
-      // before returning the error result so a tripwire-halted run still
-      // reports the cost of the generate call that triggered it.
-      accumulateUsage(runState, emitter, step, response.usage);
-      emitter?.dispatch(new RunErrorEvent(step, error, 'output'));
-      return { kind: 'error', error, errorKind: 'output' };
-    }
-  }
   if (hooks?.has('validateResponse')) {
     try {
       const originalResponse = { ...response };

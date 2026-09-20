@@ -25,6 +25,8 @@ export function createMonitorRun(result: Promise<RunResult>): AgentRun {
   const activeRun: ActiveRun = {
     result,
     abort: () => {},
+    // COR-1270: a liveness fixture with no hook plan to describe.
+    describeHookPlan: () => undefined,
     closed: async (): Promise<CleanupAcknowledgement> => ({ status: 'not-required' }),
     addEventListener: <K extends CombinedOperativeEventType>(
       type: K,

@@ -1,6 +1,11 @@
 import type { AnyToolbox, ToolboxEventMap } from '@corvidae/armorer';
 import { Conversation, isConversation } from '@corvidae/conversationalist';
-import type { ObservableLike, Observer, Subscription } from '@corvidae/lifecycle';
+import type {
+  HookPlanDescription,
+  ObservableLike,
+  Observer,
+  Subscription,
+} from '@corvidae/lifecycle';
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
@@ -48,6 +53,24 @@ import {
 export interface ActiveRun {
   result: Promise<RunResult>;
   abort: (reason?: string) => void;
+  /**
+   * A redacted description of this run's effective hook plan (COR-1270):
+   * which hook sources applied, and in what order.
+   *
+   * Reads the SNAPSHOT this run is executing against, not any tier's source
+   * registry, so what it reports is what actually ran — a registration added
+   * to a source registry after dispatch does not appear here, because it
+   * does not affect this run either.
+   *
+   * `undefined` when the run has no hook plan at all, which distinguishes
+   * "no hooks configured" from "a plan that happens to be empty".
+   *
+   * There is no authorization gate in front of this, by decision (COR-567):
+   * any holder of the run handle may call it, and redaction is the entire
+   * security boundary. Nothing executable and nothing protected is reachable
+   * from what it returns.
+   */
+  describeHookPlan: () => HookPlanDescription | undefined;
   /**
    * AB-361 — settles once this run's initial durable workflow record is
    * committed (the write `driveDurableRun`'s `await context.engine.start(...)`
@@ -699,6 +722,7 @@ export function createActiveRun(
   return {
     result,
     abort,
+    describeHookPlan: () => options.hooks?.describePlan(),
     closed,
     addEventListener: emitter.addEventListener.bind(emitter),
     removeEventListener: emitter.removeEventListener.bind(emitter),

@@ -13,7 +13,6 @@ import {
 import {
   DEFAULT_MAXIMUM_STEPS,
   type EventDispatcher,
-  normalizeToArray,
   type RunState,
   runStep,
   type StepDeps,
@@ -65,13 +64,6 @@ export function buildStepDeps(options: RunOptions): StepDeps {
     selection: options.selection,
     contextEpoch: options.contextEpoch,
     stopConditions,
-    prepareStepHooks: normalizeToArray(options.prepareStep),
-    beforeToolExecutionHooks: normalizeToArray(options.beforeToolExecution),
-    afterToolExecutionHooks: normalizeToArray(options.afterToolExecution),
-    onStepHooks: normalizeToArray(options.onStep),
-    selectToolsHooks: normalizeToArray(options.selectTools),
-    validateResponseHooks: normalizeToArray(options.validateResponse),
-    validateToolResultHooks: normalizeToArray(options.validateToolResult),
     /** Maximum number of retries the onError hook can request per step. */
     maxErrorRetries: 3,
     // AB-92/AB-252: `createActiveRun` already resolves and snapshots this
