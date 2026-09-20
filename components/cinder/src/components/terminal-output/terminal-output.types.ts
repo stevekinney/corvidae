@@ -13,13 +13,14 @@ export type TerminalOutputProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' |
   value?: string;
   /**
    * Keeps the viewport anchored to the latest line while appending.
-   * Bindable, and not host-exclusive while bound: the component's own
-   * scroll handler reassigns it to `true` whenever the user scrolls back
-   * to the bottom, which resumes automatic scrolling on the next append.
-   * Setting `false` marks the current state, not a mode the component
-   * will leave alone—a host that wants to keep owning scroll position
-   * after that point must not bind `followLatest` (handle scrolling
-   * itself instead). Defaults to `true`.
+   * Bindable, but this component has no persistent host-controlled mode,
+   * bound or not: its own scroll handler always reassigns this (as local
+   * component state, independent of whether a parent binds it) to `true`
+   * the moment the user scrolls back to the bottom, which resumes
+   * automatic scrolling on the next append. Setting `false` only affects
+   * the initial or current value—there is currently no way for a host to
+   * durably keep this component from following once the user reaches the
+   * bottom again. Defaults to `true`.
    * @default true
    */
   followLatest?: boolean;

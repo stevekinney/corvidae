@@ -6,7 +6,11 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    */
   value?: string;
   /**
-   * Index of the active match within the host-provided results. Bindable.
+   * Index of the active match within the host-provided results. Bindable,
+   * but not input-only: the component resets it to `0` itself whenever the
+   * user edits the query, and clamps it into `[0, matchCount - 1]` whenever
+   * `matchCount` changes—a parent binding this prop should expect it to be
+   * overwritten in both cases, not treat it as a preserved selection.
    * Defaults to `0`.
    * @default 0
    */
@@ -21,7 +25,11 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    */
   matchCount?: number | null;
   /**
-   * Minimum query length before the host should search. Defaults to `3`.
+   * Minimum trimmed query length before the host should search—eligibility
+   * is checked against `value.trim().length`, not `value.length`, so
+   * whitespace-only or whitespace-padded input doesn't count toward it
+   * (e.g. `' a '` stays ineligible at `minQueryLength={3}`). Defaults to
+   * `3`.
    * @default 3
    */
   minQueryLength?: number;

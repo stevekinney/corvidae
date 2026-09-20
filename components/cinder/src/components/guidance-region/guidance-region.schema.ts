@@ -7,7 +7,7 @@ const schema = {
     version: {
       type: 'string',
       description:
-        "Version window claims are filtered against. When omitted—or passed as\n`''`, which is treated identically to omitted, not as an invalid\nversion—every claim is relevant and neither claim's `relevantFrom` nor\n`relevantUntil` is validated; this matters if an unset environment\nvalue can reach this prop as `''`. When supplied non-empty, it must be\nSemVer-shaped\n(`major.minor.patch`, each numeric with no leading zero, an optional\n`-prerelease`/`+build` suffix)—a shortened form like `'1.2'` fails to\nparse. The parser is looser than strict SemVer in one respect: it\ndoesn't reject an empty dot-separated identifier inside a\n`-prerelease`/`+build` suffix (e.g. `'1.0.0-alpha..1'` still parses).\nA claim's `relevantFrom`/`relevantUntil` are parsed the same way; if\neither fails to parse, that claim is filtered out silently rather than\nerroring.",
+        "Version window claims are filtered against. When omitted—or passed as\n`''`, which is treated identically to omitted, not as an invalid\nversion—every claim is relevant and neither claim's `relevantFrom` nor\n`relevantUntil` is validated; this matters if an unset environment\nvalue can reach this prop as `''`. When supplied non-empty, it must be\nSemVer-shaped\n(`major.minor.patch`, each numeric with no leading zero, an optional\n`-prerelease`/`+build` suffix)—a shortened form like `'1.2'` fails to\nparse. The parser is looser than strict SemVer in one respect: it\ndoesn't reject an empty dot-separated identifier inside a\n`-prerelease`/`+build` suffix (e.g. `'1.0.0-alpha..1'` still parses).\nIf this non-empty `version` itself fails to parse, every claim is\nfiltered out—the whole registry silently goes empty, not just the\nclaims with malformed bounds. A claim's `relevantFrom`/`relevantUntil`\nare parsed the same way; if either fails to parse, only that claim is\nfiltered out.",
     },
     storageKey: {
       type: 'string',
@@ -22,7 +22,8 @@ const schema = {
       {
         name: 'anchorResolver',
         reason: 'function-or-snippet',
-        description: 'Resolves a claim anchor using consumer-owned DOM knowledge.',
+        description:
+          "Resolves a claim anchor using consumer-owned DOM knowledge. Required\nfor any claim that isn't `kind: 'modal'`—which includes the default\ncase where `kind` is omitted: without `anchorResolver` (or when it\nresolves to a disconnected element), that claim can never be claimed\nand its guidance can never open. Omit this prop only when every\nregistered claim is `kind: 'modal'`.",
       },
       {
         name: 'children',

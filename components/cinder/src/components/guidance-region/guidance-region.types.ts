@@ -19,9 +19,11 @@ export type GuidanceRegionProps = {
    * parse. The parser is looser than strict SemVer in one respect: it
    * doesn't reject an empty dot-separated identifier inside a
    * `-prerelease`/`+build` suffix (e.g. `'1.0.0-alpha..1'` still parses).
-   * A claim's `relevantFrom`/`relevantUntil` are parsed the same way; if
-   * either fails to parse, that claim is filtered out silently rather than
-   * erroring.
+   * If this non-empty `version` itself fails to parse, every claim is
+   * filtered out—the whole registry silently goes empty, not just the
+   * claims with malformed bounds. A claim's `relevantFrom`/`relevantUntil`
+   * are parsed the same way; if either fails to parse, only that claim is
+   * filtered out.
    */
   version?: string;
   /** Adapter used to persist which claims a user has dismissed, so dismissal survives a reload. */
@@ -33,7 +35,14 @@ export type GuidanceRegionProps = {
    * @default 'cinder-guidance'
    */
   storageKey?: string;
-  /** Resolves a claim anchor using consumer-owned DOM knowledge. */
+  /**
+   * Resolves a claim anchor using consumer-owned DOM knowledge. Required
+   * for any claim that isn't `kind: 'modal'`—which includes the default
+   * case where `kind` is omitted: without `anchorResolver` (or when it
+   * resolves to a disconnected element), that claim can never be claimed
+   * and its guidance can never open. Omit this prop only when every
+   * registered claim is `kind: 'modal'`.
+   */
   anchorResolver?: (anchor: string) => HTMLElement | null;
   /** Descendant application surface that consumes guidance through `useGuidance`. */
   children?: Snippet;
