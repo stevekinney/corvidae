@@ -49,8 +49,11 @@ bun run test:self
 bun run validate
 bun audit --audit-level=high
 bun run --filter=@lostgradient/weft test:benchmarks
+bun run --filter=@lostgradient/markdown test:benchmarks
 ```
 
 Run local quality commands explicitly. This repository has no Git hooks or automated release pipeline.
 
-Weft's throughput, latency, and memory benchmarks are the one workspace-scoped entry in that list, because they belong to `@lostgradient/weft` alone and `bun run --filter` is how the root invokes a single workspace's script. `bun run test` excludes them: their measurements swing far enough between runs on the same machine that they cannot assert a target, so they record numbers on demand instead of gating validation. Their targets are unchanged, and the benchmark directory's unit tests still run in the default suite.
+The two benchmark commands are the workspace-scoped entries in that list, because each belongs to a single package and `bun run --filter` is how the root invokes one workspace's script. `bun run test` excludes both: a suite that asserts a wall-clock or memory target measures the machine as much as the code, and on a host running several agents at once those measurements swing far enough that they cannot gate validation. They record numbers on demand instead. Their targets are unchanged.
+
+Correctness assertions never move with them. Weft keeps its benchmark directory's unit tests in the default suite; Markdown's pathological-document and diff-identity checks stayed behind in `src/` when its timing assertions left. The two packages exclude them differently — Weft path-ignores `.test.ts` files under `scripts/benchmarks/`, Markdown names them `*.bench.ts` there, which Bun's default discovery skips on its own — but the rule is the same: a target that depends on host load belongs outside the gate, and the correctness it was bundled with belongs inside it.

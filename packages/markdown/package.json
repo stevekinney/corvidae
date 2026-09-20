@@ -9,6 +9,7 @@
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",
     "typecheck": "tsc --noEmit -p ./tsconfig.json",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun test src",
+    "test:benchmarks": "TZ=UTC LANG=en_US.UTF-8 bun test ./scripts/benchmarks/performance.bench.ts ./scripts/benchmarks/diff-computation.bench.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src"
   },
   "dependencies": {
