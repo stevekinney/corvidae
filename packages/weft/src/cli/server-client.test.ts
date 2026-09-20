@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { Engine, serve } from '@corvidae/weft';
+import { Engine, serve } from '../index.ts';
 import { callCatalogOperation, failureExitCode } from './server-client.ts';
 
 type StubServer = { url: string; stop: () => void };

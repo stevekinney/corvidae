@@ -1,4 +1,4 @@
-import { activity } from '@corvidae/weft';
+import { activity } from '../../../../../../index.ts';
 
 import type {
   InventoryReservation,

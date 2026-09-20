@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { buildWorkflowRevisionManifest, type WorkflowContract } from '@corvidae/weft';
+import { buildWorkflowRevisionManifest, type WorkflowContract } from '../index.ts';
 import { executeCodegen } from './codegen.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/codegen');

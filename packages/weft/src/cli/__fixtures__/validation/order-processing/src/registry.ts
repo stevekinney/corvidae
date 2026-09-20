@@ -1,4 +1,4 @@
-import { Engine, schedule } from '@corvidae/weft';
+import { Engine, schedule } from '../../../../../index.ts';
 
 import { staleOrderSweepInput } from './sample-data';
 import { orderWorkflow } from './workflows/order';

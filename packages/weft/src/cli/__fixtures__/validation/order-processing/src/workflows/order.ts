@@ -1,4 +1,4 @@
-import { searchAttribute, workflow, type WorkflowContext } from '@corvidae/weft';
+import { searchAttribute, workflow, type WorkflowContext } from '../../../../../../index.ts';
 
 import { releaseInventory, reserveInventory } from '../activities/inventory';
 import { chargePayment, refundPayment } from '../activities/payment';

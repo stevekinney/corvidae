@@ -13,8 +13,8 @@ export type {
   SubprocessServerHandle,
   SubprocessServerOptions,
   SubprocessServerProcess,
-  SubprocessSignal,
 } from './subprocess-engine.ts';
+export type { SubprocessSignal } from './subprocess-lifecycle.ts';
 export { TestEngine } from './test-engine.ts';
 export type { RunNOptions, RunNResult } from './test-engine.ts';
 export { TimeControl } from './time-control.ts';
