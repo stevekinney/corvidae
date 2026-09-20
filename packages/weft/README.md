@@ -586,6 +586,7 @@ Each `ctx.step()` is a checkpoint boundary. Completed steps replay from storage 
 ## Documentation
 
 - [Remote workers](documentation/guides/remote-workers.md)
+- [Application mailbox](documentation/guides/application-mailbox.md)
 - [Worker API](documentation/reference/api-workers.md)
 - [Remote-worker wire protocol](documentation/reference/remote-worker-protocol.md)
 - [TypeScript workflows and polyglot activities](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md)
