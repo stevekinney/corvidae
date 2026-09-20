@@ -45,6 +45,23 @@ import type { RemoteTaskRecord } from '../task-ledger.ts';
  * — full session identity (generation, liveness) is COR-230's deliverable.
  * This shape is where COR-230 extends the comparison without a rewrite of
  * either transport's call site.
+ *
+ * COR-220 ("Reconnect, Shutdown, and Diagnostics") does NOT widen this shape
+ * with a session-generation comparison, even though it introduces a proven-
+ * vs-unproven reconnect distinction that superficially looks like it would
+ * need one. It doesn't: an unproven reconnect's in-flight forfeit is
+ * awaited to completion — the durable requeue transition that rotates the
+ * attempt away from its old `attemptToken` — BEFORE the new session's
+ * `registerAck` is sent, so no frame the new socket is allowed to send can
+ * ever race that rotation. `attemptToken` alone remains sufficient. A
+ * generation stamp on this shape was tried and reverted: it cannot defend
+ * the one race that matters (see the ordering above, which closes it
+ * instead) and it reopens `RemoteTaskLeased.workerSessionId` recovery's own
+ * documented promise — "completions from the ORIGINAL WORKER are recognized
+ * after reconnect" (`task-ledger-recovery.ts`) — since a restarted registry
+ * always starts a reconnecting worker back at generation 1, which is lower
+ * than whatever generation a long-lived ledger record might carry from
+ * before the restart.
  */
 export interface CurrentAttempt {
   readonly workerSessionId?: string;

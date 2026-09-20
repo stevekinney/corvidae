@@ -11,6 +11,28 @@
 /**
  * Current RemoteWorker wire protocol version.
  *
+ * **Version 6** (Reconnect, Shutdown, and Diagnostics, COR-220) adds a
+ * session-generation handshake to `register`/`registerAck` so a reconnecting
+ * worker can PROVE it is resuming its own prior session rather than merely
+ * asserting the same `workerId`. `registerAck` now always carries
+ * `sessionGeneration` (the {@link
+ * import('./registry/types.ts').WorkerSessionIdentity.sessionGeneration}
+ * value for the session just registered); a worker that reconnects while its
+ * `workerId` still has a pending grace-period requeue echoes that generation
+ * back as `register.resumeSessionGeneration`. A match is a PROVEN resume —
+ * the server keeps the session's generation unchanged and its in-flight
+ * attempts and their leases untouched. Anything else (no echo, a mismatched
+ * echo, or a reconnect after the grace window already lapsed) is an
+ * UNPROVEN reconnect: the server forfeits the worker's in-flight work (the
+ * same requeue the grace timer would have run) before registering a brand
+ * new session with an incremented generation. This is a version bump, not a
+ * negotiated one, for the same reason v5's was: a v5 worker's in-grace
+ * reconnect used to silently keep its in-flight work with no proof at all;
+ * against a v6 server it would silently start forfeiting that work instead
+ * (no `resumeSessionGeneration` echo, ever), which is exactly the silent
+ * regression a clean protocol break exists to convert into a loud
+ * `registerError` instead.
+ *
  * **Version 5** (Session and Attempt Lease Model, COR-230) splits the single
  * `heartbeat` message's semantics into two independently-clocked messages: a
  * bare `heartbeat` (`workerId` only) renews ONLY the worker-session lease —
@@ -60,7 +82,7 @@
  * const registration = { type: 'register', protocolVersion: REMOTE_WORKER_PROTOCOL_VERSION };
  * ```
  */
-export const REMOTE_WORKER_PROTOCOL_VERSION = 5;
+export const REMOTE_WORKER_PROTOCOL_VERSION = 6;
 
 /**
  * Lowest RemoteWorker protocol version accepted by this package.
@@ -69,10 +91,10 @@ export const REMOTE_WORKER_PROTOCOL_VERSION = 5;
  * ```ts
  * import { REMOTE_WORKER_MIN_PROTOCOL_VERSION } from '@corvidae/weft';
  *
- * const supportsCurrentVersion = REMOTE_WORKER_MIN_PROTOCOL_VERSION === 5;
+ * const supportsCurrentVersion = REMOTE_WORKER_MIN_PROTOCOL_VERSION === 6;
  * ```
  */
-export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 5;
+export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 6;
 
 /**
  * Highest RemoteWorker protocol version accepted by this package.
@@ -81,10 +103,10 @@ export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 5;
  * ```ts
  * import { REMOTE_WORKER_MAX_PROTOCOL_VERSION } from '@corvidae/weft';
  *
- * const canUseRequestedVersion = 5 <= REMOTE_WORKER_MAX_PROTOCOL_VERSION;
+ * const canUseRequestedVersion = 6 <= REMOTE_WORKER_MAX_PROTOCOL_VERSION;
  * ```
  */
-export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 5;
+export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 6;
 
 /**
  * Explicit supported RemoteWorker protocol versions.
@@ -93,7 +115,7 @@ export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 5;
  * ```ts
  * import { REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS } from '@corvidae/weft';
  *
- * const supported = REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS.includes(5);
+ * const supported = REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS.includes(6);
  * ```
  */
 export const REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS = [REMOTE_WORKER_PROTOCOL_VERSION] as const;
@@ -105,7 +127,7 @@ export const REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS = [REMOTE_WORKER_PROTOCOL
  * ```ts
  * import type { RemoteWorkerProtocolVersion } from '@corvidae/weft';
  *
- * const version: RemoteWorkerProtocolVersion = 5;
+ * const version: RemoteWorkerProtocolVersion = 6;
  * ```
  */
 export type RemoteWorkerProtocolVersion =

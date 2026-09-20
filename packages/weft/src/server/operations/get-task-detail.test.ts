@@ -216,6 +216,22 @@ describe('weft.tasks.get', () => {
     if (result.value.state === 'leased') {
       expect(result.value.leaseDeadline).toBe(60_000);
       expect(result.value.lastHeartbeatAt).toBe(2_500);
+      // No attemptDeadline recorded on this fixture — a clock, not identity,
+      // so its absence is projected as absence, not defaulted to a value.
+      expect(result.value).not.toHaveProperty('attemptDeadline');
     }
+  });
+
+  it("reports a leased task's attemptDeadline when the record carries one (COR-220)", async () => {
+    const storage = new MemoryStorage();
+    const engine = fixture.createEngine(storage);
+    await fixture.putLedgerRecord(storage, fixture.leasedFixture({ attemptDeadline: 180_000 }));
+
+    const result = await fixture.runGetTaskDetail(engine, 'op-leased');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected success');
+    if (result.value.state !== 'leased') throw new Error('expected leased state');
+    expect(result.value.attemptDeadline).toBe(180_000);
   });
 });

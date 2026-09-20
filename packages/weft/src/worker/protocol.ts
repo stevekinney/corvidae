@@ -165,6 +165,7 @@ const REGISTER_FIELD_SPECS: readonly FieldSpec[] = [
   ['manifest',    true,  isRecord,         'register.manifest must be a JSON object'],
   ['concurrency', false, isFiniteNumber,   'register.concurrency must be a finite number'],
   ['startedAt',   false, isFiniteNumber,   'register.startedAt must be a finite number when present'],
+  ['resumeSessionGeneration', false, isFiniteNumber, 'register.resumeSessionGeneration must be a finite number when present'],
 ];
 
 function parseRegisterMessage(
@@ -282,6 +283,7 @@ function parseRegisterAckMessage(
   const concurrency = record['concurrency'];
   const acceptedManifestDigest = record['acceptedManifestDigest'];
   const serverCapabilities = record['serverCapabilities'];
+  const sessionGeneration = record['sessionGeneration'];
   if (!isNonEmptyString(workerId)) {
     return protocolFailure('invalid_message', 'registerAck.workerId must be a non-empty string');
   }
@@ -303,6 +305,12 @@ function parseRegisterAckMessage(
       'registerAck.serverCapabilities must be an array of non-empty strings',
     );
   }
+  if (!isFiniteNumber(sessionGeneration)) {
+    return protocolFailure(
+      'invalid_message',
+      'registerAck.sessionGeneration must be a finite number',
+    );
+  }
 
   return {
     ok: true,
@@ -314,6 +322,7 @@ function parseRegisterAckMessage(
       concurrency,
       acceptedManifestDigest,
       serverCapabilities,
+      sessionGeneration,
     },
   };
 }

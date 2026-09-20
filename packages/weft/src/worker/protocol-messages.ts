@@ -54,13 +54,23 @@ export type RemoteWorkerCapabilities = Readonly<Record<string, RemoteWorkerJsonV
  * `manifest` is `unknown` here deliberately — this module only proves wire
  * shape; deep manifest validation happens where the manifest is accepted.
  *
+ * `resumeSessionGeneration` (protocol v6, COR-220) is how a reconnecting
+ * worker PROVES it is resuming its own prior session rather than merely
+ * asserting the same `workerId`: it echoes the `sessionGeneration` the
+ * server handed back on the `registerAck` for the session it is trying to
+ * resume. Omitted on a fresh connect — there is no prior session to prove
+ * continuity with. The server treats a reconnect as a PROVEN resume only
+ * when this echo matches the still-pending session's generation; anything
+ * else (omitted, or mismatched) is an unproven reconnect and forfeits
+ * in-flight work exactly as an unanswered grace period would.
+ *
  * @example
  * ```ts
  * import type { RegisterMessage } from '@corvidae/weft';
  *
  * const message: RegisterMessage = {
  *   type: 'register',
- *   protocolVersion: 5,
+ *   protocolVersion: 6,
  *   workerId: 'worker-1',
  *   manifest: { manifestVersion: 1 },
  * };
@@ -73,6 +83,7 @@ export type RegisterMessage = {
   readonly manifest: unknown;
   readonly concurrency?: number;
   readonly startedAt?: number;
+  readonly resumeSessionGeneration?: number;
 };
 
 /**
@@ -218,18 +229,28 @@ export type CancelledTaskResultMessage = {
  * (the worker already knows what it sent); it is a bounded list of
  * server-side capability names, currently always empty.
  *
+ * `sessionGeneration` (protocol v6, COR-220) is the {@link
+ * import('./registry/types.ts').WorkerSessionIdentity.sessionGeneration}
+ * value for the session just registered — always present, unlike
+ * {@link RegisterMessage.resumeSessionGeneration}, since every accepted
+ * registration belongs to some generation whether it proved a resume or
+ * not. A worker caches this value and echoes it back as
+ * `resumeSessionGeneration` on its next `register` if that connection is
+ * ever lost, so the server can tell a proven resume from a fresh session.
+ *
  * @example
  * ```ts
  * import type { RegisterAckMessage } from '@corvidae/weft';
  *
  * const message: RegisterAckMessage = {
  *   type: 'registerAck',
- *   protocolVersion: 5,
+ *   protocolVersion: 6,
  *   workerId: 'worker-1',
  *   queue: 'default',
  *   concurrency: 10,
  *   acceptedManifestDigest: 'sha256:41d0e2',
  *   serverCapabilities: [],
+ *   sessionGeneration: 1,
  * };
  * ```
  */
@@ -241,6 +262,7 @@ export type RegisterAckMessage = {
   readonly concurrency: number;
   readonly acceptedManifestDigest: string;
   readonly serverCapabilities: readonly string[];
+  readonly sessionGeneration: number;
 };
 
 /**

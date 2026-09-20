@@ -2447,6 +2447,7 @@ describe('worker WebSocket protocol', () => {
       concurrency: 5,
       acceptedManifestDigest: expect.any(String),
       serverCapabilities: [],
+      sessionGeneration: 1,
     });
 
     ws.close();

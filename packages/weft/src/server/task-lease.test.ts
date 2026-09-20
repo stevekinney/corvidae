@@ -254,6 +254,57 @@ describe('WorkerSessionIdentity (COR-230) — a session clock, distinct from the
     expect(registry.sessionIdentity('worker-1')?.sessionGeneration).toBe(2);
   });
 
+  it('a proven resume (matching resumingSessionGeneration) leaves sessionGeneration unchanged and preserves inFlight (COR-220)', () => {
+    const registry = new WorkerRegistry();
+    register(registry, 'worker-1');
+    registry.assignTask('worker-1', 'op-retained', 30_000, undefined, 'attempt-retained');
+    expect(registry.sessionIdentity('worker-1')?.sessionGeneration).toBe(1);
+    expect(registry.getWorker('worker-1')?.inFlight).toBe(1);
+
+    // Re-register echoing the CURRENT generation — a proven resume.
+    registry.register(
+      {
+        id: 'worker-1',
+        queue: 'default',
+        activities: ['test.charge'],
+        concurrency: 5,
+        manifest: manifestForActivities(['test.charge']),
+        acceptedManifestDigest: TEST_ACCEPTED_MANIFEST_DIGEST,
+      },
+      1,
+    );
+
+    expect(registry.sessionIdentity('worker-1')?.sessionGeneration).toBe(1);
+    // The in-flight attempt tracked before the reconnect is still counted —
+    // nothing was reclaimed.
+    expect(registry.getWorker('worker-1')?.inFlight).toBe(1);
+    expect(registry.isAssignedToAttempt('op-retained', 'worker-1', 'attempt-retained')).toBe(true);
+  });
+
+  it('an unproven resume (mismatched or missing resumingSessionGeneration) always bumps sessionGeneration', () => {
+    const registry = new WorkerRegistry();
+    register(registry, 'worker-1');
+    expect(registry.sessionIdentity('worker-1')?.sessionGeneration).toBe(1);
+
+    // A stale echo — names a generation that is no longer current.
+    registry.register(
+      {
+        id: 'worker-1',
+        queue: 'default',
+        activities: ['test.charge'],
+        concurrency: 5,
+        manifest: manifestForActivities(['test.charge']),
+        acceptedManifestDigest: TEST_ACCEPTED_MANIFEST_DIGEST,
+      },
+      99,
+    );
+    expect(registry.sessionIdentity('worker-1')?.sessionGeneration).toBe(2);
+
+    // No echo at all — an ordinary fresh/unproven registration.
+    register(registry, 'worker-1');
+    expect(registry.sessionIdentity('worker-1')?.sessionGeneration).toBe(3);
+  });
+
   it('a session heartbeat renews only WorkerRegistry.lastHeartbeat — never sessionGeneration, never any attempt lease', () => {
     const registry = new WorkerRegistry();
     register(registry, 'worker-1');

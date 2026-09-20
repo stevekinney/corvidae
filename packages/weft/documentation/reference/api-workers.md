@@ -101,7 +101,7 @@ If `signal` is already aborted when called, returns a failed result immediately 
 
 ### `RemoteWorker`
 
-WebSocket-based remote worker client. Connects to the Weft server, sends a v5 registration, waits for `registerAck`, and then processes tasks dispatched by the server. Implements `Disposable`.
+WebSocket-based remote worker client. Connects to the Weft server, sends a v6 registration, waits for `registerAck`, and then processes tasks dispatched by the server. Implements `Disposable`.
 
 ```ts partial
 class RemoteWorker implements Disposable {
@@ -234,6 +234,8 @@ class LongPollWorker implements Disposable {
 | `concurrency` | `number` | `10` | Maximum concurrent tasks |
 | `queue` | `string` | `'default'` | Task queue |
 | `pollTimeout` | `number` | `30_000` | Long-poll timeout in ms |
+| `heartbeatIntervalMs` | `number` | `10_000` | Per-activity heartbeat interval (COR-230) — see [Long-poll fallback](../guides/remote-workers.md#long-poll-fallback). |
+| `disconnectTimeoutMs` | `number` | `30_000` | Bound on how long `stop()` waits for in-flight activities to finish after aborting them (COR-220) — matches `RemoteWorker`'s identical bound. A non-cooperative activity that ignores its `AbortSignal` cannot hold `stop()` open past this. |
 
 **Example:**
 

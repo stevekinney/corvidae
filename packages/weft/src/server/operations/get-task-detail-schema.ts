@@ -89,6 +89,12 @@ const attemptSchemaFields = {
 
 const leaseHolderSchemaFields = {
   leaseDeadline: z.number(),
+  // Absolute, heartbeat-immune deadline (COR-230's `RemoteTaskLeased.attemptDeadline`,
+  // widened onto the diagnostics surface by COR-220 "Operations/diagnostics
+  // surface for session and attempt state"). Optional for the same reason
+  // the underlying ledger field is: a hand-built or pre-COR-230 record may
+  // not carry one — absence means "no recorded cap", not "already expired".
+  attemptDeadline: z.number().optional(),
   firstQueuedAt: z.number(),
   lastQueuedAt: z.number(),
   startedAt: z.number(),

@@ -185,6 +185,79 @@ describe('LongPollWorker', () => {
     expect(worker.inFlight).toBe(0);
   });
 
+  it('stop() is bounded by disconnectTimeoutMs when an activity ignores its AbortSignal (COR-220)', async () => {
+    const activityStarted = createDeferred();
+    // Deliberately never resolved during the test — a non-cooperative
+    // activity that never checks (or never honors) its AbortSignal. This
+    // makes the bound deterministic rather than a race: without a timeout,
+    // stop() could ONLY return if this promise settled, which it never does
+    // on its own.
+    const neverResolves = createDeferred<void>();
+    let pollCount = 0;
+
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+
+        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+          pollCount++;
+          if (pollCount === 1) {
+            return Response.json({
+              operationId: 'op-non-cooperative-1',
+              workerId: 'longpoll-non-cooperative-worker',
+              activityName: 'nonCooperativeActivity',
+              input: null,
+              attemptToken: 'attempt-token-non-cooperative',
+            });
+          }
+          return new Response(null, { status: 204 });
+        }
+
+        return new Response(null, { status: 204 });
+      },
+    });
+
+    const worker = new LongPollWorker({
+      serverUrl: `http://localhost:${server.port}`,
+      disconnectTimeoutMs: 100,
+      activities: {
+        // Ignores the AbortSignal entirely — the activity function never
+        // reads `context.signal`, matching a real non-cooperative activity
+        // (blocking native work, or code that simply never checks).
+        nonCooperativeActivity: async () => {
+          activityStarted.resolve();
+          await neverResolves.promise;
+          return 'unreachable';
+        },
+      },
+    });
+
+    worker.start();
+    await withTimeout(
+      activityStarted.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'long-poll non-cooperative activity start',
+    );
+
+    const before = Date.now();
+    await withTimeout(
+      worker.stop(),
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'long-poll stop() bounded by disconnectTimeoutMs',
+    );
+    const elapsedMs = Date.now() - before;
+
+    // Bounded: stop() gave up once disconnectTimeoutMs elapsed rather than
+    // waiting forever for an activity that will never finish on its own.
+    expect(elapsedMs).toBeLessThan(LONG_POLL_TEST_TIMEOUT_MS);
+    // The non-cooperative activity is still running — stop() did not, and
+    // cannot, force it to stop; it only stopped WAITING for it.
+    expect(worker.inFlight).toBe(1);
+
+    neverResolves.resolve();
+  });
+
   it('polls GET /api/v1/tasks/:queue for tasks and executes them', async () => {
     const completedTasks: any[] = [];
     const taskCompleted = createDeferred();

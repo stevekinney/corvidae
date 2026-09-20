@@ -4,7 +4,7 @@ This document describes the versioned worker transports Weft uses to dispatch ac
 
 ## At a glance
 
-- **Protocol version**: v5. `register.protocolVersion` is required and must be exactly `5`.
+- **Protocol version**: v6. `register.protocolVersion` is required and must be exactly `6`.
 - **Transport**: WebSocket text frames containing JSON objects.
 - **Endpoint**: `/api/v1/tasks/:queue/stream` on the Weft server. Connect to one queue per WebSocket.
 - **Direction**: bidirectional. Workers send `register`, `heartbeat`, `activityHeartbeat`, `taskResult`. Server sends `task`, `cancel`, `shutdown`, `registerAck`, `registerError`, `protocolError`, `taskResultAck`.
@@ -105,7 +105,12 @@ Worker                              Server
 
 The server tracks the worker by `workerId` in an in-memory registry. While a worker socket is live, another socket cannot claim the same `workerId`: the duplicate registration receives `registerError` with code `invalid_registration` and the server closes that socket. This blocks same-id task hijacking when authentication is disabled, but it also means a legitimate reconnect can be rejected until the old socket's close is observed.
 
-If a registered worker disconnects with tasks in flight, the server waits for the configured `ServeOptions.workerReconnectGracePeriodMs` before requeueing those tasks. A same-`workerId` `register` inside that grace window cancels the pending requeue and preserves the worker's in-flight assignments. If the window expires, the server reassigns the tasks to another available worker on the same queue or moves them through the fallback queue path according to the dispatch machinery. The grace window defaults to `2000` ms. Use `100` only for low-latency test or embedded scenarios, and use `5000` for cloud or load-balancer deployments where replacement workers commonly need several seconds to reconnect.
+If a registered worker disconnects with tasks in flight, the server waits for the configured `ServeOptions.workerReconnectGracePeriodMs` before requeueing those tasks. A same-`workerId` `register` inside that grace window is either a PROVEN or an UNPROVEN resume (protocol v6, COR-220):
+
+- **Proven** — the reconnecting `register` echoes `resumeSessionGeneration` equal to the `sessionGeneration` the server handed back on the `registerAck` for the session that just disconnected. The pending requeue is cancelled, the session's generation is left unchanged, and every in-flight attempt — its attempt token, its heartbeat-renewable lease deadline, and its absolute attempt deadline — is preserved exactly as it was at disconnect. Nothing is reclaimed and no lease is reset.
+- **Unproven** — `resumeSessionGeneration` is absent or does not match. The server treats this exactly as if the grace window had already lapsed: it forfeits the disconnected session's in-flight work immediately (the same requeue the grace timer would eventually have run) and then registers a brand new session, with `sessionGeneration` incremented, before acknowledging.
+
+If the grace window expires with no reconnect at all, the server reassigns the in-flight tasks to another available worker on the same queue (or moves them through the fallback queue path) and rotates their attempt tokens before the next dispatch. A worker that reconnects with the same `workerId` afterward always registers a fresh, unproven session — it may be reselected by routing for the very task it used to hold, but any frame it sends for the OLD attempt token is rejected: the ledger's current attempt has already moved on. The grace window defaults to `2000` ms. Use `100` only for low-latency test or embedded scenarios, and use `5000` for cloud or load-balancer deployments where replacement workers commonly need several seconds to reconnect.
 
 ## Message catalog
 
@@ -122,11 +127,11 @@ Sent immediately after the WebSocket opens.
 ```json
 {
   "type": "register",
-  "protocolVersion": 5,
+  "protocolVersion": 6,
   "workerId": "<string>",
   "manifest": {
     "manifestVersion": 1,
-    "protocolVersion": 5,
+    "protocolVersion": 6,
     "sdkVersion": "0.18.0",
     "runtime": { "name": "bun", "version": "1.3.14" },
     "deployment": {
@@ -150,18 +155,20 @@ Sent immediately after the WebSocket opens.
     "capabilities": { "region": "us-west" }
   },
   "concurrency": 10,
-  "startedAt": 1778608949187
+  "startedAt": 1778608949187,
+  "resumeSessionGeneration": 2
 }
 ```
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"register"` | Yes | Message discriminator. |
-| `protocolVersion` | `5` | Yes | Required v5 protocol version. Missing or unsupported versions receive `registerError`. |
+| `protocolVersion` | `6` | Yes | Required v6 protocol version. Missing or unsupported versions receive `registerError`. |
 | `workerId` | string | Yes | Stable identifier for this worker. Must be non-empty. |
 | `manifest` | `WorkerManifest` | Yes | Canonical worker manifest—deployment, runtime, workflows, activities, and capabilities. Deeply validated by `parseWorkerManifest()` server-side, not by this wire-shape layer; see [Canonical worker manifest](api-workers.md#canonical-worker-manifest). Routing `activities` are derived from `manifest.workflows`, not sent as a separate field. |
 | `concurrency` | number | No | Maximum concurrent tasks. Server clamps finite numbers to `[1, 1000]`. Defaults to `10`. |
 | `startedAt` | number | No | Worker process start time in epoch milliseconds. Defaults to registration time when omitted. |
+| `resumeSessionGeneration` | number | No (v6, COR-220) | Echo of the `sessionGeneration` the server returned on the `registerAck` for a prior session this connection is trying to resume. Present only on a reconnect; omitted on a fresh connect. A match while the reconnecting `workerId` still has a pending grace-period requeue is a PROVEN resume — see [Lifecycle](#lifecycle) above. |
 
 `queue`, `deploymentName`, `buildId`, `runtimeVersion`, `gitSha`, and `capabilities` are no longer top-level `register` fields as of protocol v3—deployment and runtime identity live inside `manifest`, `gitSha` was retired entirely, and the effective queue always comes from the worker-stream URL rather than a field a worker could disagree with.
 
@@ -354,24 +361,26 @@ Server acknowledgement that registration succeeded.
 ```json
 {
   "type": "registerAck",
-  "protocolVersion": 5,
+  "protocolVersion": 6,
   "workerId": "<string>",
   "queue": "default",
   "concurrency": 10,
   "acceptedManifestDigest": "sha256:41d0e2",
-  "serverCapabilities": []
+  "serverCapabilities": [],
+  "sessionGeneration": 1
 }
 ```
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"registerAck"` | Yes | Message discriminator. |
-| `protocolVersion` | `5` | Yes | Effective protocol version. |
+| `protocolVersion` | `6` | Yes | Effective protocol version. |
 | `workerId` | string | Yes | Accepted worker identifier. |
 | `queue` | string | Yes | Effective queue from the WebSocket URL. |
 | `concurrency` | number | Yes | Effective concurrency after server clamping to the supported capacity. |
 | `acceptedManifestDigest` | string | Yes | Digest of the canonical manifest the server stored, from `computeWorkerManifestDigest()`. |
 | `serverCapabilities` | string[] | Yes | Bounded list of server-side capability names. Currently always empty. |
+| `sessionGeneration` | number | Yes (v6, COR-220) | The generation of the session just registered. Increments on every fresh or unproven-reconnect registration for this `workerId` while a prior session is still tracked; unchanged on a proven resume. Once a session is fully removed (the grace window lapsed with no reconnect, or the worker was explicitly unregistered), the next registration for that `workerId` starts back at `1` — generation is not a lifetime counter, only a discriminator among sessions the server still remembers. A worker caches this value and echoes it back as `register.resumeSessionGeneration` if this connection is ever lost. |
 
 `registerAck` no longer echoes `activities`—the worker already knows what it sent, and routing activities are derived server-side from the accepted manifest. Workers should not start heartbeats or report `connect()` success until this message arrives.
 
@@ -384,7 +393,7 @@ Server rejection of registration. The server sends this message, then closes the
   "type": "registerError",
   "code": "unsupported_protocol_version",
   "message": "Unsupported RemoteWorker protocol version: 1",
-  "supportedProtocolVersions": [5],
+  "supportedProtocolVersions": [6],
   "requestedProtocolVersion": 1
 }
 ```
@@ -452,7 +461,7 @@ The command starts a localhost Weft server and launches the worker command with 
 | `WEFT_WORKER_URL`              | WebSocket URL for the temporary worker endpoint. |
 | `WEFT_WORKER_QUEUE`            | Queue name the worker should register for.       |
 | `WEFT_WORKER_ACTIVITIES`       | Comma-separated activity names to implement.     |
-| `WEFT_WORKER_PROTOCOL_VERSION` | Current protocol version, `3`.                   |
+| `WEFT_WORKER_PROTOCOL_VERSION` | Current protocol version, `6`.                   |
 
 The conformance runner verifies registration acknowledgement, echo task completion, heartbeat-preserved work, cancellation, in-flight reassignment after disconnect, graceful shutdown, and failure of a deliberately broken worker fixture. `--json` returns a stable machine-readable report. Without `--json`, each check prints as `PASS` or `FAIL`.
 

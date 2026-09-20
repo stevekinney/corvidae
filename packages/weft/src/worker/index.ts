@@ -212,6 +212,19 @@ export class RemoteWorker implements Disposable {
   #disposed: boolean;
   /** Resolved worker id (provided or generated), stable for the instance lifetime. */
   #workerId: string;
+  /**
+   * The `sessionGeneration` from the most recent `registerAck` (protocol v6,
+   * COR-220), echoed back as `register.resumeSessionGeneration` on the next
+   * `connect()` so the server can recognize a reconnect as a PROVEN resume of
+   * this exact session rather than a brand new one. Same lifetime rule as
+   * `#taskResultOutbox`: survives an involuntary socket loss (the whole point
+   * of proving a resume on the automatic or caller-driven reconnect that
+   * follows), and is cleared only by a DELIBERATE `disconnect()` or
+   * `[Symbol.dispose]()` — at that point this worker is no longer trying to
+   * continue any particular session, so a later `connect()` should register
+   * fresh, not claim continuity with a session it chose to leave.
+   */
+  #lastSessionGeneration: number | undefined;
 
   constructor(options: InternalRemoteWorkerOptions) {
     this.#activityTable = resolveActivityTable(options);
@@ -242,6 +255,7 @@ export class RemoteWorker implements Disposable {
       options.maxBufferedResults ?? MAX_BUFFERED_TASK_RESULTS,
     );
     this.#disposed = false;
+    this.#lastSessionGeneration = undefined;
     this.#heartbeat = new HeartbeatManager(() => {
       this.#sendMessage({ type: 'heartbeat', workerId: this.#workerId });
     }, HEARTBEAT_INTERVAL_MS);
@@ -288,7 +302,9 @@ export class RemoteWorker implements Disposable {
       ws.addEventListener(
         'open',
         () => {
-          this.#sendMessage(buildRegisterMessage(this.#workerId, this.#options));
+          this.#sendMessage(
+            buildRegisterMessage(this.#workerId, this.#options, this.#lastSessionGeneration),
+          );
         },
         { signal: this.#abortController.signal },
       );
@@ -332,6 +348,10 @@ export class RemoteWorker implements Disposable {
   async disconnect(): Promise<{ unacknowledgedResults: number }> {
     this.#heartbeat.stop();
     await this.#drainAndClose();
+    // Deliberate disconnect — this worker is no longer trying to continue
+    // any particular session, so a later connect() registers fresh rather
+    // than claiming a resume. See `#lastSessionGeneration`'s doc comment.
+    this.#lastSessionGeneration = undefined;
     return { unacknowledgedResults: this.#taskResultOutbox.size };
   }
 
@@ -365,6 +385,7 @@ export class RemoteWorker implements Disposable {
     // re-buffering a result disposal is discarding.
     this.#disposed = true;
     this.#taskResultOutbox.clear();
+    this.#lastSessionGeneration = undefined;
     this.#abortAllTasks();
     this.#rejectPendingRegistration('Worker disposed before worker registration completed');
     this.#abortController.abort();
@@ -456,8 +477,13 @@ export class RemoteWorker implements Disposable {
     return parsed.message;
   }
 
-  #handleRegisterAck(): void {
+  #handleRegisterAck(sessionGeneration: number): void {
     if (this.#pendingRegistration === null) return;
+
+    // Cache for the NEXT connect() — see `#lastSessionGeneration`'s doc
+    // comment for the full lifetime rule (kept across an involuntary drop,
+    // cleared only by a deliberate disconnect()/dispose()).
+    this.#lastSessionGeneration = sessionGeneration;
 
     const pending = this.#pendingRegistration;
     // Null the pending registration first so #readySocket() reports ready
@@ -517,7 +543,7 @@ export class RemoteWorker implements Disposable {
 
     switch (data.type) {
       case 'registerAck':
-        this.#handleRegisterAck();
+        this.#handleRegisterAck(data.sessionGeneration);
         break;
       case 'registerError':
         this.#handleRegisterError(data.message);

@@ -38,6 +38,7 @@ export type TaskDetailOperationTypes = {
       | {
           readonly activityName: string;
           readonly attempt: number;
+          readonly attemptDeadline?: number;
           readonly createdAt: number;
           readonly executionRequirement?: SharedActivityContractHashArti_d7d91df4;
           readonly fairShareKey?: string;
@@ -66,6 +67,7 @@ export type TaskDetailOperationTypes = {
       | {
           readonly activityName: string;
           readonly attempt: number;
+          readonly attemptDeadline?: number;
           readonly createdAt: number;
           readonly executionRequirement?: SharedActivityContractHashArti_d7d91df4;
           readonly fairShareKey?: string;
@@ -96,6 +98,7 @@ export type TaskDetailOperationTypes = {
       | {
           readonly activityName: string;
           readonly attempt: number;
+          readonly attemptDeadline?: number;
           readonly cancellationReason: string;
           readonly cancellationRequestedAt: number;
           readonly createdAt: number;

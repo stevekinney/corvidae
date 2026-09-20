@@ -161,11 +161,19 @@ function attemptFields(record: RemoteTaskAttemptFields) {
 function leaseHolderFields(
   record: Pick<
     RemoteTaskLeased | RemoteTaskCompleting | RemoteTaskCancelling,
-    'leaseDeadline' | 'firstQueuedAt' | 'lastQueuedAt' | 'startedAt' | 'lastHeartbeatAt'
+    | 'leaseDeadline'
+    | 'attemptDeadline'
+    | 'firstQueuedAt'
+    | 'lastQueuedAt'
+    | 'startedAt'
+    | 'lastHeartbeatAt'
   >,
 ) {
   return {
     leaseDeadline: record.leaseDeadline,
+    // A clock, not identity — unlike `attemptToken`/`workerSessionId`, this
+    // module's own excluded-fields list never covered it (COR-220).
+    ...(record.attemptDeadline !== undefined ? { attemptDeadline: record.attemptDeadline } : {}),
     firstQueuedAt: record.firstQueuedAt,
     lastQueuedAt: record.lastQueuedAt,
     startedAt: record.startedAt,

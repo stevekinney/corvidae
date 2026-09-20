@@ -37,6 +37,18 @@ export interface LongPollWorkerOptions {
   headers?: Record<string, string>;
   /** Activity interceptors to run around each activity execution on this worker. */
   interceptors?: ActivityInterceptor[];
+  /**
+   * Bound on how long {@link LongPollWorker.stop} waits for in-flight
+   * activities to actually finish unwinding after signaling their
+   * `AbortController`s, before returning anyway (COR-220, "bounded drain").
+   * `stop()` aborts every in-flight activity synchronously and immediately;
+   * this timeout only covers the COOPERATIVE part — an activity that ignores
+   * its `AbortSignal` (or is stuck in non-abortable synchronous/native work)
+   * would otherwise hold `stop()` open forever, matching `RemoteWorker`'s
+   * `disconnectTimeoutMs` bound on the identical problem. Defaults to
+   * `30_000`.
+   */
+  disconnectTimeoutMs?: number;
 }
 
 type PolledTask = {
@@ -60,6 +72,8 @@ const DEFAULT_CONCURRENCY = 10;
 const DEFAULT_QUEUE = 'default';
 const DEFAULT_POLL_TIMEOUT = 30_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 10_000;
+/** Default {@link LongPollWorkerOptions.disconnectTimeoutMs} — matches `RemoteWorker`'s `DEFAULT_DISCONNECT_TIMEOUT_MS`. */
+const DEFAULT_DISCONNECT_TIMEOUT_MS = 30_000;
 
 // ---------------------------------------------------------------------------
 // LongPollWorker
@@ -123,6 +137,7 @@ export class LongPollWorker implements Disposable {
       queue: options.queue ?? DEFAULT_QUEUE,
       pollTimeout: options.pollTimeout ?? DEFAULT_POLL_TIMEOUT,
       heartbeatIntervalMs: options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
+      disconnectTimeoutMs: options.disconnectTimeoutMs ?? DEFAULT_DISCONNECT_TIMEOUT_MS,
     };
     this.#running = false;
     this.#inFlight = 0;
@@ -142,15 +157,30 @@ export class LongPollWorker implements Disposable {
     void this.#pollLoop();
   }
 
-  /** Stop polling and wait for in-flight to finish. */
+  /**
+   * Stop polling and wait for in-flight activities to finish, up to
+   * {@link LongPollWorkerOptions.disconnectTimeoutMs} (COR-220, bounded
+   * drain). Every in-flight `AbortController` is aborted synchronously and
+   * immediately — the bound only covers how long this then waits for that
+   * cooperative unwind to actually complete before giving up and returning
+   * anyway, matching `RemoteWorker`'s identical `disconnectTimeoutMs` bound
+   * on the same problem: a non-cooperative activity that ignores its
+   * `AbortSignal` must not hold `stop()` open forever.
+   */
   async stop(): Promise<void> {
     this.#abortController.abort();
     this.#running = false;
     this.#abortAllTasks();
 
-    // Wait for in-flight tasks to complete
-    while (this.#inFlight > 0) {
+    const deadline =
+      Date.now() + (this.#options.disconnectTimeoutMs ?? DEFAULT_DISCONNECT_TIMEOUT_MS);
+    while (this.#inFlight > 0 && Date.now() < deadline) {
       await sleep(50);
+    }
+    if (this.#inFlight > 0) {
+      console.warn(
+        `[weft] LongPollWorker stop() timed out with ${String(this.#inFlight)} activities still in-flight — a non-cooperative activity may be ignoring its AbortSignal`,
+      );
     }
   }
 

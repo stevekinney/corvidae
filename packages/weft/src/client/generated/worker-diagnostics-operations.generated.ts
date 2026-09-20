@@ -21,8 +21,10 @@ export type WorkerDiagnosticsOperationTypes = {
           readonly connectedAt: number;
           readonly health: 'active' | 'draining' | 'drained';
           readonly heartbeatAgeMs: number;
+          readonly inFlight: number;
           readonly lastHeartbeatAt: number;
           readonly queue: string;
+          readonly sessionGeneration: number;
           readonly startedAt: number;
           readonly workerId: string;
         };

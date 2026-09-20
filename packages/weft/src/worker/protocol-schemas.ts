@@ -58,6 +58,7 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
       manifest: { type: 'object' },
       concurrency: { type: 'number', minimum: 1, maximum: 1000 },
       startedAt: { type: 'number' },
+      resumeSessionGeneration: { type: 'number', minimum: 1 },
     },
   },
   heartbeat: {
@@ -169,6 +170,7 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
       'concurrency',
       'acceptedManifestDigest',
       'serverCapabilities',
+      'sessionGeneration',
     ],
     properties: {
       type: { const: 'registerAck' },
@@ -181,6 +183,7 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
         type: 'array',
         items: { type: 'string', minLength: 1 },
       },
+      sessionGeneration: { type: 'number', minimum: 1 },
     },
   },
   registerError: {

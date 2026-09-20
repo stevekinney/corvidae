@@ -552,9 +552,11 @@ export function handleWorkerWebSocketMessage(
 
   switch (message.type) {
     case 'register': {
-      void registerWorker(context, options, ws, message).catch((error: unknown) => {
-        console.error(`[weft] Failed to register worker "${message.workerId}":`, error);
-      });
+      void registerWorker(context, options, ws, message, cleanupWorkflowIndex).catch(
+        (error: unknown) => {
+          console.error(`[weft] Failed to register worker "${message.workerId}":`, error);
+        },
+      );
       break;
     }
     case 'taskResult': {

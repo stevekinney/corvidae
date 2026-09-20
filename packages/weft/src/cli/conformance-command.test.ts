@@ -104,11 +104,11 @@ describe('conformance command — protocol version (COR-240)', () => {
       result.stdout,
     );
     expect(report.protocolVersion).toBe(REMOTE_WORKER_PROTOCOL_VERSION);
-    expect(report.protocolVersion).toBe(5);
+    expect(report.protocolVersion).toBe(6);
     expect(report.supportedProtocolVersions).toEqual([
       ...REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS,
     ]);
-    expect(report.supportedProtocolVersions).toEqual([5]);
+    expect(report.supportedProtocolVersions).toEqual([6]);
   });
 
   it('rejects a worker that still registers with the retired protocol version 3 — no dual compatibility parser', async () => {

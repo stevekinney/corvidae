@@ -31,7 +31,7 @@ import {
   minimalServeOptions,
   minimalServerContext,
 } from './runtime/server-context.test-support.ts';
-import { handleTaskHeartbeatRequest } from './runtime/task-polling.ts';
+import { handleTaskHeartbeatRequest, handleTaskResultRequest } from './runtime/task-polling.ts';
 import { scanExpiredTasks } from './runtime/task-reconciliation.ts';
 import { handleWorkerWebSocketMessage } from './runtime/websocket-worker.ts';
 import {
@@ -39,6 +39,7 @@ import {
   claimQueued,
   createQueued,
   recordCancellationIntent,
+  requeueExpiredAttempt,
 } from './task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
@@ -592,5 +593,118 @@ describe('Long-poll activity heartbeat — same shared seam as WebSocket (COR-23
     expect(record?.state === 'cancelling' && record.leaseDeadline).toBe(
       cancelling.nextRecord.leaseDeadline,
     );
+  });
+
+  it('COR-220 criterion 3, long-poll analogue: once the lease expires and a new claim reclaims the operation, the OLD attemptToken is rejected on both /result and /heartbeat, and the NEW one succeeds', async () => {
+    const { storage, options, context, claimed } = await setUpLongPoll(1_000);
+
+    // The lease expires with no result or heartbeat from the first claim.
+    useFakeTimers(claimed.leaseDeadline + 1);
+    const requeued = requeueExpiredAttempt(
+      claimed,
+      { attemptToken: 'lp-attempt-1', requeueReason: 'visibility-timeout' },
+      Date.now(),
+    );
+    if (!requeued.ok || requeued.nextRecord.state !== 'queued') {
+      throw new Error(`Expected the expired attempt to requeue: ${JSON.stringify(requeued)}`);
+    }
+    await storage.put(taskLedgerKey('op-lp-1'), encodeRemoteTaskRecord(requeued.nextRecord));
+
+    // A fresh long-poll claim reclaims the SAME operation with a rotated
+    // token — the exact ledger-level effect a real second poll produces via
+    // `markTaskClaimedByLongPollWorker` (proven end-to-end elsewhere); driven
+    // here through the same pure `claimQueued` transition `setUpLongPoll`
+    // itself used for the first claim, consistent with this file's
+    // hand-built-ledger-record convention.
+    const reclaimed = claimQueued(
+      requeued.nextRecord,
+      {
+        expectedGeneration: requeued.nextRecord.generation,
+        attemptToken: 'lp-attempt-2',
+        workerSessionId: 'longpoll-w2',
+        leaseDurationMilliseconds: 1_000,
+      },
+      Date.now(),
+    );
+    if (!reclaimed.ok) throw new Error(`Expected the reclaim to succeed: ${reclaimed.reason}`);
+    await storage.put(taskLedgerKey('op-lp-1'), encodeRemoteTaskRecord(reclaimed.nextRecord));
+
+    // The old attempt's heartbeat is rejected — same workerId is not even in
+    // play here (long-poll has no persistent session), just the fenced token.
+    const staleHeartbeat = await handleTaskHeartbeatRequest(
+      context,
+      options,
+      heartbeatRequest({
+        operationId: 'op-lp-1',
+        workerId: 'longpoll-w1',
+        attemptToken: 'lp-attempt-1',
+      }).request,
+      heartbeatRequest({
+        operationId: 'op-lp-1',
+        workerId: 'longpoll-w1',
+        attemptToken: 'lp-attempt-1',
+      }).url,
+    );
+    expect(staleHeartbeat?.status).toBe(403);
+
+    // The old attempt's result is rejected too.
+    const staleResult = await handleTaskResultRequest(
+      context,
+      options,
+      new Request('http://localhost/v1/tasks/default/result', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          operationId: 'op-lp-1',
+          workerId: 'longpoll-w1',
+          attemptToken: 'lp-attempt-1',
+          status: 'completed',
+          value: 'stale',
+        }),
+      }),
+      new URL('http://localhost/v1/tasks/default/result'),
+    );
+    expect(staleResult?.status).toBe(403);
+
+    // The record is untouched by either stale attempt — still the reclaimed
+    // attempt, unchanged.
+    const afterStaleAttempts = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-lp-1')));
+    if (afterStaleAttempts?.state !== 'leased') throw new Error('Expected a leased record');
+    expect(afterStaleAttempts.attemptToken).toBe('lp-attempt-2');
+
+    // The new attempt's heartbeat and result both succeed.
+    const freshHeartbeat = await handleTaskHeartbeatRequest(
+      context,
+      options,
+      heartbeatRequest({
+        operationId: 'op-lp-1',
+        workerId: 'longpoll-w2',
+        attemptToken: 'lp-attempt-2',
+      }).request,
+      heartbeatRequest({
+        operationId: 'op-lp-1',
+        workerId: 'longpoll-w2',
+        attemptToken: 'lp-attempt-2',
+      }).url,
+    );
+    expect(freshHeartbeat?.status).toBe(200);
+
+    const freshResult = await handleTaskResultRequest(
+      context,
+      options,
+      new Request('http://localhost/v1/tasks/default/result', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          operationId: 'op-lp-1',
+          workerId: 'longpoll-w2',
+          attemptToken: 'lp-attempt-2',
+          status: 'completed',
+          value: 'fresh',
+        }),
+      }),
+      new URL('http://localhost/v1/tasks/default/result'),
+    );
+    expect(freshResult?.status).toBe(200);
   });
 });
