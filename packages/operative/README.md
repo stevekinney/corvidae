@@ -551,9 +551,9 @@ session.conversationHistory = conversation.current;
 await sessions.save(session);
 
 // Once you're done with a session, remove it directly, or reclaim storage
-// in bulk on a schedule—these don't apply to the session used above; run
-// them against a session you actually want to discard.
-await sessions.delete('session-abc');
+// in bulk on a schedule. This targets a different, disposable session—not
+// 'session-abc' above, whose resumed turn was just persisted.
+await sessions.delete('session-to-discard');
 await sessions.cleanup({ olderThan: 7 * 24 * 60 * 60 * 1000 }); // 1 week
 ```
 

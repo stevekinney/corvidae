@@ -17,12 +17,12 @@
     },
     "columnWidth": {
       "type": "number",
-      "description": "Character-cell width, in pixels, used to compute `{ cols, rows }` on\nresize. Must be positive and finite, or `onDimensionsChange` never\nfires (see that prop). Defaults to `8`.",
+      "description": "Character-cell width, in pixels, used to compute `{ cols, rows }` on\nresize. Must be positive and finite for a new measurement to run (see\n`onDimensionsChange` for the one exception). Defaults to `8`.",
       "default": 8
     },
     "rowHeight": {
       "type": "number",
-      "description": "Character-cell height, in pixels, used to compute `{ cols, rows }` on\nresize. Must be positive and finite, or `onDimensionsChange` never\nfires (see that prop). Defaults to `18`.",
+      "description": "Character-cell height, in pixels, used to compute `{ cols, rows }` on\nresize. Must be positive and finite for a new measurement to run (see\n`onDimensionsChange` for the one exception). Defaults to `18`.",
       "default": 18
     },
     "class": {
@@ -43,7 +43,7 @@
       {
         "name": "onDimensionsChange",
         "reason": "function-or-snippet",
-        "description": "Called with `{ cols, rows }` whenever the character-cell size changes,\nso the host can resize its PTY. Does not fire at all—not even once,\non mount—if `columnWidth` or `rowHeight` is non-finite or `<= 0`; both\nmust be positive and finite for dimension reporting to run."
+        "description": "Called with `{ cols, rows }` whenever the character-cell size changes,\nso the host can resize its PTY. A new measurement is never taken—and\nthis never fires from one—while `columnWidth` or `rowHeight` is\nnon-finite or `<= 0`. That's not an absolute guarantee this never\nfires while invalid, though: the component replays the last valid\nmeasurement whenever the `onDimensionsChange` reference itself changes\n(e.g. a parent passing a new inline handler each render), and that\nreplay doesn't re-check `columnWidth`/`rowHeight`—so a stale\nmeasurement can still reach a newly-passed handler even after the\ncell size becomes invalid."
       },
       {
         "name": "onReloadRequest",

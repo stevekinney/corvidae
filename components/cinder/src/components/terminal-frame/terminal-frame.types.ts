@@ -28,22 +28,28 @@ export type TerminalFrameProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 
   onReloadRequest?: () => void;
   /**
    * Called with `{ cols, rows }` whenever the character-cell size changes,
-   * so the host can resize its PTY. Does not fire at all—not even once,
-   * on mount—if `columnWidth` or `rowHeight` is non-finite or `<= 0`; both
-   * must be positive and finite for dimension reporting to run.
+   * so the host can resize its PTY. A new measurement is never taken—and
+   * this never fires from one—while `columnWidth` or `rowHeight` is
+   * non-finite or `<= 0`. That's not an absolute guarantee this never
+   * fires while invalid, though: the component replays the last valid
+   * measurement whenever the `onDimensionsChange` reference itself changes
+   * (e.g. a parent passing a new inline handler each render), and that
+   * replay doesn't re-check `columnWidth`/`rowHeight`—so a stale
+   * measurement can still reach a newly-passed handler even after the
+   * cell size becomes invalid.
    */
   onDimensionsChange?: (dimensions: TerminalFrameDimensions) => void;
   /**
    * Character-cell width, in pixels, used to compute `{ cols, rows }` on
-   * resize. Must be positive and finite, or `onDimensionsChange` never
-   * fires (see that prop). Defaults to `8`.
+   * resize. Must be positive and finite for a new measurement to run (see
+   * `onDimensionsChange` for the one exception). Defaults to `8`.
    * @default 8
    */
   columnWidth?: number;
   /**
    * Character-cell height, in pixels, used to compute `{ cols, rows }` on
-   * resize. Must be positive and finite, or `onDimensionsChange` never
-   * fires (see that prop). Defaults to `18`.
+   * resize. Must be positive and finite for a new measurement to run (see
+   * `onDimensionsChange` for the one exception). Defaults to `18`.
    * @default 18
    */
   rowHeight?: number;

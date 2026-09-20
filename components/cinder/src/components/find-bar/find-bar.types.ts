@@ -51,7 +51,13 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * `value` via `bind:value`, or lowering `minQueryLength` so the current
    * `value` becomes eligible, does not itself call this callback—a host
    * that restores or sets `value` programmatically must trigger its own
-   * search rather than rely on this firing.
+   * search rather than rely on this firing. Exception: if the user typed
+   * an ineligible query and a debounce timer is already pending when
+   * `minQueryLength` is lowered enough to make that in-flight query
+   * eligible, the pending timer is not canceled or re-evaluated against
+   * the new threshold at the moment it changes—it still fires against the
+   * live `minQueryLength` when its debounce elapses, which can call this
+   * with the query the user typed before the threshold changed.
    */
   onQueryChange?: (query: string) => void;
   /** Called when the user requests the previous match. */
