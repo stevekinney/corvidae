@@ -118,6 +118,6 @@
   },
   "openQuestions": [
     "The cinder target's root manifest declares `applications/*`, `components/*`, `packages/*` and `internal/*` as its workspace globs. After this remap, `applications/*` and `components/*` match nothing corvidae emits; they are kept because a glob that matches nothing is harmless while narrowing the list could drop a workspace the target owns. Cinder's own root manifest lists `labs/chat-room`, which none of the emitted globs covers, so the emitted root already removes that lab from the target's workspace graph. That belongs with the `@corvidae/chat-room` ruling above.",
-    "`@corvidae/weft-ui` lands in the cinder target at `packages/weft-ui` purely because `targetFor` gives the weft target one member. If the weft repository is ever meant to receive it again, both that routing and this entry move together."
+    "`@corvidae/weft-ui` lands in the cinder target at `packages/weft-ui` purely because `targetFor` gives the weft target one member. The weft repository carried its own drifted copy at the same path; COR-1192 rules that copy retired rather than synced, which `target-owned.json`'s `retired` section records and the transform carries out. Three things now move together if the weft repository is ever meant to receive weft-ui again: that routing, this entry, and the retirement."
   ]
 }
