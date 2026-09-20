@@ -130,6 +130,14 @@ export interface DeclaredSourceFiles {
  * gate refusing the plan. Nothing here is broken — the gate's subject is narrower than its name —
  * but a read-by-path edge arrives only by someone noticing it, so it is worth suspecting whenever
  * an emitted test reads a fixture, a schema or a document by literal path.
+ *
+ * There are four kinds of edge out of the emitted set and the gate sees one. A module specifier
+ * it reads; a `Bun.file()` read it cannot; a markdown link it cannot; and a validator declared in
+ * `validationInputs`, which is not an edge the emitted source has at all. Each of the last three
+ * was found downstream of where it was introduced — the reads by the target's test suite, the
+ * links by the target's `verify-documentation.ts` one sync later — which is the system working,
+ * several steps further out than anyone wants. A document declared here is declared with
+ * whatever it links to.
  */
 export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
   '@corvidae/cinder': [
@@ -260,12 +268,13 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
     {
       paths: [
         'documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md',
+        'documentation/guides/remote-task-recovery.md',
         'documentation/guides/remote-workers.md',
         'documentation/reference/api-workers.md',
         'documentation/reference/remote-worker-protocol.md',
       ],
       reason:
-        '`src/worker/protocol.test.ts` reads all four by literal path with `Bun.file()` and asserts on their prose: the protocol reference’s `### `name`` headings must equal `Object.keys(REMOTE_WORKER_MESSAGE_SCHEMAS)`, and the other three must describe the protocol version `src/worker/protocol-version.ts` exports. Emitted without them, that suite reads the target’s copies while reading corvidae’s constant — and the target is three versions behind, documenting v3 under `#### ` headings, so the heading match yields an empty list and all five version assertions miss. These four are every documentation file anything emitted reads; corvidae’s weft carries eight and the target carries 156, so the other four here are declared by nothing and a `documentation/` root would claim 152 files of the target’s own. Corvidae’s copy overwrites the target’s, and for `api-workers.md` the target’s is the larger file — 37,778 bytes against 31,616 — so this is not only formatting drift a sync exists to flatten but upstream prose that the sync removes.',
+        '`src/worker/protocol.test.ts` reads all four by literal path with `Bun.file()` and asserts on their prose: the protocol reference’s `### `name`` headings must equal `Object.keys(REMOTE_WORKER_MESSAGE_SCHEMAS)`, and the other three must describe the protocol version `src/worker/protocol-version.ts` exports. Emitted without them, that suite reads the target’s copies while reading corvidae’s constant — and the target is three versions behind, documenting v3 under `#### ` headings, so the heading match yields an empty list and all five version assertions miss. These four are every documentation file anything emitted reads; corvidae’s weft carries eight and the target carries 156, so the other four here are declared by nothing and a `documentation/` root would claim 152 files of the target’s own. Corvidae’s copy overwrites the target’s, and for `api-workers.md` the target’s is the larger file — 37,778 bytes against 31,616 — so this is not only formatting drift a sync exists to flatten but upstream prose that the sync removes. `remote-task-recovery.md` is the fifth because the set has to be closed under links, not just under reads: nothing emitted opens it, but two of the four above link to it and the target runs `scripts/verify-documentation.ts` over local links. The target has no copy of its own — `gh api` answers 404 — so emitting four of five turned two working links into broken ones and failed that gate. Its own links reach only the three references already here plus three files under `src/`, so five closes the graph; the other three documentation files corvidae carries are linked from nothing declared.',
     },
   ],
 };

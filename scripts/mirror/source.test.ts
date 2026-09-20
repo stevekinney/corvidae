@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, normalize } from 'node:path';
 
 import { committedPlans } from './committed-plans.ts';
 import {
@@ -72,6 +72,46 @@ function weftDeclarationFixture(omitted?: string): Record<string, string> {
       .map((path) => [`packages/weft/${path}`, `// ${path}\n`]),
   );
 }
+
+describe('the documents a workspace declares', () => {
+  /**
+   * The declared set has to be closed under links, which is a fourth kind of edge and the third
+   * one no gate here sees.
+   *
+   * Four documents were declared because `protocol.test.ts` reads them; two of the four link to a
+   * fifth that was not declared and that the target does not carry, so a sync turned two working
+   * links into broken ones and the target's own `scripts/verify-documentation.ts` failed — one
+   * sync downstream of the change that caused it. This asserts the closure here instead.
+   *
+   * Scoped to links between documents, because a link out of `documentation/` is a different
+   * question: the architecture decision points at `../../../README.md`, which the transform does
+   * not emit and the target has always carried, so it resolves there and is none of this set's
+   * business.
+   */
+  test('every link between emitted documents lands on a document that is emitted', () => {
+    const { plan } = committedPlans.weft;
+    const emitted = new Set(Object.keys(plan.files));
+    const dangling: string[] = [];
+    for (const path of emitted) {
+      if (!path.endsWith('.md') || !path.includes('/documentation/')) continue;
+      const contents = plan.files[path];
+      const text =
+        typeof contents === 'string'
+          ? contents
+          : new TextDecoder().decode(contents ?? new Uint8Array());
+      for (const match of text.matchAll(/\]\(([^)]+)\)/g)) {
+        const href = match[1] ?? '';
+        if (/^(?:https?:|mailto:|#)/.test(href)) continue;
+        const relative = href.split('#')[0];
+        if (relative === undefined || relative === '') continue;
+        const resolved = normalize(join(dirname(path), relative));
+        if (!resolved.includes('/documentation/') || !resolved.endsWith('.md')) continue;
+        if (!emitted.has(resolved)) dangling.push(`${path} -> ${href}`);
+      }
+    }
+    expect(dangling).toEqual([]);
+  });
+});
 
 describe('the files that check a workspace’s emitted source', () => {
   const declared = (validationInputs['@corvidae/weft'] ?? []).flatMap((cluster) => cluster.paths);
