@@ -29,10 +29,16 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    */
   debounceMs?: number;
   /**
-   * Called with the debounced query text once it reaches `minQueryLength`.
-   * Also called immediately with `''`, bypassing the debounce, the moment a
-   * previously eligible query shrinks below `minQueryLength`—handle the
-   * empty-string case as a synchronous reset, not just the debounced value.
+   * Called with the debounced query text once user typing (the `input`
+   * event) reaches `minQueryLength`. Also called immediately with `''`,
+   * bypassing the debounce, the moment a previously eligible query shrinks
+   * below `minQueryLength`—handle the empty-string case as a synchronous
+   * reset, not just the debounced value. Only that ineligible-transition
+   * case is notified when triggered externally: assigning an eligible
+   * `value` via `bind:value`, or lowering `minQueryLength` so the current
+   * `value` becomes eligible, does not itself call this callback—a host
+   * that restores or sets `value` programmatically must trigger its own
+   * search rather than rely on this firing.
    */
   onQueryChange?: (query: string) => void;
   /** Called when the user requests the previous match. */

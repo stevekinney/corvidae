@@ -50,7 +50,7 @@ Docked find-in-document controls for a host-provided search backend.
 | `onDismiss` | `(opaque)` | no | — | Called when the user dismisses the find bar. Not expressible in JSON Schema; see the component types for the signature. |
 | `onNext` | `(opaque)` | no | — | Called when the user requests the next match. Not expressible in JSON Schema; see the component types for the signature. |
 | `onPrevious` | `(opaque)` | no | — | Called when the user requests the previous match. Not expressible in JSON Schema; see the component types for the signature. |
-| `onQueryChange` | `(opaque)` | no | — | Called with the debounced query text once it reaches `minQueryLength`. Also called immediately with `''`, bypassing the debounce, the moment a previously eligible query shrinks below `minQueryLength`—handle the empty-string case as a synchronous reset, not just the debounced value. Not expressible in JSON Schema; see the component types for the signature. |
+| `onQueryChange` | `(opaque)` | no | — | Called with the debounced query text once user typing (the `input` event) reaches `minQueryLength`. Also called immediately with `''`, bypassing the debounce, the moment a previously eligible query shrinks below `minQueryLength`—handle the empty-string case as a synchronous reset, not just the debounced value. Only that ineligible-transition case is notified when triggered externally: assigning an eligible `value` via `bind:value`, or lowering `minQueryLength` so the current `value` becomes eligible, does not itself call this callback—a host that restores or sets `value` programmatically must trigger its own search rather than rely on this firing. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

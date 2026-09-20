@@ -65,7 +65,7 @@
       {
         "name": "onQueryChange",
         "reason": "function-or-snippet",
-        "description": "Called with the debounced query text once it reaches `minQueryLength`.\nAlso called immediately with `''`, bypassing the debounce, the moment a\npreviously eligible query shrinks below `minQueryLength`—handle the\nempty-string case as a synchronous reset, not just the debounced value."
+        "description": "Called with the debounced query text once user typing (the `input`\nevent) reaches `minQueryLength`. Also called immediately with `''`,\nbypassing the debounce, the moment a previously eligible query shrinks\nbelow `minQueryLength`—handle the empty-string case as a synchronous\nreset, not just the debounced value. Only that ineligible-transition\ncase is notified when triggered externally: assigning an eligible\n`value` via `bind:value`, or lowering `minQueryLength` so the current\n`value` becomes eligible, does not itself call this callback—a host\nthat restores or sets `value` programmatically must trigger its own\nsearch rather than rely on this firing."
       }
     ]
   }

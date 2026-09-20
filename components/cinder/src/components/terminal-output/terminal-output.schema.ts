@@ -13,7 +13,7 @@ const schema = {
     followLatest: {
       type: 'boolean',
       description:
-        'Keeps the viewport anchored to the latest line while appending. Defaults to `true`; pass `false` when the host owns scroll position.',
+        "Keeps the viewport anchored to the latest line while appending.\nBindable, and not host-exclusive while bound: the component's own\nscroll handler reassigns it to `true` whenever the user scrolls back\nto the bottom, which resumes automatic scrolling on the next append.\nSetting `false` marks the current state, not a mode the component\nwill leave alone—a host that wants to keep owning scroll position\nafter that point must not bind `followLatest` (handle scrolling\nitself instead). Defaults to `true`.",
       default: true,
     },
     class: {

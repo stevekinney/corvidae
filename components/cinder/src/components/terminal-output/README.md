@@ -23,7 +23,7 @@ The root uses `role="log"` and `aria-live="polite"`; supply an accessible name s
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
-| `followLatest` | `boolean` | no | `true` | Keeps the viewport anchored to the latest line while appending. Defaults to `true`; pass `false` when the host owns scroll position. |
+| `followLatest` | `boolean` | no | `true` | Keeps the viewport anchored to the latest line while appending. Bindable, and not host-exclusive while bound: the component's own scroll handler reassigns it to `true` whenever the user scrolls back to the bottom, which resumes automatic scrolling on the next append. Setting `false` marks the current state, not a mode the component will leave alone—a host that wants to keep owning scroll position after that point must not bind `followLatest` (handle scrolling itself instead). Defaults to `true`. |
 | `value` | `string` | no | `""` | ANSI output text. Supports SGR 16-color foregrounds, bold/reset, carriage-return rewrites, and erase-line sequences. Defaults to `''`. |
 | `children` | `(opaque)` | no | — | Rendered in place of the ANSI output when `value` is empty, e.g. an empty state. Not expressible in JSON Schema; see the component types for the signature. |
 

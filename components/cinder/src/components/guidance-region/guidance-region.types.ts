@@ -8,9 +8,12 @@ export type GuidanceRegionProps = {
    */
   claims?: GuidanceClaim[];
   /**
-   * Version window claims are filtered against. When omitted, every claim
-   * is relevant and neither claim's `relevantFrom` nor `relevantUntil` is
-   * validated. When supplied, it must be SemVer-shaped
+   * Version window claims are filtered against. When omitted—or passed as
+   * `''`, which is treated identically to omitted, not as an invalid
+   * version—every claim is relevant and neither claim's `relevantFrom` nor
+   * `relevantUntil` is validated; this matters if an unset environment
+   * value can reach this prop as `''`. When supplied non-empty, it must be
+   * SemVer-shaped
    * (`major.minor.patch`, each numeric with no leading zero, an optional
    * `-prerelease`/`+build` suffix)—a shortened form like `'1.2'` fails to
    * parse. The parser is looser than strict SemVer in one respect: it
