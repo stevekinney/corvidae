@@ -1,5 +1,5 @@
-import { createCatalogSnapshot } from '../index.ts';
 import { describe, expect, it } from 'bun:test';
+import { createCatalogSnapshot } from '../index.ts';
 
 import { executeApi } from './api.ts';
 

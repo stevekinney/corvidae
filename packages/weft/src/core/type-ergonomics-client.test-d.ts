@@ -1,3 +1,8 @@
+import type {
+  HttpClient,
+  KnownWorkflowName as KnownWorkflowNameFromClientEntry,
+  UnknownNameWhenRegistryEmpty as UnknownNameWhenRegistryEmptyFromClientEntry,
+} from '../client/index.ts';
 import {
   type ClientHandle,
   type KnownWorkflowName,
@@ -5,11 +10,6 @@ import {
   type UnknownNameWhenRegistryEmpty,
   type WeftClient,
 } from '../index.ts';
-import type {
-  HttpClient,
-  KnownWorkflowName as KnownWorkflowNameFromClientEntry,
-  UnknownNameWhenRegistryEmpty as UnknownNameWhenRegistryEmptyFromClientEntry,
-} from '../client/index.ts';
 
 import type { Equals, WelcomeOutput } from './type-ergonomics.test-d.ts';
 

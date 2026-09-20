@@ -1,5 +1,5 @@
-import { VERSION } from '../index.ts';
 import { describe, expect, it } from 'bun:test';
+import { VERSION } from '../index.ts';
 import { executeVersion, parseCliArguments } from './index.ts';
 
 describe('CLI argument parsing', () => {
