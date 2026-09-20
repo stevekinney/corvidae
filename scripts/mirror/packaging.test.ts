@@ -220,6 +220,99 @@ describe('packaging checks against a packed tarball', () => {
   });
 });
 
+describe('COR-1230: the attw gate is scoped to internal-resolution-error', () => {
+  /**
+   * ESM-only, no `require` condition and no top-level `main`/`types` fallback. Against `attw`'s
+   * default profile this fails exactly the two rules COR-1230 rules ignorable: `CJSResolvesToESM`
+   * (no CJS entry point, so a `require()` resolves to ESM) and `NoResolution` under node10 (no
+   * `main`/`types` for the resolver that predates `exports`). Neither is a declaration defect.
+   */
+  function esmOnlyPackage(name: string): PackageFiles {
+    return {
+      'package.json': `${JSON.stringify(
+        {
+          name,
+          version: '1.0.0',
+          type: 'module',
+          license: 'MIT',
+          exports: {
+            '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+            './package.json': './package.json',
+          },
+          files: ['dist'],
+        },
+        undefined,
+        2,
+      )}\n`,
+      'dist/index.js': 'export const answer = 42;\n',
+      'dist/index.d.ts': 'export declare const answer: number;\n',
+    };
+  }
+
+  /**
+   * A declaration file importing an extensionless sibling. Under node16 module resolution a
+   * relative import from a `.d.ts` has to name its extension, so `attw` reports
+   * `InternalResolutionError` here regardless of `--ignore-rules`, since that rule is not one of
+   * the two COR-1230 names.
+   */
+  function internalResolutionErrorPackage(name: string): PackageFiles {
+    return {
+      'package.json': `${JSON.stringify(
+        {
+          name,
+          version: '1.0.0',
+          type: 'module',
+          license: 'MIT',
+          main: './dist/index.js',
+          types: './dist/index.d.ts',
+          exports: {
+            '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+            './package.json': './package.json',
+          },
+          files: ['dist'],
+        },
+        undefined,
+        2,
+      )}\n`,
+      'dist/index.js': "export * from './types.js';\n",
+      'dist/index.d.ts': "export * from './types';\n",
+      'dist/types.js': 'export const value = 1;\n',
+      'dist/types.d.ts': 'export declare const value: number;\n',
+    };
+  }
+
+  test('a tarball with only CJSResolvesToESM and node10 NoResolution passes', async () => {
+    await withPackage(esmOnlyPackage('@fixture/esm-only'), async (directory, scratch) => {
+      const tarball = await packWorkspace({
+        packageDirectory: directory,
+        destination: join(scratch, 'tarballs'),
+      });
+      const report = await checkTarball('@fixture/esm-only', tarball, corvidaeRoot);
+      expect(report.typeResolution.exitCode).toBe(0);
+      expect(() => assertTarballsPublishable([report])).not.toThrow();
+    });
+  }, 60_000);
+
+  test('a tarball carrying InternalResolutionError still fails the gate', async () => {
+    await withPackage(
+      internalResolutionErrorPackage('@fixture/internal-resolution-error'),
+      async (directory, scratch) => {
+        const tarball = await packWorkspace({
+          packageDirectory: directory,
+          destination: join(scratch, 'tarballs'),
+        });
+        const report = await checkTarball(
+          '@fixture/internal-resolution-error',
+          tarball,
+          corvidaeRoot,
+        );
+        expect(report.typeResolution.exitCode).not.toBe(0);
+        expect(() => assertTarballsPublishable([report])).toThrow(PackagingError);
+      },
+    );
+  }, 60_000);
+});
+
 describe('the consumer smoke test', () => {
   test('installs the tarball and imports every subpath it publishes', async () => {
     await withPackage(subpathPackage('@fixture/consumable'), async (directory, scratch) => {

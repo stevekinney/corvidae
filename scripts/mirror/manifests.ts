@@ -271,8 +271,10 @@ function rewriteWorkspaceManifest(
   } else {
     emitted['private'] = true;
   }
-  // Seeds a first publish. `applyPreservedFields` replaces this with the target's own version
-  // whenever the target already carries one, so it only survives where nothing has been released.
+  // Seeds a first publish. `composeManifest` replaces this with the target's own version whenever
+  // the target already carries one, so it only survives where nothing has been released. COR-1229:
+  // the planning loop below overwrites this again, to `package-map.json`'s `lastPublishedVersion`,
+  // for a workspace the target has no manifest for but the registry already carries a release of.
   emitted['version'] = '0.0.0';
   for (const field of dependencyFields) {
     const block = workspace.manifest[field];
@@ -478,8 +480,19 @@ export interface ManifestPlan {
   target: MirrorTarget;
   /** Target-relative path to file contents, ready for `writeTransformOutput`. */
   files: Record<string, string>;
-  /** Public names emitted at `0.0.0` because the target carries no version for them yet. */
+  /**
+   * Public names emitted at `0.0.0` because the target carries no version for them yet and
+   * `package-map.json` records none either: a genuine first publish, nothing to seed from.
+   */
   firstPublish: string[];
+  /**
+   * Public names emitted at `package-map.json`'s `lastPublishedVersion` rather than at `0.0.0`,
+   * because the target carries no manifest for the workspace but the registry already does.
+   * COR-1229: seeding this way, instead of throwing on the missing manifest or leaving the version
+   * at `0.0.0`, is a ruling, not a fact recomputed elsewhere — every consumer of a plan has to
+   * surface this list rather than treat a seeded version as an ordinary first publish.
+   */
+  seededFromPackageMap: string[];
   /** Internal edges dropped because the other end does not exist in this target. */
   droppedEdges: string[];
   /**
@@ -591,6 +604,7 @@ export async function planManifests({
   const licence = await Bun.file(join(corvidaeRoot, 'LICENSE')).text();
   const files: Record<string, string> = {};
   const firstPublish: string[] = [];
+  const seededFromPackageMap: string[] = [];
   const addedDependencies: string[] = [];
   const mirrorPackages = new Set(publicNames.values());
 
@@ -606,8 +620,18 @@ export async function planManifests({
     const path = `${directory}/package.json`;
     const emitted = rewriteWorkspaceManifest(workspace, disposition, context);
     const existing = await readExistingManifest(targetDirectory, path);
-    if (existing === undefined && disposition.disposition === 'publish-as') {
-      assertNoPublishedPredecessor(workspace.name, disposition, targetDirectory, path);
+    // COR-1229: a workspace the target has no manifest for is a first publish only when
+    // `package-map.json` has no released version to seed from either. Where it does, that
+    // version is a fact worth carrying forward, not a rewind — seeding it is strictly more
+    // correct than emitting `0.0.0` over a package the registry already has, and both branches
+    // below are reported rather than left implicit in the version alone.
+    if (existing === undefined) {
+      if (disposition.disposition === 'publish-as' && disposition.lastPublishedVersion !== null) {
+        emitted['version'] = disposition.lastPublishedVersion;
+        seededFromPackageMap.push(String(emitted['name']));
+      } else {
+        firstPublish.push(String(emitted['name']));
+      }
     }
     const composed = composeManifest({
       policy: resolvedPolicy,
@@ -617,9 +641,6 @@ export async function planManifests({
       mirrorPackages,
     });
     for (const entry of composed.added) addedDependencies.push(`${path}: ${entry}`);
-    if (composed.manifest['version'] === '0.0.0') {
-      firstPublish.push(String(composed.manifest['name']));
-    }
 
     files[path] = serialize(composed.manifest);
     files[`${directory}/LICENSE`] = licence;
@@ -645,6 +666,7 @@ export async function planManifests({
     target,
     files,
     firstPublish: firstPublish.toSorted(),
+    seededFromPackageMap: seededFromPackageMap.toSorted(),
     droppedEdges: context.dropped,
     addedDependencies: addedDependencies.toSorted(),
     emitted: emittedWorkspaces,
@@ -669,24 +691,6 @@ function assertPublicNamesUnique(publicNames: ReadonlyMap<string, string>): void
     }
     seen.set(publicName, workspace);
   }
-}
-
-/**
- * A package the registry already has must exist in the target clone. Seeding `0.0.0` for one would
- * silently rewind a released package, so an incomplete clone fails here instead.
- */
-function assertNoPublishedPredecessor(
-  workspace: string,
-  disposition: WorkspaceDisposition,
-  targetDirectory: string | undefined,
-  path: string,
-): void {
-  if (disposition.disposition !== 'publish-as') return;
-  if (disposition.lastPublishedVersion === null) return;
-  if (targetDirectory === undefined) return;
-  throw new ManifestTransformError(
-    `${workspace} is published at ${disposition.lastPublishedVersion} but the target has no ${path}; refusing to seed a first-publish version over a released package`,
-  );
 }
 
 export interface StageResult extends ManifestPlan {
@@ -769,6 +773,11 @@ export async function runManifestTransform(argv: readonly string[]): Promise<num
     process.stdout.write(`Staged ${result.written.length} file(s) for ${target} in ${directory}\n`);
     if (result.firstPublish.length > 0) {
       process.stdout.write(`First publish, seeded at 0.0.0: ${result.firstPublish.join(', ')}\n`);
+    }
+    if (result.seededFromPackageMap.length > 0) {
+      process.stdout.write(
+        `Seeded from package-map.json's lastPublishedVersion, target has no manifest yet: ${result.seededFromPackageMap.join(', ')}\n`,
+      );
     }
     if (result.droppedEdges.length > 0) {
       process.stdout.write(`Dropped cross-target edges: ${result.droppedEdges.join(', ')}\n`);
