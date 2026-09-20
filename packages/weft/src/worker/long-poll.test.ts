@@ -192,7 +192,7 @@ describe('LongPollWorker', () => {
     // makes the bound deterministic rather than a race: without a timeout,
     // stop() could ONLY return if this promise settled, which it never does
     // on its own.
-    const neverResolves = createDeferred<void>();
+    const neverResolves = createDeferred();
     let pollCount = 0;
 
     server = Bun.serve({

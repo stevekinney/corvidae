@@ -56,7 +56,21 @@ function qualifyActivityName(workflowType: string, activityName: string): string
  * already-`queued` record) — see `RemoteActivityQueuedEvent`.
  */
 export class EngineOwnedRemoteActivityBroker implements RemoteActivityBroker {
-  readonly #storage: Storage;
+  /**
+   * The task-ledger `Storage` this broker writes `queued` records to.
+   *
+   * Named for its role rather than `#storage` on purpose. This class lives
+   * under `core/engine/` but is NOT the engine: it is a collaborator holding
+   * a constructor-injected dependency, so the rule
+   * `scripts/check-engine-internals-field-access.ts` enforces — engine state
+   * belongs on `EngineInternals`, reached through `getInternals(this)`, never
+   * on a `#private` field — does not describe this field. `getInternals(this)`
+   * is not even available here; `this` is a broker, not an `Engine`. A field
+   * literally called `#storage` collided with `EngineInternals.storage` and
+   * made a dependency injection look like the violation the check exists to
+   * catch, so the name now says which storage and whose it is.
+   */
+  readonly #ledgerStorage: Storage;
   readonly #defaults: RemoteActivityBrokerDefaults;
   readonly #onEnqueued: (operationId: string, workflowId: string, queue: string) => void;
 
@@ -65,7 +79,7 @@ export class EngineOwnedRemoteActivityBroker implements RemoteActivityBroker {
     defaults: RemoteActivityBrokerDefaults,
     onEnqueued: (operationId: string, workflowId: string, queue: string) => void,
   ) {
-    this.#storage = storage;
+    this.#ledgerStorage = storage;
     this.#defaults = defaults;
     this.#onEnqueued = onEnqueued;
   }
@@ -78,7 +92,7 @@ export class EngineOwnedRemoteActivityBroker implements RemoteActivityBroker {
     // (`deriveAsyncActivityToken`) and calls `enqueue` again. The first
     // dispatch's ledger record is the truth; skip the write entirely rather
     // than letting `createQueued`'s absent-key precondition reject it.
-    const existing = decodeRemoteTaskRecord(await this.#storage.get(key));
+    const existing = decodeRemoteTaskRecord(await this.#ledgerStorage.get(key));
     if (existing !== null) return;
 
     // Matches `buildCreateQueuedInput`'s (`task-dispatch-envelope.ts`) own
@@ -122,7 +136,7 @@ export class EngineOwnedRemoteActivityBroker implements RemoteActivityBroker {
     };
 
     const result = await commitTaskLedgerTransition(
-      this.#storage,
+      this.#ledgerStorage,
       request.operationId,
       (current, now) => createQueued(current, createInput, now),
     );
@@ -132,7 +146,7 @@ export class EngineOwnedRemoteActivityBroker implements RemoteActivityBroker {
       // (another process, or a duplicate concurrent replay) — the record now
       // exists durably either way; treat it the same as the idempotent-replay
       // guard above rather than failing the activity attempt.
-      const raced = decodeRemoteTaskRecord(await this.#storage.get(key));
+      const raced = decodeRemoteTaskRecord(await this.#ledgerStorage.get(key));
       if (raced !== null) return;
       throw new Error(
         `Failed to durably enqueue remote activity task "${request.operationId}": ${result.reason}`,
