@@ -4,6 +4,19 @@ import { HookRegistry } from '../../src/hooks/hook-registry';
 import { mergeHookRegistries } from '../../src/hooks/merge-hook-registries';
 import type { HookPlanObservation } from '../../src/hooks/types';
 
+/**
+ * The value Bureau pins a registration to when it must hold final narrowing
+ * power on a `runLast` or waterfall dispatch — `BUREAU_PINNED_LAST_PRIORITY` in
+ * `@corvidae/bureau`'s `runtime-composition.ts`. Restated as a literal here
+ * because lifecycle has no runtime dependencies and cannot import it; the
+ * bureau-side tests assert the real constant against the real registrations.
+ *
+ * `Number.MIN_SAFE_INTEGER` plus the largest tier offset the merge can add
+ * (`(3 - 1 - 0) * 1000`, Bureau always being the first participant), so adding
+ * that offset back cannot leave the safe-integer range.
+ */
+const PINNED_LAST = Number.MIN_SAFE_INTEGER + 2000;
+
 type TestHooks = {
   transform: (value: string) => string;
   notify: (message: string) => void;
@@ -69,6 +82,7 @@ describe('tier provenance (criterion 17)', () => {
         priority: 0,
         replay: 'effectful',
         source: 'agent',
+        revision: 1,
       },
     ]);
   });
@@ -111,14 +125,10 @@ describe('tier ordering (criteria 5 and 7)', () => {
 
   it('lets a pinned-last entry outrank every tier offset', async () => {
     const order: string[] = [];
-    // The constant Bureau uses for a hook that must hold final narrowing
-    // power on a `runLast`/waterfall dispatch shape. Adding any achievable
-    // tier offset to it still leaves it below any other tier's priority.
-    const pinnedLast = Number.MIN_SAFE_INTEGER + 1000;
 
     const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
     bureau.on('notify', (message) => void order.push(`bureau:${message}`), {
-      priority: pinnedLast,
+      priority: PINNED_LAST,
     });
     const agent = new HookRegistry<TestHooks>({ source: 'agent' });
     agent.on('notify', (message) => void order.push(`agent:${message}`), {
@@ -129,6 +139,60 @@ describe('tier ordering (criteria 5 and 7)', () => {
     await merged.run('notify', 'x');
 
     expect(order).toEqual(['agent:x', 'bureau:x']);
+  });
+
+  it('gives a pinned-last entry the final value on a waterfall (criterion 10)', async () => {
+    // The shape that makes criterion 10 about authority rather than ordering:
+    // a waterfall hands each handler the previous one's return, so whoever runs
+    // LAST decides what the run sees. A guardrail that narrows has to be that
+    // handler, no matter what an agent- or direct-tier registration asked for.
+    const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
+    bureau.on('transform', (value) => `${value}|narrowed`, { priority: PINNED_LAST });
+    const agent = new HookRegistry<TestHooks>({ source: 'agent' });
+    agent.on('transform', () => 'widened', { priority: Number.MAX_SAFE_INTEGER });
+
+    const merged = mergeHookRegistries(bureau, agent);
+
+    expect(await merged.run('transform', 'response')).toBe('widened|narrowed');
+  });
+
+  it('gives a pinned-last entry the winning value on runLast (criterion 10)', async () => {
+    const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
+    bureau.on('transform', () => 'bureau', { priority: PINNED_LAST });
+    const agent = new HookRegistry<TestHooks>({ source: 'agent' });
+    agent.on('transform', () => 'agent', { priority: Number.MAX_SAFE_INTEGER });
+
+    const merged = mergeHookRegistries(bureau, agent);
+
+    expect(await merged.runLast('transform', 'response')).toBe('bureau');
+  });
+
+  it('lets a bureau-tier entry short-circuit runFirst before any lower tier (criterion 11)', async () => {
+    const reached: string[] = [];
+    // `runFirst` is the veto shape: the first handler to return a defined value
+    // ends the question. Bureau's default-priority entries carry the largest
+    // tier offset, so they answer before an agent's or a direct caller's — the
+    // band alone does this, with no pinned priority anywhere.
+    const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
+    bureau.on('transform', (value) => {
+      reached.push('bureau');
+      return `${value}|vetoed`;
+    });
+    const agent = new HookRegistry<TestHooks>({ source: 'agent' });
+    agent.on('transform', (value) => {
+      reached.push('agent');
+      return value;
+    });
+    const direct = new HookRegistry<TestHooks>({ source: 'direct' });
+    direct.on('transform', (value) => {
+      reached.push('direct');
+      return value;
+    });
+
+    const merged = mergeHookRegistries(bureau, agent, direct);
+
+    expect(await merged.runFirst('transform', 'step')).toBe('step|vetoed');
+    expect(reached).toEqual(['bureau']);
   });
 });
 
@@ -482,5 +546,121 @@ describe('redacted effective-plan introspection (COR-1270)', () => {
 
   it('describes an empty plan as an empty entry list rather than throwing', () => {
     expect(new HookRegistry<TestHooks>().describePlan()).toEqual({ revision: 0, entries: [] });
+  });
+});
+
+describe('observation context (COR-1269)', () => {
+  it('stamps the attaching observer’s run identity onto every variant', async () => {
+    const registry = new HookRegistry<TestHooks>({ source: 'agent' });
+    const seen: HookPlanObservation[] = [];
+    registry.observe((observation) => seen.push(observation), {
+      runId: 'child-run-1',
+      sessionId: 'session-1',
+      correlation: {
+        parentAgentName: 'supervisor',
+        parentRunId: 'parent-run-1',
+        childAgentName: 'researcher',
+        childRunId: 'child-run-1',
+      },
+    });
+
+    const dispose = registry.on('notify', () => undefined, { id: 'child:one' });
+    await registry.run('notify', 'x');
+    dispose();
+
+    // Every variant, not just `registered`: an invocation an operator cannot
+    // attribute to a run is the case this exists to close.
+    expect(seen.map((observation) => observation.kind)).toEqual([
+      'registered',
+      'invoked',
+      'removed',
+    ]);
+    for (const observation of seen) {
+      expect(observation.runId).toBe('child-run-1');
+      expect(observation.sessionId).toBe('session-1');
+      expect(observation.correlation?.parentRunId).toBe('parent-run-1');
+      expect(observation.correlation?.childRunId).toBe('child-run-1');
+      expect(observation.source).toBe('agent');
+      expect(typeof observation.revision).toBe('number');
+    }
+  });
+
+  it('gives two observers of one plan their own context', async () => {
+    const registry = new HookRegistry<TestHooks>();
+    const parent: HookPlanObservation[] = [];
+    const child: HookPlanObservation[] = [];
+    registry.observe((observation) => parent.push(observation), { runId: 'parent-run' });
+    registry.observe((observation) => child.push(observation), {
+      runId: 'child-run',
+      correlation: {
+        parentAgentName: 'supervisor',
+        parentRunId: 'parent-run',
+        childAgentName: 'researcher',
+        childRunId: 'child-run',
+      },
+    });
+
+    registry.on('notify', () => undefined, { id: 'shared' });
+
+    // The context belongs to the watcher, not the plan. Stamping it onto one
+    // shared observation object would make the second attachment overwrite the
+    // first, and a supervisor watching its own plan would start reporting a
+    // child's run id.
+    expect(parent[0]?.runId).toBe('parent-run');
+    expect(parent[0]?.correlation).toBeUndefined();
+    expect(child[0]?.runId).toBe('child-run');
+    expect(child[0]?.correlation?.parentRunId).toBe('parent-run');
+  });
+
+  it('carries no run identity for an observer that named none', () => {
+    const registry = new HookRegistry<TestHooks>();
+    const seen: HookPlanObservation[] = [];
+    registry.observe((observation) => seen.push(observation));
+
+    registry.on('notify', () => undefined, { id: 'uncontexted' });
+
+    // An agent tier is observable at construction, when no run exists to name.
+    // Absent is the honest report; a synthesized id would be a lie an operator
+    // could not distinguish from a real one.
+    expect(seen[0]?.runId).toBeUndefined();
+    expect(seen[0]?.sessionId).toBeUndefined();
+    expect(seen[0]?.correlation).toBeUndefined();
+  });
+
+  it('reports no handler, argument or return value in any observation', async () => {
+    const registry = new HookRegistry<TestHooks>({ source: 'bureau' });
+    const seen: HookPlanObservation[] = [];
+    registry.observe((observation) => seen.push(observation), {
+      runId: 'run',
+      sessionId: 'session',
+    });
+    const secret = 'sk-live-do-not-leak';
+    registry.on('transform', (value) => `${value}${secret}`, { id: 'redaction-probe' });
+
+    await registry.run('transform', secret);
+
+    // Criterion 10: redaction is the entire security boundary — there is no
+    // authorization gate in front of an observer. Serializing the whole
+    // observation and searching it catches a field added later that nobody
+    // thought to check, which a field-by-field assertion would not.
+    const serialized = JSON.stringify(seen);
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain('handler');
+  });
+});
+
+describe('lifecycle stays dependency-free (COR-1269 criterion 5)', () => {
+  it('declares no runtime dependencies, which is why correlation is structural', async () => {
+    const manifest = (await Bun.file(
+      new URL('../../package.json', import.meta.url).pathname,
+    ).json()) as { dependencies?: Record<string, string> };
+
+    // `HookObservationCorrelation` is written out inline rather than importing
+    // operative's `ChildWorkflowCorrelation`, and this is the constraint that
+    // forces it: operative already depends on lifecycle, so the reverse edge
+    // would be circular. If this ever goes green with a dependency added, the
+    // inline declaration's rationale needs re-reading before it is "simplified"
+    // into an import.
+    expect(manifest.dependencies).toBeUndefined();
   });
 });

@@ -14,6 +14,7 @@ import {
   type AgentRun,
   createAgent,
   createLazyAgent,
+  createSubagentTool,
   type DefinitionResolvingAgent,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type RunnableAgent,
@@ -754,6 +755,234 @@ describe('bureau.run', () => {
     try {
       expect(bureau.agents.names()).toEqual(['echo']);
       expect(bureau.agents.has('mutated')).toBe(false);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('Bureau invariants on catalog-agent dispatch (COR-1265 criterion 3b)', () => {
+  // A catalog agent resolves its own provider, toolbox, memory and skills
+  // (AB-240). Its hooks were Bureau-free too, which stopped mattering the
+  // moment the agent tier became real: a catalog run would then carry its
+  // agent's hooks and none of Bureau's policy. The owner ruled the invariants
+  // that close over nothing run-specific travel to every catalog path that has
+  // a `RunOptions` seam.
+  //
+  // Observed behaviorally rather than by introspection: `bureau:identity`
+  // appends its system message on step 0, so a generate that sees it is a
+  // generate whose run composed Bureau's tier.
+  function captureSystemMessages(seen: string[]) {
+    return async (request: { conversation?: { getMessages?: () => readonly unknown[] } }) => {
+      const messages = request.conversation?.getMessages?.() ?? [];
+      for (const message of messages as ReadonlyArray<{ role?: string; content?: unknown }>) {
+        if (message.role === 'system' && typeof message.content === 'string') {
+          seen.push(message.content);
+        }
+      }
+      return { content: 'ok', toolCalls: [] };
+    };
+  }
+
+  it('applies them to a durably dispatched catalog agent', async () => {
+    const seen: string[] = [];
+    const bureau = await createBureau({
+      agents: {
+        echo: createAgent({
+          generate: captureSystemMessages(seen),
+        }),
+      },
+      identity: { resolve: async () => 'You are the house agent.' },
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      await bureau.run('echo', 'hi').result();
+      expect(seen).toContain('You are the house agent.');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  // The documented gap, pinned so it stays a stated limitation rather than a
+  // silent one. `runAgent` takes the invariant-merging branch only when
+  // `runtime.durable && hasDefinitionResolver(agent)`; everything else calls
+  // `agent.run(input, context)`, where no `RunOptions` exists outside the agent
+  // for anyone to augment. The only remaining seam is a caller-facing hook field
+  // on `AgentRunContext`, which COR-567 Decision 4 declines.
+  //
+  // Both halves of that `&&` are pinned, because the first version of this
+  // suite pinned only the second and the documentation then understated the gap
+  // as an unusual agent shape. It is not: the third case below is an ORDINARY
+  // `createAgent` agent on a bureau that simply was not built durable, which is
+  // the common configuration.
+  //
+  // If either starts failing, that gap closed: delete the case and update
+  // `documentation/hierarchical-hook-composition.md`, which currently tells
+  // readers these paths are outside Bureau's hook authority.
+  it('cannot reach a durable dispatch of an agent that resolves no run options', async () => {
+    const seen: string[] = [];
+    const nonResolvingAgent: RunnableAgent = {
+      name: 'plain',
+      hasOutput: false,
+      run: (input, context) =>
+        createAgent({ generate: captureSystemMessages(seen) }).run(input, context),
+    };
+    const bureau = await createBureau({
+      agents: { plain: nonResolvingAgent },
+      identity: { resolve: async () => 'You are the house agent.' },
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      await bureau.run('plain', 'hi').result();
+      expect(seen).not.toContain('You are the house agent.');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('cannot reach ANY dispatch by a bureau that is not durable, resolver or not', async () => {
+    const seen: string[] = [];
+    // An ordinary `createAgent` result, which DOES expose
+    // `OPERATIVE_RESOLVE_RUN_OPTIONS`. The only thing missing is
+    // `durableExecution: true` on the bureau, and that alone is enough.
+    const bureau = await createBureau({
+      agents: { echo: createAgent({ name: 'echo', generate: captureSystemMessages(seen) }) },
+      identity: { resolve: async () => 'You are the house agent.' },
+      storage: { type: 'memory' },
+    });
+
+    try {
+      const result = await bureau.run('echo', 'hi').result();
+      // Not vacuous: the agent really did run to completion. It simply saw no
+      // Bureau-contributed system message while doing so.
+      expect(result.content).toBe('ok');
+      expect(seen).not.toContain('You are the house agent.');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
+  // Three of the five sites build `RunOptions` for a handle no public surface
+  // returns — `bureau.createRun()` resolves a `RunSummary`, and the scheduler
+  // and mocked-reattach paths produce no caller-visible run at all — so
+  // `describeHookPlan()` cannot reach them the way it reaches the scheduled and
+  // recovered paths tested in `runtime-composition.test.ts`.
+  //
+  // This is the assertion that does reach all five: no site hands a run the
+  // live registry. It is a source invariant rather than a behavior, and it is
+  // stated as one rather than dressed up as coverage it is not.
+  it('leaves no site handing a run the live runRuntime registry', async () => {
+    const sources = ['./create-bureau.ts', './runtime-composition.ts'];
+    for (const source of sources) {
+      const text = await Bun.file(new URL(source, import.meta.url).pathname).text();
+      // The raw hand-off, in any whitespace shape. A match means a run received
+      // the registry Bureau keeps mutating instead of a snapshot of it.
+      expect(text, source).not.toMatch(/hooks:\s*runRuntime\.hooks\b/u);
+      expect(text, source).not.toMatch(/hooks:\s*registerTrailingOnStep\(/u);
+    }
+  });
+
+  it('carries Bureau’s tier into an interactive bureau.createRun run', async () => {
+    const seen: string[] = [];
+    const bureau = await createBureau({
+      agents: {},
+      generate: async (request) => {
+        for (const message of request.conversation.getMessages()) {
+          if (message.role === 'system' && typeof message.content === 'string') {
+            seen.push(message.content);
+          }
+        }
+        return { content: 'ok', toolCalls: [] };
+      },
+      identity: { resolve: async () => 'BUREAU-TIER-REACHED' },
+      storage: { type: 'memory' },
+    });
+
+    try {
+      const run = await bureau.createRun({ message: 'hi' });
+      for (let attempt = 0; attempt < 50 && seen.length === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      expect(bureau.getRun(run.id)).toBeDefined();
+      expect(seen).toContain('BUREAU-TIER-REACHED');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('a child run is outside Bureau’s hook authority (COR-1269)', () => {
+  it('does not carry the dispatching Bureau’s invariants into a child run', async () => {
+    const supervisorSaw: string[] = [];
+    const childSaw: string[] = [];
+    function recordInto(seen: string[]) {
+      return async (request: {
+        conversation: { getMessages: () => ReadonlyArray<{ role?: string; content?: unknown }> };
+      }) => {
+        for (const message of request.conversation.getMessages()) {
+          if (message.role === 'system' && typeof message.content === 'string') {
+            seen.push(message.content);
+          }
+        }
+        return { content: 'done', toolCalls: [] };
+      };
+    }
+
+    const child = createAgent({ name: 'researcher', generate: recordInto(childSaw) });
+    const delegate = createSubagentTool({
+      name: 'delegate',
+      description: 'Delegate',
+      agent: child,
+      agentName: 'researcher',
+      input: z.object({ q: z.string() }),
+    });
+
+    let step = 0;
+    const bureau = await createBureau({
+      agents: {
+        supervisor: createAgent({
+          name: 'supervisor',
+          toolbox: createToolbox([delegate]),
+          generate: async (request) => {
+            const settled = await recordInto(supervisorSaw)(request);
+            return step++ === 0
+              ? {
+                  content: '',
+                  toolCalls: [{ id: 'c1', name: 'delegate', arguments: { q: 'hi' } }],
+                }
+              : settled;
+          },
+        }),
+      },
+      identity: { resolve: async () => 'BUREAU-IDENTITY' },
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      await bureau.run('supervisor', 'go').result();
+
+      // The supervisor is Bureau-owned and carries the invariant. Its child does
+      // not, and cannot: `dispatchChildRun` calls `agent.run()`, which builds
+      // its `RunOptions` inside the agent, so there is no options bag for a
+      // Bureau tier to be merged into — structurally the same gap as the two
+      // catalog rows above, closed only by a caller-facing hook field that
+      // COR-567 Decision 4 declines.
+      //
+      // Pinned rather than left implicit. COR-1269's criterion 1 originally
+      // claimed a child of a Bureau-owned agent DOES receive that child's
+      // Bureau invariants; it was amended to match reality once this was
+      // verified by probe. If this ever starts failing, the gap closed: delete
+      // the test and update the child section of
+      // `documentation/hierarchical-hook-composition.md`.
+      expect(supervisorSaw).toContain('BUREAU-IDENTITY');
+      expect(childSaw).not.toContain('BUREAU-IDENTITY');
     } finally {
       await bureau.dispose();
     }

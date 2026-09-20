@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { createTool, createToolbox, type ToolRequestContext } from '@corvidae/armorer';
 import { Conversation, createConversationHistory, getMessages } from '@corvidae/conversationalist';
-import { createManualRuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
+import { createManualRuntimeServices, HookRegistry, TypedEventTarget } from '@corvidae/lifecycle';
 import type { Memory } from '@corvidae/memory';
 import {
   createAgentSession,
@@ -12,6 +12,7 @@ import {
   type DurableRunDeps,
   type GenerateFunction,
   GuardrailTripwireError,
+  type OperativeHookMap,
   type RunOptions,
   ScheduleCompletedEvent,
   ScheduleFailedEvent,
@@ -1136,6 +1137,247 @@ describe('memory hook coverage', () => {
   });
 });
 
+/**
+ * COR-1265 — Bureau is a hook TIER, not a registry handed to a run raw.
+ *
+ * `BUREAU_PINNED_LAST_PRIORITY` is restated as a literal rather than exported
+ * and imported: the number is a contract these tests exist to pin, and a test
+ * that imports the constant it is checking asserts only that the constant
+ * equals itself.
+ */
+describe('Bureau hook tier composition (COR-1265)', () => {
+  const PINNED_LAST = Number.MIN_SAFE_INTEGER + 2000;
+
+  function planOf(hooks: HookRegistry<OperativeHookMap> | undefined) {
+    if (!hooks) throw new Error('run options carried no hook registry');
+    return hooks.describePlan().entries;
+  }
+
+  it('stamps every Bureau registration with its tier, and it survives the merge (criterion 3)', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      identity: { resolve: async () => 'researcher' },
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      const resolution = await runtime.buildScheduledRunServices(
+        {
+          workflowId: 'tier-scheduled-run',
+          workflowType: 'agentRun',
+          input: {
+            agentName: 'researcher',
+            input: 'nightly digest',
+            scheduleId: 'nightly-digest',
+            sessionId: 'tier-scheduled-session',
+          },
+          schedule: { id: 'nightly-digest' },
+        },
+        runtime.sessionStore!,
+      );
+      if (resolution.status !== 'available') {
+        throw new Error(`Expected scheduled services to be available: ${resolution.reason}`);
+      }
+      const entries = planOf((resolution.services as DurableRunDeps).options.hooks);
+
+      // Every entry, not merely the ones this test names: an unstamped Bureau
+      // registration is exactly what tier provenance is supposed to make
+      // impossible, and it would be invisible to a spot check.
+      expect(entries.every((entry) => entry.source === 'bureau')).toBe(true);
+      expect(entries.map((entry) => entry.id)).toContain('bureau:identity');
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  it('pins the trailing session write-back behind every tier (criteria 8 and 9)', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      const resolution = await runtime.buildScheduledRunServices(
+        {
+          workflowId: 'tier-trailing-run',
+          workflowType: 'agentRun',
+          input: {
+            agentName: 'researcher',
+            input: 'nightly digest',
+            scheduleId: 'nightly-digest',
+            sessionId: 'tier-trailing-session',
+          },
+          schedule: { id: 'nightly-digest' },
+        },
+        runtime.sessionStore!,
+      );
+      if (resolution.status !== 'available') {
+        throw new Error(`Expected scheduled services to be available: ${resolution.reason}`);
+      }
+      const entries = planOf((resolution.services as DurableRunDeps).options.hooks);
+      const trailing = entries.find((entry) => entry.id === 'bureau:scheduled-session-write-back');
+
+      // Criterion 8: registered BEFORE the merge, so its priority carries the
+      // same tier offset every other Bureau entry got. With one participant the
+      // offset is zero, so the raw constant is what survives — and the entry
+      // still sorts last among Bureau's own `onStep` registrations.
+      expect(trailing?.priority).toBe(PINNED_LAST);
+      const onStep = entries.filter((entry) => entry.hookName === 'onStep');
+      expect(onStep.at(-1)?.id).toBe('bureau:scheduled-session-write-back');
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  it('pins the response guardrail behind every tier on a recovered run (criteria 3 and 10)', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      const runId = 'tier-recovered-run';
+      await saveRecoverableSession(runtime.sessionStore!, runId);
+
+      const result = await runtime.resolveRunServices({
+        workflowId: runId,
+        workflowType: 'agentRun',
+        input: { runId, sessionId: runId, agentName: 'test-agent' },
+      });
+      if (result.status !== 'available') {
+        throw new Error(`Expected recovered services to be available: ${result.reason}`);
+      }
+      const entries = planOf((result.services as DurableRunDeps).options.hooks);
+      const guardrail = entries.find((entry) => entry.id === 'bureau:guardrails-validate-response');
+
+      expect(guardrail?.priority).toBe(PINNED_LAST);
+      expect(guardrail?.source).toBe('bureau');
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  describe('catalog-agent runs (criterion 3b, owner ruling 2026-09-20)', () => {
+    function catalogOptionsWithAgentTier() {
+      const agentHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+      agentHooks.on('prepareStep', () => Promise.resolve(), { id: 'agent:own', replay: 'safe' });
+      const toolbox = createToolbox([], { context: {} });
+      const options: RunOptions = {
+        generate: async () => ({ content: 'from the agent', toolCalls: [] }),
+        toolbox,
+        conversation: createConversationHistory({ id: 'catalog-recovered' }),
+        hooks: agentHooks,
+      };
+      return { options, agentHooks, toolbox };
+    }
+
+    async function recoverCatalogRun(runId: string, options: RunOptions) {
+      const runtime = await createRuntimeComposition({
+        // Deliberately no bureau-level generate/toolbox — proves nothing here
+        // reaches `buildRunDepsFromSession`.
+        identity: { resolve: async () => 'the house agent' },
+        storage: { type: 'memory' },
+        durableExecution: true,
+      });
+      runtime.setCatalogAgentRunOptionsResolver(async () => ({
+        status: 'resolved',
+        options,
+        definitionRevision: 1,
+      }));
+      await runtime.persistCatalogRunRecoveryRecord(runId, {
+        agentName: 'echo',
+        definitionRevision: 1,
+        input: 'hello',
+      });
+      const result = await runtime.resolveRunServices({
+        workflowId: runId,
+        workflowType: 'agentRun',
+        input: { runId, sessionId: runId, agentName: 'echo' },
+      });
+      return { runtime, result };
+    }
+
+    it("carries Bureau's invariants and the agent's own tier, Bureau first", async () => {
+      const { options, toolbox } = catalogOptionsWithAgentTier();
+      const { runtime, result } = await recoverCatalogRun('catalog-tier-run', options);
+
+      try {
+        if (result.status !== 'available') {
+          throw new Error(`Expected catalog services to be available: ${result.reason}`);
+        }
+        const services = result.services as DurableRunDeps;
+        const entries = planOf(services.options.hooks);
+
+        expect(entries.map((entry) => entry.id)).toEqual([
+          'bureau:identity',
+          'bureau:guardrails-prepare-step',
+          'agent:own',
+          'bureau:guardrails-validate-response',
+        ]);
+
+        // AB-240's rollback trigger, unmoved: only the hook tier is added. A
+        // recovered catalog run still reattaches against the AGENT's provider
+        // and toolbox, never the Bureau's — which this composition does not
+        // even have.
+        expect(services.options.toolbox).toBe(toolbox);
+        expect(services.options.generate).toBe(options.generate);
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+
+    it('snapshots the agent tier, so a later registration cannot reach the recovered run', async () => {
+      const { options, agentHooks } = catalogOptionsWithAgentTier();
+      const { runtime, result } = await recoverCatalogRun('catalog-snapshot-run', options);
+
+      try {
+        if (result.status !== 'available') {
+          throw new Error(`Expected catalog services to be available: ${result.reason}`);
+        }
+        const services = result.services as DurableRunDeps;
+        agentHooks.on('prepareStep', () => Promise.resolve(), { id: 'agent:added-later' });
+
+        expect(planOf(services.options.hooks).map((entry) => entry.id)).not.toContain(
+          'agent:added-later',
+        );
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+
+    it('omits the run-scoped Bureau hooks, which have no run to close over', async () => {
+      const { options } = catalogOptionsWithAgentTier();
+      const { runtime, result } = await recoverCatalogRun('catalog-scoped-run', options);
+
+      try {
+        if (result.status !== 'available') {
+          throw new Error(`Expected catalog services to be available: ${result.reason}`);
+        }
+        const ids = planOf((result.services as DurableRunDeps).options.hooks).map(
+          (entry) => entry.id,
+        );
+
+        // The boundary the owner ruling drew. `bureau:memory-recall`,
+        // `bureau:memory-persist` and `bureau:skill-record-snapshot` close over
+        // a session, a memory and a skill session that a catalog run does not
+        // have, so they do not travel — and this states that rather than
+        // leaving a reader to infer it from an absence.
+        expect(ids).not.toContain('bureau:memory-recall');
+        expect(ids).not.toContain('bureau:memory-persist');
+        expect(ids).not.toContain('bureau:skill-record-snapshot');
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+  });
+});
+
 describe('effectful hook idempotency under crash replay (COR-1267)', () => {
   // COR-567 classifies these `effectful`: a crashed in-flight step re-runs,
   // so they fire again, and the mitigation the decision chose is that each
@@ -1231,6 +1473,185 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
       'idempotency-run:0',
       'idempotency-run:1',
     ]);
+  });
+
+  async function compositionWithOneSkill(sessionId: string) {
+    const catalog = await createMockSkillCatalog([
+      { name: 'research', description: 'Deep research' },
+    ]);
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      skills: { catalog },
+      persistence: textValueStore(new MemoryStorage()),
+    });
+    await runtime.sessionStore!.save(
+      createAgentSession({
+        id: sessionId,
+        agentName: 'researcher',
+        conversationHistory: createConversationHistory(),
+      }),
+    );
+    return runtime;
+  }
+
+  it('bureau:skill-record-snapshot writes one record set when the same step replays', async () => {
+    const sessionId = 'skill-snapshot-replay-session';
+    const runtime = await compositionWithOneSkill(sessionId);
+    const runRuntime = await runtime.createRunRuntime({
+      message: 'Hello',
+      sessionId,
+      runId: 'skill-snapshot-replay-run',
+    });
+    await runRuntime.toolbox.execute({ name: 'activate_skill', arguments: { name: 'research' } });
+
+    const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:skill-record-snapshot');
+    expect(entry.options.replay).toBe('effectful');
+
+    const conversation = new Conversation();
+    await entry.handler(stepContext(0, 'ok', conversation));
+    const afterFirst = await runtime.sessionStore!.load(sessionId);
+    await entry.handler(stepContext(0, 'ok', conversation));
+    const afterSecond = await runtime.sessionStore!.load(sessionId);
+
+    // An overwrite of fixed keys, not an append: the replayed step rewrites the
+    // same `activeSkillRecords` value rather than adding a second copy of the
+    // active set. Comparing the whole metadata object, not just the length,
+    // catches a write that grew a sibling key instead.
+    expect(
+      (afterSecond!.metadata['activeSkillRecords'] as readonly unknown[] | undefined) ?? [],
+    ).toHaveLength(1);
+    expect(afterSecond!.metadata).toEqual(afterFirst!.metadata);
+  });
+
+  it('bureau:skill-record-snapshot still tracks the live set, so the overwrite is not inertia', async () => {
+    const sessionId = 'skill-snapshot-control-session';
+    const runtime = await compositionWithOneSkill(sessionId);
+    const runRuntime = await runtime.createRunRuntime({
+      message: 'Hello',
+      sessionId,
+      runId: 'skill-snapshot-control-run',
+    });
+    const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:skill-record-snapshot');
+    const conversation = new Conversation();
+
+    await runRuntime.toolbox.execute({ name: 'activate_skill', arguments: { name: 'research' } });
+    await entry.handler(stepContext(0, 'ok', conversation));
+    await runRuntime.toolbox.execute({ name: 'deactivate_skill', arguments: { name: 'research' } });
+    await entry.handler(stepContext(1, 'ok', conversation));
+
+    // The control for the test above. Without it, a hook that had stopped
+    // writing altogether would pass the idempotency assertion: two invocations
+    // producing identical metadata is exactly what a no-op looks like.
+    const session = await runtime.sessionStore!.load(sessionId);
+    expect(session!.metadata['activeSkillRecords']).toEqual([]);
+  });
+
+  it('bureau:scheduled-session-write-back appends one transcript when the same step replays', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      const sessionId = 'scheduled-writeback-idempotency';
+      const resolution = await runtime.buildScheduledRunServices(
+        {
+          workflowId: 'scheduled-writeback-run',
+          workflowType: 'agentRun',
+          input: {
+            agentName: 'researcher',
+            input: 'nightly digest',
+            scheduleId: 'nightly-digest',
+            sessionId,
+          },
+          schedule: { id: 'nightly-digest' },
+        },
+        runtime.sessionStore!,
+      );
+      if (resolution.status !== 'available') {
+        throw new Error(`Expected scheduled services to be available: ${resolution.reason}`);
+      }
+      const services = resolution.services as DurableRunDeps;
+      const hooks = services.options.hooks;
+      if (!hooks) throw new Error('scheduled run services carried no hook registry');
+      const entry = handlerById(hooks, 'onStep', 'bureau:scheduled-session-write-back');
+      expect(entry.options.replay).toBe('effectful');
+
+      // The fire's own conversation, already seeded with the scheduled prompt.
+      const conversation = services.options.conversation as Conversation;
+      conversation.appendAssistantMessage('the digest');
+
+      await entry.handler(stepContext(0, 'the digest', conversation));
+      await entry.handler(stepContext(0, 'the digest', conversation));
+
+      // `appendConversationMessages` filters the candidate's ids against the
+      // ids already stored, so re-appending the identical transcript adds
+      // nothing. Asserting on the assistant turn specifically, because the user
+      // prompt is also seeded by the scheduled input.
+      const session = await runtime.sessionStore!.load(sessionId);
+      const digests = getMessages(session!.conversationHistory).filter(
+        (message) => message.role === 'assistant',
+      );
+      expect(digests).toHaveLength(1);
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  it('bureau:scheduled-session-write-back still appends a genuinely new turn', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      const sessionId = 'scheduled-writeback-control';
+      const resolution = await runtime.buildScheduledRunServices(
+        {
+          workflowId: 'scheduled-writeback-control-run',
+          workflowType: 'agentRun',
+          input: {
+            agentName: 'researcher',
+            input: 'nightly digest',
+            scheduleId: 'nightly-digest',
+            sessionId,
+          },
+          schedule: { id: 'nightly-digest' },
+        },
+        runtime.sessionStore!,
+      );
+      if (resolution.status !== 'available') {
+        throw new Error(`Expected scheduled services to be available: ${resolution.reason}`);
+      }
+      const services = resolution.services as DurableRunDeps;
+      const entry = handlerById(
+        services.options.hooks!,
+        'onStep',
+        'bureau:scheduled-session-write-back',
+      );
+
+      const conversation = services.options.conversation as Conversation;
+      conversation.appendAssistantMessage('first digest');
+      await entry.handler(stepContext(0, 'first digest', conversation));
+      conversation.appendAssistantMessage('second digest');
+      await entry.handler(stepContext(1, 'second digest', conversation));
+
+      // The control: the id filter collapses a REPLAY, not a second step. A
+      // write-back that had stopped appending entirely would pass the test
+      // above and silently lose every turn after the first.
+      const session = await runtime.sessionStore!.load(sessionId);
+      const digests = getMessages(session!.conversationHistory)
+        .filter((message) => message.role === 'assistant')
+        .map((message) => message.content);
+      expect(digests).toEqual(['first digest', 'second digest']);
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
   });
 });
 

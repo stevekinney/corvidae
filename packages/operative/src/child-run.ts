@@ -775,6 +775,12 @@ export function dispatchChildRun<O = never, H extends boolean = false>(
       ...(options.delegatedAuthority === undefined
         ? {}
         : { delegatedAuthority: options.delegatedAuthority }),
+      // COR-1269 — the same four fields the `multiagent.child-workflow.*`
+      // events already carry, handed to the child so ITS hook observations are
+      // attributable to this parent-child pair. Data, not a hook surface: this
+      // function composes no registry and references none, which is what makes
+      // "no parent hook reaches a child" structural rather than a convention.
+      childCorrelation: correlation,
     });
   } catch (error) {
     options.registry?.settle(childRunId, 'failed');

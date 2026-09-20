@@ -9,7 +9,7 @@
  */
 
 import type { ConversationHistory } from '@corvidae/conversationalist';
-import type { HookRegistry } from '@corvidae/lifecycle';
+import type { HookObservationCorrelation, HookRegistry } from '@corvidae/lifecycle';
 
 import type { AgentRun, RunEvent } from './agent-run';
 import type { ChildRunRegistry } from './child-run';
@@ -70,6 +70,19 @@ export interface AgentRunContext {
    * bookkeeping tracks outside this contract.
    */
   principal?: string | undefined;
+  /**
+   * COR-1269 — set by `dispatchChildRun` when this run is somebody's child,
+   * forwarded unchanged into `RunOptions.childCorrelation` by `createAgent`'s
+   * run path (the same way `signal`/`principal` forward).
+   *
+   * This is correlation DATA and deliberately not a hook surface. It exists so
+   * every hook observation a child produces names the parent-child pair that
+   * produced it; nothing reachable through it can add, remove or reorder a
+   * handler, which is what keeps "no parent hook reaches a child" a property of
+   * the composition rather than a convention. COR-567 Decision 4 declines a
+   * `hooks` field here and that is unchanged.
+   */
+  childCorrelation?: HookObservationCorrelation | undefined;
 }
 
 /**

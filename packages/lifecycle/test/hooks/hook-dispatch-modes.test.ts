@@ -123,10 +123,26 @@ describe('plan observation (COR-766)', () => {
     await registry.runFirst('prepare', { step: 0 });
     dispose();
 
+    // COR-1269 — `revision` rides on every variant. It advances on membership
+    // changes only, so the invocation between the registration and the removal
+    // reports the same 1 the registration did.
     expect(observed).toEqual([
-      { kind: 'registered', hookName: 'prepare', id: 'catalog', priority: 5, replay: 'effectful' },
-      { kind: 'invoked', hookName: 'prepare', id: 'catalog', durationMilliseconds: 0 },
-      { kind: 'removed', hookName: 'prepare', id: 'catalog' },
+      {
+        kind: 'registered',
+        hookName: 'prepare',
+        id: 'catalog',
+        priority: 5,
+        replay: 'effectful',
+        revision: 1,
+      },
+      {
+        kind: 'invoked',
+        hookName: 'prepare',
+        id: 'catalog',
+        durationMilliseconds: 0,
+        revision: 1,
+      },
+      { kind: 'removed', hookName: 'prepare', id: 'catalog', revision: 2 },
     ]);
   });
 
@@ -156,6 +172,7 @@ describe('plan observation (COR-766)', () => {
         id: 'thrower',
         durationMilliseconds: 0,
         error: failure,
+        revision: 1,
       },
     ]);
   });
@@ -170,7 +187,7 @@ describe('plan observation (COR-766)', () => {
     expect(await registry.runHandler('select', entry, [{ step: 2 }])).toBe('value');
 
     expect(observed).toEqual([
-      { kind: 'invoked', hookName: 'select', id: 'manual', durationMilliseconds: 0 },
+      { kind: 'invoked', hookName: 'select', id: 'manual', durationMilliseconds: 0, revision: 1 },
     ]);
   });
 
@@ -193,9 +210,12 @@ describe('plan observation (COR-766)', () => {
 
     registry.clear('select');
 
+    // Both report the revision AFTER the clear: `clear()` is one membership
+    // change, not one per departing entry, so the two removals it announces
+    // share a revision rather than counting up.
     expect(observed).toEqual([
-      { kind: 'removed', hookName: 'select', id: 'one' },
-      { kind: 'removed', hookName: 'select', id: 'two' },
+      { kind: 'removed', hookName: 'select', id: 'one', revision: 3 },
+      { kind: 'removed', hookName: 'select', id: 'two', revision: 3 },
     ]);
   });
 

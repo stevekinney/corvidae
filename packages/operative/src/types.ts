@@ -1,6 +1,10 @@
 import type { AnyToolbox, ToolExecuteOptions, ToolExecutionResult } from '@corvidae/armorer';
 import type { Conversation, ConversationHistory, TokenUsage } from '@corvidae/conversationalist';
-import type { HookRegistry, RuntimeServices } from '@corvidae/lifecycle';
+import type {
+  HookObservationCorrelation,
+  HookRegistry,
+  RuntimeServices,
+} from '@corvidae/lifecycle';
 import type { JSONValue, ToolCall, ToolCallInput } from '@corvidae/tool-protocol';
 import type { ZodType } from 'zod';
 
@@ -537,6 +541,26 @@ export interface RunOptionsBase {
    * running inside a named agent (bureau.agent / createAgent).
    */
   agentName?: string | undefined;
+  /**
+   * The session this run belongs to, when it belongs to one (COR-1269).
+   *
+   * Read only to stamp the run's hook-plan observations, so an operator
+   * correlating a hook invocation can reach the session it happened in. Not a
+   * behavior input: nothing in the loop branches on it, and a run without a
+   * session simply omits it.
+   */
+  sessionId?: string | undefined;
+  /**
+   * Set when this run was dispatched as another run's child (COR-1269), by
+   * `dispatchChildRun` through `AgentRunContext.childCorrelation`.
+   *
+   * Carried so every hook observation a child run produces is attributable to
+   * the parent-child pair that produced it. It is correlation DATA, not a hook
+   * surface: nothing here can add, remove or reorder a handler, which is what
+   * keeps the child-hook rule ("no parent hook reaches a child") a property of
+   * the composition rather than a promise about who remembered not to copy one.
+   */
+  childCorrelation?: HookObservationCorrelation | undefined;
 
   /**
    * Enables replay-safe durable operation keys for tool calls. This is distinct

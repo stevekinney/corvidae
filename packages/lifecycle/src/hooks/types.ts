@@ -97,28 +97,87 @@ export interface HookRegistrationOptions {
  * distinguish one reads the recovery marker on its own run correlation.
  */
 export type HookPlanObservation =
-  | {
+  | ({
       kind: 'registered';
-      hookName: string;
-      id: string;
       priority: number;
       replay: HookReplayPolicy;
-      /**
-       * The tier this entry was registered by, when one is known — see
-       * {@link HookRegistrationOptions.source}. Absent on a registry that
-       * names no tier, which is every registry outside a composed run.
-       */
-      source?: string;
-    }
-  | { kind: 'removed'; hookName: string; id: string }
-  | { kind: 'invoked'; hookName: string; id: string; durationMilliseconds: number }
-  | {
+    } & HookPlanObservationIdentity)
+  | ({ kind: 'removed' } & HookPlanObservationIdentity)
+  | ({ kind: 'invoked'; durationMilliseconds: number } & HookPlanObservationIdentity)
+  | ({
       kind: 'failed';
-      hookName: string;
-      id: string;
       durationMilliseconds: number;
       error: unknown;
-    };
+    } & HookPlanObservationIdentity);
+
+/**
+ * Which parent dispatched which child (COR-1269).
+ *
+ * Declared inline and structurally rather than imported. The operative type
+ * that satisfies it, `ChildWorkflowCorrelation`, lives in
+ * `packages/operative/src/events.ts`, and `@corvidae/lifecycle` declares no
+ * runtime dependencies at all — operative already depends on lifecycle, so the
+ * reverse edge would be circular. Operative's type satisfies this one
+ * structurally, which is the whole point of writing it out.
+ */
+export interface HookObservationCorrelation {
+  readonly parentAgentName: string;
+  readonly parentRunId: string;
+  readonly childAgentName: string;
+  readonly childRunId: string;
+}
+
+/**
+ * What an observer is watching on behalf of (COR-1269), supplied when it
+ * attaches through {@link HookRegistry.observe}.
+ *
+ * Attached rather than configured on the registry, and stamped per observer
+ * rather than onto a shared observation, because one plan can be watched by
+ * more than one party and a run is not a property of the plan: a merged
+ * registry is built at dispatch from tiers that existed before the run did.
+ * Two observers of one registry can therefore report different `runId`s
+ * truthfully.
+ */
+export interface HookObservationContext {
+  /** The run being observed, when it has a stable identity. */
+  readonly runId?: string;
+  /** The session that run belongs to, when it belongs to one. */
+  readonly sessionId?: string;
+  /**
+   * Present only for a run dispatched as somebody's child. A parent's own
+   * observations carry none, which is how a consumer tells the two apart.
+   */
+  readonly correlation?: HookObservationCorrelation;
+}
+
+/**
+ * The fields every {@link HookPlanObservation} variant carries, whatever
+ * happened (COR-1269).
+ *
+ * `runId`, `sessionId` and `correlation` are optional because they come from
+ * the observer's {@link HookObservationContext}, and a registry can be watched
+ * outside a run entirely — an agent tier is observable at `createAgent()` time,
+ * when no run exists to name. Optional is the honest shape; requiring them
+ * would force a caller to invent one.
+ */
+export interface HookPlanObservationIdentity {
+  hookName: string;
+  id: string;
+  /**
+   * The tier this entry was registered by, when one is known — see
+   * {@link HookRegistrationOptions.source}. Absent on a registry that names no
+   * tier, which is every registry outside a composed run.
+   */
+  source?: string;
+  /** The plan's version at the moment of this observation — see {@link HookRegistry.revision}. */
+  revision: number;
+  /** The observing run, from the context its observer attached with. */
+  runId?: string;
+  /** The observing run's session, from the context its observer attached with. */
+  sessionId?: string;
+  /** The parent-child pair this run belongs to, when it is a child run. */
+  correlation?: HookObservationCorrelation;
+}
 
 /**
  * One entry of a hook plan, as an inspector sees it (COR-1270).
