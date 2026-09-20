@@ -33,7 +33,7 @@
 
 import type { RegistryAgnosticEngine } from '../../core/engine.ts';
 import { buildAsyncActivityResolutionWrite } from '../../core/engine/async-activity-records.ts';
-import { isPendingAsyncActivityToken } from '../../core/engine/internals.ts';
+import { isPendingAsyncActivityToken } from '../../core/engine/pending-async-activity-token.ts';
 import type { OperationOutcome } from '../../core/types.ts';
 import type { BatchOperation } from '../../storage/interface.ts';
 

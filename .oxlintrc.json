@@ -161,12 +161,6 @@
       }
     },
     {
-      "files": ["**/packages/weft/src/core/context/**"],
-      "rules": {
-        "no-console": "off"
-      }
-    },
-    {
       "files": ["**/components/*/src/**", "**/packages/markdown/src/**"],
       "rules": {
         "typescript/no-unsafe-type-assertion": "error"

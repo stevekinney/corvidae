@@ -488,25 +488,21 @@ export function getInternals(engine: object): EngineInternals {
 }
 
 /**
- * Whether `token` currently identifies a live pending async activity —
- * registered (`registerPendingAsyncActivity`) and not yet consumed
- * (`completeAsyncActivity`/`failAsyncActivity`). A narrow, read-only escape
- * hatch for `server/` (COR-152's remote-activity result bridge,
- * `server/runtime/remote-activity-result-bridge.ts`): it needs to tell "this
- * durable task's operationId is also a workflow's remote-mode `ctx.run()`
- * token" apart from "this is a standalone task dispatched directly through
- * `WeftServer.dispatchTask`, unrelated to any workflow" — without exposing
- * `EngineInternals` itself outside `core/engine/`.
+ * Look up an engine's `EngineInternals` without throwing when it has none.
+ *
+ * A peek, not {@link getInternals}: it must tolerate an object that is not a
+ * real, constructor-initialized `Engine` (a minimal fixture stubbing just the
+ * `ServeOptions.engine` surface a given unit test exercises, as several
+ * `task-polling`/`websocket-worker` characterization tests do). Callers that
+ * genuinely require initialized internals use {@link getInternals} instead.
+ *
+ * Exists so a narrow, read-only predicate ABOUT an engine can live in its own
+ * sibling module rather than here — `internals.ts` is importable only from
+ * `core/engine/**` (`documentation/internal-imports-allowlist.json`), so a
+ * predicate `server/` must call cannot live in this file.
  */
-export function isPendingAsyncActivityToken(engine: object, token: string): boolean {
-  // A peek, not `getInternals` — this must tolerate an `options.engine` that
-  // is not a real, constructor-initialized `Engine` (a minimal fixture
-  // stubbing just the `ServeOptions.engine` surface a given unit test
-  // exercises, as several `task-polling`/`websocket-worker` characterization
-  // tests do). Treating that as "definitely not a pending token" is correct:
-  // a fixture that never went through `new Engine()` cannot durably hold one.
-  const internals = INTERNALS.get(engine);
-  return internals !== undefined && internals.pendingAsyncActivities.has(token);
+export function peekInternals(engine: object): EngineInternals | undefined {
+  return INTERNALS.get(engine);
 }
 
 /**

@@ -264,65 +264,126 @@ export function dispatchTaskDeadLetteredEvent(
   );
 }
 
+/** The ledger record a completion is being matched against, or `null` when absent. */
+type ExistingTaskRecord = ReturnType<typeof decodeRemoteTaskRecord>;
+
+/**
+ * Phase one of {@link commitTaskLedgerCompletion}: resolve a worker's
+ * cooperative `status: 'cancelled'` result, if this attempt genuinely has a
+ * cancellation recorded against it.
+ *
+ * Returns `undefined` to mean "fall through to the ordinary result path" —
+ * the phase's fall-through is part of its contract, so it is expressed in the
+ * return type rather than left implicit in the caller's control flow.
+ *
+ * COR-230, acceptance criterion 13: a worker's cooperative "I was
+ * cancelled" result resolves through the ledger's dedicated
+ * `Cancelling --> Terminal` transition — ONE step, matching the state
+ * diagram exactly — not the `Completing` intermediate the ordinary
+ * completed/failed path uses. Only reachable when the server itself
+ * already recorded cancellation intent (`recordCancellationIntent`,
+ * criterion 10) and the record is still `cancelling` under this exact
+ * attempt token. Checked BEFORE the generic terminal/deadLettered
+ * idempotency matching: a cancellation's `resultDigest` is deterministic
+ * from `(operationId, attemptToken)` alone (`commitCancellation`), not a
+ * content hash, so it would never match that matching's content-digest
+ * comparison and would be misreported as conflicting content.
+ */
+async function resolveCooperativeCancellation(
+  storage: Storage,
+  input: TaskLedgerCompletionInput,
+  existing: ExistingTaskRecord,
+): Promise<TaskLedgerCompletionResult | undefined> {
+  if (existing === null) return undefined;
+
+  if (
+    existing.state === 'terminal' &&
+    existing.disposition === 'cancelled' &&
+    existing.attemptToken === input.attemptToken
+  ) {
+    return { ok: true, disposition: 'duplicate', terminal: existing };
+  }
+
+  if (existing.state !== 'cancelling' || existing.attemptToken !== input.attemptToken) {
+    return undefined;
+  }
+
+  const committed = await commitTaskLedgerTransition(
+    storage,
+    input.operationId,
+    (current, now) => commitCancellation(current, { attemptToken: input.attemptToken }, now),
+    COMPLETION_MAX_ATTEMPTS,
+    [],
+    // Acceptance criterion 6: a cooperatively-cancelled attempt stays
+    // attributable, same as an ordinary resolved or dead-lettered one,
+    // AND co-commits the durable async-activity resolution record so a
+    // parked `ctx.run()` can resume with a cancellation-flavored failure
+    // even across a crash — see `commitTerminalFromCompleting` above.
+    async (current, nextRecord, now) => [
+      ...(await buildCurrentAttemptDispositionWrites(storage, current, {
+        disposition: 'cancelled',
+        dispositionAt: now,
+      })),
+      ...buildTerminalResolutionWrites(nextRecord.workflowId, nextRecord.operationId, {
+        status: 'failed',
+        error: nextRecord.cancellationReason,
+        failureCategory: 'cancellation',
+      }),
+    ],
+  );
+  if (!committed.ok) return committed;
+  return { ok: true, disposition: 'applied', terminal: committed.record };
+}
+
+/**
+ * Phase two of {@link commitTaskLedgerCompletion}: match an idempotent
+ * resubmission against a record that already left `leased` under this exact
+ * attempt (COR-240) — see the module doc comment for the full rationale.
+ *
+ * Returns `undefined` when there is nothing to match, which includes a record
+ * whose `attemptToken` differs from this submission: that case falls straight
+ * through to `beginCompletion`'s ordinary preconditions.
+ */
+function matchIdempotentResubmission(
+  existing: ExistingTaskRecord,
+  input: TaskLedgerCompletionInput,
+  resultDigest: string,
+): TaskLedgerCompletionResult | undefined {
+  if (existing === null) return undefined;
+
+  const conflict = {
+    ok: false,
+    reason: `conflicting content resubmitted for operation "${input.operationId}" under attempt token "${input.attemptToken}"`,
+  } as const;
+
+  // `attemptToken` is read only after `state` narrows the record union — not
+  // every variant carries one.
+  if (existing.state === 'terminal') {
+    if (existing.attemptToken !== input.attemptToken) return undefined;
+    return existing.resultDigest === resultDigest
+      ? { ok: true, disposition: 'duplicate', terminal: existing }
+      : conflict;
+  }
+
+  if (existing.state === 'deadLettered') {
+    if (existing.attemptToken !== input.attemptToken) return undefined;
+    return existing.pendingResultDigest === resultDigest
+      ? { ok: true, disposition: 'dead-lettered', deadLettered: existing }
+      : conflict;
+  }
+
+  return undefined;
+}
+
 export async function commitTaskLedgerCompletion(
   storage: Storage,
   input: TaskLedgerCompletionInput,
 ): Promise<TaskLedgerCompletionResult> {
   const existing = decodeRemoteTaskRecord(await storage.get(taskLedgerKey(input.operationId)));
 
-  // COR-230, acceptance criterion 13: a worker's cooperative "I was
-  // cancelled" result resolves through the ledger's dedicated
-  // `Cancelling --> Terminal` transition — ONE step, matching the state
-  // diagram exactly — not the `Completing` intermediate the ordinary
-  // completed/failed path below uses. Only reachable when the server itself
-  // already recorded cancellation intent (`recordCancellationIntent`,
-  // criterion 10) and the record is still `cancelling` under this exact
-  // attempt token. Checked, and returned from, BEFORE the generic
-  // terminal/deadLettered idempotency block below: a cancellation's
-  // `resultDigest` is deterministic from `(operationId, attemptToken)` alone
-  // (`commitCancellation`), not a content hash, so it would never match that
-  // block's content-digest comparison and would be misreported as
-  // conflicting content.
   if (input.status === 'cancelled') {
-    if (
-      existing !== null &&
-      existing.state === 'terminal' &&
-      existing.disposition === 'cancelled' &&
-      existing.attemptToken === input.attemptToken
-    ) {
-      return { ok: true, disposition: 'duplicate', terminal: existing };
-    }
-    if (
-      existing !== null &&
-      existing.state === 'cancelling' &&
-      existing.attemptToken === input.attemptToken
-    ) {
-      const committed = await commitTaskLedgerTransition(
-        storage,
-        input.operationId,
-        (current, now) => commitCancellation(current, { attemptToken: input.attemptToken }, now),
-        COMPLETION_MAX_ATTEMPTS,
-        [],
-        // Acceptance criterion 6: a cooperatively-cancelled attempt stays
-        // attributable, same as an ordinary resolved or dead-lettered one,
-        // AND co-commits the durable async-activity resolution record so a
-        // parked `ctx.run()` can resume with a cancellation-flavored failure
-        // even across a crash — see `commitTerminalFromCompleting` above.
-        async (current, nextRecord, now) => [
-          ...(await buildCurrentAttemptDispositionWrites(storage, current, {
-            disposition: 'cancelled',
-            dispositionAt: now,
-          })),
-          ...buildTerminalResolutionWrites(nextRecord.workflowId, nextRecord.operationId, {
-            status: 'failed',
-            error: nextRecord.cancellationReason,
-            failureCategory: 'cancellation',
-          }),
-        ],
-      );
-      if (!committed.ok) return committed;
-      return { ok: true, disposition: 'applied', terminal: committed.record };
-    }
+    const cancelled = await resolveCooperativeCancellation(storage, input, existing);
+    if (cancelled !== undefined) return cancelled;
     // Fall through: no cancellation was ever recorded for this attempt (the
     // record is `leased`, `completing`, already resolved some other way, or
     // absent entirely) — resolve as an ordinary result via the shared path
@@ -338,31 +399,8 @@ export async function commitTaskLedgerCompletion(
     input.status === 'completed' ? 'completed' : 'failed';
   const resultDigest = await pendingResultDigest({ ...input, status: pendingStatus });
 
-  // Idempotent resubmission against a record that already left `leased`
-  // under this exact attempt (COR-240) — see the module doc comment for the
-  // full rationale. A record whose attemptToken differs from this submission
-  // falls straight through to beginCompletion's ordinary preconditions below.
-  if (existing !== null && existing.state === 'terminal') {
-    if (existing.attemptToken === input.attemptToken) {
-      if (existing.resultDigest === resultDigest) {
-        return { ok: true, disposition: 'duplicate', terminal: existing };
-      }
-      return {
-        ok: false,
-        reason: `conflicting content resubmitted for operation "${input.operationId}" under attempt token "${input.attemptToken}"`,
-      };
-    }
-  } else if (existing !== null && existing.state === 'deadLettered') {
-    if (existing.attemptToken === input.attemptToken) {
-      if (existing.pendingResultDigest === resultDigest) {
-        return { ok: true, disposition: 'dead-lettered', deadLettered: existing };
-      }
-      return {
-        ok: false,
-        reason: `conflicting content resubmitted for operation "${input.operationId}" under attempt token "${input.attemptToken}"`,
-      };
-    }
-  }
+  const resubmitted = matchIdempotentResubmission(existing, input, resultDigest);
+  if (resubmitted !== undefined) return resubmitted;
 
   const resuming =
     existing !== null &&
