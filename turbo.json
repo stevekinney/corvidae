@@ -32,8 +32,11 @@
       "persistent": true,
       "cache": false
     },
+    "//#preflight": {
+      "cache": false
+    },
     "transit": {
-      "dependsOn": ["^transit"]
+      "dependsOn": ["//#preflight", "^transit"]
     },
     "@corvidae/chat-room#lint": {
       "dependsOn": ["sync", "transit"],
@@ -115,6 +118,7 @@
       "passThroughEnv": ["WEFT_UI_PORT", "WEFT_API_BASE_URL"]
     },
     "@corvidae/weft#test": {
+      "dependsOn": ["transit"],
       "env": [
         "CODEX_CI",
         "NODE_ENV",
@@ -131,6 +135,7 @@
       ]
     },
     "@corvidae/cinder#test": {
+      "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"]
     }
   },

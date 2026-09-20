@@ -129,6 +129,7 @@
     "format:check": "prettier --check .",
     "lint": "bun run lint:root && turbo run lint && bun run lint:styles",
     "lint:fix": "turbo run lint:fix",
+    "preflight": "bun install --frozen-lockfile",
     "test": "bun run test:self && turbo run test test:browser-fixtures --concurrency=1",
     "test:self": "bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts",
     "typecheck": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && tsc --noEmit && svelte-check --workspace scripts/browser-fixtures --tsconfig ./tsconfig.json --fail-on-warnings && turbo run typecheck",

@@ -26,6 +26,7 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 - Only applications have `build` tasks. Cache their declared application outputs. Lint, type-check, test, and development tasks consume library source directly and must not depend on upstream library builds.
 - Declare an environment variable in `turbo.json` only when it changes that task's result. Add task outputs whenever a task writes reusable artifacts; keep watchers and mutation tasks uncached.
 - Use `--filter` for focused work, for example `bunx turbo run test --filter=@corvidae/operative`. Run `bun run validate` for the complete graph.
+- Every turbo task runs the uncached root `//#preflight` task (`bun install --frozen-lockfile`) first, by way of `transit`, so a `package.json` edit without a matching `bun install` fails every turbo command rather than running against a stale tree. Turbo hashes `bun.lock` but never `node_modules`, so a drifted install would otherwise cache a result under a key describing a toolchain it was not built with. A package-specific `<package>#<task>` entry replaces the generic task definition instead of merging with it, so any new override must restate `"dependsOn": ["transit"]`; `scripts/task-cache.test.ts` enforces that every cacheable task still reaches the preflight.
 
 ## Worktrees and agents
 

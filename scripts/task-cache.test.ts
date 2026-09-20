@@ -399,3 +399,50 @@ for (const output of ${JSON.stringify(outputs)}) await Bun.write(output, 'genera
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * A static model of turbo's `dependsOn` resolution: it strips a leading `^`
+ * and falls back from `<package>#<task>` to the bare `<task>` definition. It
+ * proves the wiring in `turbo.json`, not the runtime ordering — a real
+ * `turbo run` showing `//:preflight` ahead of the task is what confirms that.
+ */
+function reachesPreflight(
+  taskKey: string,
+  tasks: Record<string, { dependsOn?: string[] }>,
+  seen = new Set<string>(),
+): boolean {
+  if (seen.has(taskKey)) return false;
+  seen.add(taskKey);
+  const scope = taskKey.includes('#') ? taskKey.slice(0, taskKey.indexOf('#')) : '';
+  for (const declared of tasks[taskKey]?.dependsOn ?? []) {
+    const entry = declared.startsWith('^') ? declared.slice(1) : declared;
+    if (entry === '//#preflight') return true;
+    const candidates = entry.includes('#') ? [entry] : [`${scope}#${entry}`, entry];
+    for (const candidate of candidates) {
+      if (candidate in tasks && reachesPreflight(candidate, tasks, seen)) return true;
+    }
+  }
+  return false;
+}
+
+test('every cacheable turbo task reaches the install preflight', async () => {
+  // A cached task that never routes through `//#preflight` can restore a result
+  // computed against a `node_modules` that had drifted from `bun.lock`, because
+  // turbo hashes the lockfile but never the installed tree. A package-specific
+  // override replaces the generic task definition rather than merging with it,
+  // so adding an `env` key to `<package>#test` silently drops the inherited
+  // `dependsOn` — which is exactly how `@corvidae/weft#test` lost it.
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const tasks: Record<string, { cache?: boolean; dependsOn?: string[] }> = configuration.tasks;
+  const uncovered = Object.keys(tasks).filter(
+    (key) => key !== '//#preflight' && tasks[key]?.cache !== false && !reachesPreflight(key, tasks),
+  );
+  expect(uncovered).toEqual([]);
+});
+
+test('the root package defines the preflight script the turbo task runs', async () => {
+  // Turbo treats a task whose script is missing as a silent no-op, so deleting
+  // or renaming this script would disable the gate above without failing.
+  const manifest = await Bun.file(join(root, 'package.json')).json();
+  expect(manifest.scripts?.preflight).toBe('bun install --frozen-lockfile');
+});
