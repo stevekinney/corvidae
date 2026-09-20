@@ -102,6 +102,24 @@ const CASES: Record<string, string[]> = {
   'mega-menu': ['openOnHover', 'viewportVisible', 'indicatorVisible', 'label'],
 };
 
+describe('splitTableRow — backslash-parity delimiter handling', () => {
+  test('an odd backslash run keeps the pipe inside its cell (escaped)', () => {
+    expect(splitTableRow('|a|b\\|c|d|')).toEqual(['', 'a', 'b\\|c', 'd', '']);
+  });
+
+  test('an even backslash run treats the pipe as a real delimiter', () => {
+    expect(splitTableRow('|a|b\\\\|c|d|')).toEqual(['', 'a', 'b\\\\', 'c', 'd', '']);
+  });
+
+  test('a single unescaped pipe is always a delimiter', () => {
+    expect(splitTableRow('|a|b|c|')).toEqual(['', 'a', 'b', 'c', '']);
+  });
+
+  test('three backslashes (odd) before a pipe still escapes it', () => {
+    expect(splitTableRow('|a|b\\\\\\|c|d|')).toEqual(['', 'a', 'b\\\\\\|c', 'd', '']);
+  });
+});
+
 describe('regenerated READMEs — Default column backfill', () => {
   for (const [componentId, props] of Object.entries(CASES)) {
     for (const propName of props) {
