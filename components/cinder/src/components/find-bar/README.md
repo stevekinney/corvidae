@@ -40,13 +40,13 @@ Docked find-in-document controls for a host-provided search backend.
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `activeIndex` | `number` | no | — | Index of the active match within the host-provided results. Bindable. |
+| `activeIndex` | `number` | no | `0` | Index of the active match within the host-provided results. Bindable. Defaults to `0`. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
-| `debounceMs` | `number` | no | — | Debounce interval, in milliseconds, before `onQueryChange` fires. |
-| `label` | `string` | no | — | Accessible label for the find controls. |
-| `matchCount` | `number` \| `null` | no | — | Number of matches for the current query, or `null` when the host has not searched yet. |
-| `minQueryLength` | `number` | no | — | Minimum query length before the host should search. |
-| `value` | `string` | no | — | Current query text. Bindable. |
+| `debounceMs` | `number` | no | `250` | Debounce interval, in milliseconds, before `onQueryChange` fires. Defaults to `250`. |
+| `label` | `string` | no | `"Find"` | Accessible label for the find controls. Defaults to `'Find'`. |
+| `matchCount` | `number` \| `null` | no | `null` | Number of matches for the current query, or `null` when the host has not searched yet. Defaults to `null`. |
+| `minQueryLength` | `number` | no | `3` | Minimum query length before the host should search. Defaults to `3`. |
+| `value` | `string` | no | `""` | Current query text. Bindable. Defaults to `''`. |
 | `onDismiss` | `(opaque)` | no | — | Called when the user dismisses the find bar. Not expressible in JSON Schema; see the component types for the signature. |
 | `onNext` | `(opaque)` | no | — | Called when the user requests the next match. Not expressible in JSON Schema; see the component types for the signature. |
 | `onPrevious` | `(opaque)` | no | — | Called when the user requests the previous match. Not expressible in JSON Schema; see the component types for the signature. |

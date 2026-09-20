@@ -38,6 +38,7 @@ const CASES: Record<string, string[]> = {
   banner: ['dismissible', 'variant'],
   calendar: ['firstDayOfWeek', 'locale', 'label', 'disabled'],
   'button-group': ['orientation'],
+  'find-bar': ['activeIndex', 'debounceMs', 'label', 'matchCount', 'minQueryLength', 'value'],
   'hover-card': ['openDelay', 'closeDelay', 'placement', 'offset'],
   'host-provider': ['platform', 'safeHeaderLeft', 'safeHeaderRight'],
   'json-editor': ['rows', 'validFeedbackVisible', 'highlight'],
