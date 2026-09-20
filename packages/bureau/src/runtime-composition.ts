@@ -1314,10 +1314,10 @@ export function recordedAgentStep(value: unknown): StepRecord | undefined {
  *
  * EFFECTFUL hook (seam #11): on a durable recovery the crashed in-flight step
  * re-runs from its boundary, so this hook can fire AGAIN for the same step. The
- * write is IDEMPOTENT — a re-fire for step N overwrites `lastActiveSkills` with the
+ * write is IDEMPOTENT — a re-fire for step N overwrites `activeSkillRecords` with the
  * same value (completed steps do not re-run their tool executions, so the active-skill
  * set is unchanged on replay). This is a state snapshot, NOT an append — the last
- * writer wins (matching the single-source-of-truth model for `lastActiveSkills`).
+ * writer wins (matching the single-source-of-truth model for `activeSkillRecords`).
  *
  * Replay classification: `effectful` (writes to external storage) but SAFE across
  * recovery re-fires because the payload is deterministic for a given step boundary

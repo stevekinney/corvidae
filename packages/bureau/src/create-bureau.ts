@@ -2809,16 +2809,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           lastMaximumSteps: request.maximumSteps ?? null,
           // Reset the active-skill snapshot at the start of every run so a reused
           // session never seeds a fresh run with the PREVIOUS run's active skills.
-          // The snapshot is otherwise written only by createSkillStateSnapshotHook
+          // The snapshot is otherwise written only by createSkillRecordSnapshotHook
           // after the run's first onStep boundary; if the durable process crashes
           // before that first snapshot, recovery would read this session's stale
-          // lastActiveSkills and pre-seed the new run's SkillSession with skills a
-          // live fresh run would not have — making load_skill_resource/list_skills
-          // treat stale skills as active. null clears it: buildRunDepsFromSession
-          // runs lastActiveSkills through isActiveSkillEntryArray, which rejects
-          // null → initialActiveSkills undefined → the recovered run starts empty,
-          // exactly as a fresh run would (PRRT_kwDORvupsc6Mddv3).
-          lastActiveSkills: null,
+          // records and pre-seed the new run with skills a live fresh run would not
+          // have. null clears it: buildRunDepsFromSession runs the value through
+          // isSkillActivationRecordArray, which rejects null → the recovered run
+          // starts empty, exactly as a fresh run would (PRRT_kwDORvupsc6Mddv3).
+          //
+          // All three keys, not just the records. The run id and step are what
+          // loadCommittedScheduledActiveSkills matches on, and a stale pair left
+          // behind would let it accept a committed step snapshot belonging to a
+          // previous run on this session.
+          activeSkillRecords: null,
+          activeSkillRecordsRunId: null,
+          activeSkillRecordsStep: null,
           // Durable recovery needs the authority that was safe to persist at
           // dispatch time. Credentials, tracing, and other request-local data
           // intentionally never cross the session boundary.
