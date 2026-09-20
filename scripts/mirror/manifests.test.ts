@@ -554,18 +554,33 @@ describe('composition against a manifest the target already carries', () => {
     );
   });
 
-  test('a package the target has never carried is seeded at 0.0.0 and reported', async () => {
-    const plan = await planFor('weft');
-    expect(parse(plan, 'packages/weft/package.json')['version']).toBe('0.0.0');
-    expect(plan.firstPublish).toEqual(['@lostgradient/weft']);
+  test('a never-published workspace with no target clone is seeded at 0.0.0 and reported', async () => {
+    // `@corvidae/weft-ui` carries `lastPublishedVersion: null` in the real map, so it has nothing
+    // to seed from and falls back to the pre-COR-1229 behaviour.
+    const plan = await planFor('cinder');
+    expect(parse(plan, 'packages/weft-ui/package.json')['version']).toBe('0.0.0');
+    expect(plan.firstPublish).toContain('@lostgradient/weft-ui');
+    expect(plan.seededFromPackageMap).not.toContain('@lostgradient/weft-ui');
   });
 
-  test('a published package missing from the target clone is refused, not rewound', async () => {
-    await withTree({ 'package.json': { name: 'weft-monorepo' } }, async (targetDirectory) => {
-      await expect(planFor('weft', { targetDirectory })).rejects.toThrow(
-        /published at 0\.25\.0 but the target has no packages\/weft\/package\.json/,
-      );
-    });
+  test(
+    'COR-1229: a published package missing from the target clone is seeded at ' +
+      'lastPublishedVersion, not refused',
+    async () => {
+      await withTree({ 'package.json': { name: 'weft-monorepo' } }, async (targetDirectory) => {
+        const plan = await planFor('weft', { targetDirectory });
+        expect(parse(plan, 'packages/weft/package.json')['version']).toBe('0.25.0');
+        expect(plan.seededFromPackageMap).toEqual(['@lostgradient/weft']);
+        expect(plan.firstPublish).toEqual([]);
+      });
+    },
+  );
+
+  test('COR-1229: no target clone at all seeds the same way as an incomplete one', async () => {
+    const plan = await planFor('weft');
+    expect(parse(plan, 'packages/weft/package.json')['version']).toBe('0.25.0');
+    expect(plan.seededFromPackageMap).toEqual(['@lostgradient/weft']);
+    expect(plan.firstPublish).toEqual([]);
   });
 
   test('only the package the target has never carried counts as a first publish', async () => {
@@ -596,6 +611,50 @@ describe('composition against a manifest the target already carries', () => {
       const cinder = parse(plan, 'packages/components/package.json');
       expect(cinder['version']).toBe('1.2.3');
       expect((cinder['scripts'] as Record<string, string>)['prepare']).toBe('cd ../.. && husky');
+    });
+  });
+});
+
+describe('COR-1229: seeding a released package the target clone does not yet carry', () => {
+  /** The real stevekinney/cinder layout, none of the three directories this decision is about. */
+  function realCinderClone(): Record<string, unknown> {
+    const files: Record<string, unknown> = {
+      'package.json': { name: 'cinder-workspace', private: true, workspaces: ['packages/*'] },
+    };
+    for (const name of [
+      'chat',
+      'components',
+      'editor',
+      'markdown',
+      'mcp',
+      'playground',
+      'testing',
+    ]) {
+      files[`packages/${name}/package.json`] = { name: `cinder-${name}`, version: '9.9.9' };
+    }
+    return files;
+  }
+
+  test('operative, armorer, and conversationalist are each seeded at their lastPublishedVersion', async () => {
+    await withTree(realCinderClone(), async (targetDirectory) => {
+      const plan = await planFor('cinder', {
+        targetDirectory,
+        extra: {
+          'packages/armorer/package.json': { name: '@corvidae/armorer', private: true },
+          'packages/conversationalist/package.json': {
+            name: '@corvidae/conversationalist',
+            private: true,
+          },
+        },
+      });
+      expect(parse(plan, 'packages/operative/package.json')['version']).toBe('0.12.0');
+      expect(parse(plan, 'packages/armorer/package.json')['version']).toBe('2.4.0');
+      expect(parse(plan, 'packages/conversationalist/package.json')['version']).toBe('1.2.0');
+      expect(plan.seededFromPackageMap.toSorted()).toEqual(
+        ['@lostgradient/operative', 'armorer', 'conversationalist'].toSorted(),
+      );
+      // Markdown's target manifest already exists, so it is carried through rather than seeded.
+      expect(plan.seededFromPackageMap).not.toContain('@lostgradient/markdown');
     });
   });
 });

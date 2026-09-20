@@ -432,6 +432,8 @@ export interface SyncResult {
   /** The sync commit, present only when something changed. */
   commit?: string;
   firstPublish: string[];
+  /** COR-1229: public names seeded from `package-map.json`'s `lastPublishedVersion`, not `0.0.0`. */
+  seededFromPackageMap: string[];
   verification: VerifyResult;
 }
 
@@ -487,6 +489,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
       directory: clone,
       changed,
       firstPublish: plan.firstPublish,
+      seededFromPackageMap: plan.seededFromPackageMap,
       verification,
     };
   }
@@ -509,6 +512,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     changed,
     commit,
     firstPublish: plan.firstPublish,
+    seededFromPackageMap: plan.seededFromPackageMap,
     verification,
   };
 }
@@ -545,6 +549,11 @@ export async function runSyncCommand(argv: readonly string[]): Promise<number> {
         ? `${target}: no change, skipping\n`
         : `${target}: pushed ${result.commit} with ${result.changed.length} changed path(s)\n`,
     );
+    if (result.seededFromPackageMap.length > 0) {
+      process.stdout.write(
+        `${target}: seeded from package-map.json's lastPublishedVersion, target has no manifest yet: ${result.seededFromPackageMap.join(', ')}\n`,
+      );
+    }
     return 0;
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
