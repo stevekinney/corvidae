@@ -1,5 +1,6 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { serializeJson } from './json-formatting.ts';
 import {
   DeferredWorkspaceError,
   layoutFor,
@@ -555,10 +556,6 @@ export async function readExistingManifest(
   return (await file.json()) as JsonObject;
 }
 
-function serialize(manifest: JsonObject): string {
-  return `${JSON.stringify(manifest, undefined, 2)}\n`;
-}
-
 /** Build every manifest and `LICENSE` this target receives, without writing anything. */
 export async function planManifests({
   corvidaeRoot,
@@ -642,7 +639,7 @@ export async function planManifests({
     });
     for (const entry of composed.added) addedDependencies.push(`${path}: ${entry}`);
 
-    files[path] = serialize(composed.manifest);
+    files[path] = await serializeJson(composed.manifest, targetDirectory, path);
     files[`${directory}/LICENSE`] = licence;
     emittedWorkspaces.push({
       workspace: workspace.name,
@@ -660,7 +657,11 @@ export async function planManifests({
     mirrorPackages,
   });
   for (const entry of composedRoot.added) addedDependencies.push(`package.json: ${entry}`);
-  files['package.json'] = serialize(composedRoot.manifest);
+  files['package.json'] = await serializeJson(
+    composedRoot.manifest,
+    targetDirectory,
+    'package.json',
+  );
 
   return {
     target,

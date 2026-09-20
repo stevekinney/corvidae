@@ -3,6 +3,7 @@ import { join, relative, sep } from 'node:path';
 import typescript from 'typescript';
 
 import { publicSpecifierFor } from './internal-names.ts';
+import { serializeJson } from './json-formatting.ts';
 import { targetDirectoryFor } from './layout-map.ts';
 import { publicNameFor, targetFor, type MirrorTarget } from './manifests.ts';
 import { dispositionFor } from './package-map.ts';
@@ -249,10 +250,6 @@ export interface TypeScriptPlan {
   vendoredInto: string[];
 }
 
-function serialize(document: unknown): string {
-  return `${JSON.stringify(document, undefined, 2)}\n`;
-}
-
 /**
  * Emit every workspace's tsconfig with its `extends` rewritten, plus the vendored configuration
  * files when the target cannot hold the package.
@@ -297,10 +294,12 @@ export async function planTypeScriptConfiguration({
       // it does know.
       files[path] =
         depth === 0
-          ? serialize(
+          ? await serializeJson(
               await applyTargetOwnedKeys(rewritten, resolvedPolicy, target, targetDirectory, path),
+              targetDirectory,
+              path,
             )
-          : serialize(rewritten);
+          : await serializeJson(rewritten, targetDirectory, path);
     }
     if (!vendor) continue;
     vendoredInto.push(emittedDirectory);
