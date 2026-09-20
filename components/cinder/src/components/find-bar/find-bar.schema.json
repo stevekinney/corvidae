@@ -65,7 +65,7 @@
       {
         "name": "onQueryChange",
         "reason": "function-or-snippet",
-        "description": "Called with the debounced query text as the user types."
+        "description": "Called with the debounced query text once it reaches `minQueryLength`.\nAlso called immediately with `''`, bypassing the debounce, the moment a\npreviously eligible query shrinks below `minQueryLength`—handle the\nempty-string case as a synchronous reset, not just the debounced value."
       }
     ]
   }

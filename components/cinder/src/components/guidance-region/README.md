@@ -34,7 +34,7 @@
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `storageKey` | `string` | no | — | Key used to namespace dismissal state in the storage adapter. |
+| `storageKey` | `string` | no | `"cinder-guidance"` | Key used to namespace dismissal state in the storage adapter. Defaults to `'cinder-guidance'`—regions sharing one storage adapter without an explicit `storageKey` collide in that namespace. |
 | `version` | `string` | no | — | Version window claims are filtered against. |
 | `anchorResolver` | `(opaque)` | no | — | Resolves a claim anchor using consumer-owned DOM knowledge. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Descendant application surface that consumes guidance through `useGuidance`. Not expressible in JSON Schema; see the component types for the signature. |

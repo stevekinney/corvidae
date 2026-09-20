@@ -13,7 +13,13 @@ export type SettingRowProps = {
   error?: string;
   /** Marks the setting as required. */
   required?: boolean;
-  /** Disables the row's control. Does not disable automatically while saving. */
+  /**
+   * Forwards a disabled state into `FormField` context for the row's
+   * control. Only takes effect for a control that opts into and reads that
+   * context—a native element or a third-party component that doesn't
+   * consume it stays interactive and must receive `disabled` directly.
+   * Does not disable automatically while saving.
+   */
   disabled?: boolean;
   /** Renders a managed-policy indicator; pair with `PolicyLock`. */
   managed?: FormFieldManaged;

@@ -10,7 +10,9 @@ const schema = {
     },
     storageKey: {
       type: 'string',
-      description: 'Key used to namespace dismissal state in the storage adapter.',
+      description:
+        "Key used to namespace dismissal state in the storage adapter. Defaults\nto `'cinder-guidance'`—regions sharing one storage adapter without an\nexplicit `storageKey` collide in that namespace.",
+      default: 'cinder-guidance',
     },
   },
   additionalProperties: false,

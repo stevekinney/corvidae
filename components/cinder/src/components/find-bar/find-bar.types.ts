@@ -28,7 +28,12 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * @default 250
    */
   debounceMs?: number;
-  /** Called with the debounced query text as the user types. */
+  /**
+   * Called with the debounced query text once it reaches `minQueryLength`.
+   * Also called immediately with `''`, bypassing the debounce, the moment a
+   * previously eligible query shrinks below `minQueryLength`—handle the
+   * empty-string case as a synchronous reset, not just the debounced value.
+   */
   onQueryChange?: (query: string) => void;
   /** Called when the user requests the previous match. */
   onPrevious?: () => void;

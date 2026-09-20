@@ -30,7 +30,8 @@ const schema = {
     },
     disabled: {
       type: 'boolean',
-      description: "Disables the row's control. Does not disable automatically while saving.",
+      description:
+        "Forwards a disabled state into `FormField` context for the row's\ncontrol. Only takes effect for a control that opts into and reads that\ncontext—a native element or a third-party component that doesn't\nconsume it stays interactive and must receive `disabled` directly.\nDoes not disable automatically while saving.",
     },
     managed: {
       type: 'object',

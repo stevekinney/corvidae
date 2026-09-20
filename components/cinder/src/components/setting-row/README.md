@@ -27,7 +27,7 @@ SettingRow arranges settings-page guidance and a control while publishing FormFi
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `description` | `string` | no | — | Guidance text describing the setting. |
-| `disabled` | `boolean` | no | — | Disables the row's control. Does not disable automatically while saving. |
+| `disabled` | `boolean` | no | — | Forwards a disabled state into `FormField` context for the row's control. Only takes effect for a control that opts into and reads that context—a native element or a third-party component that doesn't consume it stays interactive and must receive `disabled` directly. Does not disable automatically while saving. |
 | `error` | `string` | no | — | Corrective error message forwarded through `FormField` context. |
 | `id` | `string` | yes | — | Stable id shared with the composed control. |
 | `label` | `string` | yes | — | Visible setting label. |

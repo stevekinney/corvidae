@@ -39,6 +39,7 @@ const CASES: Record<string, string[]> = {
   calendar: ['firstDayOfWeek', 'locale', 'label', 'disabled'],
   'button-group': ['orientation'],
   'find-bar': ['activeIndex', 'debounceMs', 'label', 'matchCount', 'minQueryLength', 'value'],
+  'guidance-region': ['storageKey'],
   'hover-card': ['openDelay', 'closeDelay', 'placement', 'offset'],
   'host-provider': ['platform', 'safeHeaderLeft', 'safeHeaderRight'],
   'json-editor': ['rows', 'validFeedbackVisible', 'highlight'],
