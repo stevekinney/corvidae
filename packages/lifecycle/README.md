@@ -369,6 +369,12 @@ hooks.clear('before-compile');
 console.log(hooks.has('before-compile')); // false
 ```
 
+### Hierarchical hook priority bands (COR-567)
+
+`@corvidae/operative` and `@corvidae/bureau` compose a Bureau/Agent/direct-run hook hierarchy on top of this registry. `mergeHookRegistries` (below) offsets each tier by `(tierCount - 1 - tierIndex) * 1000`, over the fixed tier order `[bureau, agent, direct]`—the earliest-listed tier (Bureau) receives the highest offset.
+
+`HookRegistry` has one dispatch shape today: `run()` sorts every handler descending by priority, runs all of them in that order, and lets each non-`undefined` return replace the value the next handler sees—so the _last-run_ handler, the lowest-priority one, has the final say, since its return is the one nothing overwrites afterward. `getHandlers()`-based manual iteration (Operative's `beforeGenerate`/`afterGenerate`) mirrors that same waterfall. Nothing on `HookRegistry` short-circuits on the first non-`undefined` result and hands the win to the highest band instead; Operative's `prepareStep` looks like it does, but only through its separate legacy array-style hook, not the registry—`hooks.run('prepareStep', ...)` goes through the same last-run-wins `run()` as every other hook point. A decided contract naming a first-result-wins "highest band always wins" dispatch shape (as opposed to this last-run-wins one) describes a shape no `HookRegistry` primitive provides yet. Given the current, single dispatch shape, a Bureau invariant that must remain the final word on any hook point registers with an explicit low `priority` so it runs last.
+
 ### `mergeHookRegistries()`
 
 **Signature:**

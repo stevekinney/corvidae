@@ -39,6 +39,8 @@ export interface RunnableAgent<O = never, H extends boolean = false> {
 
 The function is intentionally property-typed. This makes TypeScript check its parameter contravariantly, so an implementation cannot silently accept only the string form and reject conversation resumption.
 
+COR-567 (2026-09-19) ratifies that `RunnableAgent` carries an optional `hooks?: HookRegistry<OperativeHookMap>`, settable only at `createAgent()` construction time. At dispatch, a run's effective hook plan is `mergeHookRegistries(bureauRegistry, agentRegistry, directRegistry)`, composed bureau-first and agent-additive, so an Agent- or run-level registration can narrow but never remove or bypass a Bureau invariant hook. The merged registry is a snapshot, so later mutation of a source registry does not change a dispatched run. A child run's plan is `mergeHookRegistries(bureauRegistry, childAgentRegistry)` and never inherits the parent's direct-run hooks. This is the decided contract; at this revision `RunnableAgent` has no `hooks` field, `createAgent`'s options accept no `hooks`, and nothing under `packages/bureau/src` calls `mergeHookRegistries`—only `RunOptionsBase.hooks` (the direct-run tier) exists in source today.
+
 `run()` starts synchronously and returns an `AgentRun` immediately. The handle is deliberately not a `Promise` or thenable: callers choose an explicit terminal operation.
 
 ```ts
@@ -156,6 +158,17 @@ The five steering event classes are exported and included in `OperativeEventMap`
 `createBureau` accepts an `AgentDefinitions` map of runnable agents and returns a typed Bureau catalog. `bureau.run(name, input, options?)` preserves the selected agent's output type and forwards the caller's principal and other run context. Bureau also owns durable composition, recovery classification, session and scheduler operations, model selection, event history, pending reviews, and shutdown reporting.
 
 The Bureau durable options that affect the Operative contract include `workflowVersion`, `durableOwnership`, `durableGuardrails`, persistence, and the durable storage configuration. `workflowVersion` is passed to both the workflow stamp and recovery comparison when a durable engine is composed.
+
+`BureauOptions.memory?: CreateMemoryOptions | Memory` accepts either construction options or an already-constructed `Memory` instance; `isMemoryInstance` decides which branch it holds, calling `createMemory()` only for the options branch. The resolved instance is exposed on `Bureau.memory` (`Memory | undefined`).
+
+## Reserved for memory
+
+COR-750 (2026-09-19) ratified the memory lifecycle and ownership contract without expanding the surface documented above. Four reservations follow from it:
+
+- A per-agent memory-profile read method on the Bureau catalog, parallel to `generationProfile`'s "a caller reads which projection it received" pattern, is reserved for a later decision.
+- A metadata method on any future memory catalog beyond the ratified `get`/`find`/`has`/`names`/`entries`/`query` shape is reserved.
+- Reuse of the AB-34 started-work control contract (described above under "Started-work control contract") for any memory administrative surface that exposes in-flight state is reserved; the contract itself already ships—`Bureau.modelCatalog`'s doc comment in `packages/bureau/src/types.ts` references it—but this document does not yet describe a memory-scoped user of it.
+- A placeholder is reserved for memory administrative methods that ship later; this document has no field or administrative-method inventory yet to hold it.
 
 ## Compile-ready example
 
