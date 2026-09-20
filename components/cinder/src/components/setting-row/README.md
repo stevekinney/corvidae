@@ -28,12 +28,12 @@ SettingRow arranges settings-page guidance and a control while publishing FormFi
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `description` | `string` | no | — | Guidance text describing the setting. |
 | `disabled` | `boolean` | no | `false` | Forwards a disabled state into `FormField` context for the row's control. Only takes effect for a control that opts into and reads that context—a native element or a third-party component that doesn't consume it stays interactive and must receive `disabled` directly. Does not disable automatically while saving. `SettingRow` forwards `undefined` when omitted; `FormField` normalizes that to `false`. Defaults to `false`. |
-| `error` | `string` | no | — | Corrective error message forwarded through `FormField` context. |
+| `error` | `string` | no | — | Corrective error message. `FormField` renders this text itself, as a sibling of the control, not through context—a custom `control` that reads `FormField` context sees only the derived `errorId`, `invalid`, and the composed `describedBy`, never the message string itself. |
 | `id` | `string` | yes | — | Stable id forwarded into `FormField` context, which associates the generated `<label for={id}>` with it. Only a control that opts into and reads that context receives `id` automatically—for a native element or a third-party component that doesn't, the label is unassociated unless the host also applies `id` to that control directly, the same qualification as `required` and `disabled`. |
 | `label` | `string` | yes | — | Visible setting label. |
 | `managed` | { by?: `string`; reason?: `string` } | no | — | Renders a managed-policy indicator; pair with `PolicyLock`. |
 | `required` | `boolean` | no | `false` | Renders the required marker and forwards `required` into `FormField` context. Only takes effect for a control that opts into and reads that context—it never adds a native `required` attribute, so a control that doesn't consume the context still passes browser constraint validation and must receive `required` directly. `SettingRow` forwards `undefined` when omitted; `FormField` normalizes that to `false`. Defaults to `false`. |
-| `warning` | `string` | no | — | Advisory message forwarded through `FormField` context. |
+| `warning` | `string` | no | — | Advisory message. `FormField` renders this text itself, as a sibling of the control, not through context—a custom `control` that reads `FormField` context sees only the derived `warningId` (and the composed `describedBy`) to associate with, never the message string itself. |
 | `control` | `(opaque)` | yes | — | The setting's control, rendered with `FormField` context applied. Not expressible in JSON Schema; see the component types for the signature. |
 | `disclosure` | `(opaque)` | no | — | Optional disclosure content rendered beneath the row. Not expressible in JSON Schema; see the component types for the signature. |
 

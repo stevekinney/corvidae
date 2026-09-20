@@ -53,7 +53,7 @@ const schema = {
         name: 'onOverrideChange',
         reason: 'function-or-snippet',
         description:
-          "Called when the component's own `setOverride` (exposed to `children`\nas `ParameterFieldEditorState.setOverride`) or its built-in reset\naction runs—not only when either actually changes the override:\ncalling `setOverride` with the value `override` already holds still\nnotifies. Not called when a parent changes the bindable `override`\nprop programmatically—that update is not distinguishable here from\nthe component's own writes.",
+          "Called when the component's own `setOverride` (exposed to `children`\nas `ParameterFieldEditorState.setOverride`) accepts a value, or its\nbuilt-in reset action runs—not only when either actually changes the\noverride: calling `setOverride` with the value `override` already\nholds still notifies. `setOverride` rejecting a `NaN`/infinite value\nis the one case where nothing happens: no override change, no call\nhere—see that function. Not called when a parent changes the\nbindable `override` prop programmatically—that update is not\ndistinguishable here from the component's own writes.",
       },
     ],
   },

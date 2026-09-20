@@ -14,9 +14,20 @@ export type SettingRowProps = {
   label: string;
   /** Guidance text describing the setting. */
   description?: string;
-  /** Advisory message forwarded through `FormField` context. */
+  /**
+   * Advisory message. `FormField` renders this text itself, as a sibling
+   * of the control, not through context—a custom `control` that reads
+   * `FormField` context sees only the derived `warningId` (and the
+   * composed `describedBy`) to associate with, never the message string
+   * itself.
+   */
   warning?: string;
-  /** Corrective error message forwarded through `FormField` context. */
+  /**
+   * Corrective error message. `FormField` renders this text itself, as a
+   * sibling of the control, not through context—a custom `control` that
+   * reads `FormField` context sees only the derived `errorId`, `invalid`,
+   * and the composed `describedBy`, never the message string itself.
+   */
   error?: string;
   /**
    * Renders the required marker and forwards `required` into `FormField`

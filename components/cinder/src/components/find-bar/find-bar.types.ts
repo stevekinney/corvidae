@@ -30,14 +30,17 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * whenever the user starts a new search, so bind it rather than mirror
    * `onQueryChange` manually to stay in sync with that reset. The
    * `activeIndex` clamp assumes this is a finite, non-negative integer
-   * when not `null`, and an invalid value doesn't fail uniformly: a
-   * negative or fractional `matchCount` (e.g. `-1` or `0.5`) still
-   * normalizes a finite `activeIndex` to `0`, since `Math.max(0,
-   * matchCount - 1)` floors there too; `NaN` instead propagates,
-   * overwriting even a finite `activeIndex` with `NaN`; and `Infinity`
-   * effectively disables the clamp's upper bound, so an out-of-range
-   * `activeIndex` passes through unclamped rather than being normalized.
-   * Defaults to `null`.
+   * when not `null`, and there is no rounding anywhere in it (no
+   * `Math.floor`), so an invalid value doesn't fail uniformly: at
+   * `matchCount <= 1` (negative, `0`, or a fraction like `0.5`),
+   * `Math.max(0, matchCount - 1)` is `0`, so a finite `activeIndex`
+   * normalizes to `0`; at a fraction above `1` (e.g. `1.5`), that same
+   * expression is itself fractional (`0.5`), so `activeIndex` clamps to
+   * that fraction instead of an integer; `NaN` propagates, overwriting
+   * even a finite `activeIndex` with `NaN`; and `Infinity` effectively
+   * disables the clamp's upper bound, so an out-of-range `activeIndex`
+   * passes through unclamped rather than being normalized. Defaults to
+   * `null`.
    * @default null
    */
   matchCount?: number | null;

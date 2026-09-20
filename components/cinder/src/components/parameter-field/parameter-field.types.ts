@@ -35,12 +35,14 @@ export type ParameterFieldProps = {
   experimental?: boolean;
   /**
    * Called when the component's own `setOverride` (exposed to `children`
-   * as `ParameterFieldEditorState.setOverride`) or its built-in reset
-   * action runs—not only when either actually changes the override:
-   * calling `setOverride` with the value `override` already holds still
-   * notifies. Not called when a parent changes the bindable `override`
-   * prop programmatically—that update is not distinguishable here from
-   * the component's own writes.
+   * as `ParameterFieldEditorState.setOverride`) accepts a value, or its
+   * built-in reset action runs—not only when either actually changes the
+   * override: calling `setOverride` with the value `override` already
+   * holds still notifies. `setOverride` rejecting a `NaN`/infinite value
+   * is the one case where nothing happens: no override change, no call
+   * here—see that function. Not called when a parent changes the
+   * bindable `override` prop programmatically—that update is not
+   * distinguishable here from the component's own writes.
    */
   onOverrideChange?: (value: number | undefined) => void;
   /** Optional custom numeric editor. Receives the effective value and override setter. */
