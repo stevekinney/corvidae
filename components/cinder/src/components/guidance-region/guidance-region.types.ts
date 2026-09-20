@@ -16,14 +16,17 @@ export type GuidanceRegionProps = {
    * SemVer-shaped
    * (`major.minor.patch`, each numeric with no leading zero, an optional
    * `-prerelease`/`+build` suffix)—a shortened form like `'1.2'` fails to
-   * parse. The parser is looser than strict SemVer in one respect: it
-   * doesn't reject an empty dot-separated identifier inside a
-   * `-prerelease`/`+build` suffix (e.g. `'1.0.0-alpha..1'` still parses).
-   * If this non-empty `version` itself fails to parse, every claim is
-   * filtered out—the whole registry silently goes empty, not just the
-   * claims with malformed bounds. A claim's `relevantFrom`/`relevantUntil`
-   * are parsed the same way; if either fails to parse, only that claim is
-   * filtered out.
+   * parse. The parser accepts some non-strict-SemVer forms without
+   * rejecting them: an empty dot-separated identifier inside a
+   * `-prerelease`/`+build` suffix (`'1.0.0-alpha..1'`), and a numeric
+   * prerelease identifier with a leading zero (`'1.0.0-01'`, read as the
+   * number `1`)—both parse successfully. If this non-empty `version`
+   * itself fails to parse, every claim is filtered out—the whole registry
+   * silently goes empty, not just the claims with malformed bounds. A
+   * claim's `relevantFrom`/`relevantUntil` are parsed the same way, except
+   * that `''` (as opposed to omitted) is treated as omitted there too, not
+   * as invalid input; if either is supplied non-empty and fails to parse,
+   * only that claim is filtered out.
    */
   version?: string;
   /** Adapter used to persist which claims a user has dismissed, so dismissal survives a reload. */
@@ -41,7 +44,10 @@ export type GuidanceRegionProps = {
    * case where `kind` is omitted: without `anchorResolver` (or when it
    * resolves to a disconnected element), that claim can never be claimed
    * and its guidance can never open. Omit this prop only when every
-   * registered claim is `kind: 'modal'`.
+   * registered claim is `kind: 'modal'`—and even then, this `GuidanceRegion`
+   * must be mounted beneath a `ModalRegion`: without that context, `claim()`
+   * returns `false` for a modal claim too, so an all-modal registry with no
+   * surrounding `ModalRegion` also never opens.
    */
   anchorResolver?: (anchor: string) => HTMLElement | null;
   /** Descendant application surface that consumes guidance through `useGuidance`. */

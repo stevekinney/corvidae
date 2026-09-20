@@ -9,7 +9,7 @@
     },
     "activeIndex": {
       "type": "number",
-      "description": "Index of the active match within the host-provided results. Bindable,\nbut not input-only: the component resets it to `0` itself whenever the\nuser edits the query, and clamps it into `[0, matchCount - 1]` whenever\n`matchCount` changes—a parent binding this prop should expect it to be\noverwritten in both cases, not treat it as a preserved selection.\nDefaults to `0`.",
+      "description": "Index of the active match within the host-provided results. Bindable,\nbut not input-only: the component resets it to `0` itself whenever the\nuser edits the query, and clamps it into `[0, matchCount - 1]` whenever\n`matchCount` changes—except at `matchCount === 0`, where there is no\nvalid index and it normalizes to `0` instead (a parent binding this\nprop should expect it to be overwritten in all these cases, not treat\nit as a preserved selection). Defaults to `0`.",
       "default": 0
     },
     "matchCount": {

@@ -7,7 +7,7 @@ const schema = {
     version: {
       type: 'string',
       description:
-        "Version window claims are filtered against. When omitted—or passed as\n`''`, which is treated identically to omitted, not as an invalid\nversion—every claim is relevant and neither claim's `relevantFrom` nor\n`relevantUntil` is validated; this matters if an unset environment\nvalue can reach this prop as `''`. When supplied non-empty, it must be\nSemVer-shaped\n(`major.minor.patch`, each numeric with no leading zero, an optional\n`-prerelease`/`+build` suffix)—a shortened form like `'1.2'` fails to\nparse. The parser is looser than strict SemVer in one respect: it\ndoesn't reject an empty dot-separated identifier inside a\n`-prerelease`/`+build` suffix (e.g. `'1.0.0-alpha..1'` still parses).\nIf this non-empty `version` itself fails to parse, every claim is\nfiltered out—the whole registry silently goes empty, not just the\nclaims with malformed bounds. A claim's `relevantFrom`/`relevantUntil`\nare parsed the same way; if either fails to parse, only that claim is\nfiltered out.",
+        "Version window claims are filtered against. When omitted—or passed as\n`''`, which is treated identically to omitted, not as an invalid\nversion—every claim is relevant and neither claim's `relevantFrom` nor\n`relevantUntil` is validated; this matters if an unset environment\nvalue can reach this prop as `''`. When supplied non-empty, it must be\nSemVer-shaped\n(`major.minor.patch`, each numeric with no leading zero, an optional\n`-prerelease`/`+build` suffix)—a shortened form like `'1.2'` fails to\nparse. The parser accepts some non-strict-SemVer forms without\nrejecting them: an empty dot-separated identifier inside a\n`-prerelease`/`+build` suffix (`'1.0.0-alpha..1'`), and a numeric\nprerelease identifier with a leading zero (`'1.0.0-01'`, read as the\nnumber `1`)—both parse successfully. If this non-empty `version`\nitself fails to parse, every claim is filtered out—the whole registry\nsilently goes empty, not just the claims with malformed bounds. A\nclaim's `relevantFrom`/`relevantUntil` are parsed the same way, except\nthat `''` (as opposed to omitted) is treated as omitted there too, not\nas invalid input; if either is supplied non-empty and fails to parse,\nonly that claim is filtered out.",
     },
     storageKey: {
       type: 'string',
@@ -23,7 +23,7 @@ const schema = {
         name: 'anchorResolver',
         reason: 'function-or-snippet',
         description:
-          "Resolves a claim anchor using consumer-owned DOM knowledge. Required\nfor any claim that isn't `kind: 'modal'`—which includes the default\ncase where `kind` is omitted: without `anchorResolver` (or when it\nresolves to a disconnected element), that claim can never be claimed\nand its guidance can never open. Omit this prop only when every\nregistered claim is `kind: 'modal'`.",
+          "Resolves a claim anchor using consumer-owned DOM knowledge. Required\nfor any claim that isn't `kind: 'modal'`—which includes the default\ncase where `kind` is omitted: without `anchorResolver` (or when it\nresolves to a disconnected element), that claim can never be claimed\nand its guidance can never open. Omit this prop only when every\nregistered claim is `kind: 'modal'`—and even then, this `GuidanceRegion`\nmust be mounted beneath a `ModalRegion`: without that context, `claim()`\nreturns `false` for a modal claim too, so an all-modal registry with no\nsurrounding `ModalRegion` also never opens.",
       },
       {
         name: 'children',

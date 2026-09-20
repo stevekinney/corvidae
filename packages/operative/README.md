@@ -551,8 +551,13 @@ session.conversationHistory = conversation.current;
 await sessions.save(session);
 
 // Once you're done with a session, remove it directly, or reclaim storage
-// in bulk on a schedule. This targets a different, disposable session—not
-// 'session-abc' above, whose resumed turn was just persisted.
+// in bulk on a schedule. This creates and immediately discards a separate,
+// disposable session—not 'session-abc' above, whose resumed turn was just
+// persisted—so the removal below has a real record to act on.
+const { session: scratchSession } = await resumeSession(sessions, 'session-to-discard', {
+  agentName: 'my-agent',
+});
+await sessions.save(scratchSession);
 await sessions.delete('session-to-discard');
 await sessions.cleanup({ olderThan: 7 * 24 * 60 * 60 * 1000 }); // 1 week
 ```

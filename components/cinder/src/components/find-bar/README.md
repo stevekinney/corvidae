@@ -40,7 +40,7 @@ Docked find-in-document controls for a host-provided search backend.
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `activeIndex` | `number` | no | `0` | Index of the active match within the host-provided results. Bindable, but not input-only: the component resets it to `0` itself whenever the user edits the query, and clamps it into `[0, matchCount - 1]` whenever `matchCount` changes—a parent binding this prop should expect it to be overwritten in both cases, not treat it as a preserved selection. Defaults to `0`. |
+| `activeIndex` | `number` | no | `0` | Index of the active match within the host-provided results. Bindable, but not input-only: the component resets it to `0` itself whenever the user edits the query, and clamps it into `[0, matchCount - 1]` whenever `matchCount` changes—except at `matchCount === 0`, where there is no valid index and it normalizes to `0` instead (a parent binding this prop should expect it to be overwritten in all these cases, not treat it as a preserved selection). Defaults to `0`. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `debounceMs` | `number` | no | `250` | Debounce interval, in milliseconds, before `onQueryChange` fires for an eligible query. Does not apply to the synchronous `''` notification `onQueryChange` sends when a previously eligible query shrinks below `minQueryLength`—see that prop. Defaults to `250`. |
 | `label` | `string` | no | `"Find"` | Accessible label for the find controls. Defaults to `'Find'`. |
