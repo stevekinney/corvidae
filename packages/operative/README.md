@@ -526,8 +526,6 @@ const { session, conversation, isNew } = await resumeSession(sessions, 'session-
 await sessions.save(session);
 const summaries = await sessions.list({ agentName: 'my-agent', sortBy: 'updatedAt' });
 const loaded = await sessions.load('session-abc');
-await sessions.delete('session-abc');
-await sessions.cleanup({ olderThan: 7 * 24 * 60 * 60 * 1000 }); // 1 week
 
 // Then drive a run from the restored, already-live Conversation instance.
 // createAgent().run() only accepts a plain ConversationHistory (it snapshots
@@ -544,6 +542,12 @@ const activeRun = createActiveRun({
   stopWhen: stopWhen.noToolCalls(),
 });
 const result = await activeRun.result;
+
+// Once you're done with a session, remove it directly, or reclaim storage
+// in bulk on a schedule—these don't apply to the session used above; run
+// them against a session you actually want to discard.
+await sessions.delete('session-abc');
+await sessions.cleanup({ olderThan: 7 * 24 * 60 * 60 * 1000 }); // 1 week
 ```
 
 **`SessionStore` interface:**

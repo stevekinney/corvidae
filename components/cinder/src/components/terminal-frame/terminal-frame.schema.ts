@@ -21,13 +21,13 @@ const schema = {
     columnWidth: {
       type: 'number',
       description:
-        'Character-cell width, in pixels, used to compute `{ cols, rows }` on\nresize. Defaults to `8`.',
+        'Character-cell width, in pixels, used to compute `{ cols, rows }` on\nresize. Must be positive and finite, or `onDimensionsChange` never\nfires (see that prop). Defaults to `8`.',
       default: 8,
     },
     rowHeight: {
       type: 'number',
       description:
-        'Character-cell height, in pixels, used to compute `{ cols, rows }` on\nresize. Defaults to `18`.',
+        'Character-cell height, in pixels, used to compute `{ cols, rows }` on\nresize. Must be positive and finite, or `onDimensionsChange` never\nfires (see that prop). Defaults to `18`.',
       default: 18,
     },
     class: {
@@ -49,7 +49,7 @@ const schema = {
         name: 'onDimensionsChange',
         reason: 'function-or-snippet',
         description:
-          'Called with `{ cols, rows }` whenever the character-cell size changes, so the host can resize its PTY.',
+          'Called with `{ cols, rows }` whenever the character-cell size changes,\nso the host can resize its PTY. Does not fire at all—not even once,\non mount—if `columnWidth` or `rowHeight` is non-finite or `<= 0`; both\nmust be positive and finite for dimension reporting to run.',
       },
       {
         name: 'onReloadRequest',

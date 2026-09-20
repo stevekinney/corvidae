@@ -26,17 +26,24 @@ export type TerminalFrameProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 
    * of the current `status`.
    */
   onReloadRequest?: () => void;
-  /** Called with `{ cols, rows }` whenever the character-cell size changes, so the host can resize its PTY. */
+  /**
+   * Called with `{ cols, rows }` whenever the character-cell size changes,
+   * so the host can resize its PTY. Does not fire at all—not even once,
+   * on mount—if `columnWidth` or `rowHeight` is non-finite or `<= 0`; both
+   * must be positive and finite for dimension reporting to run.
+   */
   onDimensionsChange?: (dimensions: TerminalFrameDimensions) => void;
   /**
    * Character-cell width, in pixels, used to compute `{ cols, rows }` on
-   * resize. Defaults to `8`.
+   * resize. Must be positive and finite, or `onDimensionsChange` never
+   * fires (see that prop). Defaults to `8`.
    * @default 8
    */
   columnWidth?: number;
   /**
    * Character-cell height, in pixels, used to compute `{ cols, rows }` on
-   * resize. Defaults to `18`.
+   * resize. Must be positive and finite, or `onDimensionsChange` never
+   * fires (see that prop). Defaults to `18`.
    * @default 18
    */
   rowHeight?: number;

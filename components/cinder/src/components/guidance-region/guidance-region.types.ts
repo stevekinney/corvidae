@@ -8,12 +8,17 @@ export type GuidanceRegionProps = {
    */
   claims?: GuidanceClaim[];
   /**
-   * Version window claims are filtered against. Must be strict SemVer
-   * (`major.minor.patch`, each numeric with no leading zero; an optional
-   * `-prerelease` and `+build` suffix are allowed)—a shortened form like
-   * `'1.2'` fails to parse. A claim's own `relevantFrom`/`relevantUntil`
-   * bounds are parsed the same way; if either fails to parse, that claim is
-   * filtered out silently rather than erroring.
+   * Version window claims are filtered against. When omitted, every claim
+   * is relevant and neither claim's `relevantFrom` nor `relevantUntil` is
+   * validated. When supplied, it must be SemVer-shaped
+   * (`major.minor.patch`, each numeric with no leading zero, an optional
+   * `-prerelease`/`+build` suffix)—a shortened form like `'1.2'` fails to
+   * parse. The parser is looser than strict SemVer in one respect: it
+   * doesn't reject an empty dot-separated identifier inside a
+   * `-prerelease`/`+build` suffix (e.g. `'1.0.0-alpha..1'` still parses).
+   * A claim's `relevantFrom`/`relevantUntil` are parsed the same way; if
+   * either fails to parse, that claim is filtered out silently rather than
+   * erroring.
    */
   version?: string;
   /** Adapter used to persist which claims a user has dismissed, so dismissal survives a reload. */
