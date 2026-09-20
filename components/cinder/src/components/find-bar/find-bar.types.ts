@@ -13,9 +13,12 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * at `matchCount === 0`, where that range is otherwise empty)—and
    * because that effect reads `activeIndex` too, it clamps just as
    * immediately if a host assigns an out-of-range `activeIndex` on its
-   * own, not only when `matchCount` itself changes. A parent binding this
-   * prop should expect it to be overwritten in any of these cases, not
-   * treat it as a preserved selection. Defaults to `0`.
+   * own, not only when `matchCount` itself changes—except a non-finite
+   * assignment (`NaN`), which the clamp (`Math.min(Math.max(…))`) passes
+   * through unchanged rather than normalizing. A parent binding this prop
+   * should expect it to be overwritten in any of the finite-value cases,
+   * not treat it as a preserved selection, and should not assign a
+   * non-finite value itself. Defaults to `0`.
    * @default 0
    */
   activeIndex?: number;

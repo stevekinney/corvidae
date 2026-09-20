@@ -1,7 +1,14 @@
 import type { Snippet } from 'svelte';
 import type { FormFieldManaged } from '../form-field/form-field.types.ts';
 export type SettingRowProps = {
-  /** Stable id shared with the composed control. */
+  /**
+   * Stable id forwarded into `FormField` context, which associates the
+   * generated `<label for={id}>` with it. Only a control that opts into
+   * and reads that context receives `id` automatically—for a native
+   * element or a third-party component that doesn't, the label is
+   * unassociated unless the host also applies `id` to that control
+   * directly, the same qualification as `required` and `disabled`.
+   */
   id: string;
   /** Visible setting label. */
   label: string;

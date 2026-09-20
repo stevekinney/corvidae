@@ -41,7 +41,7 @@ const schema = {
         name: 'validate',
         reason: 'function-or-snippet',
         description:
-          'Returns an error message for a combination the application cannot accept; the field keeps the previous value until a valid replacement is committed.',
+          'Returns an error message for a combination the application cannot\naccept; the field keeps the previous value until a valid replacement\nis committed. Only checked on a keyboard capture—clearing the field\nbypasses it entirely, so a shortcut this rejects as required can still\nbe removed via the clear action.',
       },
     ],
   },

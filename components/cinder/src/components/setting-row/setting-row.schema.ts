@@ -6,7 +6,8 @@ const schema = {
   properties: {
     id: {
       type: 'string',
-      description: 'Stable id shared with the composed control.',
+      description:
+        "Stable id forwarded into `FormField` context, which associates the\ngenerated `<label for={id}>` with it. Only a control that opts into\nand reads that context receives `id` automatically—for a native\nelement or a third-party component that doesn't, the label is\nunassociated unless the host also applies `id` to that control\ndirectly, the same qualification as `required` and `disabled`.",
     },
     label: {
       type: 'string',

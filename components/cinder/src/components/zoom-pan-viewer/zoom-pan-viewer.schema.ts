@@ -34,7 +34,7 @@ const schema = {
         name: 'onTransformChange',
         reason: 'function-or-snippet',
         description:
-          'Called with `{ scale, x, y }` after a pointer, keyboard, or control\ninteraction changes the pan or zoom transform. Not called when `scale`\nchanges only because the caller passed a new value externally—hosts\nthat need to react to that must watch `scale` themselves.',
+          "Called with `{ scale, x, y }` after a pointer, keyboard, or control\ninteraction runs, whether or not that interaction actually changed the\ntransform—zooming in at the already-clamped `8` maximum, or resetting\nwhen already at the initial `{ scale: 1, x: 0, y: 0 }`, still calls\nthis with the same values. Don't treat every call as a real change;\ncompare against the previous transform if that matters. Not called\nwhen `scale` changes only because the caller passed a new value\nexternally—hosts that need to react to that must watch `scale`\nthemselves.",
       },
     ],
   },

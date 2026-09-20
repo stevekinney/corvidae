@@ -14,16 +14,18 @@ export type TerminalFrameProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 
   /** Connection status shown in the frame chrome. Defaults to `'connecting'`. @default 'connecting' */
   status?: TerminalFrameStatus;
   /**
-   * Recovery error message. The recovery UI is gated on `error` alone, not
-   * on `status`—if `error` stays set after `status` moves away from
-   * `'error'` (for example to `'connected'`), the recovery UI remains
-   * visible until the caller clears `error` too.
+   * Recovery error message. The recovery UI is gated on `error` being a
+   * non-empty string (`{#if error}`), not on `status`—`error=""` shows
+   * nothing, the same as `undefined`, even though the prop is set. If
+   * `error` stays non-empty after `status` moves away from `'error'` (for
+   * example to `'connected'`), the recovery UI remains visible until the
+   * caller clears `error` too.
    */
   error?: string;
   /**
    * Called when the user requests a reload from the recovery UI. The
-   * recovery UI (and this button) show whenever `error` is set, regardless
-   * of the current `status`.
+   * recovery UI (and this button) show whenever `error` is a non-empty
+   * string, regardless of the current `status`—see that prop.
    */
   onReloadRequest?: () => void;
   /**

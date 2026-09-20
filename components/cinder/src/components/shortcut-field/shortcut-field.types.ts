@@ -17,7 +17,13 @@ export type ShortcutFieldProps = Omit<
    * empty-array case to persist a removal, not only a successful capture.
    */
   onValueChange?: (value: string[]) => void;
-  /** Returns an error message for a combination the application cannot accept; the field keeps the previous value until a valid replacement is committed. */
+  /**
+   * Returns an error message for a combination the application cannot
+   * accept; the field keeps the previous value until a valid replacement
+   * is committed. Only checked on a keyboard capture—clearing the field
+   * bypasses it entirely, so a shortcut this rejects as required can still
+   * be removed via the clear action.
+   */
   validate?: (value: string[]) => string | undefined;
   /**
    * Accessible label for the shortcut field. Defaults to `'Keyboard

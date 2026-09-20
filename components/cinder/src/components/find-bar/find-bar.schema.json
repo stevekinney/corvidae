@@ -9,7 +9,7 @@
     },
     "activeIndex": {
       "type": "number",
-      "description": "Index of the active match within the host-provided results. Bindable,\nbut not input-only: the component resets it to `0` itself whenever the\nuser edits the query. Whenever `matchCount` is non-`null`, an effect\nalso clamps this value into `[0, matchCount - 1]` (normalizing to `0`\nat `matchCount === 0`, where that range is otherwise empty)—and\nbecause that effect reads `activeIndex` too, it clamps just as\nimmediately if a host assigns an out-of-range `activeIndex` on its\nown, not only when `matchCount` itself changes. A parent binding this\nprop should expect it to be overwritten in any of these cases, not\ntreat it as a preserved selection. Defaults to `0`.",
+      "description": "Index of the active match within the host-provided results. Bindable,\nbut not input-only: the component resets it to `0` itself whenever the\nuser edits the query. Whenever `matchCount` is non-`null`, an effect\nalso clamps this value into `[0, matchCount - 1]` (normalizing to `0`\nat `matchCount === 0`, where that range is otherwise empty)—and\nbecause that effect reads `activeIndex` too, it clamps just as\nimmediately if a host assigns an out-of-range `activeIndex` on its\nown, not only when `matchCount` itself changes—except a non-finite\nassignment (`NaN`), which the clamp (`Math.min(Math.max(…))`) passes\nthrough unchanged rather than normalizing. A parent binding this prop\nshould expect it to be overwritten in any of the finite-value cases,\nnot treat it as a preserved selection, and should not assign a\nnon-finite value itself. Defaults to `0`.",
       "default": 0
     },
     "matchCount": {

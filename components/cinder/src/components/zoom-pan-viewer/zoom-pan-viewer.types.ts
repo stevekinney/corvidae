@@ -26,9 +26,14 @@ export type ZoomPanViewerProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> &
   ariaLabel?: string;
   /**
    * Called with `{ scale, x, y }` after a pointer, keyboard, or control
-   * interaction changes the pan or zoom transform. Not called when `scale`
-   * changes only because the caller passed a new value externally—hosts
-   * that need to react to that must watch `scale` themselves.
+   * interaction runs, whether or not that interaction actually changed the
+   * transform—zooming in at the already-clamped `8` maximum, or resetting
+   * when already at the initial `{ scale: 1, x: 0, y: 0 }`, still calls
+   * this with the same values. Don't treat every call as a real change;
+   * compare against the previous transform if that matters. Not called
+   * when `scale` changes only because the caller passed a new value
+   * externally—hosts that need to react to that must watch `scale`
+   * themselves.
    */
   onTransformChange?: (transform: { scale: number; x: number; y: number }) => void;
 };

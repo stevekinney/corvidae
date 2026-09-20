@@ -16,7 +16,7 @@ const schema = {
     error: {
       type: 'string',
       description:
-        "Recovery error message. The recovery UI is gated on `error` alone, not\non `status`—if `error` stays set after `status` moves away from\n`'error'` (for example to `'connected'`), the recovery UI remains\nvisible until the caller clears `error` too.",
+        "Recovery error message. The recovery UI is gated on `error` being a\nnon-empty string (`{#if error}`), not on `status`—`error=\"\"` shows\nnothing, the same as `undefined`, even though the prop is set. If\n`error` stays non-empty after `status` moves away from `'error'` (for\nexample to `'connected'`), the recovery UI remains visible until the\ncaller clears `error` too.",
     },
     columnWidth: {
       type: 'number',
@@ -55,7 +55,7 @@ const schema = {
         name: 'onReloadRequest',
         reason: 'function-or-snippet',
         description:
-          'Called when the user requests a reload from the recovery UI. The\nrecovery UI (and this button) show whenever `error` is set, regardless\nof the current `status`.',
+          'Called when the user requests a reload from the recovery UI. The\nrecovery UI (and this button) show whenever `error` is a non-empty\nstring, regardless of the current `status`—see that prop.',
       },
     ],
   },
