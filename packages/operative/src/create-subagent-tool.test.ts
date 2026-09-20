@@ -1,6 +1,6 @@
 import { createToolbox } from '@corvidae/armorer';
 import { Conversation, type ConversationHistory } from '@corvidae/conversationalist';
-import { CompletableEventTarget } from '@corvidae/lifecycle';
+import { CompletableEventTarget, HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -11,6 +11,7 @@ import { createSubagentTool, defaultSubagentSummarizer } from './create-subagent
 import { GuardrailTripwireError, SubagentRunError } from './errors';
 import type { CombinedOperativeEventMap } from './events';
 import { ChildWorkflowStartedEvent } from './events';
+import type { OperativeHookMap } from './hooks';
 import { createModelCatalog } from './providers/model-catalog.ts';
 import type { DelegatedAuthority } from './providers/policy.ts';
 import { select } from './providers/selection.ts';
@@ -1848,5 +1849,162 @@ describe('createSubagentTool', () => {
       await callRaw(unforbiddenTool, { q: 'hi' }, {});
       expect(unforbiddenCalls[0]?.context?.delegatedAuthority).toBeUndefined();
     });
+  });
+});
+
+describe('child-run hook isolation and correlation (COR-1269)', () => {
+  /**
+   * A generate that records every system message it is handed, so a hook that
+   * ran for this run is observable from inside it. Marker text rather than a
+   * hook-invocation counter: a counter proves a handler ran somewhere, and the
+   * question here is which RUN it ran for.
+   */
+  function recordingGenerate(seen: string[], content: string): GenerateFunction {
+    return async (request) => {
+      for (const message of request.conversation.getMessages()) {
+        if (message.role === 'system' && typeof message.content === 'string') {
+          seen.push(message.content);
+        }
+      }
+      return textResponse(content);
+    };
+  }
+
+  function markerHook(marker: string) {
+    return async (context: { step: number; conversation: Conversation }) => {
+      if (context.step === 0) context.conversation.appendSystemMessage(marker);
+    };
+  }
+
+  it('lets no parent-tier hook reach a child run, while the child keeps its own', async () => {
+    const parentSaw: string[] = [];
+    const childSaw: string[] = [];
+
+    const parentHooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
+    parentHooks.on('prepareStep', markerHook('PARENT-TIER'), { id: 'parent:marker' });
+    const childHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    childHooks.on('prepareStep', markerHook('CHILD-TIER'), { id: 'child:marker' });
+
+    const child = createAgent({
+      name: 'researcher',
+      generate: recordingGenerate(childSaw, 'child answer'),
+      hooks: childHooks,
+    });
+    const tool = createSubagentTool({
+      name: 'delegate',
+      description: 'Delegate',
+      agent: child,
+      agentName: 'researcher',
+      input: z.object({ q: z.string() }),
+    });
+    const parent = createAgent({
+      name: 'supervisor',
+      generate: recordingGenerate(parentSaw, 'parent answer'),
+      hooks: parentHooks,
+      toolbox: createToolbox([tool]),
+    });
+
+    await parent.run('go').result();
+    await callRaw(tool, { q: 'hi' });
+
+    // The negative guarantee, stated as a presence AND an absence so a child
+    // that composed nothing at all cannot satisfy it.
+    expect(childSaw).toContain('CHILD-TIER');
+    expect(childSaw).not.toContain('PARENT-TIER');
+    expect(parentSaw).toContain('PARENT-TIER');
+  });
+
+  it('hands the child the parent-child correlation, and nothing it could register a hook through', async () => {
+    const { agent: child, calls } = makeMockAgent(() => makeSuccessfulResult());
+    const emitter = makeEmitter();
+    const tool = createSubagentTool({
+      name: 'delegate',
+      description: 'Delegate',
+      agent: child,
+      agentName: 'researcher',
+      input: z.object({ q: z.string() }),
+      parentContext: {
+        emitter,
+        parentAgentName: 'supervisor',
+        parentRunId: 'parent-run-1',
+        durable: false,
+      },
+    });
+
+    await callRaw(tool, { q: 'hi' });
+
+    const context = calls[0]?.context;
+    expect(context?.childCorrelation).toMatchObject({
+      parentAgentName: 'supervisor',
+      parentRunId: 'parent-run-1',
+      childAgentName: 'researcher',
+    });
+    expect(context?.childCorrelation?.childRunId).toEqual(expect.any(String));
+    // Criterion 3 — the context carries correlation, never hooks. A `hooks`
+    // field here would be exactly the implicit copy of arbitrary parent hooks
+    // the project forbids, and COR-567 Decision 4 declines it.
+    expect(context).not.toHaveProperty('hooks');
+  });
+
+  it('gives sibling children of one fan-out independent plans', async () => {
+    const { agent: child, calls } = makeMockAgent(() => makeSuccessfulResult());
+    const tool = createSubagentTool({
+      name: 'delegate',
+      description: 'Delegate',
+      agent: child,
+      agentName: 'researcher',
+      input: z.object({ q: z.string() }),
+      parentContext: {
+        emitter: makeEmitter(),
+        parentAgentName: 'supervisor',
+        parentRunId: 'parent-run-1',
+        durable: false,
+      },
+    });
+
+    await Promise.all([
+      callRaw(tool, { q: 'one' }),
+      callRaw(tool, { q: 'two' }),
+      callRaw(tool, { q: 'three' }),
+    ]);
+
+    // One tool instance, three children, three distinct child identities — so
+    // nothing a supervisor fans out shares mutable per-child state.
+    const childRunIds = calls.map((call) => call.context?.childCorrelation?.childRunId);
+    expect(new Set(childRunIds).size).toBe(3);
+    expect(childRunIds.every((id) => typeof id === 'string')).toBe(true);
+  });
+
+  it('cannot widen a grandchild’s grant through a child-tier hook', async () => {
+    const parentGrant: DelegatedAuthority = {
+      grantedProviders: ['anthropic'],
+      policyVersion: 'cor-1269-parent-v1',
+    };
+    const { agent: grandchild, calls } = makeMockAgent(() => makeSuccessfulResult());
+
+    // The child's own tier tries to hand its grandchild a wider grant by
+    // selecting a toolbox the parent's attenuation withheld. It cannot:
+    // `attenuateDelegatedAuthority` composes the forwarded grant from the
+    // parent's and the tool's own narrowing, independently of any hook, and no
+    // `OperativeHookMap` context exposes a writable `delegatedAuthority`.
+    const childHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    childHooks.on('selectTools', () => createToolbox([]) as never, { id: 'child:widen-attempt' });
+
+    const grandchildTool = createSubagentTool({
+      name: 'delegate-again',
+      description: 'Delegate further',
+      agent: grandchild,
+      agentName: 'grandchild',
+      input: z.object({ q: z.string() }),
+    });
+
+    await callRaw(
+      grandchildTool,
+      { q: 'hi' },
+      { executionContext: { delegatedAuthority: parentGrant } },
+    );
+
+    expect(calls[0]?.context?.delegatedAuthority).toBe(parentGrant);
+    expect(calls[0]?.context?.delegatedAuthority?.grantedProviders).toEqual(['anthropic']);
   });
 });

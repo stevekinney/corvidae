@@ -1,6 +1,7 @@
 import type {
   HookErrorHandler,
   HookMap,
+  HookObservationContext,
   HookPlanDescription,
   HookPlanEntryDescription,
   HookPlanObservation,
@@ -8,6 +9,15 @@ import type {
   HookRegistrationOptions,
   HookRegistryOptions,
 } from './types';
+
+/**
+ * The tier stamp to spread onto an observation, or nothing when the entry
+ * claims none — written once so `exactOptionalPropertyTypes` does not need a
+ * ternary at every notify site.
+ */
+function entrySource(entry: { options: HookRegistrationOptions }): { source?: string } {
+  return entry.options.source === undefined ? {} : { source: entry.options.source };
+}
 
 interface RegisteredHandler {
   handler: (...args: never[]) => unknown;
@@ -27,7 +37,14 @@ export class HookRegistry<M extends HookMap> {
    * reusing it would let an id be handed out twice after an unregistration.
    */
   #registrationSequence = 0;
-  readonly #observers = new Set<HookPlanObserver>();
+  /**
+   * Each observer with the run context it attached with (COR-1269). A `Map`
+   * rather than a `Set` because the context belongs to the WATCHER, not to the
+   * plan: a merged registry is built at dispatch out of tiers that existed
+   * before the run, so the registry cannot name one run, but each observer of
+   * it can name its own.
+   */
+  readonly #observers = new Map<HookPlanObserver, HookObservationContext | undefined>();
 
   constructor(options?: HookRegistryOptions) {
     this.registryOptions = options ?? {};
@@ -37,6 +54,15 @@ export class HookRegistry<M extends HookMap> {
    * Attaches an observer of this plan's registrations, removals, and handler
    * invocations. Returns an unsubscribe function.
    *
+   * `context` names the run the observer is watching on behalf of, and the
+   * parent-child pair when that run is somebody's child (COR-1269). Every
+   * observation this observer receives carries it. It is supplied here rather
+   * than on the registry because two parties can watch one plan, and a merged
+   * plan is composed at dispatch from tiers that predate the run — so the
+   * registry has no single truthful answer and each observer does. Omit it and
+   * observations simply carry no run identity, which is the honest report for a
+   * registry watched outside any run.
+   *
    * Observation is attached rather than configured at construction because the
    * party that wants to watch a plan is rarely the party that built it: a run
    * receives an already-populated registry from its caller and needs to watch
@@ -45,8 +71,8 @@ export class HookRegistry<M extends HookMap> {
    * deliberately does not replay them, so "observer attached late" stays
    * distinguishable from "entry registered late".
    */
-  observe(observer: HookPlanObserver): () => void {
-    this.#observers.add(observer);
+  observe(observer: HookPlanObserver, context?: HookObservationContext): () => void {
+    this.#observers.set(observer, context);
     return () => {
       this.#observers.delete(observer);
     };
@@ -64,9 +90,9 @@ export class HookRegistry<M extends HookMap> {
    */
   #notify(observation: HookPlanObservation): void {
     if (this.#observers.size === 0) return;
-    for (const observer of this.#observers) {
+    for (const [observer, context] of this.#observers) {
       try {
-        observer(observation);
+        observer(context === undefined ? observation : { ...observation, ...context });
       } catch (error: unknown) {
         const errorHandler = this.registryOptions.onError;
         if (errorHandler) {
@@ -144,6 +170,7 @@ export class HookRegistry<M extends HookMap> {
       // declaration.
       replay: options?.replay ?? 'effectful',
       ...(source === undefined ? {} : { source }),
+      revision: this.#revision,
     });
 
     // COR-1267 — report a registration that never declared a replay policy.
@@ -170,7 +197,13 @@ export class HookRegistry<M extends HookMap> {
         // unregister twice is idempotent and must not look like two
         // distinct plan changes to a boundary comparing revisions.
         this.#revision += 1;
-        this.#notify({ kind: 'removed', hookName, id });
+        this.#notify({
+          kind: 'removed',
+          hookName,
+          id,
+          ...(source === undefined ? {} : { source }),
+          revision: this.#revision,
+        });
       }
       if (current.length === 0) {
         this.handlers.delete(hookName);
@@ -247,18 +280,24 @@ export class HookRegistry<M extends HookMap> {
    */
   async runHandler<K extends keyof M & string>(
     hookName: K,
-    entry: { handler: M[K]; id: string },
+    entry: { handler: M[K]; id: string; options?: HookRegistrationOptions },
     args: Parameters<M[K]>,
   ): Promise<unknown> {
-    return this.invokeObserved(hookName, entry.id, entry.handler, args);
+    return this.invokeObserved(hookName, entry, entry.handler, args);
   }
 
   private async invokeObserved(
     hookName: string,
-    id: string,
+    entry: { id: string; options?: HookRegistrationOptions },
     handler: (...handlerArgs: never[]) => unknown,
     args: readonly unknown[],
   ): Promise<unknown> {
+    const id = entry.id;
+    // COR-1269 — the tier rides on every variant, not only `registered`. A
+    // consumer correlating an invocation to the policy that caused it should
+    // not have to remember which tier announced that id, possibly in another
+    // process before a recovery.
+    const source = entrySource({ options: entry.options ?? {} });
     const startedAt = this.registryOptions.now?.() ?? Date.now();
     try {
       const result = await Reflect.apply(handler, undefined, args);
@@ -266,6 +305,8 @@ export class HookRegistry<M extends HookMap> {
         kind: 'invoked',
         hookName,
         id,
+        ...source,
+        revision: this.#revision,
         durationMilliseconds: (this.registryOptions.now?.() ?? Date.now()) - startedAt,
       });
       return result;
@@ -274,6 +315,8 @@ export class HookRegistry<M extends HookMap> {
         kind: 'failed',
         hookName,
         id,
+        ...source,
+        revision: this.#revision,
         durationMilliseconds: (this.registryOptions.now?.() ?? Date.now()) - startedAt,
         error,
       });
@@ -302,7 +345,7 @@ export class HookRegistry<M extends HookMap> {
     for (let i = 0; i < sorted.length; i++) {
       const entry = sorted[i]!;
       try {
-        const result = await this.invokeObserved(hookName, entry.id, entry.handler, currentArgs);
+        const result = await this.invokeObserved(hookName, entry, entry.handler, currentArgs);
         if (result !== undefined) {
           returned = result;
           hasReturnedValue = true;
@@ -334,10 +377,10 @@ export class HookRegistry<M extends HookMap> {
     // Captured before the delete so each departing entry can be reported
     // individually: an observer tracking plan membership by id cannot act on
     // a bare "something was cleared".
-    const departing: Array<{ hookName: string; id: string }> = [];
+    const departing: Array<{ hookName: string; id: string; source?: string }> = [];
     if (hookName !== undefined) {
       for (const entry of this.handlers.get(hookName) ?? []) {
-        departing.push({ hookName, id: entry.id });
+        departing.push({ hookName, id: entry.id, ...entrySource(entry) });
       }
       // `delete` reports whether anything was there — clearing an absent
       // hook name changes no membership and must not advance the revision.
@@ -345,14 +388,21 @@ export class HookRegistry<M extends HookMap> {
     } else {
       if (this.handlers.size > 0) {
         for (const [name, entries] of this.handlers) {
-          for (const entry of entries) departing.push({ hookName: name, id: entry.id });
+          for (const entry of entries)
+            departing.push({ hookName: name, id: entry.id, ...entrySource(entry) });
         }
         this.handlers.clear();
         this.#revision += 1;
       }
     }
     for (const departed of departing) {
-      this.#notify({ kind: 'removed', hookName: departed.hookName, id: departed.id });
+      this.#notify({
+        kind: 'removed',
+        hookName: departed.hookName,
+        id: departed.id,
+        ...(departed.source === undefined ? {} : { source: departed.source }),
+        revision: this.#revision,
+      });
     }
   }
 

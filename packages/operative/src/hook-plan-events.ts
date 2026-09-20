@@ -1,4 +1,4 @@
-import type { HookRegistry } from '@corvidae/lifecycle';
+import type { HookObservationContext, HookRegistry } from '@corvidae/lifecycle';
 
 import {
   HookPlanFailedEvent,
@@ -31,6 +31,7 @@ export function observeHookPlan(
   hooks: HookRegistry<OperativeHookMap> | undefined,
   emitter: EventDispatcher | undefined,
   runId: string | undefined,
+  context?: Omit<HookObservationContext, 'runId'>,
 ): () => void {
   if (!hooks || !emitter) return () => {};
 
@@ -51,43 +52,51 @@ export function observeHookPlan(
     }
   }
 
-  return hooks.observe((observation) => {
-    switch (observation.kind) {
-      case 'registered':
-        emitter.dispatch(
-          new HookPlanRegisteredEvent(
-            observation.hookName,
-            observation.id,
-            observation.priority,
-            observation.replay,
-            runId,
-          ),
-        );
-        return;
-      case 'removed':
-        emitter.dispatch(new HookPlanRemovedEvent(observation.hookName, observation.id, runId));
-        return;
-      case 'invoked':
-        emitter.dispatch(
-          new HookPlanInvokedEvent(
-            observation.hookName,
-            observation.id,
-            observation.durationMilliseconds,
-            runId,
-          ),
-        );
-        return;
-      case 'failed':
-        emitter.dispatch(
-          new HookPlanFailedEvent(
-            observation.hookName,
-            observation.id,
-            observation.durationMilliseconds,
-            observation.error,
-            runId,
-          ),
-        );
-        return;
-    }
-  });
+  // COR-1269 — the run identity and, for a child run, the parent-child pair
+  // ride on the OBSERVER rather than on the registry. A merged plan is composed
+  // at dispatch out of tiers that existed before the run, and sibling children
+  // of one supervisor share none of it, so the registry has no single truthful
+  // answer to "which run is this" and each attachment does.
+  return hooks.observe(
+    (observation) => {
+      switch (observation.kind) {
+        case 'registered':
+          emitter.dispatch(
+            new HookPlanRegisteredEvent(
+              observation.hookName,
+              observation.id,
+              observation.priority,
+              observation.replay,
+              runId,
+            ),
+          );
+          return;
+        case 'removed':
+          emitter.dispatch(new HookPlanRemovedEvent(observation.hookName, observation.id, runId));
+          return;
+        case 'invoked':
+          emitter.dispatch(
+            new HookPlanInvokedEvent(
+              observation.hookName,
+              observation.id,
+              observation.durationMilliseconds,
+              runId,
+            ),
+          );
+          return;
+        case 'failed':
+          emitter.dispatch(
+            new HookPlanFailedEvent(
+              observation.hookName,
+              observation.id,
+              observation.durationMilliseconds,
+              observation.error,
+              runId,
+            ),
+          );
+          return;
+      }
+    },
+    { ...(runId === undefined ? {} : { runId }), ...context },
+  );
 }

@@ -2711,6 +2711,8 @@ export async function createRuntimeComposition(
         conversation: new Conversation(session.conversationHistory),
         maximumSteps: recoveredMaximumSteps,
         stopWhen: options.stopWhen,
+        // COR-1269 — stamped onto this run's hook-plan observations.
+        sessionId: session.id,
         // COR-1265 — the completed Bureau tier, snapshotted. A single-tier
         // merge still copies every entry into a fresh registry, so a
         // registration added to `runRuntime.hooks` after this point cannot
@@ -3273,6 +3275,8 @@ export async function createRuntimeComposition(
         runtime: runtimeServices,
         // The session write-back runs AFTER the runtime's own onStep hooks so
         // recurring fires accumulate and a stateless fire is observable.
+        // COR-1269 — stamped onto this run's hook-plan observations.
+        sessionId,
         // COR-1265 criterion 8 — merged AFTER the trailing registration, so the
         // Bureau tier is complete before it becomes the merge's first argument
         // and the trailing hook is offset with every other Bureau entry rather

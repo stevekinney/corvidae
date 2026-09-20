@@ -716,6 +716,13 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
       // AB-241 — `AgentRunContext.principal` forwards into `RunOptions.principal`
       // the same way `signal`/`traceContext` do above.
       ...(context?.principal !== undefined ? { principal: context.principal } : {}),
+      // COR-1269 — `AgentRunContext.childCorrelation` forwards the same way, so
+      // a child run's hook-plan observations name the parent-child pair that
+      // dispatched it. Correlation only: it reaches the observer attachment in
+      // `startRunLifecycle` and nothing else reads it.
+      ...(context?.childCorrelation !== undefined
+        ? { childCorrelation: context.childCorrelation }
+        : {}),
     };
   }
 

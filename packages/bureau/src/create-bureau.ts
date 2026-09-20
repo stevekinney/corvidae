@@ -3059,6 +3059,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // snapshotted into every run it starts.
           runtime: runtimeServices,
           ...(runSteeringGate ? { steering: runSteeringGate } : {}),
+          // COR-1269 — stamped onto this run's hook-plan observations.
+          sessionId,
           // COR-1265 criterion 8 — merged AFTER the trailing registration, so
           // the Bureau tier is complete before it becomes the merge's first
           // argument. A single-tier merge still copies every entry into a fresh
@@ -4257,6 +4259,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   // instance, snapshotted into every run it starts — including
                   // a mocked/custom-engine reattach.
                   runtime: runtimeServices,
+                  sessionId: ownedSessionId,
                   // COR-1265 — the Bureau tier, snapshotted.
                   hooks: mergeHookRegistries(runRuntime.hooks),
                   executeOptions: requestContext === undefined ? {} : { requestContext },
@@ -4423,6 +4426,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // AB-260: the bureau's single composed RuntimeServices instance,
           // snapshotted into every scheduler task run it starts.
           runtime: runtimeServices,
+          sessionId: taskId,
           // COR-1265 — the Bureau tier, snapshotted.
           hooks: mergeHookRegistries(runRuntime.hooks),
           stopWhen: options.stopWhen,

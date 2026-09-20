@@ -77,13 +77,19 @@ function computeCostEstimate(
  * accumulates an observer per run, each dispatching into a dead emitter.
  */
 export async function startRunLifecycle(
-  options: Pick<RunOptions, 'hooks' | 'toolbox' | 'maximumSteps' | 'runId'>,
+  options: Pick<
+    RunOptions,
+    'hooks' | 'toolbox' | 'maximumSteps' | 'runId' | 'sessionId' | 'childCorrelation'
+  >,
   conversation: Conversation,
   emitter: EventDispatcher | undefined,
 ): Promise<{ error: unknown; stopObservingHookPlan: () => void }> {
   emitter?.dispatch(new RunStartedEvent(conversation));
 
-  const stopObservingHookPlan = observeHookPlan(options.hooks, emitter, options.runId);
+  const stopObservingHookPlan = observeHookPlan(options.hooks, emitter, options.runId, {
+    ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
+    ...(options.childCorrelation === undefined ? {} : { correlation: options.childCorrelation }),
+  });
 
   if (options.hooks?.has('onRunStart')) {
     try {
