@@ -15,14 +15,16 @@ export type GuidanceRegionProps = {
    * value can reach this prop as `''`. When supplied non-empty, it must be
    * SemVer-shaped
    * (`major.minor.patch`, each numeric with no leading zero, an optional
-   * `-prerelease`/`+build` suffix, whose own numeric identifiers also
-   * reject a leading zero, e.g. `'1.0.0-01'` fails to parse)—a shortened
-   * form like `'1.2'` fails to parse too. The parser accepts one
-   * non-strict-SemVer form without rejecting it: an empty dot-separated
-   * identifier inside a `-prerelease`/`+build` suffix (`'1.0.0-alpha..1'`
-   * parses successfully). If this non-empty `version` itself fails to
-   * parse, every claim is filtered out—the whole registry silently goes
-   * empty, not just the claims with malformed bounds. A
+   * `-prerelease` suffix whose own numeric identifiers also reject a
+   * leading zero, e.g. `'1.0.0-01'` fails to parse)—a shortened form like
+   * `'1.2'` fails to parse too. The parser accepts some forms strict
+   * SemVer doesn't: surrounding whitespace is trimmed before matching
+   * (`' 1.0.0 '` parses); an empty dot-separated identifier inside
+   * `-prerelease` or `+build` parses (`'1.0.0-alpha..1'`); and the
+   * leading-zero rejection applies only to `-prerelease`, never to
+   * `+build`, so `'1.0.0+01'` also parses. If this non-empty `version`
+   * itself fails to parse, every claim is filtered out—the whole registry
+   * silently goes empty, not just the claims with malformed bounds. A
    * claim's `relevantFrom`/`relevantUntil` are parsed the same way, except
    * that `''` (as opposed to omitted) is treated as omitted there too, not
    * as invalid input; if either is supplied non-empty and fails to parse,

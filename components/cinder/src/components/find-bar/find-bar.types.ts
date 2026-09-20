@@ -8,11 +8,14 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /**
    * Index of the active match within the host-provided results. Bindable,
    * but not input-only: the component resets it to `0` itself whenever the
-   * user edits the query, and clamps it into `[0, matchCount - 1]` whenever
-   * `matchCount` changes—except at `matchCount === 0`, where there is no
-   * valid index and it normalizes to `0` instead (a parent binding this
-   * prop should expect it to be overwritten in all these cases, not treat
-   * it as a preserved selection). Defaults to `0`.
+   * user edits the query. Whenever `matchCount` is non-`null`, an effect
+   * also clamps this value into `[0, matchCount - 1]` (normalizing to `0`
+   * at `matchCount === 0`, where that range is otherwise empty)—and
+   * because that effect reads `activeIndex` too, it clamps just as
+   * immediately if a host assigns an out-of-range `activeIndex` on its
+   * own, not only when `matchCount` itself changes. A parent binding this
+   * prop should expect it to be overwritten in any of these cases, not
+   * treat it as a preserved selection. Defaults to `0`.
    * @default 0
    */
   activeIndex?: number;
