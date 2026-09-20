@@ -3,13 +3,17 @@
   "type": "object",
   "properties": {
     "value": {
-      "type": "string"
+      "type": "string",
+      "description": "ANSI output text. Supports SGR 16-color foregrounds, bold/reset, carriage-return rewrites, and erase-line sequences."
     },
     "followLatest": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Keeps the viewport anchored to the latest line while appending. Defaults to `true`; pass `false` when the host owns scroll position.",
+      "default": true
     },
     "class": {
-      "type": "string"
+      "type": "string",
+      "description": "Additional class merged with the component's root class."
     }
   },
   "additionalProperties": false,
@@ -17,7 +21,8 @@
     "unsupportedProps": [
       {
         "name": "children",
-        "reason": "function-or-snippet"
+        "reason": "function-or-snippet",
+        "description": "Rendered in place of the ANSI output when `value` is empty, e.g. an empty state."
       }
     ]
   }

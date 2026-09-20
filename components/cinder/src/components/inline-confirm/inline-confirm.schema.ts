@@ -6,21 +6,27 @@ const schema = {
   properties: {
     prompt: {
       type: 'string',
+      description: 'Confirmation prompt text.',
     },
     confirmLabel: {
       type: 'string',
+      description: 'Label for the confirming action.',
     },
     cancelLabel: {
       type: 'string',
+      description: 'Label for the cancelling action.',
     },
     destructive: {
       type: 'boolean',
+      description: 'Marks the confirming action as destructive.',
     },
     open: {
       type: 'boolean',
+      description: 'Whether the confirmation is open. Bindable.',
     },
     class: {
       type: 'string',
+      description: "Additional class merged with the component's root class.",
     },
   },
   additionalProperties: false,
@@ -30,14 +36,18 @@ const schema = {
       {
         name: 'children',
         reason: 'function-or-snippet',
+        description:
+          'Additional content rendered below the prompt, above the confirm/cancel actions, while the confirmation is open.',
       },
       {
         name: 'onCancel',
         reason: 'function-or-snippet',
+        description: 'Called when the user cancels the action.',
       },
       {
         name: 'onConfirm',
         reason: 'function-or-snippet',
+        description: 'Called when the user confirms the action.',
       },
     ],
   },

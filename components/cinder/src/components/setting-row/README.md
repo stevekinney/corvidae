@@ -18,3 +18,30 @@ SettingRow arranges settings-page guidance and a control while publishing FormFi
 ```
 
 `SettingRow` requires a stable `id`, `label`, and `control` snippet. `warning` is advisory and `error` is corrective; both are forwarded through the `FormField` context to the composed control. Use `managed` with [`PolicyLock`](../policy-lock/README.md) when a policy owns the value. The row does not save settings or disable a control automatically—pass `disabled` to the row or control when the host is submitting or unavailable.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `class` | `string` | no | — | Additional class merged with the component's root class. |
+| `description` | `string` | no | — | Guidance text describing the setting. |
+| `disabled` | `boolean` | no | — | Disables the row's control. Does not disable automatically while saving. |
+| `error` | `string` | no | — | Corrective error message forwarded through `FormField` context. |
+| `id` | `string` | yes | — | Stable id shared with the composed control. |
+| `label` | `string` | yes | — | Visible setting label. |
+| `managed` | { by?: `string`; reason?: `string` } | no | — | Renders a managed-policy indicator; pair with `PolicyLock`. |
+| `required` | `boolean` | no | — | Marks the setting as required. |
+| `warning` | `string` | no | — | Advisory message forwarded through `FormField` context. |
+| `control` | `(opaque)` | yes | — | The setting's control, rendered with `FormField` context applied. Not expressible in JSON Schema; see the component types for the signature. |
+| `disclosure` | `(opaque)` | no | — | Optional disclosure content rendered beneath the row. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->

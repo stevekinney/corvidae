@@ -6,21 +6,27 @@ const schema = {
   properties: {
     title: {
       type: 'string',
+      description: 'Title shown in the frame chrome.',
     },
     status: {
       enum: ['connecting', 'connected', 'disconnected', 'error'],
+      description: 'Connection status shown in the frame chrome.',
     },
     error: {
       type: 'string',
+      description: 'Recovery error message. Shown with recovery UI when `status` is `error`.',
     },
     columnWidth: {
       type: 'number',
+      description: 'Character-cell width, in pixels, used to compute `{ cols, rows }` on resize.',
     },
     rowHeight: {
       type: 'number',
+      description: 'Character-cell height, in pixels, used to compute `{ cols, rows }` on resize.',
     },
     class: {
       type: 'string',
+      description: "Additional class merged with the component's root class.",
     },
   },
   additionalProperties: false,
@@ -31,14 +37,19 @@ const schema = {
         name: 'children',
         reason: 'function-or-snippet',
         required: true,
+        description: 'Consumer-owned PTY renderer.',
       },
       {
         name: 'onDimensionsChange',
         reason: 'function-or-snippet',
+        description:
+          'Called with `{ cols, rows }` whenever the character-cell size changes, so the host can resize its PTY.',
       },
       {
         name: 'onReloadRequest',
         reason: 'function-or-snippet',
+        description:
+          'Called when the user requests a reload from the recovery UI shown when `status` is `error`.',
       },
     ],
   },

@@ -6,24 +6,31 @@ const schema = {
   properties: {
     id: {
       type: 'string',
+      description: 'Stable id shared with the composed control.',
     },
     label: {
       type: 'string',
+      description: 'Visible setting label.',
     },
     description: {
       type: 'string',
+      description: 'Guidance text describing the setting.',
     },
     warning: {
       type: 'string',
+      description: 'Advisory message forwarded through `FormField` context.',
     },
     error: {
       type: 'string',
+      description: 'Corrective error message forwarded through `FormField` context.',
     },
     required: {
       type: 'boolean',
+      description: 'Marks the setting as required.',
     },
     disabled: {
       type: 'boolean',
+      description: "Disables the row's control. Does not disable automatically while saving.",
     },
     managed: {
       type: 'object',
@@ -38,9 +45,11 @@ const schema = {
         },
       },
       additionalProperties: false,
+      description: 'Renders a managed-policy indicator; pair with `PolicyLock`.',
     },
     class: {
       type: 'string',
+      description: "Additional class merged with the component's root class.",
     },
   },
   additionalProperties: false,
@@ -51,10 +60,12 @@ const schema = {
         name: 'control',
         reason: 'function-or-snippet',
         required: true,
+        description: "The setting's control, rendered with `FormField` context applied.",
       },
       {
         name: 'disclosure',
         reason: 'function-or-snippet',
+        description: 'Optional disclosure content rendered beneath the row.',
       },
     ],
   },

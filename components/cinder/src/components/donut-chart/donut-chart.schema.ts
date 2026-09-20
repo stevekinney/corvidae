@@ -6,18 +6,24 @@ const schema = {
   properties: {
     label: {
       type: 'string',
+      description: 'Names both the chart and its generated data table.',
     },
     valueLabels: {
       type: 'boolean',
+      description: 'Adds visible value labels to the chart.',
     },
     centerLabel: {
       type: 'string',
+      description:
+        "Supplemental label rendered at the ring's center. Should not be the only explanation of the total.",
     },
     scrollable: {
       type: 'boolean',
+      description: 'Enables a horizontal-scroll escape hatch for narrow containers.',
     },
     class: {
       type: 'string',
+      description: "Additional class merged with the component's root class.",
     },
   },
   additionalProperties: false,
@@ -28,10 +34,13 @@ const schema = {
         name: 'data',
         reason: 'unknown-shape',
         required: true,
+        description: 'Part-to-whole values rendered as the ring and the non-visual data table.',
       },
       {
         name: 'onSeriesClick',
         reason: 'function-or-snippet',
+        description:
+          'Called when a series is activated. Provide only when the series is actionable.',
       },
     ],
   },

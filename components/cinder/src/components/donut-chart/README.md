@@ -22,3 +22,26 @@ Use a bar chart when precise comparison matters more than the part-to-whole rela
 ```
 
 `label` is required because it names both the chart and its generated data table. `valueLabels` adds visible values; `centerLabel` is supplemental and should not be the only explanation of the total. Use `scrollable` when the legend or ring cannot fit the container, and provide `onSeriesClick` only when a series is actionable—otherwise keep the chart informational. The data table remains the non-visual fallback for comparison and screen-reader users.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `centerLabel` | `string` | no | — | Supplemental label rendered at the ring's center. Should not be the only explanation of the total. |
+| `class` | `string` | no | — | Additional class merged with the component's root class. |
+| `label` | `string` | yes | — | Names both the chart and its generated data table. |
+| `scrollable` | `boolean` | no | — | Enables a horizontal-scroll escape hatch for narrow containers. |
+| `valueLabels` | `boolean` | no | — | Adds visible value labels to the chart. |
+| `data` | `(opaque)` | yes | — | Part-to-whole values rendered as the ring and the non-visual data table. Not expressible in JSON Schema; see the component types for the signature. |
+| `onSeriesClick` | `(opaque)` | no | — | Called when a series is activated. Provide only when the series is actionable. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->

@@ -3,25 +3,32 @@
   "type": "object",
   "properties": {
     "id": {
-      "type": "string"
+      "type": "string",
+      "description": "Stable id shared with the composed control."
     },
     "label": {
-      "type": "string"
+      "type": "string",
+      "description": "Visible setting label."
     },
     "description": {
-      "type": "string"
+      "type": "string",
+      "description": "Guidance text describing the setting."
     },
     "warning": {
-      "type": "string"
+      "type": "string",
+      "description": "Advisory message forwarded through `FormField` context."
     },
     "error": {
-      "type": "string"
+      "type": "string",
+      "description": "Corrective error message forwarded through `FormField` context."
     },
     "required": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Marks the setting as required."
     },
     "disabled": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Disables the row's control. Does not disable automatically while saving."
     },
     "managed": {
       "type": "object",
@@ -35,10 +42,12 @@
           "description": "Human-readable explanation for the constraint."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "Renders a managed-policy indicator; pair with `PolicyLock`."
     },
     "class": {
-      "type": "string"
+      "type": "string",
+      "description": "Additional class merged with the component's root class."
     }
   },
   "additionalProperties": false,
@@ -48,11 +57,13 @@
       {
         "name": "control",
         "reason": "function-or-snippet",
-        "required": true
+        "required": true,
+        "description": "The setting's control, rendered with `FormField` context applied."
       },
       {
         "name": "disclosure",
-        "reason": "function-or-snippet"
+        "reason": "function-or-snippet",
+        "description": "Optional disclosure content rendered beneath the row."
       }
     ]
   }

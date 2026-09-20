@@ -9,15 +9,19 @@ const schema = {
       items: {
         type: 'string',
       },
+      description: 'Ordered list of platform key names for the recorded combination.',
     },
     label: {
       type: 'string',
+      description: 'Accessible label for the shortcut field.',
     },
     disabled: {
       type: 'boolean',
+      description: 'Set when the shortcut is unavailable.',
     },
     class: {
       type: 'string',
+      description: "Additional class merged with the component's root class.",
     },
   },
   additionalProperties: false,
@@ -26,10 +30,13 @@ const schema = {
       {
         name: 'onValueChange',
         reason: 'function-or-snippet',
+        description: 'Called with the recorded combination when capture completes.',
       },
       {
         name: 'validate',
         reason: 'function-or-snippet',
+        description:
+          'Returns an error message for a combination the application cannot accept; the field keeps the previous value until a valid replacement is committed.',
       },
     ],
   },

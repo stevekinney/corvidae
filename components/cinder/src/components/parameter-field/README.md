@@ -17,3 +17,29 @@ Use the default output for a read-only summary, or provide a child snippet to re
 `base` is the effective value until `override` is supplied. The reset action clears the override and calls `onOverrideChange(undefined)`; it never changes `base`. Use `unsaved` and `experimental` to annotate the value's status, not to change persistence or validation.
 
 For a custom editor, the child snippet receives `value`, `overridden`, `labelledBy`, and `setOverride`. Apply `labelledBy` to the nested numeric control so the visible parameter label remains its accessible name. The host owns saving and error recovery: keep the override in place while a save fails and report the failure beside the control.
+
+## Props
+
+<!-- generated:props:start -->
+
+| Prop | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `base` | `number` | yes | — | Inherited or default numeric value. |
+| `class` | `string` | no | — | Additional class merged with `.cinder-parameter-field`. |
+| `experimental` | `boolean` | no | — | Marks the parameter as experimental. |
+| `id` | `string` | yes | — | Stable id used for label and output association. |
+| `label` | `string` | yes | — | Visible parameter label. |
+| `override` | `number` | no | — | Optional local numeric override. Bindable. |
+| `unit` | `string` | no | — | Optional unit appended to the value and reset tooltip. |
+| `unsaved` | `boolean` | no | — | Marks the current override as not yet persisted. |
+| `children` | `(opaque)` | no | — | Optional custom numeric editor. Receives the effective value and override setter. Not expressible in JSON Schema; see the component types for the signature. |
+| `onOverrideChange` | `(opaque)` | no | — | Called when the override changes or is reset. Not expressible in JSON Schema; see the component types for the signature. |
+
+<!-- generated:props:end -->
+
+## CSS Variables
+
+<!-- generated:variables:start -->
+
+This component does not declare any local CSS variables.
+<!-- generated:variables:end -->
