@@ -19,6 +19,12 @@ export function mergeHookRegistries<M extends HookMap>(
       for (const entry of handlers) {
         merged.on(hookName, entry.handler, {
           ...entry.options,
+          // The resolved id, not `entry.options.id`: a generated id lives on
+          // the entry rather than the caller's options, and dropping it here
+          // would mint a fresh one in the merged registry — so an observer
+          // correlating by id would see the same registration under two names
+          // either side of a merge.
+          id: entry.id,
           priority: entry.priority + priorityOffset,
         });
       }

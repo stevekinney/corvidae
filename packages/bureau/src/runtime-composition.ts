@@ -13,7 +13,7 @@ import {
   createConversationHistory,
 } from '@corvidae/conversationalist';
 import type { EventMap, HookReplayPolicy, RuntimeServices } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices, HookRegistry, TypedEventTarget } from '@corvidae/lifecycle';
 import type { CreateMemoryOptions, Memory } from '@corvidae/memory';
 import { createMemory } from '@corvidae/memory';
 import type {
@@ -26,6 +26,7 @@ import type {
   GuardrailsOptions,
   JSONValue,
   OnStepHook,
+  OperativeHookMap,
   PrepareStepHook,
   RegistryAgnosticEngine,
   RequestHumanInputContext,
@@ -40,7 +41,6 @@ import type {
   SessionSummary,
   StepRecord,
   StreamEventMap,
-  ValidateResponseHook,
 } from '@corvidae/operative';
 import {
   createAgentSession,
@@ -1634,9 +1634,17 @@ export interface RuntimeComposition {
   ): Promise<{
     generate: GenerateFunction;
     toolbox: AnyToolbox;
-    prepareStep: PrepareStepHook[];
-    onStep: OnStepHook[];
-    validateResponse: ValidateResponseHook[];
+    /**
+     * The run's hook plan (COR-567). Bureau's own hooks were seven pushes into
+     * three legacy arrays until this became a registry; they are registered
+     * here, under stable ids, in the order those arrays ran.
+     *
+     * A registry rather than arrays because `RunOptions.hooks` is the only
+     * hook surface that carries registration identity, priority and plan
+     * observation — and bureau composing one is what makes those real for a
+     * production run instead of a capability nothing reaches.
+     */
+    hooks: HookRegistry<OperativeHookMap>;
     streamEventTarget: TypedEventTarget<StreamEventMap> | undefined;
     getActiveSkillEntries: () => ActiveSkillEntry[];
   }>;
@@ -1686,6 +1694,41 @@ export interface RuntimeComposition {
  * `createRuntimeComposition({...})` calls in this package's own test suite)
  * keeps working unchanged; it is not part of this function's contract.
  */
+/**
+ * Priority placing a hook after every hook bureau's own composition
+ * registered. Those all use the default priority `0` and the registry sorts
+ * descending, so any negative value runs last; the distance is for legibility,
+ * leaving room for an intermediate band without renumbering.
+ */
+const TRAILING_HOOK_PRIORITY = -1000;
+
+/**
+ * Registers a per-call `onStep` hook that must run AFTER the run runtime's own
+ * — the session write-back on a scheduled fire, the pending-approval persist on
+ * an interactive run. Both were array spreads (`[...runRuntime.onStep, extra]`)
+ * whose ordering came from their position in the literal; the priority states
+ * it instead, so it survives the hook moving.
+ *
+ * This mutates the run's registry and returns it, rather than merging into a
+ * fresh one, because the registry is created per run inside `createRunRuntime`
+ * and the caller here owns that run outright. A merge would mint a second
+ * registry whose entries carry `mergeHookRegistries`'s +1000 offsets, making
+ * the priority a caller reads back depend on how many merges it went through.
+ */
+export function registerTrailingOnStep(
+  hooks: HookRegistry<OperativeHookMap>,
+  id: string,
+  handler: OnStepHook,
+): HookRegistry<OperativeHookMap> {
+  hooks.on('onStep', handler, {
+    id,
+    priority: TRAILING_HOOK_PRIORITY,
+    // Writes a session record.
+    replay: 'effectful',
+  });
+  return hooks;
+}
+
 export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'>;
 
 export async function createRuntimeComposition(
@@ -2210,19 +2253,46 @@ export async function createRuntimeComposition(
         : hasSkillTools
           ? fallbackToolbox.extend()
           : createUnavailableToolbox();
-    const prepareStep: PrepareStepHook[] = [];
-    const onStep: OnStepHook[] = [];
-    const validateResponse: ValidateResponseHook[] = [];
+    // COR-567 — one registry per run. Per-run rather than per-composition
+    // because these hooks close over this run's session, memory and skill
+    // session; a registry shared across runs would leak one run's state into
+    // another exactly the way the per-run toolbox clone above exists to
+    // prevent.
+    //
+    // Registration order is the order the legacy arrays ran in, and every id
+    // below is explicit: a generated `<hookName>#<n>` would renumber whenever
+    // an earlier conditional block stops registering, so an observer
+    // correlating across runs would see the same hook under different names
+    // depending on whether memory or skills happened to be configured.
+    const hooks = new HookRegistry<OperativeHookMap>();
     let getActiveSkillEntries = (): ActiveSkillEntry[] => [];
     let getActiveSkillToolPolicy: (() => ToolPolicy | undefined) | undefined;
 
     if (options.identity) {
-      prepareStep.push(createIdentityHook(options.identity));
+      hooks.on('prepareStep', createIdentityHook(options.identity), {
+        id: 'bureau:identity',
+        // Appends a system message to the step's conversation and touches
+        // nothing outside it; a replayed step rebuilds that conversation from
+        // persisted history, so re-running this reproduces state rather than
+        // repeating an external effect.
+        replay: 'safe',
+      });
     }
 
     if (memory) {
-      prepareStep.push(createMemoryRecallHook(memory, request.sessionId));
-      onStep.push(createMemoryPersistHook(memory, request.sessionId, request.runId));
+      hooks.on('prepareStep', createMemoryRecallHook(memory, request.sessionId), {
+        id: 'bureau:memory-recall',
+        // Reads memory and injects the result; no external write.
+        replay: 'safe',
+      });
+      hooks.on('onStep', createMemoryPersistHook(memory, request.sessionId, request.runId), {
+        id: 'bureau:memory-persist',
+        // Writes to the memory store, so a replayed step writes again. The
+        // classification records that at-least-once contract; it does not
+        // suppress the second write, which would drop the persistence for a
+        // step whose generation genuinely re-ran.
+        replay: 'effectful',
+      });
     }
 
     // COR-1226 — resolved here rather than at the hook-push site below, because
@@ -2319,16 +2389,25 @@ export async function createRuntimeComposition(
         // `undefined` when the admitted catalog is empty, so no skill tool is exposed at all —
         // a model handed `activate_skill` against an empty catalog invents a name to pass it.
         if (skillToolset !== undefined) {
-          prepareStep.push((context) => {
-            if (context.step !== 0) return Promise.resolve();
-            const rendered = renderClientCatalog(skillClient);
-            if (rendered !== undefined) {
-              context.conversation.appendSystemMessage(rendered, {
-                _skillCatalogInjected: true,
-              });
-            }
-            return Promise.resolve();
-          });
+          hooks.on(
+            'prepareStep',
+            (context) => {
+              if (context.step !== 0) return Promise.resolve();
+              const rendered = renderClientCatalog(skillClient);
+              if (rendered !== undefined) {
+                context.conversation.appendSystemMessage(rendered, {
+                  _skillCatalogInjected: true,
+                });
+              }
+              return Promise.resolve();
+            },
+            {
+              id: 'bureau:skill-client-catalog',
+              // Reads the client's frozen catalog revision and appends to the
+              // step's conversation; nothing outside it is touched.
+              replay: 'safe',
+            },
+          );
 
           toolbox = combineToolboxes(
             toolbox,
@@ -2343,18 +2422,29 @@ export async function createRuntimeComposition(
 
       // Active instructions are re-rendered every step rather than left in the transcript, which
       // is what makes them survive a compaction strategy that rewrote the whole history.
-      prepareStep.push(async (context) => {
-        // Recovery settles before the first step reads the active set, so nothing renders a
-        // half-filled one.
-        if (skillRecovery !== undefined) await skillRecovery;
-        const instructions = renderActiveSkillInstructions(skillClient.active());
-        if (instructions !== undefined) {
-          context.conversation.appendSystemMessage(instructions, { _skillContentInjected: true });
-        }
-      });
+      hooks.on(
+        'prepareStep',
+        async (context) => {
+          // Recovery settles before the first step reads the active set, so nothing renders a
+          // half-filled one.
+          if (skillRecovery !== undefined) await skillRecovery;
+          const instructions = renderActiveSkillInstructions(skillClient.active());
+          if (instructions !== undefined) {
+            context.conversation.appendSystemMessage(instructions, { _skillContentInjected: true });
+          }
+        },
+        {
+          id: 'bureau:skill-client-instructions',
+          // Renders the active set into the step's conversation. Re-rendering on
+          // a replayed step is the point — see the comment above — and reaches
+          // nothing outside that conversation.
+          replay: 'safe',
+        },
+      );
 
       if (sessionStore) {
-        onStep.push(
+        hooks.on(
+          'onStep',
           createSkillRecordSnapshotHook(
             skillClient,
             skillCatalog,
@@ -2362,6 +2452,11 @@ export async function createRuntimeComposition(
             sessionStore,
             request.runId,
           ),
+          {
+            id: 'bureau:skill-record-snapshot',
+            // Writes the activation records to the session store.
+            replay: 'effectful',
+          },
         );
       }
     } else if (options.skills && resolvedSkillProvider) {
@@ -2404,14 +2499,23 @@ export async function createRuntimeComposition(
             ? {}
             : { skillPolicy: options.skills.skillPolicy }),
         });
-        prepareStep.push(async (context) => {
-          const catalog = await catalogHook.prepareStep(context);
-          if (catalog) {
-            context.conversation.appendSystemMessage(catalog, {
-              _skillCatalogInjected: true,
-            });
-          }
-        });
+        hooks.on(
+          'prepareStep',
+          async (context) => {
+            const catalog = await catalogHook.prepareStep(context);
+            if (catalog) {
+              context.conversation.appendSystemMessage(catalog, {
+                _skillCatalogInjected: true,
+              });
+            }
+          },
+          {
+            id: 'bureau:skill-catalog',
+            // Reads the provider's catalog and injects it; the hook itself
+            // caches for the run and writes nothing outside the conversation.
+            replay: 'safe',
+          },
+        );
 
         // COR-1226 — the `@corvidae/skills` factories, not a second inline copy.
         // The previous inline implementation produced byte-identical results for
@@ -2448,13 +2552,19 @@ export async function createRuntimeComposition(
       // This is what allows buildRunDepsFromSession to rehydrate the skill set on
       // a cross-process recovery (see resolveRunServices → buildRunDepsFromSession).
       if (sessionStore) {
-        onStep.push(
+        hooks.on(
+          'onStep',
           createSkillStateSnapshotHook(
             skillSession,
             request.sessionId,
             sessionStore,
             request.runId,
           ),
+          {
+            id: 'bureau:skill-state-snapshot',
+            // Writes the active-skill snapshot to the session store.
+            replay: 'effectful',
+          },
         );
       }
     }
@@ -2462,8 +2572,18 @@ export async function createRuntimeComposition(
     // AB-40 — `undefined` (not configured) wires the enabled-by-default
     // preset; `false` opts out entirely; anything else replaces the preset.
     if (guardrails) {
-      prepareStep.push(guardrails.prepareStep);
-      validateResponse.push(guardrails.validateResponse);
+      // Registered last on `prepareStep`, as the array push order had it, so
+      // the input guardrail scans a step context every earlier hook has
+      // already contributed to rather than one they then append to.
+      hooks.on('prepareStep', guardrails.prepareStep, {
+        id: 'bureau:guardrails-prepare-step',
+        // Scans and may taint in-process session state; no external write.
+        replay: 'safe',
+      });
+      hooks.on('validateResponse', guardrails.validateResponse, {
+        id: 'bureau:guardrails-validate-response',
+        replay: 'safe',
+      });
     }
 
     const runToolbox = withDefaultToolboxRequestContext(
@@ -2481,9 +2601,7 @@ export async function createRuntimeComposition(
     return Promise.resolve({
       generate,
       toolbox: runToolbox,
-      prepareStep,
-      onStep,
-      validateResponse,
+      hooks,
       streamEventTarget,
       getActiveSkillEntries,
     });
@@ -2606,9 +2724,7 @@ export async function createRuntimeComposition(
         conversation: new Conversation(session.conversationHistory),
         maximumSteps: recoveredMaximumSteps,
         stopWhen: options.stopWhen,
-        prepareStep: runRuntime.prepareStep,
-        onStep: runRuntime.onStep,
-        validateResponse: runRuntime.validateResponse,
+        hooks: runRuntime.hooks,
         // AB-260: the bureau's single composed RuntimeServices instance,
         // snapshotted into every run it starts — including a recovered run
         // rebuilt here from a persisted session.
@@ -3149,11 +3265,11 @@ export async function createRuntimeComposition(
         // AB-260: the bureau's single composed RuntimeServices instance,
         // snapshotted into every run it starts — including a scheduled fire.
         runtime: runtimeServices,
-        prepareStep: runRuntime.prepareStep,
-        // Append the session write-back hook so recurring fires accumulate and a
-        // stateless fire is observable; runs AFTER the runtime's own onStep hooks.
-        onStep: [
-          ...runRuntime.onStep,
+        // The session write-back runs AFTER the runtime's own onStep hooks so
+        // recurring fires accumulate and a stateless fire is observable.
+        hooks: registerTrailingOnStep(
+          runRuntime.hooks,
+          'bureau:scheduled-session-write-back',
           createScheduledSessionPersistHook(
             store,
             sessionId,
@@ -3163,8 +3279,7 @@ export async function createRuntimeComposition(
             isRecoveredFireReplay,
             runRuntime.getActiveSkillEntries,
           ),
-        ],
-        validateResponse: runRuntime.validateResponse,
+        ),
         executeOptions: { requestContext },
         agentName,
         runId,

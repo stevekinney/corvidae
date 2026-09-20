@@ -259,6 +259,47 @@ A skill-enabled run follows this sequence:
 
 Use the session, hooks, and tool factories below to wire this behavior into the application runtime.
 
+## Lifecycle events
+
+Pass an `events` target and a `correlation` to `createSkillToolbox` and the skill tools dispatch five events describing what happened to each skill. Bureau wires both automatically for a skill-enabled run, stamping the owning `runId` and `sessionId` — the tools themselves have no view of either, so the correlation is supplied where both are in scope.
+
+| Event | Meaning |
+| --- | --- |
+| `skill.loaded` | the provider returned the skill's instructions |
+| `skill.activated` | the skill was admitted to the session and its instructions returned to the model |
+| `skill.deactivated` | a previously active skill left the active set |
+| `skill.rejected` | an activation attempt was refused by policy before the skill entered context |
+| `skill.failed` | an activation attempt could not complete because the provider had no such skill |
+
+```typescript
+import { TypedEventTarget } from '@corvidae/lifecycle';
+import { createSkillToolbox, type SkillEventMap } from '@corvidae/skills';
+
+const events = new TypedEventTarget<SkillEventMap>();
+
+events.addEventListener('skill.rejected', (event) => {
+  console.warn(`refused ${event.skillName}: ${event.reason}`, event.rule ?? '');
+});
+
+const tools = createSkillToolbox({
+  provider,
+  session,
+  events,
+  correlation: { runId, sessionId },
+  admissionPolicy: { denyList: ['deploy-to-production'] },
+});
+```
+
+**`loaded` and `activated` are separate on purpose.** `skill.loaded` fires before the guardrail scan and before the session admits the skill, so a skill that is loaded and then blocked produces `skill.loaded` followed by `skill.rejected` and never `skill.activated`. The pair separates "the provider had it" from "it entered context".
+
+**`rejected` and `failed` are mutually exclusive** for one attempt. Rejection is a pre-admission policy outcome for a skill that exists; failure means the skill was not there to admit. One attempt produces at most one of the two, never both.
+
+`skill.rejected` carries a `reason` of `'disabled'`, `'guardrail-blocked'` or `'ownership-policy'`, and on the last of those a `rule` naming which admission rule fired — `'allow-list'` or `'deny-list'`. The rule is an identity, not the policy's contents: a consumer can branch on which rule refused the skill without the event disclosing the configured lists.
+
+**Deactivating an inactive skill emits nothing.** It is a no-op, and the tool reports it as `deactivated: false`.
+
+**The admission policy is checked before the provider's enabled status,** so a refused skill is indistinguishable from an absent one to the calling model — it cannot probe for the existence of skills it is not allowed to use.
+
 ## Memory and Learning
 
 `createSkillMemory(memory, skillName)` wraps any compatible memory implementation and forces reads and writes into the `skill:{name}` namespace. The wrapper overrides the namespace on its `remember` and `recall` calls. The host still owns authorization: callers with direct access to the underlying memory can choose that namespace themselves.

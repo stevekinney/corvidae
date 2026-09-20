@@ -174,6 +174,7 @@ import {
   createSchedulerServiceRequestContext,
   decodeScheduleRunMarker,
   isRunFailureFinishReason,
+  registerTrailingOnStep,
   wireDurableOptInTools,
 } from './runtime-composition';
 import {
@@ -2972,10 +2973,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // AB-260: the bureau's single composed RuntimeServices instance,
           // snapshotted into every run it starts.
           runtime: runtimeServices,
-          prepareStep: runRuntime.prepareStep,
           ...(runSteeringGate ? { steering: runSteeringGate } : {}),
-          onStep: [
-            ...runRuntime.onStep,
+          hooks: registerTrailingOnStep(
+            runRuntime.hooks,
+            'bureau:pending-approval-persist',
             async (stepResult) => {
               for (const stepResultItem of stepResult.results) {
                 if (
@@ -2993,9 +2994,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 );
               }
             },
-          ],
+          ),
           executeOptions: requestContext === undefined ? {} : { requestContext },
-          validateResponse: runRuntime.validateResponse,
           // Thread agentName and runId so curated tool.* bubble events are stamped
           // with {agentName, runId, step} metadata (C3) and durable launch input
           // carries the owning agent for audit/recovery attribution (F2). Fall back
@@ -4176,9 +4176,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   // instance, snapshotted into every run it starts — including
                   // a mocked/custom-engine reattach.
                   runtime: runtimeServices,
-                  prepareStep: runRuntime.prepareStep,
-                  onStep: runRuntime.onStep,
-                  validateResponse: runRuntime.validateResponse,
+                  hooks: runRuntime.hooks,
                   executeOptions: requestContext === undefined ? {} : { requestContext },
                   agentName: recoveredAgentName,
                   runId: handle.id,
@@ -4343,10 +4341,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // AB-260: the bureau's single composed RuntimeServices instance,
           // snapshotted into every scheduler task run it starts.
           runtime: runtimeServices,
-          onStep: runRuntime.onStep,
-          prepareStep: runRuntime.prepareStep,
+          hooks: runRuntime.hooks,
           stopWhen: options.stopWhen,
-          validateResponse: runRuntime.validateResponse,
         };
       },
     };

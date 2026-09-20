@@ -311,12 +311,26 @@ forwarding.stop();
 
 **Signature:** `class HookRegistry<M extends HookMap>`
 
-A priority-ordered registry for named async hooks. `M` maps hook names to their handler function signatures. Handlers registered with a higher `priority` number run first. When a handler returns a non-`undefined` value, that value replaces the first argument passed to all subsequent handlers—enabling a pipeline pattern where each hook can transform the input.
+A priority-ordered registry for named async hooks. `M` maps hook names to their handler function signatures. Handlers registered with a higher `priority` number run first; equal priorities keep registration order, because the sort is stable.
+
+**Pick the dispatch method that matches your hook's shape.** The three differ in what each handler receives and which result is returned, and choosing the wrong one is silent when only a single handler is registered:
+
+| Method | Each handler receives | Returns | Use when |
+| --- | --- | --- | --- |
+| `run` | the previous handler's non-`undefined` return in place of the first argument | the last returned value | the handler's return type **is** its first parameter type, so the substitution is meaningful — a transform pipeline |
+| `runFirst` | the caller's arguments, unchanged | the first non-`undefined` return; later handlers do not run | a handler that answers ends the question — a short-circuit or a veto |
+| `runLast` | the caller's arguments, unchanged | the last non-`undefined` return; every handler runs | every handler is consulted and the lowest-priority answer wins — an override |
+
+`run` is a genuine footgun for a hook whose return type differs from its first parameter type. `(context: StepContext) => GenerateResponse | undefined` under `run` hands the second handler a `GenerateResponse` where it expects a `StepContext`. Nothing catches this at compile time, and with exactly one registered handler the loop ends before the substituted argument is ever read — so the defect stays invisible until someone registers a second. Use `runFirst` or `runLast` for those.
 
 **Methods:**
 
 - **`on(hookName, handler, options?)`**: Registers a handler. Returns an unsubscribe function.
-- **`run(hookName, ...args)`**: Executes all handlers for the hook in priority order and returns the final transformed value (or `undefined` if no handler returned one).
+- **`run(hookName, ...args)`**: Waterfall. Executes all handlers in priority order, substituting each non-`undefined` return for the first argument, and returns the final transformed value (or `undefined` if no handler returned one). See the table above for when this is the wrong method.
+- **`runFirst(hookName, ...args)`**: Executes handlers in priority order against the caller's unmodified arguments and returns the first non-`undefined` result, leaving later handlers uninvoked.
+- **`runLast(hookName, ...args)`**: Executes every handler against the caller's unmodified arguments and returns the last non-`undefined` result.
+- **`runHandler(hookName, entry, args)`**: Invokes one already-resolved `getHandlers()` entry under this registry's observation. For a call site whose threading none of the three dispatch methods expresses — one that interleaves work between handlers, or waterfalls a _field_ of its context rather than the context itself. Routing a hand-written loop through this keeps one invocation path, so an observer sees a hand-iterated hook exactly as it sees a dispatched one.
+- **`observe(observer)`**: Attaches a read-only observer of registrations, removals and handler invocations. Returns an unsubscribe function. See [Observing a hook plan](#observing-a-hook-plan).
 - **`has(hookName)`**: Returns `true` if at least one handler is registered for the hook.
 - **`clear(hookName?)`**: Removes all handlers for the named hook, or all handlers across every hook when called without arguments.
 - **`getHandlers(hookName)`**: Returns registered handlers sorted by priority descending—used internally by `mergeHookRegistries`, and by callers that need to iterate handlers manually (see `onError` below).
@@ -335,6 +349,9 @@ A priority-ordered registry for named async hooks. `M` maps hook names to their 
 `HookRegistryOptions`:
 
 - **`onError`**: `HookErrorHandler`—registry-wide error fallback used when a handler's own `onError` is not set.
+- **`now`**: `() => number`—clock backing the `durationMilliseconds` an observer receives. Defaults to `Date.now`; inject for deterministic tests.
+
+**Registration identity.** `HookRegistrationOptions.id` names one registration, so an observer can correlate the same hook across invocations and across runs. Supply one when you have a meaningful name; otherwise the registry assigns `<hookName>#<n>` from a counter that never reuses a value, so an id is never recycled after an unregistration. Prefer an explicit id for a hook registered inside a conditional block — a generated number renumbers whenever an earlier block does not register, so the same hook would answer to different names depending on configuration.
 
 ```typescript
 import { HookRegistry } from '@corvidae/lifecycle';
@@ -368,6 +385,39 @@ console.log(hooks.has('before-compile')); // true (one handler remains)
 hooks.clear('before-compile');
 console.log(hooks.has('before-compile')); // false
 ```
+
+### Observing a hook plan
+
+`observe(observer)` reports what happens to a registry's membership and to its handlers, without being able to change any of it. Returns an unsubscribe function.
+
+```typescript
+const stop = hooks.observe((observation) => {
+  switch (observation.kind) {
+    case 'registered':
+      console.log(`+ ${observation.hookName}/${observation.id} @${observation.priority}`);
+      return;
+    case 'removed':
+      console.log(`- ${observation.hookName}/${observation.id}`);
+      return;
+    case 'invoked':
+      console.log(`  ${observation.id} ok in ${observation.durationMilliseconds}ms`);
+      return;
+    case 'failed':
+      console.log(`  ${observation.id} threw`, observation.error);
+      return;
+  }
+});
+
+stop();
+```
+
+`invoked` and `failed` are mutually exclusive outcomes of one invocation: exactly one fires per handler call, never both and never neither. `failed` fires for the throw itself, _before_ the error policy decides whether to continue or abort — so a handler whose `onError` returns `'continue'` is still reported rather than silently absorbed.
+
+**Past registrations are not replayed.** An observer attached to an already-populated registry sees nothing until the next thing happens. This is deliberate: replaying would make "observer attached late" indistinguishable from "entry registered late" for every subscriber. A subscriber that wants the entries already present censuses them itself through `getHookNames()` and `getHandlers()` before attaching — which is what `@corvidae/operative` does to emit `hook-plan.registered` for a plan composed before the run started.
+
+**An observer must not throw.** One that does is routed to the registry's `onError` when configured, and otherwise re-thrown from a microtask so it surfaces as an unhandled error. It never fails the hook invocation it observed, and one broken observer does not blind the others.
+
+**Unsubscribe when the observer outlives its purpose.** A registry reused across runs accumulates one observer per run otherwise, each dispatching into an emitter whose run has already settled.
 
 ### `mergeHookRegistries()`
 

@@ -124,12 +124,14 @@ export function applyWaterfallHandlerErrorPolicy(
   handlerIndex: number,
   entryOptions: HookRegistrationOptions,
   registryOnError: HookErrorHandler | undefined,
+  /** Stable registration identity (COR-567), from the entry being invoked. */
+  id: string,
 ): void {
   const errorHandler = entryOptions.onError ?? registryOnError;
   if (!errorHandler) {
     throw error;
   }
-  const decision = errorHandler(error, { hookName, handlerIndex });
+  const decision = errorHandler(error, { hookName, handlerIndex, id });
   if (decision === 'abort') {
     throw error;
   }
