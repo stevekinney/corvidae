@@ -12,8 +12,8 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { ActivityDefinition, WorkflowDefinition } from '@corvidae/weft';
-import { workflow } from '@corvidae/weft';
+import type { ActivityDefinition, WorkflowDefinition } from '../index.ts';
+import { workflow } from '../index.ts';
 import {
   formatValidationReport,
   loadRegistrationsFromModule,

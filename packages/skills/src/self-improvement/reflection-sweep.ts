@@ -3,7 +3,7 @@ import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
 import type { TextValueStore } from '@corvidae/weft';
 
 import type { MemoryLike, StepResultLike } from '../skill-memory';
-import type { SkillProvider } from '../types';
+import type { SkillWriter } from '../types';
 import type { IdentityProviderLike } from './proposals';
 import { isRejectedPattern, saveProposal } from './proposals';
 
@@ -31,7 +31,7 @@ export interface SkillSink {
   /** Weft text-value store for proposal persistence. */
   storage: TextValueStore;
   /** Skill provider — used when the proposal is accepted. */
-  skillProvider: SkillProvider;
+  skillProvider: SkillWriter;
   /** Optional agent the proposal applies to. */
   agentId?: string;
 }

@@ -1,6 +1,8 @@
 import type {
   HookErrorHandler,
   HookMap,
+  HookPlanObservation,
+  HookPlanObserver,
   HookRegistrationOptions,
   HookRegistryOptions,
 } from './types';
@@ -9,15 +11,75 @@ interface RegisteredHandler {
   handler: (...args: never[]) => unknown;
   priority: number;
   options: HookRegistrationOptions;
+  /** Resolved at registration; never recycled. See `HookRegistrationOptions.id`. */
+  id: string;
 }
 
 export class HookRegistry<M extends HookMap> {
   private readonly handlers = new Map<string, RegisteredHandler[]>();
   private readonly registryOptions: HookRegistryOptions;
   #revision = 0;
+  /**
+   * Monotonic per-registry counter backing generated ids. Separate from
+   * `#revision`: that one counts membership changes including removals, so
+   * reusing it would let an id be handed out twice after an unregistration.
+   */
+  #registrationSequence = 0;
+  readonly #observers = new Set<HookPlanObserver>();
 
   constructor(options?: HookRegistryOptions) {
     this.registryOptions = options ?? {};
+  }
+
+  /**
+   * Attaches an observer of this plan's registrations, removals, and handler
+   * invocations. Returns an unsubscribe function.
+   *
+   * Observation is attached rather than configured at construction because the
+   * party that wants to watch a plan is rarely the party that built it: a run
+   * receives an already-populated registry from its caller and needs to watch
+   * that one. A subscriber that also wants the entries registered BEFORE it
+   * attached censuses them through `getHookNames()` and `getHandlers()` — this
+   * deliberately does not replay them, so "observer attached late" stays
+   * distinguishable from "entry registered late".
+   */
+  observe(observer: HookPlanObserver): () => void {
+    this.#observers.add(observer);
+    return () => {
+      this.#observers.delete(observer);
+    };
+  }
+
+  /**
+   * Reports one observation to every attached observer.
+   *
+   * A throwing observer must never fail the hook invocation that produced the
+   * observation, and must never be silently swallowed either. It is routed to
+   * the configured `onError` when there is one, and otherwise re-thrown from a
+   * microtask, which surfaces it as an unhandled rejection instead of losing
+   * it. The remaining observers still run: one broken observer does not
+   * blind the others.
+   */
+  #notify(observation: HookPlanObservation): void {
+    if (this.#observers.size === 0) return;
+    for (const observer of this.#observers) {
+      try {
+        observer(observation);
+      } catch (error: unknown) {
+        const errorHandler = this.registryOptions.onError;
+        if (errorHandler) {
+          errorHandler(error, {
+            hookName: observation.hookName,
+            handlerIndex: -1,
+            id: observation.id,
+          });
+        } else {
+          queueMicrotask(() => {
+            throw error;
+          });
+        }
+      }
+    }
   }
 
   /**
@@ -49,7 +111,9 @@ export class HookRegistry<M extends HookMap> {
     options?: HookRegistrationOptions,
   ): () => void {
     const priority = options?.priority ?? 0;
-    const entry: RegisteredHandler = { handler, priority, options: options ?? {} };
+    this.#registrationSequence += 1;
+    const id = options?.id ?? `${hookName}#${this.#registrationSequence}`;
+    const entry: RegisteredHandler = { handler, priority, options: options ?? {}, id };
 
     let list = this.handlers.get(hookName);
     if (!list) {
@@ -58,6 +122,16 @@ export class HookRegistry<M extends HookMap> {
     }
     list.push(entry);
     this.#revision += 1;
+    this.#notify({
+      kind: 'registered',
+      hookName,
+      id,
+      priority,
+      // Unset means the conservative `effectful` — see `HookReplayPolicy`. An
+      // observer should see the classification in force, not the absence of a
+      // declaration.
+      replay: options?.replay ?? 'effectful',
+    });
 
     return () => {
       const current = this.handlers.get(hookName);
@@ -69,6 +143,7 @@ export class HookRegistry<M extends HookMap> {
         // unregister twice is idempotent and must not look like two
         // distinct plan changes to a boundary comparing revisions.
         this.#revision += 1;
+        this.#notify({ kind: 'removed', hookName, id });
       }
       if (current.length === 0) {
         this.handlers.delete(hookName);
@@ -76,15 +151,114 @@ export class HookRegistry<M extends HookMap> {
     };
   }
 
+  /**
+   * Runs every handler as a WATERFALL: each handler's defined return value
+   * replaces the first argument for the next handler, and the last such value
+   * is returned.
+   *
+   * Correct only where a handler's return type IS its first parameter type —
+   * `validateResponse` (response in, response out) and `validateToolResult`
+   * (result in, result out). For a hook whose return is a DIFFERENT type
+   * (`prepareStep` returns a response but takes a context; `selectTools`
+   * returns a toolbox but takes a context), this would hand the second
+   * handler the first one's return value in place of its context. Use
+   * {@link runFirst} or {@link runLast} for those.
+   */
   run<K extends keyof M & string>(
     hookName: K,
     ...args: Parameters<M[K]>
   ): Promise<Awaited<ReturnType<M[K]>> | undefined>;
   async run(hookName: string, ...args: unknown[]): Promise<unknown> {
-    return this.runUnchecked(hookName, args);
+    return this.dispatch(hookName, args, 'waterfall');
   }
 
-  private async runUnchecked(hookName: string, args: unknown[]): Promise<unknown> {
+  /**
+   * Runs handlers in priority order against the SAME, unmodified arguments and
+   * returns the FIRST defined result, leaving later handlers uninvoked.
+   *
+   * This is the short-circuit shape: a handler that answers ends the question.
+   * `prepareStep` uses it (a handler returning a response replaces the generate
+   * call, so running the rest would be pointless and would feed them a
+   * response where they expect a step context), as does `beforeCompaction`
+   * (the first veto decides).
+   */
+  runFirst<K extends keyof M & string>(
+    hookName: K,
+    ...args: Parameters<M[K]>
+  ): Promise<Awaited<ReturnType<M[K]>> | undefined>;
+  async runFirst(hookName: string, ...args: unknown[]): Promise<unknown> {
+    return this.dispatch(hookName, args, 'first');
+  }
+
+  /**
+   * Runs EVERY handler against the SAME, unmodified arguments and returns the
+   * LAST defined result.
+   *
+   * This is the override shape, matching the legacy hook arrays for
+   * `selectTools` and `selectToolChoice`: every handler is consulted and the
+   * lowest-priority one to answer wins, because it ran last.
+   */
+  runLast<K extends keyof M & string>(
+    hookName: K,
+    ...args: Parameters<M[K]>
+  ): Promise<Awaited<ReturnType<M[K]>> | undefined>;
+  async runLast(hookName: string, ...args: unknown[]): Promise<unknown> {
+    return this.dispatch(hookName, args, 'last');
+  }
+
+  /**
+   * Invokes ONE already-resolved entry under this registry's error policy.
+   *
+   * Exposed for the call sites that iterate {@link getHandlers} themselves
+   * because their hook's threading cannot be expressed by any of the three
+   * dispatch shapes above — `beforeGenerate`/`afterGenerate` reapply steering
+   * between handlers, `onError` interprets each handler's verdict, and
+   * `beforeToolExecution` waterfalls a FIELD of its context rather than the
+   * context itself. Routing those through here keeps one invocation path, so
+   * an observer of this registry sees a hand-iterated hook exactly as it sees
+   * a dispatched one.
+   */
+  async runHandler<K extends keyof M & string>(
+    hookName: K,
+    entry: { handler: M[K]; id: string },
+    args: Parameters<M[K]>,
+  ): Promise<unknown> {
+    return this.invokeObserved(hookName, entry.id, entry.handler, args);
+  }
+
+  private async invokeObserved(
+    hookName: string,
+    id: string,
+    handler: (...handlerArgs: never[]) => unknown,
+    args: readonly unknown[],
+  ): Promise<unknown> {
+    const startedAt = this.registryOptions.now?.() ?? Date.now();
+    try {
+      const result = await Reflect.apply(handler, undefined, args);
+      this.#notify({
+        kind: 'invoked',
+        hookName,
+        id,
+        durationMilliseconds: (this.registryOptions.now?.() ?? Date.now()) - startedAt,
+      });
+      return result;
+    } catch (error: unknown) {
+      this.#notify({
+        kind: 'failed',
+        hookName,
+        id,
+        durationMilliseconds: (this.registryOptions.now?.() ?? Date.now()) - startedAt,
+        error,
+      });
+      throw error;
+    }
+  }
+
+  private async dispatch(
+    hookName: string,
+    args: unknown[],
+    mode: 'waterfall' | 'first' | 'last',
+  ): Promise<unknown> {
     const list = this.handlers.get(hookName);
     if (!list || list.length === 0) {
       return undefined;
@@ -92,23 +266,28 @@ export class HookRegistry<M extends HookMap> {
 
     const sorted = list.toSorted((a, b) => b.priority - a.priority);
 
+    // Only the waterfall mode rewrites this between handlers. `first` and
+    // `last` hand every handler the arguments the caller passed.
     const currentArgs = [...args];
+    let returned: unknown;
     let hasReturnedValue = false;
 
     for (let i = 0; i < sorted.length; i++) {
       const entry = sorted[i]!;
       try {
-        const result = await Reflect.apply(entry.handler, undefined, currentArgs);
+        const result = await this.invokeObserved(hookName, entry.id, entry.handler, currentArgs);
         if (result !== undefined) {
-          currentArgs[0] = result;
+          returned = result;
           hasReturnedValue = true;
+          if (mode === 'waterfall') currentArgs[0] = result;
+          if (mode === 'first') break;
         }
       } catch (error: unknown) {
         const errorHandler = entry.options.onError ?? this.registryOptions.onError;
         if (!errorHandler) {
           throw error;
         }
-        const decision = errorHandler(error, { hookName, handlerIndex: i });
+        const decision = errorHandler(error, { hookName, handlerIndex: i, id: entry.id });
         if (decision === 'abort') {
           throw error;
         }
@@ -116,7 +295,7 @@ export class HookRegistry<M extends HookMap> {
       }
     }
 
-    return hasReturnedValue ? currentArgs[0] : undefined;
+    return hasReturnedValue ? returned : undefined;
   }
 
   has(hookName: keyof M & string): boolean {
@@ -125,15 +304,28 @@ export class HookRegistry<M extends HookMap> {
   }
 
   clear(hookName?: keyof M & string): void {
+    // Captured before the delete so each departing entry can be reported
+    // individually: an observer tracking plan membership by id cannot act on
+    // a bare "something was cleared".
+    const departing: Array<{ hookName: string; id: string }> = [];
     if (hookName !== undefined) {
+      for (const entry of this.handlers.get(hookName) ?? []) {
+        departing.push({ hookName, id: entry.id });
+      }
       // `delete` reports whether anything was there — clearing an absent
       // hook name changes no membership and must not advance the revision.
       if (this.handlers.delete(hookName)) this.#revision += 1;
     } else {
       if (this.handlers.size > 0) {
+        for (const [name, entries] of this.handlers) {
+          for (const entry of entries) departing.push({ hookName: name, id: entry.id });
+        }
         this.handlers.clear();
         this.#revision += 1;
       }
+    }
+    for (const departed of departing) {
+      this.#notify({ kind: 'removed', hookName: departed.hookName, id: departed.id });
     }
   }
 
@@ -143,7 +335,13 @@ export class HookRegistry<M extends HookMap> {
    */
   getHandlers<K extends keyof M & string>(
     hookName: K,
-  ): ReadonlyArray<{ handler: M[K]; priority: number; options: HookRegistrationOptions }>;
+  ): ReadonlyArray<{
+    handler: M[K];
+    priority: number;
+    options: HookRegistrationOptions;
+    /** Stable registration identity — see {@link HookRegistrationOptions.id}. */
+    id: string;
+  }>;
   getHandlers(hookName: string): ReadonlyArray<RegisteredHandler> {
     const list = this.handlers.get(hookName);
     if (!list) return [];

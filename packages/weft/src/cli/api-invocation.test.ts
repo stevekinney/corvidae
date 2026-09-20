@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createWeftClient, Engine, serve } from '@corvidae/weft';
+import { createWeftClient, Engine, serve } from '../index.ts';
 import { executeApi, normalizeValidatedInput } from './api.ts';
 
 describe('api command', () => {

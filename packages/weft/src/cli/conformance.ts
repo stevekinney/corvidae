@@ -456,4 +456,3 @@ export async function executeConformance(
     };
   }
 }
-/* oxlint-disable max-lines -- conformance keeps the protocol harness and its subprocess lifecycle together. */

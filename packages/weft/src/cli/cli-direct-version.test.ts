@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { VERSION } from '@corvidae/weft';
+import { VERSION } from '../index.ts';
 
 describe('CLI direct execution', () => {
   it('accepts --storage flag via the CLI binary', async () => {

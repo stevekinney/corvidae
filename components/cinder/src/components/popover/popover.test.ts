@@ -105,6 +105,26 @@ const KNOWN_POPOVER_WARNINGS = [
 ];
 let warnSpy: ReturnType<typeof spyOn<typeof console, 'warn'>>;
 
+/**
+ * Advances Svelte's scheduler until `predicate` holds, bounded by *turns* rather than wall clock.
+ *
+ * `waitFor` polls on a real timer, so a condition this component settles in microtasks — the
+ * mocked `computePosition` resolving, `positionReady` flipping, the focus `$effect` running — is
+ * nonetheless waited for against a millisecond budget. That makes the test's cost scale with
+ * machine load: under a parallel `bun run validate` these focus assertions were observed taking
+ * 5.6 seconds and timing out at 10.4 seconds, for work that is genuinely a handful of microtasks.
+ *
+ * Counting scheduler turns removes the wall clock from the loop entirely, so the same assertion
+ * costs the same on an idle machine and a saturated one.
+ */
+async function settle(predicate: () => boolean, turns = 50): Promise<void> {
+  for (let turn = 0; turn < turns; turn += 1) {
+    if (predicate()) return;
+    await tick();
+  }
+  await tick();
+}
+
 beforeEach(() => {
   // Bun module mocks are process-global. Re-register this fixture before each
   // test so another floating-surface test file cannot replace the exports
@@ -634,26 +654,30 @@ describe('Popover — focus management', () => {
     render(Popover, {
       props: { open: true, trigger: triggerSnippet, children: focusableSnippet() },
     });
-    await waitFor(() => {
+    await settle(() => {
       const inside = queryPopoverPanel()?.querySelector('button') ?? null;
-      expect(inside).not.toBeNull();
-      expect(document.activeElement).toBe(inside);
+      return inside !== null && document.activeElement === inside;
     });
+
+    const inside = queryPopoverPanel()?.querySelector('button') ?? null;
+    expect(inside).not.toBeNull();
+    expect(document.activeElement).toBe(inside);
   });
 
   test('initial focus falls back to panel root when no focusable child', async () => {
     render(Popover, {
       props: { open: true, trigger: triggerSnippet, children: textSnippet('plain') },
     });
-    await waitFor(() => {
-      expect(queryPopoverPanel()).not.toBeNull();
-    });
+    await settle(() => queryPopoverPanel() !== null);
+
     const panel = queryPopoverPanel()!;
     expect(panel.getAttribute('tabindex')).toBe('-1');
-    await waitFor(() => {
-      expect(document.activeElement).toBe(panel);
-    });
-  }, 30_000);
+
+    await settle(() => document.activeElement === panel);
+    // The 30-second budget this test used to carry is gone with the polling that needed it: the
+    // focus move is a `$effect` with no timer in it, so it settles in scheduler turns or not at all.
+    expect(document.activeElement).toBe(panel);
+  });
 
   test('focus does not move while positionReady=false (computePosition pending)', async () => {
     deferComputePosition = true;
@@ -1041,9 +1065,8 @@ describe('Popover — floating-ui wiring', () => {
       const { rerender } = render(Popover, {
         props: { open: true, trigger: triggerSnippet, children: textSnippet('content') },
       });
-      await waitFor(() => {
-        expect(queryPopoverPanel()).not.toBeNull();
-      });
+      await settle(() => queryPopoverPanel() !== null);
+      expect(queryPopoverPanel()).not.toBeNull();
 
       await rerender({ open: false, trigger: triggerSnippet, children: textSnippet('content') });
 
@@ -1064,7 +1087,10 @@ describe('Popover — floating-ui wiring', () => {
       Object.defineProperty(event, 'propertyName', { value: 'opacity' });
       panel?.dispatchEvent(event);
 
-      await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+      // The `transitionend` above is dispatched synchronously, so the unmount is a scheduler
+      // turn away — not something to poll a clock for.
+      await settle(() => queryPopoverPanel() === null);
+      expect(queryPopoverPanel()).toBeNull();
     } finally {
       window.getComputedStyle = originalGetComputedStyle;
     }
@@ -1125,7 +1151,10 @@ describe('Popover — floating-ui wiring', () => {
       Object.defineProperty(event, 'propertyName', { value: 'opacity' });
       panel?.dispatchEvent(event);
 
-      await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+      // The `transitionend` above is dispatched synchronously, so the unmount is a scheduler
+      // turn away — not something to poll a clock for.
+      await settle(() => queryPopoverPanel() === null);
+      expect(queryPopoverPanel()).toBeNull();
     } finally {
       window.getComputedStyle = originalGetComputedStyle;
     }

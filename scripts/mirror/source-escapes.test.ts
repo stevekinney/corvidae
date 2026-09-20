@@ -28,6 +28,19 @@ async function withTree(
   }
 }
 
+/**
+ * The names `package-map.json` assigns the workspaces these fixtures use.
+ *
+ * Written out rather than loaded so a fixture's expected output is readable beside its input; the
+ * real map is what `committed-plans.ts` exercises, over the real tree.
+ */
+const publicNames: ReadonlyMap<string, string> = new Map([
+  ['@corvidae/armorer', '@lostgradient/armorer'],
+  ['@corvidae/editor', '@lostgradient/editor'],
+  ['@corvidae/testing', '@lostgradient/testing'],
+  ['@corvidae/weft', '@lostgradient/weft'],
+]);
+
 describe('reading a file’s module edges', () => {
   test('every form that creates one, and nothing that only looks like one', () => {
     const source = `
@@ -85,6 +98,7 @@ describe('the gate over one plan', () => {
       {
         file: 'packages/components/src/cli/index.ts',
         specifier: '../../scripts/knowledge/index.ts',
+        kind: 'unemitted-path',
         resolved: 'packages/components/scripts/knowledge/index.ts',
       },
     ]);
@@ -113,11 +127,13 @@ describe('the gate over one plan', () => {
       {
         file: 'packages/chat/src/lib/reexport.ts',
         specifier: '../../fixtures/rows.ts',
+        kind: 'unemitted-path',
         resolved: 'packages/chat/fixtures/rows.ts',
       },
       {
         file: 'packages/chat/src/lib/widget.svelte',
         specifier: '../../tests/harness.ts',
+        kind: 'unemitted-path',
         resolved: 'packages/chat/tests/harness.ts',
       },
     ]);
@@ -130,6 +146,7 @@ describe('the gate over one plan', () => {
       {
         file: 'packages/weft/src/index.ts',
         specifier: '../../../../outside.ts',
+        kind: 'unemitted-path',
         resolved: '../outside.ts',
       },
     ]);
@@ -146,7 +163,6 @@ describe('the gate over one plan', () => {
           "import { registry } from './registry';",
           "import styles from './theme.css?raw';",
           "import { join } from 'node:path';",
-          "import { createTool } from '@corvidae/armorer';",
         ].join('\n'),
         'packages/armorer/src/helpers/async-assertions.ts': 'export const settles = true;\n',
         'packages/armorer/src/tool.ts': 'export const tool = true;\n',
@@ -177,6 +193,154 @@ describe('the gate over one plan', () => {
   });
 });
 
+describe('an internal name in emitted source', () => {
+  test('every specifier form is caught, and a string that only looks like one is not', () => {
+    const files = {
+      'packages/weft/src/index.ts': [
+        "import { a } from '@corvidae/weft';",
+        "import type { B } from '@corvidae/weft';",
+        "export * from '@corvidae/armorer';",
+        "const c = await import('@corvidae/markdown');",
+        "const d = import.meta.resolve('@corvidae/weft');",
+        "declare module '@corvidae/weft' { interface Registry { a: 1 } }",
+        "import { e } from '@corvidae/weft/client';",
+        "const key = Symbol.for('@corvidae/operative/backend-descriptors');",
+        "import { z } from 'zod';",
+      ].join('\n'),
+    };
+    expect(findSourceEscapes(files).map((escape) => `${escape.kind} ${escape.specifier}`)).toEqual([
+      'internal-name @corvidae/armorer',
+      'internal-name @corvidae/markdown',
+      'internal-name @corvidae/weft',
+      'internal-name @corvidae/weft',
+      'internal-name @corvidae/weft',
+      'internal-name @corvidae/weft',
+      'internal-name @corvidae/weft/client',
+    ]);
+  });
+
+  test('a Svelte component is read the same way', () => {
+    expect(
+      findSourceEscapes({
+        'packages/chat/src/widget.svelte': [
+          '<script lang="ts">',
+          "  import { render } from '@corvidae/markdown';",
+          '</script>',
+          '<span>{render}</span>',
+        ].join('\n'),
+      }),
+    ).toEqual([
+      {
+        file: 'packages/chat/src/widget.svelte',
+        specifier: '@corvidae/markdown',
+        kind: 'internal-name',
+      },
+    ]);
+  });
+
+  test('a type-position `import()` in a Svelte script is caught, not only a plain import', () => {
+    expect(
+      findSourceEscapes({
+        'packages/editor/src/editor.svelte': [
+          '<script lang="ts">',
+          "  type Utilities = Pick<typeof import('@corvidae/markdown'), 'normalize'>;",
+          '  let utilities: Utilities | undefined;',
+          '</script>',
+          '<span>{utilities}</span>',
+        ].join('\n'),
+      }),
+    ).toEqual([
+      {
+        file: 'packages/editor/src/editor.svelte',
+        specifier: '@corvidae/markdown',
+        kind: 'internal-name',
+      },
+    ]);
+  });
+
+  test('a third-party bare specifier is still not an escape', () => {
+    expect(
+      findSourceEscapes({
+        'packages/weft/src/index.ts': [
+          "import { join } from 'node:path';",
+          "import { z } from 'zod';",
+          "import { render } from '@lostgradient/markdown';",
+        ].join('\n'),
+      }),
+    ).toEqual([]);
+  });
+
+  test('the message names every offender and says where the rewrite lives', () => {
+    const files = {
+      'packages/weft/src/index.ts': "import { a } from '@corvidae/weft';\n",
+      'packages/weft/src/other.ts': "export * from '../outside.ts';\n",
+    };
+    try {
+      assertNoSourceEscapes(files);
+      throw new Error('expected the gate to refuse this plan');
+    } catch (error) {
+      expect(error).toBeInstanceOf(SourceEscapeError);
+      const message = (error as Error).message;
+      expect(message).toContain('packages/weft/src/index.ts: @corvidae/weft');
+      expect(message).toContain('packages/weft/src/other.ts: ../outside.ts');
+      expect(message).toContain('internal-names.ts');
+      expect(message).toContain('additionalSourceRoots');
+    }
+  });
+});
+
+describe('an internal name in an emitted TypeScript configuration', () => {
+  test('`extends` is read, which a `.json` file was never scanned for before', () => {
+    expect(
+      findSourceEscapes({
+        'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json':
+          '{\n  // a tsconfig is JSON with comments\n  "extends": "@corvidae/typescript/library.json"\n}\n',
+      }),
+    ).toEqual([
+      {
+        file: 'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json',
+        specifier: '@corvidae/typescript/library.json',
+        kind: 'internal-name',
+      },
+    ]);
+  });
+
+  test('`compilerOptions.paths` keys are read, for a configuration with no `extends` at all', () => {
+    expect(
+      findSourceEscapes({
+        'packages/weft/src/client/__fixtures__/registry/tsconfig.json': JSON.stringify({
+          compilerOptions: {
+            paths: { '@corvidae/weft': ['../../../index.ts'], './local': ['./local.ts'] },
+          },
+        }),
+      }).map((escape) => escape.specifier),
+    ).toEqual(['@corvidae/weft']);
+  });
+
+  test('every entry of an `extends` array is read', () => {
+    expect(
+      findSourceEscapes({
+        'packages/weft/tsconfig.json': JSON.stringify({
+          extends: ['@corvidae/typescript/library.json', './.svelte-kit/tsconfig.json'],
+        }),
+        'packages/weft/.svelte-kit/tsconfig.json': '{}',
+      }).map((escape) => escape.specifier),
+    ).toEqual(['@corvidae/typescript/library.json']);
+  });
+
+  test('a configuration the transform has already rewritten is clean', () => {
+    expect(
+      findSourceEscapes({
+        'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json': JSON.stringify({
+          extends: '../../../../typescript/library.json',
+          compilerOptions: { paths: { '@lostgradient/weft': ['../../../index.ts'] } },
+        }),
+        'packages/weft/typescript/library.json': '{}',
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe('a declared additional source root', () => {
   const armorer = {
     workspace: '@corvidae/armorer',
@@ -196,7 +360,7 @@ describe('a declared additional source root', () => {
         'packages/armorer/test/helpers/async-assertions.ts': 'export const settles = true;\n',
       },
       async (root) => {
-        const plan = await planSource(root, [armorer]);
+        const plan = await planSource(root, [armorer], publicNames);
         expect(Object.keys(plan.files).toSorted()).toEqual([
           'packages/armorer/src/compose.test.ts',
           'packages/armorer/test/helpers/async-assertions.ts',
@@ -219,11 +383,12 @@ describe('a declared additional source root', () => {
         'packages/armorer/vendor/assertions.ts': 'export const settles = true;\n',
       },
       async (root) => {
-        const plan = await planSource(root, [armorer]);
+        const plan = await planSource(root, [armorer], publicNames);
         expect(findSourceEscapes(plan.files)).toEqual([
           {
             file: 'packages/armorer/test/helpers/async-assertions.ts',
             specifier: '../../vendor/assertions.ts',
+            kind: 'unemitted-path',
             resolved: 'packages/armorer/vendor/assertions.ts',
           },
         ]);
@@ -239,17 +404,22 @@ describe('a declared additional source root', () => {
         'components/editor/test/helpers/async-assertions.ts': 'export const settles = true;\n',
       },
       async (root) => {
-        const plan = await planSource(root, [
-          {
-            workspace: '@corvidae/editor',
-            corvidaeDirectory: 'components/editor',
-            targetDirectory: 'packages/editor',
-          },
-        ]);
+        const plan = await planSource(
+          root,
+          [
+            {
+              workspace: '@corvidae/editor',
+              corvidaeDirectory: 'components/editor',
+              targetDirectory: 'packages/editor',
+            },
+          ],
+          publicNames,
+        );
         expect(findSourceEscapes(plan.files)).toEqual([
           {
             file: 'packages/editor/src/compose.test.ts',
             specifier: '../test/helpers/async-assertions.ts',
+            kind: 'unemitted-path',
             resolved: 'packages/editor/test/helpers/async-assertions.ts',
           },
         ]);

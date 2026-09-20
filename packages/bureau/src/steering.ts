@@ -720,7 +720,7 @@ export function createSteeringGate(
   const runPauseOwners = new Map<string, Map<string, { principal: string; id: string }>>();
 
   function pauseOwnerKey(principal: string, id: string): string {
-    return `${principal} ${id}`;
+    return `${principal}\u0000${id}`;
   }
 
   /** Adds `command` as one of `runId`'s current pause owners — called both

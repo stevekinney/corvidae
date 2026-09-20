@@ -384,11 +384,13 @@
         "@corvidae/tool-protocol": "workspace:*",
         "@corvidae/weft": "workspace:*",
         "gray-matter": "catalog:",
+        "js-yaml": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
         "@corvidae/typescript": "workspace:*",
         "@types/bun": "catalog:",
+        "@types/js-yaml": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },

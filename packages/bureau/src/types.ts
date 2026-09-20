@@ -46,6 +46,7 @@ import type {
   Store,
   TokenUsage,
 } from '@corvidae/operative';
+import type { SkillActivationRecord, SkillCatalogRevision } from '@corvidae/skills';
 import type { ToolPolicy } from '@corvidae/tool-protocol';
 import type {
   ConditionalTextValueStore,
@@ -144,17 +145,25 @@ export interface IdentityConfiguration {
 
 export interface SkillRuntimeConfiguration {
   /**
-   * The skill provider backing the catalog. When omitted and the bureau has
-   * a `.persistence()` / `storage` backend configured, the bureau automatically
-   * constructs a storage-backed provider via `createStorageSkillProvider(kv)`.
-   * Supply an explicit provider to use a static catalog or a custom backend.
+   * An already-discovered catalog revision (COR-889).
+   *
+   * Omit it and the bureau discovers the skills its own persistence store holds, through the
+   * `storage` source. That is the only discovery Bureau does on a caller's behalf: the store is
+   * already the bureau's, and what is in it is what this runtime itself persisted. Reading
+   * filesystem roots or remote registries means deciding which of them to trust, which COR-752's
+   * Decision 1 puts on the host — so a caller that wants those discovers them and hands in the
+   * result.
+   *
+   * A *revision*, not a set of sources, because it is an immutable input to a run: a caller that
+   * hands one in has already decided which generation this run sees, and the catalog cannot move
+   * underneath it mid-conversation.
    */
-  provider?: SkillProvider;
+  catalog?: SkillCatalogRevision;
   includeTools?: boolean;
   skillPolicy?: ToolPolicy;
 }
 
-export type { FlowControlPolicy, ToolPolicy };
+export type { FlowControlPolicy, SkillActivationRecord, SkillCatalogRevision, ToolPolicy };
 
 export interface SkillCatalogEntry {
   name: string;
@@ -176,7 +185,14 @@ export interface SkillProvider {
   saveSkill?(name: string, skill: LoadedSkill): Promise<void>;
   deleteSkill?(name: string): Promise<void>;
   listResources(name: string): Promise<string[]>;
-  loadResource(name: string, path: string): Promise<string | undefined>;
+  /**
+   * Loads a resource as raw bytes.
+   *
+   * Bytes, not text, because a skill bundle carries images, fonts and other binary assets, and
+   * decoding one as UTF-8 corrupts it irreversibly. Decoding happens at the model-facing tool,
+   * which is the only place text is actually required.
+   */
+  loadResource(name: string, path: string): Promise<Uint8Array | undefined>;
   isEnabled(name: string): Promise<boolean>;
 }
 

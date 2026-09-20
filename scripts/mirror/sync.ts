@@ -20,7 +20,13 @@ import {
   type PrivateWorkspace,
   type PublishedPackage,
 } from './surface.ts';
-import { loadTargetOwnedPolicy, writeTransformOutput } from './target-owned.ts';
+import {
+  assertNoEmissionsIntoRetired,
+  collectRetiredPaths,
+  loadTargetOwnedPolicy,
+  retiredDirectoriesFor,
+  writeTransformOutput,
+} from './target-owned.ts';
 
 /**
  * The end-to-end mirror sync, runnable against a local bare repository so the whole pipeline can
@@ -248,6 +254,8 @@ export interface StageOutcome {
   written: string[];
   /** Target paths removed because corvidae no longer carries them. */
   deleted: string[];
+  /** Target paths removed because `target-owned.json` retires the directory holding them. */
+  retired: string[];
 }
 
 /**
@@ -261,6 +269,14 @@ export interface StageOutcome {
  * source tree minus what this plan emits. The build-input check runs after the write because it
  * reads the clone, and the lockfile install runs last because `bun.lock` is target-owned: the
  * transform never writes one, it is produced by installing the manifests that were just written.
+ *
+ * The retirement is the second, narrower source of deletions and the only one not bounded by what
+ * the plan emits. It removes a whole directory the target still carries, so it is read from
+ * `target-owned.json`'s `retired` enumeration and never from the plan's silence — and it is
+ * computed here, beside the prune, so both sets clear the same guard in the same call and a
+ * refusal of either leaves the clone byte-identical. `assertNoEmissionsIntoRetired` runs first
+ * because writes precede deletions downstream: a plan that emitted into a retired directory would
+ * otherwise write a file and remove it in the same pass.
  */
 export async function stageSurface({
   corvidaeRoot,
@@ -273,7 +289,15 @@ export async function stageSurface({
   const surface = await loadPackageSurface();
   assertNothingDeferred(plan);
   assertPublishable(plan, surface.packages);
-  const deletions = await collectPrunablePaths(directory, plan.source, Object.keys(plan.files));
+  assertNoEmissionsIntoRetired(policy, target, Object.keys(plan.files));
+  const pruned = await collectPrunablePaths(directory, plan.source, Object.keys(plan.files));
+  const retired = await collectRetiredPaths({
+    policy,
+    target,
+    directory,
+    directories: retiredDirectoriesFor(policy, target),
+  });
+  const deletions = [...new Set([...pruned, ...retired])].toSorted();
   const { written, deleted } = await writeTransformOutput({
     policy,
     target,
@@ -284,7 +308,7 @@ export async function stageSurface({
   });
   assertBuildInputsPresent(directory, plan.published);
   await runInstall(directory, installArguments ?? []);
-  return { plan, written, deleted };
+  return { plan, written, deleted, retired };
 }
 
 export interface VerifyOptions {

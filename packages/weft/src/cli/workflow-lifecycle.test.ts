@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { WorkflowContext } from '@corvidae/weft';
-import { Engine, serve, workflow } from '@corvidae/weft';
+import type { WorkflowContext } from '../index.ts';
+import { Engine, serve, workflow } from '../index.ts';
 import type { WorkflowCommand } from './types.ts';
 import { executeWorkflow } from './workflow-commands.ts';
 

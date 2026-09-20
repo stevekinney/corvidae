@@ -94,15 +94,26 @@ export async function executeTools(
     }
     if (hooks?.has('beforeToolExecution')) {
       try {
-        const beforeContext = {
-          conversation,
-          step,
-          toolCalls: [...callsToExecute],
-          elicit,
-        };
-        const registryResult = await hooks.run('beforeToolExecution', beforeContext);
-        if (registryResult !== undefined) {
-          callsToExecute = registryResult;
+        // Iterated by hand rather than dispatched: `beforeToolExecution`
+        // waterfalls a FIELD of its context (`toolCalls`) while the rest of
+        // the context stays fixed, so the context is rebuilt around each
+        // handler's result — exactly what the legacy array loop above does.
+        // `run()` would instead replace the whole context with a bare
+        // `ToolCall[]` for the second handler. Invocations still go through
+        // `runHandler` so an observer sees them like any dispatched hook.
+        for (const entry of hooks.getHandlers('beforeToolExecution')) {
+          const beforeContext = {
+            conversation,
+            step,
+            toolCalls: [...callsToExecute],
+            elicit,
+          };
+          const registryResult = await hooks.runHandler('beforeToolExecution', entry, [
+            beforeContext,
+          ]);
+          if (registryResult !== undefined) {
+            callsToExecute = registryResult as ToolCall[];
+          }
         }
       } catch (error) {
         const sealedResults = await sealDanglingToolCalls(

@@ -187,7 +187,43 @@ export interface SealContextEpochInput {
   readonly toolNames?: readonly string[] | undefined;
   /** Digest of the structured-output schema, when one is configured. */
   readonly responseFormatDigest?: string | undefined;
+  /**
+   * Skills whose instructions this attempt actually admitted into context.
+   *
+   * Absent when the run has no skill client or activated nothing — which is why it is
+   * `absent-by-composition` rather than `excluded`: an agent with no skills has not had a source
+   * withheld from it (COR-752, Decision 5).
+   */
+  readonly skillActivation?: SkillActivationContext | undefined;
   readonly consumer: ContextEpochConsumer;
+}
+
+/**
+ * What the epoch binds about active skills.
+ *
+ * Deliberately digests rather than content. Skill instructions are untrusted third-party text, and
+ * an epoch is provenance evidence that gets logged and correlated — carrying the instructions here
+ * would turn every recorded epoch into a copy of whatever a skill author wrote.
+ */
+export interface SkillActivationContext {
+  /**
+   * The skill catalog revision this run snapshotted.
+   *
+   * Its own field, and never conflated with `SelectionPlan.catalogRevision`, which counts *model*
+   * catalog generations. Two different counters under one name would make either one unreadable.
+   */
+  readonly catalogRevision: number;
+  /** One entry per active skill, in activation order. */
+  readonly activations: readonly SkillActivationBinding[];
+}
+
+/** One active skill's identity, as the epoch records it. */
+export interface SkillActivationBinding {
+  readonly name: string;
+  readonly sourceId: string;
+  readonly trust: string;
+  readonly artifactDigest: string;
+  readonly instructionsDigest: string;
 }
 
 /**
@@ -318,6 +354,33 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
       digest: input.responseFormatDigest,
     },
     {
+      // A source of its own rather than a field on `agent-instructions`: skill instructions come
+      // from a different trust tier than the agent's own, and folding them together would let a
+      // third-party skill's content hide behind the operator's provenance.
+      sourceId: 'skill-activation',
+      // `untrusted-retrieved`, matching the project's own security position that skill content is
+      // untrusted instruction input and passes the same guardrail and trust policy as retrieved
+      // evidence. A skill an operator admitted is still a third party's text.
+      trust: 'untrusted-retrieved',
+      precedence: 3,
+      availability: 'optional',
+      redaction: 'digest-only',
+      disposition: input.skillActivation === undefined ? ABSENT : INCLUDED,
+      revision: input.skillActivation?.catalogRevision,
+      digest:
+        input.skillActivation === undefined
+          ? undefined
+          : digestText(
+              input.skillActivation.activations
+                .map(
+                  (activation) =>
+                    `${activation.name}|${activation.sourceId}|${activation.trust}` +
+                    `|${activation.artifactDigest}|${activation.instructionsDigest}`,
+                )
+                .join('\n'),
+            ),
+    },
+    {
       sourceId: 'agent-instructions',
       trust: 'trusted-operator',
       precedence: 1,
@@ -371,6 +434,14 @@ export interface ContextEpochSealInput {
   readonly steering?: SteeringDesiredState | undefined;
   readonly plan?: SelectionPlan | undefined;
   readonly toolNames?: readonly string[] | undefined;
+  /**
+   * Active skills, read at seal time.
+   *
+   * Passed per attempt rather than held on the sealer because a skill can be activated or
+   * deactivated between two attempts of the same step, and an epoch that bound a stale active set
+   * would attest to context the provider never saw.
+   */
+  readonly skillActivation?: SkillActivationContext | undefined;
   readonly consumer: ContextEpochConsumer;
 }
 
@@ -414,6 +485,7 @@ export function createContextEpochSealer(
         steering: input.steering,
         plan: input.plan,
         toolNames: input.toolNames,
+        skillActivation: input.skillActivation,
         agentName: options.agentName,
         hookPlanRevision: options.hookPlanRevision?.(),
         responseFormatDigest: options.responseFormatDigest,

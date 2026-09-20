@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { loadRegistrationsFromModule } from './validation.ts';
 
-const publicEntryPointUrl = import.meta.resolve('@corvidae/weft');
+const publicEntryPointUrl = import.meta.resolve('../index.ts');
 
 it('keeps filesystem workflow loading in the CLI while exposing the HTTP client', async () => {
-  const publicApi = await import('@corvidae/weft');
+  const publicApi = await import('../index.ts');
   expect(publicApi.HttpClient).toBeFunction();
   expect(publicApi).not.toHaveProperty('loadRegistrationsFromModule');
   expect(publicApi).not.toHaveProperty('validateRegistrations');

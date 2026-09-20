@@ -3,6 +3,7 @@ import type { Conversation, ConversationActionType } from '@corvidae/conversatio
 import type {
   EventMap,
   ForwardedEvent,
+  HookReplayPolicy,
   ObservableLike,
   Observer,
   Subscription,
@@ -1772,6 +1773,127 @@ export class SteeringFailedEvent extends Event {
 }
 
 // ---------------------------------------------------------------------------
+// Hook plan (COR-766)
+//
+// A run's hook plan is the set of registrations in the `HookRegistry` it was
+// dispatched with. Bureau composes one per run (COR-567); a direct
+// `createActiveRun` caller may supply its own, and these events do not care
+// which — they observe the registry the run actually holds, so they report the
+// plan production ran rather than the plan some composition path intended.
+//
+// There is deliberately no `hook-plan.replayed`. The original acceptance
+// criterion asked for one "only for a durable replay of a previously invoked
+// hook-plan entry, distinct from a fresh invocation", and that distinction is
+// not available to make: nothing in a hook's invocation context says the step
+// is a re-execution, and the runtime would have to keep durable per-entry
+// invocation history to know an entry ran before. Keeping that history in
+// order to suppress or relabel a second invocation is precisely what
+// `HookReplayPolicy` rejects — its contract is that an effectful hook be made
+// idempotent, because a replayed step genuinely re-ran its generate call and
+// its tools, so its hooks genuinely must run again. A durable re-execution
+// therefore emits an ordinary `hook-plan.invoked`; a consumer that needs to
+// tell the two apart reads the recovery marker already carried on its own run
+// correlation, which is the only place that fact actually exists.
+// ---------------------------------------------------------------------------
+
+/**
+ * One hook registration is part of this run's plan.
+ *
+ * Fires once per entry, for the entries present when the run started as well
+ * as for any registered while it is live — a consumer replaying this stream
+ * from the run's beginning reconstructs the plan without reading the registry.
+ */
+export class HookPlanRegisteredEvent extends Event {
+  static readonly type = 'hook-plan.registered' as const;
+  /** The hook POINT, e.g. `prepareStep`. */
+  readonly hookName: string;
+  /** Stable registration identity (COR-567). Names one registration on that point. */
+  readonly hookId: string;
+  readonly priority: number;
+  readonly replay: HookReplayPolicy;
+  readonly runId: string | undefined;
+  constructor(
+    hookName: string,
+    hookId: string,
+    priority: number,
+    replay: HookReplayPolicy,
+    runId?: string,
+  ) {
+    super(HookPlanRegisteredEvent.type);
+    this.hookName = hookName;
+    this.hookId = hookId;
+    this.priority = priority;
+    this.replay = replay;
+    this.runId = runId;
+  }
+}
+
+/**
+ * A hook-plan entry was invoked and returned.
+ *
+ * Mutually exclusive with {@link HookPlanFailedEvent} for one invocation:
+ * exactly one of the two fires per handler call.
+ */
+export class HookPlanInvokedEvent extends Event {
+  static readonly type = 'hook-plan.invoked' as const;
+  readonly hookName: string;
+  readonly hookId: string;
+  readonly durationMilliseconds: number;
+  readonly runId: string | undefined;
+  constructor(hookName: string, hookId: string, durationMilliseconds: number, runId?: string) {
+    super(HookPlanInvokedEvent.type);
+    this.hookName = hookName;
+    this.hookId = hookId;
+    this.durationMilliseconds = durationMilliseconds;
+    this.runId = runId;
+  }
+}
+
+/**
+ * A hook-plan entry threw.
+ *
+ * Fires for the throw itself, before the registry's error policy decides
+ * whether to continue or abort — so a handler whose `onError` returns
+ * `'continue'` is still reported here rather than being silently absorbed.
+ */
+export class HookPlanFailedEvent extends Event {
+  static readonly type = 'hook-plan.failed' as const;
+  readonly hookName: string;
+  readonly hookId: string;
+  readonly durationMilliseconds: number;
+  readonly error: unknown;
+  readonly runId: string | undefined;
+  constructor(
+    hookName: string,
+    hookId: string,
+    durationMilliseconds: number,
+    error: unknown,
+    runId?: string,
+  ) {
+    super(HookPlanFailedEvent.type);
+    this.hookName = hookName;
+    this.hookId = hookId;
+    this.durationMilliseconds = durationMilliseconds;
+    this.error = error;
+    this.runId = runId;
+  }
+}
+
+/** A hook-plan entry was unregistered while this run held the plan. */
+export class HookPlanRemovedEvent extends Event {
+  static readonly type = 'hook-plan.removed' as const;
+  readonly hookName: string;
+  readonly hookId: string;
+  readonly runId: string | undefined;
+  constructor(hookName: string, hookId: string, runId?: string) {
+    super(HookPlanRemovedEvent.type);
+    this.hookName = hookName;
+    this.hookId = hookId;
+    this.runId = runId;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Event map: maps event type string to the Event subclass instance
 //
 // `OperativeEventClassMap` deliberately does NOT `extends EventMap`
@@ -1877,6 +1999,12 @@ export interface OperativeEventClassMap {
   // progress (the SemanticProgress-carrying, non-cursor-advancing pulse).
   [ChildWorkflowReattachedEvent.type]: ChildWorkflowReattachedEvent;
   [ChildWorkflowProgressEvent.type]: ChildWorkflowProgressEvent;
+  // Hook plan (COR-766). No `replayed` member — see the block comment above
+  // these classes for why that criterion cannot be met.
+  [HookPlanRegisteredEvent.type]: HookPlanRegisteredEvent;
+  [HookPlanInvokedEvent.type]: HookPlanInvokedEvent;
+  [HookPlanFailedEvent.type]: HookPlanFailedEvent;
+  [HookPlanRemovedEvent.type]: HookPlanRemovedEvent;
 }
 
 /** The runtime-usable event map. See the block comment above the class map for why this exists separately. */
@@ -1958,6 +2086,10 @@ export const OPERATIVE_EVENT_TYPES = [
   SteeringFailedEvent.type,
   ChildWorkflowReattachedEvent.type,
   ChildWorkflowProgressEvent.type,
+  HookPlanRegisteredEvent.type,
+  HookPlanInvokedEvent.type,
+  HookPlanFailedEvent.type,
+  HookPlanRemovedEvent.type,
 ] as const satisfies readonly OperativeEventType[];
 
 /**

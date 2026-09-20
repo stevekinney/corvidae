@@ -1,5 +1,5 @@
 /** Source example definitions retained as CLI validation and schedule fixtures. */
-import { activity, workflow } from '@corvidae/weft';
+import { activity, workflow } from '../../../../../index.ts';
 
 // --- hello-world -----------------------------------------------------------
 

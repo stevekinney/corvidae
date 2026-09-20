@@ -131,3 +131,79 @@ describe('HookRegistry', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// COR-567 — stable registration identity. Nothing could name one registration
+// before this: `handlerIndex` is a position in a freshly sorted copy and
+// shifts when an earlier handler is removed.
+// ---------------------------------------------------------------------------
+describe('registration identity (COR-567)', () => {
+  it('assigns a generated id when the registrant supplies none', () => {
+    const registry = new HookRegistry<TestHooks>();
+    registry.on('beforeRun', () => {});
+    registry.on('beforeRun', () => {});
+
+    const ids = registry.getHandlers('beforeRun').map((entry) => entry.id);
+    expect(ids).toEqual(['beforeRun#1', 'beforeRun#2']);
+  });
+
+  it('keeps a supplied id verbatim', () => {
+    const registry = new HookRegistry<TestHooks>();
+    registry.on('beforeRun', () => {}, { id: 'bureau:skill-catalog' });
+
+    expect(registry.getHandlers('beforeRun')[0]?.id).toBe('bureau:skill-catalog');
+  });
+
+  it('never recycles a generated id after an unregistration', () => {
+    const registry = new HookRegistry<TestHooks>();
+    const removeFirst = registry.on('beforeRun', () => {});
+    registry.on('beforeRun', () => {});
+
+    removeFirst();
+    registry.on('beforeRun', () => {});
+
+    // The third registration must not reuse `#1`, or an observer correlating
+    // by id would attribute the newcomer's invocations to the removed hook.
+    const ids = registry.getHandlers('beforeRun').map((entry) => entry.id);
+    expect(ids).toEqual(['beforeRun#2', 'beforeRun#3']);
+  });
+
+  it('keeps an id stable while handlerIndex shifts underneath it', async () => {
+    const seen: Array<{ id: string; handlerIndex: number }> = [];
+    const registry = new HookRegistry<TestHooks>({
+      onError: (_error, context) => {
+        seen.push({ id: context.id, handlerIndex: context.handlerIndex });
+        return 'continue';
+      },
+    });
+
+    const removeFirst = registry.on('beforeRun', () => {});
+    registry.on('beforeRun', () => {
+      throw new Error('boom');
+    });
+
+    await registry.run('beforeRun', { runId: 'run-1' });
+    removeFirst();
+    await registry.run('beforeRun', { runId: 'run-1' });
+
+    // Same registration, same id, different position — which is exactly why
+    // handlerIndex could never serve as a name.
+    expect(seen.map((entry) => entry.id)).toEqual(['beforeRun#2', 'beforeRun#2']);
+    expect(seen.map((entry) => entry.handlerIndex)).toEqual([1, 0]);
+  });
+
+  it('carries an id through mergeHookRegistries', async () => {
+    const { mergeHookRegistries } = await import('../../src/hooks/merge-hook-registries');
+    const base = new HookRegistry<TestHooks>();
+    base.on('beforeRun', () => {}, { id: 'bureau:invariant' });
+    const overlay = new HookRegistry<TestHooks>();
+    overlay.on('beforeRun', () => {}, { id: 'agent:custom' });
+
+    const merged = mergeHookRegistries(base, overlay);
+
+    expect(merged.getHandlers('beforeRun').map((entry) => entry.id)).toEqual([
+      'bureau:invariant',
+      'agent:custom',
+    ]);
+  });
+});

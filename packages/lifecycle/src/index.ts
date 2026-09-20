@@ -8,6 +8,8 @@ export { mergeHookRegistries } from './hooks/merge-hook-registries';
 export type {
   HookErrorHandler,
   HookMap,
+  HookPlanObservation,
+  HookPlanObserver,
   HookRegistrationOptions,
   HookRegistryOptions,
   HookReplayPolicy,

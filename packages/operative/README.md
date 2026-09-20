@@ -663,7 +663,9 @@ sessions.events.addEventListener('session.outbox-appended', () => {
 
 ### Hooks
 
-Hooks plug into the loop lifecycle. Register them on `RunOptions.hooks` using a `HookRegistry`, or use the simpler array fields (`prepareStep`, `onStep`, etc.).
+Hooks plug into the loop lifecycle. Register them on `RunOptions.hooks` using a `HookRegistry`, or use the simpler array fields (`prepareStep`, `onStep`, etc.). A registry and the arrays can coexist on one run — the arrays run first for a given hook point, then the registry.
+
+Prefer a registry when you want any of what only it carries: a stable `id` per registration, explicit `priority` ordering, per-registration error policy, or the `hook-plan.*` events below. Bureau composes one per run for exactly those reasons.
 
 ```typescript
 import {
@@ -712,6 +714,38 @@ const activeRun = createActiveRun({
 | `runOnce` | `(hook: H) => H & { reset() }` | Fires at most once; call `.reset()` to re-arm between runs. |
 | `everyNSteps` | `(n: number, hook: H) => H` | Fires on steps 0, N, 2N, … |
 | `withTimeout` | `(ms, hook, onTimeout?) => H` | Races the hook against a timeout; `'ignore'` (default) silently returns `undefined`, `'error'` throws. |
+
+### Hook plan events
+
+A run emits four events describing the `HookRegistry` it was dispatched with, so a consumer can see which hooks were in force and what each of them did without holding the registry itself. They fire only for a run given a registry; a run using only the legacy hook arrays emits none, because an array registration has no identity to report.
+
+| Event | Fires | Carries |
+| --- | --- | --- |
+| `hook-plan.registered` | once per entry in the plan, and again for any entry registered while the run is live | `hookName`, `hookId`, `priority`, `replay`, `runId` |
+| `hook-plan.invoked` | once per handler call that returned | `hookName`, `hookId`, `durationMilliseconds`, `runId` |
+| `hook-plan.failed` | once per handler call that threw | the same, plus `error` |
+| `hook-plan.removed` | when an entry is unregistered while the run holds the plan | `hookName`, `hookId`, `runId` |
+
+```typescript
+const activeRun = createActiveRun({ generate, toolbox, conversation, stopWhen, hooks });
+
+activeRun.addEventListener('hook-plan.registered', (event) => {
+  console.log(`plan: ${event.hookName}/${event.hookId} priority=${event.priority}`);
+});
+activeRun.addEventListener('hook-plan.failed', (event) => {
+  console.error(`hook ${event.hookId} threw during ${event.hookName}`, event.error);
+});
+
+await activeRun.result;
+```
+
+The plan present at dispatch is announced in full before any hook runs, so a consumer reading the stream from `run.started` reconstructs the plan without reading the registry. Observation begins before `onRunStart`, which is itself a plan entry — its invocation is reported like any other.
+
+`invoked` and `failed` are mutually exclusive for one invocation. `failed` fires for the throw itself, before the registry's error policy decides whether to continue or abort, so a handler whose `onError` returns `'continue'` is still visible.
+
+**There is no `hook-plan.replayed`.** On a durable recovery a crashed step re-runs from its boundary, and its hooks genuinely run again — that is the contract `HookReplayPolicy` describes, which asks an effectful hook to be idempotent rather than skipped. Distinguishing "this entry ran before" would take durable per-entry invocation history, which is the very thing that contract avoids. A durable re-execution therefore emits an ordinary `hook-plan.invoked`. A consumer that needs to tell the two apart reads the recovery marker on its own run correlation, which is where that fact actually lives.
+
+`replay` on `hook-plan.registered` reports the entry's declared `HookReplayPolicy`, or `'effectful'` when none was declared — the classification in force, not the absence of a declaration. It is documentation for a consumer; nothing in the runtime gates execution on it.
 
 ### Guardrails
 

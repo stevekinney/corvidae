@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import type { WorkflowContext } from '@corvidae/weft';
-import { workflow } from '@corvidae/weft';
+import type { WorkflowContext } from '../index.ts';
+import { workflow } from '../index.ts';
 import { createStorage, executeSchedule, parseCliArguments } from './index.ts';
 
 function createTemporaryTypeScriptPath(prefix: string): string {
@@ -35,7 +35,7 @@ describe('executeSchedule', () => {
     );
 
     const storage = await createStorage('sqlite', database);
-    const { Engine } = await import('@corvidae/weft');
+    const { Engine } = await import('../index.ts');
     let engine = new Engine({ storage });
 
     try {
@@ -193,7 +193,7 @@ describe('executeSchedule', () => {
       expect(listResult.stdout).toContain('lmdb-schedule');
 
       const storage = await createStorage('lmdb', database);
-      const { Engine } = await import('@corvidae/weft');
+      const { Engine } = await import('../index.ts');
       const engine = new Engine({ storage });
 
       try {

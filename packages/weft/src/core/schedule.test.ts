@@ -23,6 +23,8 @@ import { toScheduleSummary } from './engine/schedules.ts';
 import {
   decodeScheduleIdentityFields,
   decodeScheduleState,
+} from './engine/validation/schedule-decode.ts';
+import {
   normalizeScheduleOptions,
   normalizeScheduleSpec,
   normalizeScheduleUpdateOptions,

@@ -13,17 +13,19 @@
     "test": "bun test"
   },
   "dependencies": {
-    "gray-matter": "catalog:",
-    "zod": "catalog:",
-    "@corvidae/weft": "workspace:*",
     "@corvidae/armorer": "workspace:*",
     "@corvidae/cryptography": "workspace:*",
     "@corvidae/lifecycle": "workspace:*",
-    "@corvidae/tool-protocol": "workspace:*"
+    "@corvidae/tool-protocol": "workspace:*",
+    "@corvidae/weft": "workspace:*",
+    "gray-matter": "catalog:",
+    "js-yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/bun": "catalog:",
     "@corvidae/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "@types/js-yaml": "catalog:",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   }

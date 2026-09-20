@@ -1,4 +1,4 @@
-import type { SearchAttributeValue } from '@corvidae/weft';
+import type { SearchAttributeValue } from '../../../../../index.ts';
 
 export const highValueReviewThreshold = 1_000;
 

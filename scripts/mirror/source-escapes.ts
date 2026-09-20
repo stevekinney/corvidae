@@ -4,8 +4,19 @@ import { parse } from 'svelte/compiler';
 import ts from 'typescript';
 
 /**
- * The closure gate over emitted source: nothing the transform emits may import something the
- * transform does not emit.
+ * The closure gate over emitted source: nothing the transform emits may name something the target
+ * cannot resolve — neither a path the transform does not emit nor a workspace only corvidae has.
+ *
+ * The second half was added after the first shipped, because the first half's premise had a hole
+ * in it. `resolveSpecifier` skipped every bare specifier on the grounds that a package edge is the
+ * emitted manifests' business, which is true of `zod` and false of `@corvidae/weft`: the manifest
+ * half *renames* an internal edge to the public name `package-map.json` assigns it, so the emitted
+ * manifest declared `@lostgradient/weft` while 37 emitted files still imported `@corvidae/weft`,
+ * and no gate compared the two halves. `internal-names.ts` now rewrites the source side from the
+ * same map; this gate is what proves it reached every specifier form. A `tsconfig*.json` is read
+ * for the same reason and was invisible for a narrower one: `.json` had only ever been a
+ * specifier's *target* here, never a source of one, so the nested fixture configurations shipped
+ * extending a package name that exists in no target.
  *
  * COR-1221 ruled that source is a workspace's `src/` tree plus declared inputs. Separately,
  * COR-1189's restore put nineteen published entry points back, three of which are shims that sit
@@ -46,14 +57,22 @@ import ts from 'typescript';
 
 export class SourceEscapeError extends Error {}
 
-/** One emitted file's module specifier that resolves outside the emitted set. */
+/** Why one specifier will not resolve downstream. */
+export type SourceEscapeKind =
+  /** A relative specifier landing on a path no half of the transform emits. */
+  | 'unemitted-path'
+  /** A `@corvidae/*` name, which exists in this workspace and nowhere downstream. */
+  | 'internal-name';
+
+/** One emitted file's module specifier that will not resolve in the target. */
 export interface SourceEscape {
   /** Target-relative path of the emitted file carrying the specifier. */
   file: string;
   /** The specifier exactly as written. */
   specifier: string;
-  /** Target-relative path it resolves to, which no half of the transform emits. */
-  resolved: string;
+  kind: SourceEscapeKind;
+  /** Target-relative path it resolves to. Only an `unemitted-path` escape has one. */
+  resolved?: string | undefined;
 }
 
 /**
@@ -75,7 +94,8 @@ const scannableExtensions = [
   '.svelte',
 ] as const;
 
-function isScannable(path: string): boolean {
+/** Whether a file's contents are read for the module specifiers they carry. */
+export function isScannable(path: string): boolean {
   return scannableExtensions.some((extension) => path.endsWith(extension));
 }
 
@@ -108,22 +128,46 @@ function candidatePaths(resolved: string): string[] {
   return candidates;
 }
 
+/**
+ * One module specifier, with the offsets of its text between the quotes.
+ *
+ * The offsets are what makes one walk serve two callers. The gate only needs the text, but the
+ * rewriter in `internal-names.ts` has to put a different string in the same place, and a rewriter
+ * with its own idea of what a module edge is would drift from the gate that checks its work — the
+ * exact asymmetry between the manifest half and the source half that this whole module exists to
+ * close. So the walk yields positions and the gate throws them away.
+ */
+export interface SpecifierRange {
+  /** The specifier exactly as the parser read it. */
+  specifier: string;
+  /** Offset of the specifier's first character, one past the opening quote. */
+  start: number;
+  /** Offset one past the specifier's last character, at the closing quote. */
+  end: number;
+}
+
 /** Every module specifier one TypeScript or JavaScript file carries, in source order. */
-function typeScriptSpecifiers(contents: string, path: string): string[] {
+function typeScriptSpecifierRanges(contents: string, path: string): SpecifierRange[] {
   const tree = ts.createSourceFile(
     path,
     contents,
     { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: ts.JSDocParsingMode.ParseNone },
     false,
   );
-  const specifiers: string[] = [];
+  const ranges: SpecifierRange[] = [];
   const visit = (node: ts.Node): void => {
     const literal = moduleSpecifierNode(node);
-    if (literal !== undefined && ts.isStringLiteralLike(literal)) specifiers.push(literal.text);
+    if (literal !== undefined && ts.isStringLiteralLike(literal)) {
+      ranges.push({
+        specifier: literal.text,
+        start: literal.getStart(tree) + 1,
+        end: literal.end - 1,
+      });
+    }
     ts.forEachChild(node, visit);
   };
   visit(tree);
-  return specifiers;
+  return ranges;
 }
 
 /**
@@ -133,9 +177,16 @@ function typeScriptSpecifiers(contents: string, path: string): string[] {
  * dependency edges and a file's resolution edges are the same edges. `import type`, `export from`,
  * `import()` in type position and the explicit resolution calls all break a typecheck in the
  * target exactly as a plain import does.
+ *
+ * `declare module '…'` is here for the same reason even though it is the one form that does not
+ * *import* anything. `weft codegen` writes an augmentation of the package it generates for, and
+ * the emitted fixture `src/cli/__fixtures__/codegen/typecheck/weft.generated.d.ts` carries one.
+ * An augmentation of a module the target cannot resolve is TS2664 there, so it is a module edge
+ * by the only test that matters here: whether the target's `tsc` can follow it.
  */
 function moduleSpecifierNode(node: ts.Node): ts.Node | undefined {
   if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return node.moduleSpecifier;
+  if (ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name)) return node.name;
   if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument))
     return node.argument.literal;
   if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
@@ -168,13 +219,25 @@ function isWalkable(value: unknown): value is Record<string, unknown> {
 /**
  * Every module specifier one Svelte component carries.
  *
- * Svelte's parser is asked for the whole component rather than its `<script>` blocks alone, and
- * the walk covers the fragment too: a `{#await import('./x.ts')}` in markup is a module edge the
- * instance script never mentions. The `source.value` shape is ESTree's, shared by the
- * `ImportDeclaration`, `ExportNamedDeclaration`, `ExportAllDeclaration` and `ImportExpression`
- * nodes Svelte embeds unchanged.
+ * Two readers, because neither sees the whole component.
+ *
+ * Svelte's own parser is asked for everything, and the walk covers the fragment as well as the
+ * scripts: a `{#await import('./x.ts')}` in markup is a module edge the instance script never
+ * mentions. The `source.value` shape is ESTree's, shared by the `ImportDeclaration`,
+ * `ExportNamedDeclaration`, `ExportAllDeclaration` and `ImportExpression` nodes Svelte embeds
+ * unchanged, and the `start`/`end` on those `Literal` nodes are whole-component offsets bracketing
+ * the quotes, so the arithmetic matches the TypeScript walk's.
+ *
+ * What that walk cannot see is every edge that is *not* an ESTree `Import*`/`Export*` node.
+ * `components/editor/src/lib/components/markdown-editor/markdown-editor.svelte` writes
+ * `Pick<typeof import('@corvidae/markdown'), 'normalize' | 'parseOrThrow'>` in a type position —
+ * a `TSImportType`, which the walk skipped and which is TS2307 downstream exactly like a plain
+ * import. So each `<script>` block's own text is handed to the TypeScript walk as well, at its
+ * whole-component offset, which also brings `declare module`, `import.meta.resolve`, `require` and
+ * `import … = require` inside a script into scope. The two readers overlap on ordinary imports, so
+ * the results are merged by position rather than concatenated.
  */
-function svelteSpecifiers(contents: string, path: string): string[] {
+function svelteSpecifierRanges(contents: string, path: string): SpecifierRange[] {
   let ast: unknown;
   try {
     ast = parse(contents, { modern: true, filename: path });
@@ -183,7 +246,8 @@ function svelteSpecifiers(contents: string, path: string): string[] {
       `The transform emits ${path}, which Svelte cannot parse, so its imports cannot be checked: ${(error as Error).message}`,
     );
   }
-  const specifiers: string[] = [];
+  const ranges: SpecifierRange[] = [];
+  const scripts: { start: number; end: number }[] = [];
   const walk = (node: unknown): void => {
     if (Array.isArray(node)) {
       for (const child of node) walk(child);
@@ -191,30 +255,133 @@ function svelteSpecifiers(contents: string, path: string): string[] {
     }
     if (!isWalkable(node)) return;
     const type = node['type'];
+    const content = node['content'];
+    if (
+      type === 'Script' &&
+      isWalkable(content) &&
+      typeof content['start'] === 'number' &&
+      typeof content['end'] === 'number'
+    ) {
+      scripts.push({ start: content['start'], end: content['end'] });
+    }
     const source = node['source'];
     if (
       typeof type === 'string' &&
       (type.startsWith('Import') || type.startsWith('Export')) &&
       isWalkable(source) &&
-      typeof source['value'] === 'string'
+      typeof source['value'] === 'string' &&
+      typeof source['start'] === 'number' &&
+      typeof source['end'] === 'number'
     ) {
-      specifiers.push(source['value']);
+      ranges.push({
+        specifier: source['value'],
+        start: source['start'] + 1,
+        end: source['end'] - 1,
+      });
     }
     for (const value of Object.values(node)) walk(value);
   };
   walk(ast);
-  return specifiers;
+  for (const script of scripts) {
+    const body = contents.slice(script.start, script.end);
+    for (const range of typeScriptSpecifierRanges(body, `${path}.ts`)) {
+      ranges.push({
+        specifier: range.specifier,
+        start: range.start + script.start,
+        end: range.end + script.start,
+      });
+    }
+  }
+  const byStart = new Map<number, SpecifierRange>();
+  for (const range of ranges) byStart.set(range.start, range);
+  return [...byStart.values()].toSorted((left, right) => left.start - right.start);
+}
+
+/** Every module specifier one emitted file carries, with its position, whatever the language. */
+export function moduleSpecifierRanges(contents: string, path: string): SpecifierRange[] {
+  return path.endsWith('.svelte')
+    ? svelteSpecifierRanges(contents, path)
+    : typeScriptSpecifierRanges(contents, path);
 }
 
 /** Every module specifier one emitted file carries, whatever its language. */
 export function moduleSpecifiers(contents: string, path: string): string[] {
-  return path.endsWith('.svelte')
-    ? svelteSpecifiers(contents, path)
-    : typeScriptSpecifiers(contents, path);
+  return moduleSpecifierRanges(contents, path).map((range) => range.specifier);
 }
 
 function decode(contents: string | Uint8Array): string {
   return typeof contents === 'string' ? contents : new TextDecoder().decode(contents);
+}
+
+/** The scope every corvidae workspace is named under, which exists in no target. */
+export const internalScope = '@corvidae';
+
+/**
+ * Whether a specifier names a corvidae workspace rather than a package the target can resolve.
+ *
+ * A subpath counts: `@corvidae/weft/client` is the same fact as `@corvidae/weft` with a deep
+ * import hung off it, and both are unresolvable downstream for the same reason.
+ */
+export function isInternalSpecifier(specifier: string): boolean {
+  return specifier === internalScope || specifier.startsWith(`${internalScope}/`);
+}
+
+/** Whether a file is a TypeScript configuration, judged by its name. */
+export function isTypeScriptConfiguration(path: string): boolean {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  return name.startsWith('tsconfig') && name.endsWith('.json');
+}
+
+/** One specifier an emitted file carries, and what kind of thing it names. */
+export interface CarriedSpecifier {
+  specifier: string;
+  /**
+   * `module` names something the target must resolve, so a relative one is checked against the
+   * emitted set. `pattern` is a `compilerOptions.paths` key, which an import is *matched* against
+   * rather than resolved — `./local` there is a shape, not a sibling module — so only the name it
+   * carries is checked.
+   */
+  kind: 'module' | 'pattern';
+}
+
+/**
+ * Every specifier one `tsconfig*.json` carries: its `extends` targets and its `paths` keys.
+ *
+ * A tsconfig is a source of module edges as surely as a `.ts` file is, and both of the emitted
+ * ones that carry an internal name prove it takes both fields to see them. The fixture at
+ * `src/cli/__fixtures__/codegen/typecheck/tsconfig.json` extends `@corvidae/typescript/library.json`
+ * and has no `paths`; the one at `src/client/__fixtures__/no-workflow-registry/tsconfig.json` has
+ * no `extends` and maps `@corvidae/weft` in `paths`. A reader that looked at either field alone
+ * would miss one of them.
+ *
+ * `paths` *values* are deliberately not read. They are relative paths into the emitted tree, not
+ * package names, and they are the `include`-shaped half of the file rather than the edge-shaped
+ * one. The compiler's own reader is used rather than `JSON.parse` for the reason
+ * `typescript-configuration.ts` gives: a tsconfig is JSON with comments by definition.
+ */
+export function typeScriptConfigurationSpecifiers(
+  contents: string,
+  path: string,
+): CarriedSpecifier[] {
+  const { config } = ts.parseConfigFileTextToJson(path, contents);
+  if (config === undefined || typeof config !== 'object') return [];
+  const document = config as Record<string, unknown>;
+  const specifiers: CarriedSpecifier[] = [];
+  const extended = document['extends'];
+  if (typeof extended === 'string') specifiers.push({ specifier: extended, kind: 'module' });
+  if (Array.isArray(extended)) {
+    for (const entry of extended) {
+      if (typeof entry === 'string') specifiers.push({ specifier: entry, kind: 'module' });
+    }
+  }
+  const compilerOptions = document['compilerOptions'];
+  if (isWalkable(compilerOptions)) {
+    const paths = compilerOptions['paths'];
+    if (isWalkable(paths)) {
+      for (const key of Object.keys(paths)) specifiers.push({ specifier: key, kind: 'pattern' });
+    }
+  }
+  return specifiers;
 }
 
 /**
@@ -233,10 +400,32 @@ function resolveSpecifier(file: string, specifier: string): string | undefined {
 }
 
 /**
- * Every emitted specifier that resolves outside the emitted set.
+ * Every emitted specifier the target will not resolve.
  *
- * A path that climbs above the target root normalizes to a `..`-prefixed string, which is in no
- * plan and so is reported like any other escape rather than needing a case of its own.
+ * Two kinds, because there are two ways to name something that is not there.
+ *
+ * A **relative** specifier escapes by landing on a path no half of the transform emits. One that
+ * climbs above the target root normalizes to a `..`-prefixed string, which is in no plan and so
+ * is reported like any other escape rather than needing a case of its own.
+ *
+ * A **`@corvidae/*`** specifier escapes by naming a workspace that exists only here. The gate
+ * missed this for as long as it did because of the premise in `resolveSpecifier`: a bare
+ * specifier was treated as a package edge the emitted manifests declare. That is true of `zod`
+ * and false of `@corvidae/weft`, because the manifest half *renames* internal edges — it emits a
+ * dependency on `@lostgradient/weft` while the source still said `@corvidae/weft`, and nothing
+ * compared the two halves. `internal-names.ts` now rewrites the source side; this is what proves
+ * it did, and it deliberately flags *any* internal name rather than only an unmapped one, so the
+ * claim is "no emitted edge names corvidae" rather than "the ones we looked up were fine".
+ *
+ * A `tsconfig*.json` is read for the same two fields a target's `tsc` resolves, which is why the
+ * nested fixture configurations escaped notice too: `.json` was only ever a specifier's target
+ * here, never a source of one.
+ *
+ * Still out of scope, and deliberately: an internal name in prose or in data. Corvidae emits 219
+ * Markdown files and 187 JSON example payloads that mention `@corvidae/*` inside documentation
+ * and inside code samples stored as strings, and `Symbol.for('@corvidae/operative/backend-\
+ * descriptors')` is a runtime registry key rather than a module edge. None of them is something
+ * the target resolves, so none of them belongs to this gate.
  */
 export function findSourceEscapes(
   files: Readonly<Record<string, string | Uint8Array>>,
@@ -244,12 +433,22 @@ export function findSourceEscapes(
   const emitted = new Set(Object.keys(files));
   const escapes: SourceEscape[] = [];
   for (const [file, contents] of Object.entries(files)) {
-    if (!isScannable(file)) continue;
-    for (const specifier of moduleSpecifiers(decode(contents), file)) {
+    const scannable = isScannable(file);
+    if (!scannable && !isTypeScriptConfiguration(file)) continue;
+    const text = decode(contents);
+    const specifiers: CarriedSpecifier[] = scannable
+      ? moduleSpecifiers(text, file).map((specifier) => ({ specifier, kind: 'module' }) as const)
+      : typeScriptConfigurationSpecifiers(text, file);
+    for (const { specifier, kind } of specifiers) {
+      if (isInternalSpecifier(specifier)) {
+        escapes.push({ file, specifier, kind: 'internal-name' });
+        continue;
+      }
+      if (kind === 'pattern') continue;
       const resolved = resolveSpecifier(file, specifier);
       if (resolved === undefined) continue;
       if (candidatePaths(resolved).some((candidate) => emitted.has(candidate))) continue;
-      escapes.push({ file, specifier, resolved });
+      escapes.push({ file, specifier, kind: 'unemitted-path', resolved });
     }
   }
   return escapes.toSorted(
@@ -258,8 +457,17 @@ export function findSourceEscapes(
   );
 }
 
+function describe(
+  escapes: readonly SourceEscape[],
+  heading: string,
+  line: (e: SourceEscape) => string,
+): string {
+  if (escapes.length === 0) return '';
+  return `${heading}\n${escapes.map((escape) => `  ${line(escape)}`).join('\n')}\n`;
+}
+
 /**
- * Refuse a plan whose emitted source imports something the plan does not emit.
+ * Refuse a plan whose emitted source names something the target cannot resolve.
  *
  * Every offender is named in one message, because the answer is almost never one file: a shim
  * that escapes usually escapes into a module tree, and a declaration that closes one edge tends
@@ -269,11 +477,23 @@ export function findSourceEscapes(
 export function assertNoSourceEscapes(files: Readonly<Record<string, string | Uint8Array>>): void {
   const escapes = findSourceEscapes(files);
   if (escapes.length === 0) return;
-  throw new SourceEscapeError(
-    `The transform emits source that imports paths it does not emit:\n${escapes
-      .map((escape) => `  ${escape.file}: ${escape.specifier} -> ${escape.resolved}`)
-      .join(
-        '\n',
-      )}\nEither the importing file belongs outside the emitted source, or the imported path belongs in \`additionalSourceRoots\` in source.ts with a reason.`,
+  const unemitted = describe(
+    escapes.filter((escape) => escape.kind === 'unemitted-path'),
+    'The transform emits source that imports paths it does not emit:',
+    (escape) => `${escape.file}: ${escape.specifier} -> ${escape.resolved}`,
   );
+  const internal = describe(
+    escapes.filter((escape) => escape.kind === 'internal-name'),
+    'The transform emits source naming corvidae workspaces, which do not exist downstream:',
+    (escape) => `${escape.file}: ${escape.specifier}`,
+  );
+  const advice = [
+    unemitted &&
+      'Either the importing file belongs outside the emitted source, or the imported path belongs in `additionalSourceRoots` in source.ts with a reason.',
+    internal &&
+      'Every internal name in emitted source is rewritten from `package-map.json` by `internal-names.ts`; one that survives is a specifier form that module does not reach.',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+  throw new SourceEscapeError(`${unemitted}${internal}${advice}`);
 }

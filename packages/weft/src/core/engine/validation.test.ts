@@ -10,9 +10,11 @@ import {
   normalizeBulkFilterNumber,
 } from './validation.ts';
 import {
-  coerceScheduleId,
   decodeScheduleIdentityFields,
   decodeScheduleRuntimeFields,
+} from './validation/schedule-decode.ts';
+import {
+  coerceScheduleId,
   isValidScheduleIdentifier,
   normalizeScheduleFilter,
   normalizeScheduleOptions,

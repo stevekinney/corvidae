@@ -78,11 +78,11 @@ const result = await handle.result();
 
 That's the core loop: `workflow({ name })` is a **chained builder** that co-locates the workflow's side-effecting steps inside `.activities({...})`, and `.execute(fn)` seals it all together and returns a `WorkflowDefinition`. Inside the generator, `ctx.run('formatGreeting', input)` autocompletes from the workflow's own activity table, typechecks the input, and infers the output. Every `yield*` is a checkpoint boundary; `handle.result()` waits for the output. Checkpoints are written to `./weft.db`, so running workflows survive process crashes.
 
-`Engine.create()` does the registration dance for you: it constructs the engine and registers each workflow in the `workflows` map, pulling in all the activities each workflow declares. It then **recovers by default**—`engine.recoverAll()` runs after registration, so any workflows still running from a previous process pick up where they left off. That's the point of durable storage, so you don't have to ask for it. Pass `recover: false` to opt out (handy for tests, for `ScopedStorage`-isolated engines, or when you want to inspect a store before migrating it). Durability is separate: each step is persisted before it commits no matter what `recover` is set to—`recover` only decides whether _this_ engine resumes that persisted work on boot. If a host owns recovery but still needs durable timers, use `startScheduler: true`; otherwise `recover: false` also leaves the real-time scheduler stopped. By default (`ownership: 'none'`) run a single engine per durable store: pointing two at the same store is uncoordinated and can double-resume a workflow. To share one store across engines, select `ownership: 'workflow-lease'`, which claims each workflow for exactly one engine before its generator runs.
+`Engine.create()` does the registration dance for you: it constructs the engine and registers each workflow in the `workflows` map, pulling in all the activities each workflow declares. It then **recovers by default**—`engine.recoverAll()` runs after registration, so any workflows still running from a previous process pick up where they left off. That's the point of durable storage, so you don't have to ask for it. Pass `recover: false` to opt out (handy for tests, for `ScopedStorage`-isolated engines, or when you want to inspect a store before migrating it). Durability is separate: each step is persisted before it commits no matter what `recover` is set to—`recover` only decides whether _this_ engine resumes that persisted work on boot. If a host owns recovery but still needs durable timers, use `startScheduler: true`; otherwise `recover: false` also leaves the real-time scheduler stopped. By default (`ownership: 'none'`) run a single engine per durable store: pointing two at the same store is uncoordinated and can double-resume a workflow. To share one store across engines, select `ownership: 'workflow-lease'`, which claims each workflow for exactly one engine before its generator runs. `await engine.claimHolder(workflowId)` gives any engine sharing that store a cross-process read of a workflow's current claim—`{ heldByThisProcess, heldByAnyProcess }`, or `undefined` when there is no durable claim record at all—so a maintenance pass on one instance can check whether another instance still holds a workflow before touching its state. See [Shared-store ownership](documentation/guides/shared-store-ownership.md#cross-process-claim-visibility) for the exact consistency guarantee and its staleness caveat.
 
 Passing an explicitly empty workflow map is the same default-registry boot shape as omitting `workflows`: `Engine.create({ workflows: {} })` recovers after registration and returns an engine whose TypeScript type is compatible with default-registry consumers such as `serve({ engine })`. Use a non-empty `workflows` map when you want TypeScript to narrow `engine.start(...)` to the registered names.
 
-Serverless hosts that cannot keep process-local intervals alive can set `backgroundTasks: 'manual'` and call `await engine.runMaintenance()` from an alarm or Cron wake-up to drive timers, scheduled starts, update-response cleanup, retention, and alert evaluation. Await each maintenance cycle before starting another one so host-driven ticks do not overlap.
+Serverless hosts that cannot keep process-local intervals alive can set `backgroundTasks: 'manual'` and call `await engine.runMaintenance(now)` from an alarm or Cron wake-up to drive timers, delayed starts, update-response cleanup, retention, and alert evaluation. This is also the deterministic drive for `engine.schedule()`'s recurring cron/interval poller—`runMaintenance(now)` fires any schedule due at `now` exactly the way a real-time process would, so a manual-clock test or a `backgroundTasks: 'manual'` host never needs a separate mechanism to advance recurring schedules. Await each maintenance cycle before starting another one so host-driven ticks do not overlap.
 
 If you'd rather wire things up by hand—useful for tests, isolating engines onto separate storage scopes via `ScopedStorage`, or adding new workflows after the engine starts up—`new Engine({ storage })`, `engine.register(workflow)` or `engine.registerWorkflows({ ... })`, and `await engine.recoverAll()` are the underlying primitives. Each `engine.register(workflow)` call returns the engine with that workflow's name and types baked in, so `engine.start('welcome', ...)` autocompletes immediately.
 
@@ -195,6 +195,33 @@ const quorum = workflow({ name: 'quorum' })
   });
 ```
 
+### Recurring Schedules
+
+`engine.schedule(type, input, spec, options?)` creates a durable cron or fixed-interval schedule and returns a `ScheduleHandle` with `pause()`, `resume()`, `cancel()`, `update(spec, options?)`, and `describe()`. Under `backgroundTasks: 'manual'`, recurring schedules fire through the exact same drive as durable timers: `engine.runMaintenance(now)` evaluates due schedules against `now`, so a serverless host or a manual-clock test advances a schedule the same way it advances a `ctx.sleep`—no separate mechanism is needed.
+
+`handle.pause()`, `handle.resume()`, and `handle.cancel()`—and their `Engine.pauseSchedule()`/`resumeSchedule()`/`cancelSchedule()` equivalents—accept an optional second argument of caller-supplied operations that commit atomically with the schedule's status transition. This is for a consumer keeping its own durable projection (a search index, an audit log, a mirrored record in another store) in step with the engine's schedule state: without it, the consumer's own write is fire-and-forget after the engine's commit, and a crash or a rejected write between the two leaves them observably out of sync.
+
+```typescript
+const handle = await engine.schedule('daily-report', null, '0 9 * * *', { id: 'daily-report' });
+const projectionKey = 'app:reports:daily-report:paused';
+
+await handle.pause({
+  // Put/delete operations against the CALLER's OWN keys, committed in the
+  // same storage batch as the schedule's `status: 'paused'` write.
+  additionalOperations: [
+    { type: 'put', key: projectionKey, value: new TextEncoder().encode('true') },
+  ],
+  // Optional expected-value guards, also on the caller's own keys. If any
+  // condition no longer holds, the ENTIRE commit—the caller's operations AND
+  // the schedule state transition—is rejected, and neither lands.
+  extraConditions: [{ key: projectionKey, expectedValue: null }],
+  // Optional: distinguish "my own guard went stale" from any other failure.
+  onExtraConditionsLost: () => new Error('daily-report projection guard was stale'),
+});
+```
+
+`additionalOperations` and `extraConditions` are the same `BatchOperation`/`ConditionalBatchCondition` shapes storage backends use elsewhere, so no new vocabulary is needed to reach for this. Keep caller keys outside Weft's reserved prefixes (see `WEFT_RESERVED_KEY_PREFIXES`)—an `app:`-prefixed namespace, as in the example, is the documented convention.
+
 ### Live Workflow Events
 
 Workflow handles expose lifecycle events through `addEventListener`, and client handles can open a live tail for progress UIs or operators. `LocalClient` reads from the in-process engine stream; `HttpClient` defaults to the per-workflow `/v1/workflows/:id/watch` WebSocket channel when the runtime can carry authentication headers, and falls back to fetch-based SSE at `/v1/workflows/:id/events/sse` when it cannot. Both transports run history catch-up on connect and reconnect, so `addEventListener`, `client.tail(id)`, and `handle.tail()` are push-based rather than a polling loop. JSON-RPC clients can subscribe over WebSocket with `weft.workflows.subscribe` for one workflow or `weft.events.subscribe` for the fleet-wide event feed. Client code that receives a workflow id from another process can call `client.getHandle(id)` to re-attach a `ClientHandle` or get `null` when the run does not exist.
@@ -211,6 +238,8 @@ for await (const event of tail) {
 ```
 
 The tail is single-consumer and stops on terminal workflow events or `tail.close()`. Pass `eventTransport: 'websocket'` to require WebSocket, `eventTransport: 'sse'` to require SSE, or `HttpClientOptions.webSocketFactory` to provide a runtime-specific WebSocket constructor.
+
+Underneath the client-facing tail sits `FleetEventFeed`, the server-side primitive `createFleetEventFeed(engine.storage)` builds and `HandlerOptions.fleetEventFeed` consumes to drive `/v1/events/sse`. Its `replay()` method accepts an optional `workflowId` to serve only that workflow's retained fleet events instead of the entire retained log: `feed.replay({ workflowId })` scans the `fleet-event-by-workflow:` secondary index that `append()`, `retain()`, and `Engine.purge()` already maintain, then reads each matching envelope directly by its sequence — cost is proportional to that workflow's own retained events, not the size of the fleet-wide feed. This is the answer for a maintenance job that needs to know whether any retained event still exists for a given workflow id, without replaying and filtering the whole feed per candidate. A workflow-scoped `replay()` carries the exact same guarantees as the unfiltered one: it reads from a consistent retention snapshot (retrying if `retain()` interleaves with the scan), honors `fromCursor` and `limit` identically, and emits the same `fleet:gap` envelope — with the same `firstRetainedSequence` — when the requested cursor predates the current retention floor. A workflow event concurrently removed by `retain()` or by `Engine.purge()` (both delete a `fleet-event:` record together with its by-workflow index entry in one atomic batch) is simply omitted rather than reported as corruption — `purge()` never advances the retention floor, so that determination checks the index entry itself rather than the watermark.
 
 ### Idempotent Starts and Signal-With-Start
 
@@ -232,6 +261,28 @@ The idempotency mapping intentionally outlives terminal cleanup. If retention re
 For stable-id re-sync flows, `engine.startOrSignal()` can replace a terminal prior run with `{ id, onTerminalConflict: 'start-new' }` when the initial signal also carries a deterministic `signalId`. Non-terminal runs are still signalled, not replaced, and restart-capable calls reject `idempotencyKey` because idempotency keys are permanent at-most-once mappings. Signal identifiers are treated as opaque user identifiers before storage-key construction, so caller-provided values that contain separator-looking text such as `anonymous:` stay explicit signal IDs instead of colliding with Weft's generated anonymous-signal sequence.
 
 When a workflow drains signals with `ctx.race([ctx.waitForSignal(name), ctx.sleep(0)])` and then returns, use that stable `id`, a deterministic per-event `signalId`, and `onTerminalConflict: 'start-new'` for the corresponding `startOrSignal` calls. Delivery is serialized against terminal completion, so a signal arriving across the completion boundary is consumed by the current run or handed to its successor; a positive drain window is not needed for correctness.
+
+### Two-Phase Start: `prepare()` / `launch()`
+
+`engine.start()` commits the initial durable record and begins execution in one call. Use `engine.prepare()` instead when your own contract requires that durable record to exist — readable via `engine.get()` or `engine.list()` — before your own start hook returns, and paying that hook's latency inside the durable commit (or starting first and compensating with a cancel) isn't acceptable.
+
+```typescript
+const prepared = await engine.prepare('onboarding', { name: 'Steve' });
+
+// The record is already committed and durably readable here — status
+// 'pending', no execution yet.
+const record = await engine.get(prepared.id);
+console.log(record?.status); // 'pending'
+
+// Begin execution once you're ready. Same ownership and lease semantics as
+// engine.start(): the claim is acquired at prepare() time, not here.
+const handle = await prepared.launch();
+console.log(await handle.result());
+```
+
+Never call `launch()`? Call `handle.abandon()` to discard the prepared run instead of leaving it `'pending'` forever. It records a terminal `'cancelled'` transition — tagged `PREPARED_WORKFLOW_ABANDONED_REASON` on `WorkflowState.terminationReason`, distinguishable from an ordinary mid-run `engine.cancel()` — so no orphaned live workflow is left behind. `abandon()` is idempotent; `launch()` and `abandon()` each throw if the other already ran.
+
+`options.idempotencyKey` and `options.startAt`/`options.startAfter` are not supported by `prepare()` — the former has no prepared-but-uncommitted equivalent to converge on, and the latter is a second, conflicting "when does this launch" mechanism. Use `engine.start()` for either.
 
 ### Durable Application Command Mailbox
 
@@ -490,6 +541,23 @@ test('onboarding completes after a day', async () => {
   expect(await handle.result()).toEqual({ status: 'onboarded' });
   expect(sendEmail.callCount).toBe(2);
 });
+```
+
+An inline workflow's first turn (and any turn deferred behind it) is normally flushed through a `MessageChannel` `postMessage` — a real event-loop macrotask with no fake-timer injection point. Construct the engine with `inlineLaunchScheduling: 'manual'` to opt out: the engine never constructs that channel and never self-schedules a flush, so a queued start only advances when you call `engine.flushInlineLaunches()`. This drives the exact same code path the scheduled flush uses — no step execution is skipped — so a multi-step workflow can run to completion under fake timers with no real macrotask.
+
+```typescript
+import { Engine, MemoryStorage } from '@corvidae/weft';
+
+const engine = new Engine({
+  storage: new MemoryStorage(),
+  inlineLaunchScheduling: 'manual',
+});
+engine.register(onboardingWorkflow);
+
+const handle = await engine.start('onboarding', { name: 'Steve' });
+// Nothing has run yet — the queued first turn is waiting.
+await engine.flushInlineLaunches();
+console.log(await handle.result());
 ```
 
 For chaos testing, `withChaos()` wraps activities with configurable transient failures, timeouts, and non-retryable errors so you can prove your retry policies actually work.

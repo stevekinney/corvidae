@@ -178,6 +178,8 @@ export type {
   ContextSourceTrust,
   CreateContextEpochSealerOptions,
   EffectiveContextEpoch,
+  SkillActivationBinding,
+  SkillActivationContext,
 } from './context-epoch';
 // C3 — session verb events
 export {
@@ -211,7 +213,16 @@ export {
 export type { ChildWorkflowCorrelation } from './events';
 // AB-90 child ab90-02 / AB-222 — child reattachment and progress events
 export { ChildWorkflowProgressEvent, ChildWorkflowReattachedEvent } from './events';
+// Hook plan (COR-766). No `HookPlanReplayedEvent` — see the block comment
+// above these classes in `events.ts`.
+export {
+  HookPlanFailedEvent,
+  HookPlanInvokedEvent,
+  HookPlanRegisteredEvent,
+  HookPlanRemovedEvent,
+} from './events';
 export type { ChildWorkflowProgressPayload, ChildWorkflowReattachedPayload } from './events';
+export { observeHookPlan } from './hook-plan-events';
 // D6 — scheduling events
 export * from './create-request-human-input-tool';
 export { createScheduleSelfTool } from './create-schedule-self-tool';

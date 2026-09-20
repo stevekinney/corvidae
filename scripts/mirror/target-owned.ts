@@ -1,4 +1,4 @@
-import { chmod, mkdir, rm } from 'node:fs/promises';
+import { chmod, mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, relative, sep } from 'node:path';
 import { z } from 'zod';
 
@@ -49,10 +49,34 @@ const exceptionEntrySchema = z.object({
   targets: z.array(targetName).min(1).optional(),
 });
 
+/**
+ * One target directory the transform removes outright, rather than syncing or leaving alone.
+ *
+ * `target` is singular on purpose. Every other entry in this file widens to all targets when it
+ * omits `targets`, and the same default here would be a retirement nobody scoped removing a
+ * directory from a repository nobody considered. A retirement is the destructive direction, so it
+ * names its one repository and says nothing about the others.
+ */
+const retiredEntrySchema = z.object({
+  directory: z
+    .string()
+    .min(1)
+    .regex(
+      /^[^/]+(\/[^/]+)*$/,
+      'a retired directory is a relative path with no leading or trailing slash',
+    ),
+  target: targetName,
+  reason: z.string().min(1),
+  issue: z
+    .string()
+    .regex(/^[A-Z]+-\d+$/, 'issue must be a Linear identifier, for example COR-1192'),
+});
+
 const policySchema = z.object({
   documentation: z.string().min(1),
   targets: z.array(targetName).min(1),
   paths: z.array(pathEntrySchema).min(1),
+  retired: z.object({ policy: z.string().min(1), entries: z.array(retiredEntrySchema) }),
   insideFiles: z.object({
     policy: z.string().min(1),
     /** Manifest keys written from the transform's value, replacing whatever the target had. */
@@ -71,6 +95,7 @@ const policySchema = z.object({
 export type TargetOwnedPolicy = z.infer<typeof policySchema>;
 export type TargetOwnedPathEntry = z.infer<typeof pathEntrySchema>;
 export type TargetOwnedExceptionEntry = z.infer<typeof exceptionEntrySchema>;
+export type RetiredDirectoryEntry = z.infer<typeof retiredEntrySchema>;
 
 /** A path the transform tried to write, paired with the enumeration entry that forbids it. */
 export type TargetOwnedMatch = {
@@ -136,7 +161,51 @@ export async function loadTargetOwnedPolicy(
   source: URL | string = policyFile,
 ): Promise<TargetOwnedPolicy> {
   const text = await Bun.file(source).text();
-  return policySchema.parse(JSON.parse(text));
+  const policy = policySchema.parse(JSON.parse(text));
+  assertRetirementsCoherent(policy);
+  return policy;
+}
+
+/**
+ * Refuse a policy whose two directions contradict each other, before anything reads it.
+ *
+ * Three ways they can. A retirement naming a target this file does not mirror is a ruling about
+ * a repository nothing will ever apply it to. Two retirements of one directory in one target are
+ * two rulings where there can only be one, and the reader would silently take whichever came
+ * first. And a retired directory that a `paths` glob already claims for the same target says
+ * both "the target owns this" and "the transform deletes this" — the conflict the retirement
+ * mechanism exists to fail on rather than resolve, caught here at its cheapest, as configuration,
+ * rather than at the point where a clone is already being walked.
+ */
+export function assertRetirementsCoherent(policy: TargetOwnedPolicy): void {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of policy.retired.entries) {
+    const directory = normalizeTargetPath(entry.directory);
+    if (!policy.targets.includes(entry.target)) {
+      problems.push(
+        `  ${directory} (${entry.issue}) retires from unknown target "${entry.target}"; expected one of ${policy.targets.join(', ')}`,
+      );
+    }
+    const key = `${entry.target}:${directory}`;
+    if (seen.has(key)) {
+      problems.push(
+        `  ${directory} is retired from ${entry.target} twice; one directory, one ruling`,
+      );
+    }
+    seen.add(key);
+    const owner = findTargetOwner(policy, directory, entry.target);
+    if (owner) {
+      problems.push(
+        `  ${directory} is retired from ${entry.target} by ${entry.issue}, but the directory itself is target-owned by ${owner.glob}: ${owner.reason}`,
+      );
+    }
+  }
+  if (problems.length > 0) {
+    throw new RetirementError(
+      `target-owned.json's \`retired\` section contradicts the rest of the file:\n${problems.join('\n')}`,
+    );
+  }
 }
 
 /** Normalizes a target-relative path, rejecting absolute paths and traversal out of the target. */
@@ -253,6 +322,179 @@ export function assertWritablePaths({
  */
 export function assertDeletablePaths(options: Omit<GuardOptions, 'action'>): void {
   assertWritablePaths({ ...options, action: 'delete' });
+}
+
+/** Refusal to retire a directory, for any reason other than a target-owned collision. */
+export class RetirementError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RetirementError';
+  }
+}
+
+/**
+ * Refusal to retire a directory holding a file the target owns.
+ *
+ * Separate from `TargetOwnedViolation` because the two say different things to a reader. A
+ * violation means the transform produced a path it should not have, and the fix is in the
+ * transform. This means two rulings in `target-owned.json` disagree about one file, and the fix
+ * is a ruling: either the target's own pull request removes the file alongside the CI, hooks and
+ * documentation that reference the retired directory, or the directory is not retired. The guard
+ * picking one would silently delete something enumerated as the target's, which is the single
+ * outcome this whole file exists to prevent.
+ */
+export class RetirementCollisionError extends RetirementError {
+  readonly entry: RetiredDirectoryEntry;
+  readonly matches: readonly TargetOwnedMatch[];
+
+  constructor(entry: RetiredDirectoryEntry, matches: readonly TargetOwnedMatch[]) {
+    super(
+      [
+        `Refusing to retire ${entry.directory} from ${entry.target} (${entry.issue}): it holds ${matches.length} file(s) that target-owned.json enumerates as the target's own.`,
+        `  retired because: ${entry.reason}`,
+        ...matches.flatMap((match) => [
+          `  ${match.path} matches ${match.glob}`,
+          `    ${match.reason}`,
+        ]),
+        'Neither ruling wins by default. Remove these paths in the target repository, in the same pull request that removes the CI jobs, hooks and documentation referencing the retired directory, or withdraw the retirement.',
+      ].join('\n'),
+    );
+    this.name = 'RetirementCollisionError';
+    this.entry = entry;
+    this.matches = matches;
+  }
+}
+
+/** The directories `target-owned.json` retires from one target, in enumeration order. */
+export function retiredDirectoriesFor(policy: TargetOwnedPolicy, target: string): string[] {
+  return policy.retired.entries
+    .filter((entry) => entry.target === target)
+    .map((entry) => normalizeTargetPath(entry.directory));
+}
+
+/** Whether a target-relative path is the retired directory itself or sits beneath it. */
+function isUnder(path: string, directory: string): boolean {
+  return path === directory || path.startsWith(`${directory}/`);
+}
+
+/**
+ * Every file beneath one retired directory in a clone, as target-relative paths.
+ *
+ * Deliberately not `source.ts`'s walk. That one filters to what the transform calls source and
+ * skips the repository-operating names — `.gitignore`, `AGENTS.md`, `CHANGELOG*`,
+ * `coverage-ratchet.json` — which are exactly the files a retirement has to notice, because they
+ * are exactly the ones `paths` claims for the target. Filtering them out here would turn the
+ * collision this function exists to raise into a silent partial deletion.
+ *
+ * A directory the clone does not carry yields nothing rather than failing: a retirement is a
+ * standing ruling, and the sync after the one that carried out the deletion finds the directory
+ * already gone. `.git` is skipped because a retired directory is never the repository root, so a
+ * `.git` beneath one is a nested checkout nobody asked this to walk.
+ */
+async function walkEveryFile(root: string): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true, recursive: true }).catch(
+    (error: NodeJS.ErrnoException) => {
+      // Only "there is no such directory" reads as an empty tree, for the reason the source walk
+      // gives: a permission or I/O error that read as empty would silently shrink a deletion.
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    },
+  );
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const path = relative(root, join(entry.parentPath, entry.name)).split(sep).join('/');
+    if (path.split('/').includes('.git')) continue;
+    files.push(path);
+  }
+  return files;
+}
+
+export type RetirementOptions = {
+  policy: TargetOwnedPolicy;
+  target: string;
+  /** A clone of the target. */
+  directory: string;
+  /** The directories to retire, which must every one be enumerated for this target. */
+  directories: Iterable<string>;
+  now?: Date;
+};
+
+/**
+ * The files a retirement removes, refusing anything the enumeration does not authorize.
+ *
+ * The directories arrive as an argument rather than being read straight off the policy, and are
+ * then checked against it. Production passes `retiredDirectoriesFor`, so the check can only ever
+ * pass there — which is the point. The refusal is the boundary of the capability, not a branch in
+ * its caller: any other caller, now or later, that hands this a directory nobody ruled on gets a
+ * refusal naming it, rather than a deletion of a tree the mirror was never given authority over.
+ */
+export async function collectRetiredPaths({
+  policy,
+  target,
+  directory,
+  directories,
+  now = new Date(),
+}: RetirementOptions): Promise<string[]> {
+  if (!policy.targets.includes(target)) {
+    throw new Error(
+      `Unknown mirror target "${target}"; expected one of ${policy.targets.join(', ')}`,
+    );
+  }
+  const paths: string[] = [];
+  for (const requested of directories) {
+    const normalized = normalizeTargetPath(requested);
+    const entry = policy.retired.entries.find(
+      (candidate) =>
+        candidate.target === target && normalizeTargetPath(candidate.directory) === normalized,
+    );
+    if (!entry) {
+      throw new RetirementError(
+        `Refusing to retire ${normalized} from ${target}: no entry in target-owned.json's \`retired\` section names it. A directory the transform removes outright is enumerated with a reason, a target and an issue; it is never inferred from a plan that emits nothing for it.`,
+      );
+    }
+    const carried = await walkEveryFile(join(directory, normalized));
+    const found = carried.map((path) => `${normalized}/${path}`);
+    const matches = found.flatMap((path) => {
+      const owner = findTargetOwner(policy, path, target, now);
+      return owner ? [owner] : [];
+    });
+    if (matches.length > 0) throw new RetirementCollisionError(entry, matches.toSorted(byPath));
+    paths.push(...found);
+  }
+  return paths.toSorted();
+}
+
+function byPath(left: TargetOwnedMatch, right: TargetOwnedMatch): number {
+  return left.path.localeCompare(right.path);
+}
+
+/**
+ * Refuse a plan that writes into a directory the same policy retires.
+ *
+ * `writeTransformOutput` writes before it deletes, so an overlap would land a file and then
+ * remove it in the same pass, leaving no trace in the target and no signal anywhere. It means the
+ * two tables disagree — `layout-map.json` routing a workspace into a directory `target-owned.json`
+ * retires — and that is a contradiction to fail on, not an ordering to tune.
+ */
+export function assertNoEmissionsIntoRetired(
+  policy: TargetOwnedPolicy,
+  target: string,
+  paths: Iterable<string>,
+): void {
+  const retired = retiredDirectoriesFor(policy, target);
+  if (retired.length === 0) return;
+  const conflicts: string[] = [];
+  for (const path of paths) {
+    const normalized = normalizeTargetPath(path);
+    const directory = retired.find((candidate) => isUnder(normalized, candidate));
+    if (directory) conflicts.push(`  ${normalized} is emitted into retired ${directory}`);
+  }
+  if (conflicts.length > 0) {
+    throw new RetirementError(
+      `The plan writes into a directory target-owned.json retires from ${target}:\n${conflicts.toSorted().join('\n')}`,
+    );
+  }
 }
 
 /**

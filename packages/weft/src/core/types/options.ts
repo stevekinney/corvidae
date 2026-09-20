@@ -266,6 +266,23 @@ export interface EngineOptions<TServices = unknown> {
    * detection options instead of silently starting background work.
    */
   backgroundTasks?: 'automatic' | 'manual';
+  /**
+   * Select how a queued inline workflow's first turn (and any turn deferred
+   * behind it) gets flushed (COR-74). The default `'event-loop'` profile is
+   * today's unchanged behavior: the engine schedules a flush via a
+   * `MessageChannel` `postMessage` (falling back to `setTimeout(0)` when
+   * `MessageChannel` is unavailable), constructed once when an inline
+   * strategy is set. Both are real event-loop macrotasks with no fake-timer
+   * injection point.
+   *
+   * Use `'manual'` for deterministic tests: the engine never constructs that
+   * channel and never self-schedules a flush — a queued start only advances
+   * when the caller explicitly calls {@link Engine.flushInlineLaunches}. This
+   * drives the exact same code path the scheduled flush uses (no step
+   * execution is skipped or stubbed), so a multi-step inline workflow can run
+   * to completion under fake timers with no real macrotask.
+   */
+  inlineLaunchScheduling?: 'event-loop' | 'manual';
   serializer?: Serializer;
   retention?: RetentionPolicy;
   retentionSweepInterval?: Duration;

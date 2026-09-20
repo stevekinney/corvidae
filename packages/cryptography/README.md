@@ -5,6 +5,7 @@
 ## Public API
 
 - `sha256Hex` uses Web Crypto and works in browser, Bun, Node.js, and Deno environments.
+- `sha256BytesHex` digests raw bytes through the same Web Crypto path. Use it for content that is not text — a bundled image or font — where decoding to a string first would corrupt the input rather than hash it.
 - `sha256HexSync` uses Bun or supported Node.js built-ins.
 - `hmacSha256HexSync` signs text with HMAC-SHA-256.
 - `timingSafeEqualHex` compares valid equal-length hexadecimal digests without leaking the first differing byte.

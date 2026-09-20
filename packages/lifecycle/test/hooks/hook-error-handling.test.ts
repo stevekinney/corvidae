@@ -124,7 +124,7 @@ describe('HookRegistry error handling', () => {
   });
 
   it('error handler receives correct hookName and handlerIndex', async () => {
-    const receivedContexts: Array<{ hookName: string; handlerIndex: number }> = [];
+    const receivedContexts: Array<{ hookName: string; handlerIndex: number; id: string }> = [];
 
     const onError: HookErrorHandler = (_error, context) => {
       receivedContexts.push(context);
@@ -159,9 +159,14 @@ describe('HookRegistry error handling', () => {
 
     await registry.run('process', 'input');
 
+    // COR-567 added `id`. handlerIndex still reports the position in THIS
+    // invocation's sorted order, which is what this test was written to pin;
+    // the id names the registration regardless of where it sorted. The
+    // sequence is per-registry, not per-hook-name, so the first registration
+    // in this test (the non-throwing one) consumed `#1`.
     expect(receivedContexts).toEqual([
-      { hookName: 'process', handlerIndex: 1 },
-      { hookName: 'process', handlerIndex: 2 },
+      { hookName: 'process', handlerIndex: 1, id: 'process#2' },
+      { hookName: 'process', handlerIndex: 2, id: 'process#3' },
     ]);
   });
 

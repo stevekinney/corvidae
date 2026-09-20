@@ -606,6 +606,71 @@ describe('runStep: AB-67 steering boundary read', () => {
     expect(result.finishReason).toBe('stop-condition');
   });
 
+  it("COR-766: a second prepareStep handler receives a step context, not the first one's return", async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    const observedSteps: unknown[] = [];
+
+    hooks.on('prepareStep', async (context) => {
+      observedSteps.push(context.step);
+      return undefined;
+    });
+    hooks.on('prepareStep', async (context) => {
+      observedSteps.push(context.step);
+      return undefined;
+    });
+
+    await executeLoop({
+      generate: async () => textResponse('done'),
+      toolbox: createTestToolbox([]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
+      runId: 'run-1',
+    });
+
+    // Under the waterfall both handlers ran, but a handler that ANSWERED would
+    // have replaced the next one's context with its own `GenerateResponse`.
+    expect(observedSteps).toEqual([0, 0]);
+  });
+
+  it('COR-766: a prepareStep handler that answers short-circuits the rest of the plan', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    const called: string[] = [];
+    let generateCalls = 0;
+
+    hooks.on(
+      'prepareStep',
+      async () => {
+        called.push('first');
+        return textResponse('short-circuit');
+      },
+      { priority: 10 },
+    );
+    hooks.on('prepareStep', async (context) => {
+      called.push('second');
+      // Would throw if it were handed the first handler's response instead of
+      // a real context, which is precisely the defect being pinned.
+      expect(typeof context.step).toBe('number');
+      return undefined;
+    });
+
+    const result = await executeLoop({
+      generate: async () => {
+        generateCalls += 1;
+        return textResponse('provider');
+      },
+      toolbox: createTestToolbox([]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
+      runId: 'run-1',
+    });
+
+    expect(called).toEqual(['first']);
+    expect(generateCalls).toBe(0);
+    expect(result.content).toBe('short-circuit');
+  });
+
   it('AB-67: steering desired state survives a beforeGenerate hook that returns a replacement context', async () => {
     const gate = createTestSteeringGate({ paused: false, configVersion: 3, model: 'real-model' });
     const hooks = new HookRegistry<OperativeHookMap>();

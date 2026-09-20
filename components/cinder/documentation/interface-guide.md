@@ -80,6 +80,12 @@ Use the [`FormField`](../src/components/form-field/README.md) warning tier for a
 
 [`AccessGate`](../src/components/access-gate/README.md) keeps an unavailable capability understandable. Keep the denied state visible when the surrounding workflow benefits from discoverability, provide a concrete `requirement`, and let the host decide whether a retry or permission request changes the content.
 
+## Overlay lifecycle
+
+Two shared exit-transition lifecycles govern how an overlay leaves the DOM, and which one a component follows is not visible from its props alone. `Modal` and `Drawer` use `SlidingDialogState`. `Popover`, `SelectionPopover`, `Tooltip`, `HoverCard`, and `NavigationBar`'s mobile panel use `AnchoredOverlayExitState`: each renders `data-cinder-closing` and awaits its real CSS exit transition before unmounting, instead of disappearing the instant `open` flips to `false`. `Popover` and `SelectionPopover` expose `onExitComplete` for code that needs to know when the transition actually finishes, not just when `open` changed.
+
+`DropdownMenu`, `ContextMenu`, `CommandMenu`, and `MultiSelect` are the documented exception: they destroy on close with no exit motion, because their panels have no enter transition to mirror in the first place. Don't assume every anchored overlay behaves the same way — check `src/_internal/OVERLAY-POLICY.md`'s census table for the authoritative, per-component list before writing a test or integration that asserts synchronous unmount on close.
+
 ## Editing and review
 
 [`JsonSchemaEditor`](../src/components/json-schema-editor/README.md) supports both local and controlled ownership for [JSON Schema](https://json-schema.org/). Use `defaultSchema` for a form that owns edits; use `schema` with `onValueChangeRequest` when the parent or server is authoritative. The editor's form, JSON, diff, undo, and validation views share one state model, so a rejected controlled update should return the authoritative schema rather than mutating a second copy.

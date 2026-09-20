@@ -12,6 +12,10 @@ Single boolean toggle for opt-in selections within forms or settings.
 <Checkbox />
 ```
 
+### Callback order
+
+Three callbacks can observe a toggle, and they fire in this order with different values: `onchange` fires first, carrying the browser's raw, pre-veto `checked` value straight from the native change event; `onValueChangeRequest` runs next and can veto or rewrite the proposed value; `onValueChange` fires last with the committed value, after any veto has applied. A handler that reads `event.target.checked` inside `onchange` sees what the user actually clicked, not the post-veto result — use `onValueChange` when you need the value Cinder actually committed.
+
 ## Props
 
 <!-- generated:props:start -->

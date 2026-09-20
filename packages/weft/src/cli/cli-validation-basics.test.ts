@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { executeValidate } from './index.ts';
 import { loadRegistrationsFromModule } from './validation.ts';
 
-const publicEntryPointUrl = import.meta.resolve('@corvidae/weft');
+const publicEntryPointUrl = import.meta.resolve('../index.ts');
 
 function createTemporaryTypeScriptPath(prefix: string): string {
   return join(mkdtempSync(join(tmpdir(), `${prefix}-`)), 'module.ts');

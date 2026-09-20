@@ -3,11 +3,18 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  assertNoEmissionsIntoRetired,
+  assertRetirementsCoherent,
   assertWritablePaths,
+  collectRetiredPaths,
   findExpiredExceptions,
   findTargetOwner,
   loadTargetOwnedPolicy,
   normalizeTargetPath,
+  retiredDirectoriesFor,
+  RetirementCollisionError,
+  RetirementError,
+  type TargetOwnedPolicy,
   TargetOwnedViolation,
   writeTransformOutput,
 } from './target-owned.ts';
@@ -122,6 +129,7 @@ describe('temporary exceptions', () => {
     documentation: 'fixture',
     targets: ['weft'],
     paths: [{ glob: 'LICENSE', reason: 'root license is target-owned' }],
+    retired: { policy: 'fixture', entries: [] },
     insideFiles: {
       policy: 'fixture',
       manifestKeys: [{ key: 'name', reason: 'fixture' }],
@@ -351,5 +359,214 @@ describe('the guard refuses target-owned deletions', () => {
       expect(executable.mode & 0o111).not.toBe(0);
       expect(plain.mode & 0o111).toBe(0);
     });
+  });
+});
+
+describe('retiring a directory the target still carries', () => {
+  /** A minimal policy whose only ruling is that the root LICENSE belongs to the target. */
+  function policyFor(entries: TargetOwnedPolicy['retired']['entries']): TargetOwnedPolicy {
+    return {
+      documentation: 'fixture',
+      targets: ['weft', 'cinder'],
+      paths: [
+        { glob: 'LICENSE', reason: 'root license is target-owned' },
+        { glob: '**/.gitignore', reason: 'ignore rules are decided downstream' },
+      ],
+      retired: { policy: 'fixture', entries },
+      insideFiles: {
+        policy: 'fixture',
+        manifestKeys: [{ key: 'name', reason: 'fixture' }],
+        manifestDefaults: [{ key: 'engines', reason: 'fixture' }],
+        dependencies: { policy: 'fixture' },
+        typeScriptTargetOwnedPolicy: 'fixture',
+        typeScriptTargetOwned: [{ key: 'include', reason: 'fixture' }],
+      },
+      exceptions: { policy: 'fixture', entries: [] },
+      openQuestions: [],
+    };
+  }
+
+  const retirement = {
+    directory: 'packages/retired-ui',
+    target: 'weft',
+    reason: 'the monorepo is its home and the target copy has drifted',
+    issue: 'COR-2001',
+  } as const;
+
+  test('a directory nobody enumerated is refused rather than deleted', async () => {
+    await withFixtureTarget(
+      async (directory) => {
+        const policy = policyFor([retirement]);
+        // The one property that matters: the refusal turns on the enumeration, not on what the
+        // plan happens to emit. `packages/unlisted` is a real directory in the clone, the plan
+        // emits nothing for it, and it is still not deletable.
+        await expect(
+          collectRetiredPaths({
+            policy,
+            target: 'weft',
+            directory,
+            directories: ['packages/unlisted'],
+          }),
+        ).rejects.toThrow(RetirementError);
+        await expect(
+          collectRetiredPaths({
+            policy,
+            target: 'weft',
+            directory,
+            directories: ['packages/unlisted'],
+          }),
+        ).rejects.toThrow(/no entry in target-owned.json's `retired` section names it/);
+        expect(await Bun.file(join(directory, 'packages/unlisted/src/keep.ts')).exists()).toBe(
+          true,
+        );
+      },
+      { 'packages/unlisted/src/keep.ts': 'export const keep = true;\n' },
+    );
+  });
+
+  test('an entry scoped to one target does not retire the same directory from the other', async () => {
+    const policy = policyFor([retirement]);
+    expect(retiredDirectoriesFor(policy, 'weft')).toEqual(['packages/retired-ui']);
+    expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
+  });
+
+  test('a retirement holding a target-owned file is refused, naming both rulings', async () => {
+    await withFixtureTarget(
+      async (directory) => {
+        const policy = policyFor([retirement]);
+        let thrown: unknown;
+        try {
+          await collectRetiredPaths({
+            policy,
+            target: 'weft',
+            directory,
+            directories: retiredDirectoriesFor(policy, 'weft'),
+          });
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(RetirementCollisionError);
+        const collision = thrown as RetirementCollisionError;
+        expect(collision.entry.issue).toBe('COR-2001');
+        expect(collision.matches.map((match) => match.path)).toEqual([
+          'packages/retired-ui/.gitignore',
+        ]);
+        expect(collision.message).toContain('packages/retired-ui/.gitignore matches **/.gitignore');
+        expect(collision.message).toContain('Refusing to retire packages/retired-ui from weft');
+        // Refused whole, exactly as a deletion plan is: the sibling that is not target-owned is
+        // still there, because a retirement is all-or-nothing and picking a subset would be the
+        // precedence rule this refuses to have.
+        expect(await Bun.file(join(directory, 'packages/retired-ui/src/app.ts')).exists()).toBe(
+          true,
+        );
+        expect(await runGit(directory, 'status', '--porcelain')).toBe('');
+      },
+      {
+        'packages/retired-ui/.gitignore': 'dist\n',
+        'packages/retired-ui/src/app.ts': 'export const app = true;\n',
+      },
+    );
+  });
+
+  test('a clean retirement collects every file, including ones the source walk skips', async () => {
+    await withFixtureTarget(
+      async (directory) => {
+        const policy = policyFor([retirement]);
+        const paths = await collectRetiredPaths({
+          policy,
+          target: 'weft',
+          directory,
+          directories: retiredDirectoriesFor(policy, 'weft'),
+        });
+        // `README.md`, the PNG and the dotfile are all here. The source walk that feeds the
+        // ordinary prune filters to source files and drops repository-operating names; reusing it
+        // would have turned the collision above into a silent partial deletion.
+        expect(paths).toEqual([
+          'packages/retired-ui/.npmrc',
+          'packages/retired-ui/README.md',
+          'packages/retired-ui/src/app.ts',
+          'packages/retired-ui/static/logo.png',
+        ]);
+
+        const { deleted } = await writeTransformOutput({
+          policy,
+          target: 'weft',
+          directory,
+          files: {},
+          deletions: paths,
+        });
+        expect(deleted).toEqual(paths);
+        expect(await Bun.file(join(directory, 'packages/retired-ui/src/app.ts')).exists()).toBe(
+          false,
+        );
+        // Unstaged deletions, which is what `runSync` then stages with `git add --all` — the flag
+        // that commit path already documents as load-bearing for removals.
+        const porcelain = await runGit(directory, 'status', '--porcelain');
+        expect(porcelain.split('\n').filter((line) => line.length > 0)).toEqual(
+          paths.map((path) => ` D ${path}`),
+        );
+        // Every target-owned path in the fixture survives untouched.
+        for (const path of Object.keys(targetOwned)) {
+          expect(await Bun.file(join(directory, path)).text()).toBe(targetOwned[path] ?? '');
+        }
+      },
+      {
+        'packages/retired-ui/README.md': '# retired\n',
+        'packages/retired-ui/.npmrc': 'registry=https://registry.npmjs.org\n',
+        'packages/retired-ui/src/app.ts': 'export const app = true;\n',
+        'packages/retired-ui/static/logo.png': 'not really a png\n',
+      },
+    );
+  });
+
+  test('a retirement whose directory the target no longer carries is a no-op, not a failure', async () => {
+    await withFixtureTarget(async (directory) => {
+      const policy = policyFor([retirement]);
+      expect(
+        await collectRetiredPaths({
+          policy,
+          target: 'weft',
+          directory,
+          directories: retiredDirectoriesFor(policy, 'weft'),
+        }),
+      ).toEqual([]);
+    });
+  });
+
+  test('a retired directory that a paths glob already claims is refused as configuration', () => {
+    expect(() =>
+      assertRetirementsCoherent(
+        policyFor([{ ...retirement, directory: 'LICENSE', issue: 'COR-2002' }]),
+      ),
+    ).toThrow(/the directory itself is target-owned by LICENSE/);
+  });
+
+  test('a retirement naming a target this file does not mirror is refused', () => {
+    expect(() =>
+      assertRetirementsCoherent(policyFor([{ ...retirement, target: 'tribunal' }])),
+    ).toThrow(/unknown target "tribunal"/);
+  });
+
+  test('a plan emitting into a retired directory is refused before anything is written', () => {
+    const policy = policyFor([retirement]);
+    expect(() =>
+      assertNoEmissionsIntoRetired(policy, 'weft', [
+        'packages/weft/src/index.ts',
+        'packages/retired-ui/src/app.ts',
+      ]),
+    ).toThrow(/packages\/retired-ui\/src\/app.ts is emitted into retired packages\/retired-ui/);
+    expect(() =>
+      assertNoEmissionsIntoRetired(policy, 'cinder', ['packages/retired-ui/src/app.ts']),
+    ).not.toThrow();
+  });
+
+  test('the committed enumeration retires weft-ui from weft alone', async () => {
+    const policy = await loadTargetOwnedPolicy();
+    expect(retiredDirectoriesFor(policy, 'weft')).toEqual(['packages/weft-ui']);
+    expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
+    const entry = policy.retired.entries.find((candidate) => candidate.target === 'weft');
+    expect(entry?.issue).toBe('COR-1192');
+    expect(entry?.reason.length).toBeGreaterThan(0);
   });
 });

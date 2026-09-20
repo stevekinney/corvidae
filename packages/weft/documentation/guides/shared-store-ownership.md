@@ -52,11 +52,31 @@ The current owner renews its claims. If it crashes, another engine can acquire a
 
 Keep the default timing unless measurements of your storage latency and scheduling pauses justify a different configuration. A longer claim lifetime also makes crash takeover slower. Per-workflow ownership cannot be combined with `detectSecondInstance: true`, because that detector assumes one global owner.
 
+### Cross-process claim visibility
+
+`await engine.claimHolder(workflowId)` is a durable-storage read, available on any engine sharing the store—including one that has never itself held the claim. It reads the exact same holder record and the exact same expiry judgment (`isWorkflowClaimExpired`, the grace-adjusted deadline) that `takeover()` uses to decide whether it would be fenced right now. That is the guarantee: `claimHolder`'s answer and a concurrent `takeover` attempt's fencing decision are computed from the same durable state with the same rule, so the two cannot disagree about what "held" means.
+
+It resolves to one of three shapes:
+
+- `undefined`—no durable claim record exists for this workflow at all. This covers "never claimed" and "a live process just released it" identically, because `release` and terminal completion both `DELETE` the holder key outright rather than leaving a tombstone.
+- `{ heldByAnyProcess: false, heldByThisProcess: false }`—a claim record exists but is past the grace-adjusted expiry deadline: stranded, not currently fencing anything, eligible for takeover. Reading this does not itself trigger a takeover.
+- `{ heldByAnyProcess: true, heldByThisProcess }`—a live claim. `heldByThisProcess` is `true` only when the record's `engineId` matches this process's own; it is never `true` on an expired record.
+
+**What a `true` licenses, and what it does not.** This is a storage read, not a lock: another process holding the claim can renew, release, or lose it the instant after `claimHolder` resolves. A `heldByAnyProcess: true` observed a moment ago is exactly that—evidence current as of that read, useful for a maintenance pass deciding whether to leave a workflow's state alone rather than prune it out from under a live owner. It is not a guarantee that holds for any longer than the instant it was read, and it does not grant permission to skip the actual fenced write path (`acquire`/`renew`/`release`/`takeover`) for any action that itself needs fencing.
+
+**What a `false` (or `undefined`) does not license.** The absence of a live claim at read time is not a green light for an unfenced write. Another process can acquire the very claim you just observed as absent between your read and your subsequent write—that race is exactly what `acquire`/`takeover`'s `conditionalBatch` CAS exists to close, and `claimHolder` performs no CAS of its own. Treat a `false`/`undefined` result as "safe to _investigate_ pruning this workflow's state," not "safe to prune it without going through the fenced write path that would actually contend for it."
+
 ### Host-driven maintenance
 
 With `backgroundTasks: 'manual'`, the host owns the maintenance cadence. Per-workflow ownership supports this mode: call and await `engine.runMaintenance()` regularly enough to renew claims before they expire. Concurrent calls are supported, but awaiting each cycle before scheduling the next keeps the host's cadence easier to reason about. A virtual clock in a test must advance along with explicit maintenance calls.
 
 The store-wide `'lease'` mode does not support manual background tasks. Configure the supported posture rather than assuming a manual host tick renews a global lease.
+
+### The clock seam
+
+`Engine.create({ getNow })` injects the wall-clock source every ownership-mode decision reads: claim issue, renewal, and expiry (`isWorkflowClaimExpired`'s grace-adjusted deadline) all resolve `now` from this one function, defaulting to `Date.now` when omitted. `runMaintenance(now = engine's own getNow())` renews claims through `workflowClaimRenewalTask.runOnce()` before it ticks the durable-timer scheduler, so a single `getNow` and a single `runMaintenance` call are what a `backgroundTasks: 'manual'` host needs to drive both timers and per-workflow claim renewal deterministically—no separate clock or drive mechanism for each.
+
+This is also how the claim mechanism itself is tested: two real `Engine.create({ ownership: 'workflow-lease' })` instances, each with its own mutable `getNow` closure, sharing one storage backend. "A claim expires" becomes advancing one engine's clock closure past the grace-adjusted deadline and calling `runMaintenance`/`runOnce()`—not a real `setTimeout` or `Bun.sleep`. See `workflow-claim-deployment-scenarios.test.ts` for the full set of two-engine deployment scenarios (rolling release, awaited shutdown, crash/reclaim, the exact expiry boundary, takeover isolation, rollback inertness) driven this way.
 
 ### Side effects
 
@@ -83,7 +103,7 @@ An engine configured with `'none'` does not enforce the marker. The marker there
 | Slow takeover | Check claim expiry and whether a replacement engine is actually running recovery or maintenance |
 | A stale activity still affects an external system | That system needs its own idempotency or fencing check |
 
-`getLeaseHealth()` is a process-local diagnostic for the store-wide lease. It is not a per-workflow ownership inventory or a fresh cross-process storage read. The per-workflow [claim recorder](../../src/core/engine/workflow-claim-metrics.ts) tracks bounded acquisition outcomes, active claims, and renewal failures internally; do not assume every internal counter is exposed by a server metrics endpoint.
+`getLeaseHealth()` is a process-local diagnostic for the store-wide lease. It is not a per-workflow ownership inventory or a fresh cross-process storage read. For that, per workflow, use [`engine.claimHolder(workflowId)`](#cross-process-claim-visibility)—a real durable-storage read, not a cached diagnostic. The per-workflow [claim recorder](../../src/core/engine/workflow-claim-metrics.ts) tracks bounded acquisition outcomes, active claims, and renewal failures internally; do not assume every internal counter is exposed by a server metrics endpoint.
 
 The [ownership options](../../src/core/engine/ownership-options.ts), [bootstrap](../../src/core/engine/ownership-bootstrap.ts), and [multi-engine regression tests](../../src/core/engine/workflow-lease-ownership.test.ts) are the source contracts. To verify the boundary after an ownership change, run:
 
