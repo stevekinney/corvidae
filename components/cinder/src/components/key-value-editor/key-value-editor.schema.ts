@@ -21,7 +21,8 @@ const schema = {
       {
         name: 'entries',
         reason: 'unknown-shape',
-        description: 'The editable list of key/value rows. Bindable. Defaults to `[]`.',
+        description:
+          'The editable list of key/value rows. Bindable. Defaults to `[]`.\n(`KeyValueEntry` is not expressible in JSON Schema, so this default\nonly appears here in prose.)',
       },
       {
         name: 'onValueChange',
@@ -33,7 +34,7 @@ const schema = {
         name: 'removeLabel',
         reason: 'function-or-snippet',
         description:
-          "Label for a row's remove action, given that row's key. Give it concrete wording when more than one editor is on the page.",
+          "Label for a row's remove action, given that row's key. Give it concrete\nwording when more than one editor is on the page. Defaults to\n`` (key) => `Remove ${key || 'pair'}` ``—an empty key (a newly added,\nnot-yet-named row) falls back to `'Remove pair'`.",
       },
       {
         name: 'secret',

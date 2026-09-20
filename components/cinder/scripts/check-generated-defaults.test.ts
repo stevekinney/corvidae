@@ -27,7 +27,7 @@ function defaultCellFor(componentId: string, propName: string): string | undefin
     // cells[0] is '' (text before the leading `|`); cells[1] is the Prop column.
     const cellPropName = cells[1]?.replace(/^`|`$/g, '');
     if (cellPropName === propName) {
-      return cells[3];
+      return cells[4];
     }
   }
   return undefined;
@@ -40,13 +40,13 @@ const CASES: Record<string, string[]> = {
   'button-group': ['orientation'],
   'donut-chart': ['valueLabels', 'scrollable'],
   'find-bar': ['activeIndex', 'debounceMs', 'label', 'matchCount', 'minQueryLength', 'value'],
-  'guidance-region': ['claims', 'storageKey'],
+  'guidance-region': ['storageKey'],
   'hover-card': ['openDelay', 'closeDelay', 'placement', 'offset'],
   'host-provider': ['platform', 'safeHeaderLeft', 'safeHeaderRight'],
   'inline-confirm': ['cancelLabel', 'destructive', 'open'],
   'json-editor': ['rows', 'validFeedbackVisible', 'highlight'],
   'kanban-board': ['collapsible', 'reorderColumns'],
-  'key-value-editor': ['entries', 'addLabel'],
+  'key-value-editor': ['addLabel'],
   'load-more': ['buttonLabel', 'retryLabel', 'endOfListMessage', 'maxRetries'],
   'matrix-chart': ['colorScale', 'cellLabelsVisible', 'height', 'loading', 'dataTableVisibility'],
   'menu-bar': ['label'],
@@ -63,7 +63,7 @@ const CASES: Record<string, string[]> = {
   tab: ['disabled'],
   'terminal-frame': ['status', 'columnWidth', 'rowHeight'],
   tabs: ['orientation', 'fill'],
-  'tag-input': ['delimiter', 'duplicateValuesAllowed', 'commitOnSubmit', 'readonly'],
+  'tag-input': ['duplicateValuesAllowed', 'commitOnSubmit', 'readonly'],
   tooltip: ['describe'],
   'mega-menu': ['openOnHover', 'viewportVisible', 'indicatorVisible', 'label'],
 };

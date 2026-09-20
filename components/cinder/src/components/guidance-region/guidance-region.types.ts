@@ -3,8 +3,8 @@ import type { GuidanceClaim, GuidanceStorage } from '../../_internal/guidance-co
 export type GuidanceRegionProps = {
   /**
    * Registered guidance claims available to descendants through
-   * `useGuidance`. Defaults to `[]`.
-   * @default []
+   * `useGuidance`. Defaults to `[]`. (`GuidanceClaim` is not expressible in
+   * JSON Schema, so this default only appears here in prose.)
    */
   claims?: GuidanceClaim[];
   /** Version window claims are filtered against. */

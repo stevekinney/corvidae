@@ -32,7 +32,7 @@ const schema = {
         name: 'claims',
         reason: 'unknown-shape',
         description:
-          'Registered guidance claims available to descendants through\n`useGuidance`. Defaults to `[]`.',
+          'Registered guidance claims available to descendants through\n`useGuidance`. Defaults to `[]`. (`GuidanceClaim` is not expressible in\nJSON Schema, so this default only appears here in prose.)',
       },
       {
         name: 'storage',
