@@ -971,15 +971,16 @@ describe('a child run is outside Bureau’s hook authority (COR-1269)', () => {
       // The supervisor is Bureau-owned and carries the invariant. Its child does
       // not, and cannot: `dispatchChildRun` calls `agent.run()`, which builds
       // its `RunOptions` inside the agent, so there is no options bag for a
-      // Bureau tier to be merged into — structurally the same gap as a
-      // non-durable catalog dispatch, closed only by a caller-facing hook field
-      // that COR-567 Decision 4 declines.
+      // Bureau tier to be merged into — structurally the same gap as the two
+      // catalog rows above, closed only by a caller-facing hook field that
+      // COR-567 Decision 4 declines.
       //
-      // Pinned rather than left implicit, because COR-1269's criterion 1 says a
-      // child of a Bureau-owned agent DOES receive that child's Bureau
-      // invariants, and it does not. If this ever starts failing, the gap
-      // closed: delete the test, update criterion 1, and update the child
-      // section of `documentation/hierarchical-hook-composition.md`.
+      // Pinned rather than left implicit. COR-1269's criterion 1 originally
+      // claimed a child of a Bureau-owned agent DOES receive that child's
+      // Bureau invariants; it was amended to match reality once this was
+      // verified by probe. If this ever starts failing, the gap closed: delete
+      // the test and update the child section of
+      // `documentation/hierarchical-hook-composition.md`.
       expect(supervisorSaw).toContain('BUREAU-IDENTITY');
       expect(childSaw).not.toContain('BUREAU-IDENTITY');
     } finally {

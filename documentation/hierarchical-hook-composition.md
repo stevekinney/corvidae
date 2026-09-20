@@ -73,7 +73,7 @@ This is structural rather than a convention anybody has to remember. Neither `ch
 >
 > A child dispatched by a Bureau-owned agent carries the child agent's tier and **no Bureau tier at all** — not the identity hook, not the guardrails. `dispatchChildRun` calls `agent.run()`, which builds its `RunOptions` inside the agent, so there is no options bag for a Bureau tier to be merged into. Structurally this is the same gap as a non-durable catalog dispatch, with the same only-remaining fix — a caller-facing hook field on `AgentRunContext` — which COR-567 Decision 4 declines.
 >
-> COR-1269's criterion 1 states the opposite. The criterion is wrong about the implementation, not the other way round; a test in `packages/bureau/src/bureau-run.test.ts` pins the actual behavior so the discrepancy stays visible. Do not read the tier table above as applying to child runs.
+> COR-1269's criterion 1 originally stated the opposite. It was amended to match the implementation once the discrepancy was verified by probe rather than argued, and a test in `packages/bureau/src/bureau-run.test.ts` pins the actual behavior. Do not read the tier table above as applying to child runs.
 
 Narrowing and veto do work inside a child, through the child's own tier: a child-tier `validateResponse` narrows what its run returns, and a child-tier `prepareStep` that answers replaces the generate call entirely. What a child does not get is inheritance from above.
 
