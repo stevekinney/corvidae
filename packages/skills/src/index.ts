@@ -46,7 +46,9 @@ export { readSkillArtifact } from './ingestion/read-skill-artifact';
 // ── Client ────────────────────────────────────────────────────────────
 export {
   createFilesystemArtifactLoader,
+  createSkillArtifactLoader,
   createStaticArtifactLoader,
+  createStorageArtifactLoader,
   readInstructions,
   readResource,
 } from './client/artifact-loader';
@@ -79,11 +81,8 @@ export { readStoredSkillArtifacts } from './discovery/storage-source';
 // ── Memory ────────────────────────────────────────────────────────────
 export { createSkillMemory, createSkillMemoryHooks } from './skill-memory';
 
-// ── Session ──────────────────────────────────────────────────────────
-export { createSkillSession } from './skill-session';
-
-// ── Catalog Hook ─────────────────────────────────────────────────────
-export { createSkillCatalogHook, escapeXml } from './create-skill-catalog-hook';
+// ── Rendering ────────────────────────────────────────────────────────
+export { escapeXml } from './xml';
 
 // ── Events ───────────────────────────────────────────────────────────
 export {
@@ -108,16 +107,6 @@ export type {
   SkillEventType,
   SkillRejectionReason,
 } from './events';
-
-// ── Tools ────────────────────────────────────────────────────────────
-export {
-  createActivateSkillTool,
-  createDeactivateSkillTool,
-  createListSkillsTool,
-  createLoadSkillResourceTool,
-  createSkillToolbox,
-  isSkillContent,
-} from './create-skill-tools';
 
 // ── Proposals ────────────────────────────────────────────────────────
 export {
@@ -177,8 +166,6 @@ export type {
   SkillConformanceDiagnostic,
   ValidatePortableFrontmatterOptions,
 } from './conformance';
-export type { CreateSkillCatalogHookOptions } from './create-skill-catalog-hook';
-export type { CreateSkillToolsOptions } from './create-skill-tools';
 export type {
   SkillCatalogRecord,
   SkillCatalogRevision,
@@ -247,14 +234,13 @@ export type {
   StepContextLike,
   StepResultLike,
 } from './skill-memory';
-export type { SkillSession } from './skill-session';
 export type {
   Proposal,
   SkillCatalogEntry,
   SkillContent,
   SkillMetadata,
-  SkillProvider,
   SkillResource,
+  SkillWriter,
   ToolPolicy,
 } from './types';
 

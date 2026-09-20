@@ -83,20 +83,17 @@ import {
   WorkflowVersionMismatchEvent,
 } from '@corvidae/operative';
 import {
-  createFilesystemArtifactLoader,
-  createSkillCatalogHook,
+  createSkillArtifactLoader,
   createSkillClient,
   createSkillClientToolbox,
-  createSkillSession,
-  createSkillToolbox,
-  createStorageSkillProvider,
+  DEFAULT_SOURCE_PRECEDENCE,
+  discoverSkills,
   renderActiveSkillInstructions,
   renderClientCatalog,
   type SkillActivationRecord,
+  type SkillCatalogRevision,
   type SkillEventMap,
   type SkillGuardrailOptions,
-  type SkillSession,
-  type SkillProvider as SkillsPackageProvider,
   type ToolPolicy,
 } from '@corvidae/skills';
 import {
@@ -1206,69 +1203,75 @@ function appendConversationMessages(
   };
 }
 
-/**
- * A JSON-serializable snapshot of one active skill's name and optional tool policy.
- * Written to session metadata as `lastActiveSkills` after each step so a recovered
- * run can seed a fresh {@link SkillSession} with the pre-crash active set.
- */
-export interface ActiveSkillEntry {
-  name: string;
-  toolPolicy?: ToolPolicy;
-}
-
 const activeSkillsStepMetadataKey = '__bureauActiveSkills';
-const activeSkillsStepMetadataVersion = 1;
+const activeSkillsStepMetadataVersion = 2;
 
-function activeSkillsStepMetadata(entries: ActiveSkillEntry[]): JSONValue {
+function activeSkillsStepMetadata(records: readonly SkillActivationRecord[]): JSONValue {
   return {
     version: activeSkillsStepMetadataVersion,
-    entries: entries as unknown as JSONValue,
+    entries: records as unknown as JSONValue,
   };
 }
 
 export function activeSkillsFromStepMetadata(
   metadata: StepRecord['metadata'],
-): ActiveSkillEntry[] | undefined {
+): SkillActivationRecord[] | undefined {
   const raw = metadata?.[activeSkillsStepMetadataKey];
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined;
   const snapshot = raw as Record<string, unknown>;
   if (snapshot['version'] !== activeSkillsStepMetadataVersion) return undefined;
   const entries = snapshot['entries'];
-  return isActiveSkillEntryArray(entries) ? entries : undefined;
+  return isSkillActivationRecordArray(entries) ? entries : undefined;
 }
 
 /**
- * Validate that a value is a valid {@link ActiveSkillEntry} array for deserialization
- * from session metadata.
+ * Validates a value read back out of session or step metadata as activation records.
+ *
+ * Every digest field is required, not optional. A record missing one would recover a skill by name
+ * with nothing to check the content against, which is the failure the records exist to prevent —
+ * so a malformed snapshot recovers nothing rather than recovering unverifiably.
  */
-export function isActiveSkillEntryArray(value: unknown): value is ActiveSkillEntry[] {
+export function isSkillActivationRecordArray(value: unknown): value is SkillActivationRecord[] {
   if (!Array.isArray(value)) return false;
   for (const item of value) {
     if (typeof item !== 'object' || item === null) return false;
     const candidate = item as Record<string, unknown>;
-    if (typeof candidate['name'] !== 'string') return false;
-    if (candidate['toolPolicy'] !== undefined) {
-      const policy = candidate['toolPolicy'];
-      if (typeof policy !== 'object' || policy === null) return false;
-      const p = policy as Record<string, unknown>;
-      if (p['allowList'] !== undefined && !Array.isArray(p['allowList'])) return false;
-      if (p['denyList'] !== undefined && !Array.isArray(p['denyList'])) return false;
+    for (const field of [
+      'name',
+      'sourceId',
+      'sourceKind',
+      'trust',
+      'artifactDigest',
+      'instructionsDigest',
+      'activatedAt',
+    ]) {
+      if (typeof candidate[field] !== 'string') return false;
     }
+    if (typeof candidate['catalogRevision'] !== 'number') return false;
+    if (!Array.isArray(candidate['requestedTools'])) return false;
+    if (candidate['requestedTools'].some((tool) => typeof tool !== 'string')) return false;
   }
   return true;
 }
 
+/**
+ * The session-metadata keys a step boundary writes.
+ *
+ * The same keys {@link createSkillRecordSnapshotHook} writes, deliberately: one snapshot
+ * mechanism, one set of keys, one thing for recovery to read. Two parallel snapshots is how a
+ * recovered run ends up restoring whichever of them the reader happened to know about.
+ */
 function activeSkillSessionMetadataForStep(
-  entries: ActiveSkillEntry[],
+  records: readonly SkillActivationRecord[],
   step: number,
   runId?: string,
 ): Record<string, JSONValue> {
   return {
-    lastActiveSkills: entries as unknown as JSONValue,
+    activeSkillRecords: records as unknown as JSONValue,
     ...(runId !== undefined
       ? {
-          lastActiveSkillsRunId: runId,
-          lastActiveSkillsStep: step,
+          activeSkillRecordsRunId: runId,
+          activeSkillRecordsStep: step,
         }
       : {}),
   };
@@ -1304,51 +1307,6 @@ export function recordedAgentStep(value: unknown): StepRecord | undefined {
     return undefined;
   }
   return record as StepRecord;
-}
-
-/**
- * A thin wrapper over a {@link SkillSession} that also tracks the per-skill tool
- * policy passed to {@link SkillSession.activate}. The base `SkillSession` interface
- * only exposes skill names (via `getActiveSkills`) and the MERGED policy (via
- * `getActiveToolPolicy`); for durable recovery we need the per-skill policy so we
- * can reconstruct the exact pre-crash active-skill set.
- */
-interface TrackedSkillSession extends SkillSession {
-  /**
-   * Returns the current active skills as {@link ActiveSkillEntry} pairs, including
-   * each skill's individual tool policy. Safe to serialize to session metadata.
-   */
-  getActiveEntries(): ActiveSkillEntry[];
-}
-
-/**
- * Wrap a {@link SkillSession} with per-skill policy tracking. All other methods
- * delegate unchanged; `activate` and `deactivate` additionally maintain an
- * internal Map of `name → toolPolicy` so `getActiveEntries()` can return the
- * full snapshot needed for durable recovery.
- */
-function createTrackedSkillSession(): TrackedSkillSession {
-  const inner = createSkillSession();
-  const policyMap = new Map<string, ToolPolicy | undefined>();
-  const activate = inner.activate.bind(inner);
-  const deactivate = inner.deactivate.bind(inner);
-
-  return Object.assign(inner, {
-    activate(name, toolPolicy) {
-      policyMap.set(name, toolPolicy);
-      activate(name, toolPolicy);
-    },
-    deactivate(name) {
-      policyMap.delete(name);
-      deactivate(name);
-    },
-    getActiveEntries(): ActiveSkillEntry[] {
-      return inner.getActiveSkills().map((name) => {
-        const toolPolicy = policyMap.get(name);
-        return toolPolicy !== undefined ? { name, toolPolicy } : { name };
-      });
-    },
-  } satisfies Pick<TrackedSkillSession, 'activate' | 'deactivate' | 'getActiveEntries'>);
 }
 
 /**
@@ -1395,27 +1353,6 @@ function createSkillRecordSnapshotHook(
     } catch {
       // Non-fatal, same as the entry-based hook: a failed snapshot must not abort the step. The
       // cost is that recovery starts from an empty active set, which is the safe direction.
-    }
-  };
-}
-
-function createSkillStateSnapshotHook(
-  trackedSession: TrackedSkillSession,
-  sessionId: string,
-  store: SessionStore,
-  runId?: string,
-): OnStepHook {
-  return async (context) => {
-    const entries = trackedSession.getActiveEntries();
-    try {
-      await store.updateMetadata(
-        sessionId,
-        activeSkillSessionMetadataForStep(entries, context.step, runId),
-      );
-    } catch {
-      // Non-fatal: if we can't snapshot the active skills, recovery falls back to
-      // an empty session (the pre-existing behavior). Don't propagate — a failed
-      // state snapshot must not abort the step.
     }
   };
 }
@@ -1620,14 +1557,12 @@ export interface RuntimeComposition {
     request: CreateRunRequest & { sessionId: string; runId?: string },
     options?: {
       liveStreaming?: boolean;
-      /** Active-skill entries to pre-seed the run's SkillSession for durable recovery. */
-      initialActiveSkills?: ReadonlyArray<ActiveSkillEntry> | undefined;
       /**
-       * Provenance-carrying records for the catalog-backed path.
+       * The pre-crash active set, as provenance-carrying activation records.
        *
-       * Distinct from `initialActiveSkills`, which carries only a name and tool policy. Recovery
-       * re-validates these against the live catalog and re-checks each digest, so a skill whose
-       * source was revoked or whose content drifted does not come back.
+       * Recovery re-validates these against the live catalog and re-checks each digest, so a skill
+       * whose source was revoked or whose content drifted while the run was away does not come
+       * back under a name somebody once reviewed.
        */
       initialActiveSkillRecords?: ReadonlyArray<SkillActivationRecord> | undefined;
     },
@@ -1646,7 +1581,7 @@ export interface RuntimeComposition {
      */
     hooks: HookRegistry<OperativeHookMap>;
     streamEventTarget: TypedEventTarget<StreamEventMap> | undefined;
-    getActiveSkillEntries: () => ActiveSkillEntry[];
+    getActiveSkillRecords: () => readonly SkillActivationRecord[];
   }>;
   /**
    * AB-260 — folded onto this interface directly rather than reached through
@@ -1683,7 +1618,7 @@ export interface RuntimeComposition {
     session: Awaited<ReturnType<SessionStore['load']>> | undefined,
     runId: string,
     recovering: boolean,
-  ): Promise<ActiveSkillEntry[] | undefined>;
+  ): Promise<SkillActivationRecord[] | undefined>;
 }
 
 /**
@@ -2010,28 +1945,36 @@ export async function createRuntimeComposition(
     await memory.init();
   }
 
-  // Resolve the SkillProvider from the bureau's persistence store when no
-  // explicit provider is supplied — same store-sharing pattern as memory.
-  // `createStorageSkillProvider` wraps the KV view with the `skill:` prefix
-  // namespace (disjoint from Weft's reserved prefixes and memory's
-  // `app:agent-bureau:memory:v1:` prefix — asserted disjoint by test).
+  // A run's skills come from a catalog revision, and only from one. COR-892 removed Bureau's
+  // second path — a provider it read skills out of directly — because a skill admitted that way
+  // had no trust decision, no artifact digest and no compatibility verdict, so a run holding one
+  // could not say where it came from.
   //
-  // The resolved provider is typed as `SkillsPackageProvider` (the full skills
-  // package interface with `saveResource`/`setEnabled`) so it is accepted by
-  // `createSkillCatalogHook`, which expects the full interface. The bureau's
-  // local `SkillProvider` type is a structural subset and is compatible.
-  // Sources win over a provider, and the two never compose. A run draws its skills from one
-  // place: mixing a discovered catalog with a provider's listing would leave "which catalog is
-  // this skill from" unanswerable, and provenance that cannot answer that question is decoration.
-  const skillCatalog = options.skills?.catalog;
-  const usesCatalogSources = skillCatalog !== undefined;
-
-  const resolvedSkillProvider: SkillsPackageProvider | undefined = usesCatalogSources
-    ? undefined
-    : ((options.skills?.provider as SkillsPackageProvider | undefined) ??
-      (options.skills !== undefined && kv !== undefined
-        ? createStorageSkillProvider(kv)
-        : undefined));
+  // A caller that has already discovered a revision hands it in, which is the host's job under
+  // COR-752's Decision 1: discovery reads approved filesystem roots and remote URLs, and deciding
+  // which of those to trust is not Bureau's call to make. A caller that has only configured
+  // persistence gets the skills its own store holds, discovered here through the `storage` source.
+  // That is the one source Bureau can compose without deciding anything on the host's behalf: the
+  // store is already the bureau's, and what is in it is what this runtime itself put there.
+  const skillCatalog: SkillCatalogRevision | undefined =
+    options.skills === undefined
+      ? undefined
+      : (options.skills.catalog ??
+        (kv === undefined
+          ? undefined
+          : await discoverSkills({
+              sources: [
+                {
+                  id: 'storage',
+                  kind: 'storage',
+                  // Not a filesystem path and deliberately not credential-bearing: a catalog entry
+                  // exposes this verbatim.
+                  location: 'kv://skills',
+                  precedence: DEFAULT_SOURCE_PRECEDENCE.storage,
+                },
+              ],
+              storage: kv,
+            })));
 
   // AB-384 (Codex P2 review finding, PR #592, "Mint incarnations from the
   // Bureau's injected runtime"): `runtimeServices` (resolved above from
@@ -2185,15 +2128,15 @@ export async function createRuntimeComposition(
        * Active-skill entries to seed the run's {@link SkillSession} with on
        * construction. Used by the durable recovery path: when
        * `buildRunDepsFromSession` rebuilds deps for a recovered run, it reads the
-       * `lastActiveSkills` snapshot from session metadata and passes it here so the
+       * `activeSkillRecords` snapshot from session metadata and passes it here so the
        * recovered toolbox is aware of skills activated in completed pre-crash steps
        * (those steps are memoized and do not re-run their `activate_skill` calls).
        */
-      initialActiveSkills?: ReadonlyArray<ActiveSkillEntry> | undefined;
+
       /**
        * Provenance-carrying records for the catalog-backed path.
        *
-       * Distinct from `initialActiveSkills`, which carries only a name and tool policy. Recovery
+       * Recovery
        * re-validates these against the live catalog and re-checks each digest, so a skill whose
        * source was revoked or whose content drifted does not come back.
        */
@@ -2265,7 +2208,7 @@ export async function createRuntimeComposition(
     // correlating across runs would see the same hook under different names
     // depending on whether memory or skills happened to be configured.
     const hooks = new HookRegistry<OperativeHookMap>();
-    let getActiveSkillEntries = (): ActiveSkillEntry[] => [];
+    let getActiveSkillRecords = (): readonly SkillActivationRecord[] => [];
     let getActiveSkillToolPolicy: (() => ToolPolicy | undefined) | undefined;
 
     if (options.identity) {
@@ -2352,7 +2295,14 @@ export async function createRuntimeComposition(
       // persistence of what the client decided.
       const skillClient = createSkillClient({
         catalog: skillCatalog,
-        loadArtifact: createFilesystemArtifactLoader(),
+        // Routed by source kind rather than fixed to the filesystem: a catalog can mix a host's
+        // filesystem roots with the bureau's own store, and a `storage` record's `sourceLocation`
+        // is a store namespace that no filesystem read can follow.
+        loadArtifact: createSkillArtifactLoader(kv === undefined ? {} : { storage: kv }),
+        // COR-1226's scan, carried onto the client path. Migrating without it would have created
+        // the guardrail bypass COR-892 names: skill bodies are untrusted instruction input and
+        // pass the same detector pipeline as anything else entering context.
+        ...(skillGuardrail === undefined ? {} : { guardrail: skillGuardrail }),
         ...(skillEvents === undefined ? {} : { events: skillEvents }),
         correlation: {
           ...(request.runId === undefined ? {} : { runId: request.runId }),
@@ -2372,20 +2322,20 @@ export async function createRuntimeComposition(
         skillRecovery = skillClient.recover(recoverable);
       }
 
-      getActiveSkillEntries = () =>
-        skillClient.activationRecords().map((record: SkillActivationRecord) => ({
-          name: record.name,
-          ...(record.requestedTools.length === 0
-            ? {}
-            : { toolPolicy: { allowList: [...record.requestedTools] } }),
-        }));
+      // The records verbatim, not a name-and-policy projection of them. The projection was what
+      // the provider-backed snapshot could carry; narrowing to it here would throw away the
+      // provenance every reader of this snapshot now depends on.
+      getActiveSkillRecords = () => skillClient.activationRecords();
       getActiveSkillToolPolicy = () => {
         const narrowed = skillClient.narrowedTools();
         return narrowed === undefined ? undefined : { allowList: [...narrowed] };
       };
 
       if (options.skills.includeTools !== false) {
-        const skillToolset = createSkillClientToolbox(skillClient);
+        const skillToolset = createSkillClientToolbox(
+          skillClient,
+          skillGuardrail === undefined ? undefined : { guardrail: skillGuardrail },
+        );
         // `undefined` when the admitted catalog is empty, so no skill tool is exposed at all —
         // a model handed `activate_skill` against an empty catalog invents a name to pass it.
         if (skillToolset !== undefined) {
@@ -2459,114 +2409,6 @@ export async function createRuntimeComposition(
           },
         );
       }
-    } else if (options.skills && resolvedSkillProvider) {
-      // Use a policy-tracking session so getActiveEntries() can reconstruct the
-      // per-skill policy for the durable snapshot hook (see createTrackedSkillSession).
-      const skillSession = createTrackedSkillSession();
-
-      // Seed active skills from a prior checkpoint on durable recovery. Completed
-      // pre-crash steps are memoized by Weft and do not re-run their tool
-      // executions, so a fresh empty session would miss any `activate_skill` calls
-      // made in those steps. `initialActiveSkills` carries the last-known snapshot
-      // (written by createSkillStateSnapshotHook after each step) so the recovered
-      // toolbox reflects the pre-crash active set without replaying the tools.
-      // Replay classification: seam #11 — safe (read-only rehydration from
-      // persisted state; no external side effect on the skill provider).
-      if (runtimeOptions?.initialActiveSkills) {
-        for (const entry of runtimeOptions.initialActiveSkills) {
-          skillSession.activate(entry.name, entry.toolPolicy);
-        }
-      }
-      getActiveSkillEntries = () => skillSession.getActiveEntries();
-      // COR-1228 — the live policy source for the tool filter applied below.
-      getActiveSkillToolPolicy = () => skillSession.getActiveToolPolicy();
-
-      if (options.skills.includeTools !== false) {
-        // Inject the skill catalog on step 0 — same hook pattern as identity.
-        // `createSkillCatalogHook` from the `skills` package handles enabled-status
-        // filtering, skill policy (allow/deny list), and graceful degradation on
-        // provider errors. The hook caches the catalog for the run (one fetch per run).
-        //
-        // The catalog is gated on `includeTools !== false` because its text directs
-        // the model to call `activate_skill`. When tools are disabled, that tool is
-        // not wired and a model following the catalog instruction would call an
-        // unavailable tool and fail. All three skill-tool surfaces (toolbox, tool
-        // summaries, and catalog) must be consistently absent when tools are off.
-        // (PRRT_kwDORvupsc6MZ-vj)
-        const catalogHook = createSkillCatalogHook({
-          provider: resolvedSkillProvider,
-          ...(options.skills.skillPolicy === undefined
-            ? {}
-            : { skillPolicy: options.skills.skillPolicy }),
-        });
-        hooks.on(
-          'prepareStep',
-          async (context) => {
-            const catalog = await catalogHook.prepareStep(context);
-            if (catalog) {
-              context.conversation.appendSystemMessage(catalog, {
-                _skillCatalogInjected: true,
-              });
-            }
-          },
-          {
-            id: 'bureau:skill-catalog',
-            // Reads the provider's catalog and injects it; the hook itself
-            // caches for the run and writes nothing outside the conversation.
-            replay: 'safe',
-          },
-        );
-
-        // COR-1226 — the `@corvidae/skills` factories, not a second inline copy.
-        // The previous inline implementation produced byte-identical results for
-        // every path except the guardrail scan, which it omitted entirely.
-        const skillTools = createSkillToolbox({
-          provider: resolvedSkillProvider,
-          session: skillSession,
-          ...(skillGuardrail !== undefined ? { guardrail: skillGuardrail } : {}),
-          // COR-767 — the tools have no view of the owning run or session, so
-          // the correlation is stamped here, where both are in scope.
-          events: skillEvents,
-          // COR-752, Decision 1 — the same policy that filters the catalog now
-          // gates activation. Previously it filtered only the listing, so a
-          // denied skill remained activatable by name.
-          ...(options.skills.skillPolicy !== undefined
-            ? { admissionPolicy: options.skills.skillPolicy }
-            : {}),
-          correlation: {
-            ...(request.runId !== undefined ? { runId: request.runId } : {}),
-            sessionId: request.sessionId,
-          },
-        });
-        const skillToolbox = createToolbox([
-          skillTools.activateSkill,
-          skillTools.loadSkillResource,
-          skillTools.deactivateSkill,
-          skillTools.listSkills,
-        ]) as AnyToolbox;
-        toolbox = combineToolboxes(toolbox, skillToolbox);
-      }
-
-      // Snapshot the active skill set to session metadata after each step.
-      // Present only when a session store is configured (durable / KV-backed path).
-      // This is what allows buildRunDepsFromSession to rehydrate the skill set on
-      // a cross-process recovery (see resolveRunServices → buildRunDepsFromSession).
-      if (sessionStore) {
-        hooks.on(
-          'onStep',
-          createSkillStateSnapshotHook(
-            skillSession,
-            request.sessionId,
-            sessionStore,
-            request.runId,
-          ),
-          {
-            id: 'bureau:skill-state-snapshot',
-            // Writes the active-skill snapshot to the session store.
-            replay: 'effectful',
-          },
-        );
-      }
     }
 
     // AB-40 — `undefined` (not configured) wires the enabled-by-default
@@ -2603,7 +2445,7 @@ export async function createRuntimeComposition(
       toolbox: runToolbox,
       hooks,
       streamEventTarget,
-      getActiveSkillEntries,
+      getActiveSkillRecords,
     });
   }
 
@@ -2645,11 +2487,11 @@ export async function createRuntimeComposition(
     // recovered toolbox is aware of skills activated in completed pre-crash steps.
     // Completed steps are memoized by Weft and do not re-run their tool executions,
     // so a fresh SkillSession would be unaware of any `activate_skill` calls made
-    // before the crash. `lastActiveSkills` is written by createSkillStateSnapshotHook
-    // after each step boundary and is validated here before use (PRRT_kwDORvupsc6MZ1Md).
-    const lastActiveSkillsRaw = session.metadata['lastActiveSkills'];
-    const initialActiveSkills = isActiveSkillEntryArray(lastActiveSkillsRaw)
-      ? lastActiveSkillsRaw
+    // before the crash. `activeSkillRecords` is written by createSkillRecordSnapshotHook after
+    // each step boundary and is validated here before use (PRRT_kwDORvupsc6MZ1Md).
+    const activeSkillRecordsRaw = session.metadata['activeSkillRecords'];
+    const initialActiveSkillRecords = isSkillActivationRecordArray(activeSkillRecordsRaw)
+      ? activeSkillRecordsRaw
       : undefined;
     const requestContext = recoveredRequestContext(
       session.metadata,
@@ -2669,7 +2511,7 @@ export async function createRuntimeComposition(
         ...(agentName !== undefined ? { agentName } : {}),
         ...(requestContext ? { requestContext } : {}),
       },
-      { liveStreaming: false, initialActiveSkills },
+      { liveStreaming: false, initialActiveSkillRecords },
     );
 
     // AB-336: wire `requestHumanInput`/`scheduleWakeup` in on the RECOVERY
@@ -2716,7 +2558,7 @@ export async function createRuntimeComposition(
     const services: DurableRunDeps = {
       toolbox: runToolbox,
       getStepMetadata: () => ({
-        [activeSkillsStepMetadataKey]: activeSkillsStepMetadata(runRuntime.getActiveSkillEntries()),
+        [activeSkillsStepMetadataKey]: activeSkillsStepMetadata(runRuntime.getActiveSkillRecords()),
       }),
       options: {
         generate: runRuntime.generate,
@@ -2774,11 +2616,11 @@ export async function createRuntimeComposition(
     baseConversationHistory: ConversationHistory,
     runId: string,
     replaceCurrentFireTranscript: boolean,
-    getActiveSkillEntries: () => ActiveSkillEntry[],
+    getActiveSkillRecords: () => readonly SkillActivationRecord[],
   ): OnStepHook {
     return async (context) => {
       await store.update(sessionId, (existing: AgentSession | undefined) => {
-        const activeSkillEntries = getActiveSkillEntries();
+        const activeSkillRecords = getActiveSkillRecords();
         const sessionOwnedByAnotherRunningRun =
           existing?.metadata['lastRunStatus'] === 'running' &&
           typeof existing.metadata['lastRunId'] === 'string' &&
@@ -2801,7 +2643,7 @@ export async function createRuntimeComposition(
             lastScheduledFireRunId: runId,
             ...(sessionOwnedByAnotherRunningRun
               ? {}
-              : activeSkillSessionMetadataForStep(activeSkillEntries, context.step, runId)),
+              : activeSkillSessionMetadataForStep(activeSkillRecords, context.step, runId)),
           },
           conversationHistory: existingConversationHistory
             ? appendConversationMessages(
@@ -3067,18 +2909,18 @@ export async function createRuntimeComposition(
     session: Awaited<ReturnType<SessionStore['load']>> | undefined,
     runId: string,
     recovering: boolean,
-  ): Promise<ActiveSkillEntry[] | undefined> {
+  ): Promise<SkillActivationRecord[] | undefined> {
     if (!recovering || !session) return undefined;
 
     const metadata = session.metadata;
-    const lastActiveSkillsRaw = metadata['lastActiveSkills'];
-    const lastActiveSkillsStep = metadata['lastActiveSkillsStep'];
+    const activeSkillRecordsRaw = metadata['activeSkillRecords'];
+    const activeSkillRecordsStep = metadata['activeSkillRecordsStep'];
     if (
       metadata['lastScheduledFireRunId'] !== runId ||
-      metadata['lastActiveSkillsRunId'] !== runId ||
-      typeof lastActiveSkillsStep !== 'number' ||
-      !Number.isInteger(lastActiveSkillsStep) ||
-      lastActiveSkillsStep < 0
+      metadata['activeSkillRecordsRunId'] !== runId ||
+      typeof activeSkillRecordsStep !== 'number' ||
+      !Number.isInteger(activeSkillRecordsStep) ||
+      activeSkillRecordsStep < 0
     ) {
       return undefined;
     }
@@ -3097,7 +2939,7 @@ export async function createRuntimeComposition(
       }
 
       const latestCommittedStep = committedStepRecords
-        .filter((step) => step.step <= lastActiveSkillsStep)
+        .filter((step) => step.step <= activeSkillRecordsStep)
         .toSorted((a, b) => b.step - a.step)
         .find((step) => activeSkillsFromStepMetadata(step.metadata) !== undefined);
 
@@ -3106,10 +2948,10 @@ export async function createRuntimeComposition(
       }
 
       if (
-        committedStepRecords.some((step) => step.step === lastActiveSkillsStep) &&
-        isActiveSkillEntryArray(lastActiveSkillsRaw)
+        committedStepRecords.some((step) => step.step === activeSkillRecordsStep) &&
+        isSkillActivationRecordArray(activeSkillRecordsRaw)
       ) {
-        return lastActiveSkillsRaw;
+        return activeSkillRecordsRaw;
       }
 
       return undefined;
@@ -3239,7 +3081,7 @@ export async function createRuntimeComposition(
     // Same runtime a normal run builds (generate/toolbox/memory/skills/guardrails),
     // wired to this fire's session + per-fire runId, with live streaming off (no
     // ActiveRun surface for a scheduled fire).
-    const initialActiveSkills = await loadCommittedScheduledActiveSkills(
+    const initialActiveSkillRecords = await loadCommittedScheduledActiveSkills(
       existing,
       runId,
       isRecoveredFireReplay,
@@ -3248,13 +3090,13 @@ export async function createRuntimeComposition(
 
     const runRuntime = await createRunRuntime(
       { message: scheduledInput.input, sessionId, runId, agentName, requestContext },
-      { liveStreaming: false, initialActiveSkills },
+      { liveStreaming: false, initialActiveSkillRecords },
     );
 
     const services: DurableRunDeps = {
       toolbox: runRuntime.toolbox,
       getStepMetadata: () => ({
-        [activeSkillsStepMetadataKey]: activeSkillsStepMetadata(runRuntime.getActiveSkillEntries()),
+        [activeSkillsStepMetadataKey]: activeSkillsStepMetadata(runRuntime.getActiveSkillRecords()),
       }),
       options: {
         generate: runRuntime.generate,
@@ -3277,7 +3119,7 @@ export async function createRuntimeComposition(
             baseConversationHistory,
             runId,
             isRecoveredFireReplay,
-            runRuntime.getActiveSkillEntries,
+            runRuntime.getActiveSkillRecords,
           ),
         ),
         executeOptions: { requestContext },

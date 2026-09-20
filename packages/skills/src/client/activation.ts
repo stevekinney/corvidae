@@ -42,6 +42,7 @@ export type SkillActivationRefusal =
   | 'artifact-unavailable'
   | 'artifact-changed'
   | 'not-delegated'
+  | 'guardrail-blocked'
   | 'already-active';
 
 /** The outcome of asking to activate one skill. */

@@ -72,24 +72,23 @@ export interface SkillResource {
  * Follows the storage-first model: skills are strings in the shared storage adapter,
  * not files on disk.
  */
-export interface SkillProvider {
-  /** List all available skills (catalog tier). */
-  listSkills(): Promise<SkillCatalogEntry[]>;
-  /** Load full skill content (instructions tier). */
-  loadSkill(name: string): Promise<SkillContent | undefined>;
-  /** Save a skill (from ingestion or self-improvement proposal). */
+/**
+ * Persists skills into a durable store.
+ *
+ * Writes only. Reading skills back is discovery's job — a skill admitted through a read method
+ * here would have no catalog entry, no trust decision, no artifact digest and no compatibility
+ * verdict, which is the duplication this interface was narrowed to remove. The self-improvement
+ * flow is what genuinely needs a write path: an accepted proposal has to land somewhere the next
+ * run's discovery will find it.
+ */
+export interface SkillWriter {
+  /** Save a skill, from ingestion or an accepted self-improvement proposal. */
   saveSkill(name: string, content: SkillContent): Promise<void>;
-  /** Delete a skill. */
+  /** Delete a skill and everything stored under it. */
   deleteSkill(name: string): Promise<void>;
-  /** List resources bundled with a skill. */
-  listResources(name: string): Promise<string[]>;
-  /** Load a specific resource as raw bytes. */
-  loadResource(name: string, path: string): Promise<Uint8Array | undefined>;
-  /** Save a resource from raw bytes. */
+  /** Save one bundled resource from raw bytes. */
   saveResource(name: string, path: string, content: Uint8Array): Promise<void>;
-  /** Get enabled status. Defaults to true if not explicitly set. */
-  isEnabled(name: string): Promise<boolean>;
-  /** Set enabled status. */
+  /** Set enabled status. An absent value means enabled. */
   setEnabled(name: string, enabled: boolean): Promise<void>;
 }
 

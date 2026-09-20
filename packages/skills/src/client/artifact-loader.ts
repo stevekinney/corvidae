@@ -1,5 +1,7 @@
 import { join } from 'node:path';
 
+import type { TextValueStore } from '@corvidae/weft';
+
 import {
   decodeArtifactText,
   findArtifactEntry,
@@ -7,6 +9,7 @@ import {
   type SkillArtifact,
 } from '../artifact';
 import type { SkillCatalogRecord } from '../discovery/catalog';
+import { readStoredSkillArtifacts } from '../discovery/storage-source';
 import { readSkillArtifact } from '../ingestion/read-skill-artifact';
 
 /** Why loading a skill's artifact failed. */
@@ -128,4 +131,49 @@ export function readResource(
   const entry = findArtifactEntry(artifact, path);
   if (entry === undefined) return undefined;
   return { path: entry.path, mediaType: entry.mediaType, bytes: entry.bytes };
+}
+
+/**
+ * A loader that re-reads a storage-backed skill from the store it was catalogued out of.
+ *
+ * A `storage` record's `sourceLocation` is not a filesystem path, so the filesystem loader cannot
+ * follow it. Re-reading rather than holding the artifacts from discovery is deliberate and matches
+ * what the filesystem loader does: the digest comparison is only evidence if the bytes are fetched
+ * again at activation time, and a loader serving a cached copy would report `loaded` for a skill
+ * whose stored bytes had since been rewritten.
+ */
+export function createStorageArtifactLoader(store: TextValueStore): SkillArtifactLoader {
+  return async (record: SkillCatalogRecord): Promise<SkillArtifactLoad> => {
+    const artifacts = await readStoredSkillArtifacts(store);
+    return createStaticArtifactLoader(artifacts)(record);
+  };
+}
+
+/**
+ * Routes each record to the loader that can actually read its source.
+ *
+ * A run's catalog can mix kinds — a host's filesystem roots alongside the bureau's own store — and
+ * one loader cannot serve both, because `sourceLocation` means something different for each. A kind
+ * with no loader configured reports `unavailable` rather than falling back to a loader that would
+ * misread it: a wrong loader produces a confident digest mismatch, which reads as tamper evidence.
+ */
+export function createSkillArtifactLoader(options: {
+  readonly storage?: TextValueStore;
+  readonly filesystem?: boolean;
+}): SkillArtifactLoader {
+  const filesystem = options.filesystem === false ? undefined : createFilesystemArtifactLoader();
+  const storage =
+    options.storage === undefined ? undefined : createStorageArtifactLoader(options.storage);
+
+  return (record: SkillCatalogRecord): Promise<SkillArtifactLoad> => {
+    const loader = record.sourceKind === 'storage' ? storage : filesystem;
+    if (loader === undefined) {
+      return Promise.resolve({
+        loaded: false,
+        failure: 'unavailable',
+        message: `Skill '${record.name}' comes from a '${record.sourceKind}' source, which this run has no loader for.`,
+      });
+    }
+    return loader(record);
+  };
 }

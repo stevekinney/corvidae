@@ -20,6 +20,7 @@ import {
   type SkillEventMap,
   type SkillRejectionReason,
 } from '../events';
+import { scanSkillResource, type SkillGuardrailOptions } from '../guardrail';
 import { importSkillMarkdown } from '../parse-skill-markdown';
 import type {
   ActiveSkill,
@@ -99,6 +100,16 @@ export interface CreateSkillClientOptions {
    * the deployment, and a perfectly trustworthy skill can still be refused here.
    */
   readonly admissionPolicy?: SkillAdmissionPolicy;
+  /**
+   * Scans skill content before it enters context.
+   *
+   * A skill's body and its resources are untrusted instruction input — authored by whoever
+   * published the skill, not by this session's user — so they pass the same detector pipeline as
+   * anything else that reaches a model. Omitting this is the guardrail bypass COR-892 exists to
+   * close: a client that admitted instructions no detector had seen would be a way in for exactly
+   * the content the rest of the pipeline is built to catch.
+   */
+  readonly guardrail?: SkillGuardrailOptions;
 }
 
 /**
@@ -334,6 +345,21 @@ export function createSkillClient(options: CreateSkillClientOptions): SkillClien
     // it" from "it entered context", so a skill loaded and then refused produces `loaded` followed
     // by `rejected` and never `activated`.
     events?.dispatchEvent(new SkillLoadedEvent(name, correlationFor(name)));
+
+    // The scan sits between loading and admitting, which is the only place it can sit: scanning
+    // earlier would mean scanning bytes that never enter context, and scanning later would mean
+    // the instructions are already in the active set a renderer reads from.
+    if (options.guardrail !== undefined) {
+      const scan = await scanSkillResource(instructions, options.guardrail);
+      if (scan.blocked) {
+        reject(name, 'guardrail-blocked');
+        return {
+          activated: false,
+          refusal: 'guardrail-blocked',
+          message: `Skill '${name}' was blocked by a guardrail before its instructions entered context.`,
+        };
+      }
+    }
 
     const imported = importSkillMarkdown(
       instructions,

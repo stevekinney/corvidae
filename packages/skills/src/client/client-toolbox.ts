@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { createTool } from '@corvidae/armorer';
 
+import { scanSkillResource, type SkillGuardrailOptions } from '../guardrail';
 import { renderActiveSkillInstructions, renderSkillCatalog } from './render';
 import type { SkillClient } from './skill-client';
 
@@ -13,7 +14,20 @@ import type { SkillClient } from './skill-client';
  * nothing exists, and sometimes invent a plausible name to pass. Exposing no tool at all is the
  * only honest representation of "this run has no skills".
  */
-export function createSkillClientToolbox(client: SkillClient) {
+export function createSkillClientToolbox(
+  client: SkillClient,
+  options?: {
+    /**
+     * Scans a resource before it is returned to the model.
+     *
+     * Here rather than on the client because this is the boundary the content actually crosses:
+     * the client owns the bundle, and a resource sitting in an admitted artifact has not reached
+     * anyone. A client whose instructions were scanned but whose resources were not would leave
+     * the larger half of a bundle unscanned, since `references/` is where the text lives.
+     */
+    readonly guardrail?: SkillGuardrailOptions;
+  },
+) {
   if (client.offered().length === 0) return undefined;
 
   return {
@@ -84,6 +98,20 @@ export function createSkillClientToolbox(client: SkillClient) {
             path: params.path,
             mediaType: resource.mediaType,
           };
+        }
+
+        if (options?.guardrail !== undefined) {
+          const scan = await scanSkillResource(content, options.guardrail);
+          if (scan.blocked) {
+            return {
+              error: 'Resource was blocked by a guardrail',
+              skillName: params.skillName,
+              path: params.path,
+            };
+          }
+          // The scanned content, not the original: a `'warn'` action may redact in place, and
+          // returning the pre-scan text would hand the model exactly what the detector rewrote.
+          return { path: resource.path, mediaType: resource.mediaType, content: scan.content };
         }
 
         return { path: resource.path, mediaType: resource.mediaType, content };

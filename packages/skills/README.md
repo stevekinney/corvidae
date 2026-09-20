@@ -86,21 +86,18 @@ Pass `{ directoryName }` to either one to enable the specification's name-must-m
 
 ## How It Works
 
-The package has four main parts:
-
-- **Providers**: `SkillProvider` implementations list, load, save, delete, enable, disable, and serve resources for skills.
-- **Sessions**: `createSkillSession()` tracks which skills are active for one run and intersects their `allowed-tools`.
-- **Hooks**: `createSkillCatalogHook()` returns a `prepareStep` hook that renders the catalog on step 0.
-- **Tools**: `createSkillToolbox()` creates `activate_skill`, `load_skill_resource`, `deactivate_skill`, and `list_skills`.
+The package has four main parts, in the order a skill passes through them:
 
 - **Artifacts**: `readSkillArtifact()` reads a skill directory into a complete bounded `SkillArtifact` — every file, with digests and deterministic ordering.
 - **Discovery**: `discoverSkills()` and `createSkillCatalogService()` turn configured sources into immutable, trust-aware catalog revisions.
+- **Clients**: `createSkillClient()` gives one run a view of a revision and owns its active set; `createSkillClientToolbox()` exposes `activate_skill`, `deactivate_skill` and `load_skill_resource` over it.
+- **Writing**: `createStorageSkillProvider()` persists a skill into a key-value store, under the namespace the `storage` discovery source reads back.
 
-The storage-backed provider writes skills under keys such as `skill:{name}:metadata`, `skill:{name}:body`, `skill:{name}:resource:{path}`, and `skill:{name}:enabled`. Resources are base64-encoded at that string-only boundary so binary content survives. The static provider keeps the same interface in memory for tests, local bundles, and browser-safe use cases.
+Reading is discovery's job throughout. There is deliberately no second way in — a skill admitted outside discovery would carry no trust decision, no artifact digest and no compatibility verdict, and a run holding one could not say where it came from.
 
 ### Resources are bytes
 
-`SkillProvider.loadResource()` and `saveResource()` carry `Uint8Array`, not `string`. A bundle legitimately contains images, fonts and other binary assets, and decoding one as UTF-8 replaces every invalid sequence with `U+FFFD` — silent, irreversible corruption. Decoding happens at the model-facing `load_skill_resource` tool, which is the one place text is actually required.
+A skill's resources are `Uint8Array` end to end, never `string`. A bundle legitimately contains images, fonts and other binary assets, and decoding one as UTF-8 replaces every invalid sequence with `U+FFFD` — silent, irreversible corruption. Decoding happens at the model-facing `load_skill_resource` tool, which is the one place text is actually required.
 
 ### Artifacts and admission
 
@@ -247,33 +244,43 @@ The stored form is a metadata record plus a body, so the manifest is re-serializ
 
 ## Runtime integration
 
-The host application creates a skill session, injects the catalog on the first step, and combines its base toolbox with the skill-management tools. Compose those package APIs directly where the application assembles its runtime.
+The host builds a client from a catalog revision, injects the catalog on the first step, and combines its base toolbox with the client's skill tools. Compose those package APIs directly where the application assembles its runtime.
 
 A skill-enabled run follows this sequence:
 
-- Step 0 gets an `<available_skills>` system message.
-- The agent calls `activate_skill` when one catalog entry matches the task.
-- The active skill's instructions are returned in a `<skill_content>` block.
-- If the skill lists resources, the agent can call `load_skill_resource`.
-- An active skill's `allowed-tools` narrows the available tool set for the run. It can only remove tools, never add one the run did not already have.
+- Step 0 gets an `<available_skills>` system message, from `renderClientCatalog(client)`.
+- The agent calls `activate_skill` when one catalog entry matches the task. The client verifies the bundle's digest against the revision before admitting anything.
+- Active instructions are re-rendered from the client on **every** step, as a `<skill_content>` block, rather than left in the transcript. That is what makes them survive a compaction strategy that rewrote the whole history: they were never part of the history it summarized.
+- If the skill ships resources, the agent can call `load_skill_resource`.
+- An active skill's `allowed-tools` narrows the run's tool set. It can only remove tools, never add one the run did not already have.
 
-Use the session, hooks, and tool factories below to wire this behavior into the application runtime.
+`@corvidae/bureau` composes exactly this, and adds what the client cannot see: run and session correlation on every lifecycle event, the deployment's admission policy, the guardrail pipeline skill content is scanned through, and a durable snapshot of the activation records so a recovered run can re-validate what it had rather than losing it.
 
 ## Lifecycle events
 
-Pass an `events` target and a `correlation` to `createSkillToolbox` and the skill tools dispatch five events describing what happened to each skill. Bureau wires both automatically for a skill-enabled run, stamping the owning `runId` and `sessionId` — the tools themselves have no view of either, so the correlation is supplied where both are in scope.
+Pass an `events` target and a `correlation` to `createSkillClient` and it dispatches events describing what happened to each skill. Bureau wires both automatically for a skill-enabled run, stamping the owning `runId` and `sessionId` — the client has no view of either, so the correlation is supplied where both are in scope.
 
 | Event | Meaning |
 | --- | --- |
-| `skill.loaded` | the provider returned the skill's instructions |
-| `skill.activated` | the skill was admitted to the session and its instructions returned to the model |
+| `skill.catalog-revised` | the client bound to a catalog revision |
+| `skill.source-admitted` | a source's trust decision, with the reason it was made |
+| `skill.compatibility-decided` | a skill's strict-conformance verdict |
+| `skill.loaded` | the bundle yielded the skill's instructions |
+| `skill.activated` | the skill was admitted and its instructions entered context |
 | `skill.deactivated` | a previously active skill left the active set |
-| `skill.rejected` | an activation attempt was refused by policy before the skill entered context |
-| `skill.failed` | an activation attempt could not complete because the provider had no such skill |
+| `skill.rejected` | an activation attempt was refused before the skill entered context |
+| `skill.failed` | an activation attempt could not complete |
+| `skill.recovered` | a resumed run re-validated its stored activation records |
+| `skill.resource-loaded` | a bundled resource was read for an active skill |
 
 ```typescript
 import { TypedEventTarget } from '@corvidae/lifecycle';
-import { createSkillToolbox, type SkillEventMap } from '@corvidae/skills';
+import {
+  createSkillArtifactLoader,
+  createSkillClient,
+  createSkillClientToolbox,
+  type SkillEventMap,
+} from '@corvidae/skills';
 
 const events = new TypedEventTarget<SkillEventMap>();
 
@@ -281,24 +288,27 @@ events.addEventListener('skill.rejected', (event) => {
   console.warn(`refused ${event.skillName}: ${event.reason}`, event.rule ?? '');
 });
 
-const tools = createSkillToolbox({
-  provider,
-  session,
+const client = createSkillClient({
+  catalog,
+  loadArtifact: createSkillArtifactLoader({ storage }),
   events,
   correlation: { runId, sessionId },
   admissionPolicy: { denyList: ['deploy-to-production'] },
+  guardrail,
 });
+
+const tools = createSkillClientToolbox(client, { guardrail });
 ```
 
-**`loaded` and `activated` are separate on purpose.** `skill.loaded` fires before the guardrail scan and before the session admits the skill, so a skill that is loaded and then blocked produces `skill.loaded` followed by `skill.rejected` and never `skill.activated`. The pair separates "the provider had it" from "it entered context".
+**`loaded` and `activated` are separate on purpose.** `skill.loaded` fires before the guardrail scan and before admission, so a skill that is loaded and then blocked produces `skill.loaded` followed by `skill.rejected` and never `skill.activated`. The pair separates "the bundle had it" from "it entered context".
 
 **`rejected` and `failed` are mutually exclusive** for one attempt. Rejection is a pre-admission policy outcome for a skill that exists; failure means the skill was not there to admit. One attempt produces at most one of the two, never both.
 
-`skill.rejected` carries a `reason` of `'disabled'`, `'guardrail-blocked'` or `'ownership-policy'`, and on the last of those a `rule` naming which admission rule fired — `'allow-list'` or `'deny-list'`. The rule is an identity, not the policy's contents: a consumer can branch on which rule refused the skill without the event disclosing the configured lists.
+`skill.rejected` carries a `reason` — `'guardrail-blocked'`, `'ownership-policy'`, `'not-in-catalog'`, `'source-untrusted'` and the rest — and on `'ownership-policy'` a `rule` naming which admission rule fired: `'allow-list'` or `'deny-list'`. The rule is an identity, not the policy's contents, so a consumer can branch on which rule refused the skill without the event disclosing the configured lists.
 
 **Deactivating an inactive skill emits nothing.** It is a no-op, and the tool reports it as `deactivated: false`.
 
-**The admission policy is checked before the provider's enabled status,** so a refused skill is indistinguishable from an absent one to the calling model — it cannot probe for the existence of skills it is not allowed to use.
+**The admission policy is checked before anything else, and a refused skill answers exactly as an absent one does.** Not merely checked first: the outcome is identical but for the caller's own echoed name, at the client and through `activate_skill`. Ordering alone is not enough — a check that runs first and then announces which branch it took is still an oracle, and a model that can tell "you may not have this" from "this does not exist" can read the deployment's configuration one refusal at a time. A refused skill is also absent from `offered()`, since a name in the tier-one catalog has already answered the question.
 
 ## Memory and Learning
 
@@ -315,13 +325,13 @@ The self-improvement helpers store proposed changes in durable storage and expos
 - `accept_proposal`
 - `reject_proposal`
 
-Accepting a skill proposal parses its content as `SKILL.md` and saves it through the configured `SkillProvider`. Rejecting a proposal records a content hash so the same content is not proposed again.
+Accepting a skill proposal parses its content as `SKILL.md` and saves it through the configured `SkillWriter`, where the next run's discovery finds it. Rejecting a proposal records a content hash so the same content is not proposed again.
 
 ## Package Structure
 
 ### `@corvidae/skills` (root)
 
-The primary API covering providers, parsing, ingestion, sessions, hooks, tools, proposals, and all public types.
+The primary API covering conformance, artifacts, discovery, clients, storage writes, memory, proposals, and all public types.
 
 ```typescript
 import {
@@ -383,26 +393,16 @@ import {
 
 - **`createSkillClient(options)`**: The run's own view of a catalog revision: what it may activate, what is active, and which tools that narrows to. `attenuate(grant)` returns a child that can reach at most what this one could.
 - **`createSkillClientToolbox(client)`**: `activate_skill`, `deactivate_skill` and `load_skill_resource` over a client, or `undefined` when it has nothing to offer.
-- **`createFilesystemArtifactLoader()`** / **`createStaticArtifactLoader(artifacts)`**: How a client turns a catalog record into bytes. The filesystem loader re-verifies the recorded digest and reports `changed` rather than loading content the catalog never attested to.
+- **`createSkillArtifactLoader({ storage?, filesystem? })`**: How a client turns a catalog record into bytes, routed by the record's source kind. A catalog can mix a host's filesystem roots with a durable store, and one loader cannot serve both — `sourceLocation` means something different for each. Every loader re-verifies the recorded digest and reports `changed` rather than loading content the catalog never attested to.
+- **`createFilesystemArtifactLoader()`** / **`createStorageArtifactLoader(store)`** / **`createStaticArtifactLoader(artifacts)`**: The individual loaders, for a catalog known to be of one kind.
 - **`renderClientCatalog(client)`** / **`renderActiveSkillInstructions(active)`**: The tier-one catalog block and the tier-two instruction block a host injects.
 
-**Session:**
+**Admission and guardrails:**
 
-- **`createSkillSession()`**: Creates a `SkillSession` that tracks active skills and merges their `allowed-tools` across activations. Merging intersects, so each additional active skill can only narrow further.
-
-**Hooks:**
-
-- **`createSkillCatalogHook(options)`**: Returns a `{ prepareStep }` hook. On step 0 its `prepareStep` returns the `<available_skills>` XML string (the caller injects it into the conversation; the hook does not inject it itself). Pass `{ provider, skillPolicy? }`.
-- **`escapeXml(text)`**: Escapes characters that would break the `<available_skills>` XML block.
-
-**Tools:**
-
-- **`createSkillToolbox(options)`**: Returns a plain object of four `Tool` instances—`{ activateSkill, loadSkillResource, deactivateSkill, listSkills }` (the `activate_skill`, `load_skill_resource`, `deactivate_skill`, and `list_skills` tools). It is not an armorer `Toolbox`; spread the tools into `createToolbox([...])` to build one.
-- **`createActivateSkillTool(options)`**: Creates just the `activate_skill` tool.
-- **`createLoadSkillResourceTool(options)`**: Creates just the `load_skill_resource` tool.
-- **`createDeactivateSkillTool(options)`**: Creates just the `deactivate_skill` tool.
-- **`createListSkillsTool(options)`**: Creates just the `list_skills` tool.
-- **`isSkillContent(message)`**: Returns `true` if a message string contains an embedded `<skill_content ...>` marker. Used by context compactors to detect injected skill content. Signature: `isSkillContent(message: string): boolean`.
+- **`refusedByAdmissionPolicy(name, policy)`**: Which rule of a deployment's admission policy refuses a skill, or `undefined`. Deny wins over allow.
+- **`scanSkillResource(content, options)`**: Runs skill content through the shared `armorer` detector pipeline, tagged with `'skill-resource'` provenance. Pass a `guardrail` to `createSkillClient` and `createSkillClientToolbox` rather than calling this directly.
+- **`escapeXml(text)`**: Escapes characters that would otherwise let a skill's own text close the markup around it.
+- **`isSkillContent(message)`**: Returns `true` if a message string contains an embedded `<skill_content ...>` marker. Used by context compactors to detect injected skill content.
 
 **Memory:**
 
@@ -411,7 +411,7 @@ import {
 
 **Proposals:**
 
-- **`createProposalToolbox(options)`**: Returns a plain object of four `Tool` instances—`{ listProposals, viewProposal, acceptProposal, rejectProposal }` (the `list_proposals`, `view_proposal`, `accept_proposal`, and `reject_proposal` tools). Like `createSkillToolbox`, it is not an armorer `Toolbox`; spread the tools into `createToolbox([...])` to build one.
+- **`createProposalToolbox(options)`**: Returns a plain object of four `Tool` instances—`{ listProposals, viewProposal, acceptProposal, rejectProposal }` (the `list_proposals`, `view_proposal`, `accept_proposal`, and `reject_proposal` tools). It is not an armorer `Toolbox`; spread the tools into `createToolbox([...])` to build one.
 - **`createAcceptProposalTool(options)`**, **`createListProposalsTool(options)`**, **`createRejectProposalTool(options)`**, **`createViewProposalTool(options)`**: Create individual proposal tools.
 - **`saveProposal(store, content, options?)`**: Persists a skill proposal to storage.
 - **`acceptProposal(store, id, provider, options?)`**: Parses the proposal as `SKILL.md` and saves it through the provider.
@@ -423,7 +423,7 @@ import {
 
 ### Test utilities
 
-Testing utilities for code that depends on `SkillProvider`. Both require no filesystem or network access, but their methods are async (Promise-returning)—`await` store and provider calls as the examples below do.
+Testing utilities for code that writes skills. Neither requires filesystem or network access, but their methods are async (Promise-returning)—`await` store and writer calls as the examples below do.
 
 ```typescript
 import { createMockKeyValueStore, createMockSkillProvider } from '@corvidae/skills';
@@ -435,7 +435,7 @@ const store = createMockKeyValueStore();
 await store.set('hello', 'world');
 const value = await store.get('hello'); // 'world'
 
-// Mock SkillProvider with full call tracking
+// In-memory SkillWriter with full call tracking
 const provider = createMockSkillProvider([
   parseSkillMarkdown(`---
 name: code-review
@@ -445,21 +445,22 @@ Body here.
 `),
 ]);
 
-const catalog = await provider.listSkills();
-// [{ name: 'code-review', description: 'Review code.' }]
+await provider.saveSkill('incident-response', parseSkillMarkdown(otherSkill));
 
-const skill = await provider.loadSkill('code-review');
-// { metadata: { name: 'code-review', ... }, body: 'Body here.' }
+// What landed, without a read method existing for production to reach for
+provider.written.has('incident-response'); // true
 
 // Inspect every method call for assertions
 const calls = provider.calls;
-// [{ method: 'listSkills', args: [] }, { method: 'loadSkill', args: ['code-review'] }]
+// [{ method: 'saveSkill', args: ['incident-response', { ... }] }]
 ```
+
+A test that needs to read skills back discovers them, the same way production does — point `discoverSkills({ storage })` at a `createMockKeyValueStore()` the writer wrote into.
 
 **Key exports:**
 
 - **`createMockKeyValueStore()`**: Returns a `TextValueStore` backed by Weft's `MemoryStorage`. No `init()` or setup is required, but all `TextValueStore` methods (`get`, `set`, `delete`, `list`, etc.) are async and return Promises—`await` them.
-- **`createMockSkillProvider(initialSkills?)`**: Returns a `SkillProvider` plus a `calls` array. Every method call—`listSkills`, `loadSkill`, `saveSkill`, `deleteSkill`, `listResources`, `loadResource`, `saveResource`, `isEnabled`, `setEnabled`—is logged to `calls` as `{ method, args }`. `loadResource` and `saveResource` carry `Uint8Array`; encode and decode with `TextEncoder`/`TextDecoder` when a test's subject is text.
+- **`createMockSkillProvider(initialSkills?)`**: Returns a `SkillWriter` plus a `calls` array and a `written` map. Every call—`saveSkill`, `deleteSkill`, `saveResource`, `setEnabled`—is logged to `calls` as `{ method, args }`, and `written` exposes what landed. `saveResource` carries `Uint8Array`; encode with `TextEncoder` when a test's subject is text.
 
 ## Development
 

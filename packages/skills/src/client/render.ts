@@ -1,4 +1,4 @@
-import { escapeXml } from '../create-skill-catalog-hook';
+import { escapeXml } from '../xml';
 import type { ActiveSkill } from './activation';
 
 /**

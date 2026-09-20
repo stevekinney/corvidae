@@ -2,7 +2,7 @@ import { createTool } from '@corvidae/armorer';
 import type { TextValueStore } from '@corvidae/weft';
 import { z } from 'zod';
 
-import type { SkillProvider } from '../types';
+import type { SkillWriter } from '../types';
 import {
   acceptProposal,
   type AcceptProposalOptions,
@@ -16,7 +16,7 @@ import {
 
 export interface CreateProposalToolboxOptions {
   storage: TextValueStore;
-  skillProvider: SkillProvider;
+  skillProvider: SkillWriter;
   identityProvider?: IdentityProviderLike;
 }
 
