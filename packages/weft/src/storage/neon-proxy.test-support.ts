@@ -1,8 +1,14 @@
 import type { ServerWebSocket } from 'bun';
 import { createConnection, type Socket } from 'node:net';
 
-/** Carry the real Neon driver's PostgreSQL wire bytes to the local test cluster. */
-export function createNeonTestProxy(postgresPort: number): {
+/**
+ * Carry the real Neon driver's PostgreSQL wire bytes to the test database.
+ *
+ * The endpoint is a parameter rather than a hardcoded loopback address because the
+ * database is not always one this process started: a CI job that runs PostgreSQL as a
+ * service container supplies its host and port through `WEFT_TEST_POSTGRES_URL`.
+ */
+export function createNeonTestProxy(endpoint: { host: string; port: number }): {
   address: string;
   [Symbol.asyncDispose](): Promise<void>;
 } {
@@ -11,7 +17,7 @@ export function createNeonTestProxy(postgresPort: number): {
     hostname: '127.0.0.1',
     port: 0,
     fetch(request, instance) {
-      const socket = createConnection({ host: '127.0.0.1', port: postgresPort });
+      const socket = createConnection({ host: endpoint.host, port: endpoint.port });
       if (instance.upgrade(request, { data: { socket } })) return undefined;
       socket.destroy();
       return new Response('WebSocket connection required', { status: 400 });

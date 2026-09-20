@@ -3,17 +3,114 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-/** Start a disposable real PostgreSQL cluster for wire-protocol and contention tests. */
-export async function createPostgresTestServer(): Promise<{
+import { readEnvironmentVariable } from '../runtime/environment-configuration.ts';
+
+/** A live PostgreSQL the storage suites can talk to, however it was obtained. */
+export type PostgresTestDatabase = {
+  host: string;
   port: number;
   url: string;
   [Symbol.asyncDispose](): Promise<void>;
-}> {
-  const initialize = Bun.which('initdb');
-  const control = Bun.which('pg_ctl');
-  if (!initialize || !control) {
-    throw new Error('PostgreSQL integration tests require initdb and pg_ctl on PATH.');
+};
+
+/** Where a live database comes from on this machine. */
+export type PostgresTestDatabaseSource =
+  | { readonly kind: 'supplied'; readonly url: string }
+  | { readonly kind: 'cluster'; readonly initialize: string; readonly control: string };
+
+/** The `initdb` and `pg_ctl` a disposable cluster needs, each `null` when absent from PATH. */
+export function postgresClientBinaries(): {
+  readonly initialize: string | null;
+  readonly control: string | null;
+} {
+  return { initialize: Bun.which('initdb'), control: Bun.which('pg_ctl') };
+}
+
+/**
+ * Decide where the live suites get a database, from facts rather than from ambient state.
+ *
+ * A supplied URL wins over the client binaries: a runner that hands us a URL is running
+ * the server itself, and spawning a second cluster beside it would test the same wire
+ * protocol against a database nobody asked for. `null` is the honest third answer — not
+ * an error — and the suites that call {@link createPostgresTestServer} gate on it.
+ */
+export function selectPostgresTestDatabase(
+  suppliedUrl: string | undefined,
+  binaries: { readonly initialize: string | null; readonly control: string | null },
+): PostgresTestDatabaseSource | null {
+  if (suppliedUrl !== undefined && suppliedUrl !== '')
+    return { kind: 'supplied', url: suppliedUrl };
+  const { initialize, control } = binaries;
+  if (initialize !== null && control !== null) return { kind: 'cluster', initialize, control };
+  return null;
+}
+
+/**
+ * The database this process can reach, or `null` when it can reach none.
+ *
+ * Three environments run these files and each needs a different answer, so the decision
+ * lives here and the calling suites carry it as `describe.skipIf(!postgresTestDatabase)`:
+ *
+ * - A CI job that runs PostgreSQL as a service container sets `WEFT_TEST_POSTGRES_URL`
+ *   and has no client binaries on PATH. Connect to the URL and run: this is the only
+ *   place the real `pg` wire protocol is exercised, so skipping where a database exists
+ *   would publish an untested adapter.
+ * - A CI job with neither — the hermetic unit sweep — gets `null` and skips. Throwing
+ *   there would fail a job that has no database and never asked for one.
+ * - A developer machine has the binaries and usually no URL, so it still spawns the
+ *   disposable cluster below.
+ *
+ * Read through the registered runtime boundary rather than off `Bun.env`, the same way
+ * `testing/browser-smoke-gate.test-support.ts` reads its own opt-in switch: a test-only
+ * variable does not belong in a production configuration schema, and
+ * `readEnvironmentVariable` is that boundary's sanctioned single-name read. The value is
+ * resolved once at import, which is what `describe.skipIf` needs — a suite is skipped
+ * when it is registered, and nothing inside `beforeAll` can skip it after the fact.
+ */
+export const postgresTestDatabase: PostgresTestDatabaseSource | null = selectPostgresTestDatabase(
+  readEnvironmentVariable('WEFT_TEST_POSTGRES_URL'),
+  postgresClientBinaries(),
+);
+
+/**
+ * Open the live database named by `source`: connect to a supplied URL, or start a
+ * disposable real PostgreSQL cluster for wire-protocol and contention tests.
+ *
+ * Throwing when `source` is `null` is a misuse guard, not an environment behaviour: a
+ * caller reaches it only by skipping the `postgresTestDatabase` gate, which is the bug
+ * the message names.
+ */
+export async function createPostgresTestServer(
+  source: PostgresTestDatabaseSource | null = postgresTestDatabase,
+): Promise<PostgresTestDatabase> {
+  if (source === null) {
+    throw new Error(
+      'No PostgreSQL is available: set WEFT_TEST_POSTGRES_URL, or put initdb and pg_ctl on PATH. Gate the suite on `postgresTestDatabase` so it skips instead of reaching here.',
+    );
   }
+  if (source.kind === 'supplied') return suppliedPostgresDatabase(source.url);
+  return startDisposablePostgres(source.initialize, source.control);
+}
+
+/**
+ * Describe a server someone else runs. Disposal is deliberately a no-op: the runner that
+ * supplied the URL owns the server's lifetime, and both live suites dispose what they
+ * open, so stopping it here would pull the database out from under the next file.
+ */
+function suppliedPostgresDatabase(url: string): PostgresTestDatabase {
+  const { hostname, port } = new URL(url);
+  return {
+    host: hostname,
+    port: port === '' ? 5432 : Number(port),
+    url,
+    [Symbol.asyncDispose]: () => Promise.resolve(),
+  };
+}
+
+async function startDisposablePostgres(
+  initialize: string,
+  control: string,
+): Promise<PostgresTestDatabase> {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-postgres-'));
   const data = join(directory, 'data');
   const log = join(directory, 'postgres.log');
@@ -45,6 +142,7 @@ export async function createPostgresTestServer(): Promise<{
     ]);
     started = true;
     return {
+      host: '127.0.0.1',
       port,
       url: `postgresql://corvidae_test@127.0.0.1:${port}/postgres`,
       async [Symbol.asyncDispose]() {
