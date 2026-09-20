@@ -355,7 +355,7 @@ A loader that throws or rejects surfaces `AsyncDefinitionLoadError` (the same er
 
 The full-control factory behind `createAgent`, `createSessionHandle`, and bureau-owned agents alike—documented, public API, not an internal implementation detail. It accepts the complete `RunOptions` bag directly: an existing `Conversation` instance (not just a `ConversationHistory`), a pre-built `Toolbox`, hooks, and durable routing (engine + checkpoint store + run id). `bureau` and `evaluation` both depend on it as first-party consumers.
 
-Most callers should reach for `createAgent({...}).run(...)` instead—it wraps `createActiveRun` in the higher-level `AgentRun` handle and covers the common cases. Reach for `createActiveRun` directly when you need something `createAgent` doesn't expose: an already-live `Conversation` instance, durable routing, hooks (`prepareStep`, `onStep`, `validateResponse`, …), structured output via `output`, or a pre-built emitter to bind tool dispatches to.
+Most callers should reach for `createAgent({...}).run(...)` instead—it wraps `createActiveRun` in the higher-level `AgentRun` handle and covers the common cases. Reach for `createActiveRun` directly when you need something `createAgent` doesn't expose: an already-live `Conversation` instance, durable routing, a `hooks` registry for that one run, structured output via `output`, or a pre-built emitter to bind tool dispatches to.
 
 ```typescript
 import { createActiveRun, stopWhen } from '@corvidae/operative';
@@ -384,21 +384,16 @@ Like `createAgent`, a plain `ConversationHistory` passed here is SNAPSHOTTED on 
 | `conversation` | `Conversation \| ConversationHistory` | Required. Seed conversation. |
 | `stopWhen` | `StopCondition \| StopCondition[]` | Loop exit predicates. |
 | `maximumSteps` | `number` | Hard step cap (default: `25`). |
-| `prepareStep` | `PrepareStepHook \| PrepareStepHook[]` | Runs before each generate call. |
-| `beforeToolExecution` | `BeforeToolExecutionHook \| BeforeToolExecutionHook[]` | Modifies tool call list before execution. |
-| `afterToolExecution` | `AfterToolExecutionHook \| AfterToolExecutionHook[]` | Inspects/modifies tool results. |
-| `onStep` | `OnStepHook \| OnStepHook[]` | Called after each step completes. |
 | `retry` | `RetryOptions` | Transient generate failure retry policy. |
 | `backpressure` | `BackpressureStrategy` | Delay strategy applied before each step. |
-| `validateResponse` | `ValidateResponseHook \| ValidateResponseHook[]` | Post-generate response validation. |
-| `validateToolResult` | `ValidateToolResultHook \| ValidateToolResultHook[]` | Post-execute result validation. |
-| `selectTools` | `SelectToolsHook \| SelectToolsHook[]` | Per-step dynamic tool filtering. |
 | `onElicitation` | `OnElicitation` | Human-in-the-loop input handler. |
 | `contextManagement` | `ContextManagementOptions` | Automatic context compaction. |
 | `output` | `ZodType` | Structured output schema (AB-18) with retry. MUST NOT declare a field intended to carry binary or media content—a generated asset belongs in `RunResult.parts` as a managed-asset reference, never inlined as base64. |
 | `schemaRetries` | `number` | Retry attempts on schema validation failure. |
 | `onMaximumSteps` | `(context) => Promise<string \| void>` | Called when the loop exits on `maximumSteps`—a returned string replaces `content`. |
-| `hooks` | `HookRegistry<OperativeHookMap>` | Typed priority-ordered hook registry. |
+| `hooks` | `HookRegistry<OperativeHookMap>` | The run's hook plan. The ONLY hook surface — COR-1268 removed the seven parallel array fields (`prepareStep`, `beforeToolExecution`, `afterToolExecution`, `onStep`, `validateResponse`, `validateToolResult`, `selectTools`), because two surfaces meant ordering depended on which one a caller reached for and everything built on registration identity was blind to the arrays. |
+| `sessionId` | `string` | The session this run belongs to, when it belongs to one. Read only to stamp the run's hook-plan observations. |
+| `childCorrelation` | `HookObservationCorrelation` | Set by `dispatchChildRun` when this run is somebody's child, so its hook observations name the parent-child pair. Correlation data, never a hook surface. |
 | `signal` | `AbortSignal` | External cancellation signal. |
 | `runId` | `string` | Stable run identity, used to stamp curated `tool.*` bubble events. Optional for a run with no `steering` (only supplied when the run has one, e.g. session-owned runs)—**required whenever `steering` is set** (AB-236): `RunOptions` is a discriminated pair on `runId`/`steering`, not two independently-optional fields, so a steering-enabled `RunOptions` literal with no `runId` is a compile error, not a silently-dropped `steering.applied` event. |
 | `steering` | `SteeringGate` | AB-67 runtime steering: `{ sessionId, getDesiredState(), awaitResume(), getAppliedFloor?() }`, consulted at the entry of every step. `paused: true` blocks the step until `awaitResume()` resolves or `signal` fires. `sessionId` (AB-221) stamps `steering.applied`'s `sessionId` field. `getAppliedFloor?()` (AB-199)—optional, the highest `configVersion` the gate has already observed applied by ANY run on the session—seeds a brand-new run's cross-run dedupe cursor (`executeLoop`/the durable driver call it once, at run start only) so a `configVersion` a prior run already applied is not re-fired as `steering.applied`; a gate that omits it seeds every fresh run at 0, unchanged from before AB-199. Optional—omit for unsteered runs; setting it requires `runId` (see above). |
@@ -663,19 +658,21 @@ sessions.events.addEventListener('session.outbox-appended', () => {
 
 ### Hooks
 
-Hooks plug into the loop lifecycle. Register them on `RunOptions.hooks` using a `HookRegistry`, or use the simpler array fields (`prepareStep`, `onStep`, etc.). A registry and the arrays can coexist on one run — the arrays run first for a given hook point, then the registry.
+Hooks plug into the loop lifecycle. Register them on `RunOptions.hooks`, which is a `HookRegistry` and the only hook surface a run has. The seven parallel array fields are gone (COR-1268): two surfaces meant a hook point's ordering depended on which one a caller reached for, and an array registration carried no identity, so per-registration ids, priorities, error policy, tier provenance and the `hook-plan.*` events below were all blind to half the hooks on a run.
 
-Prefer a registry when you want any of what only it carries: a stable `id` per registration, explicit `priority` ordering, per-registration error policy, or the `hook-plan.*` events below. Bureau composes one per run for exactly those reasons.
+An agent can carry a registry of its own — `createAgent({ hooks })`, surfaced as the readonly `RunnableAgent.hooks` — and Bureau composes one per run. Those compose into a single immutable plan per run; see [Hierarchical hook composition](../../documentation/hierarchical-hook-composition.md) for the tier ordering, the authority rules and what an inspector can read back.
 
 ```typescript
 import {
   composeHooks,
   createActiveRun,
+  everyNSteps,
+  HookRegistry,
+  type OperativeHookMap,
   onlyOnStep,
   runOnce,
-  withTimeout,
-  everyNSteps,
   stopWhen,
+  withTimeout,
 } from '@corvidae/operative';
 
 // Compose two prepare-step hooks into one
@@ -688,22 +685,36 @@ const combined = composeHooks(
   }),
 );
 
+const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
+hooks.on('prepareStep', combined, { id: 'app:step-0-context', replay: 'safe' });
+hooks.on(
+  'prepareStep',
+  everyNSteps(3, async (ctx) => {
+    /* every 3rd step */
+  }),
+  { id: 'app:every-third-step', replay: 'safe' },
+);
+hooks.on(
+  'onStep',
+  runOnce(async (step) => {
+    console.log('First step only:', step.content);
+  }),
+  { id: 'app:first-step-log', replay: 'safe' },
+);
+
 const activeRun = createActiveRun({
   generate,
   toolbox,
   conversation,
   stopWhen: stopWhen.noToolCalls(),
-  prepareStep: [
-    combined,
-    everyNSteps(3, async (ctx) => {
-      /* every 3rd step */
-    }),
-  ],
-  onStep: runOnce(async (step) => {
-    console.log('First step only:', step.content);
-  }),
+  hooks,
 });
+
+// Which sources applied, and in what order — redacted, with no handler in it.
+console.log(activeRun.describeHookPlan());
 ```
+
+`id` names a registration so an observation can be correlated back to it; without one the registry generates `<hookName>#<n>`. `replay` classifies the registration for durable recovery — a crashed in-flight step re-runs its hooks, so anything writing outside the run should be `effectful` AND idempotent. Omitting `replay` falls back to `effectful` and is reportable through `HookRegistryOptions.onUnclassifiedReplay`, which exists precisely to separate a considered choice from an unconsidered default.
 
 **Hook composition utilities:**
 
@@ -717,7 +728,7 @@ const activeRun = createActiveRun({
 
 ### Hook plan events
 
-A run emits four events describing the `HookRegistry` it was dispatched with, so a consumer can see which hooks were in force and what each of them did without holding the registry itself. They fire only for a run given a registry; a run using only the legacy hook arrays emits none, because an array registration has no identity to report.
+A run emits four events describing the `HookRegistry` it was dispatched with, so a consumer can see which hooks were in force and what each of them did without holding the registry itself. They fire only for a run given a registry; a run with no `hooks` emits none.
 
 | Event | Fires | Carries |
 | --- | --- | --- |
