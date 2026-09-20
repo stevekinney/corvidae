@@ -144,6 +144,8 @@ Create a separate client for each run or conversation whose activations should b
 
 Skill text is executable guidance for an agent, not an authorization grant. The host remains responsible for which tools exist, what those tools may do, and whether a principal can accept a proposal. Signature or digest verification establishes the fetched bytes' provenance; it does not make their instructions appropriate for every run.
 
+That sequence — discover, build a client, render the catalog, activate, read a resource — is the primary consumer workflow, and it is source-verified rather than illustrative: `test/client/portable-bundle-round-trip.test.ts` drives exactly it against a real bundle on disk, through compaction and recovery, asserting the same artifact digest and the same instructions come back.
+
 ### Delegation attenuates
 
 `client.attenuate({ skills, tools })` returns a child client that can reach **at most** what the parent could. Naming a skill the parent has no access to grants nothing, tool requests are intersected with the skill's own `allowed-tools` rather than unioned, and a grandchild narrows further without ever widening back. A refusal outside the grant is typed `not-delegated` and names nothing the caller was not offered, so a rejected guess cannot be used to enumerate what exists.
@@ -395,7 +397,10 @@ import {
 - **`createSkillClientToolbox(client)`**: `activate_skill`, `deactivate_skill` and `load_skill_resource` over a client, or `undefined` when it has nothing to offer.
 - **`createSkillArtifactLoader({ storage?, filesystem? })`**: How a client turns a catalog record into bytes, routed by the record's source kind. A catalog can mix a host's filesystem roots with a durable store, and one loader cannot serve both — `sourceLocation` means something different for each. Every loader re-verifies the recorded digest and reports `changed` rather than loading content the catalog never attested to.
 - **`createFilesystemArtifactLoader()`** / **`createStorageArtifactLoader(store)`** / **`createStaticArtifactLoader(artifacts)`**: The individual loaders, for a catalog known to be of one kind.
-- **`renderClientCatalog(client)`** / **`renderActiveSkillInstructions(active)`**: The tier-one catalog block and the tier-two instruction block a host injects.
+- **`renderClientCatalog(client)`** / **`renderActiveSkillInstructions(active)`**: The tier-one catalog block and the tier-two instruction block a host injects. Both return `undefined` rather than an empty string when there is nothing to render, so a host cannot inject a blank block.
+- **`renderSkillCatalog(offered)`**: The same tier-one block over a plain `{ name, description }` list, for a host that is not building it from a client.
+- **`isRenderedSkillContent(message)`**: Whether a message carries a rendered `<skill_content>` block. A compaction strategy uses this to recognize injected instructions; it does not need to preserve them, because the client re-renders them every step.
+- **`readInstructions(artifact)`** / **`readResource(artifact, path)`**: Reads over an admitted artifact, for a caller holding one directly rather than through a client.
 
 **Admission and guardrails:**
 
@@ -408,6 +413,7 @@ import {
 
 - **`createSkillMemory(memory, skillName)`**: Wraps a `MemoryLike` to namespace all reads and writes under `skill:{skillName}`.
 - **`createSkillMemoryHooks(options)`**: Returns a `{ prepareStep, onStep }` hook pair that recalls and stores skill-specific memory.
+- **`reflectionSweep(options)`**: Reviews a run's transcript for candidate skill improvements and writes them as proposals. Proposes only — nothing it produces reaches a model until a principal accepts it.
 
 **Proposals:**
 
