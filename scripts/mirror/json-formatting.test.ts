@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { check, resolveConfig } from 'prettier';
 
-import { serializeJson } from './json-formatting.ts';
+import { formatEmittedFile, serializeJson } from './json-formatting.ts';
 import { planManifests } from './manifests.ts';
+import { planSource } from './source.ts';
 import { configurationWorkspace, planTypeScriptConfiguration } from './typescript-configuration.ts';
 
 const corvidaeRoot = join(import.meta.dir, '..', '..');
@@ -151,6 +152,132 @@ describe('an emitted document with a short array', () => {
         );
       },
     );
+  });
+});
+
+/** A markdown table, which is where corvidae's `proseWrap` override and the target's part ways. */
+const markdownTable = [
+  '# Messages',
+  '',
+  '| Field | Type | Description |',
+  '| --- | --- | --- |',
+  '| `type` | `"register"` | Message discriminator. |',
+  '',
+].join('\n');
+
+const targetMarkdownConfiguration = JSON.stringify({ printWidth: 100, tabWidth: 2 });
+
+describe('an emitted file the target’s prettier governs', () => {
+  /**
+   * The second instance of the same defect, found in this change before it reached a sync.
+   *
+   * Corvidae's `*.md` override sets `proseWrap: "never"`, which prints a table compact; the weft
+   * target's sets only `tabWidth`, so `proseWrap` falls to `preserve` and prettier pads the
+   * columns. Emitting corvidae's bytes put two documents into the target that its own
+   * `format:check` refuses — the JSON defect one file class over, which is why the rule asks
+   * whether prettier governs the path rather than what kind of file it is.
+   */
+  test('is formatted, so a markdown table is padded the way the target pads it', async () => {
+    await withClone({ '.prettierrc.json': targetMarkdownConfiguration }, async (clone) => {
+      const emitted = await formatEmittedFile(
+        new TextEncoder().encode(markdownTable),
+        clone,
+        'documentation/reference/protocol.md',
+      );
+      const text = new TextDecoder().decode(emitted);
+      expect(text).toContain('| Field  | Type         | Description            |');
+      expect(await isPrettierClean(text, join(clone, 'documentation/reference/protocol.md'))).toBe(
+        true,
+      );
+    });
+  });
+
+  /**
+   * `plugins` matters more under the general rule than it did under the JSON one, which is the
+   * reason to keep asserting it: the weft target declares `prettier-plugin-organize-imports`, and
+   * the rule now reaches the TypeScript that plugin acts on. Resolving it would import a plugin
+   * into this process against a clone that has no `node_modules` until the sync's last step.
+   */
+  test('formats TypeScript without resolving the plugin the target declares', async () => {
+    await withClone(
+      {
+        '.prettierrc.json': JSON.stringify({
+          printWidth: 100,
+          singleQuote: true,
+          plugins: ['prettier-plugin-nothing-installs-this'],
+        }),
+      },
+      async (clone) => {
+        const emitted = await formatEmittedFile(
+          new TextEncoder().encode('export const value = "quoted";\n'),
+          clone,
+          'src/index.ts',
+        );
+        expect(new TextDecoder().decode(emitted)).toBe("export const value = 'quoted';\n");
+      },
+    );
+  });
+
+  test('is left byte-identical when the target ignores it', async () => {
+    await withClone(
+      {
+        '.prettierrc.json': targetMarkdownConfiguration,
+        '.prettierignore': 'documentation/reference/protocol.md\n',
+      },
+      async (clone) => {
+        const contents = new TextEncoder().encode(markdownTable);
+        const emitted = await formatEmittedFile(
+          contents,
+          clone,
+          'documentation/reference/protocol.md',
+        );
+        expect(new TextDecoder().decode(emitted)).toBe(markdownTable);
+      },
+    );
+  });
+
+  /**
+   * The byte path is the default and stays that way. One emitted workspace carries a PNG baseline
+   * fixture, and prettier infers no parser for it, so the question the rule asks answers itself.
+   */
+  test('copies bytes for a file prettier does not govern', async () => {
+    await withClone({ '.prettierrc.json': targetMarkdownConfiguration }, async (clone) => {
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff]);
+      const emitted = await formatEmittedFile(png, clone, 'src/__fixtures__/baseline.png');
+      expect([...emitted]).toEqual([...png]);
+    });
+  });
+
+  test('reaches an emitted document through the source half, not only the helper', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-json-source-'));
+    try {
+      await Bun.write(join(root, 'packages/weft/src/index.ts'), 'export const weft = true;\n');
+      await Bun.write(join(root, 'packages/weft/documentation/protocol.md'), markdownTable);
+      await withClone(
+        { 'packages/weft/.prettierrc.json': targetMarkdownConfiguration },
+        async (clone) => {
+          const plan = await planSource(
+            root,
+            [
+              {
+                workspace: '@corvidae/example',
+                corvidaeDirectory: 'packages/weft',
+                targetDirectory: 'packages/weft',
+                entry: { build: { requiredInputs: ['documentation/protocol.md'] } },
+              } as unknown as Parameters<typeof planSource>[1][number],
+            ],
+            new Map(),
+            clone,
+          );
+          const emitted = plan.files['packages/weft/documentation/protocol.md'];
+          expect(emitted).toBeDefined();
+          const text = new TextDecoder().decode(emitted);
+          expect(text).toContain('| Field  | Type         | Description            |');
+        },
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

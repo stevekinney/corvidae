@@ -308,6 +308,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     options.corvidaeRoot,
     emittedWorkspaces,
     manifestPlan.publicNames,
+    options.targetDirectory,
   );
   for (const entry of privateWorkspaces) {
     entry.emitsTypeScript = source.typeScriptWorkspaces.includes(entry.workspace);

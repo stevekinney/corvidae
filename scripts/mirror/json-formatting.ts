@@ -1,5 +1,86 @@
-import { join } from 'node:path';
-import { format, resolveConfig } from 'prettier';
+import { dirname, join, relative, sep } from 'node:path';
+import { format, getFileInfo, resolveConfig } from 'prettier';
+
+/**
+ * Format emitted text the way the target's prettier would, or hand it back unchanged.
+ *
+ * Shared by the two callers below, which differ only in what they start from: a document that
+ * has to be stringified first, or bytes already read off disk. Both ask the same question of the
+ * same destination path, and the narrowings documented on `serializeJson` — resolution from the
+ * destination, `plugins` dropped, `editorconfig` left off, no configuration meaning no change —
+ * are implemented here once and apply to both.
+ */
+async function formatForDestination(text: string, destination: string): Promise<string> {
+  const resolved = await resolveConfig(destination);
+  if (resolved === null) return text;
+  return format(text, { ...resolved, plugins: [], filepath: destination });
+}
+
+/**
+ * Every `.prettierignore` between the clone root and the file, nearest last.
+ *
+ * Prettier reads an ignore file relative to where it is invoked, and a target can invoke it
+ * anywhere: the weft target's `format:check` runs from `packages/weft` and reads the ignore file
+ * beside its manifest, not one at its repository root. Collecting the chain asks about every
+ * ignore file that could govern the path rather than guessing which directory the target's
+ * script runs in, and prettier resolves each file's patterns against its own directory.
+ */
+async function ignoreFilesFor(targetDirectory: string, destination: string): Promise<string[]> {
+  const found: string[] = [];
+  let directory = dirname(destination);
+  for (;;) {
+    const candidate = join(directory, '.prettierignore');
+    if (await Bun.file(candidate).exists()) found.unshift(candidate);
+    if (directory === targetDirectory) break;
+    const parent = dirname(directory);
+    if (parent === directory || relative(targetDirectory, parent).startsWith(`..${sep}`)) break;
+    directory = parent;
+  }
+  return found;
+}
+
+/**
+ * An emitted source file's bytes, formatted when the target's prettier governs the path.
+ *
+ * The source half copies bytes, which is why one workspace's PNG baseline fixture survives the
+ * trip, and that default is unchanged: this only intercepts a path prettier claims. Governed
+ * means prettier infers a parser for it and no `.prettierignore` between the clone root and the
+ * file excludes it — the weft target ignores `weft.generated.d.ts` precisely because a codegen
+ * fixture has to stay byte-stable, and an emitted copy of it must be left alone for the same
+ * reason its own copy is.
+ *
+ * The general rule rather than a markdown-shaped one, because the defect is not about markdown.
+ * Corvidae's `*.md` override sets `proseWrap: "never"` and the weft target's does not, so
+ * prettier pads the tables in two emitted documents that corvidae prints compact, and the target
+ * refuses them — the same divergence that expanded a JSON array, one file class over. The two
+ * repositories agree about TypeScript today and nothing holds them there, so the question asked
+ * here is whether the target's formatter governs the file, not what kind of file it is.
+ *
+ * Measured before it shipped: of 1,825 emitted files inside the weft target's `format:check`
+ * glob, three were unclean under the target's own configuration, one of those ignored by it, and
+ * the rule changes exactly the two documents that remain.
+ */
+export async function formatEmittedFile(
+  contents: Uint8Array,
+  targetDirectory: string | undefined,
+  path: string,
+): Promise<Uint8Array> {
+  if (targetDirectory === undefined) return contents;
+  const destination = join(targetDirectory, path);
+  // `plugins: []` here for the same reason it is passed to `format` below, and it is easy to
+  // miss: `getFileInfo` resolves the target's configuration to infer a parser, and resolving it
+  // imports the plugins it names. Without this, the governance question alone throws
+  // `ERR_MODULE_NOT_FOUND` on a plugin corvidae lacks, before any formatting is attempted.
+  const info = await getFileInfo(destination, {
+    ignorePath: await ignoreFilesFor(targetDirectory, destination),
+    plugins: [],
+  });
+  if (info.ignored || info.inferredParser === null) return contents;
+  const text = new TextDecoder().decode(contents);
+  const formatted = await formatForDestination(text, destination);
+  if (formatted === text) return contents;
+  return new TextEncoder().encode(formatted);
+}
 
 /**
  * Serialize an emitted JSON document the way the *target's* prettier would write it.
@@ -55,8 +136,5 @@ export async function serializeJson(
 ): Promise<string> {
   const text = `${JSON.stringify(document, undefined, 2)}\n`;
   if (targetDirectory === undefined) return text;
-  const destination = join(targetDirectory, path);
-  const resolved = await resolveConfig(destination);
-  if (resolved === null) return text;
-  return format(text, { ...resolved, plugins: [], filepath: destination });
+  return formatForDestination(text, join(targetDirectory, path));
 }

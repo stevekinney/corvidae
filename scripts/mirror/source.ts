@@ -2,6 +2,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
 import { rewriteEmittedSource } from './internal-names.ts';
+import { formatEmittedFile } from './json-formatting.ts';
 import type { PackageSurfaceEntry } from './package-surface.ts';
 import { isTypeScriptConfiguration } from './source-escapes.ts';
 
@@ -347,13 +348,14 @@ async function readSourceTree(
   workspace: EmittedWorkspace,
   plan: SourcePlan,
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory: string | undefined,
 ): Promise<boolean> {
   const root = join(corvidaeRoot, workspace.corvidaeDirectory, sourceTree);
   let carriesTypeScript = false;
   for (const { absolute, relative: path } of await walkSourceFiles(root)) {
     if (isTypeScriptConfiguration(path)) continue;
     const target = `${workspace.targetDirectory}/${sourceTree}/${path}`;
-    await readInto(plan, absolute, target, publicNames);
+    await readInto(plan, absolute, target, publicNames, targetDirectory);
     if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
   }
   return carriesTypeScript;
@@ -375,9 +377,13 @@ async function readInto(
   absolute: string,
   path: string,
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory: string | undefined,
 ): Promise<void> {
   const contents = new Uint8Array(await Bun.file(absolute).arrayBuffer());
-  plan.files[path] = rewriteEmittedSource(contents, path, publicNames);
+  const rewritten = rewriteEmittedSource(contents, path, publicNames);
+  // After the rewrite, never before it: what ships is the rewritten text, so that is what the
+  // target's formatter has to agree with.
+  plan.files[path] = await formatEmittedFile(rewritten, targetDirectory, path);
   const metadata = await stat(absolute);
   if ((metadata.mode & 0o111) !== 0) plan.executable.push(path);
 }
@@ -395,6 +401,7 @@ async function readAdditionalSourceRoots(
   workspace: EmittedWorkspace,
   plan: SourcePlan,
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory: string | undefined,
 ): Promise<boolean> {
   let carriesTypeScript = false;
   for (const declared of additionalSourceRoots[workspace.workspace] ?? []) {
@@ -405,7 +412,13 @@ async function readAdditionalSourceRoots(
           `${workspace.workspace} declares ${path} as source beyond its ${sourceTree}/ tree, but corvidae has no file there. Either restore it or remove the declaration from additionalSourceRoots in source.ts.`,
         );
       }
-      await readInto(plan, absolute, `${workspace.targetDirectory}/${path}`, publicNames);
+      await readInto(
+        plan,
+        absolute,
+        `${workspace.targetDirectory}/${path}`,
+        publicNames,
+        targetDirectory,
+      );
       if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
     }
   }
@@ -418,12 +431,19 @@ async function readDeclaredBuildInputs(
   workspace: EmittedWorkspace,
   plan: SourcePlan,
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory: string | undefined,
 ): Promise<void> {
   for (const input of workspace.entry?.build.requiredInputs ?? []) {
     const absolute = join(corvidaeRoot, workspace.corvidaeDirectory, input);
     const file = Bun.file(absolute);
     if (!(await file.exists())) continue;
-    await readInto(plan, absolute, `${workspace.targetDirectory}/${input}`, publicNames);
+    await readInto(
+      plan,
+      absolute,
+      `${workspace.targetDirectory}/${input}`,
+      publicNames,
+      targetDirectory,
+    );
   }
 }
 
@@ -437,6 +457,7 @@ export async function planSource(
   corvidaeRoot: string,
   emitted: readonly EmittedWorkspace[],
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory?: string,
 ): Promise<SourcePlan> {
   const plan: SourcePlan = {
     files: {},
@@ -446,10 +467,22 @@ export async function planSource(
   };
   for (const workspace of emitted) {
     plan.ownedPrefixes.push(`${workspace.targetDirectory}/${sourceTree}`);
-    const inTree = await readSourceTree(corvidaeRoot, workspace, plan, publicNames);
-    const declared = await readAdditionalSourceRoots(corvidaeRoot, workspace, plan, publicNames);
+    const inTree = await readSourceTree(
+      corvidaeRoot,
+      workspace,
+      plan,
+      publicNames,
+      targetDirectory,
+    );
+    const declared = await readAdditionalSourceRoots(
+      corvidaeRoot,
+      workspace,
+      plan,
+      publicNames,
+      targetDirectory,
+    );
     if (inTree || declared) plan.typeScriptWorkspaces.push(workspace.workspace);
-    await readDeclaredBuildInputs(corvidaeRoot, workspace, plan, publicNames);
+    await readDeclaredBuildInputs(corvidaeRoot, workspace, plan, publicNames, targetDirectory);
   }
   plan.ownedPrefixes.sort();
   plan.executable.sort();
