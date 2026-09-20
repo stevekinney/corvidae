@@ -13,15 +13,14 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * at `matchCount === 0`, where that range is otherwise empty)—and
    * because that effect reads `activeIndex` too, it clamps just as
    * immediately if a host assigns an out-of-range `activeIndex` on its
-   * own, not only when `matchCount` itself changes. `Infinity`/`-Infinity`
-   * are clamped normally (to the maximum/`0`); `NaN` is the one exception
-   * the clamp (`Math.min(Math.max(…))`) passes through unchanged rather
-   * than normalizing. A parent binding this prop should expect it to be
-   * overwritten in every case except an assigned `NaN`, not treat it as a
-   * preserved selection, and should not assign `NaN` itself. This whole
-   * clamp assumes a finite, non-negative integer `matchCount`—see that
-   * prop for what an invalid one does to `activeIndex` instead. Defaults
-   * to `0`.
+   * own, not only when `matchCount` itself changes. An assigned
+   * `Infinity`/`-Infinity` is clamped normally to the maximum/`0`; a
+   * directly assigned `NaN` is the one value the clamp
+   * (`Math.min(Math.max(…))`) passes through unchanged. A parent binding
+   * this prop should expect it to be overwritten in every case except an
+   * assigned `NaN`, not treat it as a preserved selection, and should not
+   * assign `NaN` itself—but see `matchCount` for how *its* value, not
+   * `activeIndex`'s, being invalid changes this picture. Defaults to `0`.
    * @default 0
    */
   activeIndex?: number;
@@ -31,10 +30,14 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * whenever the user starts a new search, so bind it rather than mirror
    * `onQueryChange` manually to stay in sync with that reset. The
    * `activeIndex` clamp assumes this is a finite, non-negative integer
-   * when not `null`; an invalid value (`NaN`, negative, or fractional)
-   * propagates into `activeIndex` rather than being normalized—for
-   * example `matchCount={NaN}` overwrites even a finite `activeIndex`
-   * with `NaN`. Defaults to `null`.
+   * when not `null`, and an invalid value doesn't fail uniformly: a
+   * negative or fractional `matchCount` (e.g. `-1` or `0.5`) still
+   * normalizes a finite `activeIndex` to `0`, since `Math.max(0,
+   * matchCount - 1)` floors there too; `NaN` instead propagates,
+   * overwriting even a finite `activeIndex` with `NaN`; and `Infinity`
+   * effectively disables the clamp's upper bound, so an out-of-range
+   * `activeIndex` passes through unclamped rather than being normalized.
+   * Defaults to `null`.
    * @default null
    */
   matchCount?: number | null;

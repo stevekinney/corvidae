@@ -23,7 +23,7 @@ PolicyLock explains why a setting is managed, names the policy source when avail
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `id` | `string` | yes | — | Stable id for the lock explanation. |
 | `reason` | `string` | yes | — | Required explanation of why the setting is managed. |
-| `scope` | `string` | no | — | Policy scope, rendered as a Badge. |
+| `scope` | `string` | no | — | Policy scope, rendered as a Badge when non-empty—`scope=""` renders nothing, the same as omitted (`{#if scope}`). |
 | `source` | `string` | no | — | Name of the policy source, when the host can name it. |
 
 <!-- generated:props:end -->

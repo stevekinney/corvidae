@@ -6,7 +6,7 @@ export interface PolicyLockSchemaProps {
   reason: string;
   /** Name of the policy source, when the host can name it. */
   source?: string;
-  /** Policy scope, rendered as a Badge. */
+  /** Policy scope, rendered as a Badge when non-empty—`scope=""` renders nothing, the same as omitted (`{#if scope}`). */
   scope?: string;
   /** Additional class merged with the component's root class. */
   class?: string;
@@ -18,7 +18,7 @@ export type PolicyLockProps = Omit<HTMLAttributes<HTMLSpanElement>, 'children' |
   reason: string;
   /** Name of the policy source, when the host can name it. */
   source?: string;
-  /** Policy scope, rendered as a Badge. */
+  /** Policy scope, rendered as a Badge when non-empty—`scope=""` renders nothing, the same as omitted (`{#if scope}`). */
   scope?: string;
   /** Additional class merged with the component's root class. */
   class?: string;

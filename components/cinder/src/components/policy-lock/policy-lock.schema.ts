@@ -18,7 +18,8 @@ const schema = {
     },
     scope: {
       type: 'string',
-      description: 'Policy scope, rendered as a Badge.',
+      description:
+        'Policy scope, rendered as a Badge when non-empty—`scope=""` renders nothing, the same as omitted (`{#if scope}`).',
     },
     class: {
       type: 'string',
