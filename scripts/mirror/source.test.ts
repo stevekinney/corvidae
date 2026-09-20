@@ -3,12 +3,15 @@ import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { committedPlans } from './committed-plans.ts';
 import {
+  additionalSourceRoots,
   assertSingleOwner,
   collectPrunablePaths,
   isSourceFile,
   planSource,
   SourceEmissionError,
+  validationInputs,
 } from './source.ts';
 import { planSurface } from './surface.ts';
 import { loadTargetOwnedPolicy, writeTransformOutput } from './target-owned.ts';
@@ -48,6 +51,77 @@ const editorWorkspace = {
   corvidaeDirectory: 'components/editor',
   targetDirectory: 'packages/editor',
 } as const;
+
+/**
+ * Every path `@corvidae/weft` declares, from both tables.
+ *
+ * Built from the tables rather than written out because a declared file corvidae does not carry
+ * is a refusal: a fixture that hard-codes the list has to be edited every time an entry is added,
+ * which it twice was, and the edit is noise in a test about something else.
+ */
+const weftDeclarations: readonly string[] = [
+  ...(additionalSourceRoots['@corvidae/weft'] ?? []).flatMap((cluster) => cluster.paths),
+  ...(validationInputs['@corvidae/weft'] ?? []).flatMap((cluster) => cluster.paths),
+];
+
+/** Those declarations as fixture files, minus whichever the caller wants missing. */
+function weftDeclarationFixture(omitted?: string): Record<string, string> {
+  return Object.fromEntries(
+    weftDeclarations
+      .filter((path) => path !== omitted)
+      .map((path) => [`packages/weft/${path}`, `// ${path}\n`]),
+  );
+}
+
+describe('the files that check a workspace’s emitted source', () => {
+  const declared = (validationInputs['@corvidae/weft'] ?? []).flatMap((cluster) => cluster.paths);
+
+  test('every declared path is emitted, all twenty-six of them', () => {
+    // Against the real tree rather than a fixture, because the thing that can go wrong is a path
+    // that no longer matches what corvidae carries, and a fixture would restate the table's own
+    // strings back to itself.
+    const { plan } = committedPlans.weft;
+    const missing = declared.filter((path) => plan.files[`packages/weft/${path}`] === undefined);
+    expect(missing).toEqual([]);
+    expect(declared.length).toBe(26);
+    // The gate corvidae rejected. Nothing prunes, so the target keeps its copy until a
+    // target-side edit removes it; emitting corvidae's non-existent one is not the answer.
+    expect(declared).not.toContain('scripts/check-catalog-drift.ts');
+  });
+
+  test('the generator family goes as a set, since its entry point imports the rest', () => {
+    const family = declared.filter((path) => path.startsWith('scripts/operation-client-'));
+    expect(family.length).toBe(8);
+    expect(declared).toContain('scripts/generate-operation-client.ts');
+  });
+
+  test('a declared check corvidae no longer carries is a refusal, not a silent skip', async () => {
+    const omitted = 'scripts/check-lint-disables.ts';
+    await withTree(
+      {
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        ...weftDeclarationFixture(omitted),
+      },
+      async (root) => {
+        const plan = planSource(
+          root,
+          [
+            {
+              workspace: '@corvidae/weft',
+              corvidaeDirectory: 'packages/weft',
+              targetDirectory: 'packages/weft',
+            },
+          ],
+          publicNames,
+        );
+        await expect(plan).rejects.toThrow(SourceEmissionError);
+        await expect(plan).rejects.toThrow(omitted);
+        // Named so the message points at the table that has to change, not at the sibling one.
+        await expect(plan).rejects.toThrow('validationInputs');
+      },
+    );
+  });
+});
 
 describe('what counts as source', () => {
   test('the repository-operating files are not source, wherever they sit', () => {
@@ -168,19 +242,9 @@ describe('what counts as source', () => {
       {
         'packages/weft/src/cli-main.ts': '#!/usr/bin/env bun\nexport const main = true;\n',
         'packages/weft/src/library.ts': 'export const library = true;\n',
-        // `@corvidae/weft` declares seven files beyond `src/`, and a declared file corvidae does
-        // not carry is a refusal rather than a skip, so the fixture carries them.
-        'packages/weft/scripts/lib/workflow-visibility-backfill.ts': 'export const backfill = 1;\n',
-        'packages/weft/scripts/benchmarks/benchmark-environment.ts':
-          'export const environment = 1;\n',
-        'packages/weft/scripts/benchmarks/environment-configuration.ts':
-          'export const configuration = 1;\n',
-        'packages/weft/documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md':
-          '# Workflows are TypeScript only\n',
-        'packages/weft/documentation/guides/remote-workers.md': '# Remote workers\n',
-        'packages/weft/documentation/reference/api-workers.md': '# Worker API\n',
-        'packages/weft/documentation/reference/remote-worker-protocol.md':
-          '# Remote worker protocol\n',
+        // A declared file corvidae does not carry is a refusal, so the fixture carries every
+        // path both declaration tables name for this workspace.
+        ...weftDeclarationFixture(),
       },
       async (root) => {
         await chmod(join(root, 'packages/weft/src/cli-main.ts'), 0o755);

@@ -271,6 +271,84 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
 };
 
 /**
+ * Files that check a workspace's emitted source, keyed by `@corvidae/*` name.
+ *
+ * A sibling of `additionalSourceRoots`, deliberately not part of it. That table's promise is that
+ * every path in it is an edge an emitted file imports or reads, and `assertNoSourceEscapes` is
+ * only meaningful while that stays true; a gate script nothing imports would quietly turn the
+ * promise into a description of most entries. So the two mechanisms share their behaviour —
+ * written with the source, never pruned, one reason per cluster, a missing path refused rather
+ * than skipped — and differ in what they claim. An entry here is not something the emitted source
+ * needs in order to run. It is something that decides whether the emitted source is acceptable.
+ *
+ * **Why the target cannot just keep its own.** Corvidae adopted weft's gates (COR-1272), so the
+ * two repositories now hold the same nine checks. `insideFiles.manifestKeys` does not include
+ * `scripts`, so a sync leaves the target's `scripts` block alone and the target's CI keeps
+ * invoking its own chain — against files that are, after the sync, corvidae's. Two hand-kept
+ * copies of one gate drift, which is the failure the adoption was meant to close.
+ *
+ * **Why the data goes with the script.** Two of these gates are not pure functions of the source
+ * they read: `.oxlintrc.json` carries fourteen per-file `max-lines` and `complexity` overrides,
+ * and `check-implementation-file-sizes.ts` carries a registry of named files with a rationale
+ * each. Both are statements about corvidae's source, and after a sync the target's `src/` is
+ * corvidae's source. Emitting a gate without the list it judges against is worse than not
+ * emitting it: the check runs, passes, and measures a tree that no longer exists.
+ *
+ * These files are emitted, not walked for imports, so a workspace that declared nothing but these
+ * would not be recorded as carrying TypeScript. Nothing can reach that state — a validator with
+ * no source to validate is not a workspace — and the flag means "there is emitted source worth
+ * type-checking", which these files are not the evidence for.
+ */
+export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
+  '@corvidae/weft': [
+    {
+      paths: [
+        'scripts/check-catalog-completeness.ts',
+        'scripts/check-definition-vocabulary.ts',
+        'scripts/check-engine-internals-field-access.ts',
+        'scripts/check-implementation-file-sizes.test.ts',
+        'scripts/check-implementation-file-sizes.ts',
+        'scripts/check-import-cycles.ts',
+        'scripts/check-internal-imports.ts',
+        'scripts/check-lint-disables.test.ts',
+        'scripts/check-lint-disables.ts',
+        'scripts/check-revision-keyed-lookups.test.ts',
+        'scripts/check-revision-keyed-lookups.ts',
+        'scripts/check-type-ergonomics.ts',
+      ],
+      reason:
+        'The nine gates corvidae’s own `lint` script runs, plus the three that have tests. `check-catalog-drift.ts` is absent on purpose: corvidae rejected that gate, and because nothing prunes, the target’s copy would survive a sync — dropping its stage from the target’s `lint` and deleting the script is a target-side edit, not an emission.',
+    },
+    {
+      paths: [
+        '.oxlintrc.json',
+        'documentation/contributing/implementation-file-sizes.md',
+        'documentation/import-cycle-allowlist.json',
+        'documentation/internal-imports-allowlist.json',
+      ],
+      reason:
+        'What those gates judge against. `check-import-cycles.ts` and `check-internal-imports.ts` each read their allowlist by literal path, `check-implementation-file-sizes.test.ts` reads the contributor document, and `.oxlintrc.json` holds the per-file `max-lines` and `complexity` overrides the lint gate applies. The target carries its own copy of all but the document — the allowlists at 213 and 3 bytes, `.oxlintrc.json` at 11,189 — and a sync replaces them, which is the point rather than a side effect: they describe corvidae’s source, and so does the `src/` tree landing beside them.',
+    },
+    {
+      paths: [
+        'scripts/generate-operation-client.test.ts',
+        'scripts/generate-operation-client.ts',
+        'scripts/operation-client-aliases.test.ts',
+        'scripts/operation-client-aliases.ts',
+        'scripts/operation-client-catalog.test.ts',
+        'scripts/operation-client-domains.test.ts',
+        'scripts/operation-client-domains.ts',
+        'scripts/operation-client-schema.test.ts',
+        'scripts/operation-client-schema.ts',
+        'scripts/operation-client-test-support.ts',
+      ],
+      reason:
+        'The generator that produces `src/client/generated/operation-client.generated.ts`, which is already emitted under `src/`, and therefore the check that the committed file still matches its inputs. It goes as a set or not at all: the target has only the first two, in a diverged singular-API form, and `generate-operation-client.ts` imports `operation-client-aliases.ts`, `operation-client-schema.ts` and the rest of this list, so emitting the entry point alone would land a script that cannot resolve its own imports.',
+    },
+  ],
+};
+
+/**
  * Directory names never walked. An installed dependency tree is not source and cannot be, so a
  * stray one inside `src/` is skipped rather than mirrored a thousand files at a time.
  */
@@ -425,6 +503,39 @@ async function readAdditionalSourceRoots(
   return carriesTypeScript;
 }
 
+/**
+ * Every file a workspace declares as a check on its emitted source.
+ *
+ * A missing path is refused for the same reason `readAdditionalSourceRoots` refuses one, and it
+ * matters more here: a typo in one of twenty-six paths would otherwise emit twenty-five gates and
+ * a target whose lint chain invokes a script that was never written.
+ */
+async function readValidationInputs(
+  corvidaeRoot: string,
+  workspace: EmittedWorkspace,
+  plan: SourcePlan,
+  publicNames: ReadonlyMap<string, string>,
+  targetDirectory: string | undefined,
+): Promise<void> {
+  for (const declared of validationInputs[workspace.workspace] ?? []) {
+    for (const path of declared.paths) {
+      const absolute = join(corvidaeRoot, workspace.corvidaeDirectory, path);
+      if (!(await Bun.file(absolute).exists())) {
+        throw new SourceEmissionError(
+          `${workspace.workspace} declares ${path} as a check on its emitted source, but corvidae has no file there. Either restore it or remove the declaration from validationInputs in source.ts.`,
+        );
+      }
+      await readInto(
+        plan,
+        absolute,
+        `${workspace.targetDirectory}/${path}`,
+        publicNames,
+        targetDirectory,
+      );
+    }
+  }
+}
+
 /** Every build input the surface declares that corvidae actually carries, emitted with the source. */
 async function readDeclaredBuildInputs(
   corvidaeRoot: string,
@@ -482,6 +593,7 @@ export async function planSource(
       targetDirectory,
     );
     if (inTree || declared) plan.typeScriptWorkspaces.push(workspace.workspace);
+    await readValidationInputs(corvidaeRoot, workspace, plan, publicNames, targetDirectory);
     await readDeclaredBuildInputs(corvidaeRoot, workspace, plan, publicNames, targetDirectory);
   }
   plan.ownedPrefixes.sort();
