@@ -7,14 +7,14 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
-import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskCompleting,
 } from '../../core/task-ledger/task-ledger.ts';
+import { MemoryStorage } from '../../storage/memory.ts';
+import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import { FailingTerminalCommitStorage } from './server-context.test-support.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';
 

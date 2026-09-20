@@ -15,9 +15,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { encode } from '../core/codec.ts';
 import { Engine } from '../core/engine.ts';
 import { encodeScheduleRunMetadata } from '../core/engine/schedule-run-metadata.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
-import { serve, type WeftServer } from '../server/index.ts';
 import {
   encodeRemoteTaskRecord,
   taskLedgerKey,
@@ -25,6 +22,9 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskTerminalResolved,
 } from '../core/task-ledger/task-ledger.ts';
+import type { WorkflowContext } from '../core/types.ts';
+import { workflow } from '../core/types.ts';
+import { serve, type WeftServer } from '../server/index.ts';
 import { KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import {

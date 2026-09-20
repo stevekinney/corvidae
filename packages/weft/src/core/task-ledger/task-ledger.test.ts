@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { encode } from '../codec.ts';
 import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
+import { encode } from '../codec.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,

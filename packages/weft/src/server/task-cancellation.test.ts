@@ -27,6 +27,21 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import {
+  beginCompletion,
+  claimQueued,
+  commitCancellation,
+  createQueued,
+  recordCancellationIntent,
+} from '../core/task-ledger/task-ledger-transitions.ts';
+import {
+  decodeRemoteTaskRecord,
+  encodeRemoteTaskRecord,
+  taskLedgerKey,
+  type RemoteTaskLeased,
+  type RemoteTaskQueued,
+  type RemoteTaskRecord,
+} from '../core/task-ledger/task-ledger.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import {
   restoreRealTimers,
@@ -43,21 +58,6 @@ import {
 import { cancelTask } from './runtime/task-dispatch.ts';
 import { scanExpiredTasks } from './runtime/task-reconciliation.ts';
 import { handleWorkerWebSocketMessage } from './runtime/websocket-worker.ts';
-import {
-  beginCompletion,
-  claimQueued,
-  commitCancellation,
-  createQueued,
-  recordCancellationIntent,
-} from '../core/task-ledger/task-ledger-transitions.ts';
-import {
-  decodeRemoteTaskRecord,
-  encodeRemoteTaskRecord,
-  taskLedgerKey,
-  type RemoteTaskLeased,
-  type RemoteTaskQueued,
-  type RemoteTaskRecord,
-} from '../core/task-ledger/task-ledger.ts';
 
 type FakeWs = {
   data: WebSocketData;

@@ -18,8 +18,6 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import type { TaskResultDeadLetteredEvent } from '../../core/events.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
-import { principalFromApiKey } from '../principal.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
@@ -28,6 +26,8 @@ import {
   type RemoteTaskLeased,
   type RemoteTaskTerminalResolved,
 } from '../../core/task-ledger/task-ledger.ts';
+import { MemoryStorage } from '../../storage/memory.ts';
+import { principalFromApiKey } from '../principal.ts';
 import {
   FailingTerminalCommitStorage,
   minimalServeOptions,

@@ -29,8 +29,8 @@
  * @module server/runtime/task-result-authorization
  */
 
-import type { InFlightTask } from '../../worker/registry.ts';
 import type { RemoteTaskRecord } from '../../core/task-ledger/task-ledger.ts';
+import type { InFlightTask } from '../../worker/registry.ts';
 
 /**
  * The identity a `taskResult` submission is checked against. `workerSessionId`

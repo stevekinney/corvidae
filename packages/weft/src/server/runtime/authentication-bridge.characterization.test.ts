@@ -4,9 +4,13 @@ import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { createServerWebSocketHandlers } from './authentication-bridge.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 
-import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import type { RemoteTaskLeased } from '../../core/task-ledger/task-ledger-types.ts';
-import { decodeRemoteTaskRecord, encodeRemoteTaskRecord, taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
+import {
+  decodeRemoteTaskRecord,
+  encodeRemoteTaskRecord,
+  taskLedgerKey,
+} from '../../core/task-ledger/task-ledger.ts';
+import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 
 type FakeWorkerSocket = {
   data: WebSocketData;

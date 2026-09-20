@@ -8,10 +8,6 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
@@ -20,6 +16,10 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskTerminalResolved,
 } from '../../core/task-ledger/task-ledger.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
+import { MemoryStorage } from '../../storage/memory.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import {
   reassignOrExpireTask,

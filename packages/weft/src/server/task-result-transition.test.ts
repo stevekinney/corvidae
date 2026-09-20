@@ -33,17 +33,11 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import type { TaskResultDeadLetteredEvent } from '../core/events.ts';
-import { storageConditionalBatch } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
-import { sha256Hex } from '../worker/manifest/content-digest.ts';
-import {
-  FailingTerminalCommitStorage,
-  minimalServeOptions,
-} from './runtime/server-context.test-support.ts';
-import { commitTaskLedgerCompletion } from './runtime/task-ledger-completion.ts';
 import { commitTaskLedgerTransition } from '../core/task-ledger/task-ledger-runtime.ts';
-import { applyWorkerTaskResult } from './runtime/task-result-application.ts';
-import { beginCompletion, requeueExpiredAttempt } from '../core/task-ledger/task-ledger-transitions.ts';
+import {
+  beginCompletion,
+  requeueExpiredAttempt,
+} from '../core/task-ledger/task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
@@ -52,6 +46,15 @@ import {
   type RemoteTaskLeased,
   type RemoteTaskQueued,
 } from '../core/task-ledger/task-ledger.ts';
+import { storageConditionalBatch } from '../storage/interface.ts';
+import { MemoryStorage } from '../storage/memory.ts';
+import { sha256Hex } from '../worker/manifest/content-digest.ts';
+import {
+  FailingTerminalCommitStorage,
+  minimalServeOptions,
+} from './runtime/server-context.test-support.ts';
+import { commitTaskLedgerCompletion } from './runtime/task-ledger-completion.ts';
+import { applyWorkerTaskResult } from './runtime/task-result-application.ts';
 
 function leasedFixture(overrides: Partial<RemoteTaskLeased> = {}): RemoteTaskLeased {
   const now = Date.now();

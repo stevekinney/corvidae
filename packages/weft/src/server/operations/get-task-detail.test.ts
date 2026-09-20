@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
 import { encode } from '../../core/codec.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { encodeRemoteTaskRecord, taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
+import { MemoryStorage } from '../../storage/memory.ts';
 import * as fixture from './get-task-detail.test-support.ts';
 
 describe('weft.tasks.get', () => {

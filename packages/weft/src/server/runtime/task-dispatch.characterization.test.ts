@@ -9,6 +9,12 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 import { encode } from '../../core/codec.ts';
+import {
+  decodeRemoteTaskRecord,
+  encodeRemoteTaskRecord,
+  taskLedgerKey,
+  type RemoteTaskQueued,
+} from '../../core/task-ledger/task-ledger.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
@@ -16,12 +22,6 @@ import {
   TEST_ACCEPTED_MANIFEST_DIGEST,
   testWorkerManifest,
 } from '../../worker/registry-fixtures.test-support.ts';
-import {
-  decodeRemoteTaskRecord,
-  encodeRemoteTaskRecord,
-  taskLedgerKey,
-  type RemoteTaskQueued,
-} from '../../core/task-ledger/task-ledger.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import { dispatchTaskImpl, scheduleDelayedDispatch } from './task-dispatch.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';

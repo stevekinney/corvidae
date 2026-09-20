@@ -8,9 +8,6 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
@@ -21,6 +18,9 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskTerminalResolved,
 } from '../../core/task-ledger/task-ledger.ts';
+import { MemoryStorage } from '../../storage/memory.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';
 import { runTaskLedgerRecovery } from './task-ledger-recovery.ts';

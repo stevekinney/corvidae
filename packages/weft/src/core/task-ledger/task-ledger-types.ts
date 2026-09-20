@@ -17,9 +17,9 @@
  * @module server/task-ledger-types
  */
 
+import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import type { JSONValue } from '../json.ts';
 import type { RetryPolicy } from '../types.ts';
-import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 
 // ---------------------------------------------------------------------------
 // Base envelope

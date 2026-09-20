@@ -34,9 +34,9 @@
  * @module server/task-ledger-transitions
  */
 
+import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import type { JSONValue } from '../json.ts';
 import { calculateBackoff } from '../scheduler.ts';
-import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import {
   pickAttemptFields,
   pickBase,

@@ -48,7 +48,6 @@
  * @module server/runtime/task-ledger-recovery
  */
 
-import type { ServeOptions } from '../index.ts';
 import {
   decodeRemoteTaskRecord,
   type RemoteTaskCancelling,
@@ -56,6 +55,7 @@ import {
   type RemoteTaskLeased,
   type RemoteTaskRecord,
 } from '../../core/task-ledger/task-ledger.ts';
+import type { ServeOptions } from '../index.ts';
 import type { ServerContext } from './context.ts';
 import { scheduleDelayedDispatch } from './task-dispatch.ts';
 import { reassignOrExpireTask, taskDispatchFromLedgerRecord } from './task-reconciliation.ts';

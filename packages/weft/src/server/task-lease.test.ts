@@ -35,11 +35,6 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-  manifestForActivities,
-  TEST_ACCEPTED_MANIFEST_DIGEST,
-} from '../worker/registry-fixtures.test-support.ts';
-import { WorkerRegistry } from '../worker/registry.ts';
-import {
   ATTEMPT_DEADLINE_MULTIPLIER,
   claimQueued,
   createQueued,
@@ -52,6 +47,11 @@ import {
   type RemoteTaskLeased,
   type RemoteTaskQueued,
 } from '../core/task-ledger/task-ledger-types.ts';
+import {
+  manifestForActivities,
+  TEST_ACCEPTED_MANIFEST_DIGEST,
+} from '../worker/registry-fixtures.test-support.ts';
+import { WorkerRegistry } from '../worker/registry.ts';
 
 const BASE_QUEUED_INPUT: CreateQueuedInput = {
   recordVersion: 1,
