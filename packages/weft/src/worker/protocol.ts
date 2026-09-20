@@ -27,6 +27,7 @@ import {
   protocolFailure,
 } from './protocol-internals.ts';
 import type {
+  ActivityHeartbeatMessage,
   CancelMessage,
   CancelledTaskResultMessage,
   CompletedTaskResultMessage,
@@ -66,6 +67,7 @@ export {
   isRemoteWorkerJsonValue,
 };
 export type {
+  ActivityHeartbeatMessage,
   CancelMessage,
   CancelledTaskResultMessage,
   CompletedTaskResultMessage,
@@ -96,7 +98,8 @@ export type {
  * const message: WorkerToServerMessage = { type: 'heartbeat', workerId: 'worker-1' };
  * ```
  */
-export type WorkerToServerMessage = RegisterMessage | HeartbeatMessage | TaskResultMessage;
+export type WorkerToServerMessage =
+  RegisterMessage | HeartbeatMessage | ActivityHeartbeatMessage | TaskResultMessage;
 
 /**
  * Messages the server may send to a worker stream client.
@@ -117,7 +120,12 @@ export type ServerToWorkerMessage =
   | ShutdownMessage
   | TaskResultAckMessage;
 
-const WORKER_TO_SERVER_TYPES = new Set(['register', 'heartbeat', 'taskResult']);
+const WORKER_TO_SERVER_TYPES = new Set([
+  'register',
+  'heartbeat',
+  'activityHeartbeat',
+  'taskResult',
+]);
 const SERVER_TO_WORKER_TYPES = new Set([
   'registerAck',
   'registerError',
@@ -191,6 +199,25 @@ function parseHeartbeatMessage(
   return { ok: true, message: { type: 'heartbeat', workerId } };
 }
 
+// prettier-ignore
+const ACTIVITY_HEARTBEAT_FIELD_SPECS: readonly FieldSpec[] = [
+  ['workerId',     true, isNonEmptyString, 'activityHeartbeat.workerId must be a non-empty string'],
+  ['operationId',  true, isNonEmptyString, 'activityHeartbeat.operationId must be a non-empty string'],
+  ['attemptToken', true, isNonEmptyString, 'activityHeartbeat.attemptToken must be a non-empty string'],
+];
+
+function parseActivityHeartbeatMessage(
+  record: Record<string, unknown>,
+): RemoteWorkerProtocolParseResult<ActivityHeartbeatMessage> {
+  const fields = collectFields('invalid_message', record, ACTIVITY_HEARTBEAT_FIELD_SPECS);
+  if (!fields.ok) return fields.error;
+
+  return {
+    ok: true,
+    message: { type: 'activityHeartbeat', ...fields.values } as ActivityHeartbeatMessage,
+  };
+}
+
 // --- parseTaskMessage -------------------------------------------------------
 
 const TASK_FIELD_SPECS: readonly FieldSpec[] = [
@@ -220,15 +247,19 @@ function parseTaskMessage(
   return { ok: true, message: { type: 'task', ...fields.values } as TaskMessage };
 }
 
+// prettier-ignore
+const CANCEL_FIELD_SPECS: readonly FieldSpec[] = [
+  ['operationId',  true, isNonEmptyString, 'cancel.operationId must be a non-empty string'],
+  ['attemptToken', true, isNonEmptyString, 'cancel.attemptToken must be a non-empty string'],
+];
+
 function parseCancelMessage(
   record: Record<string, unknown>,
 ): RemoteWorkerProtocolParseResult<CancelMessage> {
-  const operationId = record['operationId'];
-  if (!isNonEmptyString(operationId)) {
-    return protocolFailure('invalid_message', 'cancel.operationId must be a non-empty string');
-  }
+  const fields = collectFields('invalid_message', record, CANCEL_FIELD_SPECS);
+  if (!fields.ok) return fields.error;
 
-  return { ok: true, message: { type: 'cancel', operationId } };
+  return { ok: true, message: { type: 'cancel', ...fields.values } as CancelMessage };
 }
 
 function parseShutdownMessage(): RemoteWorkerProtocolParseResult<ShutdownMessage> {
@@ -415,6 +446,8 @@ export function parseWorkerToServerMessage(
       return parseRegisterMessage(value);
     case 'heartbeat':
       return parseHeartbeatMessage(value);
+    case 'activityHeartbeat':
+      return parseActivityHeartbeatMessage(value);
     case 'taskResult':
       return parseTaskResultMessage(value);
     default:

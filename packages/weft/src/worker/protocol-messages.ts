@@ -60,7 +60,7 @@ export type RemoteWorkerCapabilities = Readonly<Record<string, RemoteWorkerJsonV
  *
  * const message: RegisterMessage = {
  *   type: 'register',
- *   protocolVersion: 4,
+ *   protocolVersion: 5,
  *   workerId: 'worker-1',
  *   manifest: { manifestVersion: 1 },
  * };
@@ -88,6 +88,38 @@ export type RegisterMessage = {
 export type HeartbeatMessage = {
   readonly type: 'heartbeat';
   readonly workerId: string;
+};
+
+/**
+ * Per-attempt worker heartbeat (COR-230, protocol v5).
+ *
+ * Distinct from {@link HeartbeatMessage}: a bare `heartbeat` renews only the
+ * worker-SESSION lease (`WorkerRegistry.heartbeat()`); `activityHeartbeat`
+ * renews only the named attempt's heartbeat-extendable visibility deadline,
+ * fenced by `operationId` + `attemptToken` through the same
+ * `authorizeTaskResultForCurrentAttempt` identity check `taskResult` uses. A
+ * worker sends one of these per in-flight long-running attempt, in addition
+ * to (not instead of) its periodic session `heartbeat`. Renewal is capped by
+ * the attempt's absolute deadline (`RemoteTaskLeased.attemptDeadline`),
+ * which no heartbeat of either kind can extend.
+ *
+ * @example
+ * ```ts
+ * import type { ActivityHeartbeatMessage } from '@corvidae/weft';
+ *
+ * const message: ActivityHeartbeatMessage = {
+ *   type: 'activityHeartbeat',
+ *   workerId: 'worker-1',
+ *   operationId: 'op-1',
+ *   attemptToken: 'attempt-token',
+ * };
+ * ```
+ */
+export type ActivityHeartbeatMessage = {
+  readonly type: 'activityHeartbeat';
+  readonly workerId: string;
+  readonly operationId: string;
+  readonly attemptToken: string;
 };
 
 /**
@@ -192,7 +224,7 @@ export type CancelledTaskResultMessage = {
  *
  * const message: RegisterAckMessage = {
  *   type: 'registerAck',
- *   protocolVersion: 4,
+ *   protocolVersion: 5,
  *   workerId: 'worker-1',
  *   queue: 'default',
  *   concurrency: 10,
@@ -307,16 +339,27 @@ export type TaskMessage = {
 /**
  * Activity cancellation request sent by the server.
  *
+ * `attemptToken` (COR-230) fences which attempt this cancellation targets —
+ * the worker's `AbortController` lookup is keyed by `(operationId,
+ * attemptToken)`, not `operationId` alone, so a `cancel` for an attempt the
+ * worker has already completed or superseded matches nothing rather than
+ * aborting whatever now runs under that `operationId`.
+ *
  * @example
  * ```ts
  * import type { CancelMessage } from '@corvidae/weft';
  *
- * const message: CancelMessage = { type: 'cancel', operationId: 'op-1' };
+ * const message: CancelMessage = {
+ *   type: 'cancel',
+ *   operationId: 'op-1',
+ *   attemptToken: 'attempt-token',
+ * };
  * ```
  */
 export type CancelMessage = {
   readonly type: 'cancel';
   readonly operationId: string;
+  readonly attemptToken: string;
 };
 
 /**

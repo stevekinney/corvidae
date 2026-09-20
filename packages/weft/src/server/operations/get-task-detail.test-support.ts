@@ -164,6 +164,7 @@ export function cancellingFixture(
     requeueCount: 0,
     cancellationReason: 'operator requested',
     cancellationRequestedAt: 3_000,
+    cancellationDeadline: 33_000,
     ...overrides,
   };
 }

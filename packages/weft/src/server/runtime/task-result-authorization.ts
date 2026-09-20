@@ -118,7 +118,13 @@ export function currentAttemptFromLedgerRecord(
   record: RemoteTaskRecord | null,
 ): CurrentAttempt | undefined {
   if (record === null) return undefined;
-  if (record.state === 'leased' || record.state === 'completing') {
+  // `cancelling` (COR-230) is a live attempt exactly like `leased`/
+  // `completing` — the worker still holds the lease while cooperative
+  // cancellation is pending, and its resulting `taskResult(status:
+  // 'cancelled')` must reach `commitTaskLedgerCompletion`'s dedicated
+  // cancellation branch rather than being rejected here as
+  // 'no-current-attempt'.
+  if (record.state === 'leased' || record.state === 'completing' || record.state === 'cancelling') {
     return { workerSessionId: record.workerSessionId, attemptToken: record.attemptToken };
   }
   if (record.state === 'terminal' || record.state === 'deadLettered') {

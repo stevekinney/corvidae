@@ -191,7 +191,15 @@ export class RemoteWorker implements Disposable {
   #abortController: AbortController;
   #heartbeat: HeartbeatManager;
   #shuttingDown: boolean;
-  #taskAbortControllers: Map<string, AbortController>;
+  /**
+   * Keyed by `operationId`, but the abort decision is also fenced by
+   * `attemptToken` (COR-230, acceptance criterion 11) — a `cancel` control
+   * naming an attempt this worker has already superseded (e.g. it completed
+   * and was later redispatched the same `operationId` under a fresh
+   * attempt) matches nothing and is safely ignored, exactly like the
+   * server's own `taskResult`/`activityHeartbeat` attempt-token fencing.
+   */
+  #taskAbortControllers: Map<string, { controller: AbortController; attemptToken: string }>;
   #composedInterceptor: ComposedInterceptor | null;
   #pendingRegistration: PendingRegistration | null;
   /**
@@ -375,7 +383,7 @@ export class RemoteWorker implements Disposable {
 
   /** Abort all in-flight task controllers and clear the map. */
   #abortAllTasks(): void {
-    for (const controller of this.#taskAbortControllers.values()) {
+    for (const { controller } of this.#taskAbortControllers.values()) {
       controller.abort();
     }
     this.#taskAbortControllers.clear();
@@ -489,9 +497,18 @@ export class RemoteWorker implements Disposable {
     pending.reject(new Error(message));
   }
 
-  #handleCancel(operationId: string): void {
-    const controller = this.#taskAbortControllers.get(operationId);
-    if (controller) controller.abort();
+  /**
+   * Handle a server `cancel` control (COR-230, acceptance criterion 11).
+   * The lookup is fenced by `attemptToken`, not `operationId` alone — a
+   * `cancel` for an attempt this worker no longer holds (already completed,
+   * or superseded by a later redispatch of the same `operationId`) matches
+   * nothing and is ignored rather than aborting whatever now runs under
+   * that operationId.
+   */
+  #handleCancel(operationId: string, attemptToken: string): void {
+    const entry = this.#taskAbortControllers.get(operationId);
+    if (entry === undefined || entry.attemptToken !== attemptToken) return;
+    entry.controller.abort();
   }
 
   async #handleMessage(event: MessageEvent): Promise<void> {
@@ -515,7 +532,7 @@ export class RemoteWorker implements Disposable {
         void this.#gracefulShutdown();
         break;
       case 'cancel':
-        this.#handleCancel(data.operationId);
+        this.#handleCancel(data.operationId, data.attemptToken);
         break;
       case 'taskResultAck':
         this.#taskResultOutbox.acknowledge(data.operationId, data.attemptToken);
@@ -554,7 +571,10 @@ export class RemoteWorker implements Disposable {
     }
 
     const taskAbortController = new AbortController();
-    this.#taskAbortControllers.set(task.operationId, taskAbortController);
+    this.#taskAbortControllers.set(task.operationId, {
+      controller: taskAbortController,
+      attemptToken: task.attemptToken,
+    });
     this.#inFlight += 1;
 
     try {

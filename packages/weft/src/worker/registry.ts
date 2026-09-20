@@ -37,6 +37,7 @@ import type {
   WorkerInfo,
   WorkerRegistrationInfo,
   WorkerRegistryOptions,
+  WorkerSessionIdentity,
   WorkerSummary,
 } from './registry/types.ts';
 
@@ -52,6 +53,7 @@ export type {
   WorkerInfo,
   WorkerRegistrationInfo,
   WorkerRegistryOptions,
+  WorkerSessionIdentity,
   WorkerSummary,
 } from './registry/types.ts';
 
@@ -69,7 +71,7 @@ export type {
  *
  * const manifest: WorkerManifest = {
  *   manifestVersion: 1,
- *   protocolVersion: 4,
+ *   protocolVersion: 5,
  *   sdkVersion: '0.18.0',
  *   runtime: { name: 'bun', version: '1.3.14' },
  *   deployment: { name: 'billing', buildId: 'b3', artifactDigest: 'sha256:41d0' },
@@ -150,6 +152,12 @@ export class WorkerRegistry {
     // derive `inFlight` rather than resetting to 0 so concurrency limits hold.
     let inFlight = 0;
     for (const task of this.#inFlightTasks.values()) if (task.workerId === info.id) inFlight += 1;
+    // Session generation (COR-230): every accepted `register()` for this
+    // `workerId` — a genuinely fresh connection, or a reconnect of the same
+    // process under the same id — is a NEW session, distinct from whatever
+    // came before. Starts at 1 rather than 0 so an absent prior session
+    // reads as "session #1", not "session #0".
+    const sessionGeneration = (this.#workers.get(info.id)?.sessionGeneration ?? 0) + 1;
     this.#workers.set(info.id, {
       id: info.id,
       queue: info.queue,
@@ -165,7 +173,26 @@ export class WorkerRegistry {
       inFlight,
       connectedAt: now,
       lastHeartbeat: now,
+      sessionGeneration,
     });
+  }
+
+  /**
+   * The {@link WorkerSessionIdentity} of the currently connected session for
+   * `workerId`, or `undefined` if no session is currently registered —
+   * `unregister()`'d, never registered, or a stale generation that has
+   * since been superseded (this always reflects the CURRENT one, by
+   * construction, since `#workers` holds exactly one entry per `workerId`).
+   */
+  sessionIdentity(workerId: string): WorkerSessionIdentity | undefined {
+    const info = this.#workers.get(workerId);
+    if (info === undefined) return undefined;
+    return {
+      workerId: info.id,
+      sessionGeneration: info.sessionGeneration,
+      manifestDigest: info.acceptedManifestDigest,
+      transport: 'websocket',
+    };
   }
 
   /** Unregister a worker. Purges fair-share counters and in-flight task entries for this worker. */

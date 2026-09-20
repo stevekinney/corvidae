@@ -101,7 +101,7 @@ If `signal` is already aborted when called, returns a failed result immediately 
 
 ### `RemoteWorker`
 
-WebSocket-based remote worker client. Connects to the Weft server, sends a v4 registration, waits for `registerAck`, and then processes tasks dispatched by the server. Implements `Disposable`.
+WebSocket-based remote worker client. Connects to the Weft server, sends a v5 registration, waits for `registerAck`, and then processes tasks dispatched by the server. Implements `Disposable`.
 
 ```ts partial
 class RemoteWorker implements Disposable {
@@ -367,6 +367,8 @@ interface InFlightTask {
 ```
 
 `checkExpiredTasks(now)` returns tasks whose visibility deadline has passed, suitable for reassignment.
+
+**Visibility timeout vs. attempt deadline (COR-230).** `visibilityTimeout` governs `deadline` above — the heartbeat-renewable clock. Before v5, a bare session `heartbeat` renewed it for every in-flight task on the connection; as of v5, only a matching `activityHeartbeat` (`operationId` + `attemptToken`) renews a given task's `deadline`, and it can never renew it past that attempt's separate, fixed `attemptDeadline` (`RemoteTaskLeased.attemptDeadline`, `server/task-ledger-types.ts`). `visibilityTimeout` and the attempt deadline are two independent clocks: the first can be renewed indefinitely by a live worker; the second cannot be renewed at all.
 
 ## Canonical worker manifest
 

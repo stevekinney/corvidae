@@ -2,7 +2,7 @@
 
 Your workflow engine runs on one machine, but your activities need to run on GPU nodes, region-specific servers, or isolated containers. Remote workers connect to the Weft server over WebSocket (or HTTP long-polling as a fallback) and execute activities wherever they're deployed. The [recovery and adoption guide](remote-task-recovery.md) explains how the server retains task ownership and outcomes across restarts.
 
-> [!NOTE] [`RemoteWorker`](../reference/api-workers.md#remoteworker) is an internal workspace API. The v4 task transport requires clients to match the [wire protocol](../reference/remote-worker-protocol.md), including its version and storage-capability requirements.
+> [!NOTE] [`RemoteWorker`](../reference/api-workers.md#remoteworker) is an internal workspace API. The v5 task transport requires clients to match the [wire protocol](../reference/remote-worker-protocol.md), including its version and storage-capability requirements.
 
 ## The RemoteWorker class
 
@@ -61,7 +61,7 @@ interface RemoteWorkerOptions {
 }
 ```
 
-On connection, the worker sends a v4 `register` message carrying its worker ID, concurrency limit, and a canonical manifest describing its deployment, runtime, and workflows. The server derives routing activities from the manifest and reads the queue from the connection URL. `connect()` resolves only after the server replies with `registerAck`; it rejects on `registerError` or if the socket closes before acknowledgement. The server tracks the accepted worker in the `WorkerRegistry`.
+On connection, the worker sends a v5 `register` message carrying its worker ID, concurrency limit, and a canonical manifest describing its deployment, runtime, and workflows. The server derives routing activities from the manifest and reads the queue from the connection URL. `connect()` resolves only after the server replies with `registerAck`; it rejects on `registerError` or if the socket closes before acknowledgement. The server tracks the accepted worker in the `WorkerRegistry`.
 
 ## Task dispatch
 
@@ -179,16 +179,27 @@ Multiple interceptors compose like middleware: the first one in the array is the
 
 ## Heartbeats
 
-The `HeartbeatManager` sends periodic keep-alive messages (every 10 seconds by default) to prevent the server from considering the worker dead. It starts after the server acknowledges registration and stops on disconnect.
+Two independent clocks run on the same 10-second interval by default, but they renew different things (COR-230, protocol v5):
+
+- The **worker-session heartbeat** (`{ type: 'heartbeat', workerId }`) tells the server the connection is alive. `WorkerRegistry.heartbeat()` updates `lastHeartbeat` and nothing else — it does NOT extend any task's visibility timeout, even though it did before v5.
+- The **activity heartbeat** (`{ type: 'activityHeartbeat', workerId, operationId, attemptToken }`) extends the visibility timeout of exactly one in-flight attempt, fenced by the same `(operationId, attemptToken)` identity check `taskResult` uses. A worker sends one per long-running attempt, in addition to the session heartbeat, for as long as that attempt is still executing.
 
 ```typescript partial
 // Internally, the worker does:
 this.#heartbeat = new HeartbeatManager(() => {
   this.#sendMessage({ type: 'heartbeat', workerId: this.#options.workerId });
 }, 10_000);
+
+// ...and, per in-flight long-running attempt:
+this.#sendMessage({
+  type: 'activityHeartbeat',
+  workerId: this.#options.workerId,
+  operationId,
+  attemptToken,
+});
 ```
 
-The `HeartbeatManager` is a simple interval wrapper with `start()`, `stop()`, and a `beat(details?)` method for one-off heartbeats with optional payload. The server's `WorkerRegistry` updates the worker's `lastHeartbeat` timestamp on each heartbeat.
+The `HeartbeatManager` is a simple interval wrapper with `start()`, `stop()`, and a `beat(details?)` method for one-off heartbeats with optional payload. Renewal is capped by the attempt's absolute deadline — a fixed ceiling on total attempt lifetime that neither heartbeat kind can extend, so a stalled worker that only ever heartbeats cannot hold an attempt open forever.
 
 ## Queue-based routing
 
@@ -268,7 +279,9 @@ The long-poll worker runs a loop: it `GET`s `/api/v1/tasks/:queue?activity=<name
 
 The poll response includes a synthetic `workerId` and per-claim `attemptToken`. The result body echoes both fields so the server can reject stale completions after a visibility timeout or re-claim. The protocol details live in the [HTTP long-poll transport reference](../reference/remote-worker-protocol.md#http-long-poll-transport).
 
-Error handling is built in—network failures trigger a 1-second backoff, abort errors during shutdown are suppressed.
+For each in-flight activity, `LongPollWorker` also `POST`s a heartbeat to `/api/v1/tasks/:queue/heartbeat` on a `heartbeatIntervalMs` interval (default 10 seconds, matching `HeartbeatManager`'s WebSocket-transport default) — COR-230's long-poll counterpart to the WebSocket transport's `activityHeartbeat`, renewing the same attempt-fenced visibility deadline through the identical server-side `renewAttemptLease` transition. Long-poll has no server-to-worker push channel, so a server-initiated cancellation (`WeftServer.cancelTask`) is signaled back on the heartbeat response's `cancelled` field instead of a pushed control message; `LongPollWorker` aborts that activity's own `AbortController` — keyed by `(operationId, attemptToken)`, exactly like `RemoteWorker`'s — and reports `status: "cancelled"` on its next result.
+
+Error handling is built in—network failures trigger a 1-second backoff, abort errors during shutdown are suppressed, and a missed heartbeat is simply retried on the next interval tick.
 
 ## Graceful shutdown
 

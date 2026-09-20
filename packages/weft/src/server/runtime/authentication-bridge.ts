@@ -21,7 +21,11 @@ import { decodeRemoteTaskRecord, taskLedgerKey } from '../task-ledger.ts';
 import type { ServerContext } from './context.ts';
 import { buildPreflightResponse, decorateResponseWithCors, isPreflightRequest } from './cors.ts';
 import { gateRequest } from './request-gate.ts';
-import { handleTaskPollRequest, handleTaskResultRequest } from './task-polling.ts';
+import {
+  handleTaskHeartbeatRequest,
+  handleTaskPollRequest,
+  handleTaskResultRequest,
+} from './task-polling.ts';
 import { reassignOrExpireTask } from './task-reconciliation.ts';
 import {
   acquireWorkflowStreamConnection,
@@ -213,6 +217,17 @@ async function dispatchServerFetchRequest(
   );
   if (taskResultResponse !== null) {
     return taskResultResponse;
+  }
+
+  const taskHeartbeatResponse = await handleTaskHeartbeatRequest(
+    context,
+    options,
+    request,
+    url,
+    taskPrincipal,
+  );
+  if (taskHeartbeatResponse !== null) {
+    return taskHeartbeatResponse;
   }
 
   // JSON-RPC HTTP endpoint. Claimed here so `handleRequest` doesn't

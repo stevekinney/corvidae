@@ -3,6 +3,7 @@ import type { ServerWebSocket } from 'bun';
 import {
   REMOTE_WORKER_PROTOCOL_VERSION,
   parseWorkerToServerMessage,
+  type ActivityHeartbeatMessage,
   type HeartbeatMessage,
   type RegisterErrorMessage,
   type TaskResultMessage,
@@ -40,8 +41,19 @@ function isWorkerConnection(pathname: string): boolean {
 
 export { withRetry } from './retry.ts';
 
-function resolveTaskResultStatus(message: TaskResultMessage): 'completed' | 'failed' {
-  return message.status === 'completed' ? 'completed' : 'failed';
+/**
+ * COR-230, acceptance criterion 13: a worker's `status: 'cancelled'`
+ * `taskResult` is passed through as `'cancelled'`, distinctly from
+ * `'failed'` — before COR-230 this folded into `'failed'` here, which is
+ * exactly the generic-failure conflation criterion 13 exists to eliminate.
+ * `commitTaskLedgerCompletion` decides from there whether the ledger has a
+ * matching `Cancelling` record to resolve it against, or must normalize it
+ * back to a failure itself (no cancellation was ever recorded).
+ */
+function resolveTaskResultStatus(message: TaskResultMessage): 'completed' | 'failed' | 'cancelled' {
+  if (message.status === 'completed') return 'completed';
+  if (message.status === 'cancelled') return 'cancelled';
+  return 'failed';
 }
 
 /**
@@ -62,6 +74,24 @@ function taskResultRejectionMessage(
     return `taskResult for operation "${operationId}" rejected — stale attempt token`;
   }
   return `taskResult for operation "${operationId}" rejected — task not assigned to worker "${workerId ?? ''}"`;
+}
+
+/**
+ * The `protocolError` text for a rejected `activityHeartbeat` (COR-230).
+ * Mirrors {@link taskResultRejectionMessage}'s wording exactly, since the
+ * underlying decision is the identical `authorizeTaskResultForCurrentAttempt`
+ * check — a stale, superseded, or unrecognized attempt reads the same
+ * whether the rejected message was a completion or a heartbeat.
+ */
+function activityHeartbeatRejectionMessage(
+  reason: TaskResultAuthorizationFailure,
+  operationId: string,
+  workerId: string | undefined,
+): string {
+  if (reason === 'attempt-token-mismatch') {
+    return `activityHeartbeat for operation "${operationId}" rejected — stale attempt token`;
+  }
+  return `activityHeartbeat for operation "${operationId}" rejected — task not assigned to worker "${workerId ?? ''}"`;
 }
 
 /**
@@ -284,10 +314,22 @@ function sendTaskResultAck(
   sendWorkerProtocolMessage(ws, { type: 'taskResultAck', operationId, attemptToken, disposition });
 }
 
-/** Handle a validated `heartbeat` message from a worker. */
+/**
+ * Handle a validated worker-session `heartbeat` message (COR-230, acceptance
+ * criterion 1).
+ *
+ * Renews ONLY `WorkerRegistry`'s session-liveness clock —
+ * `context.registry.heartbeat(workerId)` — and nothing else. Before v5 this
+ * also fanned out to extend the visibility deadline of every in-flight task
+ * assigned to the connection; that fan-out could not distinguish a live
+ * long-running attempt from a stale one the connection no longer actually
+ * owned, and is exactly what this split removes. Per-attempt visibility
+ * renewal is `onActivityHeartbeatMessage`'s job now, below — a bare
+ * `heartbeat` proves the connection is alive, nothing more.
+ */
 function onHeartbeatMessage(
   context: ServerContext,
-  options: ServeOptions,
+  _options: ServeOptions,
   ws: ServerWebSocket<WebSocketData>,
   _message: HeartbeatMessage,
 ): void {
@@ -295,56 +337,95 @@ function onHeartbeatMessage(
   if (!workerId) return;
 
   context.registry.heartbeat(workerId);
+}
 
-  // Extend visibility deadline for all in-flight tasks assigned to this worker.
-  for (const task of context.registry.getWorkerTasks(workerId)) {
-    const newDeadline = context.registry.extendVisibility(task.operationId, task.visibilityTimeout);
+/**
+ * Handle a validated `activityHeartbeat` message from a worker (COR-230,
+ * acceptance criteria 2-4 and 6).
+ *
+ * Renews ONLY the one named attempt's heartbeat-extendable visibility
+ * deadline, fenced by the same `authorizeTaskResultForCurrentAttempt`
+ * identity check `onTaskResultMessage` uses for `taskResult` — a stale,
+ * superseded, cancelled, completing, or otherwise no-longer-current attempt
+ * is rejected with `protocolError` rather than silently renewed (criterion
+ * 3) or allowed to shorten/resurrect the lease (criterion 4, enforced inside
+ * `renewAttemptLease` itself). Unlike `onTaskResultMessage`, this has no
+ * ledger-backed fallback path for a `WorkerRegistry`-forgotten operation: a
+ * lost heartbeat is simply retried on the worker's next interval, so there
+ * is no ambiguous-ack/outbox concern forcing a resend against an
+ * already-resolved record the way there is for `taskResult`.
+ */
+function onActivityHeartbeatMessage(
+  context: ServerContext,
+  options: ServeOptions,
+  ws: ServerWebSocket<WebSocketData>,
+  message: ActivityHeartbeatMessage,
+): void {
+  const workerId = ws.data.workerId;
+  const operationId = message.operationId;
+  const inFlightTask = context.registry.getTask(operationId);
 
-    // Update persisted storage record and deadline tracker with
-    // the same deadline the registry computed, so all three stay
-    // in sync across restarts and visibility scans.
-    if (newDeadline !== undefined) {
-      context.deadlineTracker.remove(task.operationId);
-      context.deadlineTracker.add({ operationId: task.operationId, deadline: newDeadline });
-
-      const opId = task.operationId;
-      const heartbeatWorkerId = ws.data.workerId;
-      const attemptToken = task.attemptToken;
-      void withRetry(async () => {
-        // Guard: if the task completed or was reassigned during the async gap,
-        // skip the write to avoid resurrecting or corrupting another worker's record.
-        if (!context.registry.isAssigned(opId)) return;
-        const currentTask = context.registry
-          .getWorkerTasks(heartbeatWorkerId ?? '')
-          .find((trackedTask) => trackedTask.operationId === opId);
-        if (!currentTask) return;
-
-        // A single attempt, matching the brief's failure matrix: "Stale
-        // heartbeat conditional write loses; terminal state remains sole
-        // state." A lost CAS here means a result, timeout, or cancellation
-        // already committed a newer generation — the heartbeat write simply
-        // loses, silently, rather than fighting to retry a transition that
-        // no longer applies.
-        await commitTaskLedgerTransition(
-          options.engine.storage,
-          opId,
-          (current, now) =>
-            renewAttemptLease(
-              current,
-              {
-                attemptToken,
-                workerSessionId: heartbeatWorkerId ?? '',
-                leaseDurationMilliseconds: task.visibilityTimeout,
-              },
-              now,
-            ),
-          1,
-        );
-      }, `extend visibility for task "${opId}"`).catch((error) => {
-        console.error(`[weft] Failed to extend visibility for task "${opId}":`, error);
-      });
-    }
+  const authorization = authorizeTaskResultForCurrentAttempt(
+    currentAttemptFromInFlightTask(inFlightTask),
+    workerId,
+    message.attemptToken,
+  );
+  if (!authorization.ok) {
+    sendWorkerProtocolMessage(ws, {
+      type: 'protocolError',
+      code: 'invalid_message',
+      message: activityHeartbeatRejectionMessage(authorization.reason, operationId, workerId),
+    });
+    return;
   }
+  // Authorization succeeding against an InFlightTask-derived CurrentAttempt
+  // (see `currentAttemptFromInFlightTask`) implies `inFlightTask` is defined
+  // — the `undefined` case maps to `CurrentAttempt` `undefined`, which
+  // `authorizeTaskResultForCurrentAttempt` always rejects as
+  // 'no-current-attempt'.
+  const task = inFlightTask as NonNullable<typeof inFlightTask>;
+
+  const newDeadline = context.registry.extendVisibility(operationId, task.visibilityTimeout);
+  if (newDeadline === undefined) return;
+
+  // Update persisted storage record and deadline tracker with the same
+  // deadline the registry computed, so all three stay in sync across
+  // restarts and visibility scans.
+  context.deadlineTracker.remove(operationId);
+  context.deadlineTracker.add({ operationId, deadline: newDeadline });
+
+  const attemptToken = task.attemptToken;
+  void withRetry(async () => {
+    // Guard: if the task completed or was reassigned during the async gap,
+    // skip the write to avoid resurrecting or corrupting another worker's record.
+    if (!context.registry.isAssignedToAttempt(operationId, workerId ?? '', attemptToken)) return;
+
+    // A single attempt, matching the brief's failure matrix: "Stale
+    // heartbeat conditional write loses; terminal state remains sole
+    // state." A lost CAS here means a result, timeout, or cancellation
+    // already committed a newer generation — the heartbeat write simply
+    // loses, silently, rather than fighting to retry a transition that
+    // no longer applies. `renewAttemptLease` itself enforces the
+    // never-shortens / never-exceeds-attemptDeadline monotonicity
+    // guarantees (criteria 4 and 6).
+    await commitTaskLedgerTransition(
+      options.engine.storage,
+      operationId,
+      (current, now) =>
+        renewAttemptLease(
+          current,
+          {
+            attemptToken,
+            workerSessionId: workerId ?? '',
+            leaseDurationMilliseconds: task.visibilityTimeout,
+          },
+          now,
+        ),
+      1,
+    );
+  }, `extend visibility for task "${operationId}"`).catch((error) => {
+    console.error(`[weft] Failed to extend visibility for task "${operationId}":`, error);
+  });
 }
 
 type ParseResult = { ok: true; message: WorkerToServerMessage } | { ok: false };
@@ -482,6 +563,10 @@ export function handleWorkerWebSocketMessage(
     }
     case 'heartbeat': {
       onHeartbeatMessage(context, options, ws, message);
+      break;
+    }
+    case 'activityHeartbeat': {
+      onActivityHeartbeatMessage(context, options, ws, message);
       break;
     }
     default: {

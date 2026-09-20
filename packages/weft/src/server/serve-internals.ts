@@ -55,6 +55,17 @@ const RECONCILIATION_MULTIPLIER = 12;
 
 const DEFAULT_WORKER_RECONNECT_GRACE_PERIOD_MS = 2_000;
 const MAX_WORKER_RECONNECT_GRACE_PERIOD_MS = 5_000;
+/**
+ * Default and maximum cancellation grace period (COR-230, acceptance
+ * criterion 15) — how long `cancelTask` waits for a worker's cooperative
+ * `taskResult(status: 'cancelled')` before the reconciliation scanner
+ * force-settles the attempt as cancelled with `uncertain: true`. Bounded the
+ * same way `workerReconnectGracePeriodMs` is, for the same reason: an
+ * unbounded value would let a single stuck cancellation hold a `cancelling`
+ * record open indefinitely.
+ */
+const DEFAULT_CANCELLATION_GRACE_PERIOD_MS = 30_000;
+const MAX_CANCELLATION_GRACE_PERIOD_MS = 300_000;
 
 /**
  * Hard ceiling on the raw WebSocket frame size for every connection (worker
@@ -106,6 +117,22 @@ export function clampWorkerReconnectGracePeriod(value: number | undefined): numb
   }
   if (value < 0) return 0;
   if (value > MAX_WORKER_RECONNECT_GRACE_PERIOD_MS) return MAX_WORKER_RECONNECT_GRACE_PERIOD_MS;
+  return Math.floor(value);
+}
+
+/**
+ * Clamp a user-supplied `cancellationGracePeriodMs` into `[0, 300_000]`.
+ * Returns the 30 000ms default when undefined or non-finite. `0` forces
+ * every leased-origin cancellation to be immediately eligible for
+ * non-cooperative, uncertain settlement on the very next reconciliation
+ * scan — intended only for tests proving that path.
+ */
+export function clampCancellationGracePeriod(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return DEFAULT_CANCELLATION_GRACE_PERIOD_MS;
+  }
+  if (value < 0) return 0;
+  if (value > MAX_CANCELLATION_GRACE_PERIOD_MS) return MAX_CANCELLATION_GRACE_PERIOD_MS;
   return Math.floor(value);
 }
 
@@ -295,6 +322,7 @@ export function buildServerContext(
     workerReconnectGracePeriodMs: clampWorkerReconnectGracePeriod(
       options.workerReconnectGracePeriodMs,
     ),
+    cancellationGracePeriodMs: clampCancellationGracePeriod(options.cancellationGracePeriodMs),
     payloadSizeMaxBytes: getEnginePayloadSizeMaxBytes(engine),
     pendingWorkerRequeues: new Map(),
     scanRunning: false,
@@ -412,7 +440,7 @@ export function registerStackDisposers(
   // default `Engine` `registerWorkflowEventLifecycle` expects — see the
   // field's JSDoc / #708.
   stack.defer(
-    registerWorkflowEventLifecycle(options.engine as Engine, context, broadcastingHandle),
+    registerWorkflowEventLifecycle(options.engine as Engine, context, broadcastingHandle, options),
   );
   stack.defer(() =>
     shutdownAllWorkers(

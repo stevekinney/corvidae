@@ -113,11 +113,18 @@ function handleCancelMessage(parsed: Record<string, unknown>): void {
       : taskTokens.get(operationId);
   if (typeof attemptToken !== 'string' || attemptToken.length === 0) return;
 
+  // COR-230: report the cooperative `cancelled` status, not a generic
+  // `failed` one — the server's ledger now records a distinct cancellation
+  // disposition (acceptance criterion 13) only for a `taskResult` that says
+  // `status: 'cancelled'`; an ordinary `failed` report resolves as a plain
+  // failed completion instead, which is not what a `cancel` control being
+  // honored actually means.
   send({
     type: 'taskResult',
     operationId,
     attemptToken,
-    status: 'failed',
+    status: 'cancelled',
+    cancelled: true,
     error: 'Task cancelled',
   });
 }

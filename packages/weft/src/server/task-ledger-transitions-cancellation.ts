@@ -35,6 +35,14 @@ export type RecordCancellationIntentInput = Readonly<{
   cancellationReason: string;
   /** Unique per cancellation request; fences queued-origin terminal incarnations. */
   cancellationToken: string;
+  /**
+   * How long (COR-230, acceptance criterion 15) a leased-origin cancellation
+   * waits for the worker's cooperative `taskResult` before
+   * `scanExpiredTasks` settles the attempt as cancelled anyway via
+   * `commitUncertainCancellation`. Ignored for a queued-origin cancellation,
+   * which has no attempt to wait on and resolves immediately.
+   */
+  cancellationGracePeriodMilliseconds: number;
 }>;
 
 export function recordCancellationIntent(
@@ -78,6 +86,7 @@ export function recordCancellationIntent(
     state: 'cancelling',
     cancellationReason: input.cancellationReason,
     cancellationRequestedAt: now,
+    cancellationDeadline: now + input.cancellationGracePeriodMilliseconds,
   };
   return { ok: true, nextRecord: cancellingRecord };
 }
@@ -112,6 +121,57 @@ export function commitCancellation(
     terminalAt: now,
     adopted: false,
     retentionGeneration: 0,
+  };
+  return { ok: true, nextRecord };
+}
+
+// ---------------------------------------------------------------------------
+// 8b. Commit UNCERTAIN cancellation — precondition: state cancelling,
+//     attempt token matches, `now` has reached `cancellationDeadline`.
+//     (COR-230, acceptance criterion 15.)
+// ---------------------------------------------------------------------------
+
+/**
+ * Non-cooperative counterpart to {@link commitCancellation}: settles an
+ * attempt as cancelled when the worker's own `taskResult(status:
+ * "cancelled")` never arrived within `current.cancellationDeadline` — a
+ * worker that partitioned, hung, or ignored the `cancel` control frame
+ * entirely. The precondition is otherwise identical to `commitCancellation`
+ * (state `cancelling`, matching attempt token), so the two remain mutually
+ * exclusive winners of the same CAS: whichever commits first — the worker's
+ * cooperative result or this forced settlement — durably resolves the
+ * record, and the other loses its own CAS against the now-`terminal` state.
+ * Rejects outright (rather than silently no-op'ing) when `now` has not yet
+ * reached the deadline, so a caller cannot accidentally force an early,
+ * uncertain settlement for an attempt that might still cooperate in time.
+ */
+export function commitUncertainCancellation(
+  current: RemoteTaskRecord | null,
+  input: CommitCancellationInput,
+  now: number,
+): TaskLedgerTransitionResult<RemoteTaskTerminalCancelled> {
+  if (current === null || current.state !== 'cancelling') {
+    return { ok: false, reason: 'expected task state "cancelling"' };
+  }
+  if (current.attemptToken !== input.attemptToken) {
+    return { ok: false, reason: 'attempt token mismatch' };
+  }
+  if (current.cancellationDeadline > now) {
+    return { ok: false, reason: 'cancellation deadline has not yet elapsed' };
+  }
+  const nextRecord: RemoteTaskTerminalCancelled = {
+    ...pickBase(current),
+    generation: current.generation + 1,
+    state: 'terminal',
+    disposition: 'cancelled',
+    attempt: current.attempt,
+    attemptToken: current.attemptToken,
+    cancellationReason: current.cancellationReason,
+    resultDigest: `cancelled:${current.operationId}:${current.attemptToken}`,
+    terminalAt: now,
+    adopted: false,
+    retentionGeneration: 0,
+    uncertain: true,
   };
   return { ok: true, nextRecord };
 }

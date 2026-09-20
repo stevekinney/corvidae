@@ -34,7 +34,7 @@ import {
 const EXECUTION_IDENTITY: WorkerExecutionIdentity = {
   workerId: 'worker-1',
   manifestDigest: 'sha256:abc',
-  protocolVersion: 4,
+  protocolVersion: 5,
   sdkVersion: '0.18.0',
   runtimeName: 'bun',
   runtimeVersion: '1.3.14',
@@ -117,6 +117,7 @@ function cancellingFixture(overrides: Partial<RemoteTaskCancelling> = {}): Remot
     state: 'cancelling',
     cancellationReason: 'user requested',
     cancellationRequestedAt: 2_000,
+    cancellationDeadline: 2_000 + 30_000,
     ...overrides,
   };
 }

@@ -6,7 +6,7 @@ const schema = z.object({
   protocolVersion: z
     .string()
     .optional()
-    .transform((value) => Number(value ?? '4'))
+    .transform((value) => Number(value ?? '5'))
     .meta({ env: 'WEFT_WORKER_PROTOCOL_VERSION' }),
   activities: z
     .string()

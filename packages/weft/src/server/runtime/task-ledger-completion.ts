@@ -56,6 +56,19 @@
  *     below, whose "expected task state leased" / "attempt token mismatch"
  *     preconditions already reject it without creating a second durable state.
  *
+ * COR-230 adds a third `status`, `'cancelled'` — a worker's cooperative
+ * response to a `cancel` control (acceptance criterion 13). It resolves
+ * through a dedicated, EARLIER branch at the top of
+ * {@link commitTaskLedgerCompletion} that commits `Cancelling -->
+ * Terminal(disposition: 'cancelled')` directly via `commitCancellation`, one
+ * step, not through `Completing`. Only taken when the record is currently
+ * `cancelling` under this exact attempt token (i.e., the server itself
+ * already recorded cancellation intent) or already resolved that exact
+ * cancellation (`duplicate`); any other case normalizes to `pendingStatus:
+ * 'failed'` and falls through to the ordinary path below, exactly as a
+ * pre-COR-230 caller folding `cancelled` into `failed` before ever reaching
+ * this function would have.
+ *
  * @module server/runtime/task-ledger-completion
  */
 
@@ -66,6 +79,7 @@ import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import type { ServeOptions } from '../index.ts';
 import {
   beginCompletion,
+  commitCancellation,
   commitDeadLetter,
   commitTerminalResult,
 } from '../task-ledger-transitions.ts';
@@ -84,7 +98,14 @@ const DEAD_LETTER_MAX_ATTEMPTS = 1;
 export type TaskLedgerCompletionInput = Readonly<{
   operationId: string;
   attemptToken: string;
-  status: 'completed' | 'failed';
+  /**
+   * `'cancelled'` (COR-230, acceptance criterion 13) is a worker's
+   * cooperative response to a `cancel` control — see
+   * {@link commitTaskLedgerCompletion}'s doc comment for how it resolves
+   * through the ledger's dedicated `Cancelling --> Terminal` transition
+   * rather than the `completed`/`failed` `Completing` intermediate.
+   */
+  status: 'completed' | 'failed' | 'cancelled';
   value?: unknown;
   error?: string;
 }>;
@@ -130,7 +151,14 @@ function commitTerminalFromCompleting(
         {
           attemptToken: input.attemptToken,
           resultDigest,
-          ...(input.status === 'failed' && input.error !== undefined ? { error: input.error } : {}),
+          // Covers both an ordinary 'failed' input and a 'cancelled' input
+          // that fell through to this ordinary path because no cancellation
+          // was ever recorded for this attempt (see
+          // `commitTaskLedgerCompletion`'s doc comment) — both carry their
+          // error text the same way a pre-COR-230 'failed'-only input did.
+          ...(input.status !== 'completed' && input.error !== undefined
+            ? { error: input.error }
+            : {}),
         },
         now,
       ),
@@ -203,9 +231,58 @@ export async function commitTaskLedgerCompletion(
   storage: Storage,
   input: TaskLedgerCompletionInput,
 ): Promise<TaskLedgerCompletionResult> {
-  const resultDigest = await pendingResultDigest(input);
-
   const existing = decodeRemoteTaskRecord(await storage.get(taskLedgerKey(input.operationId)));
+
+  // COR-230, acceptance criterion 13: a worker's cooperative "I was
+  // cancelled" result resolves through the ledger's dedicated
+  // `Cancelling --> Terminal` transition — ONE step, matching the state
+  // diagram exactly — not the `Completing` intermediate the ordinary
+  // completed/failed path below uses. Only reachable when the server itself
+  // already recorded cancellation intent (`recordCancellationIntent`,
+  // criterion 10) and the record is still `cancelling` under this exact
+  // attempt token. Checked, and returned from, BEFORE the generic
+  // terminal/deadLettered idempotency block below: a cancellation's
+  // `resultDigest` is deterministic from `(operationId, attemptToken)` alone
+  // (`commitCancellation`), not a content hash, so it would never match that
+  // block's content-digest comparison and would be misreported as
+  // conflicting content.
+  if (input.status === 'cancelled') {
+    if (
+      existing !== null &&
+      existing.state === 'terminal' &&
+      existing.disposition === 'cancelled' &&
+      existing.attemptToken === input.attemptToken
+    ) {
+      return { ok: true, disposition: 'duplicate', terminal: existing };
+    }
+    if (
+      existing !== null &&
+      existing.state === 'cancelling' &&
+      existing.attemptToken === input.attemptToken
+    ) {
+      const committed = await commitTaskLedgerTransition(
+        storage,
+        input.operationId,
+        (current, now) => commitCancellation(current, { attemptToken: input.attemptToken }, now),
+        COMPLETION_MAX_ATTEMPTS,
+      );
+      if (!committed.ok) return committed;
+      return { ok: true, disposition: 'applied', terminal: committed.record };
+    }
+    // Fall through: no cancellation was ever recorded for this attempt (the
+    // record is `leased`, `completing`, already resolved some other way, or
+    // absent entirely) — resolve as an ordinary result via the shared path
+    // below, normalizing to `pendingStatus: 'failed'` exactly as a
+    // pre-COR-230 caller folding `cancelled` into `failed` before ever
+    // reaching this function would have. This keeps a non-cooperating or
+    // out-of-band "cancelled" report from being silently dropped, and its
+    // idempotent-resubmission matching stable against a record created
+    // under that same normalization.
+  }
+
+  const pendingStatus: 'completed' | 'failed' =
+    input.status === 'completed' ? 'completed' : 'failed';
+  const resultDigest = await pendingResultDigest({ ...input, status: pendingStatus });
 
   // Idempotent resubmission against a record that already left `leased`
   // under this exact attempt (COR-240) — see the module doc comment for the
@@ -254,7 +331,7 @@ export async function commitTaskLedgerCompletion(
     (current) =>
       beginCompletion(current, {
         attemptToken: input.attemptToken,
-        pendingStatus: input.status,
+        pendingStatus,
         pendingResultDigest: resultDigest,
       }),
     COMPLETION_MAX_ATTEMPTS,

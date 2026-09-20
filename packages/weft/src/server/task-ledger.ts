@@ -36,8 +36,9 @@ export {
   MAX_TASK_REASON_BYTES,
   utf8ByteLength,
 } from './task-ledger-limits.ts';
-export { REMOTE_TASK_RECORD_VERSION } from './task-ledger-types.ts';
+export { REMOTE_TASK_RECORD_VERSION, activityAttemptLeaseFromRecord } from './task-ledger-types.ts';
 export type {
+  ActivityAttemptLease,
   RemoteTaskAttemptFields,
   RemoteTaskBase,
   RemoteTaskCancelling,

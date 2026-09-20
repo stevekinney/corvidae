@@ -131,6 +131,7 @@ function cancellingFixture(overrides: Partial<RemoteTaskCancelling> = {}): Remot
     lastHeartbeatAt: now,
     cancellationReason: 'workflow cancelled',
     cancellationRequestedAt: now,
+    cancellationDeadline: now + 30_000,
     retryCount: 0,
     requeueCount: 0,
     ...overrides,

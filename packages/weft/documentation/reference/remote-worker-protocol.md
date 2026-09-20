@@ -4,11 +4,11 @@ This document describes the versioned worker transports Weft uses to dispatch ac
 
 ## At a glance
 
-- **Protocol version**: v4. `register.protocolVersion` is required and must be exactly `4`.
+- **Protocol version**: v5. `register.protocolVersion` is required and must be exactly `5`.
 - **Transport**: WebSocket text frames containing JSON objects.
 - **Endpoint**: `/api/v1/tasks/:queue/stream` on the Weft server. Connect to one queue per WebSocket.
-- **Direction**: bidirectional. Workers send `register`, `heartbeat`, `taskResult`. Server sends `task`, `cancel`, `shutdown`, `registerAck`, `registerError`, `protocolError`, `taskResultAck`.
-- **Heartbeat**: workers heartbeat every 10 seconds after registration is acknowledged.
+- **Direction**: bidirectional. Workers send `register`, `heartbeat`, `activityHeartbeat`, `taskResult`. Server sends `task`, `cancel`, `shutdown`, `registerAck`, `registerError`, `protocolError`, `taskResultAck`.
+- **Heartbeat**: workers send a session `heartbeat` every 10 seconds after registration is acknowledged, plus one `activityHeartbeat` per in-flight long-running attempt on the same interval. The two are independent clocks (COR-230, v5) — see [`heartbeat`](#heartbeat) and [`activityHeartbeat`](#activityheartbeat) below.
 - **Authentication**: not part of the protocol envelope. Auth happens at the WebSocket transport layer.
 - **Frame limit**: every server WebSocket endpoint is capped at a fixed 4 MiB raw frame size before JSON parsing. This transport ceiling is separate from `payloadSize.maxBytes`, which applies to codec-encoded workflow values at admission time.
 - **Fatal close codes**: unsupported or invalid registration receives `registerError`, then WebSocket close code `1008`. Malformed protocol frames receive `protocolError`, then WebSocket close code `1002`.
@@ -94,7 +94,7 @@ Worker                              Server
   |   <-------- close 1008 --------   |
 ```
 
-Malformed JSON, malformed message shapes, worker-to-server message types not defined by v4, and `heartbeat` or `taskResult` before registration are fatal protocol errors:
+Malformed JSON, malformed message shapes, worker-to-server message types not defined by v5, and `heartbeat` or `taskResult` before registration are fatal protocol errors:
 
 ```text
 Worker                              Server
@@ -122,11 +122,11 @@ Sent immediately after the WebSocket opens.
 ```json
 {
   "type": "register",
-  "protocolVersion": 4,
+  "protocolVersion": 5,
   "workerId": "<string>",
   "manifest": {
     "manifestVersion": 1,
-    "protocolVersion": 4,
+    "protocolVersion": 5,
     "sdkVersion": "0.18.0",
     "runtime": { "name": "bun", "version": "1.3.14" },
     "deployment": {
@@ -157,7 +157,7 @@ Sent immediately after the WebSocket opens.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"register"` | Yes | Message discriminator. |
-| `protocolVersion` | `4` | Yes | Required v4 protocol version. Missing or unsupported versions receive `registerError`. |
+| `protocolVersion` | `5` | Yes | Required v5 protocol version. Missing or unsupported versions receive `registerError`. |
 | `workerId` | string | Yes | Stable identifier for this worker. Must be non-empty. |
 | `manifest` | `WorkerManifest` | Yes | Canonical worker manifest—deployment, runtime, workflows, activities, and capabilities. Deeply validated by `parseWorkerManifest()` server-side, not by this wire-shape layer; see [Canonical worker manifest](api-workers.md#canonical-worker-manifest). Routing `activities` are derived from `manifest.workflows`, not sent as a separate field. |
 | `concurrency` | number | No | Maximum concurrent tasks. Server clamps finite numbers to `[1, 1000]`. Defaults to `10`. |
@@ -169,7 +169,7 @@ The server processes `register` only on worker-stream paths (`/api/v1/tasks/:que
 
 ### `heartbeat`
 
-Sent every 10 seconds after `registerAck`. It tells the server the worker is alive and extends the visibility timeout on in-flight tasks assigned to this connection.
+Sent every 10 seconds after `registerAck`. It tells the server the worker's SESSION is alive — `WorkerRegistry.heartbeat()` updates `lastHeartbeat` — and nothing else.
 
 ```json
 {
@@ -184,6 +184,30 @@ Sent every 10 seconds after `registerAck`. It tells the server the worker is ali
 | `workerId` | string        | Yes      | The same `workerId` used at registration. |
 
 The server validates the field for protocol shape, but it trusts the worker identity stored on the WebSocket connection, not the heartbeat payload. A heartbeat sent before successful registration receives `protocolError` and the socket is closed.
+
+**Before v5**, a bare `heartbeat` also extended the visibility timeout of every in-flight task assigned to the connection. As of v5 (COR-230, "Session and Attempt Lease Model") it does not — visibility renewal is `activityHeartbeat`'s job, below. This is a documented change to public wire semantics, not an additive one: a v4 worker connecting to a v5 server would see its long-running attempts silently stop renewing, which is exactly why v5 is a clean protocol break rather than a negotiated one (see `REMOTE_WORKER_PROTOCOL_VERSION`'s doc comment in `worker/protocol-version.ts`).
+
+### `activityHeartbeat`
+
+Sent once per in-flight long-running attempt, on the same interval as the session `heartbeat` (typically every 10 seconds), for as long as that attempt has not yet reported a `taskResult`. It extends ONLY the named attempt's visibility deadline — the worker-session lease above is a completely independent clock.
+
+```json
+{
+  "type": "activityHeartbeat",
+  "workerId": "<string>",
+  "operationId": "<string>",
+  "attemptToken": "<string>"
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `"activityHeartbeat"` | Yes | Message discriminator. |
+| `workerId` | string | Yes | The same `workerId` used at registration. |
+| `operationId` | string | Yes | The opaque `operationId` from the corresponding `task` message. |
+| `attemptToken` | string | Yes | Per-dispatch token from the matching `task` frame — the worker must echo it unchanged, exactly as it does on `taskResult`. |
+
+The server authorizes `activityHeartbeat` through the same identity check `taskResult` uses: the WebSocket connection must currently own `operationId`, and `attemptToken` must match the current dispatch exactly. A stale, superseded, or unrecognized attempt is rejected with `protocolError` rather than silently renewing (or resurrecting) a lease that no longer belongs to this attempt. Renewal is also capped by the attempt's absolute deadline — a fixed ceiling on total attempt lifetime that no heartbeat, of either kind, can extend — so a worker that only ever sends heartbeats cannot keep an attempt alive forever.
 
 ### `taskResult`
 
@@ -298,16 +322,18 @@ Server requests cancellation of an in-flight task.
 ```json
 {
   "type": "cancel",
-  "operationId": "<string>"
+  "operationId": "<string>",
+  "attemptToken": "<string>"
 }
 ```
 
-| Field         | Type       | Required | Description                                 |
-| ------------- | ---------- | -------- | ------------------------------------------- |
-| `type`        | `"cancel"` | Yes      | Message discriminator.                      |
-| `operationId` | string     | Yes      | The in-flight task the worker should abort. |
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `"cancel"` | Yes | Message discriminator. |
+| `operationId` | string | Yes | The in-flight task the worker should abort. |
+| `attemptToken` | string | Yes | The attempt this cancellation targets (COR-230). The worker's `AbortController` lookup is keyed by `(operationId, attemptToken)`, not `operationId` alone, so a `cancel` for an attempt the worker has already superseded (e.g. it already reported a result and moved on to a redispatch of the same `operationId`) matches nothing and is safely ignored rather than aborting the wrong attempt. |
 
-Workers should signal cancellation to the activity, usually by aborting an `AbortSignal`, and then report the terminal outcome with `taskResult`.
+The server records durable cancellation intent (`RemoteTaskCancelling`, via `recordCancellationIntent`) BEFORE sending this control message — a crash between the two leaves a resumable intent, never a `cancel` the ledger has no record of. Workers should signal cancellation to the activity, usually by aborting the matching `AbortSignal`, and then report the terminal outcome with `taskResult` (`status: "cancelled"`). A worker that does not respond within the server's configured cancellation deadline has its attempt settled as cancelled anyway, with cancellation disposition `uncertain: true` recorded on the terminal record — the server does not know whether the activity actually stopped.
 
 ### `shutdown`
 
@@ -328,7 +354,7 @@ Server acknowledgement that registration succeeded.
 ```json
 {
   "type": "registerAck",
-  "protocolVersion": 4,
+  "protocolVersion": 5,
   "workerId": "<string>",
   "queue": "default",
   "concurrency": 10,
@@ -340,7 +366,7 @@ Server acknowledgement that registration succeeded.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"registerAck"` | Yes | Message discriminator. |
-| `protocolVersion` | `4` | Yes | Effective protocol version. |
+| `protocolVersion` | `5` | Yes | Effective protocol version. |
 | `workerId` | string | Yes | Accepted worker identifier. |
 | `queue` | string | Yes | Effective queue from the WebSocket URL. |
 | `concurrency` | number | Yes | Effective concurrency after server clamping to the supported capacity. |
@@ -358,7 +384,7 @@ Server rejection of registration. The server sends this message, then closes the
   "type": "registerError",
   "code": "unsupported_protocol_version",
   "message": "Unsupported RemoteWorker protocol version: 1",
-  "supportedProtocolVersions": [4],
+  "supportedProtocolVersions": [5],
   "requestedProtocolVersion": 1
 }
 ```
@@ -463,21 +489,23 @@ Task response body:
   "workerId": "longpoll-a1b2c3d4",
   "workflowExecutionToken": "workflow-run-token",
   "workflowRevision": "sha256:9f2c…",
-  "attemptToken": "per-claim-token"
+  "attemptToken": "per-claim-token",
+  "visibilityTimeout": 30000
 }
 ```
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `operationId` | string | Opaque task identifier to echo in the result request. |
+| `operationId` | string | Opaque task identifier to echo in the result and heartbeat requests. |
 | `activityName` | string | Activity name selected from the advertised `activity` values. |
 | `input` | JSON value | Activity input. |
 | `attempt` | number | Retry attempt number. Present on retried dispatches. |
 | `headers` | `Record<string, string>` | Interceptor-propagated headers when present. |
-| `workerId` | string | Synthetic worker id for this HTTP claim. Echo it in the result request. |
+| `workerId` | string | Synthetic worker id for this HTTP claim. Echo it in the result and heartbeat requests. |
 | `workflowExecutionToken` | string | Durable per-run token exposed to the activity context for external writes. |
 | `workflowRevision` | string | The dispatching workflow run's persisted revision (WFT-20), when the dispatch carried one. Echo it back UNCHANGED in the result request—see below. |
-| `attemptToken` | string | Per-claim token for stale-attempt rejection. Echo it in the result request. |
+| `attemptToken` | string | Per-claim token for stale-attempt rejection. Echo it in the result and heartbeat requests. |
+| `visibilityTimeout` | number | The heartbeat-renewable visibility window in milliseconds, when the dispatch carried one. Governs how often `LongPollWorker` should heartbeat (COR-230, acceptance criterion 5) — see the heartbeat request below. |
 
 ### Result request
 
@@ -510,15 +538,29 @@ Failure body:
 }
 ```
 
+Cancellation body (COR-230, acceptance criterion 13) — a worker's cooperative response after its heartbeat learned of a server-initiated cancellation (see the heartbeat request below):
+
+```json
+{
+  "operationId": "activity-operation-id",
+  "workerId": "longpoll-a1b2c3d4",
+  "attemptToken": "per-claim-token",
+  "status": "cancelled",
+  "cancelled": true,
+  "error": "Task cancelled"
+}
+```
+
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `operationId` | string | Yes | Opaque task identifier from the poll response. |
 | `workerId` | string | Yes for claimed tasks | Synthetic worker id from the poll response. |
 | `attemptToken` | non-empty string | Yes | Per-claim token from the poll response. |
 | `workflowRevision` | non-empty string | See below | Echo of the poll response's `workflowRevision`, when present—required whenever the stored ledger record has one; see below. |
-| `status` | `"completed" \| "failed"` | Yes | Terminal activity result status. |
+| `status` | `"completed" \| "failed" \| "cancelled"` | Yes | Terminal activity result status. `"cancelled"` resolves through the ledger's distinct cancellation disposition, never as a generic failure (COR-230). |
 | `value` | JSON value | Yes if `completed` | Activity result. Use `null` when the activity has no value. |
-| `error` | string | Yes if `failed` | Human-readable failure message. |
+| `error` | string | Yes if `failed`/`cancelled` | Human-readable failure or cancellation message. |
+| `cancelled` | `true` | No | Optional marker for a cancelled result, mirroring the WebSocket transport's `taskResult.cancelled`. If present, it must be `true`. |
 
 | Response | Meaning |
 | --- | --- |
@@ -530,5 +572,48 @@ Failure body:
 **Revision staleness is STRICT for long-poll (WFT-20)**, unlike the WebSocket transport's additive policy above: when the stored ledger record for this task carries a `workflowRevision`, the result request must echo it back EXACTLY—a missing echo is rejected the same as a mismatched one. Long-poll has no live in-flight registry entry to fall back on the way the WebSocket transport does, so once ANY `TaskDispatch` caller starts supplying `workflowRevision` for a given operation, every worker completing it must echo the value back or receive `403`.
 
 Long-poll authorization is strict. A claimed task records the synthetic `workerId` and a fresh `attemptToken`; the completion must echo both while that record is still current. If the worker misses the visibility window and the task is reclaimed, a late result from the old claim is rejected instead of mutating the workflow.
+
+### Heartbeat request (COR-230)
+
+`LongPollWorker` sends one of these per in-flight activity, on the same interval `HeartbeatManager` uses for the WebSocket transport by default (`heartbeatIntervalMs`, 10 seconds), for as long as that activity has not yet reported a result. It is the long-poll counterpart to the WebSocket transport's `activityHeartbeat` message — same shared server-side authorization and renewal (`authorizeTaskResultForCurrentAttempt` / `renewAttemptLease`), same three clocks, same absolute-deadline cap (acceptance criterion 5: "long-running WebSocket and long-poll activities renew the same attempt-fenced lease contract").
+
+```text
+POST /api/v1/tasks/:queue/heartbeat
+Content-Type: application/json
+```
+
+```json
+{
+  "operationId": "activity-operation-id",
+  "workerId": "longpoll-a1b2c3d4",
+  "attemptToken": "per-claim-token"
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `operationId` | string | Yes | Opaque task identifier from the poll response. |
+| `workerId` | string | No | Synthetic worker id from the poll response. |
+| `attemptToken` | non-empty string | Yes | Per-claim token from the poll response — the worker's `AbortController` lookup is keyed by `(operationId, attemptToken)`, matching the WebSocket transport's `cancel` fencing (acceptance criterion 11). |
+
+Response body:
+
+```json
+{ "ok": true, "cancelled": false, "leaseDeadline": 1778608010000 }
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `ok` | boolean | Always `true` for a `200` response. |
+| `cancelled` | boolean | `true` when the server has recorded cancellation intent for this attempt (a `cancelling` ledger record) — long-poll has no server-to-worker push channel, so this is how the cancellation signal reaches the worker. `LongPollWorker` aborts the matching `AbortController` when it sees `true`, and the activity's subsequent result should report `status: "cancelled"` (see above). |
+| `leaseDeadline` | number | Present only when the attempt was actually renewed (`cancelled: false` and the record was still `leased`) — the new absolute visibility deadline, epoch milliseconds. |
+
+| Response | Meaning |
+| --- | --- |
+| `200` | Heartbeat accepted — see the body fields above for whether the lease was renewed or cancellation was signaled. Also returned, as an idempotent no-op, for a heartbeat that arrives after the attempt has already resolved. |
+| `400` | Invalid JSON or a missing/empty `operationId`/`attemptToken`. |
+| `403` | The echoed `workerId` or `attemptToken` does not match the current attempt, or the URL's `:queue` segment does not match the record's actual queue — the same fencing `taskResult` and the WebSocket transport's `activityHeartbeat` enforce. |
+
+A missed or failed heartbeat is not itself an error: `LongPollWorker` simply retries on the next interval tick, exactly as a dropped WebSocket `activityHeartbeat` frame would be.
 
 Aborting a poll before a task is claimed returns `204` and leaves queued work available for another poller. After a `200` response, the task is in flight until the worker posts a result or the visibility timeout/reconciliation path makes it available for another attempt.

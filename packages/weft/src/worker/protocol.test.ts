@@ -13,17 +13,18 @@ import {
 } from './protocol.ts';
 
 describe('RemoteWorker protocol contract', () => {
-  it('pins the supported protocol version range to v4 (protocol and outbox)', () => {
-    expect(REMOTE_WORKER_PROTOCOL_VERSION).toBe(4);
-    expect(REMOTE_WORKER_MIN_PROTOCOL_VERSION).toBe(4);
-    expect(REMOTE_WORKER_MAX_PROTOCOL_VERSION).toBe(4);
-    expect(REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS).toEqual([4]);
+  it('pins the supported protocol version range to v5 (session and attempt lease model)', () => {
+    expect(REMOTE_WORKER_PROTOCOL_VERSION).toBe(5);
+    expect(REMOTE_WORKER_MIN_PROTOCOL_VERSION).toBe(5);
+    expect(REMOTE_WORKER_MAX_PROTOCOL_VERSION).toBe(5);
+    expect(REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS).toEqual([5]);
   });
 
   it('publishes deterministic schemas for every protocol message', () => {
     expect(Object.keys(REMOTE_WORKER_MESSAGE_SCHEMAS)).toEqual([
       'register',
       'heartbeat',
+      'activityHeartbeat',
       'taskResult',
       'task',
       'cancel',
@@ -61,7 +62,7 @@ describe('RemoteWorker protocol contract', () => {
   it('accepts a valid current register message', () => {
     const result = parseWorkerToServerMessage({
       type: 'register',
-      protocolVersion: 4,
+      protocolVersion: 5,
       workerId: 'worker-1',
       manifest: { manifestVersion: 1 },
       concurrency: 4,
@@ -71,7 +72,7 @@ describe('RemoteWorker protocol contract', () => {
       ok: true,
       message: {
         type: 'register',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         manifest: { manifestVersion: 1 },
         concurrency: 4,
@@ -85,7 +86,7 @@ describe('RemoteWorker protocol contract', () => {
     // only proves manifest is present and shaped like a JSON object.
     const result = parseWorkerToServerMessage({
       type: 'register',
-      protocolVersion: 4,
+      protocolVersion: 5,
       workerId: 'worker-1',
       manifest: { manifestVersion: 1, deployment: { name: 'payments' } },
       startedAt: 1_778_608_000_000,
@@ -95,7 +96,7 @@ describe('RemoteWorker protocol contract', () => {
       ok: true,
       message: {
         type: 'register',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         manifest: { manifestVersion: 1, deployment: { name: 'payments' } },
         startedAt: 1_778_608_000_000,
@@ -140,7 +141,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseWorkerToServerMessage({
         type: 'register',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: '',
         manifest: {},
       }),
@@ -152,7 +153,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseWorkerToServerMessage({
         type: 'register',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         manifest: ['not', 'an', 'object'],
       }),
@@ -164,7 +165,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseWorkerToServerMessage({
         type: 'register',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
       }),
     ).toMatchObject({
@@ -175,7 +176,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseWorkerToServerMessage({
         type: 'register',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         manifest: {},
         concurrency: Number.NaN,
@@ -188,7 +189,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseWorkerToServerMessage({
         type: 'register',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         manifest: {},
         startedAt: Number.POSITIVE_INFINITY,
@@ -204,13 +205,60 @@ describe('RemoteWorker protocol contract', () => {
     });
   });
 
+  it('parses a valid activityHeartbeat and rejects one missing operationId or attemptToken (COR-230, v5)', () => {
+    const activityHeartbeatInput = {
+      type: 'activityHeartbeat',
+      workerId: 'worker-1',
+      operationId: 'op-1',
+      attemptToken: 'attempt-token',
+    } as const;
+    expect(parseWorkerToServerMessage(activityHeartbeatInput)).toEqual({
+      ok: true,
+      message: activityHeartbeatInput,
+    });
+
+    expect(
+      parseWorkerToServerMessage({
+        type: 'activityHeartbeat',
+        workerId: '',
+        operationId: 'op-1',
+        attemptToken: 'attempt-token',
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { message: 'activityHeartbeat.workerId must be a non-empty string' },
+    });
+    expect(
+      parseWorkerToServerMessage({
+        type: 'activityHeartbeat',
+        workerId: 'worker-1',
+        operationId: '',
+        attemptToken: 'attempt-token',
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { message: 'activityHeartbeat.operationId must be a non-empty string' },
+    });
+    expect(
+      parseWorkerToServerMessage({
+        type: 'activityHeartbeat',
+        workerId: 'worker-1',
+        operationId: 'op-1',
+        attemptToken: '',
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { message: 'activityHeartbeat.attemptToken must be a non-empty string' },
+    });
+  });
+
   it('round-trips every documented optional field through register, task, and taskResult', () => {
     // Trust-boundary regression: each documented optional field on the three
     // parsed message kinds must survive an unknown -> typed round trip without
     // mutation, and the parser must not introduce or drop properties.
     const registerInput = {
       type: 'register',
-      protocolVersion: 4,
+      protocolVersion: 5,
       workerId: 'worker-1',
       manifest: {
         manifestVersion: 1,
@@ -501,7 +549,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseServerToWorkerMessage({
         type: 'registerAck',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         queue: 'default',
         concurrency: 1,
@@ -521,9 +569,15 @@ describe('RemoteWorker protocol contract', () => {
       }),
     ).toMatchObject({ ok: true, message: { type: 'task' } });
 
-    expect(parseServerToWorkerMessage({ type: 'cancel', operationId: 'op-1' })).toMatchObject({
+    expect(
+      parseServerToWorkerMessage({
+        type: 'cancel',
+        operationId: 'op-1',
+        attemptToken: 'attempt-token',
+      }),
+    ).toMatchObject({
       ok: true,
-      message: { type: 'cancel' },
+      message: { type: 'cancel', attemptToken: 'attempt-token' },
     });
     expect(parseServerToWorkerMessage({ type: 'shutdown' })).toMatchObject({
       ok: true,
@@ -654,9 +708,21 @@ describe('RemoteWorker protocol contract', () => {
       error: { message: 'task.headers must be a string map' },
     });
 
-    expect(parseServerToWorkerMessage({ type: 'cancel', operationId: '' })).toMatchObject({
+    expect(
+      parseServerToWorkerMessage({
+        type: 'cancel',
+        operationId: '',
+        attemptToken: 'attempt-token',
+      }),
+    ).toMatchObject({
       ok: false,
       error: { message: 'cancel.operationId must be a non-empty string' },
+    });
+    expect(
+      parseServerToWorkerMessage({ type: 'cancel', operationId: 'op-1', attemptToken: '' }),
+    ).toMatchObject({
+      ok: false,
+      error: { message: 'cancel.attemptToken must be a non-empty string' },
     });
 
     expect(
@@ -666,12 +732,12 @@ describe('RemoteWorker protocol contract', () => {
       }),
     ).toMatchObject({
       ok: false,
-      error: { message: 'registerAck.protocolVersion must be 4' },
+      error: { message: 'registerAck.protocolVersion must be 5' },
     });
     expect(
       parseServerToWorkerMessage({
         type: 'registerAck',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: '',
         queue: 'default',
         concurrency: 1,
@@ -685,7 +751,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseServerToWorkerMessage({
         type: 'registerAck',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         queue: '',
         concurrency: 1,
@@ -699,7 +765,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseServerToWorkerMessage({
         type: 'registerAck',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         queue: 'default',
         concurrency: Number.NaN,
@@ -713,7 +779,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseServerToWorkerMessage({
         type: 'registerAck',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         queue: 'default',
         concurrency: 1,
@@ -727,7 +793,7 @@ describe('RemoteWorker protocol contract', () => {
     expect(
       parseServerToWorkerMessage({
         type: 'registerAck',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'worker-1',
         queue: 'default',
         concurrency: 1,

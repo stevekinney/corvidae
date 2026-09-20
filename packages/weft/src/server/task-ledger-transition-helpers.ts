@@ -67,6 +67,8 @@ export type LeaseHolderFields = Readonly<{
   executionIdentity?: WorkerExecutionIdentity;
   attempt: number;
   leaseDeadline: number;
+  /** See `RemoteTaskLeased.attemptDeadline`'s doc comment (`task-ledger-types.ts`). */
+  attemptDeadline?: number;
   firstQueuedAt: number;
   lastQueuedAt: number;
   startedAt: number;
@@ -82,6 +84,7 @@ export function pickLeaseHolderFields(record: LeaseHolderFields): LeaseHolderFie
       : {}),
     attempt: record.attempt,
     leaseDeadline: record.leaseDeadline,
+    ...(record.attemptDeadline !== undefined ? { attemptDeadline: record.attemptDeadline } : {}),
     firstQueuedAt: record.firstQueuedAt,
     lastQueuedAt: record.lastQueuedAt,
     startedAt: record.startedAt,

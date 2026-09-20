@@ -12,6 +12,7 @@ import {
 } from '../../core/events.ts';
 import { KEYS } from '../../storage/interface.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
+import type { ServeOptions } from '../index.ts';
 import { claimNextSequence } from '../runtime-helpers.ts';
 import { CLIENT_VISIBLE_EVENT_TYPES, TOKEN_EVENT_TYPE } from './client-visible-events.ts';
 import type { ServerContext } from './context.ts';
@@ -94,6 +95,7 @@ export function registerWorkflowEventLifecycle(
   engine: Engine,
   context: ServerContext,
   broadcastingHandle: EventBroadcastingHandle,
+  options: ServeOptions,
 ): () => void {
   // Clean up per-workflow state when workflows reach a terminal state:
   // both the sticky-routing affinity map and the event-broadcasting sequence
@@ -133,7 +135,12 @@ export function registerWorkflowEventLifecycle(
       if (!operationIds || operationIds.size === 0) return;
 
       for (const operationId of operationIds) {
-        cancelTask(context, operationId);
+        void cancelTask(context, options, operationId, 'Workflow cancelled').catch((error) => {
+          console.error(
+            `[weft] Failed to propagate workflow cancellation to task "${operationId}":`,
+            error,
+          );
+        });
         context.operationToWorkflow.delete(operationId);
       }
 

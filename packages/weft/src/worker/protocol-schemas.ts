@@ -69,6 +69,17 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
       workerId: { type: 'string', minLength: 1 },
     },
   },
+  activityHeartbeat: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['type', 'workerId', 'operationId', 'attemptToken'],
+    properties: {
+      type: { const: 'activityHeartbeat' },
+      workerId: { type: 'string', minLength: 1 },
+      operationId: { type: 'string', minLength: 1 },
+      attemptToken: { type: 'string', minLength: 1 },
+    },
+  },
   taskResult: {
     oneOf: [
       {
@@ -132,10 +143,11 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
   cancel: {
     type: 'object',
     additionalProperties: false,
-    required: ['type', 'operationId'],
+    required: ['type', 'operationId', 'attemptToken'],
     properties: {
       type: { const: 'cancel' },
       operationId: { type: 'string', minLength: 1 },
+      attemptToken: { type: 'string', minLength: 1 },
     },
   },
   shutdown: {

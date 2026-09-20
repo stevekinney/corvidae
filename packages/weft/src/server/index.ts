@@ -292,6 +292,14 @@ export interface ServeOptions {
    */
   workerReconnectGracePeriodMs?: number;
   /**
+   * How long (in ms) a leased-origin `cancelTask` waits for the worker's
+   * cooperative `taskResult(status: 'cancelled')` before the periodic
+   * reconciliation scan force-settles the attempt as cancelled with
+   * `uncertain: true` (COR-230, acceptance criterion 15). Defaults to
+   * `30_000`. Values are clamped to `[0, 300_000]`.
+   */
+  cancellationGracePeriodMs?: number;
+  /**
    * How long (in ms) an adopted terminal task-ledger record is retained
    * before the periodic reconciliation scan reaps it. Defaults to `undefined`
    * — retention is opt-in, and unset means terminal records are kept forever
@@ -518,8 +526,18 @@ export interface WeftServer extends AsyncDisposable {
   shutdownWorker(workerId: string, options?: { timeoutMs?: number }): Promise<boolean>;
   /** Send a shutdown message to all connected workers and wait for them to disconnect. */
   shutdownAllWorkers(options?: { timeoutMs?: number }): Promise<void>;
-  /** Send a cancel message for a specific operation to the worker handling it. Returns true if the worker was found. */
-  cancelTask(operationId: string): boolean;
+  /**
+   * Request cancellation of `operationId` (COR-230). Durably records
+   * cancellation intent through the task ledger before any control is sent
+   * to a worker — a queued task commits straight to a cancelled terminal
+   * record with no worker delivery; a leased task commits `Leased -->
+   * Cancelling` first, then best-effort sends the `cancel` control. Returns
+   * `true` once intent is durably recorded (or already was), regardless of
+   * whether delivery to a live worker succeeded; `false` when there is no
+   * live attempt left to cancel (already resolved some other way, or a
+   * result is already mid-commit).
+   */
+  cancelTask(operationId: string, cancellationReason?: string): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -672,7 +690,8 @@ export function serve(options: ServeOptions): WeftServer {
     shutdownWorker: (workerId, shutdownOptions) =>
       shutdownWorkerImpl(context, workerId, shutdownOptions),
     shutdownAllWorkers: (shutdownOptions) => shutdownAllWorkersImpl(context, shutdownOptions),
-    cancelTask: (operationId) => cancelTask(context, operationId),
+    cancelTask: (operationId, cancellationReason) =>
+      cancelTask(context, options, operationId, cancellationReason),
     [Symbol.asyncDispose]() {
       return stack[Symbol.asyncDispose]();
     },

@@ -257,6 +257,7 @@ function isValidLeaseHolderShape(value: Record<string, unknown>): boolean {
     isOptionalExecutionIdentity(value['executionIdentity']) &&
     isFiniteNumber(value['attempt']) &&
     isFiniteNumber(value['leaseDeadline']) &&
+    isOptionalFiniteNumber(value['attemptDeadline']) &&
     isFiniteNumber(value['firstQueuedAt']) &&
     isFiniteNumber(value['lastQueuedAt']) &&
     isFiniteNumber(value['startedAt']) &&
@@ -300,7 +301,8 @@ export function isRemoteTaskCancelling(value: unknown): value is RemoteTaskCance
   return (
     isValidLeaseHolderShape(value) &&
     isBoundedReason(value['cancellationReason']) &&
-    isFiniteNumber(value['cancellationRequestedAt'])
+    isFiniteNumber(value['cancellationRequestedAt']) &&
+    isFiniteNumber(value['cancellationDeadline'])
   );
 }
 
@@ -336,7 +338,8 @@ export function isRemoteTaskTerminalCancelled(
   if (!isValidTaskBase(value) || !isValidTerminalCommon(value)) return false;
   return (
     isBoundedOptionalIdentifier(value['attemptToken']) &&
-    isBoundedReason(value['cancellationReason'])
+    isBoundedReason(value['cancellationReason']) &&
+    (value['uncertain'] === undefined || value['uncertain'] === true)
   );
 }
 

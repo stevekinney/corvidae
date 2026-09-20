@@ -238,6 +238,10 @@ export { MAX_REGISTRY_WORKFLOW_COUNT } from './core/registry-limits.ts';
 export { REGISTRY_VERSION } from './core/registry-snapshot.ts';
 export type { RegistryActivityEntry } from './core/registry-snapshot.ts';
 export { createLiveOperationRegistry } from './server/rest-bindings.ts';
-export { isRemoteTaskTerminalResolved, taskLedgerKey } from './server/task-ledger.ts';
+export {
+  isRemoteTaskTerminalCancelled,
+  isRemoteTaskTerminalResolved,
+  taskLedgerKey,
+} from './server/task-ledger.ts';
 export { isPlainRecord } from './worker/manifest/is-plain-record.ts';
 export { utf8ByteLength } from './worker/manifest/utf8.ts';

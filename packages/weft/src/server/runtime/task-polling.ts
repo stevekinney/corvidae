@@ -1,7 +1,7 @@
 import type { ServeOptions } from '../index.ts';
 import { isAuthenticated, type Principal } from '../principal.ts';
 import { readRestJsonBody, type RestBodyReadOptions } from '../rest-body.ts';
-import { claimQueued } from '../task-ledger-transitions.ts';
+import { claimQueued, renewAttemptLease } from '../task-ledger-transitions.ts';
 import { decodeRemoteTaskRecord, taskLedgerKey, type RemoteTaskRecord } from '../task-ledger.ts';
 import type { PendingTask } from '../task-queue-types.ts';
 import type { ServerContext } from './context.ts';
@@ -17,6 +17,7 @@ import { taskResultPayloadSizeError } from './task-result-resolution.ts';
 
 const TASK_POLL_RE = /^\/v1\/tasks\/([\w-]+)$/;
 const TASK_RESULT_RE = /^\/v1\/tasks\/([\w-]+)\/result$/;
+const TASK_HEARTBEAT_RE = /^\/v1\/tasks\/([\w-]+)\/heartbeat$/;
 const TASK_DIAGNOSTICS_PATH = '/v1/tasks/diagnostics';
 
 const MAX_POLL_TIMEOUT = 60_000;
@@ -48,7 +49,14 @@ function isPayloadTooLargeFault(value: unknown): value is { message: string } {
 
 type ValidatedTaskResult = {
   operationId: string;
-  status: 'completed' | 'failed';
+  /**
+   * `'cancelled'` (COR-230, acceptance criterion 13) is a long-poll worker's
+   * cooperative response to a heartbeat-piggybacked cancellation signal —
+   * the exact counterpart to the WebSocket transport's `taskResult(status:
+   * 'cancelled')`. `commitTaskLedgerCompletion` resolves it through the same
+   * dedicated `Cancelling --> Terminal` path either way.
+   */
+  status: 'completed' | 'failed' | 'cancelled';
   workerId: string | undefined;
   value: unknown;
   error: string | undefined;
@@ -96,8 +104,11 @@ function validateTaskResultBody(body: Record<string, unknown>): ValidatedTaskRes
     );
   }
 
-  if (status !== 'completed' && status !== 'failed') {
-    return Response.json({ error: 'status must be "completed" or "failed"' }, { status: 400 });
+  if (status !== 'completed' && status !== 'failed' && status !== 'cancelled') {
+    return Response.json(
+      { error: 'status must be "completed", "failed", or "cancelled"' },
+      { status: 400 },
+    );
   }
 
   const rawAttemptToken = body['attemptToken'];
@@ -167,7 +178,7 @@ function isLongPollCompletionAuthorized(
 
   if (
     record !== null &&
-    (record.state === 'leased' || record.state === 'completing') &&
+    (record.state === 'leased' || record.state === 'completing' || record.state === 'cancelling') &&
     record.workflowRevision !== undefined &&
     validated.workflowRevision !== record.workflowRevision
   ) {
@@ -199,7 +210,7 @@ async function applyTaskResult(
       attemptToken: result.attemptToken,
       status,
       ...(status === 'completed' ? { value } : {}),
-      ...(status === 'failed' && error !== undefined ? { error } : {}),
+      ...(status !== 'completed' && error !== undefined ? { error } : {}),
     },
     result.workerId,
   );
@@ -466,4 +477,162 @@ export async function handleTaskResultRequest(
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
   return Response.json({ ok: true, disposition: applied.disposition });
+}
+
+// ---------------------------------------------------------------------------
+// Heartbeat (COR-230, acceptance criterion 5)
+// ---------------------------------------------------------------------------
+
+type ValidatedTaskHeartbeat = {
+  operationId: string;
+  workerId: string | undefined;
+  attemptToken: string;
+};
+
+/**
+ * Validate and extract typed fields from a parsed long-poll heartbeat body.
+ * Mirrors {@link validateTaskResultBody}'s shape and strictness — `attemptToken`
+ * is required exactly the same way, since this is the same identity fence
+ * `authorizeTaskResultForCurrentAttempt` checks for both a completion and a
+ * heartbeat.
+ */
+function validateTaskHeartbeatBody(
+  body: Record<string, unknown>,
+): ValidatedTaskHeartbeat | Response {
+  const operationId = body['operationId'];
+  if (typeof operationId !== 'string' || operationId.length === 0) {
+    return Response.json({ error: 'Missing required field: operationId' }, { status: 400 });
+  }
+  const attemptToken = body['attemptToken'];
+  if (typeof attemptToken !== 'string' || attemptToken.length === 0) {
+    return Response.json({ error: 'attemptToken must be a non-empty string' }, { status: 400 });
+  }
+  return {
+    operationId,
+    workerId: typeof body['workerId'] === 'string' ? body['workerId'] : undefined,
+    attemptToken,
+  };
+}
+
+/**
+ * Long-poll counterpart to the WebSocket transport's `activityHeartbeat`
+ * (COR-230, acceptance criterion 5 — "long-running WebSocket and long-poll
+ * activities renew the same attempt-fenced lease contract"). Authorizes
+ * through the exact same {@link authorizeTaskResultForCurrentAttempt} /
+ * {@link currentAttemptFromLedgerRecord} seam `taskResult` uses (extended,
+ * COR-230, to also recognize a `cancelling` record as a live attempt), and
+ * renews through the exact same {@link renewAttemptLease} transition the
+ * WebSocket path's `onActivityHeartbeatMessage` uses — same fencing, same
+ * three clocks, same absolute-deadline cap. No second implementation.
+ *
+ * A `cancelling` record is a valid heartbeat target but is never renewed —
+ * `renewAttemptLease`'s own precondition requires `state === 'leased'`,
+ * matching the WebSocket path exactly, and there would be nothing to renew
+ * for either transport since a cancellation deadline (not the visibility
+ * deadline) now governs the record's clock. Instead, the response's
+ * `cancelled: true` flag piggybacks the cancellation signal back to the
+ * worker (COR-230's suggested shape for a transport with no server-to-worker
+ * push channel) — `LongPollWorker` checks it on every heartbeat response and
+ * aborts the matching local `AbortController` when it sees it.
+ */
+export async function handleTaskHeartbeatRequest(
+  context: ServerContext,
+  options: ServeOptions,
+  request: Request,
+  url: URL,
+  principal?: Principal,
+): Promise<Response | null> {
+  if (request.method !== 'POST') {
+    return null;
+  }
+
+  const heartbeatMatch = TASK_HEARTBEAT_RE.exec(url.pathname);
+  if (!heartbeatMatch?.[1]) {
+    return null;
+  }
+  const queue = decodeURIComponent(heartbeatMatch[1]);
+
+  const authorizationResponse = authorizeWorkerPrincipal(principal);
+  if (authorizationResponse !== null) return authorizationResponse;
+
+  const recoveryResponse = await awaitTaskLedgerRecovery(context);
+  if (recoveryResponse !== null) return recoveryResponse;
+
+  const body = await parseTaskResultBody(
+    request,
+    options.maxRequestBodyBytes !== undefined ? { maxBodyBytes: options.maxRequestBodyBytes } : {},
+  );
+  if (body instanceof Response) {
+    return body;
+  }
+  if (body === null) {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const validated = validateTaskHeartbeatBody(body);
+  if (validated instanceof Response) {
+    return validated;
+  }
+
+  const record = decodeRemoteTaskRecord(
+    await options.engine.storage.get(taskLedgerKey(validated.operationId)),
+  );
+  if (record !== null && record.queue !== queue) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  const authorization = authorizeTaskResultForCurrentAttempt(
+    currentAttemptFromLedgerRecord(record),
+    validated.workerId,
+    validated.attemptToken,
+  );
+  if (!authorization.ok) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  if (record !== null && record.state === 'cancelling') {
+    return Response.json({ ok: true, cancelled: true });
+  }
+  if (record === null || record.state !== 'leased') {
+    // Authorization succeeded (terminal/deadLettered, matched by
+    // attemptToken alone) against an attempt that has already resolved —
+    // nothing left to renew or cancel. A resent heartbeat after the result
+    // already landed is a harmless no-op, not an error.
+    return Response.json({ ok: true, cancelled: false });
+  }
+
+  const renewed = await commitTaskLedgerTransition(
+    options.engine.storage,
+    validated.operationId,
+    (current, now) =>
+      renewAttemptLease(
+        current,
+        {
+          attemptToken: validated.attemptToken,
+          workerSessionId: record.workerSessionId,
+          leaseDurationMilliseconds: record.visibilityTimeoutMilliseconds,
+        },
+        now,
+      ),
+    1,
+  );
+  if (!renewed.ok) {
+    // Lost the race to a concurrent requeue, cancellation, or result commit
+    // — the fresh record no longer supports this renewal. Re-read to answer
+    // accurately rather than reporting a stale `cancelled: false`.
+    const current = decodeRemoteTaskRecord(
+      await options.engine.storage.get(taskLedgerKey(validated.operationId)),
+    );
+    return Response.json({
+      ok: true,
+      cancelled: current !== null && current.state === 'cancelling',
+    });
+  }
+
+  context.deadlineTracker.remove(validated.operationId);
+  context.deadlineTracker.add({
+    operationId: validated.operationId,
+    deadline: renewed.record.leaseDeadline,
+  });
+
+  return Response.json({ ok: true, cancelled: false, leaseDeadline: renewed.record.leaseDeadline });
 }

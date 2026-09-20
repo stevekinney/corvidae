@@ -84,6 +84,7 @@ function cancellingFixture(overrides: Partial<RemoteTaskCancelling> = {}): Remot
     state: 'cancelling',
     cancellationReason: 'user requested',
     cancellationRequestedAt: 3_000,
+    cancellationDeadline: 33_000,
     ...overrides,
   };
 }

@@ -11,6 +11,25 @@
 /**
  * Current RemoteWorker wire protocol version.
  *
+ * **Version 5** (Session and Attempt Lease Model, COR-230) splits the single
+ * `heartbeat` message's semantics into two independently-clocked messages: a
+ * bare `heartbeat` (`workerId` only) renews ONLY the worker-session lease —
+ * `WorkerRegistry.heartbeat()` — and a new `activityHeartbeat` (`workerId` +
+ * `operationId` + `attemptToken`) renews ONLY that one attempt's
+ * heartbeat-extendable visibility deadline, fenced by the same
+ * `authorizeTaskResultForCurrentAttempt` identity check `taskResult` already
+ * uses. Before v5, a bare `heartbeat` extended the visibility deadline of
+ * every in-flight task assigned to the connection — an undocumented fan-out
+ * that could not distinguish a live long-running attempt from one the
+ * connection no longer actually owned. This is a version bump, not a
+ * negotiated one, for the same reason v3's was: a v4 worker's bare
+ * heartbeats silently stop keeping its long-running attempts alive against a
+ * v5 server (they now renew the session only), which would otherwise regress
+ * as a silent task timeout with no diagnostic rather than a clear
+ * registration rejection. Every attempt also now carries an absolute
+ * `attemptDeadline` (`task-ledger-transitions.ts`) that neither heartbeat
+ * kind can extend.
+ *
  * **Version 4** (Protocol and Outbox, COR-240) adds the server-to-worker
  * `taskResultAck` message, echoing back the operation's `attemptToken` with a
  * `disposition` of `applied`, `duplicate`, or `dead-lettered`. Pairing this
@@ -41,7 +60,7 @@
  * const registration = { type: 'register', protocolVersion: REMOTE_WORKER_PROTOCOL_VERSION };
  * ```
  */
-export const REMOTE_WORKER_PROTOCOL_VERSION = 4;
+export const REMOTE_WORKER_PROTOCOL_VERSION = 5;
 
 /**
  * Lowest RemoteWorker protocol version accepted by this package.
@@ -50,10 +69,10 @@ export const REMOTE_WORKER_PROTOCOL_VERSION = 4;
  * ```ts
  * import { REMOTE_WORKER_MIN_PROTOCOL_VERSION } from '@corvidae/weft';
  *
- * const supportsCurrentVersion = REMOTE_WORKER_MIN_PROTOCOL_VERSION === 4;
+ * const supportsCurrentVersion = REMOTE_WORKER_MIN_PROTOCOL_VERSION === 5;
  * ```
  */
-export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 4;
+export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 5;
 
 /**
  * Highest RemoteWorker protocol version accepted by this package.
@@ -62,10 +81,10 @@ export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 4;
  * ```ts
  * import { REMOTE_WORKER_MAX_PROTOCOL_VERSION } from '@corvidae/weft';
  *
- * const canUseRequestedVersion = 4 <= REMOTE_WORKER_MAX_PROTOCOL_VERSION;
+ * const canUseRequestedVersion = 5 <= REMOTE_WORKER_MAX_PROTOCOL_VERSION;
  * ```
  */
-export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 4;
+export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 5;
 
 /**
  * Explicit supported RemoteWorker protocol versions.
@@ -74,7 +93,7 @@ export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 4;
  * ```ts
  * import { REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS } from '@corvidae/weft';
  *
- * const supported = REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS.includes(4);
+ * const supported = REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS.includes(5);
  * ```
  */
 export const REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS = [REMOTE_WORKER_PROTOCOL_VERSION] as const;
@@ -86,7 +105,7 @@ export const REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS = [REMOTE_WORKER_PROTOCOL
  * ```ts
  * import type { RemoteWorkerProtocolVersion } from '@corvidae/weft';
  *
- * const version: RemoteWorkerProtocolVersion = 4;
+ * const version: RemoteWorkerProtocolVersion = 5;
  * ```
  */
 export type RemoteWorkerProtocolVersion =

@@ -3,6 +3,7 @@ import type { ServeOptions, TaskDispatch } from '../index.ts';
 import { restoreExtendedDeadlineIfStillActive } from '../runtime-helpers.ts';
 import {
   canDeleteRetainedTerminalTask,
+  commitUncertainCancellation,
   requeueExpiredAttempt,
 } from '../task-ledger-transitions.ts';
 import {
@@ -260,6 +261,43 @@ export async function scanExpiredTasks(
           await options.engine.storage.get(taskLedgerKey(operationId)),
         );
 
+        // COR-230, acceptance criterion 15: a `cancelling` record whose
+        // `cancellationDeadline` has passed with no cooperative
+        // `taskResult(status: 'cancelled')` from the worker is force-settled
+        // as cancelled, with `uncertain: true` recorded — the server does
+        // not know whether the activity actually stopped. Tracked in the
+        // same deadline heap `cancelTask` populates in place of the
+        // visibility deadline this operationId no longer has once it left
+        // `leased`.
+        if (decoded !== null && decoded.state === 'cancelling') {
+          if (decoded.cancellationDeadline > now) {
+            // Not yet due — a fresh read raced ahead of the heap entry's own
+            // deadline; re-track it rather than dropping it.
+            context.deadlineTracker.add({ operationId, deadline: decoded.cancellationDeadline });
+            continue;
+          }
+          const settled = await commitTaskLedgerTransition(
+            options.engine.storage,
+            operationId,
+            (current, settleNow) =>
+              commitUncertainCancellation(
+                current,
+                { attemptToken: decoded.attemptToken },
+                settleNow,
+              ),
+            1,
+          );
+          if (!settled.ok) {
+            // Lost the race to the worker's own cooperative result (or a
+            // concurrent settlement) — the record already resolved some
+            // other way; nothing left to do.
+            continue;
+          }
+          context.registry.completeTask(operationId);
+          cleanupWorkflowIndex(operationId);
+          continue;
+        }
+
         if (decoded === null || decoded.state !== 'leased') continue; // Already resolved or requeued by another path.
 
         // Double-check the deadline in case a heartbeat extended it after
@@ -305,10 +343,13 @@ export async function scanExpiredTasks(
  * restart), `queued` records whose durable `availableAt` has elapsed but
  * whose `scheduleDelayedDispatch` timer never fired (same causes), and
  * (WFT-24) adopted `terminal` records old enough to reap under
- * {@link ServeOptions.taskRetentionWindowMs}. `completing`, `cancelling`,
- * and `deadLettered` are left untouched — resolving those is either the
- * worker's redelivered result (`completing`) or explicitly out of this
- * slice's scope.
+ * {@link ServeOptions.taskRetentionWindowMs}, and (COR-230, acceptance
+ * criterion 15) `cancelling` records whose cancellation-deadline heap entry
+ * was never tracked or was lost — same causes as the `leased` case, same
+ * "ensure it's tracked, or force-settle it if already due" treatment.
+ * `completing` and `deadLettered` are left untouched — resolving those is
+ * either the worker's redelivered result (`completing`) or explicitly out
+ * of this slice's scope.
  */
 export async function reconcileOrphanedRecords(
   context: ServerContext,
@@ -337,6 +378,43 @@ export async function reconcileOrphanedRecords(
         }
         if (decoded.state === 'terminal') {
           await reapRetainedTerminalRecord(options, decoded, now);
+          continue;
+        }
+        // COR-230, acceptance criterion 15: catch a `cancelling` record
+        // whose cancellation-deadline heap entry was never tracked (written
+        // by a peer) or lost (a restart) — the same safety-net role this
+        // full-ledger sweep already plays for `leased` records below.
+        if (decoded.state === 'cancelling') {
+          if (context.processingOperations.has(decoded.operationId)) continue;
+          if (decoded.cancellationDeadline > now) {
+            context.deadlineTracker.remove(decoded.operationId);
+            context.deadlineTracker.add({
+              operationId: decoded.operationId,
+              deadline: decoded.cancellationDeadline,
+            });
+            continue;
+          }
+          context.processingOperations.add(decoded.operationId);
+          try {
+            context.deadlineTracker.remove(decoded.operationId);
+            const settled = await commitTaskLedgerTransition(
+              options.engine.storage,
+              decoded.operationId,
+              (current, settleNow) =>
+                commitUncertainCancellation(
+                  current,
+                  { attemptToken: decoded.attemptToken },
+                  settleNow,
+                ),
+              1,
+            );
+            if (settled.ok) {
+              context.registry.completeTask(decoded.operationId);
+              cleanupWorkflowIndex(decoded.operationId);
+            }
+          } finally {
+            context.processingOperations.delete(decoded.operationId);
+          }
           continue;
         }
         if (decoded.state !== 'leased') continue;

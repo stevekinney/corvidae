@@ -62,6 +62,7 @@ export type {
 export {
   canDeleteRetainedTerminalTask,
   commitCancellation,
+  commitUncertainCancellation,
   markWorkflowResultAdopted,
   recordCancellationIntent,
   type CommitCancellationInput,
@@ -114,6 +115,21 @@ export type ClaimQueuedInput = Readonly<{
   leaseDurationMilliseconds: number;
 }>;
 
+/**
+ * How many `leaseDurationMilliseconds` an attempt's absolute deadline allows
+ * (COR-230, acceptance criterion 6) — a fixed multiple of the heartbeat-
+ * renewable visibility window, not a separately configurable value. This is
+ * a deliberate scope decision: the project brief requires an absolute
+ * per-attempt deadline that heartbeats cannot extend, but does not require
+ * it be independently tunable from `visibilityTimeout`, and adding a new
+ * public `TaskDispatch` field for it would expand `RemoteTaskBase`, the
+ * dispatch envelope, and the generated client surface well beyond this
+ * criterion's ask. A future issue can promote this to a configurable
+ * `attemptTimeoutMilliseconds` if a concrete need for independent tuning
+ * arises.
+ */
+export const ATTEMPT_DEADLINE_MULTIPLIER = 6;
+
 export function claimQueued(
   current: RemoteTaskRecord | null,
   input: ClaimQueuedInput,
@@ -140,6 +156,7 @@ export function claimQueued(
       : {}),
     attempt: current.attempt,
     leaseDeadline: now + input.leaseDurationMilliseconds,
+    attemptDeadline: now + ATTEMPT_DEADLINE_MULTIPLIER * input.leaseDurationMilliseconds,
     firstQueuedAt: current.firstQueuedAt,
     lastQueuedAt: current.lastQueuedAt,
     startedAt: current.startedAt ?? now,
@@ -158,6 +175,41 @@ export type RenewAttemptLeaseInput = Readonly<{
   leaseDurationMilliseconds: number;
 }>;
 
+/**
+ * Renew the ONE named attempt's heartbeat-extendable visibility deadline.
+ * Never called for a bare worker-session heartbeat (COR-230, acceptance
+ * criterion 1) — only for an `activityHeartbeat` naming this exact
+ * `(operationId, attemptToken)`, or for the analogous long-poll heartbeat
+ * endpoint.
+ *
+ * Two monotonicity guarantees beyond the state/identity precondition below
+ * (COR-230, acceptance criteria 4 and 6), both load-bearing for correctness
+ * under out-of-order delivery, not just cosmetic clamps:
+ *
+ *   - **Never shortens.** `nextLeaseDeadline` is `Math.max(current.leaseDeadline,
+ *     cappedProposal)` — a heartbeat processed out of order (sent before a
+ *     later heartbeat, but delivered/committed after it, e.g. across a retry
+ *     or a slow write) can never move the persisted deadline backward. Without
+ *     this, a stale heartbeat racing behind a fresher one could shorten the
+ *     lease the fresher one just extended, handing the visibility scanner a
+ *     deadline earlier than the one already safely committed.
+ *   - **Never exceeds the attempt's absolute deadline.** `cappedProposal` is
+ *     `Math.min(proposedDeadline, current.attemptDeadline)` — once
+ *     `now + leaseDurationMilliseconds` would cross `attemptDeadline`, further
+ *     heartbeats plateau the lease at `attemptDeadline` instead of continuing
+ *     to extend it. The visibility scanner's ordinary expiry check
+ *     (`leaseDeadline <= now`) then naturally reclaims the attempt once real
+ *     time reaches that plateau — no separate absolute-deadline sweep is
+ *     needed. `current.attemptDeadline` is optional (older/hand-built
+ *     records may not carry one); its absence means "no cap", not "already
+ *     expired".
+ *
+ * "Cannot resurrect a stale attempt" (criterion 3/4's other half) needs no
+ * separate handling: the `state !== 'leased'` and attempt-token/session
+ * checks below already reject a renewal against any record that has moved
+ * on to `completing`, `cancelling`, or terminal — there is nothing left here
+ * to resurrect.
+ */
 export function renewAttemptLease(
   current: RemoteTaskRecord | null,
   input: RenewAttemptLeaseInput,
@@ -172,17 +224,24 @@ export function renewAttemptLease(
   ) {
     return { ok: false, reason: 'attempt token or worker session mismatch' };
   }
+  const proposedDeadline = now + input.leaseDurationMilliseconds;
+  const cappedProposal =
+    current.attemptDeadline === undefined
+      ? proposedDeadline
+      : Math.min(proposedDeadline, current.attemptDeadline);
+  const nextLeaseDeadline = Math.max(current.leaseDeadline, cappedProposal);
   const nextRecord: RemoteTaskLeased = {
     ...current,
     generation: current.generation + 1,
-    leaseDeadline: now + input.leaseDurationMilliseconds,
+    leaseDeadline: nextLeaseDeadline,
     lastHeartbeatAt: now,
   };
   return { ok: true, nextRecord };
 }
 
 // ---------------------------------------------------------------------------
-// 4. Begin completion — precondition: state leased, attempt token matches.
+// 4. Begin completion — precondition: state leased OR cancelling, attempt
+//    token matches.
 // ---------------------------------------------------------------------------
 
 export type BeginCompletionInput = Readonly<{
@@ -191,12 +250,26 @@ export type BeginCompletionInput = Readonly<{
   pendingResultDigest: string;
 }>;
 
+/**
+ * Begin committing an ordinary completed/failed result. Accepts a
+ * `cancelling` predecessor as well as `leased` (COR-230, acceptance
+ * criterion 12): a worker's `cancel` control is a REQUEST, not a guarantee —
+ * the activity may complete or fail for real before, or instead of,
+ * cooperatively reporting `status: 'cancelled'` (see
+ * `commitTaskLedgerCompletion`'s dedicated cancellation branch, which
+ * handles that latter case). Whichever ordinary result or cooperative
+ * cancellation reaches storage FIRST wins this transition's CAS; the other
+ * loses it, since both require the record to still be in a live
+ * (`leased`/`cancelling`) state under this exact attempt token. That is the
+ * "exactly one conditional terminal winner" acceptance criterion — enforced
+ * structurally by this shared precondition, not by extra bookkeeping.
+ */
 export function beginCompletion(
   current: RemoteTaskRecord | null,
   input: BeginCompletionInput,
 ): TaskLedgerTransitionResult<RemoteTaskCompleting> {
-  if (current === null || current.state !== 'leased') {
-    return { ok: false, reason: 'expected task state "leased"' };
+  if (current === null || (current.state !== 'leased' && current.state !== 'cancelling')) {
+    return { ok: false, reason: 'expected task state "leased" or "cancelling"' };
   }
   if (current.attemptToken !== input.attemptToken) {
     return { ok: false, reason: 'attempt token mismatch' };

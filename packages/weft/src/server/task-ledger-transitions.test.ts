@@ -32,7 +32,7 @@ import {
 const EXECUTION_IDENTITY: WorkerExecutionIdentity = {
   workerId: 'worker-1',
   manifestDigest: 'sha256:abc',
-  protocolVersion: 4,
+  protocolVersion: 5,
   sdkVersion: '0.18.0',
   runtimeName: 'bun',
   runtimeVersion: '1.3.14',
@@ -115,6 +115,7 @@ function cancellingFixture(overrides: Partial<RemoteTaskCancelling> = {}): Remot
     state: 'cancelling',
     cancellationReason: 'user requested',
     cancellationRequestedAt: 3_000,
+    cancellationDeadline: 3_000 + 30_000,
     ...overrides,
   };
 }
@@ -496,6 +497,7 @@ describe('recordCancellationIntent', () => {
         expectedAttempt: 1,
         cancellationReason: 'user requested',
         cancellationToken: 'cancellation-1',
+        cancellationGracePeriodMilliseconds: 30_000,
       },
       2_000,
     );
@@ -516,6 +518,7 @@ describe('recordCancellationIntent', () => {
         expectedAttempt: 1,
         cancellationReason: 'user requested',
         cancellationToken: 'cancellation-1',
+        cancellationGracePeriodMilliseconds: 30_000,
       },
       2_000,
     );
@@ -526,6 +529,7 @@ describe('recordCancellationIntent', () => {
         expectedAttempt: 1,
         cancellationReason: 'user requested',
         cancellationToken: 'cancellation-2',
+        cancellationGracePeriodMilliseconds: 30_000,
       },
       2_000,
     );
@@ -551,6 +555,7 @@ describe('recordCancellationIntent', () => {
         expectedAttempt: 1,
         cancellationReason: 'user requested',
         cancellationToken: 'cancellation-1',
+        cancellationGracePeriodMilliseconds: 30_000,
       },
       2_000,
     );
@@ -570,6 +575,7 @@ describe('recordCancellationIntent', () => {
         expectedAttempt: 1,
         cancellationReason: 'x',
         cancellationToken: 'cancellation-1',
+        cancellationGracePeriodMilliseconds: 30_000,
       },
       2_000,
     );
@@ -584,6 +590,7 @@ describe('recordCancellationIntent', () => {
         expectedAttempt: 99,
         cancellationReason: 'x',
         cancellationToken: 'cancellation-1',
+        cancellationGracePeriodMilliseconds: 30_000,
       },
       2_000,
     );
@@ -598,6 +605,7 @@ describe('recordCancellationIntent', () => {
         expectedAttempt: 1,
         cancellationReason: 'x',
         cancellationToken: 'cancellation-1',
+        cancellationGracePeriodMilliseconds: 30_000,
       },
       2_000,
     );
@@ -829,6 +837,7 @@ describe('synthesized resultDigest round-trips through the codec', () => {
         expectedAttempt: 1,
         cancellationReason: 'user requested',
         cancellationToken: 'cancellation-1',
+        cancellationGracePeriodMilliseconds: 30_000,
       },
       2_000,
     );

@@ -161,6 +161,20 @@ export type RemoteTaskLeased = RemoteTaskBase &
     executionIdentity?: WorkerExecutionIdentity;
     attempt: number;
     leaseDeadline: number;
+    /**
+     * Absolute deadline for this attempt (COR-230), set once at
+     * {@link claimQueued} time from `ATTEMPT_DEADLINE_MULTIPLIER *
+     * leaseDurationMilliseconds` and carried unchanged through every later
+     * transition of this same attempt (`renewAttemptLease`,
+     * `beginCompletion`, `recordCancellationIntent`'s leased-origin branch —
+     * see `pickLeaseHolderFields`). Distinct from `leaseDeadline`: a
+     * heartbeat (session or activity) can renew `leaseDeadline` up to, but
+     * never past, this value — see `renewAttemptLease`'s doc comment.
+     * Optional so the many hand-built fixtures in this module's tests need
+     * not supply one; a `renewAttemptLease` call against a record without it
+     * treats the cap as unbounded rather than rejecting.
+     */
+    attemptDeadline?: number;
     firstQueuedAt: number;
     lastQueuedAt: number;
     startedAt: number;
@@ -180,6 +194,8 @@ export type RemoteTaskCompleting = RemoteTaskBase &
     executionIdentity?: WorkerExecutionIdentity;
     attempt: number;
     leaseDeadline: number;
+    /** Carried over unchanged from the `Leased` record — see `RemoteTaskLeased.attemptDeadline`'s doc comment. */
+    attemptDeadline?: number;
     firstQueuedAt: number;
     lastQueuedAt: number;
     startedAt: number;
@@ -212,12 +228,24 @@ export type RemoteTaskCancelling = RemoteTaskBase &
     executionIdentity?: WorkerExecutionIdentity;
     attempt: number;
     leaseDeadline: number;
+    /** Carried over unchanged from the `Leased` record — see `RemoteTaskLeased.attemptDeadline`'s doc comment. */
+    attemptDeadline?: number;
     firstQueuedAt: number;
     lastQueuedAt: number;
     startedAt: number;
     lastHeartbeatAt: number;
     cancellationReason: string;
     cancellationRequestedAt: number;
+    /**
+     * Absolute deadline (COR-230, acceptance criterion 15) by which a
+     * worker's cooperative `taskResult` (`status: "cancelled"`) must arrive
+     * once cancellation intent is recorded. Set by `recordCancellationIntent`
+     * from the caller-supplied cancellation grace period. `scanExpiredTasks`
+     * (`task-reconciliation.ts`) settles the attempt as cancelled anyway once
+     * this passes with no cooperative result — see
+     * `RemoteTaskTerminalCancelled.uncertain`.
+     */
+    cancellationDeadline: number;
   }>;
 
 // ---------------------------------------------------------------------------
@@ -253,6 +281,21 @@ export type RemoteTaskTerminalCancelled = RemoteTaskTerminalCommon &
     /** Present when cancelled mid-attempt (via `Cancelling`); absent when cancelled directly from `Queued`. */
     attemptToken?: string;
     cancellationReason: string;
+    /**
+     * Present and `true` only when this cancellation settled because
+     * `RemoteTaskCancelling.cancellationDeadline` passed with no cooperative
+     * `taskResult` from the worker (COR-230, acceptance criterion 15) — a
+     * non-cooperative, forced settlement committed by
+     * `commitUncertainCancellation`. Absent (never `false`) for every other
+     * cancelled disposition, including the ordinary case where the worker's
+     * own `taskResult(status: "cancelled")` won the race. Distinct from a
+     * generic failure: the terminal disposition here is still `'cancelled'`,
+     * not `'resolved'` with a synthesized error, and callers that branch on
+     * disposition (`get-task-detail.ts`, the client) can tell "the server
+     * gave up waiting for confirmation" apart from "the activity itself
+     * reported failure" without inferring it from `cancellationReason` text.
+     */
+    uncertain?: true;
   }>;
 
 export type RemoteTaskTerminalRetryExhausted = RemoteTaskTerminalCommon &
@@ -296,3 +339,47 @@ export type RemoteTaskRecord =
   | RemoteTaskDeadLettered;
 
 export const REMOTE_TASK_RECORD_VERSION = 1;
+
+// ---------------------------------------------------------------------------
+// Attempt lease view (COR-230)
+// ---------------------------------------------------------------------------
+
+/**
+ * A read-only projection of one attempt's two lease-governed clocks —
+ * `leaseDeadline` (heartbeat-renewable) and `attemptDeadline`
+ * (heartbeat-immune) — plus the identity a heartbeat or completion must
+ * match to touch it. Distinct from `WorkerSessionIdentity`
+ * (`worker/registry/types.ts`): a `WorkerSessionIdentity` identifies a
+ * worker's CONNECTION, independent of any task; an `ActivityAttemptLease`
+ * identifies one ATTEMPT of one operation, fenced by `attemptToken`
+ * independently of which session currently holds it. Projected from
+ * `RemoteTaskLeased` by {@link activityAttemptLeaseFromRecord} — the only
+ * state an activity heartbeat may renew (see `renewAttemptLease`'s
+ * precondition).
+ */
+export interface ActivityAttemptLease {
+  readonly operationId: string;
+  readonly attemptToken: string;
+  readonly workerSessionId: string;
+  readonly leaseDeadline: number;
+  readonly attemptDeadline?: number;
+}
+
+/**
+ * `ActivityAttemptLease` view of a durable ledger record, or `undefined`
+ * when the record is missing or not currently `leased` — every other state
+ * (`queued`, `completing`, `cancelling`, terminal, dead-lettered) has either
+ * no attempt yet or no attempt left to heartbeat.
+ */
+export function activityAttemptLeaseFromRecord(
+  record: RemoteTaskRecord | null,
+): ActivityAttemptLease | undefined {
+  if (record === null || record.state !== 'leased') return undefined;
+  return {
+    operationId: record.operationId,
+    attemptToken: record.attemptToken,
+    workerSessionId: record.workerSessionId,
+    leaseDeadline: record.leaseDeadline,
+    ...(record.attemptDeadline !== undefined ? { attemptDeadline: record.attemptDeadline } : {}),
+  };
+}

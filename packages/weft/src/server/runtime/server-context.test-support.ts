@@ -58,6 +58,7 @@ export function minimalServerContext(
     rateLimiter: null,
     visibilityPollMs: 5000,
     workerReconnectGracePeriodMs: 0,
+    cancellationGracePeriodMs: 30_000,
     payloadSizeMaxBytes: null,
     pendingWorkerRequeues: new Map(),
     scanRunning: false,

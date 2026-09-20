@@ -33,7 +33,7 @@ function createTestServer(options?: {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 4,
+                  protocolVersion: 5,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: parsed.concurrency ?? 10,
@@ -207,7 +207,7 @@ describe('RemoteWorker', () => {
       registerMessage = messages.find((m) => m.type === 'register');
     }
     expect(registerMessage).toBeDefined();
-    expect(registerMessage.protocolVersion).toBe(4);
+    expect(registerMessage.protocolVersion).toBe(5);
     expect(registerMessage.workerId).toBe('test-worker-1');
     expect(registerMessage.concurrency).toBe(5);
     expect(Object.keys(registerMessage.manifest.workflows['orders'].activities)).toEqual([
@@ -322,7 +322,7 @@ describe('RemoteWorker', () => {
 
     const realManifest = {
       manifestVersion: 1,
-      protocolVersion: 4,
+      protocolVersion: 5,
       sdkVersion: '9.9.9',
       runtime: { name: 'bun', version: '1.3.14' },
       deployment: { name: 'payments', buildId: 'build-real', artifactDigest: 'sha256:real-bytes' },
@@ -370,7 +370,7 @@ describe('RemoteWorker', () => {
           buildId: 'build-1',
           manifest: {
             manifestVersion: 1,
-            protocolVersion: 4,
+            protocolVersion: 5,
             sdkVersion: '1.0.0',
             runtime: { name: 'bun', version: '1.3.14' },
             deployment: { name: 'payments', buildId: 'build-1', artifactDigest: 'sha256:x' },
@@ -391,7 +391,7 @@ describe('RemoteWorker', () => {
           buildId: 'build-1',
           manifest: {
             manifestVersion: 1,
-            protocolVersion: 4,
+            protocolVersion: 5,
             sdkVersion: '1.0.0',
             runtime: { name: 'bun', version: '1.3.14' },
             deployment: { name: 'payments', buildId: 'build-1', artifactDigest: 'sha256:x' },
@@ -562,7 +562,7 @@ describe('RemoteWorker', () => {
       serverSocket.send(
         JSON.stringify({
           type: 'registerAck',
-          protocolVersion: 4,
+          protocolVersion: 5,
           workerId: 'ack-gated-heartbeat-worker',
           queue: 'default',
           concurrency: 10,
@@ -1741,7 +1741,13 @@ describe('RemoteWorker', () => {
 
           // After a brief delay, send a cancel message
           setTimeout(() => {
-            ws.send(JSON.stringify({ type: 'cancel', operationId: 'op-cancel-1' }));
+            ws.send(
+              JSON.stringify({
+                type: 'cancel',
+                operationId: 'op-cancel-1',
+                attemptToken: 'attempt-token',
+              }),
+            );
           }, 100);
         }
       },
@@ -1793,7 +1799,13 @@ describe('RemoteWorker', () => {
 
         if (parsed.type === 'register') {
           // Send a cancel for a non-existent operationId
-          ws.send(JSON.stringify({ type: 'cancel', operationId: 'non-existent-op' }));
+          ws.send(
+            JSON.stringify({
+              type: 'cancel',
+              operationId: 'non-existent-op',
+              attemptToken: 'attempt-token',
+            }),
+          );
         }
       },
     });
@@ -1816,6 +1828,126 @@ describe('RemoteWorker', () => {
     expect(worker.inFlight).toBe(0);
     const taskResults = messages.filter((m) => m.type === 'taskResult');
     expect(taskResults.length).toBe(0);
+
+    await worker.disconnect();
+  });
+
+  it('ignores a cancel naming a stale attemptToken instead of aborting the current attempt (COR-230)', async () => {
+    const messages: any[] = [];
+    let taskStarted = false;
+    let abortObserved = false;
+    let releaseCancellableActivity!: () => void;
+    const cancellableActivityGate = new Promise<void>((resolve) => {
+      releaseCancellableActivity = resolve;
+    });
+
+    server = createTestServer({
+      onMessage(ws, message) {
+        const parsed = JSON.parse(message);
+        messages.push(parsed);
+
+        if (parsed.type === 'register') {
+          // A DETERMINISTIC ordering proof, not a timing race: `task`, the
+          // stale `cancel`, and a throwaway `barrier` task are sent back to
+          // back, synchronously, in one burst. WebSocket delivers frames on
+          // one connection in send order, and a single-threaded client can
+          // never interleave user code between them — so `#handleMessage`'s
+          // synchronous prefix for `op-stale-cancel` (which registers its
+          // AbortController before its first `await`) is guaranteed to run
+          // to completion before the `cancel` message is even dispatched,
+          // and the `cancel` message's own (synchronous, non-awaiting)
+          // handling is guaranteed to complete before `op-barrier` is
+          // dispatched. Observing `op-barrier`'s `taskResult` therefore
+          // PROVES the stale cancel already ran — no sleep, no margin.
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-stale-cancel',
+              attemptToken: 'current-attempt-token',
+              activityName: 'orders.cancellableActivity',
+              input: null,
+            }),
+          );
+          ws.send(
+            JSON.stringify({
+              type: 'cancel',
+              operationId: 'op-stale-cancel',
+              attemptToken: 'stale-attempt-token',
+            }),
+          );
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-barrier',
+              attemptToken: 'barrier-attempt-token',
+              activityName: 'orders.processOrder',
+              input: 'barrier',
+            }),
+          );
+        }
+      },
+    });
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workerId: 'stale-cancel-test-worker',
+      workflows: workflowsOf({
+        cancellableActivity: async (_input: unknown, context) => {
+          taskStarted = true;
+          context?.signal.addEventListener('abort', () => {
+            abortObserved = true;
+          });
+          // Held open by the test, not a timer — released only once the
+          // barrier task's result proves the stale cancel already ran.
+          await cancellableActivityGate;
+          if (abortObserved) {
+            throw new Error('Aborted (regression: stale attemptToken incorrectly matched)');
+          }
+          return 'completed-despite-stale-cancel';
+        },
+        processOrder: async (input: unknown) => input,
+      }),
+    });
+
+    await worker.connect();
+
+    await waitForCondition(() => taskStarted, {
+      timeoutMs: 1_000,
+      label: 'cancellable activity started',
+    });
+
+    // The barrier task's result is the explicit barrier: by the time it
+    // exists, the stale cancel sent before it has already been fully
+    // processed by the client (see the ordering proof above).
+    await waitForCondition(
+      () =>
+        messages.some(
+          (message) => message.type === 'taskResult' && message.operationId === 'op-barrier',
+        ),
+      { timeoutMs: 1_000, label: 'barrier task result observed' },
+    );
+
+    expect(abortObserved).toBe(false);
+
+    releaseCancellableActivity();
+
+    await waitForCondition(
+      () =>
+        messages.some(
+          (message) => message.type === 'taskResult' && message.operationId === 'op-stale-cancel',
+        ),
+      { timeoutMs: 1_000, label: 'task result after stale cancel' },
+    );
+
+    const taskResult = messages.find(
+      (m) => m.type === 'taskResult' && m.operationId === 'op-stale-cancel',
+    );
+    expect(taskResult).toBeDefined();
+    expect(taskResult.status).toBe('completed');
+    expect(taskResult.value).toBe('completed-despite-stale-cancel');
+    expect(abortObserved).toBe(false);
 
     await worker.disconnect();
   });
@@ -1910,7 +2042,7 @@ describe('RemoteWorker — connect URL resolution', () => {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 4,
+                  protocolVersion: 5,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: parsed.concurrency ?? 10,
@@ -2077,7 +2209,7 @@ function createTrackingServer(options?: {
           ws.send(
             JSON.stringify({
               type: 'registerAck',
-              protocolVersion: 4,
+              protocolVersion: 5,
               workerId: parsed.workerId,
               queue: 'default',
               concurrency: parsed.concurrency ?? 10,
@@ -2146,7 +2278,7 @@ function createReconnectServer(
           ws.send(
             JSON.stringify({
               type: 'registerAck',
-              protocolVersion: 4,
+              protocolVersion: 5,
               workerId: parsed.workerId,
               queue: 'default',
               concurrency: 10,
@@ -2239,7 +2371,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     ackSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'reentrancy-worker',
         queue: 'default',
         concurrency: 10,
@@ -2266,7 +2398,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
             ws.send(
               JSON.stringify({
                 type: 'registerAck',
-                protocolVersion: 4,
+                protocolVersion: 5,
                 workerId: parsed.workerId,
                 queue: 'default',
                 concurrency: 10,
@@ -2382,7 +2514,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     firstSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'late',
         queue: 'default',
         concurrency: 10,
@@ -2397,7 +2529,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     secondSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 4,
+        protocolVersion: 5,
         workerId: 'current',
         queue: 'default',
         concurrency: 10,
@@ -3071,7 +3203,7 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 4,
+                  protocolVersion: 5,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: 10,
@@ -3093,7 +3225,7 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
                 ws.send(
                   JSON.stringify({
                     type: 'registerAck',
-                    protocolVersion: 4,
+                    protocolVersion: 5,
                     workerId: parsed.workerId,
                     queue: 'default',
                     concurrency: 10,
