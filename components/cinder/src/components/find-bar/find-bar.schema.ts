@@ -25,7 +25,7 @@ const schema = {
         },
       ],
       description:
-        'Number of matches for the current query, or `null` when the host has\nnot searched yet. Defaults to `null`.',
+        'Number of matches for the current query, or `null` when the host has\nnot searched yet. Bindable—the component resets it to `null` itself\nwhenever the user starts a new search, so bind it rather than mirror\n`onQueryChange` manually to stay in sync with that reset. Defaults to\n`null`.',
       default: null,
     },
     minQueryLength: {
@@ -36,7 +36,7 @@ const schema = {
     debounceMs: {
       type: 'number',
       description:
-        'Debounce interval, in milliseconds, before `onQueryChange` fires.\nDefaults to `250`.',
+        "Debounce interval, in milliseconds, before `onQueryChange` fires for\nan eligible query. Does not apply to the synchronous `''` notification\n`onQueryChange` sends when a previously eligible query shrinks below\n`minQueryLength`—see that prop. Defaults to `250`.",
       default: 250,
     },
     label: {

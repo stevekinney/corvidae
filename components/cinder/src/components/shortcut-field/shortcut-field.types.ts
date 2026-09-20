@@ -5,7 +5,9 @@ export type ShortcutFieldProps = Omit<
 > & {
   /**
    * Ordered list of platform key names for the recorded combination.
-   * Defaults to `[]`.
+   * Bindable—the component writes to it directly after a valid capture and
+   * on clear, so `bind:value` is the supported alternative to mirroring
+   * `onValueChange` yourself. Defaults to `[]`.
    * @default []
    */
   value?: string[];

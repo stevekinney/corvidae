@@ -13,7 +13,10 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   activeIndex?: number;
   /**
    * Number of matches for the current query, or `null` when the host has
-   * not searched yet. Defaults to `null`.
+   * not searched yet. Bindable—the component resets it to `null` itself
+   * whenever the user starts a new search, so bind it rather than mirror
+   * `onQueryChange` manually to stay in sync with that reset. Defaults to
+   * `null`.
    * @default null
    */
   matchCount?: number | null;
@@ -23,8 +26,10 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    */
   minQueryLength?: number;
   /**
-   * Debounce interval, in milliseconds, before `onQueryChange` fires.
-   * Defaults to `250`.
+   * Debounce interval, in milliseconds, before `onQueryChange` fires for
+   * an eligible query. Does not apply to the synchronous `''` notification
+   * `onQueryChange` sends when a previously eligible query shrinks below
+   * `minQueryLength`—see that prop. Defaults to `250`.
    * @default 250
    */
   debounceMs?: number;

@@ -10,7 +10,7 @@ const schema = {
         type: 'string',
       },
       description:
-        'Ordered list of platform key names for the recorded combination.\nDefaults to `[]`.',
+        'Ordered list of platform key names for the recorded combination.\nBindable—the component writes to it directly after a valid capture and\non clear, so `bind:value` is the supported alternative to mirroring\n`onValueChange` yourself. Defaults to `[]`.',
       default: [],
     },
     label: {

@@ -42,9 +42,9 @@ Docked find-in-document controls for a host-provided search backend.
 | --- | --- | --- | --- | --- |
 | `activeIndex` | `number` | no | `0` | Index of the active match within the host-provided results. Bindable. Defaults to `0`. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
-| `debounceMs` | `number` | no | `250` | Debounce interval, in milliseconds, before `onQueryChange` fires. Defaults to `250`. |
+| `debounceMs` | `number` | no | `250` | Debounce interval, in milliseconds, before `onQueryChange` fires for an eligible query. Does not apply to the synchronous `''` notification `onQueryChange` sends when a previously eligible query shrinks below `minQueryLength`—see that prop. Defaults to `250`. |
 | `label` | `string` | no | `"Find"` | Accessible label for the find controls. Defaults to `'Find'`. |
-| `matchCount` | `number` \| `null` | no | `null` | Number of matches for the current query, or `null` when the host has not searched yet. Defaults to `null`. |
+| `matchCount` | `number` \| `null` | no | `null` | Number of matches for the current query, or `null` when the host has not searched yet. Bindable—the component resets it to `null` itself whenever the user starts a new search, so bind it rather than mirror `onQueryChange` manually to stay in sync with that reset. Defaults to `null`. |
 | `minQueryLength` | `number` | no | `3` | Minimum query length before the host should search. Defaults to `3`. |
 | `value` | `string` | no | `""` | Current query text. Bindable. Defaults to `''`. |
 | `onDismiss` | `(opaque)` | no | — | Called when the user dismisses the find bar. Not expressible in JSON Schema; see the component types for the signature. |

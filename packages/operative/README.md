@@ -543,6 +543,13 @@ const activeRun = createActiveRun({
 });
 const result = await activeRun.result;
 
+// `resumeSession` deep-clones the stored history into `conversation`, so
+// the run above updates `conversation.current` without touching
+// `session.conversationHistory` or the stored record—copy it back and
+// save, or the resumed turn is lost the next time this session loads.
+session.conversationHistory = conversation.current;
+await sessions.save(session);
+
 // Once you're done with a session, remove it directly, or reclaim storage
 // in bulk on a schedule—these don't apply to the session used above; run
 // them against a session you actually want to discard.
