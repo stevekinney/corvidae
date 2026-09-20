@@ -31,10 +31,10 @@ Use a bar chart when precise comparison matters more than the part-to-whole rela
 | --- | --- | --- | --- | --- |
 | `centerLabel` | `string` | no | — | Supplemental label rendered at the ring's center. Should not be the only explanation of the total. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
-| `label` | `string` | yes | — | Names both the chart and its generated data table. |
-| `scrollable` | `boolean` | no | — | Enables a horizontal-scroll escape hatch for narrow containers. |
-| `valueLabels` | `boolean` | no | — | Adds visible value labels to the chart. |
-| `data` | `(opaque)` | yes | — | Part-to-whole values rendered as the ring and the non-visual data table. Not expressible in JSON Schema; see the component types for the signature. |
+| `label` | `string` | yes | — | Names both the chart and its non-visual fallback list. |
+| `scrollable` | `boolean` | no | `false` | Enables a horizontal-scroll escape hatch for narrow containers. Defaults to `false`. |
+| `valueLabels` | `boolean` | no | `false` | Adds a visible `<ul>` legend with value labels below the ring, in place of the screen-reader-only fallback list. Defaults to `false`. |
+| `data` | `(opaque)` | yes | — | Part-to-whole values rendered as the ring and, when `valueLabels` is off, as a screen-reader-only fallback `<ul>` (not a data table). Not expressible in JSON Schema; see the component types for the signature. |
 | `onSeriesClick` | `(opaque)` | no | — | Called when a series is activated. Provide only when the series is actionable. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

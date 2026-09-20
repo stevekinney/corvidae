@@ -7,7 +7,8 @@ const schema = {
     addLabel: {
       type: 'string',
       description:
-        'Label for the add-row action. Give it concrete wording when more than one editor is on the page.',
+        "Label for the add-row action. Give it concrete wording when more than\none editor is on the page. Defaults to `'Add pair'`.",
+      default: 'Add pair',
     },
     class: {
       type: 'string',
@@ -20,7 +21,7 @@ const schema = {
       {
         name: 'entries',
         reason: 'unknown-shape',
-        description: 'The editable list of key/value rows. Bindable.',
+        description: 'The editable list of key/value rows. Bindable. Defaults to `[]`.',
       },
       {
         name: 'onValueChange',

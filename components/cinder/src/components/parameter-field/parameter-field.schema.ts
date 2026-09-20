@@ -26,11 +26,13 @@ const schema = {
     },
     unsaved: {
       type: 'boolean',
-      description: 'Marks the current override as not yet persisted.',
+      description: 'Marks the current override as not yet persisted. Defaults to `false`.',
+      default: false,
     },
     experimental: {
       type: 'boolean',
-      description: 'Marks the parameter as experimental.',
+      description: 'Marks the parameter as experimental. Defaults to `false`.',
+      default: false,
     },
     class: {
       type: 'string',

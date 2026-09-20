@@ -5,11 +5,11 @@ export type InlineConfirmProps = {
   prompt: string;
   /** Label for the confirming action. */
   confirmLabel: string;
-  /** Label for the cancelling action. */
+  /** Label for the cancelling action. Defaults to `'Cancel'`. @default 'Cancel' */
   cancelLabel?: string;
-  /** Marks the confirming action as destructive. */
+  /** Marks the confirming action as destructive. Defaults to `false`. @default false */
   destructive?: boolean;
-  /** Whether the confirmation is open. Bindable. */
+  /** Whether the confirmation is open. Bindable. Defaults to `false`. @default false */
   open?: boolean;
   /** Additional content rendered below the prompt, above the confirm/cancel actions, while the confirmation is open. */
   children?: Snippet;

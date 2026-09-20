@@ -22,9 +22,9 @@ export type ParameterFieldProps = {
   override?: number | undefined;
   /** Optional unit appended to the value and reset tooltip. */
   unit?: string | undefined;
-  /** Marks the current override as not yet persisted. */
+  /** Marks the current override as not yet persisted. Defaults to `false`. @default false */
   unsaved?: boolean;
-  /** Marks the parameter as experimental. */
+  /** Marks the parameter as experimental. Defaults to `false`. @default false */
   experimental?: boolean;
   /** Called when the override changes or is reset. */
   onOverrideChange?: (value: number | undefined) => void;

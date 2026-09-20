@@ -26,12 +26,12 @@ For a custom editor, the child snippet receives `value`, `overridden`, `labelled
 | --- | --- | --- | --- | --- |
 | `base` | `number` | yes | — | Inherited or default numeric value. |
 | `class` | `string` | no | — | Additional class merged with `.cinder-parameter-field`. |
-| `experimental` | `boolean` | no | — | Marks the parameter as experimental. |
+| `experimental` | `boolean` | no | `false` | Marks the parameter as experimental. Defaults to `false`. |
 | `id` | `string` | yes | — | Stable id used for label and output association. |
 | `label` | `string` | yes | — | Visible parameter label. |
 | `override` | `number` | no | — | Optional local numeric override. Bindable. |
 | `unit` | `string` | no | — | Optional unit appended to the value and reset tooltip. |
-| `unsaved` | `boolean` | no | — | Marks the current override as not yet persisted. |
+| `unsaved` | `boolean` | no | `false` | Marks the current override as not yet persisted. Defaults to `false`. |
 | `children` | `(opaque)` | no | — | Optional custom numeric editor. Receives the effective value and override setter. Not expressible in JSON Schema; see the component types for the signature. |
 | `onOverrideChange` | `(opaque)` | no | — | Called when the override changes or is reset. Not expressible in JSON Schema; see the component types for the signature. |
 

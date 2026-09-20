@@ -28,11 +28,11 @@ The viewer starts at `scale={1}` and owns pointer and keyboard transforms for it
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `ariaLabel` | `string` | no | — | Names the viewport. Does not describe the diagram itself. |
+| `ariaLabel` | `string` | no | `"Zoomable viewer"` | Names the viewport. Does not describe the diagram itself. Defaults to `'Zoomable viewer'`. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
-| `scale` | `number` | no | `1` | Starting zoom scale. Defaults to `1`. |
+| `scale` | `number` | no | `1` | Starting zoom scale. Bindable. Clamped to `0.25`–`8`; a non-finite value normalizes to `1`. A programmatic external change to this prop does not itself fire `onTransformChange` (see that prop). Defaults to `1`. |
 | `children` | `(opaque)` | yes | — | Content the viewer pans and zooms. Not expressible in JSON Schema; see the component types for the signature. |
-| `onTransformChange` | `(opaque)` | no | — | Called with `{ scale, x, y }` whenever the pan or zoom transform changes, for hosts that persist or mirror it. Not expressible in JSON Schema; see the component types for the signature. |
+| `onTransformChange` | `(opaque)` | no | — | Called with `{ scale, x, y }` after a pointer, keyboard, or control interaction changes the pan or zoom transform. Not called when `scale` changes only because the caller passed a new value externally—hosts that need to react to that must watch `scale` themselves. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

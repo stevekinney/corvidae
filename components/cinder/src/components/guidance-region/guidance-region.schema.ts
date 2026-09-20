@@ -31,7 +31,8 @@ const schema = {
       {
         name: 'claims',
         reason: 'unknown-shape',
-        description: 'Registered guidance claims available to descendants through `useGuidance`.',
+        description:
+          'Registered guidance claims available to descendants through\n`useGuidance`. Defaults to `[]`.',
       },
       {
         name: 'storage',

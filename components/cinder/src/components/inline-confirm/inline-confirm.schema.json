@@ -12,15 +12,18 @@
     },
     "cancelLabel": {
       "type": "string",
-      "description": "Label for the cancelling action."
+      "description": "Label for the cancelling action. Defaults to `'Cancel'`.",
+      "default": "Cancel"
     },
     "destructive": {
       "type": "boolean",
-      "description": "Marks the confirming action as destructive."
+      "description": "Marks the confirming action as destructive. Defaults to `false`.",
+      "default": false
     },
     "open": {
       "type": "boolean",
-      "description": "Whether the confirmation is open. Bindable."
+      "description": "Whether the confirmation is open. Bindable. Defaults to `false`.",
+      "default": false
     },
     "class": {
       "type": "string",

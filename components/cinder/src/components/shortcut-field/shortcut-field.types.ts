@@ -3,7 +3,11 @@ export type ShortcutFieldProps = Omit<
   HTMLAttributes<HTMLDivElement>,
   'class' | 'children' | 'role'
 > & {
-  /** Ordered list of platform key names for the recorded combination. */
+  /**
+   * Ordered list of platform key names for the recorded combination.
+   * Defaults to `[]`.
+   * @default []
+   */
   value?: string[];
   /**
    * Called with the recorded combination when capture completes, and also
@@ -13,9 +17,13 @@ export type ShortcutFieldProps = Omit<
   onValueChange?: (value: string[]) => void;
   /** Returns an error message for a combination the application cannot accept; the field keeps the previous value until a valid replacement is committed. */
   validate?: (value: string[]) => string | undefined;
-  /** Accessible label for the shortcut field. */
+  /**
+   * Accessible label for the shortcut field. Defaults to `'Keyboard
+   * shortcut'`.
+   * @default 'Keyboard shortcut'
+   */
   label?: string;
-  /** Set when the shortcut is unavailable. */
+  /** Set when the shortcut is unavailable. Defaults to `false`. @default false */
   disabled?: boolean;
   /** Additional class merged with the component's root class. */
   class?: string;

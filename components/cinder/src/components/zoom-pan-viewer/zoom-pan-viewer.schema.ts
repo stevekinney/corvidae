@@ -10,12 +10,15 @@ const schema = {
     },
     scale: {
       type: 'number',
-      description: 'Starting zoom scale. Defaults to `1`.',
+      description:
+        'Starting zoom scale. Bindable. Clamped to `0.25`–`8`; a non-finite\nvalue normalizes to `1`. A programmatic external change to this prop\ndoes not itself fire `onTransformChange` (see that prop). Defaults to\n`1`.',
       default: 1,
     },
     ariaLabel: {
       type: 'string',
-      description: 'Names the viewport. Does not describe the diagram itself.',
+      description:
+        "Names the viewport. Does not describe the diagram itself. Defaults to\n`'Zoomable viewer'`.",
+      default: 'Zoomable viewer',
     },
   },
   additionalProperties: false,
@@ -31,7 +34,7 @@ const schema = {
         name: 'onTransformChange',
         reason: 'function-or-snippet',
         description:
-          'Called with `{ scale, x, y }` whenever the pan or zoom transform changes, for hosts that persist or mirror it.',
+          'Called with `{ scale, x, y }` after a pointer, keyboard, or control\ninteraction changes the pan or zoom transform. Not called when `scale`\nchanges only because the caller passed a new value externally—hosts\nthat need to react to that must watch `scale` themselves.',
       },
     ],
   },

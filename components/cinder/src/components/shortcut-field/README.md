@@ -21,9 +21,9 @@ An accessible read-only keyboard shortcut recorder. Focus the field, press a com
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
-| `disabled` | `boolean` | no | — | Set when the shortcut is unavailable. |
-| `label` | `string` | no | — | Accessible label for the shortcut field. |
-| `value` | `string`[] | no | — | Ordered list of platform key names for the recorded combination. |
+| `disabled` | `boolean` | no | `false` | Set when the shortcut is unavailable. Defaults to `false`. |
+| `label` | `string` | no | `"Keyboard shortcut"` | Accessible label for the shortcut field. Defaults to `'Keyboard shortcut'`. |
+| `value` | `string`[] | no | `[]` | Ordered list of platform key names for the recorded combination. Defaults to `[]`. |
 | `onValueChange` | `(opaque)` | no | — | Called with the recorded combination when capture completes, and also called with an empty array when the user clears the field—handle the empty-array case to persist a removal, not only a successful capture. Not expressible in JSON Schema; see the component types for the signature. |
 | `validate` | `(opaque)` | no | — | Returns an error message for a combination the application cannot accept; the field keeps the previous value until a valid replacement is committed. Not expressible in JSON Schema; see the component types for the signature. |
 

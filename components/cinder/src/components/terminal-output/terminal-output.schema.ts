@@ -7,7 +7,8 @@ const schema = {
     value: {
       type: 'string',
       description:
-        'ANSI output text. Supports SGR 16-color foregrounds, bold/reset, carriage-return rewrites, and erase-line sequences.',
+        "ANSI output text. Supports SGR 16-color foregrounds, bold/reset,\ncarriage-return rewrites, and erase-line sequences. Defaults to `''`.",
+      default: '',
     },
     followLatest: {
       type: 'boolean',

@@ -9,15 +9,19 @@ const schema = {
       items: {
         type: 'string',
       },
-      description: 'Ordered list of platform key names for the recorded combination.',
+      description:
+        'Ordered list of platform key names for the recorded combination.\nDefaults to `[]`.',
+      default: [],
     },
     label: {
       type: 'string',
-      description: 'Accessible label for the shortcut field.',
+      description: "Accessible label for the shortcut field. Defaults to `'Keyboard\nshortcut'`.",
+      default: 'Keyboard shortcut',
     },
     disabled: {
       type: 'boolean',
-      description: 'Set when the shortcut is unavailable.',
+      description: 'Set when the shortcut is unavailable. Defaults to `false`.',
+      default: false,
     },
     class: {
       type: 'string',

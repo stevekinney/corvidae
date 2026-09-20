@@ -38,7 +38,7 @@
 | `version` | `string` | no | — | Version window claims are filtered against. |
 | `anchorResolver` | `(opaque)` | no | — | Resolves a claim anchor using consumer-owned DOM knowledge. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Descendant application surface that consumes guidance through `useGuidance`. Not expressible in JSON Schema; see the component types for the signature. |
-| `claims` | `(opaque)` | no | — | Registered guidance claims available to descendants through `useGuidance`. Not expressible in JSON Schema; see the component types for the signature. |
+| `claims` | `(opaque)` | no | — | Registered guidance claims available to descendants through `useGuidance`. Defaults to `[]`. Not expressible in JSON Schema; see the component types for the signature. |
 | `storage` | `(opaque)` | no | — | Adapter used to persist which claims a user has dismissed, so dismissal survives a reload. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

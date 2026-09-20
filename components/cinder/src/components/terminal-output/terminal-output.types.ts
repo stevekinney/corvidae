@@ -5,7 +5,11 @@ export type TerminalForeground =
 export type TerminalTextRun = { text: string; foreground?: TerminalForeground; bold?: boolean };
 export type TerminalLine = readonly TerminalTextRun[];
 export type TerminalOutputProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'children'> & {
-  /** ANSI output text. Supports SGR 16-color foregrounds, bold/reset, carriage-return rewrites, and erase-line sequences. */
+  /**
+   * ANSI output text. Supports SGR 16-color foregrounds, bold/reset,
+   * carriage-return rewrites, and erase-line sequences. Defaults to `''`.
+   * @default ''
+   */
   value?: string;
   /**
    * Keeps the viewport anchored to the latest line while appending. Defaults to `true`; pass `false` when the host owns scroll position.

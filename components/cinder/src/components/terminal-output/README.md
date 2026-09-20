@@ -24,7 +24,7 @@ The root uses `role="log"` and `aria-live="polite"`; supply an accessible name s
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `followLatest` | `boolean` | no | `true` | Keeps the viewport anchored to the latest line while appending. Defaults to `true`; pass `false` when the host owns scroll position. |
-| `value` | `string` | no | — | ANSI output text. Supports SGR 16-color foregrounds, bold/reset, carriage-return rewrites, and erase-line sequences. |
+| `value` | `string` | no | `""` | ANSI output text. Supports SGR 16-color foregrounds, bold/reset, carriage-return rewrites, and erase-line sequences. Defaults to `''`. |
 | `children` | `(opaque)` | no | — | Rendered in place of the ANSI output when `value` is empty, e.g. an empty state. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

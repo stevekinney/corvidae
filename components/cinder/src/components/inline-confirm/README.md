@@ -32,11 +32,11 @@
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `cancelLabel` | `string` | no | — | Label for the cancelling action. |
+| `cancelLabel` | `string` | no | `"Cancel"` | Label for the cancelling action. Defaults to `'Cancel'`. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `confirmLabel` | `string` | yes | — | Label for the confirming action. |
-| `destructive` | `boolean` | no | — | Marks the confirming action as destructive. |
-| `open` | `boolean` | no | — | Whether the confirmation is open. Bindable. |
+| `destructive` | `boolean` | no | `false` | Marks the confirming action as destructive. Defaults to `false`. |
+| `open` | `boolean` | no | `false` | Whether the confirmation is open. Bindable. Defaults to `false`. |
 | `prompt` | `string` | yes | — | Confirmation prompt text. |
 | `children` | `(opaque)` | no | — | Additional content rendered below the prompt, above the confirm/cancel actions, while the confirmation is open. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCancel` | `(opaque)` | no | — | Called when the user cancels the action. Not expressible in JSON Schema; see the component types for the signature. |

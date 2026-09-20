@@ -6,11 +6,13 @@ const schema = {
   properties: {
     label: {
       type: 'string',
-      description: 'Names both the chart and its generated data table.',
+      description: 'Names both the chart and its non-visual fallback list.',
     },
     valueLabels: {
       type: 'boolean',
-      description: 'Adds visible value labels to the chart.',
+      description:
+        'Adds a visible `<ul>` legend with value labels below the ring, in place\nof the screen-reader-only fallback list. Defaults to `false`.',
+      default: false,
     },
     centerLabel: {
       type: 'string',
@@ -19,7 +21,9 @@ const schema = {
     },
     scrollable: {
       type: 'boolean',
-      description: 'Enables a horizontal-scroll escape hatch for narrow containers.',
+      description:
+        'Enables a horizontal-scroll escape hatch for narrow containers.\nDefaults to `false`.',
+      default: false,
     },
     class: {
       type: 'string',
@@ -34,7 +38,8 @@ const schema = {
         name: 'data',
         reason: 'unknown-shape',
         required: true,
-        description: 'Part-to-whole values rendered as the ring and the non-visual data table.',
+        description:
+          'Part-to-whole values rendered as the ring and, when `valueLabels` is\noff, as a screen-reader-only fallback `<ul>` (not a data table).',
       },
       {
         name: 'onSeriesClick',

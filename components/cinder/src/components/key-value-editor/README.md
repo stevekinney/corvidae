@@ -32,9 +32,9 @@ Give `addLabel` and `removeLabel` concrete action wording when the surrounding p
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `addLabel` | `string` | no | — | Label for the add-row action. Give it concrete wording when more than one editor is on the page. |
+| `addLabel` | `string` | no | `"Add pair"` | Label for the add-row action. Give it concrete wording when more than one editor is on the page. Defaults to `'Add pair'`. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
-| `entries` | `(opaque)` | no | — | The editable list of key/value rows. Bindable. Not expressible in JSON Schema; see the component types for the signature. |
+| `entries` | `(opaque)` | no | — | The editable list of key/value rows. Bindable. Defaults to `[]`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onValueChange` | `(opaque)` | no | — | Callback form of the resulting array, for when the parent does not use `bind:entries`. Not expressible in JSON Schema; see the component types for the signature. |
 | `removeLabel` | `(opaque)` | no | — | Label for a row's remove action, given that row's key. Give it concrete wording when more than one editor is on the page. Not expressible in JSON Schema; see the component types for the signature. |
 | `secret` | `(opaque)` | no | — | Predicate receiving a row's key; routes that row's value through a password input when it returns `true`. Not expressible in JSON Schema; see the component types for the signature. |

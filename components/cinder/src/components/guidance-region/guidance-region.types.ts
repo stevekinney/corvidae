@@ -1,7 +1,11 @@
 import type { Snippet } from 'svelte';
 import type { GuidanceClaim, GuidanceStorage } from '../../_internal/guidance-context.ts';
 export type GuidanceRegionProps = {
-  /** Registered guidance claims available to descendants through `useGuidance`. */
+  /**
+   * Registered guidance claims available to descendants through
+   * `useGuidance`. Defaults to `[]`.
+   * @default []
+   */
   claims?: GuidanceClaim[];
   /** Version window claims are filtered against. */
   version?: string;
