@@ -12,6 +12,8 @@ export type ParameterFieldEditorState = {
    * change, no `onOverrideChange` call—if `value` is `NaN` or infinite;
    * this only guards the setter itself, not the externally bindable
    * `override` prop, which accepts and renders a non-finite value as-is.
+   * Beyond that guard, `onOverrideChange` fires unconditionally: calling
+   * this with the value already stored in `override` still notifies.
    */
   setOverride: (value: number) => void;
 };
@@ -34,9 +36,11 @@ export type ParameterFieldProps = {
   /**
    * Called when the component's own `setOverride` (exposed to `children`
    * as `ParameterFieldEditorState.setOverride`) or its built-in reset
-   * action changes the override. Not called when a parent changes the
-   * bindable `override` prop programmatically—that update is not
-   * distinguishable here from the component's own writes.
+   * action runs—not only when either actually changes the override:
+   * calling `setOverride` with the value `override` already holds still
+   * notifies. Not called when a parent changes the bindable `override`
+   * prop programmatically—that update is not distinguishable here from
+   * the component's own writes.
    */
   onOverrideChange?: (value: number | undefined) => void;
   /** Optional custom numeric editor. Receives the effective value and override setter. */
