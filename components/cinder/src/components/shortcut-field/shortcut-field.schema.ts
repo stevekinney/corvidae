@@ -30,7 +30,8 @@ const schema = {
       {
         name: 'onValueChange',
         reason: 'function-or-snippet',
-        description: 'Called with the recorded combination when capture completes.',
+        description:
+          'Called with the recorded combination when capture completes, and also\ncalled with an empty array when the user clears the field—handle the\nempty-array case to persist a removal, not only a successful capture.',
       },
       {
         name: 'validate',

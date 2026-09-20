@@ -55,6 +55,7 @@ const CASES: Record<string, string[]> = {
   'table-header-cell': ['sortable', 'scope', 'align'],
   table: ['stickyHeader', 'density', 'selectable', 'scrollable'],
   tab: ['disabled'],
+  'terminal-frame': ['status', 'columnWidth', 'rowHeight'],
   tabs: ['orientation', 'fill'],
   'tag-input': ['delimiter', 'duplicateValuesAllowed', 'commitOnSubmit', 'readonly'],
   tooltip: ['describe'],

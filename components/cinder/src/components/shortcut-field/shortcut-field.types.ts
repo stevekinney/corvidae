@@ -5,7 +5,11 @@ export type ShortcutFieldProps = Omit<
 > & {
   /** Ordered list of platform key names for the recorded combination. */
   value?: string[];
-  /** Called with the recorded combination when capture completes. */
+  /**
+   * Called with the recorded combination when capture completes, and also
+   * called with an empty array when the user clears the field—handle the
+   * empty-array case to persist a removal, not only a successful capture.
+   */
   onValueChange?: (value: string[]) => void;
   /** Returns an error message for a combination the application cannot accept; the field keeps the previous value until a valid replacement is committed. */
   validate?: (value: string[]) => string | undefined;
