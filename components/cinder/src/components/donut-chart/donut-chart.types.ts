@@ -1,11 +1,18 @@
 import type { HTMLAttributes } from 'svelte/elements';
-export type DonutChartDatum = { label: string; value: number; color?: string };
+export type DonutChartDatum = {
+  label: string;
+  /** A negative, `NaN`, or infinite value renders as `0`—it is not rejected, and does not round-trip back to the caller. */
+  value: number;
+  color?: string;
+};
 export type DonutChartProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /** Names both the chart and its non-visual fallback list. */
   label: string;
   /**
    * Part-to-whole values rendered as the ring and, when `valueLabels` is
-   * off, as a screen-reader-only fallback `<ul>` (not a data table).
+   * off, as a screen-reader-only fallback `<ul>` (not a data table). A
+   * negative, `NaN`, or infinite `value` renders as `0` rather than being
+   * rejected—see `DonutChartDatum.value`.
    */
   data: DonutChartDatum[];
   /**

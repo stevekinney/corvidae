@@ -52,7 +52,8 @@ const schema = {
       {
         name: 'onOverrideChange',
         reason: 'function-or-snippet',
-        description: 'Called when the override changes or is reset.',
+        description:
+          "Called when the component's own `setOverride` (exposed to `children`\nas `ParameterFieldEditorState.setOverride`) or its built-in reset\naction changes the override. Not called when a parent changes the\nbindable `override` prop programmatically—that update is not\ndistinguishable here from the component's own writes.",
       },
     ],
   },

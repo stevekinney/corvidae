@@ -26,7 +26,8 @@ const schema = {
     },
     required: {
       type: 'boolean',
-      description: 'Marks the setting as required.',
+      description:
+        "Renders the required marker and forwards `required` into `FormField`\ncontext. Only takes effect for a control that opts into and reads that\ncontext—it never adds a native `required` attribute, so a control that\ndoesn't consume the context still passes browser constraint validation\nand must receive `required` directly.",
     },
     disabled: {
       type: 'boolean',

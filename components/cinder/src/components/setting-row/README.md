@@ -32,7 +32,7 @@ SettingRow arranges settings-page guidance and a control while publishing FormFi
 | `id` | `string` | yes | — | Stable id shared with the composed control. |
 | `label` | `string` | yes | — | Visible setting label. |
 | `managed` | { by?: `string`; reason?: `string` } | no | — | Renders a managed-policy indicator; pair with `PolicyLock`. |
-| `required` | `boolean` | no | — | Marks the setting as required. |
+| `required` | `boolean` | no | — | Renders the required marker and forwards `required` into `FormField` context. Only takes effect for a control that opts into and reads that context—it never adds a native `required` attribute, so a control that doesn't consume the context still passes browser constraint validation and must receive `required` directly. |
 | `warning` | `string` | no | — | Advisory message forwarded through `FormField` context. |
 | `control` | `(opaque)` | yes | — | The setting's control, rendered with `FormField` context applied. Not expressible in JSON Schema; see the component types for the signature. |
 | `disclosure` | `(opaque)` | no | — | Optional disclosure content rendered beneath the row. Not expressible in JSON Schema; see the component types for the signature. |

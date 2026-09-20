@@ -5,8 +5,13 @@
  * prop's row has a non-empty (not `—`) Default cell.
  *
  * Parses the table the same way `render-component-readme.ts`'s
- * `renderPropsTable` emits it: a line-based split on `|`, matching the prop
- * name in the first column and checking the fourth (Default) column.
+ * `renderPropsTable` emits it, matching the prop name in the first column
+ * and checking the fourth (Default) column. `renderPropsTable` escapes
+ * every literal `|` inside a cell as `\|` (both in descriptions and in
+ * union-typed Type columns, e.g. `` `"a"` \| `"b"` ``), so splitting on
+ * every `|` character — escaped or not — misaligns the columns for any row
+ * whose Type or description contains one; `splitTableRow` below keeps an
+ * escaped `\|` inside its cell instead of treating it as a delimiter.
  */
 
 import { readFileSync } from 'node:fs';
@@ -16,6 +21,28 @@ import { describe, expect, test } from 'bun:test';
 
 const COMPONENTS_DIR = join(import.meta.dir, '..', 'src', 'components');
 
+/** Splits a Markdown table row on unescaped `|`, keeping `\|` inside its cell. */
+function splitTableRow(line: string): string[] {
+  const cells: string[] = [];
+  let current = '';
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '\\' && line[i + 1] === '|') {
+      current += '\\|';
+      i++;
+      continue;
+    }
+    if (char === '|') {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
 /** Reads a component's README's Default column value for a given prop. */
 function defaultCellFor(componentId: string, propName: string): string | undefined {
   const readmePath = join(COMPONENTS_DIR, componentId, 'README.md');
@@ -23,7 +50,7 @@ function defaultCellFor(componentId: string, propName: string): string | undefin
 
   for (const line of readme.split('\n')) {
     if (!line.startsWith('|')) continue;
-    const cells = line.split('|').map((cell) => cell.trim());
+    const cells = splitTableRow(line);
     // cells[0] is '' (text before the leading `|`); cells[1] is the Prop column.
     const cellPropName = cells[1]?.replace(/^`|`$/g, '');
     if (cellPropName === propName) {

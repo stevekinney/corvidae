@@ -35,7 +35,7 @@
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `storageKey` | `string` | no | `"cinder-guidance"` | Key used to namespace dismissal state in the storage adapter. Defaults to `'cinder-guidance'`—regions sharing one storage adapter without an explicit `storageKey` collide in that namespace. |
-| `version` | `string` | no | — | Version window claims are filtered against. |
+| `version` | `string` | no | — | Version window claims are filtered against. Must be strict SemVer (`major.minor.patch`, each numeric with no leading zero; an optional `-prerelease` and `+build` suffix are allowed)—a shortened form like `'1.2'` fails to parse. A claim's own `relevantFrom`/`relevantUntil` bounds are parsed the same way; if either fails to parse, that claim is filtered out silently rather than erroring. |
 | `anchorResolver` | `(opaque)` | no | — | Resolves a claim anchor using consumer-owned DOM knowledge. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Descendant application surface that consumes guidance through `useGuidance`. Not expressible in JSON Schema; see the component types for the signature. |
 | `claims` | `(opaque)` | no | — | Registered guidance claims available to descendants through `useGuidance`. Defaults to `[]`. (`GuidanceClaim` is not expressible in JSON Schema, so this default only appears here in prose.) Not expressible in JSON Schema; see the component types for the signature. |

@@ -6,7 +6,8 @@ const schema = {
   properties: {
     version: {
       type: 'string',
-      description: 'Version window claims are filtered against.',
+      description:
+        "Version window claims are filtered against. Must be strict SemVer\n(`major.minor.patch`, each numeric with no leading zero; an optional\n`-prerelease` and `+build` suffix are allowed)—a shortened form like\n`'1.2'` fails to parse. A claim's own `relevantFrom`/`relevantUntil`\nbounds are parsed the same way; if either fails to parse, that claim is\nfiltered out silently rather than erroring.",
     },
     storageKey: {
       type: 'string',

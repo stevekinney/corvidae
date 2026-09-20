@@ -26,7 +26,13 @@ export type ParameterFieldProps = {
   unsaved?: boolean;
   /** Marks the parameter as experimental. Defaults to `false`. @default false */
   experimental?: boolean;
-  /** Called when the override changes or is reset. */
+  /**
+   * Called when the component's own `setOverride` (exposed to `children`
+   * as `ParameterFieldEditorState.setOverride`) or its built-in reset
+   * action changes the override. Not called when a parent changes the
+   * bindable `override` prop programmatically—that update is not
+   * distinguishable here from the component's own writes.
+   */
   onOverrideChange?: (value: number | undefined) => void;
   /** Optional custom numeric editor. Receives the effective value and override setter. */
   children?: Snippet<[ParameterFieldEditorState]>;

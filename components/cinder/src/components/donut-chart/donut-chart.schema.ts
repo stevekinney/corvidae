@@ -39,7 +39,7 @@ const schema = {
         reason: 'unknown-shape',
         required: true,
         description:
-          'Part-to-whole values rendered as the ring and, when `valueLabels` is\noff, as a screen-reader-only fallback `<ul>` (not a data table).',
+          'Part-to-whole values rendered as the ring and, when `valueLabels` is\noff, as a screen-reader-only fallback `<ul>` (not a data table). A\nnegative, `NaN`, or infinite `value` renders as `0` rather than being\nrejected—see `DonutChartDatum.value`.',
       },
       {
         name: 'onSeriesClick',

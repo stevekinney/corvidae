@@ -11,7 +11,13 @@ export type SettingRowProps = {
   warning?: string;
   /** Corrective error message forwarded through `FormField` context. */
   error?: string;
-  /** Marks the setting as required. */
+  /**
+   * Renders the required marker and forwards `required` into `FormField`
+   * context. Only takes effect for a control that opts into and reads that
+   * context—it never adds a native `required` attribute, so a control that
+   * doesn't consume the context still passes browser constraint validation
+   * and must receive `required` directly.
+   */
   required?: boolean;
   /**
    * Forwards a disabled state into `FormField` context for the row's
