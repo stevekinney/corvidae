@@ -16,7 +16,10 @@ export type SettingRowProps = {
    * context. Only takes effect for a control that opts into and reads that
    * context—it never adds a native `required` attribute, so a control that
    * doesn't consume the context still passes browser constraint validation
-   * and must receive `required` directly.
+   * and must receive `required` directly. `SettingRow` forwards `undefined`
+   * when omitted; `FormField` normalizes that to `false`. Defaults to
+   * `false`.
+   * @default false
    */
   required?: boolean;
   /**
@@ -24,7 +27,10 @@ export type SettingRowProps = {
    * control. Only takes effect for a control that opts into and reads that
    * context—a native element or a third-party component that doesn't
    * consume it stays interactive and must receive `disabled` directly.
-   * Does not disable automatically while saving.
+   * Does not disable automatically while saving. `SettingRow` forwards
+   * `undefined` when omitted; `FormField` normalizes that to `false`.
+   * Defaults to `false`.
+   * @default false
    */
   disabled?: boolean;
   /** Renders a managed-policy indicator; pair with `PolicyLock`. */

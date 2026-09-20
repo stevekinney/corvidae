@@ -7,7 +7,12 @@ export type ParameterFieldEditorState = {
   value: number;
   /** Whether the effective value comes from an override. */
   overridden: boolean;
-  /** Set or replace the local override. */
+  /**
+   * Set or replace the local override. Silently does nothing—no override
+   * change, no `onOverrideChange` call—if `value` is `NaN` or infinite;
+   * this only guards the setter itself, not the externally bindable
+   * `override` prop, which accepts and renders a non-finite value as-is.
+   */
   setOverride: (value: number) => void;
 };
 

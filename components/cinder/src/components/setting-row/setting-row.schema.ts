@@ -27,12 +27,14 @@ const schema = {
     required: {
       type: 'boolean',
       description:
-        "Renders the required marker and forwards `required` into `FormField`\ncontext. Only takes effect for a control that opts into and reads that\ncontext—it never adds a native `required` attribute, so a control that\ndoesn't consume the context still passes browser constraint validation\nand must receive `required` directly.",
+        "Renders the required marker and forwards `required` into `FormField`\ncontext. Only takes effect for a control that opts into and reads that\ncontext—it never adds a native `required` attribute, so a control that\ndoesn't consume the context still passes browser constraint validation\nand must receive `required` directly. `SettingRow` forwards `undefined`\nwhen omitted; `FormField` normalizes that to `false`. Defaults to\n`false`.",
+      default: false,
     },
     disabled: {
       type: 'boolean',
       description:
-        "Forwards a disabled state into `FormField` context for the row's\ncontrol. Only takes effect for a control that opts into and reads that\ncontext—a native element or a third-party component that doesn't\nconsume it stays interactive and must receive `disabled` directly.\nDoes not disable automatically while saving.",
+        "Forwards a disabled state into `FormField` context for the row's\ncontrol. Only takes effect for a control that opts into and reads that\ncontext—a native element or a third-party component that doesn't\nconsume it stays interactive and must receive `disabled` directly.\nDoes not disable automatically while saving. `SettingRow` forwards\n`undefined` when omitted; `FormField` normalizes that to `false`.\nDefaults to `false`.",
+      default: false,
     },
     managed: {
       type: 'object',

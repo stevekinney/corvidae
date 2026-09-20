@@ -82,6 +82,7 @@ const CASES: Record<string, string[]> = {
   'shortcut-field': ['value', 'label', 'disabled'],
   'terminal-output': ['followLatest', 'value'],
   'zoom-pan-viewer': ['scale', 'ariaLabel'],
+  'setting-row': ['required', 'disabled'],
   'share-card': ['copyLinkLabel', 'copiedLabel', 'shareLabel'],
   steps: ['orientation', 'label', 'completedLabel', 'skippedLabel'],
   'table-cell': ['align', 'as'],

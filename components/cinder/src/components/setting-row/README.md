@@ -27,12 +27,12 @@ SettingRow arranges settings-page guidance and a control while publishing FormFi
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `description` | `string` | no | — | Guidance text describing the setting. |
-| `disabled` | `boolean` | no | — | Forwards a disabled state into `FormField` context for the row's control. Only takes effect for a control that opts into and reads that context—a native element or a third-party component that doesn't consume it stays interactive and must receive `disabled` directly. Does not disable automatically while saving. |
+| `disabled` | `boolean` | no | `false` | Forwards a disabled state into `FormField` context for the row's control. Only takes effect for a control that opts into and reads that context—a native element or a third-party component that doesn't consume it stays interactive and must receive `disabled` directly. Does not disable automatically while saving. `SettingRow` forwards `undefined` when omitted; `FormField` normalizes that to `false`. Defaults to `false`. |
 | `error` | `string` | no | — | Corrective error message forwarded through `FormField` context. |
 | `id` | `string` | yes | — | Stable id shared with the composed control. |
 | `label` | `string` | yes | — | Visible setting label. |
 | `managed` | { by?: `string`; reason?: `string` } | no | — | Renders a managed-policy indicator; pair with `PolicyLock`. |
-| `required` | `boolean` | no | — | Renders the required marker and forwards `required` into `FormField` context. Only takes effect for a control that opts into and reads that context—it never adds a native `required` attribute, so a control that doesn't consume the context still passes browser constraint validation and must receive `required` directly. |
+| `required` | `boolean` | no | `false` | Renders the required marker and forwards `required` into `FormField` context. Only takes effect for a control that opts into and reads that context—it never adds a native `required` attribute, so a control that doesn't consume the context still passes browser constraint validation and must receive `required` directly. `SettingRow` forwards `undefined` when omitted; `FormField` normalizes that to `false`. Defaults to `false`. |
 | `warning` | `string` | no | — | Advisory message forwarded through `FormField` context. |
 | `control` | `(opaque)` | yes | — | The setting's control, rendered with `FormField` context applied. Not expressible in JSON Schema; see the component types for the signature. |
 | `disclosure` | `(opaque)` | no | — | Optional disclosure content rendered beneath the row. Not expressible in JSON Schema; see the component types for the signature. |
