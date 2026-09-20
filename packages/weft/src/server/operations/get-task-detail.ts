@@ -12,10 +12,18 @@
  * no attempt identity, priority, headers, retry-availability, adoption, or
  * retention evidence.
  *
- * **Excluded fields.** `attemptToken`, `workerSessionId`, and
- * `executionIdentity` are never projected here, matching
- * `TaskResultView`'s own documented exclusion list — they are worker
- * ownership/session internals with no business being public. `headers`
+ * **Excluded fields.** `attemptToken` and `workerSessionId` are never
+ * projected here, matching `TaskResultView`'s own documented exclusion
+ * list — they are worker ownership/session internals (and, for
+ * `attemptToken`, a fencing secret — COR-205, acceptance criteria 8 and 10)
+ * with no business being public. The CURRENT record's own `executionIdentity`
+ * stays excluded too, for the same reason it always has. `attempts`
+ * (COR-205) is the one deliberate exception: it projects each historical
+ * `TaskAttemptRecord`'s `executionIdentity` and `attemptTokenDigest` — never
+ * the raw token — because a retry's build/deployment identity, unlike a
+ * live connection's ownership, is exactly the audit trail an operator needs
+ * (acceptance criterion 9: "a retry across builds displays both attempt
+ * identities"). `headers`
  * are summarized as key names only (`headerKeys`): interceptor headers can
  * carry trace context or auth material, and this is a read surface, not a
  * payload inspector. The task `input` value and a dead-lettered record's
@@ -40,9 +48,16 @@
 
 import type { z } from 'zod';
 
+import type { Storage } from '../../storage/interface.ts';
+import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
+import {
+  decodeTaskAttemptRecord,
+  taskAttemptPrefix,
+  type TaskAttemptRecord,
+} from '../task-attempt.ts';
 import {
   decodeRemoteTaskRecord,
   taskLedgerKey,
@@ -56,10 +71,12 @@ import {
   type RemoteTaskTerminal,
 } from '../task-ledger.ts';
 import {
+  executionIdentitySchema,
   executionRequirementSchema,
   getTaskDetailInput,
   getTaskDetailOutputSchema,
   retryPolicySchema,
+  taskAttemptSchema,
   type GetTaskDetailOutput,
 } from './get-task-detail-schema.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
@@ -118,9 +135,84 @@ function projectExecutionRequirement(
   };
 }
 
-function baseEnvelopeFields(record: RemoteTaskRecord) {
+function projectExecutionIdentity(
+  executionIdentity: WorkerExecutionIdentity,
+): z.infer<typeof executionIdentitySchema> {
+  return {
+    workerId: executionIdentity.workerId,
+    manifestDigest: executionIdentity.manifestDigest,
+    sdkVersion: executionIdentity.sdkVersion,
+    runtimeName: executionIdentity.runtimeName,
+    runtimeVersion: executionIdentity.runtimeVersion,
+    deploymentName: executionIdentity.deploymentName,
+    buildId: executionIdentity.buildId,
+    artifactDigest: executionIdentity.artifactDigest,
+    workflowType: executionIdentity.workflowType,
+    workflowRevision: executionIdentity.workflowRevision,
+    activityName: executionIdentity.activityName,
+    activityContractHash: executionIdentity.activityContractHash,
+    protocolVersion: executionIdentity.protocolVersion,
+  };
+}
+
+/**
+ * Project one durable {@link TaskAttemptRecord} into the diagnostics shape
+ * (COR-205, acceptance criteria 9 and 10) — never the raw `attemptToken`,
+ * only its digest.
+ */
+function projectAttempt(record: TaskAttemptRecord): z.infer<typeof taskAttemptSchema> {
+  return {
+    attempt: record.attempt,
+    attemptTokenDigest: record.attemptTokenDigest,
+    ...(record.sessionGeneration !== undefined
+      ? { sessionGeneration: record.sessionGeneration }
+      : {}),
+    ...(record.executionIdentity !== undefined
+      ? { executionIdentity: projectExecutionIdentity(record.executionIdentity) }
+      : {}),
+    ...(record.executionRequirement !== undefined
+      ? { executionRequirement: projectExecutionRequirement(record.executionRequirement) }
+      : {}),
+    claimedAt: record.claimedAt,
+    disposition: record.disposition,
+    dispositionAt: record.dispositionAt,
+    ...(record.dispositionReason !== undefined
+      ? { dispositionReason: record.dispositionReason }
+      : {}),
+    ...(record.lastHeartbeatAt !== undefined ? { lastHeartbeatAt: record.lastHeartbeatAt } : {}),
+  };
+}
+
+/**
+ * Read every {@link TaskAttemptRecord} for `operationId`, oldest attempt
+ * first (acceptance criterion 9's ordering — a retry across builds should
+ * read chronologically). A bounded scan: attempts per operation are capped
+ * by the dispatch's retry policy, the same bound `reapRetainedTerminalRecord`
+ * relies on for purge (criterion 12).
+ */
+async function loadTaskAttemptHistory(
+  storage: Pick<Storage, 'get' | 'scan'>,
+  operationId: string,
+): Promise<TaskAttemptRecord[]> {
+  const records: TaskAttemptRecord[] = [];
+  for await (const [, value] of storage.scan(taskAttemptPrefix(operationId))) {
+    const decoded = decodeTaskAttemptRecord(value);
+    if (decoded !== null) records.push(decoded);
+  }
+  // Sort by the ledger's own authoritative attempt counter (criterion 4),
+  // NOT `claimedAt`: two attempts claimed within the same millisecond
+  // (routine under fast dispatch/retry, and common in tests) would tie on a
+  // wall-clock timestamp, and the storage scan's own key order — sorted by
+  // `attemptTokenDigest`, an opaque hash unrelated to claim order — is not a
+  // safe fallback tiebreaker. `attempt` is a monotonic integer with no such
+  // collision risk.
+  return records.toSorted((left, right) => left.attempt - right.attempt);
+}
+
+function baseEnvelopeFields(record: RemoteTaskRecord, attempts: readonly TaskAttemptRecord[]) {
   return {
     operationId: record.operationId,
+    attempts: attempts.map(projectAttempt),
     ...(record.workflowId !== undefined ? { workflowId: record.workflowId } : {}),
     ...(record.workflowExecutionToken !== undefined
       ? { workflowExecutionToken: record.workflowExecutionToken }
@@ -181,9 +273,12 @@ function leaseHolderFields(
   };
 }
 
-function projectQueued(record: RemoteTaskQueued): GetTaskDetailOutput {
+function projectQueued(
+  record: RemoteTaskQueued,
+  attempts: readonly TaskAttemptRecord[],
+): GetTaskDetailOutput {
   return {
-    ...baseEnvelopeFields(record),
+    ...baseEnvelopeFields(record, attempts),
     ...attemptFields(record),
     state: 'queued',
     availableAt: record.availableAt,
@@ -194,18 +289,24 @@ function projectQueued(record: RemoteTaskQueued): GetTaskDetailOutput {
   };
 }
 
-function projectLeased(record: RemoteTaskLeased): GetTaskDetailOutput {
+function projectLeased(
+  record: RemoteTaskLeased,
+  attempts: readonly TaskAttemptRecord[],
+): GetTaskDetailOutput {
   return {
-    ...baseEnvelopeFields(record),
+    ...baseEnvelopeFields(record, attempts),
     ...attemptFields(record),
     ...leaseHolderFields(record),
     state: 'leased',
   };
 }
 
-function projectCompleting(record: RemoteTaskCompleting): GetTaskDetailOutput {
+function projectCompleting(
+  record: RemoteTaskCompleting,
+  attempts: readonly TaskAttemptRecord[],
+): GetTaskDetailOutput {
   return {
-    ...baseEnvelopeFields(record),
+    ...baseEnvelopeFields(record, attempts),
     ...attemptFields(record),
     ...leaseHolderFields(record),
     state: 'completing',
@@ -214,9 +315,12 @@ function projectCompleting(record: RemoteTaskCompleting): GetTaskDetailOutput {
   };
 }
 
-function projectCancelling(record: RemoteTaskCancelling): GetTaskDetailOutput {
+function projectCancelling(
+  record: RemoteTaskCancelling,
+  attempts: readonly TaskAttemptRecord[],
+): GetTaskDetailOutput {
   return {
-    ...baseEnvelopeFields(record),
+    ...baseEnvelopeFields(record, attempts),
     ...attemptFields(record),
     ...leaseHolderFields(record),
     state: 'cancelling',
@@ -253,9 +357,12 @@ function terminalDispositionFields(record: RemoteTaskTerminal) {
   };
 }
 
-function projectTerminal(record: RemoteTaskTerminal): GetTaskDetailOutput {
+function projectTerminal(
+  record: RemoteTaskTerminal,
+  attempts: readonly TaskAttemptRecord[],
+): GetTaskDetailOutput {
   return {
-    ...baseEnvelopeFields(record),
+    ...baseEnvelopeFields(record, attempts),
     state: 'terminal',
     terminalAt: record.terminalAt,
     adopted: record.adopted,
@@ -264,9 +371,12 @@ function projectTerminal(record: RemoteTaskTerminal): GetTaskDetailOutput {
   };
 }
 
-function projectDeadLettered(record: RemoteTaskDeadLettered): GetTaskDetailOutput {
+function projectDeadLettered(
+  record: RemoteTaskDeadLettered,
+  attempts: readonly TaskAttemptRecord[],
+): GetTaskDetailOutput {
   return {
-    ...baseEnvelopeFields(record),
+    ...baseEnvelopeFields(record, attempts),
     ...attemptFields(record),
     state: 'deadLettered',
     pendingStatus: record.pendingStatus,
@@ -277,20 +387,23 @@ function projectDeadLettered(record: RemoteTaskDeadLettered): GetTaskDetailOutpu
   };
 }
 
-function projectTaskDetail(record: RemoteTaskRecord): GetTaskDetailOutput {
+function projectTaskDetail(
+  record: RemoteTaskRecord,
+  attempts: readonly TaskAttemptRecord[],
+): GetTaskDetailOutput {
   switch (record.state) {
     case 'queued':
-      return projectQueued(record);
+      return projectQueued(record, attempts);
     case 'leased':
-      return projectLeased(record);
+      return projectLeased(record, attempts);
     case 'completing':
-      return projectCompleting(record);
+      return projectCompleting(record, attempts);
     case 'cancelling':
-      return projectCancelling(record);
+      return projectCancelling(record, attempts);
     case 'terminal':
-      return projectTerminal(record);
+      return projectTerminal(record, attempts);
     case 'deadLettered':
-      return projectDeadLettered(record);
+      return projectDeadLettered(record, attempts);
     default: {
       // Exhaustiveness guard: adding a new RemoteTaskRecord state without a
       // case above must fail this typecheck.
@@ -317,7 +430,7 @@ export const getTaskDetailOperation = defineOperation({
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, engine }): Promise<GetTaskDetailOutput> => {
-    const storage = requireOperationStorage(engine, ['get']);
+    const storage = requireOperationStorage(engine, ['get', 'scan']);
     const raw = await storage.get(taskLedgerKey(input.operationId));
     if (raw === null) {
       raiseFault(getTaskDetailOperation, {
@@ -341,7 +454,8 @@ export const getTaskDetailOperation = defineOperation({
         data: {},
       });
     }
-    return projectTaskDetail(decoded);
+    const attempts = await loadTaskAttemptHistory(storage, input.operationId);
+    return projectTaskDetail(decoded, attempts);
   },
 });
 

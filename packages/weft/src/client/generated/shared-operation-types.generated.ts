@@ -43,6 +43,33 @@ export type SharedAffectedWorkersHealthInF_c3f6ebcc = {
   readonly target: 'worker';
   readonly workerId: string;
 };
+export type SharedAttemptAttemptTokenDiges_a17e1950 = {
+  readonly attempt: number;
+  readonly attemptTokenDigest: string;
+  readonly claimedAt: number;
+  readonly disposition:
+    'leased' | 'requeued' | 'retryExhausted' | 'resolved' | 'cancelled' | 'deadLettered';
+  readonly dispositionAt: number;
+  readonly dispositionReason?: string;
+  readonly executionIdentity?: {
+    readonly activityContractHash: string;
+    readonly activityName: string;
+    readonly artifactDigest: string;
+    readonly buildId: string;
+    readonly deploymentName: string;
+    readonly manifestDigest: string;
+    readonly protocolVersion: number;
+    readonly runtimeName: string;
+    readonly runtimeVersion: string;
+    readonly sdkVersion: string;
+    readonly workerId: string;
+    readonly workflowRevision: string;
+    readonly workflowType: string;
+  };
+  readonly executionRequirement?: SharedActivityContractHashArti_d7d91df4;
+  readonly lastHeartbeatAt?: number;
+  readonly sessionGeneration?: number;
+};
 export type SharedAttributesBulkConcurrenc_0f0d07d6 = {
   readonly attributes?: ReadonlyArray<SharedGtGteKey_e658e64c>;
   readonly bulkConcurrency?: number;

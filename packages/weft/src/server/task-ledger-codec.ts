@@ -41,11 +41,11 @@ import type {
   WorkerExecutionRequirementInput,
 } from './task-ledger-types.ts';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isBoundedIdentifier(
+export function isBoundedIdentifier(
   value: unknown,
   maxBytes = MAX_TASK_IDENTIFIER_BYTES,
 ): value is string {
@@ -93,21 +93,21 @@ function isBoundedOptionalIdentifier(
   return value === undefined || isBoundedIdentifier(value, maxBytes);
 }
 
-function isBoundedReason(value: unknown): value is string {
+export function isBoundedReason(value: unknown): value is string {
   return (
     typeof value === 'string' && value.length > 0 && utf8ByteLength(value) <= MAX_TASK_REASON_BYTES
   );
 }
 
-function isFiniteNumber(value: unknown): value is number {
+export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-function isOptionalFiniteNumber(value: unknown): boolean {
+export function isOptionalFiniteNumber(value: unknown): boolean {
   return value === undefined || isFiniteNumber(value);
 }
 
-function isOptionalBoundedReason(value: unknown): boolean {
+export function isOptionalBoundedReason(value: unknown): boolean {
   return value === undefined || isBoundedReason(value);
 }
 
@@ -155,7 +155,16 @@ function isValidRetryPolicy(value: unknown): boolean {
   );
 }
 
-function isValidExecutionRequirement(value: unknown): value is WorkerExecutionRequirementInput {
+/**
+ * Whether `value` is a valid {@link WorkerExecutionRequirementInput} — exported
+ * so `task-attempt-codec.ts` can validate a `TaskAttemptRecord`'s carried
+ * routing requirement (COR-205, acceptance criterion 3) with the exact same
+ * bounds this module enforces on a `RemoteTaskRecord`'s own field, rather
+ * than a second, potentially drifting copy of the same check.
+ */
+export function isValidExecutionRequirement(
+  value: unknown,
+): value is WorkerExecutionRequirementInput {
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
   return (
@@ -182,7 +191,14 @@ const EXECUTION_IDENTITY_STRING_FIELDS = [
   'activityContractHash',
 ] as const satisfies readonly (keyof WorkerExecutionIdentity)[];
 
-function isValidExecutionIdentity(value: unknown): value is WorkerExecutionIdentity {
+/**
+ * Whether `value` is a valid {@link WorkerExecutionIdentity} — exported for
+ * the same reason as {@link isValidExecutionRequirement}: `task-attempt-codec.ts`
+ * validates a `TaskAttemptRecord`'s carried actual-execution identity
+ * (COR-205, acceptance criteria 1 and 9) against this exact bound rather than
+ * re-deriving it.
+ */
+export function isValidExecutionIdentity(value: unknown): value is WorkerExecutionIdentity {
   if (!isRecord(value)) return false;
   return (
     EXECUTION_IDENTITY_STRING_FIELDS.every((field) => isBoundedIdentifier(value[field])) &&

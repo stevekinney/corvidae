@@ -19,6 +19,7 @@
 
 import {
   storageConditionalBatch,
+  type BatchOperation,
   type ConditionalBatchCondition,
   type Storage,
 } from '../../storage/interface.ts';
@@ -82,6 +83,27 @@ export async function commitTaskLedgerTransition<T extends RemoteTaskRecord>(
    * this loop, owns re-reading whatever these conditions guard.
    */
   additionalConditions: readonly ConditionalBatchCondition[] = [],
+  /**
+   * Extra same-transaction WRITES to commit alongside the ledger key's own
+   * put — for example, the {@link TaskAttemptRecord} provenance write COR-205
+   * ties to every claim, requeue, cancellation, completion, dead-letter, and
+   * heartbeat transition (`server/runtime/task-attempt-runtime.ts`). Built
+   * from the exact `current`/`nextRecord`/`now` this attempt's `transitionFn`
+   * just used, so a caller never risks building it from stale state. Async
+   * (unlike `transitionFn` itself, which stays pure and sync) because
+   * provenance writes may need their own storage read — e.g. reading the
+   * attempt record a disposition update merges into. Runs only after
+   * `transitionFn` has already accepted the transition, so it never executes
+   * for a rejected precondition (acceptance criterion 2: a failed or
+   * conflicting claim produces no attempt record) and always lands in the
+   * SAME `conditionalBatch` call as the owning state transition (criterion
+   * 11: provenance moves atomically with it).
+   */
+  buildAdditionalWrites?: (
+    current: RemoteTaskRecord | null,
+    nextRecord: T,
+    now: number,
+  ) => Promise<readonly BatchOperation[]>,
 ): Promise<TaskLedgerCommitResult<T>> {
   // storageConditionalBatch re-checks the capability on every call; serve()
   // already fails fast at attachment when it is absent (see src/server/index.ts).
@@ -90,13 +112,19 @@ export async function commitTaskLedgerTransition<T extends RemoteTaskRecord>(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const rawExisting = await storage.get(key);
     const current = decodeRemoteTaskRecord(rawExisting);
-    const result = transitionFn(current, Date.now());
+    const now = Date.now();
+    const result = transitionFn(current, now);
     if (!result.ok) return result;
+
+    const additionalWrites =
+      buildAdditionalWrites === undefined
+        ? []
+        : await buildAdditionalWrites(current, result.nextRecord, now);
 
     const committed = await storageConditionalBatch(
       storage,
       [{ key, expectedValue: rawExisting }, ...additionalConditions],
-      [{ type: 'put', key, value: encodeRemoteTaskRecord(result.nextRecord) }],
+      [{ type: 'put', key, value: encodeRemoteTaskRecord(result.nextRecord) }, ...additionalWrites],
     );
     if (committed) return { ok: true, record: result.nextRecord };
     // Lost the CAS — another writer changed the record (the ledger key
@@ -134,6 +162,16 @@ export async function commitTaskLedgerDelete(
   operationId: string,
   preconditionFn: (current: RemoteTaskRecord | null) => TaskLedgerPreconditionResult,
   maxAttempts = 1,
+  /**
+   * Extra keys to delete in the SAME `conditionalBatch` call as the ledger
+   * key — COR-205's retention/purge callers pass every
+   * `TaskAttemptRecord` key found under this operation's
+   * `taskAttemptPrefix()` (a bounded scan; see that function's doc comment),
+   * so a reaped or cleared terminal/dead-lettered task's attempt history is
+   * removed atomically with it (acceptance criterion 12) rather than left as
+   * an orphaned diagnostic entry.
+   */
+  additionalDeleteKeys: readonly string[] = [],
 ): Promise<TaskLedgerDeleteResult> {
   const key = taskLedgerKey(operationId);
 
@@ -148,7 +186,13 @@ export async function commitTaskLedgerDelete(
     const committed = await storageConditionalBatch(
       storage,
       [{ key, expectedValue: rawExisting }],
-      [{ type: 'delete', key }],
+      [
+        { type: 'delete', key },
+        ...additionalDeleteKeys.map((deleteKey): BatchOperation => ({
+          type: 'delete',
+          key: deleteKey,
+        })),
+      ],
     );
     if (committed) return { ok: true };
     // Lost the CAS — another writer changed the record. Retry against fresh state.

@@ -4,6 +4,7 @@ import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { commitTaskLedgerDelete } from '../runtime/task-ledger-runtime.ts';
+import { taskAttemptPrefix } from '../task-attempt.ts';
 import { canClearDeadLetteredTask } from '../task-ledger-transitions.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 
@@ -34,12 +35,21 @@ export const clearTaskDeadLetterOperation = defineOperation({
   transports: restOnlyTaskDiagnosticsTransports,
   unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
   invoke: async ({ input, engine }): Promise<ClearTaskDeadLetterOutput> => {
-    const storage = requireOperationStorage(engine, ['get']);
+    const storage = requireOperationStorage(engine, ['get', 'scan']);
+    // Acceptance criterion 12: clearing a dead-lettered diagnostic removes
+    // its attempt history in the same bounded, atomic operation — the same
+    // reasoning as `reapRetainedTerminalRecord`'s retention purge
+    // (`task-reconciliation.ts`).
+    const attemptKeys: string[] = [];
+    for await (const [attemptKey] of storage.scan(taskAttemptPrefix(input.operationId))) {
+      attemptKeys.push(attemptKey);
+    }
     const deleted = await commitTaskLedgerDelete(
       storage,
       input.operationId,
       canClearDeadLetteredTask,
       1,
+      attemptKeys,
     );
     if (!deleted.ok) {
       raiseFault(clearTaskDeadLetterOperation, {

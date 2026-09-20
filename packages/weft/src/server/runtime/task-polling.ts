@@ -5,6 +5,11 @@ import { claimQueued, renewAttemptLease } from '../task-ledger-transitions.ts';
 import { decodeRemoteTaskRecord, taskLedgerKey, type RemoteTaskRecord } from '../task-ledger.ts';
 import type { PendingTask } from '../task-queue-types.ts';
 import type { ServerContext } from './context.ts';
+import {
+  buildClaimAttemptRecordWrite,
+  buildCurrentAttemptDispositionWrites,
+  digestAttemptToken,
+} from './task-attempt-runtime.ts';
 import type { TaskResultDisposition } from './task-ledger-completion.ts';
 import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
 import { recordTaskBacklogMetric, recordTaskQueueLatencyMetric } from './task-metrics.ts';
@@ -279,6 +284,7 @@ export async function markTaskClaimedByLongPollWorker(
   const workerSessionId = `longpoll-${crypto.randomUUID().slice(0, 8)}`;
   const attemptToken = crypto.randomUUID();
   const visibilityTimeout = task.visibilityTimeout ?? DEFAULT_VISIBILITY_TIMEOUT;
+  const attemptTokenDigest = digestAttemptToken(attemptToken);
 
   const result = await commitTaskLedgerTransition(
     options.engine.storage,
@@ -302,6 +308,25 @@ export async function markTaskClaimedByLongPollWorker(
       );
     },
     1,
+    [],
+    // A long-poll claim never has an `executionIdentity` (no manifest — see
+    // `RemoteTaskLeased.executionIdentity`'s doc comment) or a session
+    // generation (no `WorkerRegistry.register()` call either), but still
+    // produces a complete attempt record (criterion 1): operationId,
+    // attempt, digest, and worker session are always known.
+    async (_current, nextRecord, now) =>
+      [
+        buildClaimAttemptRecordWrite({
+          operationId: nextRecord.operationId,
+          attempt: nextRecord.attempt,
+          attemptTokenDigest,
+          workerSessionId: nextRecord.workerSessionId,
+          ...(nextRecord.executionRequirement !== undefined
+            ? { executionRequirement: nextRecord.executionRequirement }
+            : {}),
+          claimedAt: now,
+        }),
+      ] as const,
   );
   if (!result.ok) return null;
 
@@ -614,6 +639,16 @@ export async function handleTaskHeartbeatRequest(
         now,
       ),
     1,
+    [],
+    // Acceptance criterion 7: heartbeat evidence rides on the SAME
+    // attempt-token-fenced transition `renewAttemptLease` already gates —
+    // a stale attempt never reaches this callback because its precondition
+    // (attempt token + worker session match) already rejected the transition
+    // above.
+    async (current, _nextRecord, now) =>
+      buildCurrentAttemptDispositionWrites(options.engine.storage, current, {
+        lastHeartbeatAt: now,
+      }),
   );
   if (!renewed.ok) {
     // Lost the race to a concurrent requeue, cancellation, or result commit

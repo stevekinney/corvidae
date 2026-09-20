@@ -143,6 +143,11 @@ describe('weft.tasks.get', () => {
       availableAt: 1_000,
       firstQueuedAt: 1_000,
       lastQueuedAt: 1_000,
+      // COR-205: every state's envelope includes attempt history — empty
+      // here because this fixture's ledger record was hand-built directly
+      // into storage, never claimed through the real claim path that would
+      // have written a TaskAttemptRecord.
+      attempts: [],
     });
     expect(JSON.stringify(result.value)).not.toContain('Bearer secret');
   });

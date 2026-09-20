@@ -1,6 +1,8 @@
 import { ActivityFailedEvent } from '../../core/events.ts';
+import { storageKeys } from '../../storage/interface.ts';
 import type { ServeOptions, TaskDispatch } from '../index.ts';
 import { restoreExtendedDeadlineIfStillActive } from '../runtime-helpers.ts';
+import { taskAttemptPrefix } from '../task-attempt.ts';
 import {
   canDeleteRetainedTerminalTask,
   commitUncertainCancellation,
@@ -15,6 +17,10 @@ import {
   type RemoteTaskTerminal,
 } from '../task-ledger.ts';
 import type { ServerContext } from './context.ts';
+import {
+  buildAttemptDispositionWriteForToken,
+  buildCurrentAttemptDispositionWrites,
+} from './task-attempt-runtime.ts';
 import { scheduleDelayedDispatch } from './task-dispatch.ts';
 import { commitTaskLedgerDelete, commitTaskLedgerTransition } from './task-ledger-runtime.ts';
 import {
@@ -102,6 +108,27 @@ export async function reassignOrExpireTask(
         now,
       ),
     1,
+    [],
+    // Acceptance criterion 5: the retiring attempt's identity and
+    // disposition are retained on requeue, not overwritten — a fresh
+    // `TaskAttemptRecord` for the NEXT attempt is written separately, at its
+    // own claim. This covers requeue from every origin `reassignOrExpireTask`
+    // is called from: visibility-timeout expiry (`scanExpiredTasks`), worker
+    // disconnect (`worker-disconnect-requeue.ts`), and startup recovery of an
+    // already-expired lease (`task-ledger-recovery.ts`) — acceptance
+    // criteria 5, 6 (disconnect/restart attributability), and the "restart"
+    // and "disconnect" fixtures all resolve through this one call site.
+    async (_current, nextRecord, now) =>
+      buildAttemptDispositionWriteForToken(
+        options.engine.storage,
+        operationId,
+        record.attemptToken,
+        {
+          disposition: nextRecord.state === 'terminal' ? 'retryExhausted' : 'requeued',
+          dispositionAt: now,
+          dispositionReason: reason,
+        },
+      ),
   );
   if (!result.ok) {
     console.error(`[weft] Failed to requeue/expire task "${operationId}": ${result.reason}`);
@@ -214,6 +241,18 @@ async function reapRetainedTerminalRecord(
   const retainedSince = decoded.adoptedAt ?? decoded.terminalAt;
   if (now - retainedSince < options.taskRetentionWindowMs) return;
 
+  // Acceptance criterion 12: purge removes attempt records through bounded
+  // operations. The number of attempts under one operationId is bounded by
+  // its retry policy, so this prefix scan — and the single conditionalBatch
+  // it feeds — never approaches a full-ledger scan.
+  const attemptKeys: string[] = [];
+  for await (const attemptKey of storageKeys(
+    options.engine.storage,
+    taskAttemptPrefix(decoded.operationId),
+  )) {
+    attemptKeys.push(attemptKey);
+  }
+
   const deleted = await commitTaskLedgerDelete(
     options.engine.storage,
     decoded.operationId,
@@ -222,6 +261,7 @@ async function reapRetainedTerminalRecord(
         expectedRetentionGeneration: decoded.retentionGeneration,
       }),
     1,
+    attemptKeys,
   );
   if (!deleted.ok) {
     console.error(
@@ -286,6 +326,13 @@ export async function scanExpiredTasks(
                 settleNow,
               ),
             1,
+            [],
+            async (current, _nextRecord, settleNow) =>
+              buildCurrentAttemptDispositionWrites(options.engine.storage, current, {
+                disposition: 'cancelled',
+                dispositionAt: settleNow,
+                dispositionReason: 'cancellation deadline elapsed with no cooperative result',
+              }),
           );
           if (!settled.ok) {
             // Lost the race to the worker's own cooperative result (or a
@@ -407,6 +454,13 @@ export async function reconcileOrphanedRecords(
                   settleNow,
                 ),
               1,
+              [],
+              async (current, _nextRecord, settleNow) =>
+                buildCurrentAttemptDispositionWrites(options.engine.storage, current, {
+                  disposition: 'cancelled',
+                  dispositionAt: settleNow,
+                  dispositionReason: 'cancellation deadline elapsed with no cooperative result',
+                }),
             );
             if (settled.ok) {
               context.registry.completeTask(decoded.operationId);

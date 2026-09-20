@@ -12,6 +12,8 @@ describe('getTaskDetailOutputSchema', () => {
     visibilityTimeoutMilliseconds: 30_000,
     createdAt: 1_000,
     attempt: 1,
+    // COR-205: every state's envelope requires an attempt-history array.
+    attempts: [],
     state: 'terminal' as const,
     terminalAt: 4_000,
     adopted: false,
@@ -72,6 +74,8 @@ describe('getTaskDetailOutputSchema', () => {
     visibilityTimeoutMilliseconds: 30_000,
     createdAt: 1_000,
     attempt: 1,
+    // COR-205: every state's envelope requires an attempt-history array.
+    attempts: [],
     state: 'queued' as const,
     availableAt: 1_000,
     firstQueuedAt: 1_000,

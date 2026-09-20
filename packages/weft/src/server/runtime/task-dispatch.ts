@@ -19,6 +19,7 @@ import {
   type RemoteTaskRecord,
 } from '../task-ledger.ts';
 import type { ServerContext } from './context.ts';
+import { buildClaimAttemptRecordWrite, digestAttemptToken } from './task-attempt-runtime.ts';
 import {
   assertFreshDispatchOperationIdAdmissible,
   awaitTaskLedgerRecoveryReady,
@@ -250,6 +251,12 @@ async function selectAndReserveWorker(
     task.workflowRevision,
   );
 
+  // Computed once, before the commit, so a single attempt's digest is reused
+  // for both the CAS's own retry loop (there is none here — a single
+  // attempt) and the attempt-record write below, rather than re-hashing.
+  const attemptTokenDigest = digestAttemptToken(attemptToken);
+  const sessionGeneration = worker.sessionGeneration;
+
   let result;
   try {
     result = await commitTaskLedgerTransition(
@@ -263,6 +270,29 @@ async function selectAndReserveWorker(
       }),
       1,
       revisionFenceConditions,
+      // Acceptance criterion 1: every successful reservation produces a
+      // complete durable execution identity — the `TaskAttemptRecord` —
+      // BEFORE the `task` frame is ever sent below, atomically with the
+      // claim transition itself (criterion 11). Criterion 2 falls out
+      // structurally: a rejected claim (`result.ok === false` below) never
+      // reaches this callback at all.
+      async (_current, nextRecord, now) =>
+        [
+          buildClaimAttemptRecordWrite({
+            operationId: nextRecord.operationId,
+            attempt: nextRecord.attempt,
+            attemptTokenDigest,
+            workerSessionId: nextRecord.workerSessionId,
+            sessionGeneration,
+            ...(nextRecord.executionIdentity !== undefined
+              ? { executionIdentity: nextRecord.executionIdentity }
+              : {}),
+            ...(nextRecord.executionRequirement !== undefined
+              ? { executionRequirement: nextRecord.executionRequirement }
+              : {}),
+            claimedAt: now,
+          }),
+        ] as const,
     );
   } catch (error) {
     // Durable claim failed after the local reservation — release it and let

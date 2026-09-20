@@ -16,6 +16,7 @@ import { renewAttemptLease } from '../task-ledger-transitions.ts';
 import { decodeRemoteTaskRecord, taskLedgerKey } from '../task-ledger.ts';
 import type { ServerContext } from './context.ts';
 import { withRetry } from './retry.ts';
+import { buildCurrentAttemptDispositionWrites } from './task-attempt-runtime.ts';
 import type { TaskLedgerCompletionInput } from './task-ledger-completion.ts';
 import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
 import { recordWorkerCapacitySaturationMetric } from './task-metrics.ts';
@@ -422,6 +423,17 @@ function onActivityHeartbeatMessage(
           now,
         ),
       1,
+      [],
+      // Acceptance criterion 7: heartbeat evidence rides on the SAME
+      // attempt-token-fenced transition `renewAttemptLease` already gates —
+      // a stale attempt never reaches this callback because its
+      // precondition already rejected the transition above. Safe inside
+      // this fire-and-forget closure because `digestAttemptToken` is now
+      // the SYNCHRONOUS digest (`sha256HexSync`) — see its doc comment.
+      async (current, _nextRecord, now) =>
+        buildCurrentAttemptDispositionWrites(options.engine.storage, current, {
+          lastHeartbeatAt: now,
+        }),
     );
   }, `extend visibility for task "${operationId}"`).catch((error) => {
     console.error(`[weft] Failed to extend visibility for task "${operationId}":`, error);

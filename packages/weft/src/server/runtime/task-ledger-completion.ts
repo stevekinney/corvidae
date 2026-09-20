@@ -90,6 +90,7 @@ import {
   type RemoteTaskDeadLettered,
   type RemoteTaskTerminal,
 } from '../task-ledger.ts';
+import { buildCurrentAttemptDispositionWrites } from './task-attempt-runtime.ts';
 import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
 
 const COMPLETION_MAX_ATTEMPTS = 3;
@@ -163,6 +164,19 @@ function commitTerminalFromCompleting(
         now,
       ),
     COMPLETION_MAX_ATTEMPTS,
+    [],
+    // Acceptance criterion 6: a resolved result stays attributable to the
+    // attempt that produced it, independent of the in-memory registry —
+    // this is the same conditionalBatch commitTerminalResult's own write
+    // lands in (criterion 11).
+    async (current, _nextRecord, now) =>
+      buildCurrentAttemptDispositionWrites(storage, current, {
+        disposition: 'resolved',
+        dispositionAt: now,
+        ...(input.status !== 'completed' && input.error !== undefined
+          ? { dispositionReason: input.error }
+          : {}),
+      }),
   );
 }
 
@@ -197,6 +211,16 @@ async function attemptDeadLetter(
         now,
       ),
     DEAD_LETTER_MAX_ATTEMPTS,
+    [],
+    // Acceptance criterion 6: a dead-lettered result stays attributable to
+    // the attempt that produced it, same reasoning as the ordinary
+    // resolved-result path above.
+    async (current, _nextRecord, now) =>
+      buildCurrentAttemptDispositionWrites(storage, current, {
+        disposition: 'deadLettered',
+        dispositionAt: now,
+        dispositionReason: persistenceFailureReason,
+      }),
   );
   return deadLettered.ok ? deadLettered.record : undefined;
 }
@@ -265,6 +289,14 @@ export async function commitTaskLedgerCompletion(
         input.operationId,
         (current, now) => commitCancellation(current, { attemptToken: input.attemptToken }, now),
         COMPLETION_MAX_ATTEMPTS,
+        [],
+        // Acceptance criterion 6: a cooperatively-cancelled attempt stays
+        // attributable, same as an ordinary resolved or dead-lettered one.
+        async (current, _nextRecord, now) =>
+          buildCurrentAttemptDispositionWrites(storage, current, {
+            disposition: 'cancelled',
+            dispositionAt: now,
+          }),
       );
       if (!committed.ok) return committed;
       return { ok: true, disposition: 'applied', terminal: committed.record };
