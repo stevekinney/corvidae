@@ -8,7 +8,7 @@
     },
     "scale": {
       "type": "number",
-      "description": "Starting zoom scale. Bindable. Clamped to `0.25`–`8`; a non-finite\nvalue normalizes to `1`. A programmatic external change to this prop\ndoes not itself fire `onTransformChange` (see that prop). Defaults to\n`1`.",
+      "description": "Starting zoom scale. Bindable, but clamping is render-only: an\nout-of-range or non-finite value is clamped to `0.25`–`8` (or\nnormalized to `1` if non-finite) only in the transform actually\nrendered—the bound `scale` value itself is left as the caller set it\nand is not written back, so a parent observes its own out-of-range or\nnon-finite value until an internal pointer/keyboard/control\ninteraction calls `update()` and overwrites it. A programmatic\nexternal change to this prop does not itself fire `onTransformChange`\n(see that prop). Defaults to `1`.",
       "default": 1
     },
     "ariaLabel": {

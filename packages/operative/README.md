@@ -530,7 +530,11 @@ const loaded = await sessions.load('session-abc');
 // Then drive a run from the restored, already-live Conversation instance.
 // createAgent().run() only accepts a plain ConversationHistory (it snapshots
 // its own fresh Conversation internally); createActiveRun accepts a live
-// Conversation directly, which is what resumeSession returns.
+// Conversation directly, which is what resumeSession returns. `isNew` is
+// true here (fresh in-memory store), so this conversation has no history
+// yet—append a turn before running, the same as the Conversation example
+// above, or a real provider sees an empty message list.
+conversation.appendUserMessage('Summarize the docs.');
 // `generate` and `toolbox` follow the same shapes introduced in Quick Start
 // above—swap in a real provider and a populated `createToolbox()` toolbox.
 const generate: GenerateFunction = async () => ({ content: 'Echo', toolCalls: [] });
