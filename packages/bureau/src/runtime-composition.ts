@@ -13,7 +13,12 @@ import {
   createConversationHistory,
 } from '@corvidae/conversationalist';
 import type { EventMap, HookReplayPolicy, RuntimeServices } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices, HookRegistry, TypedEventTarget } from '@corvidae/lifecycle';
+import {
+  createDefaultRuntimeServices,
+  HookRegistry,
+  mergeHookRegistries,
+  TypedEventTarget,
+} from '@corvidae/lifecycle';
 import type { CreateMemoryOptions, Memory } from '@corvidae/memory';
 import { createMemory } from '@corvidae/memory';
 import type {
@@ -23,6 +28,7 @@ import type {
   CheckpointStore,
   DurableRunDeps,
   GenerateFunction,
+  GuardrailHooks,
   GuardrailsOptions,
   JSONValue,
   OnStepHook,
@@ -1619,6 +1625,14 @@ export interface RuntimeComposition {
     runId: string,
     recovering: boolean,
   ): Promise<SkillActivationRecord[] | undefined>;
+  /**
+   * COR-1265 criterion 3b — a fresh registry holding only the Bureau invariants
+   * that close over nothing run-specific, for a dispatch path that resolves its
+   * run options through a catalog agent rather than through
+   * {@link RuntimeComposition.createRunRuntime}. Merged as the first tier so
+   * Bureau's policy still applies to those runs.
+   */
+  createBureauInvariantHooks(): HookRegistry<OperativeHookMap>;
 }
 
 /**
@@ -1630,12 +1644,100 @@ export interface RuntimeComposition {
  * keeps working unchanged; it is not part of this function's contract.
  */
 /**
- * Priority placing a hook after every hook bureau's own composition
- * registered. Those all use the default priority `0` and the registry sorts
- * descending, so any negative value runs last; the distance is for legibility,
- * leaving room for an intermediate band without renumbering.
+ * Priority pinning a Bureau registration behind every other tier's entries on
+ * the same hook point (COR-1265, criteria 9 and 10).
+ *
+ * Two dispatch shapes let a later handler decide the outcome: `runLast`
+ * returns the last defined result, and the waterfall feeds each handler the
+ * previous one's return value. On both, "runs last" means "wins", so a Bureau
+ * registration that narrows — today `bureau:guardrails-validate-response` — has
+ * to sort behind whatever an agent or a direct caller registered. The trailing
+ * `onStep` hooks take the same value for the ordering reason rather than the
+ * authority one: they persist the session once the step's mutations settle, and
+ * an agent-tier `onStep` handler is one of those mutations.
+ *
+ * The tier band works against Bureau here. `mergeHookRegistries` offsets each
+ * participant by `(participants - 1 - index) * 1000` and Bureau is always the
+ * first participant, so it receives the LARGEST offset — `+2000` with the three
+ * tiers a composition can reach. The constant sits that far above
+ * `Number.MIN_SAFE_INTEGER` so adding the offset back cannot leave the
+ * safe-integer range, and so a merged Bureau entry still lands below anything
+ * registered at a priority a caller would plausibly write.
+ *
+ * The residual, stated rather than implied: a lower tier that deliberately
+ * registers at or below `Number.MIN_SAFE_INTEGER + 2000` sorts after this
+ * anyway. No finite constant closes that, because a priority is a plain number
+ * with no floor, and `-Infinity` closes it only until a second entry carries it
+ * — the registry's `b.priority - a.priority` comparator would then return
+ * `NaN`. A tier deliberately reaching for the bottom of the number line is not
+ * the threat this is defending against; an ordinary registration that happens
+ * to outrank Bureau is.
  */
-const TRAILING_HOOK_PRIORITY = -1000;
+const BUREAU_PINNED_LAST_PRIORITY = Number.MIN_SAFE_INTEGER + 2000;
+
+/**
+ * The ownership tier every registration Bureau makes belongs to (COR-1265) —
+ * set once on a registry, stamped by `on()` onto each entry so it survives
+ * `mergeHookRegistries`.
+ */
+export const BUREAU_HOOK_TIER = 'bureau';
+
+/**
+ * Registers the identity invariant. Shared by the per-run composition and by
+ * {@link RuntimeComposition.createBureauInvariantHooks}, which is the whole
+ * reason it is a function: the two register at different points in their own
+ * registries and must not drift into two different registrations.
+ */
+function registerIdentityInvariant(
+  registry: HookRegistry<OperativeHookMap>,
+  identity: NonNullable<RuntimeCompositionOptions['identity']>,
+): void {
+  registry.on('prepareStep', createIdentityHook(identity), {
+    id: 'bureau:identity',
+    // Appends a system message to the step's conversation and touches nothing
+    // outside it; a replayed step rebuilds that conversation from persisted
+    // history, so re-running this reproduces state rather than repeating an
+    // external effect.
+    replay: 'safe',
+  });
+}
+
+/**
+ * Registers both guardrail invariants, in the order the legacy arrays ran them.
+ *
+ * The caller decides WHEN — the per-run composition registers `prepareStep`
+ * last of all its `prepareStep` hooks on purpose, so the input guardrail scans a
+ * step context every earlier hook has already contributed to.
+ */
+function registerGuardrailInvariants(
+  registry: HookRegistry<OperativeHookMap>,
+  guardrails: GuardrailHooks,
+): void {
+  registry.on('prepareStep', guardrails.prepareStep, {
+    id: 'bureau:guardrails-prepare-step',
+    // Scans and may taint in-process session state; no external write.
+    replay: 'safe',
+  });
+  registry.on('validateResponse', guardrails.validateResponse, {
+    id: 'bureau:guardrails-validate-response',
+    // COR-1265 criterion 10. `validateResponse` is dispatched as a waterfall,
+    // so the LAST handler to answer hands its response to the run — an agent-
+    // or direct-tier handler running after this one would decide what the
+    // guardrail's narrowing was worth. Pinned last so it does not.
+    priority: BUREAU_PINNED_LAST_PRIORITY,
+    replay: 'safe',
+  });
+}
+
+/**
+ * Priority placing a hook after every hook bureau's own composition registered.
+ *
+ * The same value as {@link BUREAU_PINNED_LAST_PRIORITY}, and deliberately not a
+ * separate band: COR-1265's criterion 9 makes the two trailing hooks outrank
+ * every tier's `onStep` handlers, not merely Bureau's own, and a value chosen
+ * relative to Bureau's default `0` could not do that once a second tier exists.
+ */
+const TRAILING_HOOK_PRIORITY = BUREAU_PINNED_LAST_PRIORITY;
 
 /**
  * Registers a per-call `onStep` hook that must run AFTER the run runtime's own
@@ -1646,9 +1748,14 @@ const TRAILING_HOOK_PRIORITY = -1000;
  *
  * This mutates the run's registry and returns it, rather than merging into a
  * fresh one, because the registry is created per run inside `createRunRuntime`
- * and the caller here owns that run outright. A merge would mint a second
- * registry whose entries carry `mergeHookRegistries`'s +1000 offsets, making
- * the priority a caller reads back depend on how many merges it went through.
+ * and the caller here owns that run outright.
+ *
+ * COR-1265: every caller now merges the result before handing it to a run, so
+ * the completed Bureau tier is what becomes `mergeHookRegistries`' first
+ * argument. That ordering is the point — registering here AFTER the merge would
+ * put the trailing hook in the merged registry at its raw priority while every
+ * other Bureau entry had already been offset, which is precisely the renumbering
+ * this function used to avoid by refusing to merge at all.
  */
 export function registerTrailingOnStep(
   hooks: HookRegistry<OperativeHookMap>,
@@ -2120,6 +2227,64 @@ export async function createRuntimeComposition(
     scheduler.start();
   }
 
+  /**
+   * The guardrail configuration in force for this composition, with `false`
+   * narrowed away so a caller sees a real configuration or nothing.
+   *
+   * AB-40 — `undefined` (not configured) wires the enabled-by-default preset;
+   * `false` opts out entirely; anything else replaces the preset. A pure
+   * function of `options`, hoisted to composition scope because
+   * {@link createBureauInvariantHooks} needs the same answer for a run that
+   * never goes through `createRunRuntime` at all.
+   */
+  function resolveGuardrailsConfiguration(): GuardrailsOptions | undefined {
+    const resolved =
+      options.guardrails === undefined ? defaultGuardrailsPreset() : options.guardrails;
+    return resolved === false ? undefined : resolved;
+  }
+
+  /**
+   * The Bureau invariants that do not close over a run (COR-1265 criterion 3b,
+   * owner ruling 2026-09-20).
+   *
+   * A catalog-dispatched run resolves its provider, toolbox, memory and skills
+   * through the catalog agent's OWN `OPERATIVE_RESOLVE_RUN_OPTIONS`, never
+   * through `createRunRuntime` — that separation is AB-240's point and its
+   * rollback trigger. Bureau's hooks were absent from those runs entirely, which
+   * was survivable only while no tier reached them at all; once the agent tier
+   * became real, a catalog run would carry its agent's hooks and none of
+   * Bureau's policy, which contradicts COR-567's non-bypassable invariants.
+   *
+   * The whole Bureau tier cannot travel there. `bureau:memory-recall`,
+   * `bureau:memory-persist`, the skill hooks and `bureau:skill-record-snapshot`
+   * close over this run's session, memory and skill session, and a catalog run
+   * has none of them. The three that close over composition-level configuration
+   * only — the identity prompt and both guardrails — do, and they are exactly
+   * the registrations COR-567's "non-bypassable Bureau invariant hooks" section
+   * names.
+   *
+   * A fresh registry, and a fresh `createGuardrails`, per call: the guardrail
+   * carries per-run taint state, so sharing one across catalog runs would leak
+   * one run's detections into another.
+   *
+   * This does not reach every catalog path. A non-durable dispatch of a catalog
+   * agent that exposes no `OPERATIVE_RESOLVE_RUN_OPTIONS` goes straight to
+   * `agent.run()` with no `RunOptions` for anyone to augment; there is no seam
+   * short of a caller-facing hook field, which COR-567 Decision 4 declines. See
+   * `documentation/hierarchical-hook-composition.md`.
+   */
+  function createBureauInvariantHooks(): HookRegistry<OperativeHookMap> {
+    const invariants = new HookRegistry<OperativeHookMap>({ source: BUREAU_HOOK_TIER });
+    if (options.identity) {
+      registerIdentityInvariant(invariants, options.identity);
+    }
+    const guardrailsConfig = resolveGuardrailsConfiguration();
+    if (guardrailsConfig) {
+      registerGuardrailInvariants(invariants, createGuardrails(guardrailsConfig));
+    }
+    return invariants;
+  }
+
   function createRunRuntime(
     request: CreateRunRequest & { sessionId: string; runId?: string },
     runtimeOptions?: {
@@ -2207,19 +2372,16 @@ export async function createRuntimeComposition(
     // an earlier conditional block stops registering, so an observer
     // correlating across runs would see the same hook under different names
     // depending on whether memory or skills happened to be configured.
-    const hooks = new HookRegistry<OperativeHookMap>();
+    // COR-1265 — `source` names the owning tier once, and `on()` stamps it onto
+    // every entry. On the entry rather than only here because a merged plan has
+    // one registry and many tiers: afterwards this object can no longer say
+    // where an entry came from, but the entry still can.
+    const hooks = new HookRegistry<OperativeHookMap>({ source: BUREAU_HOOK_TIER });
     let getActiveSkillRecords = (): readonly SkillActivationRecord[] => [];
     let getActiveSkillToolPolicy: (() => ToolPolicy | undefined) | undefined;
 
     if (options.identity) {
-      hooks.on('prepareStep', createIdentityHook(options.identity), {
-        id: 'bureau:identity',
-        // Appends a system message to the step's conversation and touches
-        // nothing outside it; a replayed step rebuilds that conversation from
-        // persisted history, so re-running this reproduces state rather than
-        // repeating an external effect.
-        replay: 'safe',
-      });
+      registerIdentityInvariant(hooks, options.identity);
     }
 
     if (memory) {
@@ -2238,21 +2400,12 @@ export async function createRuntimeComposition(
       });
     }
 
-    // COR-1226 — resolved here rather than at the hook-push site below, because
-    // the skill toolbox needs the same detectors and the same session taint
-    // tracker, and it is constructed before that point. `createGuardrails` is a
-    // pure function of its options, so moving the call earlier changes nothing
+    // COR-1226 — resolved here rather than at the hook-registration site below,
+    // because the skill toolbox needs the same detectors and the same session
+    // taint tracker, and it is constructed before that point. `createGuardrails`
+    // is a pure function of its options, so calling it earlier changes nothing
     // about what it returns.
-    //
-    // AB-40 — `undefined` (not configured) wires the enabled-by-default
-    // preset; `false` opts out entirely; anything else replaces the preset.
-    const resolvedGuardrailsConfig = usingDefaultGuardrailsPreset
-      ? defaultGuardrailsPreset()
-      : options.guardrails;
-    // `false` is the explicit opt-out; narrow it away so the skill guardrail
-    // below sees only a real configuration or nothing.
-    const guardrailsConfig =
-      resolvedGuardrailsConfig === false ? undefined : resolvedGuardrailsConfig;
+    const guardrailsConfig = resolveGuardrailsConfiguration();
     const guardrails = guardrailsConfig ? createGuardrails(guardrailsConfig) : undefined;
 
     // COR-1226 — skill bodies and skill resources are untrusted instruction
@@ -2417,15 +2570,7 @@ export async function createRuntimeComposition(
       // Registered last on `prepareStep`, as the array push order had it, so
       // the input guardrail scans a step context every earlier hook has
       // already contributed to rather than one they then append to.
-      hooks.on('prepareStep', guardrails.prepareStep, {
-        id: 'bureau:guardrails-prepare-step',
-        // Scans and may taint in-process session state; no external write.
-        replay: 'safe',
-      });
-      hooks.on('validateResponse', guardrails.validateResponse, {
-        id: 'bureau:guardrails-validate-response',
-        replay: 'safe',
-      });
+      registerGuardrailInvariants(hooks, guardrails);
     }
 
     const runToolbox = withDefaultToolboxRequestContext(
@@ -2566,7 +2711,11 @@ export async function createRuntimeComposition(
         conversation: new Conversation(session.conversationHistory),
         maximumSteps: recoveredMaximumSteps,
         stopWhen: options.stopWhen,
-        hooks: runRuntime.hooks,
+        // COR-1265 — the completed Bureau tier, snapshotted. A single-tier
+        // merge still copies every entry into a fresh registry, so a
+        // registration added to `runRuntime.hooks` after this point cannot
+        // reach the run that already holds the copy.
+        hooks: mergeHookRegistries(runRuntime.hooks),
         // AB-260: the bureau's single composed RuntimeServices instance,
         // snapshotted into every run it starts — including a recovered run
         // rebuilt here from a persisted session.
@@ -2860,9 +3009,24 @@ export async function createRuntimeComposition(
           `${resolution.definitionRevision}); reattaching with the current definition.`,
       });
     }
+    // COR-1265 criterion 3b. AB-240's separation is about the PROVIDER and the
+    // TOOLBOX — a recovered catalog run must reattach against the agent's own,
+    // not the Bureau's, and that is unchanged here. Only the hook tier is added,
+    // and only the invariants that close over nothing run-specific, so Bureau's
+    // identity and guardrail policy hold on this path as they do on every other.
+    // The agent's own tier arrives inside `resolution.options.hooks`, from its
+    // own `buildRunOptions`; Bureau goes first so it wins `runFirst` and, being
+    // pinned last, still wins the waterfall.
+    const invariants = createBureauInvariantHooks();
     return {
       status: 'available',
-      services: { options: resolution.options, toolbox: resolution.options.toolbox },
+      services: {
+        options: {
+          ...resolution.options,
+          hooks: mergeHookRegistries(invariants, resolution.options.hooks),
+        },
+        toolbox: resolution.options.toolbox,
+      },
     };
   }
 
@@ -3109,17 +3273,23 @@ export async function createRuntimeComposition(
         runtime: runtimeServices,
         // The session write-back runs AFTER the runtime's own onStep hooks so
         // recurring fires accumulate and a stateless fire is observable.
-        hooks: registerTrailingOnStep(
-          runRuntime.hooks,
-          'bureau:scheduled-session-write-back',
-          createScheduledSessionPersistHook(
-            store,
-            sessionId,
-            agentName,
-            baseConversationHistory,
-            runId,
-            isRecoveredFireReplay,
-            runRuntime.getActiveSkillRecords,
+        // COR-1265 criterion 8 — merged AFTER the trailing registration, so the
+        // Bureau tier is complete before it becomes the merge's first argument
+        // and the trailing hook is offset with every other Bureau entry rather
+        // than beside them at a raw priority.
+        hooks: mergeHookRegistries(
+          registerTrailingOnStep(
+            runRuntime.hooks,
+            'bureau:scheduled-session-write-back',
+            createScheduledSessionPersistHook(
+              store,
+              sessionId,
+              agentName,
+              baseConversationHistory,
+              runId,
+              isRecoveredFireReplay,
+              runRuntime.getActiveSkillRecords,
+            ),
           ),
         ),
         executeOptions: { requestContext },
@@ -3425,6 +3595,7 @@ export async function createRuntimeComposition(
     resolveRunServices,
     buildScheduledRunServices,
     loadCommittedScheduledActiveSkills,
+    createBureauInvariantHooks,
   };
 
   return composition;

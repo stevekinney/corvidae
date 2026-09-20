@@ -4,6 +4,19 @@ import { HookRegistry } from '../../src/hooks/hook-registry';
 import { mergeHookRegistries } from '../../src/hooks/merge-hook-registries';
 import type { HookPlanObservation } from '../../src/hooks/types';
 
+/**
+ * The value Bureau pins a registration to when it must hold final narrowing
+ * power on a `runLast` or waterfall dispatch — `BUREAU_PINNED_LAST_PRIORITY` in
+ * `@corvidae/bureau`'s `runtime-composition.ts`. Restated as a literal here
+ * because lifecycle has no runtime dependencies and cannot import it; the
+ * bureau-side tests assert the real constant against the real registrations.
+ *
+ * `Number.MIN_SAFE_INTEGER` plus the largest tier offset the merge can add
+ * (`(3 - 1 - 0) * 1000`, Bureau always being the first participant), so adding
+ * that offset back cannot leave the safe-integer range.
+ */
+const PINNED_LAST = Number.MIN_SAFE_INTEGER + 2000;
+
 type TestHooks = {
   transform: (value: string) => string;
   notify: (message: string) => void;
@@ -111,14 +124,10 @@ describe('tier ordering (criteria 5 and 7)', () => {
 
   it('lets a pinned-last entry outrank every tier offset', async () => {
     const order: string[] = [];
-    // The constant Bureau uses for a hook that must hold final narrowing
-    // power on a `runLast`/waterfall dispatch shape. Adding any achievable
-    // tier offset to it still leaves it below any other tier's priority.
-    const pinnedLast = Number.MIN_SAFE_INTEGER + 1000;
 
     const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
     bureau.on('notify', (message) => void order.push(`bureau:${message}`), {
-      priority: pinnedLast,
+      priority: PINNED_LAST,
     });
     const agent = new HookRegistry<TestHooks>({ source: 'agent' });
     agent.on('notify', (message) => void order.push(`agent:${message}`), {
@@ -129,6 +138,60 @@ describe('tier ordering (criteria 5 and 7)', () => {
     await merged.run('notify', 'x');
 
     expect(order).toEqual(['agent:x', 'bureau:x']);
+  });
+
+  it('gives a pinned-last entry the final value on a waterfall (criterion 10)', async () => {
+    // The shape that makes criterion 10 about authority rather than ordering:
+    // a waterfall hands each handler the previous one's return, so whoever runs
+    // LAST decides what the run sees. A guardrail that narrows has to be that
+    // handler, no matter what an agent- or direct-tier registration asked for.
+    const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
+    bureau.on('transform', (value) => `${value}|narrowed`, { priority: PINNED_LAST });
+    const agent = new HookRegistry<TestHooks>({ source: 'agent' });
+    agent.on('transform', () => 'widened', { priority: Number.MAX_SAFE_INTEGER });
+
+    const merged = mergeHookRegistries(bureau, agent);
+
+    expect(await merged.run('transform', 'response')).toBe('widened|narrowed');
+  });
+
+  it('gives a pinned-last entry the winning value on runLast (criterion 10)', async () => {
+    const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
+    bureau.on('transform', () => 'bureau', { priority: PINNED_LAST });
+    const agent = new HookRegistry<TestHooks>({ source: 'agent' });
+    agent.on('transform', () => 'agent', { priority: Number.MAX_SAFE_INTEGER });
+
+    const merged = mergeHookRegistries(bureau, agent);
+
+    expect(await merged.runLast('transform', 'response')).toBe('bureau');
+  });
+
+  it('lets a bureau-tier entry short-circuit runFirst before any lower tier (criterion 11)', async () => {
+    const reached: string[] = [];
+    // `runFirst` is the veto shape: the first handler to return a defined value
+    // ends the question. Bureau's default-priority entries carry the largest
+    // tier offset, so they answer before an agent's or a direct caller's — the
+    // band alone does this, with no pinned priority anywhere.
+    const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
+    bureau.on('transform', (value) => {
+      reached.push('bureau');
+      return `${value}|vetoed`;
+    });
+    const agent = new HookRegistry<TestHooks>({ source: 'agent' });
+    agent.on('transform', (value) => {
+      reached.push('agent');
+      return value;
+    });
+    const direct = new HookRegistry<TestHooks>({ source: 'direct' });
+    direct.on('transform', (value) => {
+      reached.push('direct');
+      return value;
+    });
+
+    const merged = mergeHookRegistries(bureau, agent, direct);
+
+    expect(await merged.runFirst('transform', 'step')).toBe('step|vetoed');
+    expect(reached).toEqual(['bureau']);
   });
 });
 

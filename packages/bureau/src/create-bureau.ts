@@ -13,6 +13,7 @@ import {
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
+  mergeHookRegistries,
   type RuntimeServices,
   type RuntimeTimeoutHandle,
   type TypedEventTarget,
@@ -3058,14 +3059,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // snapshotted into every run it starts.
           runtime: runtimeServices,
           ...(runSteeringGate ? { steering: runSteeringGate } : {}),
-          hooks: registerTrailingOnStep(
-            runRuntime.hooks,
-            'bureau:pending-approval-persist',
-            createPendingApprovalPersistHook(
-              runId,
-              sessionId,
-              pendingApprovalOverrides,
-              persistPendingApprovalOverrideWithRetry,
+          // COR-1265 criterion 8 — merged AFTER the trailing registration, so
+          // the Bureau tier is complete before it becomes the merge's first
+          // argument. A single-tier merge still copies every entry into a fresh
+          // registry, which is what makes the plan a snapshot: a registration
+          // added to `runRuntime.hooks` afterwards cannot reach this run.
+          hooks: mergeHookRegistries(
+            registerTrailingOnStep(
+              runRuntime.hooks,
+              'bureau:pending-approval-persist',
+              createPendingApprovalPersistHook(
+                runId,
+                sessionId,
+                pendingApprovalOverrides,
+                persistPendingApprovalOverrideWithRetry,
+              ),
             ),
           ),
           executeOptions: requestContext === undefined ? {} : { requestContext },
@@ -4249,7 +4257,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   // instance, snapshotted into every run it starts — including
                   // a mocked/custom-engine reattach.
                   runtime: runtimeServices,
-                  hooks: runRuntime.hooks,
+                  // COR-1265 — the Bureau tier, snapshotted.
+                  hooks: mergeHookRegistries(runRuntime.hooks),
                   executeOptions: requestContext === undefined ? {} : { requestContext },
                   agentName: recoveredAgentName,
                   runId: handle.id,
@@ -4414,7 +4423,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // AB-260: the bureau's single composed RuntimeServices instance,
           // snapshotted into every scheduler task run it starts.
           runtime: runtimeServices,
-          hooks: runRuntime.hooks,
+          // COR-1265 — the Bureau tier, snapshotted.
+          hooks: mergeHookRegistries(runRuntime.hooks),
           stopWhen: options.stopWhen,
         };
       },

@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import { mergeHookRegistries, type RuntimeServices } from '@corvidae/lifecycle';
 import type {
   ActiveRun,
   AgentInput,
@@ -173,6 +173,17 @@ export function createCatalogDispatcher({
         // clock" for catalog-dispatched runs. Never overrides a resolver
         // that deliberately set its own `runtime`.
         resolvedOptions = { runtime: runtimeServices, ...resolvedOptions };
+        // COR-1265 criterion 3b. The agent's own tier is already inside
+        // `resolvedOptions.hooks`, from its own `buildRunOptions`. Bureau's
+        // invariants — identity and both guardrails, the registrations that
+        // close over nothing run-specific — go in front of it, so a durably
+        // dispatched catalog run is governed by the same policy every other
+        // dispatch shape is. AB-240's separation is untouched: this adds a hook
+        // tier, not a provider, a toolbox or a generate.
+        resolvedOptions = {
+          ...resolvedOptions,
+          hooks: mergeHookRegistries(runtime.createBureauInvariantHooks(), resolvedOptions.hooks),
+        };
       } catch (error) {
         // Review round 2 (Codex): `typeof resolver === 'function'` above
         // is true for EVERY `createLazyAgent`-wrapped agent unconditionally

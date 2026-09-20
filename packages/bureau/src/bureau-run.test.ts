@@ -759,3 +759,79 @@ describe('bureau.run', () => {
     }
   });
 });
+
+describe('Bureau invariants on catalog-agent dispatch (COR-1265 criterion 3b)', () => {
+  // A catalog agent resolves its own provider, toolbox, memory and skills
+  // (AB-240). Its hooks were Bureau-free too, which stopped mattering the
+  // moment the agent tier became real: a catalog run would then carry its
+  // agent's hooks and none of Bureau's policy. The owner ruled the invariants
+  // that close over nothing run-specific travel to every catalog path that has
+  // a `RunOptions` seam.
+  //
+  // Observed behaviorally rather than by introspection: `bureau:identity`
+  // appends its system message on step 0, so a generate that sees it is a
+  // generate whose run composed Bureau's tier.
+  function captureSystemMessages(seen: string[]) {
+    return async (request: { conversation?: { getMessages?: () => readonly unknown[] } }) => {
+      const messages = request.conversation?.getMessages?.() ?? [];
+      for (const message of messages as ReadonlyArray<{ role?: string; content?: unknown }>) {
+        if (message.role === 'system' && typeof message.content === 'string') {
+          seen.push(message.content);
+        }
+      }
+      return { content: 'ok', toolCalls: [] };
+    };
+  }
+
+  it('applies them to a durably dispatched catalog agent', async () => {
+    const seen: string[] = [];
+    const bureau = await createBureau({
+      agents: {
+        echo: createAgent({
+          generate: captureSystemMessages(seen),
+        }),
+      },
+      identity: { resolve: async () => 'You are the house agent.' },
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      await bureau.run('echo', 'hi').result();
+      expect(seen).toContain('You are the house agent.');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('cannot reach a non-durable dispatch of an agent that resolves no run options', async () => {
+    const seen: string[] = [];
+    // The documented gap, pinned so it stays a stated limitation rather than a
+    // silent one. This agent exposes only `run()` — no
+    // `OPERATIVE_RESOLVE_RUN_OPTIONS`, so no `RunOptions` exists outside it for
+    // anyone to augment, and the only remaining seam would be a caller-facing
+    // hook field on `AgentRunContext`, which COR-567 Decision 4 declines.
+    //
+    // If this ever starts failing, the gap closed: delete the test and update
+    // `documentation/hierarchical-hook-composition.md`, which currently tells
+    // readers this path is outside Bureau's hook authority.
+    const nonResolvingAgent: RunnableAgent = {
+      name: 'plain',
+      hasOutput: false,
+      run: (input, context) =>
+        createAgent({ generate: captureSystemMessages(seen) }).run(input, context),
+    };
+    const bureau = await createBureau({
+      agents: { plain: nonResolvingAgent },
+      identity: { resolve: async () => 'You are the house agent.' },
+      storage: { type: 'memory' },
+    });
+
+    try {
+      await bureau.run('plain', 'hi').result();
+      expect(seen).not.toContain('You are the house agent.');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
