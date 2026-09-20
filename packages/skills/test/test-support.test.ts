@@ -12,21 +12,28 @@ function makeSkill(name: string, description = `Description for ${name}`): Skill
 }
 
 describe('createMockSkillProvider', () => {
-  it('saves skills and deletes their related resources and enabled state', async () => {
+  it('records what was written, and forgets a deleted skill', async () => {
     const provider = createMockSkillProvider([makeSkill('keep-me')]);
 
     await provider.saveSkill('delete-me', makeSkill('delete-me'));
     await provider.saveResource('delete-me', 'guide.md', resourceBytes('guide'));
-    await provider.saveResource('keep-me', 'guide.md', resourceBytes('keep'));
     await provider.setEnabled('delete-me', false);
 
-    expect(await provider.loadSkill('delete-me')).toEqual(makeSkill('delete-me'));
+    expect(provider.written.get('delete-me')).toEqual(makeSkill('delete-me'));
 
     await provider.deleteSkill('delete-me');
 
-    expect(await provider.loadSkill('delete-me')).toBeUndefined();
-    expect(await provider.listResources('delete-me')).toEqual([]);
-    expect(await provider.listResources('keep-me')).toEqual(['guide.md']);
-    expect(await provider.isEnabled('delete-me')).toBe(true);
+    // The survivor is asserted too: a delete that swept a neighbour would be silent data loss.
+    expect(provider.written.has('delete-me')).toBe(false);
+    expect(provider.written.has('keep-me')).toBe(true);
+  });
+
+  it('tracks every call so a test can assert what a caller actually did', async () => {
+    const provider = createMockSkillProvider();
+
+    await provider.saveSkill('written', makeSkill('written'));
+    await provider.setEnabled('written', false);
+
+    expect(provider.calls.map((call) => call.method)).toEqual(['saveSkill', 'setEnabled']);
   });
 });

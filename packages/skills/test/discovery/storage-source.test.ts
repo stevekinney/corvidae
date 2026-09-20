@@ -157,8 +157,8 @@ describe('the mock provider still round-trips, so proposals keep a write surface
     const provider = createMockSkillProvider();
     await provider.saveSkill('proposed', parseSkillMarkdown(skillMarkdown('proposed')));
 
-    // The write half of the provider is the part that is genuinely needed: the self-improvement
-    // flow persists an accepted proposal, and discovery reads it back as a source.
-    expect(await provider.loadSkill('proposed')).toBeDefined();
+    // The write half is the part that is genuinely needed: the self-improvement flow persists an
+    // accepted proposal, and discovery reads it back as a source.
+    expect(provider.written.has('proposed')).toBe(true);
   });
 });

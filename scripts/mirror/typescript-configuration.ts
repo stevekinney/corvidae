@@ -1,11 +1,13 @@
 import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import typescript from 'typescript';
 
+import { publicSpecifierFor } from './internal-names.ts';
 import { targetDirectoryFor } from './layout-map.ts';
 import { publicNameFor, targetFor, type MirrorTarget } from './manifests.ts';
 import { dispositionFor } from './package-map.ts';
-import type { EmittedWorkspace } from './source.ts';
+import { isInternalSpecifier } from './source-escapes.ts';
+import { sourceTree, type EmittedWorkspace } from './source.ts';
 import { keysFor, loadTargetOwnedPolicy, type TargetOwnedPolicy } from './target-owned.ts';
 
 /**
@@ -75,32 +77,102 @@ function rewriteExtendsField(
   configuration: JsonObject,
   publicName: string,
   vendor: boolean,
+  depthFromPackageRoot: number,
 ): JsonObject {
   const value = configuration['extends'];
   if (typeof value === 'string') {
-    return { ...configuration, extends: rewriteExtends(value, publicName, vendor) };
+    return {
+      ...configuration,
+      extends: rewriteExtends(value, publicName, vendor, depthFromPackageRoot),
+    };
   }
   if (Array.isArray(value)) {
     return {
       ...configuration,
       extends: value.map((entry) =>
-        typeof entry === 'string' ? rewriteExtends(entry, publicName, vendor) : entry,
+        typeof entry === 'string'
+          ? rewriteExtends(entry, publicName, vendor, depthFromPackageRoot)
+          : entry,
       ),
     };
   }
   return { ...configuration };
 }
 
-/** Every `tsconfig*.json` a workspace directory carries, sorted. */
+/**
+ * Rewrite the internal workspace names a configuration's `compilerOptions.paths` maps.
+ *
+ * A `paths` key is a module specifier the target's `tsc` matches an import against, so a key that
+ * still said `@corvidae/weft` beside emitted source that now says `@lostgradient/weft` would map
+ * nothing. `src/client/__fixtures__/no-workflow-registry/tsconfig.json` is the case that proves
+ * this field needs its own pass: it carries no `extends` at all, so an `extends`-only rewrite
+ * leaves it silently broken. The values are left exactly as they are — they are relative paths
+ * into the emitted tree, not names anything renames.
+ */
+function rewritePathsField(
+  configuration: JsonObject,
+  publicNames: ReadonlyMap<string, string>,
+  path: string,
+): JsonObject {
+  const compilerOptions = configuration['compilerOptions'];
+  if (!isJsonObject(compilerOptions)) return configuration;
+  const paths = compilerOptions['paths'];
+  if (!isJsonObject(paths)) return configuration;
+  const rewritten = Object.fromEntries(
+    Object.entries(paths).map(([key, value]) => [
+      isInternalSpecifier(key) ? publicSpecifierFor(key, publicNames, path) : key,
+      value,
+    ]),
+  );
+  return { ...configuration, compilerOptions: { ...compilerOptions, paths: rewritten } };
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Every `tsconfig*.json` this transform emits for one workspace, as workspace-relative paths.
+ *
+ * The workspace root and its `src/` tree, and nothing between or beyond them. That is exactly the
+ * set the transform emits: the root configuration is what a target's `tsc` is invoked with, and
+ * `src/` is what `source.ts` calls source. Walking the whole workspace instead would start
+ * emitting configurations out of `examples/` and `test/` — directories nobody has ruled on and
+ * whose siblings are not emitted — and walking only the root is what shipped
+ * `src/cli/__fixtures__/codegen/typecheck/tsconfig.json` extending `@corvidae/typescript/\
+ * library.json`, a package name that exists in no target.
+ */
 export async function discoverConfigurations(workspaceDirectory: string): Promise<string[]> {
-  const entries = await readdir(workspaceDirectory, { withFileTypes: true }).catch(() => []);
-  return entries
-    .filter(
-      (entry) =>
-        entry.isFile() && entry.name.startsWith('tsconfig') && entry.name.endsWith('.json'),
-    )
-    .map((entry) => entry.name)
-    .toSorted();
+  const names = async (directory: string, prefix: string): Promise<string[]> => {
+    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+    return entries
+      .filter(
+        (entry) =>
+          entry.isFile() && entry.name.startsWith('tsconfig') && entry.name.endsWith('.json'),
+      )
+      .map((entry) => `${prefix}${entry.name}`);
+  };
+  const nested = await readdir(join(workspaceDirectory, sourceTree), {
+    withFileTypes: true,
+    recursive: true,
+  }).catch(() => []);
+  const found = [
+    ...(await names(workspaceDirectory, '')),
+    ...nested
+      .filter(
+        (entry) =>
+          entry.isFile() && entry.name.startsWith('tsconfig') && entry.name.endsWith('.json'),
+      )
+      .map((entry) =>
+        relative(workspaceDirectory, join(entry.parentPath, entry.name)).split(sep).join('/'),
+      ),
+  ];
+  return found.toSorted();
+}
+
+/** How many directories a configuration sits below the package root, for a relative `extends`. */
+function depthOf(configurationPath: string): number {
+  return configurationPath.split('/').length - 1;
 }
 
 export interface TypeScriptPlanOptions {
@@ -111,6 +183,12 @@ export interface TypeScriptPlanOptions {
    * the configuration is read from corvidae's directory and emitted into the target's.
    */
   workspaces: readonly Pick<EmittedWorkspace, 'corvidaeDirectory' | 'targetDirectory'>[];
+  /**
+   * Public names, keyed by `@corvidae/*` name, for every workspace this tree carries. A nested
+   * configuration's `compilerOptions.paths` maps specifiers, and those are renamed from the same
+   * authority the manifests and the emitted source use.
+   */
+  publicNames: ReadonlyMap<string, string>;
   /** A clone of the target, read for the keys `target-owned.json` says the target owns. */
   targetDirectory?: string | undefined;
   policy?: TargetOwnedPolicy | undefined;
@@ -183,6 +261,7 @@ export async function planTypeScriptConfiguration({
   corvidaeRoot,
   target,
   workspaces,
+  publicNames,
   targetDirectory,
   policy,
 }: TypeScriptPlanOptions): Promise<TypeScriptPlan> {
@@ -202,17 +281,26 @@ export async function planTypeScriptConfiguration({
     const names = await discoverConfigurations(workspaceDirectory);
     if (names.length === 0) continue;
     for (const name of names) {
-      const parsed = (await Bun.file(join(workspaceDirectory, name)).json()) as JsonObject;
+      const source = join(workspaceDirectory, name);
+      const parsed = parseConfiguration(name, await Bun.file(source).text());
       const path = `${emittedDirectory}/${name}`;
-      files[path] = serialize(
-        await applyTargetOwnedKeys(
-          rewriteExtendsField(parsed, publicName, vendor),
-          resolvedPolicy,
-          target,
-          targetDirectory,
-          path,
-        ),
+      const depth = depthOf(name);
+      const rewritten = rewritePathsField(
+        rewriteExtendsField(parsed, publicName, vendor, depth),
+        publicNames,
+        path,
       );
+      // Only a workspace-root configuration takes the target's `include` and `exclude`. Those keys
+      // are owned downstream because which trees a *repository* type-checks is its own decision;
+      // a fixture configuration nested inside `src/` names sibling fixture files this transform
+      // emits, so reading the target's answer there would be corvidae handing away the one thing
+      // it does know.
+      files[path] =
+        depth === 0
+          ? serialize(
+              await applyTargetOwnedKeys(rewritten, resolvedPolicy, target, targetDirectory, path),
+            )
+          : serialize(rewritten);
     }
     if (!vendor) continue;
     vendoredInto.push(emittedDirectory);

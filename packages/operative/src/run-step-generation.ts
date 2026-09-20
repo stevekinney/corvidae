@@ -78,7 +78,12 @@ export async function executeGeneration(
       }
       if (!prepareResult && hooks?.has('prepareStep')) {
         const prepareContext = { conversation, step, signal: stepSignal, abortStep, elicit };
-        const registryResult = await hooks.run('prepareStep', prepareContext);
+        // `runFirst`, not `run`: a `prepareStep` handler returns a
+        // `GenerateResponse` but receives a `StepContext`, so the waterfall
+        // would hand the next handler a response where it expects a context.
+        // First answer wins and the rest are skipped, matching the
+        // `if (prepareResult) break` in the legacy array loop above.
+        const registryResult = await hooks.runFirst('prepareStep', prepareContext);
         if (registryResult !== undefined) {
           prepareResult = registryResult;
         }
@@ -124,7 +129,14 @@ export async function executeGeneration(
           for (const [index, entry] of handlers.entries()) {
             let handlerResult: GenerateContext | void;
             try {
-              handlerResult = await entry.handler(beforeGenContext);
+              // `runHandler`, not `entry.handler(...)` directly: it applies
+              // this registry's invocation observation, so a hand-iterated
+              // hook is visible to a plan observer exactly as a dispatched
+              // one is. Error policy stays here, where this loop's own
+              // reapply-steering semantics live.
+              handlerResult = (await hooks.runHandler('beforeGenerate', entry, [
+                beforeGenContext,
+              ])) as GenerateContext | void;
             } catch (error) {
               applyWaterfallHandlerErrorPolicy(
                 error,
@@ -132,6 +144,7 @@ export async function executeGeneration(
                 index,
                 entry.options,
                 hooks.onError,
+                entry.id,
               );
               continue;
             }
@@ -284,7 +297,10 @@ export async function executeGeneration(
             };
             let handlerResult: GenerateResponse | void;
             try {
-              handlerResult = await entry.handler(afterGenContext);
+              // Observed invocation — see the `beforeGenerate` loop above.
+              handlerResult = (await hooks.runHandler('afterGenerate', entry, [
+                afterGenContext,
+              ])) as GenerateResponse | void;
             } catch (error) {
               applyWaterfallHandlerErrorPolicy(
                 error,
@@ -292,6 +308,7 @@ export async function executeGeneration(
                 index,
                 entry.options,
                 hooks.onError,
+                entry.id,
               );
               continue;
             }
@@ -344,9 +361,9 @@ export async function executeGeneration(
           let errorAction: ErrorRecoveryAction | undefined;
           const handlers = hooks.getHandlers('onError');
           for (const entry of handlers) {
-            const result = await (
-              entry.handler as (context: typeof errorContext) => Promise<ErrorRecoveryAction | void>
-            )(errorContext);
+            // Observed invocation — see the `beforeGenerate` loop above.
+            const result = (await hooks.runHandler('onError', entry, [errorContext])) as
+              ErrorRecoveryAction | undefined;
             if (result !== undefined) {
               errorAction = result;
               break; // first non-void return wins

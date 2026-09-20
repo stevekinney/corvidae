@@ -30,6 +30,19 @@ async function withTree(
   }
 }
 
+/**
+ * The names `package-map.json` assigns the workspaces these fixtures use.
+ *
+ * Written out rather than loaded so a fixture's expected output is readable beside its input; the
+ * real map is what `committed-plans.ts` exercises, over the real tree.
+ */
+const publicNames: ReadonlyMap<string, string> = new Map([
+  ['@corvidae/armorer', '@lostgradient/armorer'],
+  ['@corvidae/editor', '@lostgradient/editor'],
+  ['@corvidae/testing', '@lostgradient/testing'],
+  ['@corvidae/weft', '@lostgradient/weft'],
+]);
+
 const editorWorkspace = {
   workspace: '@corvidae/editor',
   corvidaeDirectory: 'components/editor',
@@ -58,7 +71,7 @@ describe('what counts as source', () => {
         'components/editor/README.md': '# editor\n',
       },
       async (root) => {
-        const plan = await planSource(root, [editorWorkspace]);
+        const plan = await planSource(root, [editorWorkspace], publicNames);
         expect(Object.keys(plan.files).toSorted()).toEqual([
           'packages/editor/src/lib/index.ts',
           'packages/editor/src/lib/nested/helper.ts',
@@ -76,14 +89,18 @@ describe('what counts as source', () => {
         'components/editor/scripts/build.ts': 'export const build = true;\n',
       },
       async (root) => {
-        const plan = await planSource(root, [
-          {
-            ...editorWorkspace,
-            entry: {
-              build: { requiredInputs: ['scripts/build.ts', 'scripts/pack-for-publish.ts'] },
-            } as unknown as Parameters<typeof planSource>[1][number]['entry'],
-          },
-        ]);
+        const plan = await planSource(
+          root,
+          [
+            {
+              ...editorWorkspace,
+              entry: {
+                build: { requiredInputs: ['scripts/build.ts', 'scripts/pack-for-publish.ts'] },
+              } as unknown as Parameters<typeof planSource>[1][number]['entry'],
+            },
+          ],
+          publicNames,
+        );
         // The input corvidae has is carried; the one it does not have stays target-owned, which is
         // what `assertBuildInputsPresent` checks for in the clone rather than inventing here.
         expect(Object.keys(plan.files).toSorted()).toEqual([
@@ -103,13 +120,17 @@ describe('what counts as source', () => {
         'packages/armorer/test/registry.test.ts': 'export const undeclared = true;\n',
       },
       async (root) => {
-        const plan = await planSource(root, [
-          {
-            workspace: '@corvidae/armorer',
-            corvidaeDirectory: 'packages/armorer',
-            targetDirectory: 'packages/armorer',
-          },
-        ]);
+        const plan = await planSource(
+          root,
+          [
+            {
+              workspace: '@corvidae/armorer',
+              corvidaeDirectory: 'packages/armorer',
+              targetDirectory: 'packages/armorer',
+            },
+          ],
+          publicNames,
+        );
         // The relative layout is preserved, which is the whole point: `../test/helpers/…` only
         // resolves in the target if the file sits the same distance from `src/` there. The
         // ninety other files under `test/` stay where they are, because only this one is declared.
@@ -125,13 +146,17 @@ describe('what counts as source', () => {
     await withTree(
       { 'packages/armorer/src/compose.test.ts': 'export const composed = true;\n' },
       async (root) => {
-        const plan = planSource(root, [
-          {
-            workspace: '@corvidae/armorer',
-            corvidaeDirectory: 'packages/armorer',
-            targetDirectory: 'packages/armorer',
-          },
-        ]);
+        const plan = planSource(
+          root,
+          [
+            {
+              workspace: '@corvidae/armorer',
+              corvidaeDirectory: 'packages/armorer',
+              targetDirectory: 'packages/armorer',
+            },
+          ],
+          publicNames,
+        );
         await expect(plan).rejects.toThrow(SourceEmissionError);
         await expect(plan).rejects.toThrow('test/helpers/async-assertions.ts');
       },
@@ -153,13 +178,17 @@ describe('what counts as source', () => {
       },
       async (root) => {
         await chmod(join(root, 'packages/weft/src/cli-main.ts'), 0o755);
-        const plan = await planSource(root, [
-          {
-            workspace: '@corvidae/weft',
-            corvidaeDirectory: 'packages/weft',
-            targetDirectory: 'packages/weft',
-          },
-        ]);
+        const plan = await planSource(
+          root,
+          [
+            {
+              workspace: '@corvidae/weft',
+              corvidaeDirectory: 'packages/weft',
+              targetDirectory: 'packages/weft',
+            },
+          ],
+          publicNames,
+        );
         expect(plan.executable).toEqual(['packages/weft/src/cli-main.ts']);
       },
     );
@@ -170,13 +199,17 @@ describe('what counts as source', () => {
     const root = await mkdtemp(join(tmpdir(), 'corvidae-source-'));
     try {
       await Bun.write(join(root, 'packages/testing/src/__fixtures__/baseline.png'), bytes);
-      const plan = await planSource(root, [
-        {
-          workspace: '@corvidae/testing',
-          corvidaeDirectory: 'packages/testing',
-          targetDirectory: 'packages/testing',
-        },
-      ]);
+      const plan = await planSource(
+        root,
+        [
+          {
+            workspace: '@corvidae/testing',
+            corvidaeDirectory: 'packages/testing',
+            targetDirectory: 'packages/testing',
+          },
+        ],
+        publicNames,
+      );
       expect(plan.files['packages/testing/src/__fixtures__/baseline.png']).toEqual(bytes);
     } finally {
       await rm(root, { recursive: true, force: true });

@@ -1,255 +1,172 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 
 import { createStorageSkillProvider } from '../src/create-storage-skill-provider';
-import { createMockKeyValueStore } from '../src/index';
-import type { SkillContent, SkillProvider } from '../src/types';
-import { resourceBytes, resourceText } from './support/resource-bytes';
+import { findRecord } from '../src/discovery/catalog';
+import { discoverSkills } from '../src/discovery/discover';
+import type { SkillSource } from '../src/discovery/source';
+import { parseSkillMarkdown, SkillParseError } from '../src/parse-skill-markdown';
+import { createMockKeyValueStore } from '../src/test/index';
+import { resourceBytes } from './support/resource-bytes';
 
-function makeSkillContent(name: string, description = `Description for ${name}`): SkillContent {
-  return {
-    metadata: { name, description },
-    body: `## Instructions for ${name}\n\nDo something useful.`,
-  };
+/**
+ * A write surface, tested as one.
+ *
+ * The key namespace is the whole contract here: it is what the writer promises and what the
+ * `storage` discovery source reads. So these assert the keys directly, and then assert that
+ * discovery actually finds what was written — a test that wrote and read through the same module
+ * would pass just as well if both halves agreed on the wrong thing.
+ */
+
+const now = (): string => '2026-09-19T00:00:00.000Z';
+
+const storageSource: SkillSource = {
+  id: 'storage',
+  kind: 'storage',
+  location: 'kv://skills',
+  precedence: 25,
+};
+
+function skillMarkdown(name: string, body = `Instructions for ${name}.`): string {
+  return ['---', `name: ${name}`, `description: Description for ${name}`, '---', '', body, ''].join(
+    '\n',
+  );
 }
 
-describe('createStorageSkillProvider', () => {
-  let adapter: ReturnType<typeof createMockKeyValueStore>;
-  let provider: SkillProvider;
+describe('createStorageSkillProvider writes the namespace discovery reads', () => {
+  it('stores a skill under skill:{name}:metadata and skill:{name}:body', async () => {
+    const store = createMockKeyValueStore();
+    await createStorageSkillProvider(store).saveSkill(
+      'documented',
+      parseSkillMarkdown(skillMarkdown('documented', 'Body text.')),
+    );
 
-  beforeEach(() => {
-    adapter = createMockKeyValueStore();
-    provider = createStorageSkillProvider(adapter);
+    const metadata = await store.get('skill:documented:metadata');
+    expect(JSON.parse(metadata!)).toMatchObject({
+      name: 'documented',
+      description: 'Description for documented',
+    });
+    expect(await store.get('skill:documented:body')).toBe('Body text.');
   });
 
-  describe('saveSkill and loadSkill', () => {
-    it('round-trips correctly', async () => {
-      const content = makeSkillContent('code-review');
-      await provider.saveSkill('code-review', content);
-      const loaded = await provider.loadSkill('code-review');
-      expect(loaded).toEqual(content);
-    });
+  it('stores a resource base64-encoded under skill:{name}:resource:{path}', async () => {
+    const store = createMockKeyValueStore();
+    const provider = createStorageSkillProvider(store);
+    await provider.saveSkill('with-asset', parseSkillMarkdown(skillMarkdown('with-asset')));
+    // Bytes no UTF-8 round trip survives, so an encoding regression is visible rather than subtle.
+    const logo = new Uint8Array([0xff, 0xfe, 0x00, 0x89]);
+    await provider.saveResource('with-asset', 'assets/logo.png', logo);
 
-    it('preserves all metadata fields', async () => {
-      const content: SkillContent = {
-        metadata: {
-          name: 'full-metadata',
-          description: 'A skill with all metadata fields',
-          license: 'MIT',
-          compatibility: 'Requires filesystem access',
-          toolPolicy: { allowList: ['read', 'grep'], denyList: ['bash'] },
-          metadata: { author: 'test', version: '2.0' },
-        },
-        body: '## Full metadata skill',
-      };
-      await provider.saveSkill('full-metadata', content);
-      const loaded = await provider.loadSkill('full-metadata');
-      expect(loaded).toEqual(content);
-    });
-
-    it('rejects invalid skill names', async () => {
-      expect(provider.saveSkill('NOT VALID', makeSkillContent('NOT VALID'))).rejects.toThrow(
-        'not valid kebab-case',
-      );
-    });
-
-    it('rejects skill name mismatches between the parameter and metadata', async () => {
-      expect(
-        provider.saveSkill('parameter-name', makeSkillContent('metadata-name')),
-      ).rejects.toThrow('Skill name mismatch');
-    });
+    const stored = await store.get('skill:with-asset:resource:assets/logo.png');
+    const decoded = Uint8Array.from(atob(stored!), (character) => character.charCodeAt(0));
+    expect(decoded).toEqual(logo);
   });
 
-  describe('listSkills', () => {
-    it('skips entries with corrupted metadata JSON', async () => {
-      await provider.saveSkill('good', makeSkillContent('good'));
-      await adapter.set('skill:bad:metadata', 'not json');
+  it('stores the enabled flag under skill:{name}:enabled', async () => {
+    const store = createMockKeyValueStore();
+    const provider = createStorageSkillProvider(store);
+    await provider.saveSkill('switchable', parseSkillMarkdown(skillMarkdown('switchable')));
+    await provider.setEnabled('switchable', false);
 
-      const skills = await provider.listSkills();
-      expect(skills).toHaveLength(1);
-      expect(skills[0]?.name).toBe('good');
-    });
-
-    it('returns all registered skills', async () => {
-      await provider.saveSkill('alpha', makeSkillContent('alpha'));
-      await provider.saveSkill('beta', makeSkillContent('beta'));
-      await provider.saveSkill('gamma', makeSkillContent('gamma'));
-
-      const skills = await provider.listSkills();
-      const names = skills.map((s) => s.name).toSorted();
-      expect(names).toEqual(['alpha', 'beta', 'gamma']);
-    });
-
-    it('returns empty array when none exist', async () => {
-      const skills = await provider.listSkills();
-      expect(skills).toEqual([]);
-    });
-
-    it('includes name and description from metadata', async () => {
-      await provider.saveSkill('test-skill', makeSkillContent('test-skill', 'Custom description'));
-      const skills = await provider.listSkills();
-      expect(skills).toHaveLength(1);
-      expect(skills[0]?.name).toBe('test-skill');
-      expect(skills[0]?.description).toBe('Custom description');
-    });
+    expect(await store.get('skill:switchable:enabled')).toBe('false');
   });
 
-  describe('deleteSkill', () => {
-    it('removes metadata, body, resources, and enabled flag', async () => {
-      await provider.saveSkill('doomed', makeSkillContent('doomed'));
-      await provider.saveResource('doomed', 'scripts/helper.py', resourceBytes('print("help")'));
-      await provider.setEnabled('doomed', false);
+  it('removes everything under a deleted skill, and nothing under another', async () => {
+    const store = createMockKeyValueStore();
+    const provider = createStorageSkillProvider(store);
+    for (const name of ['delete-me', 'keep-me']) {
+      await provider.saveSkill(name, parseSkillMarkdown(skillMarkdown(name)));
+      await provider.saveResource(name, 'guide.md', resourceBytes(name));
+      await provider.setEnabled(name, false);
+    }
 
-      await provider.deleteSkill('doomed');
+    await provider.deleteSkill('delete-me');
 
-      expect(await provider.loadSkill('doomed')).toBeUndefined();
-      expect(await provider.listResources('doomed')).toEqual([]);
-      // Verify all keys removed from storage
-      const remainingKeys = await adapter.list('skill:doomed:');
-      expect(remainingKeys).toEqual([]);
-    });
+    expect(await store.list('skill:delete-me:')).toEqual([]);
+    // A prefix delete that swept a neighbour would be silent data loss, so the survivor is asserted
+    // rather than assumed.
+    const survivorKeys = await store.list('skill:keep-me:');
+    expect(survivorKeys.length).toBe(4);
+  });
+});
+
+describe('what it writes is what discovery admits', () => {
+  it('round-trips a written skill into a catalog record', async () => {
+    const store = createMockKeyValueStore();
+    await createStorageSkillProvider(store).saveSkill(
+      'persisted',
+      parseSkillMarkdown(skillMarkdown('persisted')),
+    );
+
+    const revision = await discoverSkills({ sources: [storageSource], storage: store, now });
+
+    expect(findRecord(revision, 'persisted')?.available).toBe(true);
+    expect(findRecord(revision, 'persisted')?.sourceKind).toBe('storage');
   });
 
-  describe('skill existence', () => {
-    it('loadSkill returns content for an existing skill', async () => {
-      await provider.saveSkill('exists', makeSkillContent('exists'));
-      expect(await provider.loadSkill('exists')).toBeDefined();
-    });
+  it('keeps a written resource reachable as part of the bundle', async () => {
+    const store = createMockKeyValueStore();
+    const provider = createStorageSkillProvider(store);
+    await provider.saveSkill('bundled', parseSkillMarkdown(skillMarkdown('bundled')));
+    await provider.saveResource('bundled', 'references/guide.md', resourceBytes('guide'));
 
-    it('loadSkill returns undefined for a missing skill', async () => {
-      expect(await provider.loadSkill('nonexistent')).toBeUndefined();
-    });
+    const revision = await discoverSkills({ sources: [storageSource], storage: store, now });
+
+    expect(findRecord(revision, 'bundled')?.bundleSupport).toBe('complete');
   });
 
-  describe('resources', () => {
-    it('saves and loads resources', async () => {
-      await provider.saveResource(
-        'my-skill',
-        'scripts/extract.py',
-        resourceBytes('print("extract")'),
-      );
-      const content = resourceText(await provider.loadResource('my-skill', 'scripts/extract.py'));
-      expect(content).toBe('print("extract")');
-    });
+  it('hides a disabled skill from discovery', async () => {
+    const store = createMockKeyValueStore();
+    const provider = createStorageSkillProvider(store);
+    await provider.saveSkill('switched-off', parseSkillMarkdown(skillMarkdown('switched-off')));
+    await provider.setEnabled('switched-off', false);
 
-    it('rejects invalid skill names when saving resources', async () => {
-      expect(
-        provider.saveResource('NOT VALID', 'scripts/extract.py', resourceBytes('print("extract")')),
-      ).rejects.toThrow('not valid kebab-case');
-    });
+    const revision = await discoverSkills({ sources: [storageSource], storage: store, now });
 
-    it('lists resources for a skill', async () => {
-      await provider.saveResource('my-skill', 'scripts/a.py', resourceBytes('a'));
-      await provider.saveResource('my-skill', 'scripts/b.py', resourceBytes('b'));
-      await provider.saveResource('my-skill', 'templates/c.md', resourceBytes('c'));
-
-      const listed = await provider.listResources('my-skill');
-      const resources = listed.toSorted();
-      expect(resources).toEqual(['scripts/a.py', 'scripts/b.py', 'templates/c.md']);
-    });
-
-    it('returns empty array when no resources exist', async () => {
-      const resources = await provider.listResources('no-resources');
-      expect(resources).toEqual([]);
-    });
-
-    it('returns undefined for non-existent resource', async () => {
-      const content = await provider.loadResource('my-skill', 'missing.txt');
-      expect(content).toBeUndefined();
-    });
+    expect(findRecord(revision, 'switched-off')).toBeUndefined();
   });
 
-  describe('isEnabled', () => {
-    it('defaults to true when not explicitly set', async () => {
-      await provider.saveSkill('new-skill', makeSkillContent('new-skill'));
-      expect(await provider.isEnabled('new-skill')).toBe(true);
-    });
+  it('leaves two skills independent of each other', async () => {
+    const store = createMockKeyValueStore();
+    const provider = createStorageSkillProvider(store);
+    await provider.saveSkill('alpha', parseSkillMarkdown(skillMarkdown('alpha', 'Alpha body.')));
+    await provider.saveSkill('beta', parseSkillMarkdown(skillMarkdown('beta', 'Beta body.')));
+
+    const revision = await discoverSkills({ sources: [storageSource], storage: store, now });
+
+    expect(revision.records.map((record) => record.name)).toEqual(['alpha', 'beta']);
+    expect(findRecord(revision, 'alpha')?.artifactDigest).not.toBe(
+      findRecord(revision, 'beta')?.artifactDigest,
+    );
+  });
+});
+
+describe('a write that cannot be read back is refused at the write', () => {
+  it('refuses a name the specification does not allow', async () => {
+    const provider = createStorageSkillProvider(createMockKeyValueStore());
+
+    await expect(
+      provider.saveSkill('Not_Valid', {
+        metadata: { name: 'Not_Valid', description: 'Bad name.' },
+        body: 'Body.',
+      }),
+    ).rejects.toThrow(SkillParseError);
   });
 
-  describe('setEnabled', () => {
-    it('toggles the enabled flag', async () => {
-      await provider.saveSkill('toggle-skill', makeSkillContent('toggle-skill'));
+  it('refuses a name that disagrees with the content it is saving', async () => {
+    const provider = createStorageSkillProvider(createMockKeyValueStore());
 
-      await provider.setEnabled('toggle-skill', false);
-      expect(await provider.isEnabled('toggle-skill')).toBe(false);
-
-      await provider.setEnabled('toggle-skill', true);
-      expect(await provider.isEnabled('toggle-skill')).toBe(true);
-    });
+    // Written under one key and self-describing as another, this skill would be catalogued under
+    // the name in its manifest and be unreachable at the key anything else addressed it by.
+    await expect(
+      provider.saveSkill('stored-as', parseSkillMarkdown(skillMarkdown('calls-itself'))),
+    ).rejects.toThrow(SkillParseError);
   });
 
-  describe('key namespace convention', () => {
-    it('stores metadata under skill:{name}:metadata', async () => {
-      await provider.saveSkill('ns-test', makeSkillContent('ns-test'));
-      const raw = await adapter.get('skill:ns-test:metadata');
-      expect(raw).not.toBeNull();
-      expect(JSON.parse(raw!)).toEqual(makeSkillContent('ns-test').metadata);
-    });
+  it('refuses an invalid name when saving a resource, not only a skill', async () => {
+    const provider = createStorageSkillProvider(createMockKeyValueStore());
 
-    it('stores body under skill:{name}:body', async () => {
-      const content = makeSkillContent('ns-test');
-      await provider.saveSkill('ns-test', content);
-      const raw = await adapter.get('skill:ns-test:body');
-      expect(raw).toBe(content.body);
-    });
-
-    it('stores resources under skill:{name}:resource:{path}', async () => {
-      await provider.saveResource('ns-test', 'scripts/run.sh', resourceBytes('#!/bin/bash'));
-      const raw = await adapter.get('skill:ns-test:resource:scripts/run.sh');
-      // Base64 at the boundary: the adapter stores strings, and resources are bytes so a bundled
-      // image or font is not destroyed by a UTF-8 round trip on the way through.
-      expect(raw).toBe(btoa('#!/bin/bash'));
-      expect(resourceText(await provider.loadResource('ns-test', 'scripts/run.sh'))).toBe(
-        '#!/bin/bash',
-      );
-    });
-
-    it('stores enabled flag under skill:{name}:enabled', async () => {
-      await provider.setEnabled('ns-test', false);
-      const raw = await adapter.get('skill:ns-test:enabled');
-      expect(raw).toBe('false');
-    });
-  });
-
-  describe('loadSkill', () => {
-    it('returns undefined for non-existent skills', async () => {
-      const result = await provider.loadSkill('ghost');
-      expect(result).toBeUndefined();
-    });
-
-    it('returns undefined for corrupted metadata JSON', async () => {
-      await adapter.set('skill:bad:metadata', 'not json');
-      const result = await provider.loadSkill('bad');
-      expect(result).toBeUndefined();
-    });
-  });
-
-  describe('multiple skills coexistence', () => {
-    it('skills do not interfere with each other', async () => {
-      const alpha = makeSkillContent('alpha', 'Alpha skill');
-      const beta = makeSkillContent('beta', 'Beta skill');
-
-      await provider.saveSkill('alpha', alpha);
-      await provider.saveSkill('beta', beta);
-      await provider.saveResource('alpha', 'data.json', resourceBytes('{"alpha": true}'));
-      await provider.saveResource('beta', 'data.json', resourceBytes('{"beta": true}'));
-      await provider.setEnabled('alpha', false);
-      await provider.setEnabled('beta', true);
-
-      // Verify isolation
-      expect(await provider.loadSkill('alpha')).toEqual(alpha);
-      expect(await provider.loadSkill('beta')).toEqual(beta);
-      expect(resourceText(await provider.loadResource('alpha', 'data.json'))).toBe(
-        '{"alpha": true}',
-      );
-      expect(resourceText(await provider.loadResource('beta', 'data.json'))).toBe('{"beta": true}');
-      expect(await provider.isEnabled('alpha')).toBe(false);
-      expect(await provider.isEnabled('beta')).toBe(true);
-
-      // Deleting one does not affect the other
-      await provider.deleteSkill('alpha');
-      expect(await provider.loadSkill('alpha')).toBeUndefined();
-      expect(await provider.loadSkill('beta')).toBeDefined();
-      expect(resourceText(await provider.loadResource('beta', 'data.json'))).toBe('{"beta": true}');
-    });
+    await expect(
+      provider.saveResource('Not_Valid', 'guide.md', resourceBytes('guide')),
+    ).rejects.toThrow(SkillParseError);
   });
 });

@@ -5,7 +5,7 @@ import type { TextValueStore } from '@corvidae/weft';
 import { z } from 'zod';
 
 import { parseSkillMarkdown } from '../parse-skill-markdown';
-import type { Proposal, SkillProvider } from '../types';
+import type { Proposal, SkillWriter } from '../types';
 
 // ── Key Namespace ───────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ export interface ListProposalsOptions {
 
 export interface AcceptProposalOptions {
   /** Skill provider for accepting skill proposals. */
-  skillProvider: SkillProvider;
+  skillProvider: SkillWriter;
   /** Identity provider for accepting soul/persona proposals. */
   identityProvider?: IdentityProviderLike;
 }
@@ -102,10 +102,7 @@ function matchesProposal(
   );
 }
 
-async function acceptSkillProposal(
-  proposal: Proposal,
-  skillProvider: SkillProvider,
-): Promise<void> {
+async function acceptSkillProposal(proposal: Proposal, skillProvider: SkillWriter): Promise<void> {
   const skillContent = parseSkillMarkdown(proposal.content);
   await skillProvider.saveSkill(skillContent.metadata.name, skillContent);
 }
@@ -206,7 +203,7 @@ export async function listProposals(
 
 /**
  * Accept a proposal. Behavior depends on type:
- * - 'skill': Parse content as SKILL.md, write to SkillProvider.
+ * - 'skill': Parse content as SKILL.md, write to SkillWriter.
  * - 'soul': Parse content as soul items JSON, write as pending soul update.
  * - 'persona': Update the persona text via identity provider.
  */
