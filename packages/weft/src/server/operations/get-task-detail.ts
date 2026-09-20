@@ -57,7 +57,7 @@ import {
   decodeTaskAttemptRecord,
   taskAttemptPrefix,
   type TaskAttemptRecord,
-} from '../task-attempt.ts';
+} from '../../core/task-ledger/task-attempt.ts';
 import {
   decodeRemoteTaskRecord,
   taskLedgerKey,
@@ -69,7 +69,7 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskRecord,
   type RemoteTaskTerminal,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
 import {
   executionIdentitySchema,
   executionRequirementSchema,

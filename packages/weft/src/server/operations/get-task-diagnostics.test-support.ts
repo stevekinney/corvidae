@@ -13,7 +13,7 @@ import {
   type RemoteTaskLeased,
   type RemoteTaskQueued,
   type RemoteTaskTerminalResolved,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
 import { TaskQueue } from '../task-queue.ts';
 import {
   createGetTaskDiagnosticsOperation,

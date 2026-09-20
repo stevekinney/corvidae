@@ -12,13 +12,13 @@ import { describe, expect, it } from 'bun:test';
 
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { canDeleteRetainedTerminalTask } from '../task-ledger-transitions.ts';
+import { canDeleteRetainedTerminalTask } from './task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskTerminalResolved,
-} from '../task-ledger.ts';
+} from './task-ledger.ts';
 import { commitTaskLedgerDelete } from './task-ledger-runtime.ts';
 
 function terminalFixture(

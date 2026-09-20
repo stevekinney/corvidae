@@ -38,13 +38,13 @@ import {
   taskDispatchFromLedgerRecord,
 } from './runtime/task-reconciliation.ts';
 import { runWorkerDisconnectRequeue } from './runtime/worker-disconnect-requeue.ts';
-import { decodeTaskAttemptRecord, taskAttemptKey, taskAttemptPrefix } from './task-attempt.ts';
+import { decodeTaskAttemptRecord, taskAttemptKey, taskAttemptPrefix } from '../core/task-ledger/task-attempt.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskLeased,
-} from './task-ledger.ts';
+} from '../core/task-ledger/task-ledger.ts';
 
 import type { ServeOptions } from './index.ts';
 import type { ServerContext } from './runtime/context.ts';

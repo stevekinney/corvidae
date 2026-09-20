@@ -10,7 +10,7 @@ export type WorkerHealth = 'active' | 'draining' | 'drained';
 
 /**
  * Identity of ONE worker-session — the connection-level lease (COR-230),
- * distinct from `ActivityAttemptLease` (`server/task-ledger-types.ts`),
+ * distinct from `ActivityAttemptLease` (`core/task-ledger/task-ledger-types.ts`),
  * which identifies one ATTEMPT of one operation independently of which
  * session currently holds it.
  *

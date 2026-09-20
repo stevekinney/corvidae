@@ -1,17 +1,17 @@
 import type { ServeOptions } from '../index.ts';
 import { isAuthenticated, type Principal } from '../principal.ts';
 import { readRestJsonBody, type RestBodyReadOptions } from '../rest-body.ts';
-import { claimQueued, renewAttemptLease } from '../task-ledger-transitions.ts';
-import { decodeRemoteTaskRecord, taskLedgerKey, type RemoteTaskRecord } from '../task-ledger.ts';
+import { claimQueued, renewAttemptLease } from '../../core/task-ledger/task-ledger-transitions.ts';
+import { decodeRemoteTaskRecord, taskLedgerKey, type RemoteTaskRecord } from '../../core/task-ledger/task-ledger.ts';
 import type { PendingTask } from '../task-queue-types.ts';
 import type { ServerContext } from './context.ts';
 import {
   buildClaimAttemptRecordWrite,
   buildCurrentAttemptDispositionWrites,
   digestAttemptToken,
-} from './task-attempt-runtime.ts';
+} from '../../core/task-ledger/task-attempt-runtime.ts';
 import type { TaskResultDisposition } from './task-ledger-completion.ts';
-import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
+import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
 import { recordTaskBacklogMetric, recordTaskQueueLatencyMetric } from './task-metrics.ts';
 import { applyWorkerTaskResult } from './task-result-application.ts';
 import {

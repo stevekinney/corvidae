@@ -24,7 +24,7 @@ import {
   type RemoteTaskDeadLettered,
   type RemoteTaskQueued,
   type RemoteTaskTerminalResolved,
-} from '../server/task-ledger.ts';
+} from '../core/task-ledger/task-ledger.ts';
 import { KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import {

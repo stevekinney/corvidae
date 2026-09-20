@@ -55,7 +55,7 @@ import {
   type RemoteTaskCompleting,
   type RemoteTaskLeased,
   type RemoteTaskRecord,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
 import type { ServerContext } from './context.ts';
 import { scheduleDelayedDispatch } from './task-dispatch.ts';
 import { reassignOrExpireTask, taskDispatchFromLedgerRecord } from './task-reconciliation.ts';

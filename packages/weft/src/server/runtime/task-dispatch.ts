@@ -1,8 +1,8 @@
-import type { ConditionalBatchCondition } from '../../storage/interface.ts';
-import { buildWorkerExecutionIdentity } from '../../worker/manifest/execution-identity.ts';
-import type { RoutingOptions } from '../../worker/registry.ts';
-import type { ServeOptions, TaskDispatch } from '../index.ts';
-import { evictOldestAffinityEntries } from '../runtime-helpers.ts';
+import {
+  buildClaimAttemptRecordWrite,
+  digestAttemptToken,
+} from '../../core/task-ledger/task-attempt-runtime.ts';
+import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
 import {
   claimQueued,
   createQueued,
@@ -10,23 +10,27 @@ import {
   type ClaimQueuedInput,
   type CreateQueuedInput,
   type TaskLedgerTransitionResult,
-} from '../task-ledger-transitions.ts';
+} from '../../core/task-ledger/task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskLeased,
   type RemoteTaskQueued,
   type RemoteTaskRecord,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
+import type { ConditionalBatchCondition } from '../../storage/interface.ts';
+import { buildWorkerExecutionIdentity } from '../../worker/manifest/execution-identity.ts';
+import type { RoutingOptions } from '../../worker/registry.ts';
+import type { ServeOptions, TaskDispatch } from '../index.ts';
+import { evictOldestAffinityEntries } from '../runtime-helpers.ts';
 import type { ServerContext } from './context.ts';
-import { buildClaimAttemptRecordWrite, digestAttemptToken } from './task-attempt-runtime.ts';
+import { buildTerminalResolutionWrites } from './remote-activity-result-bridge.ts';
 import {
   assertFreshDispatchOperationIdAdmissible,
   awaitTaskLedgerRecoveryReady,
   buildCreateQueuedInput,
 } from './task-dispatch-envelope.ts';
 import { assertDispatchTargetsFreshRevision } from './task-dispatch-revision.ts';
-import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
 import {
   recordTaskBacklogMetric,
   recordTaskQueueLatencyMetric,
@@ -558,6 +562,23 @@ export async function cancelTask(
         now,
       ),
     1,
+    [],
+    // Acceptance criterion 6: a queued-origin cancellation resolves straight
+    // to terminal (no attempt ever existed) — co-commit the durable
+    // async-activity resolution record here too, same reasoning as every
+    // other terminal-producing transition. A leased-origin cancellation
+    // lands in `cancelling` here (not terminal), so `nextRecord.state ===
+    // 'terminal'` gates this to the queued-origin case only; the
+    // leased-origin case resolves later through `commitCancellation`/
+    // `commitUncertainCancellation`, which already carry this write.
+    async (_record, nextRecord) =>
+      nextRecord.state === 'terminal'
+        ? buildTerminalResolutionWrites(nextRecord.workflowId, nextRecord.operationId, {
+            status: 'failed',
+            error: nextRecord.cancellationReason,
+            failureCategory: 'cancellation',
+          })
+        : [],
   );
   if (!result.ok) return false;
 

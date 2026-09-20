@@ -18,7 +18,7 @@ import {
   type RemoteTaskTerminalCancelled,
   type RemoteTaskTerminalResolved,
   type RemoteTaskTerminalRetryExhausted,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
 import {
   getTaskDetailOperation,
   getTaskDetailOutputSchema,

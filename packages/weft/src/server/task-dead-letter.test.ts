@@ -28,15 +28,15 @@ import {
 import { dispatchTaskImpl } from './runtime/task-dispatch.ts';
 import { reconcileOrphanedRecords } from './runtime/task-reconciliation.ts';
 import { applyWorkerTaskResult } from './runtime/task-result-application.ts';
-import { decodeTaskAttemptRecord, taskAttemptKey, taskAttemptPrefix } from './task-attempt.ts';
-import { markWorkflowResultAdopted } from './task-ledger-transitions.ts';
+import { decodeTaskAttemptRecord, taskAttemptKey, taskAttemptPrefix } from '../core/task-ledger/task-attempt.ts';
+import { markWorkflowResultAdopted } from '../core/task-ledger/task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskRecord,
   type RemoteTaskTerminal,
-} from './task-ledger.ts';
+} from '../core/task-ledger/task-ledger.ts';
 
 import type { ServeOptions } from './index.ts';
 import type { ServerContext } from './runtime/context.ts';

@@ -10,7 +10,7 @@ import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import { manifestForActivities } from '../worker/registry-fixtures.test-support.ts';
 import type { WeftServer } from './index.ts';
 import { serve } from './index.ts';
-import { decodeRemoteTaskRecord, taskLedgerKey } from './task-ledger.ts';
+import { decodeRemoteTaskRecord, taskLedgerKey } from '../core/task-ledger/task-ledger.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (
   _ctx: WorkflowContext,

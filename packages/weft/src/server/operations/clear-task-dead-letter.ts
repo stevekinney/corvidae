@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { commitTaskLedgerDelete } from '../runtime/task-ledger-runtime.ts';
-import { taskAttemptPrefix } from '../task-attempt.ts';
-import { canClearDeadLetteredTask } from '../task-ledger-transitions.ts';
+import { commitTaskLedgerDelete } from '../../core/task-ledger/task-ledger-runtime.ts';
+import { taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
+import { canClearDeadLetteredTask } from '../../core/task-ledger/task-ledger-transitions.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 
 const clearTaskDeadLetterInput = z.object({ operationId: z.string().min(1) });

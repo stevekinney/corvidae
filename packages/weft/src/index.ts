@@ -242,6 +242,6 @@ export {
   isRemoteTaskTerminalCancelled,
   isRemoteTaskTerminalResolved,
   taskLedgerKey,
-} from './server/task-ledger.ts';
+} from './core/task-ledger/task-ledger.ts';
 export { isPlainRecord } from './worker/manifest/is-plain-record.ts';
 export { utf8ByteLength } from './worker/manifest/utf8.ts';

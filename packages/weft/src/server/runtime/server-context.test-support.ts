@@ -13,7 +13,7 @@ import type { BatchOperation, ConditionalBatchCondition } from '../../storage/in
 import { MemoryStorage } from '../../storage/memory.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
 import { DeadlineTracker } from '../deadline-tracker.ts';
-import { decodeRemoteTaskRecord } from '../task-ledger.ts';
+import { decodeRemoteTaskRecord } from '../../core/task-ledger/task-ledger.ts';
 import { TaskQueue } from '../task-queue.ts';
 
 import type { ServeOptions } from '../index.ts';

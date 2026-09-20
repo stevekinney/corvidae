@@ -63,6 +63,36 @@ interface RemoteWorkerOptions {
 
 On connection, the worker sends a v6 `register` message carrying its worker ID, concurrency limit, and a canonical manifest describing its deployment, runtime, and workflows. The server derives routing activities from the manifest and reads the queue from the connection URL. `connect()` resolves only after the server replies with `registerAck`; it rejects on `registerError` or if the socket closes before acknowledgement. The server tracks the accepted worker in the `WorkerRegistry`.
 
+## Dispatching `ctx.run()` to remote workers
+
+A workflow reaches a `RemoteWorker` the same way it reaches any other activity: through `ctx.run()`. Configure the engine with `activityExecution: { mode: 'remote' }` and every `ctx.run()` call durably enqueues its activity onto the engine's own task ledger for a connected worker to claim, instead of running on the main thread or a local Worker pool.
+
+```typescript partial
+import { Engine, activity, workflow } from '@corvidae/weft';
+
+const formatGreeting = activity({
+  name: 'formatGreeting',
+  execute: async (input: { name: string }) => `Hello, ${input.name}!`,
+});
+
+const greetingWorkflow = workflow({ name: 'greeting' })
+  .activities({ formatGreeting })
+  .execute(async function* (ctx, input: { name: string }) {
+    return yield* ctx.run(formatGreeting, input);
+  });
+
+const engine = new Engine({
+  activityExecution: { mode: 'remote', queue: 'default' },
+});
+engine.register(greetingWorkflow);
+```
+
+`formatGreeting`'s own `execute` body never runs in this configuration — it exists so the workflow type-checks and so an inline or worker-mode engine could still run the same workflow. The engine derives the activity's qualified name (`greeting.formatGreeting`) from its own canonical workflow registration, never from the call site, and durably records queue, retry policy, headers, and the workflow's execution token on the task before any worker claims it.
+
+Because dispatch is durable, `ctx.run()` never falls back to local execution: an activity call started before any `serve()` call exists (or before a worker with capacity connects) simply leaves its task `queued` on the engine's storage until one does. Attach a server the same way `dispatchTask` requires — `serve({ engine })` — and a connected `RemoteWorker` advertising the matching workflow type claims and executes it, exactly as in [Task dispatch](#task-dispatch) below.
+
+This is a genuinely different durability domain from `dispatchTask`: `ctx.run()` durably parks the calling workflow (the same durable-completion mechanism `ActivityContext.completeAsync()` uses) until the result arrives, and the exact value or error a worker returns resumes that `ctx.run()` call — including through an engine restart, since the task's `queued`/`leased` ledger record and the workflow's own checkpoint both survive independently of the process that created them.
+
 ## Task dispatch
 
 When the engine needs to execute an activity, the server finds a worker that has capacity and knows how to run it. Tasks arrive as JSON messages over the WebSocket:

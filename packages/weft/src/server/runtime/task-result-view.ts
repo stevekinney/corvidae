@@ -30,14 +30,14 @@
 
 import type { Storage } from '../../storage/interface.ts';
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';
-import { markWorkflowResultAdopted } from '../task-ledger-transitions.ts';
+import { markWorkflowResultAdopted } from '../../core/task-ledger/task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskDeadLettered,
   type RemoteTaskTerminal,
-} from '../task-ledger.ts';
-import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
+} from '../../core/task-ledger/task-ledger.ts';
+import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
 
 /**
  * Public, storage-agnostic view of a single task-ledger record.

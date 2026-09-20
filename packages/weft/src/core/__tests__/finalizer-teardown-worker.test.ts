@@ -307,7 +307,7 @@ describe('worker-mode finalizer teardown (#564 WS2)', () => {
       getNow: () => now,
       workflowExecutionMode: 'worker',
       workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
-      activityExecution: { workerUrl, poolSize: 1 },
+      activityExecution: { mode: 'worker', workerUrl, poolSize: 1 },
     });
     engine.register(engineSideWorkflow);
 

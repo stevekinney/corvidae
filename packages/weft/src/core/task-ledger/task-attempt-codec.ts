@@ -12,7 +12,7 @@
  * @module server/task-attempt-codec
  */
 
-import { decode, encode } from '../core/codec.ts';
+import { decode, encode } from '../codec.ts';
 import type { TaskAttemptDisposition, TaskAttemptRecord } from './task-attempt-types.ts';
 import {
   isBoundedIdentifier,

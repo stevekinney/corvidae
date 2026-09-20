@@ -36,6 +36,7 @@ import {
   registerWorkflowEventLifecycle,
   type EventBroadcastingHandle,
 } from './runtime/event-broadcasting.ts';
+import { installRemoteActivityEventBridges } from './runtime/remote-activity-event-bridges.ts';
 import { shutdownAllWorkers } from './runtime/shutdown.ts';
 import { runTaskLedgerRecovery } from './runtime/task-ledger-recovery.ts';
 import {
@@ -450,6 +451,11 @@ export function registerStackDisposers(
         : { timeoutMs: options.workerShutdownTimeoutMs, stopWaitingWhenIdle: true },
     ),
   );
+
+  // COR-152: low-latency hint for a remote activity task the engine enqueued
+  // directly (bypassing `dispatchTask`) — see that module's doc comment for
+  // why correctness never depends on this listener.
+  stack.defer(installRemoteActivityEventBridges(context, options));
 
   const schedulesTaskReconciliation = !consumeManual(options, context, onOperationCleanup);
   const visibilityPollHandle = schedulesTaskReconciliation

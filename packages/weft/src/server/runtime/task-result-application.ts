@@ -22,6 +22,7 @@
 
 import type { MetricsCollector } from '../../observability/metrics.ts';
 import type { ServeOptions } from '../index.ts';
+import { bridgeRemoteActivityResult } from './remote-activity-result-bridge.ts';
 import {
   commitTaskLedgerCompletion,
   dispatchTaskDeadLetteredEvent,
@@ -33,6 +34,30 @@ import { recordTaskExecutionLatencyMetric } from './task-metrics.ts';
 export type TaskResultApplicationResult =
   | Readonly<{ ok: true; disposition: TaskResultDisposition }>
   | Readonly<{ ok: false; reason: string }>;
+
+/**
+ * COR-152: deliver the real value/error a worker just sent to whichever
+ * workflow's `ctx.run()` is parked on this `operationId`, if any — see
+ * `remote-activity-result-bridge.ts`'s module doc comment. Only reached for
+ * a genuinely FRESH `applied`/`resolved` commit; a `duplicate` resend (the
+ * outcome was already delivered by the first delivery) and a
+ * `dead-lettered` result (nothing to deliver) are both skipped.
+ */
+async function bridgeIfResolvedApplied(
+  options: ServeOptions,
+  input: TaskLedgerCompletionInput,
+  committed: Awaited<ReturnType<typeof commitTaskLedgerCompletion>>,
+): Promise<void> {
+  if (!committed.ok || committed.disposition !== 'applied') return;
+  if (committed.terminal?.disposition !== 'resolved') return;
+  await bridgeRemoteActivityResult(
+    options.engine,
+    input.operationId,
+    committed.terminal.status === 'completed'
+      ? { status: 'completed', value: input.value }
+      : { status: 'failed', error: committed.terminal.error ?? 'Remote activity failed' },
+  );
+}
 
 /**
  * Apply an already-authorized task result through the durable ledger.
@@ -64,6 +89,7 @@ export async function applyWorkerTaskResult(
         Date.now(),
       );
     }
+    await bridgeIfResolvedApplied(options, input, committed);
     return { ok: true, disposition: committed.disposition };
   }
 

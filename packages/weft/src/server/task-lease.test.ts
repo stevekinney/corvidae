@@ -45,13 +45,13 @@ import {
   createQueued,
   renewAttemptLease,
   type CreateQueuedInput,
-} from './task-ledger-transitions.ts';
+} from '../core/task-ledger/task-ledger-transitions.ts';
 import {
   activityAttemptLeaseFromRecord,
   type ActivityAttemptLease,
   type RemoteTaskLeased,
   type RemoteTaskQueued,
-} from './task-ledger-types.ts';
+} from '../core/task-ledger/task-ledger-types.ts';
 
 const BASE_QUEUED_INPUT: CreateQueuedInput = {
   recordVersion: 1,

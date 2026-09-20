@@ -23,8 +23,8 @@ import {
   taskAttemptKey,
   type TaskAttemptDisposition,
   type TaskAttemptRecord,
-} from '../task-attempt.ts';
-import type { RemoteTaskRecord, WorkerExecutionRequirementInput } from '../task-ledger.ts';
+} from './task-attempt.ts';
+import type { RemoteTaskRecord, WorkerExecutionRequirementInput } from './task-ledger.ts';
 
 /**
  * `sha256HexSync(attemptToken)` — the one place every call site derives an

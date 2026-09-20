@@ -21,7 +21,7 @@ import {
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskQueued,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import { dispatchTaskImpl, scheduleDelayedDispatch } from './task-dispatch.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';

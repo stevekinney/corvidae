@@ -5,7 +5,7 @@ import { MemoryStorage } from '../../storage/memory.ts';
 import type { AuthorizationScope } from '../authorization-scope.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { principalFromApiKey } from '../principal.ts';
-import { taskLedgerKey } from '../task-ledger.ts';
+import { taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
 import { clearTaskDeadLetterOperation } from './clear-task-dead-letter.ts';
 import {
   createEngine,

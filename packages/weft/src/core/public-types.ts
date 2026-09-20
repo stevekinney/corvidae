@@ -1,3 +1,4 @@
+export type { RemoteActivityBroker, RemoteActivityTaskRequest } from './remote-activity-broker.ts';
 export {
   DEFAULT_CHECKPOINT_SIZE_WARNING_THRESHOLD,
   DEFAULT_MAX_NESTING_DEPTH,
@@ -20,6 +21,7 @@ export type {
   ActivityContext,
   ActivityDefinition,
   ActivityEntryInput,
+  ActivityExecutionOptions,
   ActivityFunction,
   ActivityMap,
   ActivityMapInput,

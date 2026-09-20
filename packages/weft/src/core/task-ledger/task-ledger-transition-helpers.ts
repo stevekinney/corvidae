@@ -8,7 +8,7 @@
  * @module server/task-ledger-transition-helpers
  */
 
-import type { WorkerExecutionIdentity } from '../worker/manifest/types.ts';
+import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import type { RemoteTaskAttemptFields, RemoteTaskBase } from './task-ledger-types.ts';
 
 export type TaskLedgerTransitionResult<T> =

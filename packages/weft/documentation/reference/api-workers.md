@@ -370,7 +370,7 @@ interface InFlightTask {
 
 `checkExpiredTasks(now)` returns tasks whose visibility deadline has passed, suitable for reassignment.
 
-**Visibility timeout vs. attempt deadline (COR-230).** `visibilityTimeout` governs `deadline` above — the heartbeat-renewable clock. Before v5, a bare session `heartbeat` renewed it for every in-flight task on the connection; as of v5, only a matching `activityHeartbeat` (`operationId` + `attemptToken`) renews a given task's `deadline`, and it can never renew it past that attempt's separate, fixed `attemptDeadline` (`RemoteTaskLeased.attemptDeadline`, `server/task-ledger-types.ts`). `visibilityTimeout` and the attempt deadline are two independent clocks: the first can be renewed indefinitely by a live worker; the second cannot be renewed at all.
+**Visibility timeout vs. attempt deadline (COR-230).** `visibilityTimeout` governs `deadline` above — the heartbeat-renewable clock. Before v5, a bare session `heartbeat` renewed it for every in-flight task on the connection; as of v5, only a matching `activityHeartbeat` (`operationId` + `attemptToken`) renews a given task's `deadline`, and it can never renew it past that attempt's separate, fixed `attemptDeadline` (`RemoteTaskLeased.attemptDeadline`, `core/task-ledger/task-ledger-types.ts`). `visibilityTimeout` and the attempt deadline are two independent clocks: the first can be renewed indefinitely by a live worker; the second cannot be renewed at all.
 
 ## Canonical worker manifest
 

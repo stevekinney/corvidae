@@ -12,7 +12,7 @@ import {
   type RemoteTaskTerminalCancelled,
   type RemoteTaskTerminalResolved,
   type RemoteTaskTerminalRetryExhausted,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
 import { minimalServeOptions } from './server-context.test-support.ts';
 import { adoptTaskResultImpl, getTaskResultViewImpl } from './task-result-view.ts';
 

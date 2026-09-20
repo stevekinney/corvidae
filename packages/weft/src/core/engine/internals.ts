@@ -32,6 +32,7 @@ import type {
   ComposedWorkflowInterceptor,
   Interceptor,
 } from '../interceptor.ts';
+import type { RemoteActivityBroker } from '../remote-activity-broker.ts';
 import type { HumanReviewResult, ReviewCoordinator } from '../review/index.ts';
 import type { Scheduler } from '../scheduler.ts';
 import type { Checkpoint, StartWorkflowOptions } from '../types.ts';
@@ -200,6 +201,15 @@ export interface EngineInternals {
    */
   workflowTypeByWorkflowId: Map<string, WorkflowExecutionIdentity>;
   activityWorkerDispatcher: ActivityWorkerDispatcher | null;
+  /**
+   * Non-`null` exactly when `activityExecution.mode === 'remote'`
+   * (COR-152) — mutually exclusive with `activityWorkerDispatcher` by
+   * construction, never both set. `executeActivity`'s leaf dispatch branches
+   * on `internals.options.activityExecution?.mode`, not on this slot's
+   * presence, so remote unavailability can never silently fall through to a
+   * different mode (acceptance criterion 9).
+   */
+  remoteActivityBroker: RemoteActivityBroker | null;
   checkpoints: Map<string, Checkpoint>;
   broadcastChannel: BroadcastChannel | null;
   pendingNestingDepth: number | undefined;
@@ -475,6 +485,28 @@ export function getInternals(engine: object): EngineInternals {
     );
   }
   return internals;
+}
+
+/**
+ * Whether `token` currently identifies a live pending async activity —
+ * registered (`registerPendingAsyncActivity`) and not yet consumed
+ * (`completeAsyncActivity`/`failAsyncActivity`). A narrow, read-only escape
+ * hatch for `server/` (COR-152's remote-activity result bridge,
+ * `server/runtime/remote-activity-result-bridge.ts`): it needs to tell "this
+ * durable task's operationId is also a workflow's remote-mode `ctx.run()`
+ * token" apart from "this is a standalone task dispatched directly through
+ * `WeftServer.dispatchTask`, unrelated to any workflow" — without exposing
+ * `EngineInternals` itself outside `core/engine/`.
+ */
+export function isPendingAsyncActivityToken(engine: object, token: string): boolean {
+  // A peek, not `getInternals` — this must tolerate an `options.engine` that
+  // is not a real, constructor-initialized `Engine` (a minimal fixture
+  // stubbing just the `ServeOptions.engine` surface a given unit test
+  // exercises, as several `task-polling`/`websocket-worker` characterization
+  // tests do). Treating that as "definitely not a pending token" is correct:
+  // a fixture that never went through `new Engine()` cannot durably hold one.
+  const internals = INTERNALS.get(engine);
+  return internals !== undefined && internals.pendingAsyncActivities.has(token);
 }
 
 /**

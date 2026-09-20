@@ -15,9 +15,9 @@
  * @module server/task-ledger-codec
  */
 
-import { decode, encode } from '../core/codec.ts';
-import { isJSONValue } from '../core/json.ts';
-import type { WorkerExecutionIdentity } from '../worker/manifest/types.ts';
+import { decode, encode } from '../codec.ts';
+import { isJSONValue } from '../json.ts';
+import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import {
   MAX_TASK_HEADER_COUNT,
   MAX_TASK_HEADER_VALUE_BYTES,

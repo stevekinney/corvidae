@@ -123,5 +123,5 @@ The ledger does not make external activity side effects exactly-once. If an acti
 The [result projection](../../src/server/runtime/task-result-view.ts), [recovery path](../../src/server/runtime/task-ledger-recovery.ts), and [server options](../../src/server/index.ts) define the current behavior. Verify changes with:
 
 ```bash
-bun test packages/weft/src/server/task-ledger-transitions.test.ts packages/weft/src/server/runtime/task-ledger-recovery.test.ts packages/weft/src/server/runtime/task-result-view.test.ts
+bun test packages/weft/src/core/task-ledger/task-ledger-transitions.test.ts packages/weft/src/server/runtime/task-ledger-recovery.test.ts packages/weft/src/server/runtime/task-result-view.test.ts
 ```

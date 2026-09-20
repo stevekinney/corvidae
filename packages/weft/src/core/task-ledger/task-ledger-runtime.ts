@@ -26,13 +26,13 @@ import {
 import type {
   TaskLedgerPreconditionResult,
   TaskLedgerTransitionResult,
-} from '../task-ledger-transitions.ts';
+} from './task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskRecord,
-} from '../task-ledger.ts';
+} from './task-ledger.ts';
 
 export type TaskLedgerCommitResult<T extends RemoteTaskRecord> =
   Readonly<{ ok: true; record: T }> | Readonly<{ ok: false; reason: string }>;

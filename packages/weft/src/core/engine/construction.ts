@@ -7,6 +7,7 @@ import { WorkerPool } from '../../workers/pool.ts';
 import { optionalInlineDependencies } from '../inline-execution-strategy.context-options.ts';
 import { InlineExecutionStrategy } from '../inline-execution-strategy.ts';
 import type { ComposedWorkflowInterceptor, Interceptor } from '../interceptor.ts';
+import type { RemoteActivityBroker } from '../remote-activity-broker.ts';
 import {
   DEFAULT_POLL_INTERVAL_MS,
   DEFAULT_RETENTION_SWEEP_BATCH_SIZE,
@@ -30,6 +31,7 @@ import type {
 } from './engine-internal-types.ts';
 import { copyFinalizerMetadata } from './finalizer-metadata.ts';
 import { resolveBackgroundTaskMode, resolveOwnershipFields } from './ownership-options.ts';
+import { EngineOwnedRemoteActivityBroker } from './remote-activity-broker.ts';
 import {
   normalizeHistoryPolicy,
   normalizePayloadSizePolicy,
@@ -474,12 +476,52 @@ export function createExecutionStrategyBundle(parameters: {
 export function createActivityWorkerDispatcher(
   activityExecution: EngineConstructorOptions['activityExecution'],
 ): ActivityWorkerDispatcher | null {
-  if (!activityExecution) return null;
+  if (!activityExecution || activityExecution.mode !== 'worker') return null;
   return new ActivityWorkerDispatcher(
     new WorkerPool({
       workerUrl: activityExecution.workerUrl,
       concurrency: activityExecution.poolSize ?? 4,
       smol: activityExecution.smol ?? false,
     }),
+  );
+}
+
+/**
+ * Build the engine's `RemoteActivityBroker` for `activityExecution: { mode:
+ * 'remote' }` (COR-152), or `null` for every other mode. Defaults to the
+ * storage-backed {@link EngineOwnedRemoteActivityBroker}; a caller-supplied
+ * `broker` (a recording or poison test double) is used verbatim instead —
+ * see `ActivityExecutionOptions`'s `mode: 'remote'` doc comment.
+ *
+ * `dispatchRemoteActivityQueuedEvent` is threaded in rather than closed over
+ * an `Engine` instance so this stays a plain, engine-instance-agnostic
+ * builder, matching `createActivityWorkerDispatcher` and
+ * `createInlineExecutionStrategy` above.
+ */
+export function createRemoteActivityBroker(
+  activityExecution: EngineConstructorOptions['activityExecution'],
+  storage: WeftStorage,
+  dispatchRemoteActivityQueuedEvent: (
+    operationId: string,
+    workflowId: string,
+    queue: string,
+  ) => void,
+): RemoteActivityBroker | null {
+  if (!activityExecution || activityExecution.mode !== 'remote') return null;
+  return (
+    activityExecution.broker ??
+    new EngineOwnedRemoteActivityBroker(
+      storage,
+      {
+        ...(activityExecution.queue !== undefined ? { queue: activityExecution.queue } : {}),
+        ...(activityExecution.visibilityTimeoutMilliseconds !== undefined
+          ? { visibilityTimeoutMilliseconds: activityExecution.visibilityTimeoutMilliseconds }
+          : {}),
+        ...(activityExecution.retryPolicy !== undefined
+          ? { retryPolicy: activityExecution.retryPolicy }
+          : {}),
+      },
+      dispatchRemoteActivityQueuedEvent,
+    )
   );
 }

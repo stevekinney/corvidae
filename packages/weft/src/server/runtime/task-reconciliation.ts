@@ -1,13 +1,18 @@
 import { ActivityFailedEvent } from '../../core/events.ts';
-import { storageKeys } from '../../storage/interface.ts';
-import type { ServeOptions, TaskDispatch } from '../index.ts';
-import { restoreExtendedDeadlineIfStillActive } from '../runtime-helpers.ts';
-import { taskAttemptPrefix } from '../task-attempt.ts';
+import {
+  buildAttemptDispositionWriteForToken,
+  buildCurrentAttemptDispositionWrites,
+} from '../../core/task-ledger/task-attempt-runtime.ts';
+import { taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
+import {
+  commitTaskLedgerDelete,
+  commitTaskLedgerTransition,
+} from '../../core/task-ledger/task-ledger-runtime.ts';
 import {
   canDeleteRetainedTerminalTask,
   commitUncertainCancellation,
   requeueExpiredAttempt,
-} from '../task-ledger-transitions.ts';
+} from '../../core/task-ledger/task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   taskLedgerKey,
@@ -15,14 +20,13 @@ import {
   type RemoteTaskLeased,
   type RemoteTaskQueued,
   type RemoteTaskTerminal,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
+import { storageKeys } from '../../storage/interface.ts';
+import type { ServeOptions, TaskDispatch } from '../index.ts';
+import { restoreExtendedDeadlineIfStillActive } from '../runtime-helpers.ts';
 import type { ServerContext } from './context.ts';
-import {
-  buildAttemptDispositionWriteForToken,
-  buildCurrentAttemptDispositionWrites,
-} from './task-attempt-runtime.ts';
+import { buildTerminalResolutionWrites } from './remote-activity-result-bridge.ts';
 import { scheduleDelayedDispatch } from './task-dispatch.ts';
-import { commitTaskLedgerDelete, commitTaskLedgerTransition } from './task-ledger-runtime.ts';
 import {
   isTaskHeartbeatStaleForMetrics,
   recordTaskRequeueMetric,
@@ -118,8 +122,8 @@ export async function reassignOrExpireTask(
     // already-expired lease (`task-ledger-recovery.ts`) — acceptance
     // criteria 5, 6 (disconnect/restart attributability), and the "restart"
     // and "disconnect" fixtures all resolve through this one call site.
-    async (_current, nextRecord, now) =>
-      buildAttemptDispositionWriteForToken(
+    async (_current, nextRecord, now) => [
+      ...(await buildAttemptDispositionWriteForToken(
         options.engine.storage,
         operationId,
         record.attemptToken,
@@ -128,7 +132,19 @@ export async function reassignOrExpireTask(
           dispositionAt: now,
           dispositionReason: reason,
         },
-      ),
+      )),
+      // Acceptance criterion 6: retry exhaustion co-commits the durable
+      // async-activity resolution record too, so a parked `ctx.run()` can
+      // resume with the real exhaustion error even across a crash — same
+      // reasoning as the ordinary completion path
+      // (`task-ledger-completion.ts`'s `commitTerminalFromCompleting`).
+      ...(nextRecord.state === 'terminal'
+        ? buildTerminalResolutionWrites(nextRecord.workflowId, nextRecord.operationId, {
+            status: 'failed',
+            error: nextRecord.error,
+          })
+        : []),
+    ],
   );
   if (!result.ok) {
     console.error(`[weft] Failed to requeue/expire task "${operationId}": ${result.reason}`);
@@ -327,12 +343,20 @@ export async function scanExpiredTasks(
               ),
             1,
             [],
-            async (current, _nextRecord, settleNow) =>
-              buildCurrentAttemptDispositionWrites(options.engine.storage, current, {
+            async (current, nextRecord, settleNow) => [
+              ...(await buildCurrentAttemptDispositionWrites(options.engine.storage, current, {
                 disposition: 'cancelled',
                 dispositionAt: settleNow,
                 dispositionReason: 'cancellation deadline elapsed with no cooperative result',
+              })),
+              // Acceptance criterion 6: same reasoning as the cooperative
+              // cancellation path in `task-ledger-completion.ts`.
+              ...buildTerminalResolutionWrites(nextRecord.workflowId, nextRecord.operationId, {
+                status: 'failed',
+                error: nextRecord.cancellationReason,
+                failureCategory: 'cancellation',
               }),
+            ],
           );
           if (!settled.ok) {
             // Lost the race to the worker's own cooperative result (or a
@@ -455,12 +479,18 @@ export async function reconcileOrphanedRecords(
                 ),
               1,
               [],
-              async (current, _nextRecord, settleNow) =>
-                buildCurrentAttemptDispositionWrites(options.engine.storage, current, {
+              async (current, nextRecord, settleNow) => [
+                ...(await buildCurrentAttemptDispositionWrites(options.engine.storage, current, {
                   disposition: 'cancelled',
                   dispositionAt: settleNow,
                   dispositionReason: 'cancellation deadline elapsed with no cooperative result',
+                })),
+                ...buildTerminalResolutionWrites(nextRecord.workflowId, nextRecord.operationId, {
+                  status: 'failed',
+                  error: nextRecord.cancellationReason,
+                  failureCategory: 'cancellation',
                 }),
+              ],
             );
             if (settled.ok) {
               context.registry.completeTask(decoded.operationId);

@@ -33,7 +33,7 @@
 
 import { WorkerDisconnectedEvent } from '../../core/events.ts';
 import type { ServeOptions } from '../index.ts';
-import { decodeRemoteTaskRecord, taskLedgerKey } from '../task-ledger.ts';
+import { decodeRemoteTaskRecord, taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
 import type { ServerContext } from './context.ts';
 import { reassignOrExpireTask } from './task-reconciliation.ts';
 

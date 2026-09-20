@@ -59,7 +59,7 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskRecord,
   type RemoteTaskTerminalResolved,
-} from './task-ledger.ts';
+} from '../core/task-ledger/task-ledger.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (
   _ctx: WorkflowContext,

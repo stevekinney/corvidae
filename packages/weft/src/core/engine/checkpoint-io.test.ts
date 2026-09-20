@@ -287,6 +287,7 @@ describe('checkpoint commit compare-and-swap guard', () => {
       swallowPromiseRejection: async (promise) => {
         await promise;
       },
+      dispatchEvent: () => {},
     });
 
     const newCheckpoint = createCheckpoint('checkpoint-workflow', '1', 4_000);

@@ -5,8 +5,8 @@ import { createServerWebSocketHandlers } from './authentication-bridge.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
-import type { RemoteTaskLeased } from '../task-ledger-types.ts';
-import { decodeRemoteTaskRecord, encodeRemoteTaskRecord, taskLedgerKey } from '../task-ledger.ts';
+import type { RemoteTaskLeased } from '../../core/task-ledger/task-ledger-types.ts';
+import { decodeRemoteTaskRecord, encodeRemoteTaskRecord, taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
 
 type FakeWorkerSocket = {
   data: WebSocketData;

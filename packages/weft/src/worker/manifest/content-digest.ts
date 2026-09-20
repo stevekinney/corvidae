@@ -42,7 +42,7 @@ export async function sha256Hex(input: string): Promise<string> {
  * event-loop turn (a native async completion, not a plain microtask chain),
  * which is fine for work a caller genuinely `await`s but is a structural
  * hazard for a value computed inside a fire-and-forget commit path — of
- * which the durable task ledger's runtime (`server/runtime/task-attempt-runtime.ts`)
+ * which the durable task ledger's runtime (`core/task-ledger/task-attempt-runtime.ts`)
  * has several by design (a WebSocket message handler, or a worker-disconnect
  * handler, must return immediately rather than block on a durable write).
  * Reaches the identical SHA-256 digest with no async gap at all, so it never

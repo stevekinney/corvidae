@@ -27,7 +27,7 @@ import {
   taskLedgerKey,
   type RemoteTaskLeased,
   type RemoteTaskTerminalResolved,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
 import {
   FailingTerminalCommitStorage,
   minimalServeOptions,

@@ -18,6 +18,7 @@ import { deserializeCheckpoint } from '../checkpoint.ts';
 import type { StoredStreamChunk } from '../context.ts';
 import { createHandleCacheFinalizer } from '../engine-helpers.ts';
 import type { TypedEventTarget, WeftEventMap } from '../events.ts';
+import { RemoteActivityQueuedEvent } from '../events.ts';
 import type { Interceptor } from '../interceptor.ts';
 import { ReviewCoordinator, type ReviewRequest } from '../review/index.ts';
 import { Scheduler } from '../scheduler.ts';
@@ -139,6 +140,7 @@ import {
   copyWorkflowDefinition,
   createActivityWorkerDispatcher,
   createExecutionStrategyBundle,
+  createRemoteActivityBroker,
   definitionEntries,
   resolveEngineInterceptors,
   resolveEngineOptions,
@@ -876,6 +878,13 @@ export class Engine<
     getInternals(this).workflowVisibilityWatermarkExpiresAt = undefined;
     getInternals(this).activityWorkerDispatcher = createActivityWorkerDispatcher(
       options?.activityExecution,
+    );
+    getInternals(this).remoteActivityBroker = createRemoteActivityBroker(
+      options?.activityExecution,
+      getInternals(this).storage,
+      (operationId, workflowId, queue) => {
+        this.dispatchEvent(new RemoteActivityQueuedEvent(operationId, workflowId, queue));
+      },
     );
     getInternals(this).strategy.onMessage(this.#handleStrategyMessage.bind(this));
     getInternals(this).alertManager = options?.alerts

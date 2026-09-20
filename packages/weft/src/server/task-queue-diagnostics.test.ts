@@ -31,12 +31,12 @@ import {
   minimalServeOptions,
   minimalServerContext,
 } from './runtime/server-context.test-support.ts';
-import { buildClaimAttemptRecordWrite } from './runtime/task-attempt-runtime.ts';
+import { buildClaimAttemptRecordWrite } from '../core/task-ledger/task-attempt-runtime.ts';
 import { dispatchTaskImpl } from './runtime/task-dispatch.ts';
 import { commitTaskLedgerCompletion } from './runtime/task-ledger-completion.ts';
 import { handleTaskHeartbeatRequest } from './runtime/task-polling.ts';
-import { decodeTaskAttemptRecord } from './task-attempt.ts';
-import { claimQueued, createQueued } from './task-ledger-transitions.ts';
+import { decodeTaskAttemptRecord } from '../core/task-ledger/task-attempt.ts';
+import { claimQueued, createQueued } from '../core/task-ledger/task-ledger-transitions.ts';
 
 import type { ServerContext } from './runtime/context.ts';
 

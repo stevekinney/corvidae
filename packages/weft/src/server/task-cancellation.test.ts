@@ -49,7 +49,7 @@ import {
   commitCancellation,
   createQueued,
   recordCancellationIntent,
-} from './task-ledger-transitions.ts';
+} from '../core/task-ledger/task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
@@ -57,7 +57,7 @@ import {
   type RemoteTaskLeased,
   type RemoteTaskQueued,
   type RemoteTaskRecord,
-} from './task-ledger.ts';
+} from '../core/task-ledger/task-ledger.ts';
 
 type FakeWs = {
   data: WebSocketData;

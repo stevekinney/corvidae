@@ -74,24 +74,25 @@
 
 import { TaskResultDeadLetteredEvent } from '../../core/events.ts';
 import { isJSONValue } from '../../core/json.ts';
-import type { Storage } from '../../storage/interface.ts';
-import { sha256Hex } from '../../worker/manifest/content-digest.ts';
-import type { ServeOptions } from '../index.ts';
+import { buildCurrentAttemptDispositionWrites } from '../../core/task-ledger/task-attempt-runtime.ts';
+import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
 import {
   beginCompletion,
   commitCancellation,
   commitDeadLetter,
   commitTerminalResult,
-} from '../task-ledger-transitions.ts';
+} from '../../core/task-ledger/task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskCompleting,
   type RemoteTaskDeadLettered,
   type RemoteTaskTerminal,
-} from '../task-ledger.ts';
-import { buildCurrentAttemptDispositionWrites } from './task-attempt-runtime.ts';
-import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
+} from '../../core/task-ledger/task-ledger.ts';
+import type { Storage } from '../../storage/interface.ts';
+import { sha256Hex } from '../../worker/manifest/content-digest.ts';
+import type { ServeOptions } from '../index.ts';
+import { buildTerminalResolutionWrites } from './remote-activity-result-bridge.ts';
 
 const COMPLETION_MAX_ATTEMPTS = 3;
 const DEAD_LETTER_MAX_ATTEMPTS = 1;
@@ -168,15 +169,27 @@ function commitTerminalFromCompleting(
     // Acceptance criterion 6: a resolved result stays attributable to the
     // attempt that produced it, independent of the in-memory registry —
     // this is the same conditionalBatch commitTerminalResult's own write
-    // lands in (criterion 11).
-    async (current, _nextRecord, now) =>
-      buildCurrentAttemptDispositionWrites(storage, current, {
+    // lands in (criterion 11). It ALSO co-commits the durable async-activity
+    // resolution record carrying the REAL value/error (not just the ledger's
+    // own digest) in this SAME batch, so a crash between this write landing
+    // and any later delivery to the parked workflow can never lose it — see
+    // `remote-activity-result-bridge.ts`'s module doc comment.
+    async (current, nextRecord, now) => [
+      ...(await buildCurrentAttemptDispositionWrites(storage, current, {
         disposition: 'resolved',
         dispositionAt: now,
         ...(input.status !== 'completed' && input.error !== undefined
           ? { dispositionReason: input.error }
           : {}),
-      }),
+      })),
+      ...buildTerminalResolutionWrites(
+        nextRecord.workflowId,
+        nextRecord.operationId,
+        input.status === 'completed'
+          ? { status: 'completed', value: input.value }
+          : { status: 'failed', error: input.error ?? 'Remote activity failed' },
+      ),
+    ],
   );
 }
 
@@ -291,12 +304,21 @@ export async function commitTaskLedgerCompletion(
         COMPLETION_MAX_ATTEMPTS,
         [],
         // Acceptance criterion 6: a cooperatively-cancelled attempt stays
-        // attributable, same as an ordinary resolved or dead-lettered one.
-        async (current, _nextRecord, now) =>
-          buildCurrentAttemptDispositionWrites(storage, current, {
+        // attributable, same as an ordinary resolved or dead-lettered one,
+        // AND co-commits the durable async-activity resolution record so a
+        // parked `ctx.run()` can resume with a cancellation-flavored failure
+        // even across a crash — see `commitTerminalFromCompleting` above.
+        async (current, nextRecord, now) => [
+          ...(await buildCurrentAttemptDispositionWrites(storage, current, {
             disposition: 'cancelled',
             dispositionAt: now,
+          })),
+          ...buildTerminalResolutionWrites(nextRecord.workflowId, nextRecord.operationId, {
+            status: 'failed',
+            error: nextRecord.cancellationReason,
+            failureCategory: 'cancellation',
           }),
+        ],
       );
       if (!committed.ok) return committed;
       return { ok: true, disposition: 'applied', terminal: committed.record };

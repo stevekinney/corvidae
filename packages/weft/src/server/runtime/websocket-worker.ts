@@ -12,13 +12,13 @@ import {
 import { workerProtocolIncompatibleMessage } from '../../worker/worker-protocol-incompatible-error.ts';
 import type { ServeOptions } from '../index.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
-import { renewAttemptLease } from '../task-ledger-transitions.ts';
-import { decodeRemoteTaskRecord, taskLedgerKey } from '../task-ledger.ts';
+import { renewAttemptLease } from '../../core/task-ledger/task-ledger-transitions.ts';
+import { decodeRemoteTaskRecord, taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
 import type { ServerContext } from './context.ts';
 import { withRetry } from './retry.ts';
-import { buildCurrentAttemptDispositionWrites } from './task-attempt-runtime.ts';
+import { buildCurrentAttemptDispositionWrites } from '../../core/task-ledger/task-attempt-runtime.ts';
 import type { TaskLedgerCompletionInput } from './task-ledger-completion.ts';
-import { commitTaskLedgerTransition } from './task-ledger-runtime.ts';
+import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
 import { recordWorkerCapacitySaturationMetric } from './task-metrics.ts';
 import { applyWorkerTaskResult } from './task-result-application.ts';
 import {

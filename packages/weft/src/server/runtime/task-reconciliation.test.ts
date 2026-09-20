@@ -19,7 +19,7 @@ import {
   type RemoteTaskLeased,
   type RemoteTaskQueued,
   type RemoteTaskTerminalResolved,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import {
   reassignOrExpireTask,

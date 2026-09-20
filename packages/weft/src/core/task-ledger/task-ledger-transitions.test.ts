@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { WorkerExecutionIdentity } from '../worker/manifest/types.ts';
+import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import {
   beginCompletion,
   canClearDeadLetteredTask,

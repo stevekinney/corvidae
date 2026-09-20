@@ -24,6 +24,7 @@ describe('Engine with activity worker execution', () => {
     it('executes a synchronous activity in a worker', async () => {
       const engine = new Engine({
         activityExecution: {
+          mode: 'worker',
           workerUrl: activityWorkerUrl,
           poolSize: 2,
         },
@@ -53,6 +54,7 @@ describe('Engine with activity worker execution', () => {
     it('executes an async activity in a worker', async () => {
       const engine = new Engine({
         activityExecution: {
+          mode: 'worker',
           workerUrl: activityWorkerUrl,
           poolSize: 2,
         },
@@ -82,6 +84,7 @@ describe('Engine with activity worker execution', () => {
     it('executes saga activity input through a worker-backed operation', async () => {
       const engine = new Engine({
         activityExecution: {
+          mode: 'worker',
           workerUrl: activityWorkerUrl,
           poolSize: 2,
         },
@@ -114,6 +117,7 @@ describe('Engine with activity worker execution', () => {
     it('executes multiple activities sequentially in workers', async () => {
       const engine = new Engine({
         activityExecution: {
+          mode: 'worker',
           workerUrl: activityWorkerUrl,
           poolSize: 2,
         },
@@ -156,6 +160,7 @@ describe('Engine with activity worker execution', () => {
     it('propagates activity failures from workers', async () => {
       const engine = new Engine({
         activityExecution: {
+          mode: 'worker',
           workerUrl: activityWorkerUrl,
           poolSize: 2,
         },
@@ -186,6 +191,7 @@ describe('Engine with activity worker execution', () => {
     it('handles unknown activities gracefully', async () => {
       const engine = new Engine({
         activityExecution: {
+          mode: 'worker',
           workerUrl: activityWorkerUrl,
           poolSize: 2,
         },
@@ -220,6 +226,7 @@ describe('Engine with activity worker execution', () => {
     it('defaults pool size to 4 when not specified', async () => {
       const engine = new Engine({
         activityExecution: {
+          mode: 'worker',
           workerUrl: activityWorkerUrl,
         },
       });
@@ -248,6 +255,7 @@ describe('Engine with activity worker execution', () => {
     it('works with pool size of 1', async () => {
       const engine = new Engine({
         activityExecution: {
+          mode: 'worker',
           workerUrl: activityWorkerUrl,
           poolSize: 1,
         },
@@ -277,6 +285,7 @@ describe('Engine with activity worker execution', () => {
     it('supports concurrent workflows with larger pool', async () => {
       const engine = new Engine({
         activityExecution: {
+          mode: 'worker',
           workerUrl: activityWorkerUrl,
           poolSize: 4,
         },

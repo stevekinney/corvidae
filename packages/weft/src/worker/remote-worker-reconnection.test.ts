@@ -17,12 +17,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { Engine } from '../core/engine.ts';
-import { serve, type ServeOptions, type WeftServer } from '../server/index.ts';
 import {
   decodeRemoteTaskRecord,
   isRemoteTaskTerminalResolved,
   taskLedgerKey,
-} from '../server/task-ledger.ts';
+} from '../core/task-ledger/task-ledger.ts';
+import { serve, type ServeOptions, type WeftServer } from '../server/index.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { sleepForTesting, waitForCondition } from '../testing/fake-timers.test-support.ts';
 import {
@@ -898,7 +898,7 @@ describe('RemoteWorker durability — server restart while task is in flight', (
     const indexUrl = new URL('src/index.ts', repoRoot).href;
     const serverUrl = new URL('src/server/index.ts', repoRoot).href;
     const sqliteUrl = new URL('src/storage/bun-sql.ts', repoRoot).href;
-    const taskLedgerUrl = new URL('src/server/task-ledger.ts', repoRoot).href;
+    const taskLedgerUrl = new URL('src/core/task-ledger/task-ledger.ts', repoRoot).href;
     return `
 import { Engine, activity } from ${JSON.stringify(indexUrl)};
 import { serve } from ${JSON.stringify(serverUrl)};

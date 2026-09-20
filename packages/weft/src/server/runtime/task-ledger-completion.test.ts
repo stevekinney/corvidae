@@ -14,7 +14,7 @@ import {
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskCompleting,
-} from '../task-ledger.ts';
+} from '../../core/task-ledger/task-ledger.ts';
 import { FailingTerminalCommitStorage } from './server-context.test-support.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';
 

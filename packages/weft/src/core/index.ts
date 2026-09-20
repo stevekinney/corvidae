@@ -84,6 +84,8 @@ export {
   CheckpointSizeWarningEvent,
   ConstraintViolatedEvent,
   DevelopmentWarningEvent,
+  RemoteActivityCancellationRequestedEvent,
+  RemoteActivityQueuedEvent,
   ScheduleAttemptedEvent,
   ScheduleFiredEvent,
   ScheduleMissedFireEvent,

@@ -30,7 +30,7 @@
  */
 
 import type { InFlightTask } from '../../worker/registry.ts';
-import type { RemoteTaskRecord } from '../task-ledger.ts';
+import type { RemoteTaskRecord } from '../../core/task-ledger/task-ledger.ts';
 
 /**
  * The identity a `taskResult` submission is checked against. `workerSessionId`

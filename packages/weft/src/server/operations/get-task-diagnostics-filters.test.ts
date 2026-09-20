@@ -5,7 +5,7 @@ import { MemoryStorage } from '../../storage/memory.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { principalFromJwtClaims } from '../principal.ts';
-import { taskLedgerKey } from '../task-ledger.ts';
+import { taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
 import { TaskQueue } from '../task-queue.ts';
 import {
   createEngine,

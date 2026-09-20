@@ -2,10 +2,11 @@ import type { AlertingOptions } from '../../alerting/types.ts';
 import type { Storage as WeftStorage } from '../../storage/interface.ts';
 import type { CompressionOptions } from '../compression.ts';
 import type { Interceptor } from '../interceptor.ts';
+import type { RemoteActivityBroker } from '../remote-activity-broker.ts';
 import type { ArchiveAdapter } from './archive-adapter.ts';
 import type { HistoryPolicy } from './history-policy.ts';
 import type { PayloadSizePolicy } from './payload-size-policy.ts';
-import type { Duration, RetentionPolicy } from './retry-retention.ts';
+import type { Duration, RetentionPolicy, RetryPolicy } from './retry-retention.ts';
 import type { SearchAttributeValue } from './search-attributes.ts';
 import type { Serializer } from './serializer.ts';
 import type {
@@ -443,18 +444,21 @@ export interface EngineOptions<TServices = unknown> {
   };
 
   /**
-   * Enable worker-based activity execution. When provided, activity functions
-   * run in isolated Web Workers instead of on the main thread. Activities must
-   * be pre-registered in the worker via `createActivityWorkerEntryUrl`.
+   * Select how `ctx.run()` activity calls execute (COR-152). Omitting this
+   * runs activities inline on the main thread via the activity registry — the
+   * historical default. `{ mode: 'worker' }` dispatches to a local Web Worker
+   * pool; `{ mode: 'remote' }` durably enqueues each call onto the engine's own
+   * task ledger for a connected `RemoteWorker` to claim over the network. See
+   * {@link ActivityExecutionOptions} for each mode's fields.
+   *
+   * The two modes are mutually exclusive by construction — this is a
+   * discriminated union, not two independent flags — because they have
+   * incompatible failure semantics: worker-mode failure surfaces as a local
+   * process crash/timeout, remote-mode failure is a durable, possibly
+   * long-outstanding task the engine never falls back from to local execution
+   * (acceptance criterion 9).
    */
-  activityExecution?: {
-    /** URL of the activity worker script (created via `createActivityWorkerEntryUrl`). */
-    workerUrl: string | URL;
-    /** Maximum number of concurrent activity workers. Default: 4. */
-    poolSize?: number;
-    /** Use Bun's `smol` worker option for smaller memory footprint. */
-    smol?: boolean;
-  };
+  activityExecution?: ActivityExecutionOptions;
 
   /** Built-in alerting configuration. */
   alerts?: AlertingOptions;
@@ -515,3 +519,58 @@ export interface EngineOptions<TServices = unknown> {
    */
   onLog?: (record: WorkflowLogRecord) => void;
 }
+
+/**
+ * How `ctx.run()` activity calls execute (COR-152) — a discriminated union on
+ * `mode`, set once at engine construction via {@link EngineOptions.activityExecution}.
+ *
+ * `'worker'` dispatches to a local Web Worker pool: activities must be
+ * pre-registered in the worker via `createActivityWorkerEntryUrl`, and a call
+ * blocks the caller's process the same as inline execution — it is a
+ * different execution *thread*, not a different execution *process* or
+ * *durability domain*.
+ *
+ * `'remote'` durably enqueues each call onto the engine's own task ledger
+ * (`Engine.storage`) for a connected `RemoteWorker` to claim over the
+ * network. This is a genuinely different durability domain: the call
+ * survives an engine crash/restart, needs no server or worker connected at
+ * enqueue time (acceptance criterion 7), and NEVER falls back to local
+ * execution if no remote worker is available (acceptance criterion 9) — an
+ * unavailable remote worker leaves the task durably queued, not silently
+ * executed inline.
+ *
+ * The two modes are mutually exclusive by construction, not two independent
+ * flags that could both be set — replacing the pre-COR-152
+ * local-Worker-only `activityExecution` shape.
+ */
+export type ActivityExecutionOptions =
+  | Readonly<{
+      mode: 'worker';
+      /** URL of the activity worker script (created via `createActivityWorkerEntryUrl`). */
+      workerUrl: string | URL;
+      /** Maximum number of concurrent activity workers. Default: 4. */
+      poolSize?: number;
+      /** Use Bun's `smol` worker option for smaller memory footprint. */
+      smol?: boolean;
+    }>
+  | Readonly<{
+      mode: 'remote';
+      /** Task-ledger queue name for every task this engine enqueues. Defaults to `'default'`. */
+      queue?: string;
+      /**
+       * Visibility timeout (ms) for a remote task when the per-call activity
+       * `timeout` does not supply one. Defaults to `30_000`, matching the
+       * server's own `dispatchTask` default.
+       */
+      visibilityTimeoutMilliseconds?: number;
+      /** Default requeue/backoff policy recorded on every task this engine enqueues. */
+      retryPolicy?: RetryPolicy;
+      /**
+       * Test-only seam: substitute a recording or poison
+       * {@link RemoteActivityBroker} instead of the engine's default,
+       * storage-backed one. A constructor-time option, not a
+       * post-construction setter — production code never needs to supply
+       * this.
+       */
+      broker?: RemoteActivityBroker;
+    }>;

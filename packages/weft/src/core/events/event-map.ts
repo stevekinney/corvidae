@@ -4,6 +4,8 @@ import type {
   ActivityCompletedEvent,
   ActivityFailedEvent,
   ActivityStartedEvent,
+  RemoteActivityCancellationRequestedEvent,
+  RemoteActivityQueuedEvent,
   TaskResultDeadLetteredEvent,
 } from './activity-events.ts';
 import type { AttributesChangedEvent } from './attribute-events.ts';
@@ -84,6 +86,8 @@ export type WeftEventMap = {
   'activity:completed': ActivityCompletedEvent;
   'activity:failed': ActivityFailedEvent;
   'activity:async-pending': ActivityAsyncPendingEvent;
+  'activity:remote-queued': RemoteActivityQueuedEvent;
+  'activity:remote-cancellation-requested': RemoteActivityCancellationRequestedEvent;
   'task:dead-lettered': TaskResultDeadLetteredEvent;
   'signal:received': SignalReceivedEvent;
   'signal:delivered': SignalDeliveredEvent;

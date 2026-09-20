@@ -40,7 +40,7 @@
  * @module server/task-attempt-types
  */
 
-import type { WorkerExecutionIdentity } from '../worker/manifest/types.ts';
+import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import type { WorkerExecutionRequirementInput } from './task-ledger-types.ts';
 
 export const TASK_ATTEMPT_RECORD_VERSION = 1;

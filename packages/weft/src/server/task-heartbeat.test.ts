@@ -40,14 +40,14 @@ import {
   createQueued,
   recordCancellationIntent,
   requeueExpiredAttempt,
-} from './task-ledger-transitions.ts';
+} from '../core/task-ledger/task-ledger-transitions.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskLeased,
   type RemoteTaskQueued,
-} from './task-ledger.ts';
+} from '../core/task-ledger/task-ledger.ts';
 
 type FakeWs = {
   data: WebSocketData;

@@ -10,7 +10,7 @@
  * @module server/task-ledger-keys
  */
 
-import { encodeStorageKeyComponent } from '../storage/interface.ts';
+import { encodeStorageKeyComponent } from '../../storage/interface.ts';
 
 const TASK_LEDGER_KEY_PREFIX = 'task-ledger:';
 

@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 
-import { MAX_TASK_IDENTIFIER_BYTES, utf8ByteLength } from '../task-ledger.ts';
+import { MAX_TASK_IDENTIFIER_BYTES, utf8ByteLength } from '../../core/task-ledger/task-ledger.ts';
 
 export const getTaskDetailInput = z.object({
   // Bounded to the ledger's own MAX_TASK_IDENTIFIER_BYTES: the ledger can
