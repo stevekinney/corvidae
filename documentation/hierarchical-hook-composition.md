@@ -14,7 +14,9 @@ This document is the contract. The decision behind it is COR-567; the implementa
 
 A run's plan is `mergeHookRegistries(bureauRegistry, agentRegistry, directRegistry)`, absent tiers passed as `undefined` and filtered out. The merge copies every entry into a fresh registry, so the plan a dispatched run holds is a _snapshot_: registering on a source registry afterwards changes that tier's future runs and not the one already in flight.
 
-> [!NOTE] No path populates all three tiers at once `AgentRunContext` declares no `hooks` field and `BureauOptions` exposes none, both by decision (COR-567 Decision 4). The reachable shapes are Bureau → `(bureau, agent, undefined)`, a plain `agent.run()` → `(undefined, agent, undefined)`, and a hand-built `createActiveRun` → `(undefined, undefined, direct)`. The three-tier ordering is a real property of `mergeHookRegistries` and is tested directly against it; it is not currently reachable through a dispatch. That is a stated limitation, not a gap.
+> [!NOTE] No path populates all three tiers at once
+>
+> `AgentRunContext` declares no `hooks` field and `BureauOptions` exposes none, both by decision (COR-567 Decision 4). The reachable shapes are Bureau → `(bureau, agent, undefined)`, a plain `agent.run()` → `(undefined, agent, undefined)`, and a hand-built `createActiveRun` → `(undefined, undefined, direct)`. The three-tier ordering is a real property of `mergeHookRegistries` and is tested directly against it; it is not currently reachable through a dispatch. That is a stated limitation, not a gap.
 
 ## Ordering, and why it is not one rule
 
@@ -34,7 +36,9 @@ The limit, stated rather than implied: a lower tier that deliberately registers 
 
 Hooks may enforce or narrow policy. They never grant capability.
 
-A child's delegated-authority grant is composed by `attenuateDelegatedAuthority` from the parent's grant and the dispatching tool's own narrowing, independently of any hook, and no hook context declares `delegatedAuthority` at all — a type-level fixture asserts that absence, so a context gaining the field fails the build rather than quietly opening a channel. A child-tier `selectTools` hook that returns a toolbox containing a tool the parent's attenuation withheld does not widen anything: the grant forwarded to a grandchild is still the attenuated one.
+A child's delegated-authority grant is composed by `attenuateDelegatedAuthority` from the parent's grant and the dispatching tool's own narrowing, independently of any hook, and no hook context declares `delegatedAuthority` at all — a type-level fixture asserts that absence, so a context gaining the field fails the build rather than quietly opening a channel.
+
+`selectTools` is the widest lever a hook has over what a step may reach, and it still cannot touch the grant. A child-tier `selectTools` handler that hands its step a toolbox of its own choosing changes which tools that step sees; the grant forwarded to a grandchild it dispatches is still `attenuateDelegatedAuthority(parentGrant, toolNarrowing)`, composed by the dispatch path rather than by anything the hook returned.
 
 ## Bureau invariants on catalog-agent runs
 
@@ -50,13 +54,23 @@ Which paths that reaches:
 | Recovery of a durably dispatched catalog run           | Yes               |
 | Non-durable dispatch of an agent with no resolver      | **No**            |
 
-> [!WARNING] The third row is a real gap, not an oversight That path calls `agent.run(input, context)` directly, so no `RunOptions` exists outside the agent for anything to augment. The only remaining injection point would be a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines. A hand-written catalog `RunnableAgent` dispatched by a non-durable Bureau is outside Bureau's hook authority. A test pins this so it stays a stated limitation; if that test starts failing, the gap closed and this section is stale.
+> [!WARNING] The third row is a real gap, not an oversight
+>
+> That path calls `agent.run(input, context)` directly, so no `RunOptions` exists outside the agent for anything to augment. The only remaining injection point would be a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines. A hand-written catalog `RunnableAgent` dispatched by a non-durable Bureau is outside Bureau's hook authority. A test pins this so it stays a stated limitation; if that test starts failing, the gap closed and this section is stale.
 
 ## Child runs
 
-A child dispatched through `dispatchChildRun` gets its effective plan entirely from its own `agent.run()` path — the child agent's own tier, plus Bureau's if that child agent is Bureau-owned. No parent hook reaches it.
+A child dispatched through `dispatchChildRun` gets its effective plan entirely from its own `agent.run()` path — the child agent's own tier, and nothing else. No parent hook reaches it.
 
 This is structural rather than a convention anybody has to remember. Neither `child-run.ts` nor `create-subagent-tool.ts` contains a hook-registry reference, and `parentContext` declares no `hooks` field; there is nothing to copy from. Sibling children of one fan-out hold independent plans for the same reason.
+
+> [!WARNING] Bureau's invariants do not reach a child run either
+>
+> A child dispatched by a Bureau-owned agent carries the child agent's tier and **no Bureau tier at all** — not the identity hook, not the guardrails. `dispatchChildRun` calls `agent.run()`, which builds its `RunOptions` inside the agent, so there is no options bag for a Bureau tier to be merged into. Structurally this is the same gap as a non-durable catalog dispatch, with the same only-remaining fix — a caller-facing hook field on `AgentRunContext` — which COR-567 Decision 4 declines.
+>
+> COR-1269's criterion 1 states the opposite. The criterion is wrong about the implementation, not the other way round; a test in `packages/bureau/src/bureau-run.test.ts` pins the actual behavior so the discrepancy stays visible. Do not read the tier table above as applying to child runs.
+
+Narrowing and veto do work inside a child, through the child's own tier: a child-tier `validateResponse` narrows what its run returns, and a child-tier `prepareStep` that answers replaces the generate call entirely. What a child does not get is inheritance from above.
 
 What _does_ cross is correlation. `dispatchChildRun` passes `AgentRunContext.childCorrelation` — the same `{ parentAgentName, parentRunId, childAgentName, childRunId }` the `multiagent.child-workflow.*` events carry — and the child's run forwards it into its hook-plan observer. That is data: nothing reachable through it can add, remove or reorder a handler.
 
@@ -68,7 +82,9 @@ Ordering is reported as _iteration_ order, highest priority first, not winner or
 
 Redaction is the entire security boundary; there is no authorization gate in front of it. Any holder of the run handle may call the accessor.
 
-`HookRegistry.observe(observer, context?)` is the live counterpart. The context names the run the observer watches on behalf of, and the parent-child pair when that run is a child, and every observation that observer receives carries it alongside the entry's tier and the plan's revision. It is supplied per attachment rather than on the registry because a merged plan is composed at dispatch from tiers that predate the run: the registry has no single truthful answer to "which run is this", and each observer does.
+The `hook-plan.*` events are the live counterpart for an event-stream consumer, and they carry `hookName`, `hookId` and `runId` only — not the session or the parent-child correlation. A consumer that needs those attaches its own observer instead.
+
+`HookRegistry.observe(observer, context?)` is that attachment. The context names the run the observer watches on behalf of, and the parent-child pair when that run is a child, and every observation that observer receives carries it alongside the entry's tier and the plan's revision. It is supplied per attachment rather than on the registry because a merged plan is composed at dispatch from tiers that predate the run: the registry has no single truthful answer to "which run is this", and each observer does.
 
 ## Durable replay
 

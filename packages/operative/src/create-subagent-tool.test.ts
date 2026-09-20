@@ -1975,36 +1975,117 @@ describe('child-run hook isolation and correlation (COR-1269)', () => {
     expect(childRunIds.every((id) => typeof id === 'string')).toBe(true);
   });
 
+  it('lets the child’s own tier narrow its response, and veto its generate entirely', async () => {
+    // Criterion 7's remaining two properties, proven IN a child run rather than
+    // against a synthetic registry: the child's tier narrows what its run
+    // returns, and a `prepareStep` handler that answers replaces the generate
+    // call outright. Inheritance is the fourth property and is NOT proven here
+    // — see the Bureau-owned-child gap pinned in `bureau-run.test.ts`.
+    let generateCalls = 0;
+    const narrowingHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    narrowingHooks.on(
+      'validateResponse',
+      async (response) => ({ ...response, content: `${response.content} [narrowed]` }),
+      { id: 'child:narrow', replay: 'safe' },
+    );
+    const narrowingChild = createAgent({
+      name: 'narrowing-child',
+      hooks: narrowingHooks,
+      generate: async () => {
+        generateCalls += 1;
+        return textResponse('raw child answer');
+      },
+    });
+    const narrowed = await narrowingChild.run('go').result();
+    expect(narrowed.content).toBe('raw child answer [narrowed]');
+    expect(generateCalls).toBe(1);
+
+    let vetoedGenerateCalls = 0;
+    const vetoHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    vetoHooks.on('prepareStep', async () => textResponse('vetoed, never generated'), {
+      id: 'child:veto',
+      replay: 'safe',
+    });
+    const vetoChild = createAgent({
+      name: 'veto-child',
+      hooks: vetoHooks,
+      generate: async () => {
+        vetoedGenerateCalls += 1;
+        return textResponse('should never be reached');
+      },
+    });
+    const vetoed = await vetoChild.run('go').result();
+
+    // Short-circuit, not override: a `prepareStep` that returns a response
+    // replaces the generate call, so the provider is never asked at all.
+    expect(vetoed.content).toBe('vetoed, never generated');
+    expect(vetoedGenerateCalls).toBe(0);
+  });
+
   it('cannot widen a grandchild’s grant through a child-tier hook', async () => {
     const parentGrant: DelegatedAuthority = {
-      grantedProviders: ['anthropic'],
+      grantedProviders: ['anthropic', 'gemini'],
       policyVersion: 'cor-1269-parent-v1',
     };
+    const grandchildNarrowing: DelegatedAuthority = {
+      grantedProviders: ['anthropic'],
+      policyVersion: 'cor-1269-tool-v1',
+    };
     const { agent: grandchild, calls } = makeMockAgent(() => makeSuccessfulResult());
-
-    // The child's own tier tries to hand its grandchild a wider grant by
-    // selecting a toolbox the parent's attenuation withheld. It cannot:
-    // `attenuateDelegatedAuthority` composes the forwarded grant from the
-    // parent's and the tool's own narrowing, independently of any hook, and no
-    // `OperativeHookMap` context exposes a writable `delegatedAuthority`.
-    const childHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
-    childHooks.on('selectTools', () => createToolbox([]) as never, { id: 'child:widen-attempt' });
-
     const grandchildTool = createSubagentTool({
       name: 'delegate-again',
       description: 'Delegate further',
       agent: grandchild,
       agentName: 'grandchild',
       input: z.object({ q: z.string() }),
+      delegatedAuthority: grandchildNarrowing,
     });
 
-    await callRaw(
-      grandchildTool,
-      { q: 'hi' },
-      { executionContext: { delegatedAuthority: parentGrant } },
+    // The child's OWN tier, on a child that really runs it. `selectTools` is
+    // the widest lever a hook has over what a step may reach, and the hook
+    // hands the step a toolbox it chose. It still cannot touch the grant:
+    // `attenuateDelegatedAuthority` composes that from the parent's and the
+    // dispatching tool's narrowing, independently of any hook, and no
+    // `OperativeHookMap` context declares `delegatedAuthority` for one to write
+    // (asserted at the type level in `hook-authority.test-d.ts`).
+    let widenAttempts = 0;
+    const childHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+    childHooks.on(
+      'selectTools',
+      async () => {
+        widenAttempts += 1;
+        return createToolbox([grandchildTool]);
+      },
+      { id: 'child:widen-attempt', replay: 'safe' },
     );
 
-    expect(calls[0]?.context?.delegatedAuthority).toBe(parentGrant);
+    let step = 0;
+    const child = createAgent({
+      name: 'child',
+      hooks: childHooks,
+      toolbox: createToolbox([grandchildTool]),
+      generate: async () =>
+        step++ === 0
+          ? {
+              content: '',
+              toolCalls: [{ id: 'gc-1', name: 'delegate-again', arguments: { q: 'hi' } }],
+            }
+          : textResponse('child done'),
+    });
+
+    await child.run('go', { delegatedAuthority: parentGrant }).result();
+
+    // The hook ran — without this the rest asserts nothing about hooks at all,
+    // which is exactly how the first version of this test passed while wiring
+    // `childHooks` into nothing.
+    expect(widenAttempts).toBeGreaterThan(0);
+    expect(calls).toHaveLength(1);
+    // Composed by the real function from both inputs, not equal to either one
+    // on its own: `parentGrant` alone would be the widening this forbids.
+    expect(calls[0]?.context?.delegatedAuthority).toEqual(
+      attenuateDelegatedAuthority(parentGrant, grandchildNarrowing),
+    );
     expect(calls[0]?.context?.delegatedAuthority?.grantedProviders).toEqual(['anthropic']);
+    expect(calls[0]?.context?.delegatedAuthority).not.toEqual(parentGrant);
   });
 });
