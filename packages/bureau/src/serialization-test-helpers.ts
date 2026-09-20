@@ -60,6 +60,10 @@ export function stubActiveRunWithSnapshot(
   return {
     result: new Promise<never>(() => {}),
     abort: unexpectedRunCapability,
+    // COR-1270: a stub with no plan, rather than `unexpectedRunCapability` —
+    // inspecting a run that has no hooks is a legitimate call, not a
+    // capability this stub is asserting nobody reaches for.
+    describeHookPlan: () => undefined,
     addEventListener: unexpectedRunCapability,
     removeEventListener: unexpectedRunCapability,
     on: unexpectedRunCapability,

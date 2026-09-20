@@ -1390,6 +1390,8 @@ describe('runStep: AB-302 generate.completed carries post-guardrail content', ()
     const guardrails = createGuardrails({
       output: { validators: [secretValidator], action: 'redact' },
     });
+    const builtInHooks = new HookRegistry<OperativeHookMap>();
+    builtInHooks.on('validateResponse', guardrails.validateResponse);
 
     const result = await executeLoop(
       {
@@ -1397,7 +1399,7 @@ describe('runStep: AB-302 generate.completed carries post-guardrail content', ()
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        validateResponse: guardrails.validateResponse,
+        hooks: builtInHooks,
       },
       recorder,
     );
@@ -1440,6 +1442,8 @@ describe('runStep: AB-302 generate.completed carries post-guardrail content', ()
 
   it('a step whose generation is entirely short-circuited by prepareStep never dispatches generate.completed', async () => {
     const recorder = createEventRecorder();
+    const shortCircuitHooks = new HookRegistry<OperativeHookMap>();
+    shortCircuitHooks.on('prepareStep', async () => textResponse('short-circuited'));
 
     await executeLoop(
       {
@@ -1447,7 +1451,7 @@ describe('runStep: AB-302 generate.completed carries post-guardrail content', ()
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        prepareStep: async () => textResponse('short-circuited'),
+        hooks: shortCircuitHooks,
       },
       recorder,
     );
@@ -1464,6 +1468,8 @@ describe('runStep: AB-302 generate.completed carries post-guardrail content', ()
       output: { validators: [secretValidator] },
       mode: 'tripwire',
     });
+    const tripwireHooks = new HookRegistry<OperativeHookMap>();
+    tripwireHooks.on('validateResponse', guardrails.validateResponse);
 
     const result = await executeLoop(
       {
@@ -1471,7 +1477,7 @@ describe('runStep: AB-302 generate.completed carries post-guardrail content', ()
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        validateResponse: guardrails.validateResponse,
+        hooks: tripwireHooks,
       },
       recorder,
     );

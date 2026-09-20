@@ -25,10 +25,15 @@ export type HookErrorHandler = (
  *   NOT to skip it on replay — skipping would drop the side effect for a step
  *   whose work (generate + tools) did re-execute. This classification is
  *   METADATA ONLY: it documents a hook's replay contract for authors and review.
- *   It does NOT gate execution, and nothing currently reads it at runtime —
- *   `HookRegistry` stores `replay` but does not act on it (a future dev-time
- *   warning could, but none exists yet). When unset, treat a hook as the
+ *   It does NOT gate execution. When unset, a hook is treated as the
  *   conservative `effectful`.
+ *
+ * One thing does read it, and only to report (COR-1267): a registry
+ * configured with {@link HookRegistryOptions.onUnclassifiedReplay} calls that
+ * callback for a registration which omitted `replay` altogether, so an author
+ * who never considered replay stays distinguishable from one who chose
+ * `effectful` deliberately. That is a diagnostic, not a gate — it cannot stop
+ * a hook running, change its classification, or fail a run.
  */
 export type HookReplayPolicy = 'safe' | 'effectful';
 
@@ -60,6 +65,21 @@ export interface HookRegistrationOptions {
    * Documentation/diagnostics only; never gates whether the hook runs.
    */
   replay?: HookReplayPolicy;
+  /**
+   * Which ownership tier registered this entry (COR-1265) — `bureau`,
+   * `agent`, `direct`, or a narrower label a tier gives one registration.
+   *
+   * Normally inherited from {@link HookRegistryOptions.source} rather than
+   * passed per registration: a tier builds its own registry, names it once,
+   * and every `on()` call stamps that name onto the entry. It lives on the
+   * ENTRY rather than only on the registry because a merged plan has one
+   * registry and many tiers — after `mergeHookRegistries`, the registry can
+   * no longer answer where an entry came from, but the entry still can.
+   *
+   * `mergeHookRegistries` spreads registration options through unchanged, so
+   * a source survives any number of merges without extra handling.
+   */
+  source?: string;
 }
 
 /**
@@ -83,6 +103,12 @@ export type HookPlanObservation =
       id: string;
       priority: number;
       replay: HookReplayPolicy;
+      /**
+       * The tier this entry was registered by, when one is known — see
+       * {@link HookRegistrationOptions.source}. Absent on a registry that
+       * names no tier, which is every registry outside a composed run.
+       */
+      source?: string;
     }
   | { kind: 'removed'; hookName: string; id: string }
   | { kind: 'invoked'; hookName: string; id: string; durationMilliseconds: number }
@@ -93,6 +119,50 @@ export type HookPlanObservation =
       durationMilliseconds: number;
       error: unknown;
     };
+
+/**
+ * One entry of a hook plan, as an inspector sees it (COR-1270).
+ *
+ * Deliberately NOT a projection of `RegisteredHandler`: it is a separate
+ * shape that happens to share four field names, so a field added to a
+ * registration does not silently become readable through inspection. The
+ * handler, the `onError` closure, and anything either closes over are absent
+ * by construction rather than filtered out — redaction is the whole security
+ * boundary here, because there is no authorization gate in front of it.
+ */
+export interface HookPlanEntryDescription {
+  readonly hookName: string;
+  /** Stable registration identity — see {@link HookRegistrationOptions.id}. */
+  readonly id: string;
+  readonly priority: number;
+  /** The classification in force, with the conservative default resolved. */
+  readonly replay: HookReplayPolicy;
+  /** The owning tier, when one claimed it — see {@link HookRegistrationOptions.source}. */
+  readonly source?: string;
+}
+
+/**
+ * A run's effective hook plan, redacted for inspection (COR-1270).
+ *
+ * Answers the two questions the project's success criterion asks — which hook
+ * sources applied, and in what order — without handing the inspector anything
+ * executable.
+ */
+export interface HookPlanDescription {
+  /** The plan's version — see {@link HookRegistry.revision}. */
+  readonly revision: number;
+  /**
+   * Every registered entry, grouped by hook point and, within each, in the
+   * order the dispatch would iterate them: highest priority first.
+   *
+   * Iteration order, not winner order. The three dispatch shapes disagree
+   * about which END of this sequence wins — `runFirst` takes the first entry
+   * to answer, `runLast` and the waterfall the last — so a single "winner"
+   * ordering would be a lie for two shapes out of three. The sequence itself
+   * is the same for all of them.
+   */
+  readonly entries: readonly HookPlanEntryDescription[];
+}
 
 /**
  * Observes a hook plan. Read-only: an observer cannot change what runs, what a
@@ -107,6 +177,36 @@ export type HookPlanObserver = (observation: HookPlanObservation) => void;
 
 export interface HookRegistryOptions {
   onError?: HookErrorHandler;
+  /**
+   * The ownership tier every entry registered on this registry belongs to
+   * (COR-1265). Set once when a tier builds its registry; `on()` stamps it
+   * onto each entry so it survives into a merged plan, where the registry
+   * itself can no longer answer the question. A per-registration
+   * {@link HookRegistrationOptions.source} overrides it.
+   */
+  source?: string;
+  /**
+   * Called when a registration omits {@link HookRegistrationOptions.replay}
+   * entirely and therefore falls back to the conservative `effectful` class
+   * (COR-1267).
+   *
+   * The two cases are indistinguishable everywhere else — a hook that
+   * declared `effectful` and one whose author never thought about replay both
+   * read as `effectful` — and only the second is a latent durability bug,
+   * because a crashed step re-runs its hooks and an effectful handler that is
+   * not idempotent doubles its side effect. This makes the second case
+   * visible at registration, while the author is still there to answer.
+   *
+   * Diagnostic only. It cannot gate execution, change the classification, or
+   * fail a run: a callback that throws is swallowed, exactly as a plan
+   * observer's throw is isolated, because a diagnostic that can kill a
+   * registration is worse than no diagnostic.
+   *
+   * Not inherited through `mergeHookRegistries`: the merged plan is
+   * constructed with no options, so the policy belongs to whoever builds a
+   * tier rather than to the composed result.
+   */
+  onUnclassifiedReplay?: (registration: { hookName: string; id: string }) => void;
   /**
    * Clock backing the `durationMilliseconds` an observer receives. Defaults to
    * `Date.now`; inject for deterministic tests.

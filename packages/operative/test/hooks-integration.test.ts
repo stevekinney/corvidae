@@ -7,21 +7,7 @@ import { assertDefined } from './assert-defined';
 
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
-import type {
-  OperativeHookMap,
-  SessionCancelHookContext,
-  SessionForkHookContext,
-  SessionQueryHookContext,
-  SessionRecoverHookContext,
-  SessionSignalHookContext,
-  SessionSleepHookContext,
-  SessionUpdateHookContext,
-  ToolErrorHookContext,
-  ToolPolicyDeniedHookContext,
-  ToolProgressHookContext,
-  ToolSettledHookContext,
-  ToolStartedHookContext,
-} from '../src/hooks';
+import type { OperativeHookMap } from '../src/hooks';
 import { createMockGenerate } from '../src/test/index';
 import type { GenerateResponse } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
@@ -291,162 +277,6 @@ describe('HookRegistry integration', () => {
     expect(result.finishReason).toBe('error');
   });
 
-  describe('backward compatibility with old-style hook arrays', () => {
-    it('hooks from HookRegistry run alongside old-style hook arrays', async () => {
-      const log: string[] = [];
-
-      const hooks = new HookRegistry<OperativeHookMap>();
-
-      hooks.on('onStep', async () => {
-        log.push('registry-onStep');
-      });
-
-      const generate = createMockGenerate([
-        toolCallResponse([weatherToolCall('Denver')]),
-        textResponse('Done'),
-      ]);
-
-      await run({
-        generate,
-        toolbox: createTestToolbox([tool]),
-        conversation: new Conversation(),
-        stopWhen: noToolCalls(),
-        hooks,
-        onStep: async () => {
-          log.push('array-onStep');
-        },
-      });
-
-      // Old-style runs first, then registry
-      expect(log).toEqual(['array-onStep', 'registry-onStep', 'array-onStep', 'registry-onStep']);
-    });
-
-    it('both prepareStep sources run; old-style first', async () => {
-      const log: string[] = [];
-
-      const hooks = new HookRegistry<OperativeHookMap>();
-      hooks.on('prepareStep', async () => {
-        log.push('registry-prepareStep');
-      });
-
-      const generate = createMockGenerate([textResponse('Done')]);
-
-      await run({
-        generate,
-        toolbox: createTestToolbox([]),
-        conversation: new Conversation(),
-        stopWhen: noToolCalls(),
-        hooks,
-        prepareStep: async () => {
-          log.push('array-prepareStep');
-          return undefined;
-        },
-      });
-
-      expect(log).toEqual(['array-prepareStep', 'registry-prepareStep']);
-    });
-
-    it('old-style prepareStep returning GenerateResponse skips registry prepareStep', async () => {
-      const log: string[] = [];
-
-      const hooks = new HookRegistry<OperativeHookMap>();
-      hooks.on('prepareStep', async () => {
-        log.push('registry-prepareStep');
-      });
-
-      const generate = createMockGenerate([textResponse('Should not be called')]);
-
-      const result = await run({
-        generate,
-        toolbox: createTestToolbox([]),
-        conversation: new Conversation(),
-        stopWhen: noToolCalls(),
-        hooks,
-        prepareStep: async () => {
-          log.push('array-prepareStep');
-          return { content: 'Intercepted by array', toolCalls: [] };
-        },
-      });
-
-      expect(log).toEqual(['array-prepareStep']);
-      expect(result.content).toBe('Intercepted by array');
-      expect(generate.callCount).toBe(0);
-    });
-
-    it('both beforeToolExecution sources chain: old-style then registry', async () => {
-      const executedLocations: string[] = [];
-
-      const trackingTool = createTool({
-        name: 'get_weather',
-        description: 'Get weather',
-        input: z.object({ location: z.string() }),
-        execute: async ({ location }) => {
-          executedLocations.push(location);
-          return { temperature: 72, location };
-        },
-      });
-
-      const hooks = new HookRegistry<OperativeHookMap>();
-
-      // Registry removes Seattle
-      hooks.on('beforeToolExecution', async ({ toolCalls }) => {
-        return toolCalls.filter(
-          (tc) => (tc.arguments as { location: string }).location !== 'Seattle',
-        );
-      });
-
-      const generate = createMockGenerate([
-        toolCallResponse([
-          weatherToolCall('Denver'),
-          weatherToolCall('Seattle'),
-          weatherToolCall('Portland'),
-        ]),
-        textResponse('Done'),
-      ]);
-
-      await run({
-        generate,
-        toolbox: createTestToolbox([trackingTool]),
-        conversation: new Conversation(),
-        stopWhen: noToolCalls(),
-        hooks,
-        // Old-style removes Portland
-        beforeToolExecution: async ({ toolCalls }) =>
-          toolCalls.filter((tc) => (tc.arguments as { location: string }).location !== 'Portland'),
-      });
-
-      // Portland removed by old-style, then Seattle removed by registry
-      expect(executedLocations).toEqual(['Denver']);
-    });
-
-    it('both afterToolExecution sources run: old-style then registry', async () => {
-      const log: string[] = [];
-
-      const hooks = new HookRegistry<OperativeHookMap>();
-      hooks.on('afterToolExecution', async () => {
-        log.push('registry-afterToolExecution');
-      });
-
-      const generate = createMockGenerate([
-        toolCallResponse([weatherToolCall('Denver')]),
-        textResponse('Done'),
-      ]);
-
-      await run({
-        generate,
-        toolbox: createTestToolbox([tool]),
-        conversation: new Conversation(),
-        stopWhen: noToolCalls(),
-        hooks,
-        afterToolExecution: async () => {
-          log.push('array-afterToolExecution');
-        },
-      });
-
-      expect(log).toEqual(['array-afterToolExecution', 'registry-afterToolExecution']);
-    });
-  });
-
   describe('priority ordering', () => {
     it('higher priority handlers run first within the registry', async () => {
       const log: string[] = [];
@@ -582,121 +412,300 @@ describe('HookRegistry integration', () => {
 });
 
 // ---------------------------------------------------------------------------
-// C3 hook map completeness — verify every new hook key is registerable on
-// OperativeHookMap. These are structural type checks: if the key doesn't exist
-// in OperativeHookMap, HookRegistry.on() would throw at runtime (unknown key).
+// COR-1266 — every OperativeHookMap key has a real runtime dispatch site.
+//
+// This replaces a block of type-only "completeness" tests that registered a
+// handler and then asserted `typeof hooks.run === 'function'`. Their comment
+// claimed `HookRegistry.on()` "would throw at runtime (unknown key)" for a key
+// not on the map — it does not. `on()` pushes into a Map and validates
+// nothing, so those assertions held for any string whatsoever and passed just
+// as happily for the 21 names nothing ever dispatched. A gate that returns
+// green for the wrong reason is worse than a missing one, because it reads as
+// evidence.
+//
+// What follows proves the property the old block only claimed: each key is
+// OBSERVED being invoked during a real run. Exhaustiveness is enforced by the
+// compiler (`Record<(typeof DISPATCHED_HOOKS)[number], true>` has to satisfy
+// `Record<keyof OperativeHookMap, true>`), so adding a key to the map without
+// a dispatch site fails to compile rather than slipping through unnoticed.
 // ---------------------------------------------------------------------------
 
-describe('OperativeHookMap completeness (C3)', () => {
-  describe('curated tool.* bubble event hooks', () => {
-    it('onToolStarted is a valid hook key accepting ToolStartedHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: ToolStartedHookContext[] = [];
-      hooks.on('onToolStarted', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
+const DISPATCHED_HOOKS = [
+  'prepareStep',
+  'selectTools',
+  'selectToolChoice',
+  'beforeGenerate',
+  'onLLMInput',
+  'onLLMOutput',
+  'afterGenerate',
+  'validateResponse',
+  'beforeToolExecution',
+  'afterToolExecution',
+  'validateToolResult',
+  'onStep',
+  'onRunStart',
+  'onRunComplete',
+  'beforeCompaction',
+  'afterCompaction',
+  'onError',
+  'onRunError',
+  'onRunAbort',
+] as const satisfies readonly (keyof OperativeHookMap)[];
+
+// The exhaustiveness half. A key added to `OperativeHookMap` and left out of
+// `DISPATCHED_HOOKS` makes this assignment fail to compile — which is the
+// point: a hook name may not enter the public map without a dispatch site and
+// a scenario below that reaches it.
+type DispatchedHookName = (typeof DISPATCHED_HOOKS)[number];
+const _everyHookIsDispatched: Record<keyof OperativeHookMap, true> = Object.fromEntries(
+  DISPATCHED_HOOKS.map((name) => [name, true]),
+) as Record<DispatchedHookName, true>;
+void _everyHookIsDispatched;
+
+/**
+ * Registers a recording handler on every name and returns the set actually
+ * invoked. Handlers return `undefined` throughout so none of them perturbs the
+ * run it is observing — a `prepareStep` returning a response would short-
+ * circuit generate, and a `validateResponse` returning one would replace it.
+ */
+function recordEveryHook(): {
+  hooks: HookRegistry<OperativeHookMap>;
+  invoked: Set<string>;
+} {
+  const hooks = new HookRegistry<OperativeHookMap>();
+  const invoked = new Set<string>();
+  for (const name of DISPATCHED_HOOKS) {
+    // The recorder is deliberately uniform across hooks whose signatures
+    // differ. No cast is needed: every one of them tolerates an `undefined`
+    // return, so the shared handler is assignable to each.
+    hooks.on(name, async () => {
+      invoked.add(name);
+      return undefined;
+    });
+  }
+  return { hooks, invoked };
+}
+
+describe('OperativeHookMap dispatch completeness (COR-1266)', () => {
+  it('invokes the full-run hooks during a run that calls a tool and finishes', async () => {
+    const { hooks, invoked } = recordEveryHook();
+
+    await run({
+      generate: createMockGenerate([toolCallResponse([weatherToolCall()]), textResponse('done')]),
+      toolbox: createTestToolbox([tool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
     });
 
-    it('onToolSettled is a valid hook key accepting ToolSettledHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: ToolSettledHookContext[] = [];
-      hooks.on('onToolSettled', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
-    });
-
-    it('onToolError is a valid hook key accepting ToolErrorHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: ToolErrorHookContext[] = [];
-      hooks.on('onToolError', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
-    });
-
-    it('onToolProgress is a valid hook key accepting ToolProgressHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: ToolProgressHookContext[] = [];
-      hooks.on('onToolProgress', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
-    });
-
-    it('onToolPolicyDenied is a valid hook key accepting ToolPolicyDeniedHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: ToolPolicyDeniedHookContext[] = [];
-      hooks.on('onToolPolicyDenied', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
-    });
+    for (const name of [
+      'prepareStep',
+      'selectTools',
+      'selectToolChoice',
+      'beforeGenerate',
+      'onLLMInput',
+      'onLLMOutput',
+      'afterGenerate',
+      'validateResponse',
+      'beforeToolExecution',
+      'afterToolExecution',
+      'validateToolResult',
+      'onStep',
+      'onRunStart',
+      'onRunComplete',
+    ] satisfies readonly DispatchedHookName[]) {
+      expect(invoked).toContain(name);
+    }
   });
 
-  describe('session verb hooks', () => {
-    it('onSessionRecover is a valid hook key accepting SessionRecoverHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: SessionRecoverHookContext[] = [];
-      hooks.on('onSessionRecover', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
+  it('invokes the error hooks when generate throws', async () => {
+    const { hooks, invoked } = recordEveryHook();
+
+    await run({
+      generate: async () => {
+        throw new Error('generate failed');
+      },
+      toolbox: createTestToolbox([tool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
     });
 
-    it('onSessionCancel is a valid hook key accepting SessionCancelHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: SessionCancelHookContext[] = [];
-      hooks.on('onSessionCancel', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
+    expect(invoked).toContain('onError');
+    expect(invoked).toContain('onRunError');
+  });
+
+  it('invokes the compaction hooks when the conversation exceeds its budget', async () => {
+    const { hooks, invoked } = recordEveryHook();
+    const conversation = new Conversation();
+    conversation.appendUserMessage('A'.repeat(400));
+
+    await run({
+      generate: createMockGenerate([textResponse('done')]),
+      toolbox: createTestToolbox([]),
+      conversation,
+      stopWhen: noToolCalls(),
+      hooks,
+      // A budget this small guarantees the step exceeds it, so compaction is
+      // reached rather than skipped. The recorder returns `undefined` from
+      // `beforeCompaction`, which is not `false`, so compaction proceeds and
+      // `afterCompaction` is reached too.
+      contextManagement: { maxTokens: 10, onCompact: async () => undefined },
     });
 
-    it('onSessionFork is a valid hook key accepting SessionForkHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: SessionForkHookContext[] = [];
-      hooks.on('onSessionFork', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
+    expect(invoked).toContain('beforeCompaction');
+    expect(invoked).toContain('afterCompaction');
+  });
+
+  it('invokes onRunAbort when the run is aborted', async () => {
+    const { hooks, invoked } = recordEveryHook();
+    const controller = new AbortController();
+
+    const active = createActiveRun({
+      generate: async () => {
+        controller.abort();
+        return textResponse('never observed');
+      },
+      toolbox: createTestToolbox([tool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      signal: controller.signal,
+      hooks,
+    });
+    await active.result;
+
+    expect(invoked).toContain('onRunAbort');
+  });
+
+  it('leaves no key in the map unreached by the scenarios above', async () => {
+    // The union check. Without it, a name could sit in `DISPATCHED_HOOKS`,
+    // satisfy the compile-time exhaustiveness assertion, and still never be
+    // dispatched by any scenario here — the per-scenario assertions only
+    // cover the names each one names.
+    const reached = new Set<string>();
+
+    const full = recordEveryHook();
+    await run({
+      generate: createMockGenerate([toolCallResponse([weatherToolCall()]), textResponse('done')]),
+      toolbox: createTestToolbox([tool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks: full.hooks,
+    });
+    for (const name of full.invoked) reached.add(name);
+
+    const compaction = recordEveryHook();
+    const longConversation = new Conversation();
+    longConversation.appendUserMessage('A'.repeat(400));
+    await run({
+      generate: createMockGenerate([textResponse('done')]),
+      toolbox: createTestToolbox([]),
+      conversation: longConversation,
+      stopWhen: noToolCalls(),
+      hooks: compaction.hooks,
+      contextManagement: { maxTokens: 10, onCompact: async () => undefined },
+    });
+    for (const name of compaction.invoked) reached.add(name);
+
+    const failing = recordEveryHook();
+    await run({
+      generate: async () => {
+        throw new Error('generate failed');
+      },
+      toolbox: createTestToolbox([tool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks: failing.hooks,
+    });
+    for (const name of failing.invoked) reached.add(name);
+
+    const aborting = recordEveryHook();
+    const controller = new AbortController();
+    const active = createActiveRun({
+      generate: async () => {
+        controller.abort();
+        return textResponse('never observed');
+      },
+      toolbox: createTestToolbox([tool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      signal: controller.signal,
+      hooks: aborting.hooks,
+    });
+    await active.result;
+    for (const name of aborting.invoked) reached.add(name);
+
+    const unreached = DISPATCHED_HOOKS.filter((name) => !reached.has(name));
+    expect(unreached).toEqual([]);
+  });
+});
+
+describe('run-level hook-plan introspection (COR-1270)', () => {
+  it('describes the plan the run is actually executing against', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
+    hooks.on('prepareStep', async () => undefined, { id: 'direct:prepare', replay: 'safe' });
+    hooks.on('onStep', async () => undefined, { id: 'direct:step' });
+
+    const active = createActiveRun({
+      generate: createMockGenerate([textResponse('done')]),
+      toolbox: createTestToolbox([tool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
     });
 
-    it('onSessionSleep is a valid hook key accepting SessionSleepHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: SessionSleepHookContext[] = [];
-      hooks.on('onSessionSleep', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
+    const plan = active.describeHookPlan();
+    expect(plan?.revision).toBe(2);
+    expect(plan?.entries).toEqual([
+      {
+        hookName: 'prepareStep',
+        id: 'direct:prepare',
+        priority: 0,
+        replay: 'safe',
+        source: 'direct',
+      },
+      { hookName: 'onStep', id: 'direct:step', priority: 0, replay: 'effectful', source: 'direct' },
+    ]);
+
+    await active.result;
+  });
+
+  it('reports no plan at all for a run configured without hooks', async () => {
+    const active = createActiveRun({
+      generate: createMockGenerate([textResponse('done')]),
+      toolbox: createTestToolbox([tool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
     });
 
-    it('onSessionSignal is a valid hook key accepting SessionSignalHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: SessionSignalHookContext[] = [];
-      hooks.on('onSessionSignal', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
+    // `undefined`, not an empty plan: "this run has no hook surface" and "this
+    // run has a plan that happens to be empty" are different facts, and an
+    // inspector explaining a run's behavior needs to tell them apart.
+    expect(active.describeHookPlan()).toBeUndefined();
+
+    await active.result;
+  });
+
+  it('exposes no handler to the caller through the run', async () => {
+    const secret = 'sk-live-run-scoped';
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async () => {
+      void secret;
+      return undefined;
     });
 
-    it('onSessionUpdate is a valid hook key accepting SessionUpdateHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: SessionUpdateHookContext[] = [];
-      hooks.on('onSessionUpdate', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
+    const active = createActiveRun({
+      generate: createMockGenerate([textResponse('done')]),
+      toolbox: createTestToolbox([tool]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
     });
 
-    it('onSessionQuery is a valid hook key accepting SessionQueryHookContext', () => {
-      const hooks = new HookRegistry<OperativeHookMap>();
-      const calls: SessionQueryHookContext[] = [];
-      hooks.on('onSessionQuery', async (ctx) => {
-        calls.push(ctx);
-      });
-      expect(typeof hooks.run).toBe('function');
-    });
+    const serialized = JSON.stringify(active.describeHookPlan());
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain('function');
+
+    await active.result;
   });
 });

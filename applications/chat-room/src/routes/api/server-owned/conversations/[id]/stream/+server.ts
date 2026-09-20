@@ -1,5 +1,15 @@
-import type { BeforeToolExecutionHook, OnElicitation, ToolCall } from '@corvidae/operative';
-import { createAnthropicProviderStream, createSessionHandle, stopWhen } from '@corvidae/operative';
+import type {
+  BeforeToolExecutionHook,
+  OnElicitation,
+  OperativeHookMap,
+  ToolCall,
+} from '@corvidae/operative';
+import {
+  createAnthropicProviderStream,
+  createSessionHandle,
+  HookRegistry,
+  stopWhen,
+} from '@corvidae/operative';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { createChatRunOptions } from '../../../../../../lib/chat-agent.ts';
@@ -197,7 +207,7 @@ function createElicitationGate(
 ): {
   runOptions: {
     onElicitation: OnElicitation;
-    beforeToolExecution: BeforeToolExecutionHook[];
+    hooks: HookRegistry<OperativeHookMap>;
   };
 } {
   // The call the hook is asking about right now. Set immediately before each
@@ -287,7 +297,17 @@ function createElicitationGate(
     // one place where the ordering is right by construction.
     return context.toolCalls.filter((call) => !denied.has(call.id));
   };
-  return { runOptions: { onElicitation, beforeToolExecution: [beforeToolExecution] } };
+  // COR-1268: `HookRegistry` is the only hook surface on a run now. Registered
+  // with an explicit id so this gate's filter is identifiable in the plan
+  // description and in `hook-plan.*` events, and classified `safe` because it
+  // only reads `denied` and filters the call list — a replayed step
+  // re-filtering is a no-op, not a repeated side effect.
+  const hooks = new HookRegistry<OperativeHookMap>({ source: 'chat-room' });
+  hooks.on('beforeToolExecution', beforeToolExecution, {
+    id: 'chat-room:elicitation-denial-filter',
+    replay: 'safe',
+  });
+  return { runOptions: { onElicitation, hooks } };
 }
 /**
  * The model's proposed arguments, as something JSON-safe to show a person.

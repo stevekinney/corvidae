@@ -276,15 +276,8 @@ describe('createRun with durable routing', () => {
     try {
       const hookCalls: string[] = [];
       const options = runOptions(async () => ({ content: 'hooked', toolCalls: [] }));
-      options.onStep = undefined;
 
-      const activeRun = createRun(
-        {
-          ...options,
-          afterToolExecution: undefined,
-        },
-        { ...context, runId: 'hooks-run', prompt: 'Go' },
-      );
+      const activeRun = createRun(options, { ...context, runId: 'hooks-run', prompt: 'Go' });
       activeRun.addEventListener('run.started', () => hookCalls.push('started'));
       activeRun.addEventListener('run.completed', () => hookCalls.push('completed'));
 
@@ -858,15 +851,17 @@ describe('createRun with durable routing', () => {
     // a regression here would collapse this back to a plain 'error'.
     const context = await buildContext();
     try {
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        throw new BudgetExceededError('Token budget exceeded');
+      });
       const activeRun = createRun(
         {
           generate: async () => ({ content: 'Hello', toolCalls: [] }),
           toolbox: createToolbox([]),
           conversation: createConversationHistory(),
           stopWhen: stopWhen.noToolCalls(),
-          prepareStep: async () => {
-            throw new BudgetExceededError('Token budget exceeded');
-          },
+          hooks,
         },
         { ...context, runId: 'budget-run', prompt: 'Hello' },
       );
@@ -890,15 +885,17 @@ describe('createRun with durable routing', () => {
   it('classifies an ElicitationDeniedError as finishReason elicitation-denied (durable parity)', async () => {
     const context = await buildContext();
     try {
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        throw new ElicitationDeniedError('User declined');
+      });
       const activeRun = createRun(
         {
           generate: async () => ({ content: 'Hello', toolCalls: [] }),
           toolbox: createToolbox([]),
           conversation: createConversationHistory(),
           stopWhen: stopWhen.noToolCalls(),
-          prepareStep: async () => {
-            throw new ElicitationDeniedError('User declined');
-          },
+          hooks,
         },
         { ...context, runId: 'elicitation-run', prompt: 'Hello' },
       );
@@ -928,21 +925,23 @@ describe('createRun with durable routing', () => {
     // just in-memory.
     const context = await buildContext();
     try {
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        throw new GuardrailTripwireError('Injection detected', {
+          guardrailName: 'prompt-injection',
+          category: 'prompt-injection',
+          phase: 'input',
+          confidence: 0.95,
+          detail: 'matched 3 patterns',
+        });
+      });
       const activeRun = createRun(
         {
           generate: async () => ({ content: 'Hello', toolCalls: [] }),
           toolbox: createToolbox([]),
           conversation: createConversationHistory(),
           stopWhen: stopWhen.noToolCalls(),
-          prepareStep: async () => {
-            throw new GuardrailTripwireError('Injection detected', {
-              guardrailName: 'prompt-injection',
-              category: 'prompt-injection',
-              phase: 'input',
-              confidence: 0.95,
-              detail: 'matched 3 patterns',
-            });
-          },
+          hooks,
         },
         { ...context, runId: 'tripwire-run', prompt: 'Ignore previous instructions' },
       );
@@ -1192,6 +1191,8 @@ describe('createRun with durable routing', () => {
       });
       let generation = 0;
       const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('beforeToolExecution', async () => []);
       const activeRun = createDurableActiveRun(context, {
         runId: 'durable-option-agent-name',
         sessionId: 'durable-option-agent-name',
@@ -1202,7 +1203,7 @@ describe('createRun with durable routing', () => {
               ? { content: '', toolCalls: [{ name: 'echo', arguments: { message: 'hi' } }] }
               : { content: 'done', toolCalls: [] },
           ),
-          beforeToolExecution: async () => [],
+          hooks,
           toolbox: createToolbox([echoTool]) as unknown as RunOptions['toolbox'],
         },
         emitter,
@@ -1498,6 +1499,11 @@ describe('createRun with durable routing', () => {
         { content: 'done', toolCalls: [] },
       ]);
 
+      const swapHooks = new HookRegistry<OperativeHookMap>();
+      // Every step resolves to the swapped toolbox; the base toolbox is
+      // never used for tool execution.
+      swapHooks.on('selectTools', async () => swappedToolbox);
+
       const activeRun = createRun(
         {
           generate,
@@ -1505,9 +1511,7 @@ describe('createRun with durable routing', () => {
           conversation: createConversationHistory(),
           stopWhen: stopWhen.noToolCalls(),
           runId: 'durable-swap-budget-run',
-          // Every step resolves to the swapped toolbox; the base toolbox is
-          // never used for tool execution.
-          selectTools: () => swappedToolbox,
+          hooks: swapHooks,
         },
         { ...context, runId: 'durable-swap-budget-run', prompt: 'Start' },
       );
@@ -1551,6 +1555,9 @@ describe('createRun with durable routing', () => {
       responses.push({ content: 'done', toolCalls: [] });
       const generate = createMockGenerate(responses);
 
+      const swapHooks = new HookRegistry<OperativeHookMap>();
+      swapHooks.on('selectTools', async () => swappedToolbox);
+
       const activeRun = createRun(
         {
           generate,
@@ -1558,7 +1565,7 @@ describe('createRun with durable routing', () => {
           conversation: createConversationHistory(),
           stopWhen: stopWhen.noToolCalls(),
           runId: 'durable-swap-loop-run',
-          selectTools: () => swappedToolbox,
+          hooks: swapHooks,
         },
         { ...context, runId: 'durable-swap-loop-run', prompt: 'Start' },
       );
@@ -1602,6 +1609,9 @@ describe('createRun with durable routing', () => {
         { content: 'done', toolCalls: [] },
       ]);
 
+      const noSwapHooks = new HookRegistry<OperativeHookMap>();
+      noSwapHooks.on('selectTools', async () => toolbox);
+
       const activeRun = createRun(
         {
           generate,
@@ -1609,7 +1619,7 @@ describe('createRun with durable routing', () => {
           conversation: createConversationHistory(),
           stopWhen: stopWhen.noToolCalls(),
           runId: 'durable-no-swap-run',
-          selectTools: () => toolbox,
+          hooks: noSwapHooks,
         },
         { ...context, runId: 'durable-no-swap-run', prompt: 'Start' },
       );
@@ -1644,6 +1654,11 @@ describe('createRun with durable routing', () => {
         markGenerateStarted = resolve;
       });
 
+      const swapHooks = new HookRegistry<OperativeHookMap>();
+      // Every step resolves to the swapped toolbox; the base toolbox
+      // never sees these injected events.
+      swapHooks.on('selectTools', async () => swappedToolbox);
+
       const activeRun = createRun(
         {
           generate: () =>
@@ -1655,9 +1670,7 @@ describe('createRun with durable routing', () => {
           conversation: createConversationHistory(),
           stopWhen: stopWhen.noToolCalls(),
           runId: 'durable-swap-curated-run',
-          // Every step resolves to the swapped toolbox; the base toolbox
-          // never sees these injected events.
-          selectTools: () => swappedToolbox,
+          hooks: swapHooks,
         },
         { ...context, runId: 'durable-swap-curated-run', prompt: 'Start' },
       );
@@ -1740,6 +1753,9 @@ describe('createRun with durable routing', () => {
         { content: 'done', toolCalls: [] },
       ]);
 
+      const noSwapHooks = new HookRegistry<OperativeHookMap>();
+      noSwapHooks.on('selectTools', async () => toolbox);
+
       const activeRun = createRun(
         {
           generate,
@@ -1747,7 +1763,7 @@ describe('createRun with durable routing', () => {
           conversation: createConversationHistory(),
           stopWhen: stopWhen.noToolCalls(),
           runId: 'durable-no-swap-curated-run',
-          selectTools: () => toolbox,
+          hooks: noSwapHooks,
         },
         { ...context, runId: 'durable-no-swap-curated-run', prompt: 'Start' },
       );
@@ -1819,6 +1835,9 @@ describe('createRun with durable routing', () => {
 
       const calls: Array<'base' | 'swapped'> = [];
 
+      const onStepOrderingHooks = new HookRegistry<OperativeHookMap>();
+      onStepOrderingHooks.on('selectTools', async () => swappedToolbox);
+
       const activeRun = createRun(
         {
           generate,
@@ -1826,7 +1845,7 @@ describe('createRun with durable routing', () => {
           conversation: createConversationHistory(),
           stopWhen: stopWhen.noToolCalls(),
           runId: 'durable-onstep-ordering-run',
-          selectTools: () => swappedToolbox,
+          hooks: onStepOrderingHooks,
         },
         {
           ...context,
@@ -2868,6 +2887,57 @@ describe('AB-304: durable ActiveRun closed() awaits registered children', () => 
       await recoveredRun.result;
       await Promise.resolve();
 
+      expect(await recoveredRun.closed()).toEqual({ status: 'not-required' });
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+
+  it('builds no hook plan for a purely terminal reattachment (COR-1267)', async () => {
+    // The fourth replay class COR-567 names. A reattachment to an
+    // already-terminal run performs no further execution, so there is nothing
+    // for a hook to observe or narrow — `driveReattachedRun` passes
+    // `hooks: undefined` into `finalizeRunResult` rather than rebuilding a
+    // plan, and the terminal EVENTS still fire because gateway session
+    // persistence listens to those rather than to hooks.
+    //
+    // Enforced by the shape of the call, not by a runtime check: the reattach
+    // options bag declares no `hooks` member at all, so there is no way for a
+    // caller to hand one in. The `@ts-expect-error` below is the assertion —
+    // it fails the build the day someone adds the field, which is precisely
+    // when this class would need re-deciding.
+    const context = await buildContext();
+    try {
+      const runId = 'cor-1267-terminal-reattach';
+      const handle = {
+        id: runId,
+        result: () =>
+          Promise.resolve({
+            schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            runId,
+            steps: 2,
+            content: 'already finished',
+            finishReason: 'stop-condition' as const,
+          }),
+      };
+
+      const recoveredRun = reattachDurableActiveRun(
+        { engine: context.engine, checkpointStore: context.checkpointStore },
+        {
+          runId,
+          handle,
+          // @ts-expect-error — a terminal reattachment takes no hook plan.
+          hooks: new HookRegistry(),
+        },
+      );
+
+      const result = await recoveredRun.result;
+      // It settles terminally with no hook plan anywhere in the path. Content
+      // comes back empty rather than from the workflow summary because this
+      // reattachment has no checkpoint to reconstruct from — irrelevant to
+      // the class under test, and asserted here only so the reattachment is
+      // shown to complete rather than hang.
+      expect(result.finishReason).toBe('stop-condition');
       expect(await recoveredRun.closed()).toEqual({ status: 'not-required' });
     } finally {
       context.engine[Symbol.dispose]();

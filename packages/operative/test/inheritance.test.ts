@@ -5,7 +5,6 @@ import { assertDefined } from './assert-defined';
  * Each describe block covers one axis:
  *   - combineTools   (tools = ∪)
  *   - combineProvider (provider = override)
- *   - combineHooks   (hooks = bureau-first, additive-only)
  *   - combineMemory  (memory = merged-read / private-write)
  *   - combineIdentity (identity = layered, bureau-first)
  */
@@ -15,14 +14,8 @@ import { Conversation } from '@corvidae/conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import type { MemoryLike } from '../src/create-memory-bridge';
-import {
-  combineHooks,
-  combineIdentity,
-  combineMemory,
-  combineProvider,
-  combineTools,
-} from '../src/inheritance';
-import type { GenerateFunction, PrepareStepHook, StepContext } from '../src/types';
+import { combineIdentity, combineMemory, combineProvider, combineTools } from '../src/inheritance';
+import type { GenerateFunction, StepContext } from '../src/types';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -132,81 +125,6 @@ describe('combineProvider — provider = override', () => {
     const effective = combineProvider(bureauGenerate, agentGenerate);
     expect(effective).toBe(agentGenerate);
     expect(effective).not.toBe(bureauGenerate);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// combineHooks
-// ---------------------------------------------------------------------------
-
-describe('combineHooks — bureau-first, additive-only', () => {
-  it('returns undefined when both sides are undefined', () => {
-    expect(combineHooks(undefined, undefined)).toBeUndefined();
-  });
-
-  it('normalizes a single bureau hook to an array', () => {
-    const bureauHook = async () => {};
-    const result = combineHooks(bureauHook, undefined);
-    expect(result).toEqual([bureauHook]);
-  });
-
-  it('normalizes a single agent hook to an array', () => {
-    const agentHook = async () => {};
-    const result = combineHooks(undefined, agentHook);
-    expect(result).toEqual([agentHook]);
-  });
-
-  it('places bureau hooks before agent hooks', () => {
-    const bureauHook1 = async () => {};
-    const bureauHook2 = async () => {};
-    const agentHook1 = async () => {};
-    const agentHook2 = async () => {};
-
-    const result = combineHooks([bureauHook1, bureauHook2], [agentHook1, agentHook2]);
-    expect(result).toEqual([bureauHook1, bureauHook2, agentHook1, agentHook2]);
-  });
-
-  it('agent hooks cannot suppress bureau hooks — all bureau hooks survive', () => {
-    const order: string[] = [];
-    const bureauHook: PrepareStepHook = async () => {
-      order.push('bureau');
-    };
-    const agentHook: PrepareStepHook = async () => {
-      order.push('agent');
-    };
-
-    const combined = combineHooks(bureauHook, agentHook);
-    expect(combined).toHaveLength(2);
-    // Bureau hook must be at index 0
-    expect(combined![0]).toBe(bureauHook);
-    expect(combined![1]).toBe(agentHook);
-  });
-
-  it('bureau hook array + single agent hook flattens correctly', () => {
-    const b1 = async () => {};
-    const b2 = async () => {};
-    const a1 = async () => {};
-
-    const result = combineHooks([b1, b2], a1);
-    expect(result).toEqual([b1, b2, a1]);
-  });
-
-  it('single bureau hook + agent hook array flattens correctly', () => {
-    const b1 = async () => {};
-    const a1 = async () => {};
-    const a2 = async () => {};
-
-    const result = combineHooks(b1, [a1, a2]);
-    expect(result).toEqual([b1, a1, a2]);
-  });
-
-  it('returns undefined for empty arrays on both sides', () => {
-    expect(combineHooks([], [])).toBeUndefined();
-  });
-
-  it('empty bureau + agent hooks returns only agent hooks', () => {
-    const agentHook = async () => {};
-    expect(combineHooks([], [agentHook])).toEqual([agentHook]);
   });
 });
 

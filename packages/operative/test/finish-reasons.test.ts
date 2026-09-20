@@ -19,14 +19,17 @@ function textResponse(content: string): GenerateResponse {
 
 describe('expanded finish reasons', () => {
   it('ElicitationDeniedError in hook yields finishReason elicitation-denied', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async () => {
+      throw new ElicitationDeniedError('User declined');
+    });
+
     const result = await run({
       generate: async () => textResponse('Hello'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async () => {
-        throw new ElicitationDeniedError('User declined');
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('elicitation-denied');
@@ -56,14 +59,17 @@ describe('expanded finish reasons', () => {
   });
 
   it('run.completed event includes specialized finish reason', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async () => {
+      throw new ElicitationDeniedError('Denied');
+    });
+
     const activeRun = createActiveRun({
       generate: async () => textResponse('Hello'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async () => {
-        throw new ElicitationDeniedError('Denied');
-      },
+      hooks,
     });
 
     const recorder = createRunRecorder(activeRun);
@@ -77,14 +83,17 @@ describe('expanded finish reasons', () => {
   });
 
   it('generic errors still yield finishReason error', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async () => {
+      throw new Error('Something went wrong');
+    });
+
     const result = await run({
       generate: async () => textResponse('Hello'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async () => {
-        throw new Error('Something went wrong');
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('error');
@@ -120,14 +129,17 @@ describe('expanded finish reasons', () => {
   });
 
   it('BudgetExceededError in validateResponse yields finishReason budget-exceeded', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async () => {
+      throw new BudgetExceededError('Over budget');
+    });
+
     const result = await run({
       generate: async () => textResponse('Hello'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateResponse: async () => {
-        throw new BudgetExceededError('Over budget');
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('budget-exceeded');
@@ -136,6 +148,16 @@ describe('expanded finish reasons', () => {
   describe('AB-40 — guardrail tripwires', () => {
     it('an input tripwire (prepareStep) halts the run BEFORE the generate call fires', async () => {
       let generateCalled = false;
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        throw new GuardrailTripwireError('Injection detected', {
+          guardrailName: 'prompt-injection',
+          category: 'prompt-injection',
+          phase: 'input',
+          confidence: 0.95,
+        });
+      });
+
       const result = await run({
         generate: async () => {
           generateCalled = true;
@@ -144,14 +166,7 @@ describe('expanded finish reasons', () => {
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        prepareStep: async () => {
-          throw new GuardrailTripwireError('Injection detected', {
-            guardrailName: 'prompt-injection',
-            category: 'prompt-injection',
-            phase: 'input',
-            confidence: 0.95,
-          });
-        },
+        hooks,
       });
 
       expect(generateCalled).toBe(false);
@@ -163,23 +178,26 @@ describe('expanded finish reasons', () => {
     });
 
     it('an output tripwire (validateResponse) halts the run AFTER post-processing sees the response', async () => {
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('validateResponse', async (response) => {
+        // Only trip when the validator has actually seen the generated content —
+        // proves this fires post-processing, not pre-generate.
+        if (response.content.includes('@')) {
+          throw new GuardrailTripwireError('PII detected', {
+            guardrailName: 'output-pii',
+            category: 'pii',
+            phase: 'output',
+            confidence: 0.9,
+          });
+        }
+      });
+
       const result = await run({
         generate: async () => textResponse('user@example.com'),
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        validateResponse: async (response) => {
-          // Only trip when the validator has actually seen the generated content —
-          // proves this fires post-processing, not pre-generate.
-          if (response.content.includes('@')) {
-            throw new GuardrailTripwireError('PII detected', {
-              guardrailName: 'output-pii',
-              category: 'pii',
-              phase: 'output',
-              confidence: 0.9,
-            });
-          }
-        },
+        hooks,
       });
 
       expect(result.finishReason).toBe('tripwire');
@@ -189,20 +207,23 @@ describe('expanded finish reasons', () => {
     });
 
     it('run.completed carries finishReason tripwire and a run.tripwire event names the guardrail', async () => {
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('prepareStep', async () => {
+        throw new GuardrailTripwireError('Injection detected', {
+          guardrailName: 'prompt-injection',
+          category: 'prompt-injection',
+          phase: 'input',
+          confidence: 0.95,
+          detail: 'matched 3 patterns',
+        });
+      });
+
       const activeRun = createActiveRun({
         generate: async () => textResponse('Hello'),
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        prepareStep: async () => {
-          throw new GuardrailTripwireError('Injection detected', {
-            guardrailName: 'prompt-injection',
-            category: 'prompt-injection',
-            phase: 'input',
-            confidence: 0.95,
-            detail: 'matched 3 patterns',
-          });
-        },
+        hooks,
       });
 
       const recorder = createRunRecorder(activeRun);
@@ -233,6 +254,14 @@ describe('expanded finish reasons', () => {
       let generateCallCount = 0;
       const hooks = new HookRegistry<OperativeHookMap>();
       hooks.on('onError', async () => 'skip');
+      hooks.on('prepareStep', async () => {
+        throw new GuardrailTripwireError('Injection detected', {
+          guardrailName: 'prompt-injection',
+          category: 'prompt-injection',
+          phase: 'input',
+          confidence: 0.95,
+        });
+      });
 
       const result = await run({
         generate: async () => {
@@ -242,14 +271,6 @@ describe('expanded finish reasons', () => {
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         stopWhen: noToolCalls(),
-        prepareStep: async () => {
-          throw new GuardrailTripwireError('Injection detected', {
-            guardrailName: 'prompt-injection',
-            category: 'prompt-injection',
-            phase: 'input',
-            confidence: 0.95,
-          });
-        },
         hooks,
       });
 

@@ -1,5 +1,6 @@
 import { createTestToolbox, createTool, createToolbox } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';
@@ -13,6 +14,7 @@ import type {
   StepCompletedEvent,
   UsageAccumulatedEvent,
 } from '../src/events';
+import type { OperativeHookMap } from '../src/hooks';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import type { GenerateResponse, TokenUsage } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
@@ -116,12 +118,15 @@ describe('generate lifecycle events', () => {
   it('no generate events when prepareStep returns a response', async () => {
     const generate = createMockGenerate([textResponse('Should not be called')]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async () => ({ content: 'Intercepted', toolCalls: [] }));
+
     const activeRun = createActiveRun({
       generate,
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async () => ({ content: 'Intercepted', toolCalls: [] }),
+      hooks,
     });
 
     const recorder = createRunRecorder(activeRun);

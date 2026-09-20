@@ -1,5 +1,6 @@
 import { createTestToolbox, createTool, createToolbox } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';
@@ -7,6 +8,7 @@ import { assertDefined } from './assert-defined';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import type { StepAbortedEvent } from '../src/events';
+import type { OperativeHookMap } from '../src/hooks';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import type { GenerateResponse } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
@@ -42,15 +44,18 @@ describe('per-step abort granularity', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ signal }) => {
+      capturedSignals.push(signal);
+      return undefined;
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async ({ signal }) => {
-        capturedSignals.push(signal);
-        return undefined;
-      },
+      hooks,
     });
 
     expect(capturedSignals).toHaveLength(2);
@@ -66,17 +71,20 @@ describe('per-step abort granularity', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ step, abortStep }) => {
+      if (step === 0) {
+        abortStep?.('skip this step');
+      }
+      return undefined;
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async ({ step, abortStep }) => {
-        if (step === 0) {
-          abortStep?.('skip this step');
-        }
-        return undefined;
-      },
+      hooks,
     });
 
     expect(result.finishReason).not.toBe('aborted');
@@ -92,17 +100,20 @@ describe('per-step abort granularity', () => {
 
     const toolbox = createToolbox([weatherTool]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ step, abortStep }) => {
+      if (step === 0) {
+        abortStep?.('skip first');
+      }
+      return undefined;
+    });
+
     const activeRun = createActiveRun({
       generate,
       toolbox,
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async ({ step, abortStep }) => {
-        if (step === 0) {
-          abortStep?.('skip first');
-        }
-        return undefined;
-      },
+      hooks,
     });
 
     const recorder = createRunRecorder(activeRun);
@@ -125,17 +136,20 @@ describe('per-step abort granularity', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ signal }) => {
+      capturedSignals.push(signal);
+      controller.abort('run cancelled');
+      return undefined;
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
       signal: controller.signal,
-      prepareStep: async ({ signal }) => {
-        capturedSignals.push(signal);
-        controller.abort('run cancelled');
-        return undefined;
-      },
+      hooks,
     });
 
     expect(capturedSignals).toHaveLength(1);
@@ -221,18 +235,21 @@ describe('per-step abort granularity', () => {
 
     const afterToolLog: number[] = [];
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('prepareStep', async ({ abortStep }) => {
+      capturedAbortStep = abortStep;
+      return undefined;
+    });
+    hooks.on('afterToolExecution', async ({ step }) => {
+      afterToolLog.push(step);
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([abortingTool, weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      prepareStep: async ({ abortStep }) => {
-        capturedAbortStep = abortStep;
-        return undefined;
-      },
-      afterToolExecution: async ({ step }) => {
-        afterToolLog.push(step);
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -250,27 +267,30 @@ describe('per-step abort granularity', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('beforeToolExecution', async ({ step, toolCalls }) => {
+      log.push(`beforeToolExecution:${step}`);
+      return toolCalls;
+    });
+    hooks.on('afterToolExecution', async ({ step }) => {
+      log.push(`afterToolExecution:${step}`);
+    });
+    hooks.on('onStep', async ({ step }) => {
+      log.push(`onStep:${step}`);
+    });
+    hooks.on('prepareStep', async ({ step, abortStep }) => {
+      if (step === 0) {
+        abortStep?.('skip');
+      }
+      return undefined;
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      beforeToolExecution: async ({ step, toolCalls }) => {
-        log.push(`beforeToolExecution:${step}`);
-        return toolCalls;
-      },
-      afterToolExecution: async ({ step }) => {
-        log.push(`afterToolExecution:${step}`);
-      },
-      onStep: async ({ step }) => {
-        log.push(`onStep:${step}`);
-      },
-      prepareStep: async ({ step, abortStep }) => {
-        if (step === 0) {
-          abortStep?.('skip');
-        }
-        return undefined;
-      },
+      hooks,
     });
 
     expect(log).not.toContain('afterToolExecution:0');

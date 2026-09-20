@@ -1,10 +1,15 @@
 import { describe, expect, mock, test } from 'bun:test';
-import type { BeforeToolExecutionHook, StreamingGenerateFunction } from './chat-agent-test-helpers';
+import type {
+  BeforeToolExecutionHook,
+  OperativeHookMap,
+  StreamingGenerateFunction,
+} from './chat-agent-test-helpers';
 import {
   createChatStreamWriter,
   createTool,
   createToolbox,
   decodeLines,
+  HookRegistry,
   legacyFrames,
   ofType,
   runAndCollect,
@@ -35,6 +40,13 @@ const rememberNoteGenerate: StreamingGenerateFunction = async () => ({
 
 const denyRollDiceTool: BeforeToolExecutionHook = async ({ toolCalls }) =>
   toolCalls.filter((toolCall) => toolCall.name !== 'roll_dice');
+
+/** COR-1268: the registry is the only hook surface a run accepts now. */
+function denyRollDiceHooks(): HookRegistry<OperativeHookMap> {
+  const hooks = new HookRegistry<OperativeHookMap>();
+  hooks.on('beforeToolExecution', denyRollDiceTool);
+  return hooks;
+}
 
 describe('pumpChatRun: roll_dice tool path', () => {
   const rollDice = createTool({
@@ -261,7 +273,7 @@ describe('pumpChatRun: roll_dice tool path', () => {
       deniedRollDiceGenerate,
       createToolbox([deniedTool]),
       [],
-      [denyRollDiceTool],
+      denyRollDiceHooks(),
     );
     expect(execute).not.toHaveBeenCalled();
     expect(envelope).toEqual({ ok: true, status: 'completed', content: '' });

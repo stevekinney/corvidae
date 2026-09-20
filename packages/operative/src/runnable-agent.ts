@@ -9,10 +9,12 @@
  */
 
 import type { ConversationHistory } from '@corvidae/conversationalist';
+import type { HookRegistry } from '@corvidae/lifecycle';
 
 import type { AgentRun, RunEvent } from './agent-run';
 import type { ChildRunRegistry } from './child-run';
 import type { AgentGenerationProfile } from './generation-profile';
+import type { OperativeHookMap } from './hooks';
 import type { DelegatedAuthority } from './providers/policy.ts';
 import type { RunOptions } from './types';
 
@@ -119,6 +121,27 @@ export interface RunnableAgent<O = never, H extends boolean = false> {
    * already centralizes.
    */
   readonly generationProfile?: AgentGenerationProfile | undefined;
+  /**
+   * This agent's own hook tier (COR-1265, COR-567's ownership assignment).
+   *
+   * Optional, so a third-party `RunnableAgent` implementation that predates
+   * this field still type-checks unchanged — the same compatibility shape
+   * `generationProfile` above uses.
+   *
+   * `readonly` because the tier is construction-time only: supplied through
+   * `createAgent({ hooks })` and never reassigned. An agent definition is
+   * reused across runs and across a whole `AgentDefinitions` map, so a
+   * registry swapped in afterwards would retroactively change the behavior
+   * of runs already dispatched from it.
+   *
+   * This is the SOURCE registry, not an effective plan. A run's plan is a
+   * merged snapshot composed at dispatch — Bureau's invariants first, this
+   * tier under them, a direct `RunOptions.hooks` tier last where one exists
+   * — so registering here after a run started cannot reach that run. An
+   * agent tier may add behavior; it can never suppress a Bureau
+   * registration or widen the authority a run inherited.
+   */
+  readonly hooks?: HookRegistry<OperativeHookMap> | undefined;
 }
 
 // ---------------------------------------------------------------------------

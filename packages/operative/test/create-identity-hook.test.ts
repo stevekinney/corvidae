@@ -1,16 +1,24 @@
 import { createTestToolbox } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { noToolCalls } from '../src/conditions/predicates';
 import { createIdentityHook } from '../src/create-identity-hook';
 import { createActiveRun } from '../src/create-run';
+import type { OperativeHookMap } from '../src/hooks';
 import { createMockGenerate } from '../src/test/index';
 import type { GenerateResponse } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
 
 function textResponse(content: string): GenerateResponse {
   return { content, toolCalls: [], usage: undefined };
+}
+
+function hooksFor(hook: OperativeHookMap['prepareStep']): HookRegistry<OperativeHookMap> {
+  const hooks = new HookRegistry<OperativeHookMap>();
+  hooks.on('prepareStep', hook);
+  return hooks;
 }
 
 describe('createIdentityHook', () => {
@@ -27,7 +35,7 @@ describe('createIdentityHook', () => {
       toolbox: createTestToolbox([]),
       conversation,
       stopWhen: noToolCalls(),
-      prepareStep: hook,
+      hooks: hooksFor(hook),
     });
 
     const messages = conversation.getMessages({ includeHidden: true });
@@ -60,7 +68,7 @@ describe('createIdentityHook', () => {
       conversation,
       stopWhen: noToolCalls(),
       maximumSteps: 2,
-      prepareStep: hook,
+      hooks: hooksFor(hook),
     });
 
     // Resolve should only be called once (on step 0)
@@ -83,7 +91,7 @@ describe('createIdentityHook', () => {
       toolbox: createTestToolbox([]),
       conversation,
       stopWhen: noToolCalls(),
-      prepareStep: hook,
+      hooks: hooksFor(hook),
     });
 
     expect(result.content).toBe('Done');
@@ -105,7 +113,7 @@ describe('createIdentityHook', () => {
       toolbox: createTestToolbox([]),
       conversation,
       stopWhen: noToolCalls(),
-      prepareStep: hook,
+      hooks: hooksFor(hook),
     });
 
     const messages = conversation.getMessages({ includeHidden: true });
@@ -136,7 +144,7 @@ describe('createIdentityHook', () => {
       toolbox: createTestToolbox([]),
       conversation,
       stopWhen: noToolCalls(),
-      prepareStep: hook,
+      hooks: hooksFor(hook),
     });
 
     const messages = conversation.getMessages({ includeHidden: true });
@@ -170,7 +178,7 @@ describe('createIdentityHook', () => {
       toolbox: createTestToolbox([]),
       conversation,
       stopWhen: noToolCalls(),
-      prepareStep: hook,
+      hooks: hooksFor(hook),
     });
 
     expect(resolveCallCount).toBe(0);

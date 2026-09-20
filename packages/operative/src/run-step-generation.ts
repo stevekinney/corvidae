@@ -72,17 +72,12 @@ export async function executeGeneration(
     generateDurationMilliseconds = undefined;
     try {
       let prepareResult: GenerateResponse | void = undefined;
-      for (const hook of deps.prepareStepHooks) {
-        prepareResult = await hook({ conversation, step, signal: stepSignal, abortStep, elicit });
-        if (prepareResult) break;
-      }
-      if (!prepareResult && hooks?.has('prepareStep')) {
+      if (hooks?.has('prepareStep')) {
         const prepareContext = { conversation, step, signal: stepSignal, abortStep, elicit };
         // `runFirst`, not `run`: a `prepareStep` handler returns a
         // `GenerateResponse` but receives a `StepContext`, so the waterfall
         // would hand the next handler a response where it expects a context.
-        // First answer wins and the rest are skipped, matching the
-        // `if (prepareResult) break` in the legacy array loop above.
+        // First answer wins and the rest are skipped.
         const registryResult = await hooks.runFirst('prepareStep', prepareContext);
         if (registryResult !== undefined) {
           prepareResult = registryResult;

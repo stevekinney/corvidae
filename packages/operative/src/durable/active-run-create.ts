@@ -379,6 +379,9 @@ export function createDurableActiveRun(
   return {
     result,
     abort,
+    // COR-1270 — the durable branch reads the same snapshot the in-memory
+    // branch does: whatever plan this run was dispatched with.
+    describeHookPlan: () => options.hooks?.describePlan(),
     closed,
     durablyStarted,
     addEventListener: emitter.addEventListener.bind(emitter),

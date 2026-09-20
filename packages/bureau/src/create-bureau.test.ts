@@ -7757,6 +7757,9 @@ function createParkedActiveRun(): {
   const activeRun: ActiveRun = {
     result: new Promise<never>(() => {}),
     abort: () => {},
+    // COR-1270: this stub run was never dispatched with a hook plan, so it
+    // has none to describe.
+    describeHookPlan: () => undefined,
     // AB-204: mechanical addition — this never-settling stub run has no
     // cleanup to await, matching `abort`'s never-resolving `result` above.
     closed: () => new Promise(() => {}),

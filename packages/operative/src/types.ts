@@ -458,10 +458,6 @@ export interface RunOptionsBase {
    * maximumTokens for this call.
    */
   maximumTokens?: number | undefined;
-  prepareStep?: (PrepareStepHook | PrepareStepHook[]) | undefined;
-  beforeToolExecution?: (BeforeToolExecutionHook | BeforeToolExecutionHook[]) | undefined;
-  afterToolExecution?: (AfterToolExecutionHook | AfterToolExecutionHook[]) | undefined;
-  onStep?: (OnStepHook | OnStepHook[]) | undefined;
   executeOptions?: OperativeExecuteOptions | undefined;
   signal?: AbortSignal | undefined;
   /**
@@ -477,18 +473,24 @@ export interface RunOptionsBase {
    * before proceeding with the generate call.
    */
   backpressure?: BackpressureStrategy | undefined;
-  validateResponse?: (ValidateResponseHook | ValidateResponseHook[]) | undefined;
-  validateToolResult?: (ValidateToolResultHook | ValidateToolResultHook[]) | undefined;
-  /**
-   * Called before each step to dynamically select which tools are available.
-   * Return a filtered or entirely different toolbox to control which tools
-   * the model can call on a per-step basis.
-   */
-  selectTools?: (SelectToolsHook | SelectToolsHook[]) | undefined;
   onElicitation?: OnElicitation | undefined;
   /**
-   * A typed HookRegistry for structured hook registration with priority
-   * ordering. Runs in addition to any old-style hook arrays.
+   * This run's hook plan — the ONLY way to configure hooks on a run
+   * (COR-1268, COR-567 Decision 1).
+   *
+   * A registry rather than per-hook arrays because it is the only shape that
+   * carries registration identity, priority, replay classification and plan
+   * observation. The parallel `prepareStep`/`onStep`/`selectTools`/... array
+   * fields that used to sit alongside it are gone: two surfaces meant hook
+   * ordering depended on which one a caller happened to use, and everything
+   * built on registration identity — `hook-plan.*` events, tier provenance,
+   * redacted plan inspection — was blind to whatever arrived through the
+   * arrays.
+   *
+   * Under Bureau this is the composed, snapshotted plan: Bureau's invariants
+   * first, the agent tier under them, and a direct tier last where one
+   * exists. Mutating a source registry afterwards cannot reach a run already
+   * dispatched.
    */
   hooks?: HookRegistry<OperativeHookMap> | undefined;
   contextManagement?: ContextManagementOptions | undefined;

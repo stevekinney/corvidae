@@ -1,6 +1,8 @@
 import type {
   HookErrorHandler,
   HookMap,
+  HookPlanDescription,
+  HookPlanEntryDescription,
   HookPlanObservation,
   HookPlanObserver,
   HookRegistrationOptions,
@@ -113,7 +115,17 @@ export class HookRegistry<M extends HookMap> {
     const priority = options?.priority ?? 0;
     this.#registrationSequence += 1;
     const id = options?.id ?? `${hookName}#${this.#registrationSequence}`;
-    const entry: RegisteredHandler = { handler, priority, options: options ?? {}, id };
+    // Resolve the tier once, here, and store it ON THE ENTRY (COR-1265).
+    // Reading `registryOptions.source` at inspection time instead would lose
+    // it the moment `mergeHookRegistries` copies the entry into a merged
+    // registry that belongs to no single tier.
+    const source = options?.source ?? this.registryOptions.source;
+    const entry: RegisteredHandler = {
+      handler,
+      priority,
+      options: source === undefined ? (options ?? {}) : { ...options, source },
+      id,
+    };
 
     let list = this.handlers.get(hookName);
     if (!list) {
@@ -131,7 +143,22 @@ export class HookRegistry<M extends HookMap> {
       // observer should see the classification in force, not the absence of a
       // declaration.
       replay: options?.replay ?? 'effectful',
+      ...(source === undefined ? {} : { source }),
     });
+
+    // COR-1267 — report a registration that never declared a replay policy.
+    // Fires only on absence, never on an explicit `effectful`: the point is
+    // to separate a considered choice from an unconsidered default, and a
+    // diagnostic that fires on both separates nothing.
+    if (options?.replay === undefined && this.registryOptions.onUnclassifiedReplay) {
+      try {
+        this.registryOptions.onUnclassifiedReplay({ hookName, id });
+      } catch {
+        // Swallowed on purpose. A diagnostic that can fail a registration is
+        // worse than no diagnostic — the same reasoning that isolates a
+        // throwing plan observer from the invocation it observed.
+      }
+    }
 
     return () => {
       const current = this.handlers.get(hookName);
@@ -346,6 +373,38 @@ export class HookRegistry<M extends HookMap> {
     const list = this.handlers.get(hookName);
     if (!list) return [];
     return list.toSorted((a, b) => b.priority - a.priority);
+  }
+
+  /**
+   * A redacted description of this plan, for inspection (COR-1270).
+   *
+   * The public counterpart to {@link getHandlers}, which stays the internal
+   * accessor `mergeHookRegistries` needs and keeps returning live handlers.
+   * The two are deliberately separate: composition needs the function,
+   * inspection must never see it.
+   *
+   * Every entry is built field by field rather than spread from the
+   * registration, so a field added to `HookRegistrationOptions` later does
+   * not silently become readable here. No handler, no `onError` closure, and
+   * nothing either of them closes over is reachable from the result.
+   */
+  describePlan(): HookPlanDescription {
+    const entries: HookPlanEntryDescription[] = [];
+    for (const hookName of this.handlers.keys()) {
+      for (const entry of this.getHandlers(hookName)) {
+        const source = entry.options.source;
+        entries.push({
+          hookName,
+          id: entry.id,
+          priority: entry.priority,
+          // The classification in force, not the absence of a declaration —
+          // the same resolution the `registered` observation reports.
+          replay: entry.options.replay ?? 'effectful',
+          ...(source === undefined ? {} : { source }),
+        });
+      }
+    }
+    return { revision: this.#revision, entries };
   }
 
   /**

@@ -21,7 +21,8 @@ import {
 } from './chat-agent-test-helpers';
 import { createChatRunOptions } from './chat-agent.ts';
 
-import type { OnElicitation } from '@corvidae/operative';
+import type { OnElicitation, OperativeHookMap } from '@corvidae/operative';
+import { HookRegistry } from '@corvidae/operative';
 
 const NOTE_TOOL = 'remember_note';
 
@@ -189,6 +190,8 @@ async function runWithElicitation(options: {
     }
     return context.toolCalls.filter((call) => !denied.has(call.id));
   };
+  const hooks = new HookRegistry<OperativeHookMap>();
+  hooks.on('beforeToolExecution', beforeToolExecution);
   const agent = createAgent(
     createChatRunOptions({
       generate: twoStepGenerate(),
@@ -196,7 +199,7 @@ async function runWithElicitation(options: {
       requestContext,
       writer,
       onElicitation,
-      beforeToolExecution: [beforeToolExecution],
+      hooks,
       // The server-owned family's set: the run carries on to a second
       // generate rather than handing control back after the tool call.
       stopWhen: [stopWhen.noToolCalls()],

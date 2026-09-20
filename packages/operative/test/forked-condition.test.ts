@@ -1,10 +1,12 @@
 import { createTestToolbox, createTool } from '@corvidae/armorer';
 import { Conversation, SessionForkedEvent } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { forked, noToolCalls, some } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
+import type { OperativeHookMap } from '../src/hooks';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import type { GenerateResponse, StepResult } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
@@ -131,28 +133,31 @@ describe('forked', () => {
       textResponse('Done'),
     ]);
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('onStep', async (stepResult) => {
+      if (stepResult.step === 1) {
+        conversation.dispatchEvent(
+          new SessionForkedEvent({
+            action: 'session.forked',
+            conversation: conversation.current,
+            previousConversation: conversation.current,
+            revision: 0,
+            sequence: 0,
+            correlationId: 'test-correlation-id',
+            durability: 'ephemeral',
+            outcome: 'accepted',
+          }),
+        );
+      }
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation,
       stopWhen: forked(),
       maximumSteps: 10,
-      onStep: async (stepResult) => {
-        if (stepResult.step === 1) {
-          conversation.dispatchEvent(
-            new SessionForkedEvent({
-              action: 'session.forked',
-              conversation: conversation.current,
-              previousConversation: conversation.current,
-              revision: 0,
-              sequence: 0,
-              correlationId: 'test-correlation-id',
-              durability: 'ephemeral',
-              outcome: 'accepted',
-            }),
-          );
-        }
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -211,28 +216,31 @@ describe('forked', () => {
       textResponse('Done'),
     ]);
 
+    const worksWithCreateRunHooks = new HookRegistry<OperativeHookMap>();
+    worksWithCreateRunHooks.on('onStep', async (stepResult) => {
+      if (stepResult.step === 0) {
+        conversation.dispatchEvent(
+          new SessionForkedEvent({
+            action: 'session.forked',
+            conversation: conversation.current,
+            previousConversation: conversation.current,
+            revision: 0,
+            sequence: 0,
+            correlationId: 'test-correlation-id',
+            durability: 'ephemeral',
+            outcome: 'accepted',
+          }),
+        );
+      }
+    });
+
     const activeRun = createActiveRun({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation,
       stopWhen: forked(),
       maximumSteps: 10,
-      onStep: async (stepResult) => {
-        if (stepResult.step === 0) {
-          conversation.dispatchEvent(
-            new SessionForkedEvent({
-              action: 'session.forked',
-              conversation: conversation.current,
-              previousConversation: conversation.current,
-              revision: 0,
-              sequence: 0,
-              correlationId: 'test-correlation-id',
-              durability: 'ephemeral',
-              outcome: 'accepted',
-            }),
-          );
-        }
-      },
+      hooks: worksWithCreateRunHooks,
     });
 
     const recorder = createRunRecorder(activeRun);

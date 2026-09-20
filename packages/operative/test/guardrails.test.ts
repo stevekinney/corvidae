@@ -1,5 +1,6 @@
 import { createTestToolbox, createTool } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';
@@ -7,6 +8,7 @@ import { assertDefined } from './assert-defined';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import type { ResponseValidatedEvent } from '../src/events';
+import type { OperativeHookMap } from '../src/hooks';
 import { createRunRecorder } from '../src/test/index';
 import type { GenerateResponse } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
@@ -41,42 +43,51 @@ describe('validateResponse guardrail', () => {
       return textResponse('raw content');
     };
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async (response) => {
+      return { ...response, content: response.content.toUpperCase() };
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateResponse: async (response) => {
-        return { ...response, content: response.content.toUpperCase() };
-      },
+      hooks,
     });
 
     expect(result.content).toBe('RAW CONTENT');
   });
 
   it('passes through when returning void', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async () => {
+      // Return void — no modification
+    });
+
     const result = await run({
       generate: async () => textResponse('unchanged'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateResponse: async () => {
-        // Return void — no modification
-      },
+      hooks,
     });
 
     expect(result.content).toBe('unchanged');
   });
 
   it('terminates the loop when throwing', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async () => {
+      throw new Error('Response rejected');
+    });
+
     const result = await run({
       generate: async () => textResponse('bad content'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateResponse: async () => {
-        throw new Error('Response rejected');
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('error');
@@ -85,17 +96,20 @@ describe('validateResponse guardrail', () => {
   it('receives correct step context', async () => {
     const contexts: Array<{ step: number; hasConversation: boolean }> = [];
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async (_response, context) => {
+      contexts.push({
+        step: context.step,
+        hasConversation: context.conversation instanceof Conversation,
+      });
+    });
+
     await run({
       generate: async () => textResponse('Hello'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateResponse: async (_response, context) => {
-        contexts.push({
-          step: context.step,
-          hasConversation: context.conversation instanceof Conversation,
-        });
-      },
+      hooks,
     });
 
     expect(contexts).toHaveLength(1);
@@ -104,14 +118,17 @@ describe('validateResponse guardrail', () => {
   });
 
   it('emits response.validated event when response is modified', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async (response) => {
+      return { ...response, content: 'modified' };
+    });
+
     const activeRun = createActiveRun({
       generate: async () => textResponse('original'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateResponse: async (response) => {
-        return { ...response, content: 'modified' };
-      },
+      hooks,
     });
 
     const recorder = createRunRecorder(activeRun);
@@ -134,14 +151,17 @@ describe('validateToolResult guardrail', () => {
       return textResponse('Done');
     };
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async (toolResult) => {
+      return { ...toolResult, content: 'REDACTED' };
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateToolResult: async (toolResult) => {
-        return { ...toolResult, content: 'REDACTED' };
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -156,14 +176,17 @@ describe('validateToolResult guardrail', () => {
       return textResponse('Done');
     };
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async () => {
+      // Return void — no modification
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateToolResult: async () => {
-        // Return void — no modification
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('stop-condition');
@@ -181,15 +204,18 @@ describe('validateToolResult guardrail', () => {
       return textResponse('Done');
     };
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async () => {
+      throw new Error('Tool result rejected');
+    });
+
     const result = await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
       collectAsync,
-      validateToolResult: async () => {
-        throw new Error('Tool result rejected');
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('error');
@@ -205,17 +231,20 @@ describe('validateToolResult guardrail', () => {
       return textResponse('Done');
     };
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async (_result, context) => {
+      contextData.push({
+        toolCallCount: context.toolCalls.length,
+        resultCount: context.results.length,
+      });
+    });
+
     await run({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateToolResult: async (_result, context) => {
-        contextData.push({
-          toolCallCount: context.toolCalls.length,
-          resultCount: context.results.length,
-        });
-      },
+      hooks,
     });
 
     expect(contextData).toHaveLength(1);
@@ -231,14 +260,17 @@ describe('validateToolResult guardrail', () => {
       return textResponse('Done');
     };
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async (toolResult) => {
+      return { ...toolResult, content: 'validated' };
+    });
+
     const activeRun = createActiveRun({
       generate,
       toolbox: createTestToolbox([weatherTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      validateToolResult: async (toolResult) => {
-        return { ...toolResult, content: 'validated' };
-      },
+      hooks,
     });
 
     const recorder = createRunRecorder(activeRun);

@@ -1036,6 +1036,10 @@ function createMemoryDouble(options: {
   rememberOnce?: (content: string, metadata: unknown) => Promise<void>;
 }): Memory {
   return {
+    // `createRuntimeComposition` awaits `init()` on a supplied Memory
+    // instance, so a double handed to it needs one. Harmless for the callers
+    // that use this double against a hook factory directly.
+    init: async () => {},
     recall: async () => options.recalls ?? [],
     remember: options.remember ?? (async () => {}),
     rememberOnce: options.rememberOnce ?? (async () => {}),
@@ -1129,6 +1133,104 @@ describe('memory hook coverage', () => {
       replay: 'effectful',
     });
     expect(rememberedOnce).toEqual([]);
+  });
+});
+
+describe('effectful hook idempotency under crash replay (COR-1267)', () => {
+  // COR-567 classifies these `effectful`: a crashed in-flight step re-runs,
+  // so they fire again, and the mitigation the decision chose is that each
+  // handler writes idempotently rather than that replay skips it. These pull
+  // the handler off the registry Bureau actually composes — by its registered
+  // id, not from a factory called in isolation — invoke it twice with the same
+  // step, and assert one effect reaches the store.
+
+  function stepContext(step: number, content: string, conversation: Conversation) {
+    return { step, conversation, content, toolCalls: [], results: [], final: true };
+  }
+
+  function handlerById(
+    hooks: Awaited<
+      ReturnType<Awaited<ReturnType<typeof createRuntimeComposition>>['createRunRuntime']>
+    >['hooks'],
+    hookName: 'onStep' | 'prepareStep',
+    id: string,
+  ) {
+    const entry = hooks.getHandlers(hookName).find((candidate) => candidate.id === id);
+    if (!entry) throw new Error(`no ${hookName} handler registered as ${id}`);
+    return entry;
+  }
+
+  it('bureau:memory-persist writes one memory when the same step replays', async () => {
+    const rememberedOnce: Array<{ content: string; metadata: Record<string, unknown> }> = [];
+    const remembered: Array<{ content: string }> = [];
+    const memory = createMemoryDouble({
+      remember: async (content) => {
+        remembered.push({ content });
+      },
+      rememberOnce: async (content, metadata) => {
+        rememberedOnce.push({ content, metadata: metadata as Record<string, unknown> });
+      },
+    });
+
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'x', toolCalls: [] }),
+      memory,
+    });
+    const runRuntime = await runtime.createRunRuntime({
+      message: 'test',
+      sessionId: 'idempotency-session',
+      runId: 'idempotency-run',
+    });
+
+    const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:memory-persist');
+    expect(entry.options.replay).toBe('effectful');
+
+    const conversation = new Conversation();
+    // The same step, twice — a crashed in-flight step re-running from its
+    // boundary, which is exactly what the durable driver does on recovery.
+    await entry.handler(stepContext(3, 'a durable thought', conversation));
+    await entry.handler(stepContext(3, 'a durable thought', conversation));
+
+    // Two invocations, one dedupe key. `rememberOnce` collapses them at the
+    // store, and the key is derived from run + step rather than content, so a
+    // divergent regenerate on replay cannot mint a second record either.
+    expect(rememberedOnce).toHaveLength(2);
+    expect(rememberedOnce[0]!.metadata['dedupeKey']).toBe('idempotency-run:3');
+    expect(rememberedOnce[1]!.metadata['dedupeKey']).toBe('idempotency-run:3');
+    // Never the non-deduped path when a run id is present.
+    expect(remembered).toEqual([]);
+  });
+
+  it('bureau:memory-persist keys by step, so two different steps are two records', async () => {
+    const rememberedOnce: Array<{ metadata: Record<string, unknown> }> = [];
+    const memory = createMemoryDouble({
+      rememberOnce: async (_content, metadata) => {
+        rememberedOnce.push({ metadata: metadata as Record<string, unknown> });
+      },
+    });
+
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'x', toolCalls: [] }),
+      memory,
+    });
+    const runRuntime = await runtime.createRunRuntime({
+      message: 'test',
+      sessionId: 'idempotency-session',
+      runId: 'idempotency-run',
+    });
+    const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:memory-persist');
+
+    const conversation = new Conversation();
+    await entry.handler(stepContext(0, 'first', conversation));
+    await entry.handler(stepContext(1, 'second', conversation));
+
+    // The control for the test above: the key collapses a REPLAY, not two
+    // genuinely distinct steps. Without this, a hook that returned one
+    // constant key would pass the idempotency test and silently lose writes.
+    expect(rememberedOnce.map((entry) => entry.metadata['dedupeKey'])).toEqual([
+      'idempotency-run:0',
+      'idempotency-run:1',
+    ]);
   });
 });
 

@@ -1,5 +1,6 @@
 import { createTestToolbox, createTool, createToolbox } from '@corvidae/armorer';
 import { Conversation } from '@corvidae/conversationalist';
+import { HookRegistry } from '@corvidae/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';
@@ -14,6 +15,7 @@ import {
   reclassifyToolError,
   serializeAgentRunError,
 } from '../src/errors';
+import type { OperativeHookMap } from '../src/hooks';
 import { createMockGenerate } from '../src/test/index';
 import type { GenerateResponse } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
@@ -227,14 +229,17 @@ describe('error handling', () => {
     const toolbox = createTestToolbox([weatherTool]);
     const conversation = new Conversation();
 
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('onStep', async () => {
+      throw new Error('Hook crashed');
+    });
+
     const result = await run({
       generate,
       toolbox,
       conversation,
       stopWhen: noToolCalls(),
-      onStep: async () => {
-        throw new Error('Hook crashed');
-      },
+      hooks,
     });
 
     expect(result.finishReason).toBe('error');
