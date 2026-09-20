@@ -274,6 +274,24 @@ function resolveSecondInstanceFields(
   };
 }
 
+/**
+ * Resolve `EngineOptions.inlineLaunchScheduling` (COR-74). `'event-loop'`
+ * (the default) is today's unchanged behavior; `'manual'` opts a test into
+ * deterministically driving the inline launch queue via
+ * {@link Engine.flushInlineLaunches} instead of a real macrotask.
+ */
+export function resolveInlineLaunchSchedulingMode(
+  options: EngineConstructorOptions | undefined,
+): ResolvedOptions['inlineLaunchSchedulingMode'] {
+  const mode = options?.inlineLaunchScheduling ?? 'event-loop';
+  if (mode !== 'event-loop' && mode !== 'manual') {
+    throw new Error(
+      'options.inlineLaunchScheduling must be "event-loop" or "manual" when provided',
+    );
+  }
+  return mode;
+}
+
 export function resolveEngineOptions(
   storage: WeftStorage,
   options: EngineConstructorOptions | undefined,
@@ -285,6 +303,7 @@ export function resolveEngineOptions(
     resolveWorkflowServices: options?.resolveWorkflowServices ?? null,
     onLog: options?.onLog ?? null,
     backgroundTaskMode: resolveBackgroundTaskMode(options),
+    inlineLaunchSchedulingMode: resolveInlineLaunchSchedulingMode(options),
     ...resolveBooleanDefaults(options),
     ...resolveNumericDefaults(options),
     ...resolveRetentionFields(options),

@@ -262,6 +262,28 @@ For stable-id re-sync flows, `engine.startOrSignal()` can replace a terminal pri
 
 When a workflow drains signals with `ctx.race([ctx.waitForSignal(name), ctx.sleep(0)])` and then returns, use that stable `id`, a deterministic per-event `signalId`, and `onTerminalConflict: 'start-new'` for the corresponding `startOrSignal` calls. Delivery is serialized against terminal completion, so a signal arriving across the completion boundary is consumed by the current run or handed to its successor; a positive drain window is not needed for correctness.
 
+### Two-Phase Start: `prepare()` / `launch()`
+
+`engine.start()` commits the initial durable record and begins execution in one call. Use `engine.prepare()` instead when your own contract requires that durable record to exist — readable via `engine.get()` or `engine.list()` — before your own start hook returns, and paying that hook's latency inside the durable commit (or starting first and compensating with a cancel) isn't acceptable.
+
+```typescript
+const prepared = await engine.prepare('onboarding', { name: 'Steve' });
+
+// The record is already committed and durably readable here — status
+// 'pending', no execution yet.
+const record = await engine.get(prepared.id);
+console.log(record?.status); // 'pending'
+
+// Begin execution once you're ready. Same ownership and lease semantics as
+// engine.start(): the claim is acquired at prepare() time, not here.
+const handle = await prepared.launch();
+console.log(await handle.result());
+```
+
+Never call `launch()`? Call `handle.abandon()` to discard the prepared run instead of leaving it `'pending'` forever. It records a terminal `'cancelled'` transition — tagged `PREPARED_WORKFLOW_ABANDONED_REASON` on `WorkflowState.terminationReason`, distinguishable from an ordinary mid-run `engine.cancel()` — so no orphaned live workflow is left behind. `abandon()` is idempotent; `launch()` and `abandon()` each throw if the other already ran.
+
+`options.idempotencyKey` and `options.startAt`/`options.startAfter` are not supported by `prepare()` — the former has no prepared-but-uncommitted equivalent to converge on, and the latter is a second, conflicting "when does this launch" mechanism. Use `engine.start()` for either.
+
 ### Durable Application Command Mailbox
 
 Signals are workflow control. When the thing receiving a command is an application _resource_ rather than a workflow run—an agent taking steering input, a resource fielding requests from a peer service—`Mailbox` gives it a durable, strictly FIFO command queue with real receipts.
@@ -519,6 +541,23 @@ test('onboarding completes after a day', async () => {
   expect(await handle.result()).toEqual({ status: 'onboarded' });
   expect(sendEmail.callCount).toBe(2);
 });
+```
+
+An inline workflow's first turn (and any turn deferred behind it) is normally flushed through a `MessageChannel` `postMessage` — a real event-loop macrotask with no fake-timer injection point. Construct the engine with `inlineLaunchScheduling: 'manual'` to opt out: the engine never constructs that channel and never self-schedules a flush, so a queued start only advances when you call `engine.flushInlineLaunches()`. This drives the exact same code path the scheduled flush uses — no step execution is skipped — so a multi-step workflow can run to completion under fake timers with no real macrotask.
+
+```typescript
+import { Engine, MemoryStorage } from '@corvidae/weft';
+
+const engine = new Engine({
+  storage: new MemoryStorage(),
+  inlineLaunchScheduling: 'manual',
+});
+engine.register(onboardingWorkflow);
+
+const handle = await engine.start('onboarding', { name: 'Steve' });
+// Nothing has run yet — the queued first turn is waiting.
+await engine.flushInlineLaunches();
+console.log(await handle.result());
 ```
 
 For chaos testing, `withChaos()` wraps activities with configurable transient failures, timeouts, and non-retryable errors so you can prove your retry policies actually work.

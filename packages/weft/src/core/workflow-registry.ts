@@ -95,6 +95,7 @@ export type {
   EngineStateNamespace,
   EngineWorkflowsNamespace,
   LeaseLostReason,
+  PreparedWorkflowHandle,
   RecoverAllOptions,
   RecoveredWorkflowInfo,
   RegistryAgnosticEngine,

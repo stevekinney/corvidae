@@ -22,6 +22,7 @@ import type { Interceptor } from '../interceptor.ts';
 import { ReviewCoordinator, type ReviewRequest } from '../review/index.ts';
 import { Scheduler } from '../scheduler.ts';
 import type { WorkflowSourceHandle } from '../source/index.ts';
+import { StartWorkflowValidationError } from '../start-workflow-validation.ts';
 import {
   messageName,
   type AnyActivityDefinition,
@@ -91,6 +92,7 @@ import {
   type WorkflowTimelineEntry,
 } from '../types.ts';
 import type { TimerEntry } from '../types/checkpoint.ts';
+import { PREPARED_WORKFLOW_ABANDONED_REASON } from '../types/history-policy.ts';
 import type { WorkflowAlreadyRegistered } from '../types/workflow-builder.ts';
 import { UpdateCoordinator } from '../updates.ts';
 import {
@@ -173,6 +175,7 @@ import {
   createQueuedInlineWorkflowStartHandler,
   createSecondInstanceDetectorResolver,
   drainQueuedInlineWorkflowStartsForEngine,
+  flushQueuedInlineWorkflowStartsForEngine,
   isActivityDefinition,
   shouldStartEngineScheduler,
   validateEngineCreateBackgroundTaskOptions,
@@ -196,7 +199,7 @@ import {
   getWorkflowResultPromise as getWorkflowResultPromiseFromInternals,
   pollPendingCrossEngineResultWaiters,
 } from './handle-result.ts';
-import { HANDLE_RESULT_PROMISE, WorkflowHandle } from './handles.ts';
+import { HANDLE_RESULT_PROMISE, WorkflowHandle, type PreparedWorkflowHandle } from './handles.ts';
 import { hasQueuedInlineWorkflowStart } from './inline-launch-queue.ts';
 import {
   handleStrategyMessage as handleStrategyMessageFromInternals,
@@ -208,7 +211,10 @@ import { ENGINE_LEASE_LOST_WARNING_NAME, handleDeposition } from './lease-deposi
 import type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
 import { createLeaseManager } from './lease-manager.ts';
 import {
+  abandonPreparedWorkflow as abandonPreparedWorkflowFromLifecycle,
   fork as forkFromLifecycle,
+  launchPreparedWorkflow as launchPreparedWorkflowFromLifecycle,
+  prepareWorkflow as prepareWorkflowFromLifecycle,
   recoverAll as recoverAllFromLifecycle,
   resume as resumeFromLifecycle,
   startOrSignal as startOrSignalFromLifecycle,
@@ -303,6 +309,7 @@ import {
   cleanupWaiters as cleanupWaitersFromTermination,
   finalizePendingTimelineEntry,
   suspendWorkflow as suspendWorkflowFromTermination,
+  terminateWorkflow as terminateWorkflowFromTermination,
   timeoutWorkflow as timeoutWorkflowFromTermination,
   type TerminationCallbacks,
 } from './termination.ts';
@@ -375,6 +382,7 @@ export {
   WorkflowTypeNotRegisteredForRecoveryError,
 } from './errors.ts';
 export { HANDLE_RESULT_PROMISE, WorkflowHandle } from './handles.ts';
+export type { PreparedWorkflowHandle } from './handles.ts';
 export { getWorkflowCatalog } from './internals.ts';
 export {
   WeftWorkflowClaimLostWarning,
@@ -803,8 +811,13 @@ export class Engine<
     getInternals(this).queuedOrLaunchingInlineWorkflowStartIds = new Set();
     getInternals(this).queuedInlineWorkflowStartFlushScheduled = false;
     const weakEngine = new WeakRef(this);
+    // COR-74: 'manual' scheduling never constructs this channel — a queued
+    // start is only advanced via an explicit `flushInlineLaunches()` call.
     const queuedInlineWorkflowStartChannel =
-      strategyBundle.inlineStrategy !== null ? new MessageChannel() : null;
+      strategyBundle.inlineStrategy !== null &&
+      resolvedOptions.inlineLaunchSchedulingMode === 'event-loop'
+        ? new MessageChannel()
+        : null;
     getInternals(this).queuedInlineWorkflowStartChannel = queuedInlineWorkflowStartChannel;
     if (queuedInlineWorkflowStartChannel !== null) {
       queuedInlineWorkflowStartChannel.port1.onmessage = createQueuedInlineWorkflowStartHandler(
@@ -1814,6 +1827,80 @@ export class Engine<
     );
   }
   /**
+   * Two-phase alternative to {@link Engine.start} (COR-75): commit the
+   * initial durable workflow record — readable via `engine.get(handle.id)` /
+   * `engine.list()` — without beginning execution. Call `handle.launch()`
+   * afterward to begin execution (same ownership and lease semantics as
+   * `start()`, since the claim is already acquired here), or
+   * `handle.abandon()` to discard the prepared run without ever launching
+   * it, which records a terminal `'cancelled'` transition instead of leaving
+   * an orphaned `'pending'` record.
+   *
+   * Use this when your own contract requires the durable record to exist
+   * before your own start hook returns, and paying that hook's latency
+   * inside the durable commit (or reordering with a compensating cancel)
+   * isn't acceptable.
+   *
+   * `options.idempotencyKey` and `options.startAt`/`options.startAfter` are
+   * not supported here — the former has no prepared-but-uncommitted
+   * equivalent to converge on, and the latter is a second, conflicting
+   * "when does this launch" mechanism. Use `start()` for either.
+   */
+  async prepare<TName extends KnownWorkflowNames<TWorkflows>>(
+    type: TName,
+    input: WorkflowInput<TWorkflows, TName>,
+    options?: Omit<
+      StartWorkflowOptions<WorkflowServices<TWorkflows, TName>>,
+      'idempotencyKey' | 'startAt' | 'startAfter'
+    >,
+  ): Promise<PreparedWorkflowHandle<WorkflowOutput<TWorkflows, TName>>>;
+  async prepare<TName extends string>(
+    type: UnknownWorkflowNameWhenDefaultRegistryIsEmpty<TWorkflows, TName>,
+    input: unknown,
+    options?: Omit<StartWorkflowOptions, 'idempotencyKey' | 'startAt' | 'startAfter'>,
+  ): Promise<PreparedWorkflowHandle>;
+  async prepare(
+    type: string,
+    input: unknown,
+    options?: StartWorkflowOptions,
+  ): Promise<PreparedWorkflowHandle> {
+    if (options?.idempotencyKey !== undefined) {
+      throw new StartWorkflowValidationError(
+        'options.idempotencyKey is not supported by engine.prepare(); use engine.start() instead.',
+      );
+    }
+    assertLeaseHeldForEngineWork(getInternals(this));
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    const { handle, context } = await prepareWorkflowFromLifecycle(
+      getInternals(this),
+      type,
+      input,
+      options,
+      this.#createLifecycleCallbacks(),
+    );
+    return {
+      id: handle.id,
+      launch: () =>
+        launchPreparedWorkflowFromLifecycle(
+          getInternals(this),
+          context,
+          this.#createLifecycleCallbacks(),
+        ),
+      abandon: () =>
+        abandonPreparedWorkflowFromLifecycle(getInternals(this), context, (workflowId) =>
+          terminateWorkflowFromTermination(
+            getInternals(this),
+            workflowId,
+            'cancelled',
+            this.#createTerminationCallbacks(),
+            PREPARED_WORKFLOW_ABANDONED_REASON,
+          ),
+        ),
+    };
+  }
+  /**
    * Atomically start a workflow or signal it if it already exists
    * (signal-with-start). With an absent target, the workflow record and the
    * first signal commit in one batch and the freshly-launched run consumes the
@@ -1944,6 +2031,31 @@ export class Engine<
       await this.#runRetentionSweep();
     }
     internals.alertManager?.tick();
+  }
+  /**
+   * Deterministically drain the inline launch queue (COR-74): every queued
+   * inline workflow start's first turn — and any further turn a `defer: true`
+   * (the default) `start()` left running to completion, plus any child start
+   * it enqueues synchronously via `ctx.startChild()` — is driven right now,
+   * through the exact same code path a scheduled flush uses. No step
+   * execution is skipped or stubbed.
+   *
+   * Under the default `inlineLaunchScheduling: 'event-loop'`, an inline
+   * workflow's first turn is otherwise deferred behind a `MessageChannel`
+   * `postMessage` (or `setTimeout(0)` when `MessageChannel` is unavailable) —
+   * a real event-loop macrotask with no fake-timer injection point. Construct
+   * the engine with `inlineLaunchScheduling: 'manual'` to skip that scheduling
+   * entirely and call this instead, so a deterministic test can drive a
+   * multi-step inline workflow to completion under fake timers with no real
+   * macrotask.
+   *
+   * Safe to call under `'event-loop'` mode too — it simply runs the queue now
+   * instead of waiting for the already-scheduled flush, which becomes a no-op
+   * once it eventually fires against an empty queue. A no-op when nothing is
+   * queued.
+   */
+  async flushInlineLaunches(): Promise<void> {
+    await flushQueuedInlineWorkflowStartsForEngine(this);
   }
   async purge(filter?: ListFilter): Promise<PurgeResult> {
     return purgeWorkflows(getInternals(this), filter, (workflowId) =>
