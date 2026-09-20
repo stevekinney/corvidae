@@ -388,7 +388,9 @@ console.log(hooks.has('before-compile')); // false
 
 ### Hierarchical hook priority bands (COR-567)
 
-PLACEHOLDER-REWRITE-IN-STEP-2
+`@corvidae/operative` and `@corvidae/bureau` compose a Bureau/Agent/direct-run hook hierarchy on top of this registry. `mergeHookRegistries` (below) offsets each tier by `(tierCount - 1 - tierIndex) * 1000`, over the fixed tier order `[bureau, agent, direct]`—the earliest-listed tier (Bureau) receives the highest offset.
+
+`HookRegistry` dispatches through three shapes, and which one a hook point uses decides who that offset actually protects. `runFirst` runs handlers in priority order against the same arguments and returns the first defined result, leaving the rest uninvoked—the highest band wins outright, so the default Bureau-highest offset is already enough. `runLast` and the plain `run` waterfall both run every handler; `runLast` hands every handler the same unmodified arguments and keeps the last defined result, while `run` additionally feeds each handler's defined return to the next as its first argument. Either way the lowest-priority handler runs last and answers last, so on these two shapes the lowest band—typically direct-run—has the final say by default, the opposite of `runFirst`. A Bureau invariant registered on a `runLast` or plain `run` hook point must therefore use an explicit low `priority` to remain the final word; on a `runFirst` point, the bureau band already wins without one.
 
 ### Observing a hook plan
 
