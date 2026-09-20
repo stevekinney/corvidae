@@ -2,7 +2,7 @@
 
 Your workflow engine runs on one machine, but your activities need to run on GPU nodes, region-specific servers, or isolated containers. Remote workers connect to the Weft server over WebSocket (or HTTP long-polling as a fallback) and execute activities wherever they're deployed. The [recovery and adoption guide](remote-task-recovery.md) explains how the server retains task ownership and outcomes across restarts.
 
-> [!NOTE] [`RemoteWorker`](../reference/api-workers.md#remoteworker) is an internal workspace API. The v6 task transport requires clients to match the [wire protocol](../reference/remote-worker-protocol.md), including its version and storage-capability requirements.
+> [!NOTE] [`RemoteWorker`](../reference/api-workers.md#remoteworker) is an internal workspace API. The v7 task transport requires clients to match the [wire protocol](../reference/remote-worker-protocol.md), including its version and storage-capability requirements.
 
 ## The RemoteWorker class
 
@@ -61,7 +61,7 @@ interface RemoteWorkerOptions {
 }
 ```
 
-On connection, the worker sends a v6 `register` message carrying its worker ID, concurrency limit, and a canonical manifest describing its deployment, runtime, and workflows. The server derives routing activities from the manifest and reads the queue from the connection URL. `connect()` resolves only after the server replies with `registerAck`; it rejects on `registerError` or if the socket closes before acknowledgement. The server tracks the accepted worker in the `WorkerRegistry`.
+On connection, the worker sends a v7 `register` message carrying its worker ID, concurrency limit, and a canonical manifest describing its deployment, runtime, and workflows. The server derives routing activities from the manifest and reads the queue from the connection URL. `connect()` resolves only after the server replies with `registerAck`; it rejects on `registerError` or if the socket closes before acknowledgement. The server tracks the accepted worker in the `WorkerRegistry`.
 
 ## Dispatching `ctx.run()` to remote workers
 

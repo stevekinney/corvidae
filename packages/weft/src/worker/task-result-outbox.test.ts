@@ -101,6 +101,36 @@ describe('TaskResultOutbox', () => {
     expect(outbox.size).toBe(1);
   });
 
+  it('reject removes only the entry matching both operationId and attemptToken, and reports whether one existed', () => {
+    // Protocol v7: a correlated protocolError names a specific
+    // (operationId, attemptToken) the server will never apply, no matter how
+    // many times it is resent — reject() is the outbox's other permanent-
+    // removal path, alongside acknowledge()'s "the server durably applied
+    // it" removal.
+    const outbox = new TaskResultOutbox();
+    outbox.buffer(completed('op-1', 'stale-result', 'stale-attempt'));
+    outbox.buffer(completed('op-1', 'fresh-result', 'fresh-attempt'));
+
+    // A rejection naming a different attempt token of the same operation
+    // must not remove the still-buffered entry for the current attempt.
+    expect(outbox.reject('op-1', 'wrong-attempt')).toBe(false);
+    expect(outbox.size).toBe(2);
+
+    expect(outbox.reject('op-1', 'stale-attempt')).toBe(true);
+    expect(outbox.size).toBe(1);
+    expect(outbox.drainOrder()).toEqual([completed('op-1', 'fresh-result', 'fresh-attempt')]);
+
+    expect(outbox.reject('op-1', 'fresh-attempt')).toBe(true);
+    expect(outbox.size).toBe(0);
+  });
+
+  it('rejecting an unknown (operationId, attemptToken) is a harmless no-op that reports false', () => {
+    const outbox = new TaskResultOutbox();
+    outbox.buffer(completed('a', 'x'));
+    expect(outbox.reject('unknown-op', 'unknown-attempt')).toBe(false);
+    expect(outbox.size).toBe(1);
+  });
+
   it('reports full once the ceiling is reached', () => {
     const outbox = new TaskResultOutbox(2);
     expect(outbox.full).toBe(false);

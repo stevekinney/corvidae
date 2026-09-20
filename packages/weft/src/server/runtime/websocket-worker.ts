@@ -157,6 +157,20 @@ async function commitAndAcknowledgeTaskResult(
   if (applied.ok) {
     sendTaskResultAck(ws, operationId, message.attemptToken, applied.disposition);
   } else {
+    // `commitTaskLedgerCompletion` never turns this into an ack — conflicting
+    // content resubmitted under this exact attempt token, or the record
+    // having moved on to a queued/newer attempt by the time this reached the
+    // ledger — so the worker gets a correlated `protocolError` (protocol v7)
+    // instead of silence. `applyWorkerTaskResult` has no `ws` to answer with
+    // itself; this is the one place both callers of this function actually
+    // reach the worker.
+    sendWorkerProtocolMessage(ws, {
+      type: 'protocolError',
+      code: 'invalid_message',
+      message: `taskResult for operation "${operationId}" rejected — ${applied.reason}`,
+      operationId,
+      attemptToken: message.attemptToken,
+    });
     console.error(
       `[weft] Failed to commit task result for "${operationId}" through the durable ledger:`,
       applied.reason,
@@ -202,6 +216,8 @@ async function applyTaskResultFallback(
       type: 'protocolError',
       code: 'invalid_message',
       message: taskResultRejectionMessage(authorization.reason, operationId, workerId),
+      operationId,
+      attemptToken: message.attemptToken,
     });
     return;
   }
@@ -210,7 +226,10 @@ async function applyTaskResultFallback(
   // only enforced while the record still carries a `workflowRevision`. A
   // genuine resend of the same original message always echoes back whatever
   // it echoed the first time, so this only ever rejects a submission that is
-  // not actually the buffered resend it claims to be.
+  // not actually the buffered resend it claims to be. Permanent exactly like
+  // the authorization check above — the echoed revision on a resend of this
+  // exact message can never change — so it carries the same correlation
+  // (protocol v7).
   if (
     record !== null &&
     record.workflowRevision !== undefined &&
@@ -220,6 +239,8 @@ async function applyTaskResultFallback(
       type: 'protocolError',
       code: 'invalid_message',
       message: `taskResult for operation "${operationId}" rejected — revision mismatch`,
+      operationId,
+      attemptToken: message.attemptToken,
     });
     return;
   }
@@ -265,6 +286,8 @@ function onTaskResultMessage(
       type: 'protocolError',
       code: 'invalid_message',
       message: taskResultRejectionMessage(authorization.reason, operationId, workerId),
+      operationId,
+      attemptToken: message.attemptToken,
     });
     return;
   }
@@ -272,7 +295,9 @@ function onTaskResultMessage(
   // long-poll's strict policy: a missing echo is tolerated whenever the
   // in-flight entry itself carries no `workflowRevision` (the dispatch never
   // opted in, or a pre-WFT-20 worker SDK never echoes the field back) — a
-  // present-and-wrong echo always rejects.
+  // present-and-wrong echo always rejects. Permanent exactly like the
+  // authorization check above, so it carries the same correlation
+  // (protocol v7).
   if (
     inFlightTask.workflowRevision !== undefined &&
     message.workflowRevision !== inFlightTask.workflowRevision
@@ -281,6 +306,8 @@ function onTaskResultMessage(
       type: 'protocolError',
       code: 'invalid_message',
       message: `taskResult for operation "${operationId}" rejected — revision mismatch`,
+      operationId,
+      attemptToken: message.attemptToken,
     });
     return;
   }
@@ -302,9 +329,9 @@ function onTaskResultMessage(
  * Acknowledge a worker's `taskResult` (COR-240, protocol v4). Sent only when
  * `commitTaskLedgerCompletion` produced an applied, duplicate, or
  * dead-lettered disposition — never for a hard rejection (unknown
- * operation, stale attempt, conflicting content, queued/newer attempt),
- * which the caller already reported via `protocolError` before this would
- * be reached.
+ * operation, stale attempt, conflicting content, queued/newer attempt), which
+ * the caller reports via a correlated `protocolError` instead (protocol v7,
+ * see `commitAndAcknowledgeTaskResult`'s `else` branch).
  */
 function sendTaskResultAck(
   ws: ServerWebSocket<WebSocketData>,

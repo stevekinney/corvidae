@@ -70,8 +70,13 @@ async function bridgeIfResolvedApplied(
  * as `completed`/`failed`. `ok: false` is reserved for the hard rejections
  * `commitTaskLedgerCompletion` never turns into an ack — unknown operation,
  * stale attempt, conflicting content under one attempt token, or a
- * queued/newer attempt already in progress — which callers surface as
- * `protocolError` (WebSocket) or `403` (long-poll), exactly as before v4.
+ * queued/newer attempt already in progress. This function has no `ws`/HTTP
+ * response to answer with itself, so it is the caller's job to surface the
+ * rejection: `commitAndAcknowledgeTaskResult` (`websocket-worker.ts`) answers
+ * with a correlated `protocolError` (protocol v7) and `handleTaskResultRequest`
+ * (`task-polling.ts`) answers `403` with the same `operationId`/`attemptToken`
+ * in the body, so either transport's worker can tell which submission was
+ * permanently rejected.
  */
 export async function applyWorkerTaskResult(
   options: ServeOptions,

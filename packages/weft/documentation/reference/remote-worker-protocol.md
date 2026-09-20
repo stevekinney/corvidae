@@ -4,14 +4,14 @@ This document describes the versioned worker transports Weft uses to dispatch ac
 
 ## At a glance
 
-- **Protocol version**: v6. `register.protocolVersion` is required and must be exactly `6`.
+- **Protocol version**: v7. `register.protocolVersion` is required and must be exactly `7`.
 - **Transport**: WebSocket text frames containing JSON objects.
 - **Endpoint**: `/api/v1/tasks/:queue/stream` on the Weft server. Connect to one queue per WebSocket.
 - **Direction**: bidirectional. Workers send `register`, `heartbeat`, `activityHeartbeat`, `taskResult`. Server sends `task`, `cancel`, `shutdown`, `registerAck`, `registerError`, `protocolError`, `taskResultAck`.
 - **Heartbeat**: workers send a session `heartbeat` every 10 seconds after registration is acknowledged, plus one `activityHeartbeat` per in-flight long-running attempt on the same interval. The two are independent clocks (COR-230, v5) — see [`heartbeat`](#heartbeat) and [`activityHeartbeat`](#activityheartbeat) below.
 - **Authentication**: not part of the protocol envelope. Auth happens at the WebSocket transport layer.
 - **Frame limit**: every server WebSocket endpoint is capped at a fixed 4 MiB raw frame size before JSON parsing. This transport ceiling is separate from `payloadSize.maxBytes`, which applies to codec-encoded workflow values at admission time.
-- **Fatal close codes**: unsupported or invalid registration receives `registerError`, then WebSocket close code `1008`. Malformed protocol frames receive `protocolError`, then WebSocket close code `1002`.
+- **Fatal close codes**: unsupported or invalid registration receives `registerError`, then WebSocket close code `1008`. A malformed protocol frame receives `protocolError`, then WebSocket close code `1002`. A permanently-rejected `taskResult` also receives `protocolError` (with correlating `operationId`/`attemptToken`, protocol v7) but does NOT close the socket — the connection itself remains usable, only that one submission is unappliable.
 
 The public schema contract is exported from `@lostgradient/weft`:
 
@@ -127,11 +127,11 @@ Sent immediately after the WebSocket opens.
 ```json
 {
   "type": "register",
-  "protocolVersion": 6,
+  "protocolVersion": 7,
   "workerId": "<string>",
   "manifest": {
     "manifestVersion": 1,
-    "protocolVersion": 6,
+    "protocolVersion": 7,
     "sdkVersion": "0.18.0",
     "runtime": { "name": "bun", "version": "1.3.14" },
     "deployment": {
@@ -163,7 +163,7 @@ Sent immediately after the WebSocket opens.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"register"` | Yes | Message discriminator. |
-| `protocolVersion` | `6` | Yes | Required v6 protocol version. Missing or unsupported versions receive `registerError`. |
+| `protocolVersion` | `7` | Yes | Required v7 protocol version. Missing or unsupported versions receive `registerError`. |
 | `workerId` | string | Yes | Stable identifier for this worker. Must be non-empty. |
 | `manifest` | `WorkerManifest` | Yes | Canonical worker manifest—deployment, runtime, workflows, activities, and capabilities. Deeply validated by `parseWorkerManifest()` server-side, not by this wire-shape layer; see [Canonical worker manifest](api-workers.md#canonical-worker-manifest). Routing `activities` are derived from `manifest.workflows`, not sent as a separate field. |
 | `concurrency` | number | No | Maximum concurrent tasks. Server clamps finite numbers to `[1, 1000]`. Defaults to `10`. |
@@ -286,7 +286,7 @@ Workers must echo the token from every `task` frame:
 }
 ```
 
-**Outbox and acknowledgement (COR-240, v4).** `RemoteWorker` buffers every `taskResult` it produces in an outbox keyed by `(operationId, attemptToken)` before attempting to send it, and `WebSocket.send()` returning does not remove that entry — a frame can be sent but never reach the server, or the server's `taskResultAck` can be sent but never reach the worker. Only a matching `taskResultAck` (see below) removes the entry. A reconnect resends every still-buffered result, in insertion order, over the fresh socket; the server's ledger makes a resend idempotent (see `taskResultAck`'s `duplicate` disposition) rather than re-executing the activity a second time.
+**Outbox and acknowledgement (COR-240, v4).** `RemoteWorker` buffers every `taskResult` it produces in an outbox keyed by `(operationId, attemptToken)` before attempting to send it, and `WebSocket.send()` returning does not remove that entry — a frame can be sent but never reach the server, or the server's `taskResultAck` can be sent but never reach the worker. Only a matching `taskResultAck` (see below), or a correlated `protocolError` naming that same `(operationId, attemptToken)` (protocol v7), removes the entry. A reconnect resends every still-buffered result, in insertion order, over the fresh socket; the server's ledger makes a resend idempotent (see `taskResultAck`'s `duplicate` disposition) rather than re-executing the activity a second time. Before v7, a `taskResult` the server would never apply — an unknown operation, a stale or foreign attempt, a workflow-revision mismatch, or conflicting content resubmitted under one attempt token — had no way to clear the outbox at all, so it was resent on every reconnect forever, eventually tripping `MAX_BUFFERED_TASK_RESULTS` and wedging the worker's intake.
 
 ### Server -> Worker
 
@@ -361,7 +361,7 @@ Server acknowledgement that registration succeeded.
 ```json
 {
   "type": "registerAck",
-  "protocolVersion": 6,
+  "protocolVersion": 7,
   "workerId": "<string>",
   "queue": "default",
   "concurrency": 10,
@@ -374,7 +374,7 @@ Server acknowledgement that registration succeeded.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"registerAck"` | Yes | Message discriminator. |
-| `protocolVersion` | `6` | Yes | Effective protocol version. |
+| `protocolVersion` | `7` | Yes | Effective protocol version. |
 | `workerId` | string | Yes | Accepted worker identifier. |
 | `queue` | string | Yes | Effective queue from the WebSocket URL. |
 | `concurrency` | number | Yes | Effective concurrency after server clamping to the supported capacity. |
@@ -393,7 +393,7 @@ Server rejection of registration. The server sends this message, then closes the
   "type": "registerError",
   "code": "unsupported_protocol_version",
   "message": "Unsupported RemoteWorker protocol version: 1",
-  "supportedProtocolVersions": [6],
+  "supportedProtocolVersions": [7],
   "requestedProtocolVersion": 1
 }
 ```
@@ -408,7 +408,21 @@ Server rejection of registration. The server sends this message, then closes the
 
 ### `protocolError`
 
-Server rejection of a malformed worker-to-server frame after the WebSocket is open. The server sends this message, then closes the WebSocket with close code `1002`.
+Server rejection of a malformed worker-to-server frame after the WebSocket is open. The server sends this message, then closes the WebSocket with close code `1002` — except for a rejected `taskResult`, below, which does NOT close the socket, since the connection itself remains perfectly usable.
+
+For a rejected `taskResult` the server will never apply no matter how many times it is resent — unknown operation, stale or foreign attempt, a workflow-revision mismatch, or conflicting content resubmitted under one attempt token — `operationId` and `attemptToken` (protocol v7) echo back the rejected submission's identity, so the worker can correlate the rejection against its `TaskResultOutbox` and drop the entry instead of resending it forever:
+
+```json
+{
+  "type": "protocolError",
+  "code": "invalid_message",
+  "message": "taskResult for operation \"op-1\" rejected — stale attempt token",
+  "operationId": "op-1",
+  "attemptToken": "attempt-token"
+}
+```
+
+Both fields are absent for a malformed frame with no operation to correlate against:
 
 ```json
 {
@@ -423,10 +437,12 @@ Server rejection of a malformed worker-to-server frame after the WebSocket is op
 | `type` | `"protocolError"` | Yes | Message discriminator. |
 | `code` | `"invalid_json" \| "invalid_message" \| "unknown_message_type" \| "registration_required"` | Yes | Machine-readable protocol failure. |
 | `message` | string | Yes | Human-readable diagnostic. |
+| `operationId` | non-empty string | No (v7) | Present only for a permanently-rejected `taskResult` — the `operationId` from the submission this rejects. |
+| `attemptToken` | non-empty string | No (v7) | Present only for a permanently-rejected `taskResult` — the `attemptToken` from the submission this rejects, matched against the worker's outbox entry. |
 
 ### `taskResultAck`
 
-Server acknowledgement of a worker's `taskResult` (COR-240, v4). Sent after the durable task ledger has resolved the submission — after a hard rejection (unknown operation, stale attempt, conflicting content under one attempt token, or a queued/newer attempt already in progress) the worker instead receives `protocolError`, exactly as before v4.
+Server acknowledgement of a worker's `taskResult` (COR-240, v4). Sent after the durable task ledger has resolved the submission — after a hard rejection (unknown operation, stale attempt, conflicting content under one attempt token, or a queued/newer attempt already in progress, or a workflow-revision mismatch) the worker instead receives a correlated `protocolError` (protocol v7) naming the same `operationId`/`attemptToken`.
 
 ```json
 {
@@ -444,7 +460,7 @@ Server acknowledgement of a worker's `taskResult` (COR-240, v4). Sent after the 
 | `attemptToken` | non-empty string | Yes | The `attemptToken` from the `taskResult` this acknowledges — matched against the worker's outbox entry. |
 | `disposition` | `"applied" \| "duplicate" \| "dead-lettered"` | Yes | `applied`: the ledger recorded this attempt's result for the first time. `duplicate`: the ledger already held a terminal record for this exact `(operationId, attemptToken)` and content — a resend after an ambiguous send, or after a server restart, re-affirmed without a new write. `dead-lettered`: the result could not be durably applied (or already couldn't be) and was recorded as a dead letter instead. |
 
-Only this message removes the matching entry from the worker's outbox — see the outbox note under `taskResult` above.
+This message removes the matching entry from the worker's outbox once the ledger resolves the submission. A correlated `protocolError` (protocol v7, above) removes it too, but for the opposite reason — the ledger will never resolve that submission, so resending it forever would be strictly worse than dropping it. See the outbox note under `taskResult` above.
 
 ## Conformance
 
@@ -461,7 +477,7 @@ The command starts a localhost Weft server and launches the worker command with 
 | `WEFT_WORKER_URL`              | WebSocket URL for the temporary worker endpoint. |
 | `WEFT_WORKER_QUEUE`            | Queue name the worker should register for.       |
 | `WEFT_WORKER_ACTIVITIES`       | Comma-separated activity names to implement.     |
-| `WEFT_WORKER_PROTOCOL_VERSION` | Current protocol version, `6`.                   |
+| `WEFT_WORKER_PROTOCOL_VERSION` | Current protocol version, `7`.                   |
 
 The conformance runner verifies registration acknowledgement, echo task completion, heartbeat-preserved work, cancellation, in-flight reassignment after disconnect, graceful shutdown, and failure of a deliberately broken worker fixture. `--json` returns a stable machine-readable report. Without `--json`, each check prints as `PASS` or `FAIL`.
 
@@ -575,7 +591,7 @@ Cancellation body (COR-230, acceptance criterion 13) — a worker's cooperative 
 | --- | --- |
 | `200` | Result accepted. Body is `{ "ok": true, "disposition": "applied" \| "duplicate" \| "dead-lettered" }` (COR-240, v4) — see `taskResultAck`'s disposition table above; the same three outcomes apply here, since both transports commit through the same durable-ledger implementation. |
 | `400` | Invalid JSON, missing required fields, unsupported status, or malformed `attemptToken`. |
-| `403` | The echoed `workerId`, `attemptToken`, or `workflowRevision` does not match the current in-flight record, or the URL's `:queue` segment does not match the record's actual queue. |
+| `403` | The echoed `workerId`, `attemptToken`, or `workflowRevision` does not match the current in-flight record, or the URL's `:queue` segment does not match the record's actual queue, or the ledger will never apply this exact submission (conflicting content resubmitted under one attempt token, or a queued/newer attempt already in progress). Body is `{ "error": "Forbidden", "operationId": "<string>", "attemptToken": "<string>" }`, echoing the rejected submission's identity (mirrors the WebSocket transport's correlated `protocolError`, protocol v7, in semantics — `LongPollWorker` has no outbox to drop an entry from, so this only documents which submission was rejected). |
 | `413` | The result body or serialized activity result exceeds `maxRequestBodyBytes` or `payloadSize.maxBytes`. |
 
 **Revision staleness is STRICT for long-poll (WFT-20)**, unlike the WebSocket transport's additive policy above: when the stored ledger record for this task carries a `workflowRevision`, the result request must echo it back EXACTLY—a missing echo is rejected the same as a mismatched one. Long-poll has no live in-flight registry entry to fall back on the way the WebSocket transport does, so once ANY `TaskDispatch` caller starts supplying `workflowRevision` for a given operation, every worker completing it must echo the value back or receive `403`.

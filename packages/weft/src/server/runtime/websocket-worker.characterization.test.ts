@@ -1271,6 +1271,13 @@ describe('handleWorkerWebSocketMessage', () => {
       expect(rejection).toMatchObject({ type: 'protocolError', code: 'invalid_message' });
       expect(String(rejection.message)).toContain('not assigned to worker');
       expect(ws.sentMessages.some((raw) => JSON.parse(raw).type === 'taskResultAck')).toBe(false);
+      // Protocol v7: a worker can only correlate this permanent rejection
+      // against its outbox entry — and stop resending it forever — if the
+      // rejection names the exact (operationId, attemptToken) it concerns.
+      expect(rejection).toMatchObject({
+        operationId: 'op-never-dispatched',
+        attemptToken: 'attempt-token',
+      });
     });
 
     // COR-233 item 3: the headline fixture scenario at the transport-unit
@@ -1357,6 +1364,93 @@ describe('handleWorkerWebSocketMessage', () => {
       const afterResend = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-resend')));
       expect(afterResend?.state).toBe('terminal');
       expect(afterResend?.generation).toBe(resolved.generation);
+    });
+
+    // Unlike the resend above, a DIFFERENT result under the SAME attempt
+    // token against an already-terminal record is
+    // `commitTaskLedgerCompletion`'s conflicting-content rejection — a hard
+    // `ok: false` `applyWorkerTaskResult` never turns into an ack. Before
+    // this, `commitAndAcknowledgeTaskResult`'s failure branch only reached
+    // `console.error`: the worker got no response at all, so the outbox
+    // entry could never clear. It now sends a correlated `protocolError`
+    // (protocol v7) instead.
+    it('sends a correlated protocolError for conflicting content resubmitted under the same attempt token', async () => {
+      const context = minimalServerContext();
+      const storage = new MemoryStorage();
+      const options = minimalServeOptions(storage);
+      const ws = createFakeWs();
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        registerMessageJson('w-conflict', ['doWork'], { concurrency: 5 }),
+        NOOP_CLEANUP,
+      );
+      await waitForRegistrationSideEffect(
+        () => context.registry.getWorker('w-conflict') !== undefined,
+      );
+
+      context.registry.assignTask('w-conflict', 'op-conflict', 30_000, undefined, 'attempt-token');
+      await writeLeasedLedgerRecord(storage, {
+        operationId: 'op-conflict',
+        workerSessionId: 'w-conflict',
+      });
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        JSON.stringify({
+          type: 'taskResult',
+          operationId: 'op-conflict',
+          attemptToken: 'attempt-token',
+          status: 'completed',
+          value: 'first-value',
+        }),
+        NOOP_CLEANUP,
+      );
+      await waitForResolvedTerminalRecord(storage, 'op-conflict', 'first delivery to resolve');
+
+      const sentBeforeConflict = ws.sentMessages.length;
+
+      // The registry has already forgotten this operation (`completeTask()`
+      // ran on the first delivery), so this resend lands on the fallback
+      // path (`applyTaskResultFallback`) — same as the COR-233 resend test
+      // above — but with genuinely different content under the same
+      // attempt token.
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        JSON.stringify({
+          type: 'taskResult',
+          operationId: 'op-conflict',
+          attemptToken: 'attempt-token',
+          status: 'completed',
+          value: 'a-different-value',
+        }),
+        NOOP_CLEANUP,
+      );
+
+      await waitForCondition(async () => ws.sentMessages.length > sentBeforeConflict, {
+        timeoutMs: 1000,
+        intervalMs: 10,
+        label: 'conflicting content to be rejected',
+      });
+
+      const rejection = JSON.parse(ws.sentMessages.at(-1)!);
+      expect(rejection).toMatchObject({
+        type: 'protocolError',
+        code: 'invalid_message',
+        operationId: 'op-conflict',
+        attemptToken: 'attempt-token',
+      });
+      expect(String(rejection.message)).toContain('conflicting content');
+      expect(ws.sentMessages.some((raw) => JSON.parse(raw).type === 'taskResultAck')).toBe(true);
+      expect(
+        ws.sentMessages.filter((raw) => JSON.parse(raw).type === 'taskResultAck'),
+      ).toHaveLength(1);
     });
   });
 

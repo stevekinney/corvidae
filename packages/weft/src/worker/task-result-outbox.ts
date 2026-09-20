@@ -98,6 +98,27 @@ export class TaskResultOutbox {
     if (!this.full) this.#warnedFull = false;
   }
 
+  /**
+   * Permanently drop a buffered result because a correlated `protocolError`
+   * (protocol v7) told us the server will never apply it, no matter how many
+   * times it is resent — unknown operation, stale or foreign attempt, a
+   * workflow-revision mismatch, or conflicting content resubmitted under one
+   * attempt token. Resending an unappliable result forever is strictly worse
+   * than dropping it: it can never become appliable by retrying, and it
+   * eventually trips {@link MAX_BUFFERED_TASK_RESULTS}. Returns whether an
+   * entry was actually present to drop, so callers can tell a genuine
+   * correlation from a rejection that named an operation/attempt this outbox
+   * never buffered.
+   */
+  reject(operationId: string, attemptToken: string): boolean {
+    const key = outboxKey(operationId, attemptToken);
+    const existed = this.#entries.delete(key);
+    // Re-arm the one-time full warning once the backlog drains below the cap,
+    // matching `acknowledge()`'s identical reasoning.
+    if (!this.full) this.#warnedFull = false;
+    return existed;
+  }
+
   /** Snapshot of buffered results in insertion (flush) order. */
   drainOrder(): TaskResultMessage[] {
     return [...this.#entries.values()];

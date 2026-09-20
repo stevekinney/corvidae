@@ -11,6 +11,28 @@
 /**
  * Current RemoteWorker wire protocol version.
  *
+ * **Version 7** (Correlated Task-Result Rejections) adds two OPTIONAL fields,
+ * `operationId` and `attemptToken`, to `protocolError`. They are present
+ * exactly when the rejection concerns a specific `taskResult` submission the
+ * server will never apply no matter how many times it is resent — unknown
+ * operation, stale or foreign attempt, a workflow-revision mismatch, or
+ * conflicting content resubmitted under one attempt token — and absent for
+ * `invalid_json`, `unknown_message_type`, `registration_required`, and any
+ * other malformed-frame rejection where no operation exists yet. Before v7 a
+ * worker's `TaskResultOutbox` (COR-240) had no way to tell WHICH buffered
+ * entry a `protocolError` was rejecting, so a permanently-unappliable result
+ * could never be acknowledged and was resent on every reconnect forever,
+ * eventually tripping `MAX_BUFFERED_TASK_RESULTS` and wedging the worker's
+ * intake. This is a version bump, not a negotiated one, even though the new
+ * fields are optional and a v6 worker's field-by-field parser silently
+ * ignores unknown properties on a message it can already parse: the
+ * documented wire contract (`REMOTE_WORKER_PROTOCOL_JSON_SCHEMA`) for
+ * `protocolError` changes shape, and this repository's pre-release policy is
+ * to make that a clean break rather than carry an implicit, undocumented
+ * promise about when a v6 peer could have relied on the fields being
+ * present. No compatibility parser is added for the retired version, matching
+ * every prior bump's policy.
+ *
  * **Version 6** (Reconnect, Shutdown, and Diagnostics, COR-220) adds a
  * session-generation handshake to `register`/`registerAck` so a reconnecting
  * worker can PROVE it is resuming its own prior session rather than merely
@@ -82,7 +104,7 @@
  * const registration = { type: 'register', protocolVersion: REMOTE_WORKER_PROTOCOL_VERSION };
  * ```
  */
-export const REMOTE_WORKER_PROTOCOL_VERSION = 6;
+export const REMOTE_WORKER_PROTOCOL_VERSION = 7;
 
 /**
  * Lowest RemoteWorker protocol version accepted by this package.
@@ -91,10 +113,10 @@ export const REMOTE_WORKER_PROTOCOL_VERSION = 6;
  * ```ts
  * import { REMOTE_WORKER_MIN_PROTOCOL_VERSION } from '@lostgradient/weft';
  *
- * const supportsCurrentVersion = REMOTE_WORKER_MIN_PROTOCOL_VERSION === 6;
+ * const supportsCurrentVersion = REMOTE_WORKER_MIN_PROTOCOL_VERSION === 7;
  * ```
  */
-export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 6;
+export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 7;
 
 /**
  * Highest RemoteWorker protocol version accepted by this package.
@@ -103,10 +125,10 @@ export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 6;
  * ```ts
  * import { REMOTE_WORKER_MAX_PROTOCOL_VERSION } from '@lostgradient/weft';
  *
- * const canUseRequestedVersion = 6 <= REMOTE_WORKER_MAX_PROTOCOL_VERSION;
+ * const canUseRequestedVersion = 7 <= REMOTE_WORKER_MAX_PROTOCOL_VERSION;
  * ```
  */
-export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 6;
+export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 7;
 
 /**
  * Explicit supported RemoteWorker protocol versions.
@@ -115,7 +137,7 @@ export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 6;
  * ```ts
  * import { REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS } from '@lostgradient/weft';
  *
- * const supported = REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS.includes(6);
+ * const supported = REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS.includes(7);
  * ```
  */
 export const REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS = [REMOTE_WORKER_PROTOCOL_VERSION] as const;
@@ -127,7 +149,7 @@ export const REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS = [REMOTE_WORKER_PROTOCOL
  * ```ts
  * import type { RemoteWorkerProtocolVersion } from '@lostgradient/weft';
  *
- * const version: RemoteWorkerProtocolVersion = 6;
+ * const version: RemoteWorkerProtocolVersion = 7;
  * ```
  */
 export type RemoteWorkerProtocolVersion =

@@ -638,7 +638,15 @@ describe('handleTaskResultRequest revision authorization (WFT-20)', () => {
     );
 
     expect(response?.status).toBe(403);
-    expect(await response?.json()).toEqual({ error: 'Forbidden' });
+    // Pins the correlated 403 body: an operation/attempt this transport will
+    // never apply carries the same identity a WebSocket worker would see on
+    // a correlated `protocolError` (protocol v7), even though this rejection
+    // has no outbox entry to drop.
+    expect(await response?.json()).toEqual({
+      error: 'Forbidden',
+      operationId: 'op-revision-missing',
+      attemptToken: 'attempt-token',
+    });
   });
 
   it('rejects with 403 when the POST body echoes the wrong workflowRevision', async () => {
@@ -666,7 +674,11 @@ describe('handleTaskResultRequest revision authorization (WFT-20)', () => {
     );
 
     expect(response?.status).toBe(403);
-    expect(await response?.json()).toEqual({ error: 'Forbidden' });
+    expect(await response?.json()).toEqual({
+      error: 'Forbidden',
+      operationId: 'op-revision-wrong',
+      attemptToken: 'attempt-token',
+    });
   });
 
   it('accepts a 200 when the POST body echoes the matching workflowRevision', async () => {
@@ -1203,5 +1215,58 @@ describe('handleTaskPollRequest', () => {
     const afterResend = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-resend')));
     expect(afterResend?.state).toBe('terminal');
     expect(afterResend?.generation).toBe(resolved.generation);
+  });
+
+  // Unlike the resend above, a DIFFERENT result under the SAME attempt token
+  // against an already-terminal record is `commitTaskLedgerCompletion`'s
+  // conflicting-content rejection — a hard `ok: false` this transport never
+  // turns into a 200. Before the correlated body, `applyTaskResult`'s
+  // failure only reached `console.error`; the caller could not tell a
+  // caller which operation/attempt was rejected from the response alone.
+  it('rejects conflicting content resubmitted under the same attempt token with a correlated 403 (protocol v7 semantics)', async () => {
+    const context = createMinimalContext();
+    const storage = new MemoryStorage();
+    const options = createMinimalOptions(storage);
+    await writeLeasedRecord(storage, { operationId: 'op-conflict' });
+
+    const first = await handleTaskResultRequest(
+      context,
+      options,
+      makePostRequest({
+        operationId: 'op-conflict',
+        workerId: 'longpoll-worker',
+        attemptToken: 'attempt-token',
+        status: 'completed',
+        value: 42,
+      }),
+      makeUrl(),
+    );
+    expect(first?.status).toBe(200);
+    expect(await first?.json()).toEqual({ ok: true, disposition: 'applied' });
+    const resolved = await readResolvedTerminalRecord(storage, 'op-conflict');
+
+    // Same operation, same attempt token, but a genuinely different result.
+    const conflicting = await handleTaskResultRequest(
+      context,
+      options,
+      makePostRequest({
+        operationId: 'op-conflict',
+        workerId: 'longpoll-worker',
+        attemptToken: 'attempt-token',
+        status: 'completed',
+        value: 'a different value entirely',
+      }),
+      makeUrl(),
+    );
+    expect(conflicting?.status).toBe(403);
+    expect(await conflicting?.json()).toEqual({
+      error: 'Forbidden',
+      operationId: 'op-conflict',
+      attemptToken: 'attempt-token',
+    });
+
+    // The original terminal record is untouched by the rejected resubmission.
+    const afterConflict = await readResolvedTerminalRecord(storage, 'op-conflict');
+    expect(afterConflict.generation).toBe(resolved.generation);
   });
 });

@@ -242,6 +242,20 @@ async function applyTaskResult(
   return { ok: true, disposition: applied.disposition };
 }
 
+/**
+ * `403` response for a `taskResult` this transport will never apply — no
+ * matter how many times it is resent — carrying the `operationId`/
+ * `attemptToken` that identify exactly which submission was rejected.
+ * Mirrors the WebSocket transport's correlated `protocolError` (protocol v7,
+ * `websocket-worker.ts`'s `commitAndAcknowledgeTaskResult`/
+ * `applyTaskResultFallback`) in semantics, not shape: `LongPollWorker` has no
+ * outbox to drop an entry from, so this only documents which submission was
+ * rejected for whatever calls this HTTP API.
+ */
+function taskResultForbiddenResponse(operationId: string, attemptToken: string): Response {
+  return Response.json({ error: 'Forbidden', operationId, attemptToken }, { status: 403 });
+}
+
 function payloadSizeExceededResponse(error: {
   code: string;
   message: string;
@@ -454,7 +468,7 @@ export async function handleTaskResultRequest(
     await options.engine.storage.get(taskLedgerKey(validated.operationId)),
   );
   if (!isLongPollCompletionAuthorized(record, validated, queue)) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+    return taskResultForbiddenResponse(validated.operationId, validated.attemptToken);
   }
 
   const payloadError = taskResultPayloadSizeError(
@@ -503,7 +517,14 @@ export async function handleTaskResultRequest(
       `[weft] Failed to commit task result for "${validated.operationId}" through the durable ledger:`,
       applied.reason,
     );
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+    // `LongPollWorker` has no outbox and no resend loop (unlike `RemoteWorker`
+    // over WebSocket, see `commitAndAcknowledgeTaskResult`'s correlated
+    // `protocolError`, protocol v7), so there is no buffered entry to drop
+    // here. Still, mirror the WebSocket transport's correlation semantics in
+    // the error body — `operationId`/`attemptToken` — so a caller of this
+    // HTTP API can tell which submission was permanently rejected instead of
+    // only that *something* was `403`.
+    return taskResultForbiddenResponse(validated.operationId, validated.attemptToken);
   }
   return Response.json({ ok: true, disposition: applied.disposition });
 }

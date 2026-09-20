@@ -21,6 +21,7 @@ import {
 } from './options.ts';
 import {
   parseServerToWorkerMessage,
+  type ProtocolErrorMessage,
   type ServerToWorkerMessage,
   type TaskMessage,
   type TaskResultMessage,
@@ -537,6 +538,35 @@ export class RemoteWorker implements Disposable {
     entry.controller.abort();
   }
 
+  /**
+   * Handle a `protocolError` from the server (protocol v7 for the
+   * correlated branch below).
+   *
+   * When `operationId`/`attemptToken` are present, this rejection names a
+   * specific `taskResult` the server will never apply no matter how many
+   * times it is resent — unknown operation, stale or foreign attempt, a
+   * workflow-revision mismatch, or conflicting content resubmitted under one
+   * attempt token. Resending that result forever is strictly worse than
+   * dropping it, so this drops the matching outbox entry immediately rather
+   * than waiting for a `taskResultAck` that will never come. Every other
+   * `protocolError` (malformed frame, no operation to correlate against) is
+   * reported exactly as before v7.
+   */
+  #handleProtocolError(data: ProtocolErrorMessage): void {
+    if (data.operationId === undefined || data.attemptToken === undefined) {
+      console.warn(`[weft] RemoteWorker protocol error from server: ${data.message}`);
+      return;
+    }
+
+    const dropped = this.#taskResultOutbox.reject(data.operationId, data.attemptToken);
+    console.warn(
+      `[weft] RemoteWorker taskResult for operation "${data.operationId}" (attempt "${data.attemptToken}") permanently rejected by server — ${data.message}` +
+        (dropped
+          ? '; dropping the buffered result, it will not be resent'
+          : '; no matching buffered result was found'),
+    );
+  }
+
   async #handleMessage(event: MessageEvent): Promise<void> {
     const data = this.#parseServerMessage(event);
     if (data === null) return;
@@ -549,7 +579,7 @@ export class RemoteWorker implements Disposable {
         this.#handleRegisterError(data.message);
         break;
       case 'protocolError':
-        console.warn(`[weft] RemoteWorker protocol error from server: ${data.message}`);
+        this.#handleProtocolError(data);
         break;
       case 'task':
         if (!this.#shuttingDown) await this.#executeTask(data);
