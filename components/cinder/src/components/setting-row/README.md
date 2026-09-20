@@ -17,7 +17,7 @@ SettingRow arranges settings-page guidance and a control while publishing FormFi
 </SettingRow>
 ```
 
-`SettingRow` requires a stable `id`, `label`, and `control` snippet. `warning` is advisory and `error` is corrective; both are forwarded through the `FormField` context to the composed control. Use `managed` with [`PolicyLock`](../policy-lock/README.md) when a policy owns the value. The row does not save settings or disable a control automatically—pass `disabled` to the row or control when the host is submitting or unavailable.
+`SettingRow` requires a stable `id`, `label`, and `control` snippet. `warning` is advisory and `error` is corrective; `FormField` renders both messages itself as siblings of the control, and exposes only `warningId`/`errorId`/`describedBy`/`invalid` through context—a custom `control` that reads that context associates with the messages, it doesn't receive their text. Use `managed` with [`PolicyLock`](../policy-lock/README.md) when a policy owns the value. The row does not save settings or disable a control automatically—pass `disabled` to the row or control when the host is submitting or unavailable.
 
 ## Props
 

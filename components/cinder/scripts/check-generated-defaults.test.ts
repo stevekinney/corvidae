@@ -10,8 +10,12 @@
  * every literal `|` inside a cell as `\|` (both in descriptions and in
  * union-typed Type columns, e.g. `` `"a"` \| `"b"` ``), so splitting on
  * every `|` character — escaped or not — misaligns the columns for any row
- * whose Type or description contains one; `splitTableRow` below keeps an
- * escaped `\|` inside its cell instead of treating it as a delimiter.
+ * whose Type or description contains one. `splitTableRow` below follows
+ * GFM's own rule for this rather than treating every `\|` as escaped: a
+ * `|` is a real delimiter unless it's preceded by an odd run of
+ * backslashes — an authored `foo\|bar` becomes `foo\\|bar` once
+ * `renderPropsTable`'s own `\|` escaping runs on it, and GFM (and this
+ * parser) reads that *even* pair of backslashes as NOT escaping the pipe.
  */
 
 import { readFileSync } from 'node:fs';
@@ -21,23 +25,25 @@ import { describe, expect, test } from 'bun:test';
 
 const COMPONENTS_DIR = join(import.meta.dir, '..', 'src', 'components');
 
-/** Splits a Markdown table row on unescaped `|`, keeping `\|` inside its cell. */
+/** Splits a Markdown table row on unescaped `|`, using GFM's backslash-parity rule. */
 function splitTableRow(line: string): string[] {
   const cells: string[] = [];
   let current = '';
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '\\' && line[i + 1] === '|') {
-      current += '\\|';
-      i++;
+  let backslashRun = 0;
+  for (const char of line) {
+    if (char === '\\') {
+      backslashRun++;
+      current += char;
       continue;
     }
-    if (char === '|') {
+    if (char === '|' && backslashRun % 2 === 0) {
       cells.push(current.trim());
       current = '';
+      backslashRun = 0;
       continue;
     }
     current += char;
+    backslashRun = 0;
   }
   cells.push(current.trim());
   return cells;
