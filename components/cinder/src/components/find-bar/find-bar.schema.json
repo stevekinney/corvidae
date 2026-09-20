@@ -9,7 +9,7 @@
     },
     "activeIndex": {
       "type": "number",
-      "description": "Index of the active match within the host-provided results. Bindable,\nbut not input-only: the component resets it to `0` itself whenever the\nuser edits the query. Whenever `matchCount` is non-`null`, an effect\nalso clamps this value into `[0, matchCount - 1]` (normalizing to `0`\nat `matchCount === 0`, where that range is otherwise empty)—and\nbecause that effect reads `activeIndex` too, it clamps just as\nimmediately if a host assigns an out-of-range `activeIndex` on its\nown, not only when `matchCount` itself changes. `Infinity`/`-Infinity`\nare clamped normally (to the maximum/`0`); `NaN` is the one exception\nthe clamp (`Math.min(Math.max(…))`) passes through unchanged rather\nthan normalizing. A parent binding this prop should expect it to be\noverwritten in every case except an assigned `NaN`, not treat it as a\npreserved selection, and should not assign `NaN` itself. Defaults to\n`0`.",
+      "description": "Index of the active match within the host-provided results. Bindable,\nbut not input-only: the component resets it to `0` itself whenever the\nuser edits the query. Whenever `matchCount` is non-`null`, an effect\nalso clamps this value into `[0, matchCount - 1]` (normalizing to `0`\nat `matchCount === 0`, where that range is otherwise empty)—and\nbecause that effect reads `activeIndex` too, it clamps just as\nimmediately if a host assigns an out-of-range `activeIndex` on its\nown, not only when `matchCount` itself changes. `Infinity`/`-Infinity`\nare clamped normally (to the maximum/`0`); `NaN` is the one exception\nthe clamp (`Math.min(Math.max(…))`) passes through unchanged rather\nthan normalizing. A parent binding this prop should expect it to be\noverwritten in every case except an assigned `NaN`, not treat it as a\npreserved selection, and should not assign `NaN` itself. This whole\nclamp assumes a finite, non-negative integer `matchCount`—see that\nprop for what an invalid one does to `activeIndex` instead. Defaults\nto `0`.",
       "default": 0
     },
     "matchCount": {
@@ -21,7 +21,7 @@
           "type": "null"
         }
       ],
-      "description": "Number of matches for the current query, or `null` when the host has\nnot searched yet. Bindable—the component resets it to `null` itself\nwhenever the user starts a new search, so bind it rather than mirror\n`onQueryChange` manually to stay in sync with that reset. Defaults to\n`null`.",
+      "description": "Number of matches for the current query, or `null` when the host has\nnot searched yet. Bindable—the component resets it to `null` itself\nwhenever the user starts a new search, so bind it rather than mirror\n`onQueryChange` manually to stay in sync with that reset. The\n`activeIndex` clamp assumes this is a finite, non-negative integer\nwhen not `null`; an invalid value (`NaN`, negative, or fractional)\npropagates into `activeIndex` rather than being normalized—for\nexample `matchCount={NaN}` overwrites even a finite `activeIndex`\nwith `NaN`. Defaults to `null`.",
       "default": null
     },
     "minQueryLength": {

@@ -18,8 +18,10 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * the clamp (`Math.min(Math.max(…))`) passes through unchanged rather
    * than normalizing. A parent binding this prop should expect it to be
    * overwritten in every case except an assigned `NaN`, not treat it as a
-   * preserved selection, and should not assign `NaN` itself. Defaults to
-   * `0`.
+   * preserved selection, and should not assign `NaN` itself. This whole
+   * clamp assumes a finite, non-negative integer `matchCount`—see that
+   * prop for what an invalid one does to `activeIndex` instead. Defaults
+   * to `0`.
    * @default 0
    */
   activeIndex?: number;
@@ -27,8 +29,12 @@ export type FindBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * Number of matches for the current query, or `null` when the host has
    * not searched yet. Bindable—the component resets it to `null` itself
    * whenever the user starts a new search, so bind it rather than mirror
-   * `onQueryChange` manually to stay in sync with that reset. Defaults to
-   * `null`.
+   * `onQueryChange` manually to stay in sync with that reset. The
+   * `activeIndex` clamp assumes this is a finite, non-negative integer
+   * when not `null`; an invalid value (`NaN`, negative, or fractional)
+   * propagates into `activeIndex` rather than being normalized—for
+   * example `matchCount={NaN}` overwrites even a finite `activeIndex`
+   * with `NaN`. Defaults to `null`.
    * @default null
    */
   matchCount?: number | null;
