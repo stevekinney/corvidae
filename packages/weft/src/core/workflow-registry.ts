@@ -100,6 +100,7 @@ export type {
   RegistryAgnosticEngine,
   ResolveWorkflowSourceOptions,
   WorkflowCatalogRemovalResult,
+  WorkflowClaimHolderStatus,
   WorkflowRevisionDiagnostics,
   WorkflowRevisionReferenceCounts,
   WorkflowWakeKind,

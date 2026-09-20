@@ -316,7 +316,10 @@ import {
 import { isTerminalWorkflowStatus } from './validation.ts';
 import { coerceScheduleId } from './validation/schedule.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
-import type { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
+import type {
+  WorkflowClaimHolderStatus,
+  WorkflowClaimRegistry,
+} from './workflow-claim-registry.ts';
 import {
   replayWorkflowFeed,
   snapshotWorkflowFeedTail,
@@ -392,6 +395,7 @@ export type { RecoverAllOptions, RecoveredWorkflowInfo } from './lifecycle.ts';
 export { WorkflowRevisionUnavailableError } from './revision-errors.ts';
 export { ScheduleHandle } from './schedule-handle.ts';
 export type { ResolveWorkflowSourceOptions } from './source-resolution.ts';
+export type { WorkflowClaimHolderStatus } from './workflow-claim-registry.ts';
 export type {
   WorkflowFeedListener,
   WorkflowFeedRecord,
@@ -2601,6 +2605,20 @@ export class Engine<
       mode: 'lease',
       ...(internals.leaseManager?.health() ?? { status: 'no-lease', holdsLease: false }),
     };
+  }
+  /**
+   * Cross-process read of whether `workflowId`'s `ownership: 'workflow-lease'`
+   * claim is currently live, read from the same durable `wf-owner-holder:<id>`
+   * state {@link WorkflowClaimRegistry.takeover} fences its own writes
+   * against — see {@link WorkflowClaimRegistry.holderStatus} for the exact
+   * judgment and its staleness caveat. `undefined` when no claim record
+   * exists for this workflow (never claimed, already released, terminal, or
+   * the ownership mode is not `'workflow-lease'`) — the same "absent" shape
+   * whether that is because nothing was ever claimed or because a live
+   * process just released it a moment ago.
+   */
+  async claimHolder(workflowId: string): Promise<WorkflowClaimHolderStatus | undefined> {
+    return getInternals(this).workflowClaimRegistry?.holderStatus(workflowId);
   }
   async getCurrentCheckpointStep(workflowId: string): Promise<number | null> {
     // Prefer the in-memory checkpoint: for a run live in this engine it is the
