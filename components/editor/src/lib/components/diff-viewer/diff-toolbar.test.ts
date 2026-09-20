@@ -10,7 +10,7 @@ const { render, fireEvent } = await import('@testing-library/svelte');
 const { default: DiffToolbar } = await import('./diff-toolbar.svelte');
 
 describe('DiffToolbar: [ / ] shortcut hints (CIN-334)', () => {
-  test('the Previous/Next buttons carry the shortcut in their own accessible name', () => {
+  test('the Previous/Next buttons carry the shortcut in their own accessible name and tooltip', () => {
     const { container } = render(DiffToolbar, {
       stats: { added: 1, removed: 0, modified: 0 },
       changeCount: 2,
@@ -28,9 +28,11 @@ describe('DiffToolbar: [ / ] shortcut hints (CIN-334)', () => {
 
     expect(previous?.getAttribute('aria-label')).toBe('Previous change ([)');
     expect(next?.getAttribute('aria-label')).toBe('Next change (])');
+    expect(container.textContent).toContain('Previous change ([)');
+    expect(container.textContent).toContain('Next change (])');
   });
 
-  test('the [ / ] keycaps are visual-only, annotating the buttons rather than a separate description', () => {
+  test('the [ / ] shortcuts are not rendered as standalone keycaps', () => {
     const { container } = render(DiffToolbar, {
       stats: { added: 1, removed: 0, modified: 0 },
       changeCount: 2,
@@ -41,13 +43,27 @@ describe('DiffToolbar: [ / ] shortcut hints (CIN-334)', () => {
     // No leftover standalone "shortcuts" group with its own description.
     expect(container.querySelector('.shortcuts')).toBeNull();
 
-    const kbds = Array.from(container.querySelectorAll('kbd'));
-    expect(kbds).toHaveLength(2);
-    expect(kbds.map((kbd) => kbd.textContent)).toEqual(['[', ']']);
-    // Purely decorative: the accessible name lives on the button, not here.
-    for (const kbd of kbds) {
-      expect(kbd.getAttribute('aria-hidden')).toBe('true');
-    }
+    expect(container.querySelectorAll('kbd')).toHaveLength(0);
+    expect(container.querySelectorAll('.nav-kbd')).toHaveLength(0);
+  });
+
+  test('copy is an icon-only button with tooltip help', () => {
+    const { container } = render(DiffToolbar, {
+      stats: { added: 1, removed: 0, modified: 0 },
+      changeCount: 2,
+      currentChangeIndex: 0,
+      hasChanges: true,
+      oncopydiff: () => {},
+    });
+
+    const copy = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.getAttribute('aria-label') === 'Copy unified diff',
+    );
+    expect(copy).toBeDefined();
+    expect(copy?.getAttribute('data-cinder-icon-only')).toBe('');
+    expect(copy?.textContent?.trim()).toBe('');
+    expect(container.textContent).toContain('Copy unified diff');
+    expect(container.textContent).not.toContain('Copy diff');
   });
 });
 

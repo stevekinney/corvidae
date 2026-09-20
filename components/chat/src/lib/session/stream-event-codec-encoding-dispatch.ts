@@ -3,6 +3,16 @@ import type { ChatStreamEvent } from './stream-event-codec-types.ts';
 type StreamEvent = Extract<ChatStreamEvent, { type: `stream:${string}` }>;
 type ToolEvent = Extract<ChatStreamEvent, { type: `tool.${string}` }>;
 type RunEvent = Extract<ChatStreamEvent, { type: `run.${string}` }>;
+type AssistantStepEvent = Extract<ChatStreamEvent, { type: `assistant.step.${string}` }>;
+type ElicitationEvent = Extract<ChatStreamEvent, { type: `elicitation.${string}` }>;
+
+export function isAssistantStepEvent(event: ChatStreamEvent): event is AssistantStepEvent {
+  return event.type === 'assistant.step.started' || event.type === 'assistant.step.completed';
+}
+
+export function isElicitationEvent(event: ChatStreamEvent): event is ElicitationEvent {
+  return event.type === 'elicitation.requested' || event.type === 'elicitation.resolved';
+}
 
 export function isStreamEvent(event: ChatStreamEvent): event is StreamEvent {
   return (

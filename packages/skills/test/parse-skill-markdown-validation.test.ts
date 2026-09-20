@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { isValidSkillName, parseSkillMarkdown, SkillParseError } from '../src/parse-skill-markdown';
+import {
+  isValidSkillName,
+  parseSkillMarkdown,
+  SkillConformanceError,
+  SkillParseError,
+} from '../src/parse-skill-markdown';
 describe('isValidSkillName', () => {
   it('accepts simple kebab-case names', () => {
     expect(isValidSkillName('code-review')).toBe(true);
@@ -10,8 +15,24 @@ describe('isValidSkillName', () => {
     expect(isValidSkillName('a1')).toBe(true);
   });
 
-  it('rejects names starting with a digit', () => {
-    expect(isValidSkillName('2fast')).toBe(false);
+  it('accepts names starting with a digit, which the pinned validator allows', () => {
+    // This package used to require a leading letter. The reference validator's rule is
+    // `c.isalnum() or c == '-'` per character with no positional constraint, so `2fa-setup` is a
+    // conformant name and rejecting it made this package stricter than the specification.
+    expect(isValidSkillName('2fast')).toBe(true);
+    expect(isValidSkillName('2fa-setup')).toBe(true);
+  });
+
+  it('accepts Unicode letters, which the pinned validator allows', () => {
+    // `str.isalnum()` is true for any Unicode letter or number, so the specification's i18n
+    // support is real and this package's ASCII-only pattern silently excluded it.
+    expect(isValidSkillName('日本語')).toBe(true);
+    expect(isValidSkillName('café-tools')).toBe(true);
+  });
+
+  it('rejects a name longer than the pinned 64-character limit', () => {
+    expect(isValidSkillName('a'.repeat(64))).toBe(true);
+    expect(isValidSkillName('a'.repeat(65))).toBe(false);
   });
 
   it('rejects names with uppercase letters', () => {
@@ -47,13 +68,34 @@ describe('isValidSkillName', () => {
   });
 });
 describe('parseSkillMarkdown name validation', () => {
-  it('throws SkillParseError for non-kebab-case names', () => {
+  it('throws SkillConformanceError for a name with invalid characters', () => {
     const markdown = ['---', 'name: Code_Review', 'description: A skill.', '---', '', 'Body.'].join(
       '\n',
     );
 
-    expect(() => parseSkillMarkdown(markdown)).toThrow(SkillParseError);
-    expect(() => parseSkillMarkdown(markdown)).toThrow(/not valid kebab-case/);
+    expect(() => parseSkillMarkdown(markdown)).toThrow(SkillConformanceError);
+    expect(() => parseSkillMarkdown(markdown)).toThrow(/contains invalid characters/);
+  });
+
+  it('reports every name failure at once rather than stopping at the first', () => {
+    const markdown = ['---', 'name: -Bad_Name-', 'description: A skill.', '---', '', 'Body.'].join(
+      '\n',
+    );
+
+    try {
+      parseSkillMarkdown(markdown);
+      throw new Error('expected parseSkillMarkdown to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(SkillConformanceError);
+      const codes = (error as SkillConformanceError).diagnostics.map(
+        (diagnostic) => diagnostic.code,
+      );
+      // Upstream accumulates rather than short-circuiting, so a publisher fixing a name sees the
+      // whole list in one pass.
+      expect(codes).toContain('name-not-lowercase');
+      expect(codes).toContain('name-hyphen-boundary');
+      expect(codes).toContain('name-invalid-characters');
+    }
   });
 
   it('throws SkillParseError for names with uppercase', () => {

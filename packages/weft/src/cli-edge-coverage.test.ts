@@ -4,6 +4,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { executeSchedule, executeTimeline, parseCliArguments } from './cli/index.ts';
 import {
   advanceCheckpoint,
   BunSQLiteStorage,
@@ -11,8 +12,7 @@ import {
   encode,
   KEYS,
   serializeCheckpoint,
-} from '@corvidae/weft';
-import { executeSchedule, executeTimeline, parseCliArguments } from './cli/index.ts';
+} from './index.ts';
 
 const databasesToDelete = new Set<string>();
 

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { ToolErrorCategory } from '../core/errors';
+import type { ToolError, ToolErrorCategory } from '../core/errors';
 import { errorString, normalizeError } from '../errors';
 import type { ToolRequestContext } from '../execution-context';
 import type {
@@ -153,13 +153,19 @@ export async function finalizeFailedExecution(input: ErrorInput): Promise<ToolEx
     return input.handleCancellation(abortReason(input));
   }
   const reportedError = reportedExecutionError(input.error, input.options);
-  emitFailure(input, reportedError);
+  // COR-1261: built before the emit rather than inside `errorResult`, so the
+  // `settled` event and the returned result carry the same `ToolError` instead
+  // of two values derived separately from the same inputs. `toolbox-execution-
+  // task.ts` hoists for the same reason one layer up. `classifyErrorCategory`
+  // is pure, so moving it above the emit changes nothing else.
   const errorCategory = classifyErrorCategory(reportedError);
+  const toolError = buildToolError(input, errorCategory, reportedError);
+  emitFailure(input, reportedError, toolError);
   const policyContextOutcome = await createErrorPolicyContext(input);
   if ('result' in policyContextOutcome) return policyContextOutcome.result;
   await runErrorPolicyAfter(input, policyContextOutcome.context, errorCategory, reportedError);
   input.finishTelemetry('error', errorTelemetryDetails(input, errorCategory, reportedError));
-  return errorResult(input, errorCategory, reportedError);
+  return errorResult(input, toolError);
 }
 
 function prepareExecutionHandleForError(options: InternalToolExecuteOptions, error: unknown): void {
@@ -207,24 +213,26 @@ function reportedExecutionError(error: unknown, options: InternalToolExecuteOpti
   );
 }
 
-function emitFailure(input: ErrorInput, reportedError: unknown): void {
+function emitFailure(input: ErrorInput, reportedError: unknown, toolError: ToolError): void {
   if (reportedError instanceof z.ZodError) {
-    emitValidationFailure(input, reportedError);
+    emitValidationFailure(input, reportedError, toolError);
     return;
   }
   input.emit('execute-error', { ...input.baseDetail, error: reportedError });
-  emitSettledFailure(input, reportedError);
+  emitSettledFailure(input, toolError);
 }
 
-function emitValidationFailure(input: ErrorInput, error: z.ZodError): void {
+function emitValidationFailure(input: ErrorInput, error: z.ZodError, toolError: ToolError): void {
   const diagnostics = createDiagnostics(input, error);
+  // `validate-error` keeps the `ZodError` itself: its issues and the derived
+  // diagnostics are the point of the event, and a `ToolError` cannot carry them.
   input.emit('validate-error', {
     ...input.baseDetail,
     params: input.toolCall.arguments,
     error,
     ...diagnostics,
   });
-  emitSettledFailure(input, error);
+  emitSettledFailure(input, toolError);
 }
 
 function emitSettledFailure(input: ErrorInput, error: unknown): void {
@@ -279,29 +287,32 @@ function errorTelemetryDetails(
   };
 }
 
-function errorResult(
+function buildToolError(
   input: ErrorInput,
   errorCategory: ToolErrorCategory,
   reportedError: unknown,
-): ToolExecutionResult {
-  const callId = input.toolCall.id;
+): ToolError {
   const normalizedError = normalizeError(
     reportedError,
     isTimeoutError(reportedError) ? { code: 'TIMEOUT' } : undefined,
   );
   const message =
     errorCategory === 'timeout' ? normalizedError.message : errorString(normalizedError);
-  const toolError =
-    reportedError instanceof z.ZodError
-      ? createToolError('validation', message, {
-          code: 'VALIDATION_ERROR',
-          retryable: false,
-          details: { issues: serializeZodIssues(reportedError.issues) },
-        })
-      : createToolError(errorCategory, message, {
-          code: extractErrorCode(input.error) ?? defaultErrorCode(errorCategory),
-          retryable: errorCategory === 'transient' || errorCategory === 'timeout',
-        });
+  return reportedError instanceof z.ZodError
+    ? createToolError('validation', message, {
+        code: 'VALIDATION_ERROR',
+        retryable: false,
+        details: { issues: serializeZodIssues(reportedError.issues) },
+      })
+    : createToolError(errorCategory, message, {
+        code: extractErrorCode(input.error) ?? defaultErrorCode(errorCategory),
+        retryable: errorCategory === 'transient' || errorCategory === 'timeout',
+      });
+}
+
+function errorResult(input: ErrorInput, toolError: ToolError): ToolExecutionResult {
+  const callId = input.toolCall.id;
+  const message = toolError.message;
   return {
     callId,
     outcome: 'error',

@@ -4,6 +4,16 @@ import { fromAnthropicMessages } from '../src/adapters/anthropic/inbound';
 import type { AnthropicConversation } from '../src/adapters/anthropic/types';
 import type { Message } from '../src/types';
 
+function approvalAction(message: string, idempotencyKey: string) {
+  return {
+    type: 'approval' as const,
+    message,
+    risk: 'high' as const,
+    operation: { kind: 'other' as const },
+    policyVersion: 'policy:test',
+    idempotencyKey,
+  };
+}
 const getOrderedMessages = (messages: {
   ids: ReadonlyArray<string>;
   messages: Readonly<Record<string, Message>>;
@@ -68,7 +78,7 @@ function createAnthropicMultimodalPayload(): AnthropicConversation {
             content: JSON.stringify({
               outcome: 'action_required',
               content: { approval: true },
-              action: { type: 'approval', message: 'Approve this tool call' },
+              action: approvalAction('Approve this tool call', 'approval:anthropic-provider'),
               inputDigest: 'anthropic-input',
               outputDigest: 'anthropic-output',
             }),
@@ -146,7 +156,7 @@ function assertAnthropicToolResults(conversation: ReturnType<typeof fromAnthropi
     callId: 'tool-array',
     outcome: 'action_required',
     content: { approval: true },
-    action: { type: 'approval', message: 'Approve this tool call' },
+    action: approvalAction('Approve this tool call', 'approval:anthropic-provider'),
     inputDigest: 'anthropic-input',
     outputDigest: 'anthropic-output',
   });

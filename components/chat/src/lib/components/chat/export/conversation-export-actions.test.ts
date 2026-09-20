@@ -2,7 +2,7 @@
  * Regression test for CIN-505: `ConversationExportActions`' polite copy-status
  * announcer must be visually hidden, not rendered as ordinary visible text.
  *
- * Same root cause as `tool-call-group.test.ts`: the announcer previously
+ * Same root cause as the tool activity announcer regression: the announcer previously
  * carried the bare `sr-only` class, which has no CSS rule reaching this
  * component. The fix switches the class to `cinder-sr-only`, the design
  * system's utility, which every `@corvidae/chat` consumer already

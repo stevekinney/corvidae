@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
+import {
+  buildFormDataFromValues,
+  createReviewEditorState,
+  ReviewEditor as ExportedReviewEditor,
+  toPersistedThreads,
+  toRuntimeThreads,
+} from '@corvidae/editor';
+import ReviewEditor from './review-editor.svelte';
+
 const implementationSource = await Bun.file(
   new URL('./review-editor-impl.svelte', import.meta.url).pathname,
 ).text();
@@ -40,19 +49,14 @@ describe('review-editor original bindable regression', () => {
 describe('review-editor public entrypoint', () => {
   test('exports review APIs from the sole package source entry', async () => {
     const packageJson = await Bun.file(`${import.meta.dir}/../../../../package.json`).json();
-    const [{ default: ReviewEditor }, reviewEditorModule] = await Promise.all([
-      import('./review-editor.svelte'),
-      import('@corvidae/editor'),
-    ]);
-
     expect(packageJson.exports).toEqual({ '.': './src/index.ts' });
     expect(ReviewEditor).toBeDefined();
-    expect(reviewEditorModule.ReviewEditor).toBeDefined();
-    expect(reviewEditorModule.createReviewEditorState).toBeTypeOf('function');
-    expect(reviewEditorModule.buildFormDataFromValues).toBeTypeOf('function');
+    expect(ExportedReviewEditor).toBeDefined();
+    expect(createReviewEditorState).toBeTypeOf('function');
+    expect(buildFormDataFromValues).toBeTypeOf('function');
     // Both directions of the persistence round trip must reach the root a
     // consumer restoring a saved ReviewState actually imports from.
-    expect(reviewEditorModule.toPersistedThreads).toBeTypeOf('function');
-    expect(reviewEditorModule.toRuntimeThreads).toBeTypeOf('function');
+    expect(toPersistedThreads).toBeTypeOf('function');
+    expect(toRuntimeThreads).toBeTypeOf('function');
   });
 });

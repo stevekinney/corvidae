@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { KEYS, encode } from '@corvidae/weft';
+import { KEYS, encode } from '../index.ts';
 import {
   CONFORMANCE_HELP_TEXT,
   DOCTOR_HELP_TEXT,

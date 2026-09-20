@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { Button } from '@corvidae/cinder';
   import { ReviewEditor } from '@corvidae/editor';
-  import type { Thread } from '@corvidae/editor';
+  import type { Thread, ThreadDeleteEvent } from '@corvidae/editor';
   const original = `# Architecture Notes
 
 This document describes the review workflow for collaborative editing.
@@ -81,7 +82,40 @@ The editor should make source, rendered, and diff modes available without leavin
         },
       ],
     },
+    {
+      id: 'thread-follow-up',
+      createdAt: '2026-04-30T12:20:00.000Z',
+      anchor: {
+        from: 133,
+        to: 140,
+        quote: 'handoff',
+        prefix: 'the review workflow for collaborative editing and ',
+        suffix: '.\nFeedback\nComments should stay anchored when ne',
+        status: 'anchored',
+        originalQuote: 'handoff',
+        lastKnownOffset: 131,
+      },
+      comments: [
+        {
+          id: 'comment-follow-up',
+          threadId: 'thread-follow-up',
+          authorId: 'maya',
+          body: 'Please keep the handoff notes visible in the exported summary.',
+          createdAt: '2026-04-30T12:20:00.000Z',
+        },
+      ],
+    },
   ]);
+
+  let documentRemovalAllowed = $state(false);
+
+  function handleThreadDelete(event: ThreadDeleteEvent): void {
+    if (event.threadId === 'thread-document' && !documentRemovalAllowed) return;
+    threads = threads.filter((thread) => thread.id !== event.threadId);
+    queueMicrotask(() => {
+      threads = [...threads];
+    });
+  }
 </script>
 
 <div id="example-mount-with-comments" style="min-height: 38rem;">
@@ -91,5 +125,9 @@ The editor should make source, rendered, and diff modes available without leavin
     bind:value
     bind:threads
     currentUserId="steve"
+    onthreaddelete={handleThreadDelete}
   />
+  <Button size="xs" variant="secondary" onclick={() => (documentRemovalAllowed = true)}>
+    Allow document thread removal
+  </Button>
 </div>

@@ -4680,3 +4680,216 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
     expect(startCalls).toEqual([]);
   });
 });
+
+/**
+ * COR-625 — the composer-owned terminal-cleanup step folded into a durable
+ * run's `closed()`.
+ *
+ * The fold DOWNGRADES only. Returning the step's acknowledgement outright
+ * would flip every durable run under bureau's default `'keep-all'` checkpoint
+ * retention from `completed` to `not-required`: the run's own cleanup did
+ * complete, and the retention step having had nothing to prune is a separate
+ * fact belonging in the composer's audit record.
+ */
+describe('COR-625: durable closed() folds a composer terminal-cleanup step', () => {
+  it('leaves a completed run completed when the step reports not-required', async () => {
+    const context = await buildContext();
+    try {
+      const activeRun = createDurableActiveRun(
+        { ...context, terminalCleanup: async () => ({ status: 'not-required' }) },
+        {
+          runId: 'cor-625-fold-not-required',
+          sessionId: 'cor-625-fold-not-required',
+          options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
+          prompt: 'Hello',
+        },
+      );
+
+      await activeRun.result;
+      expect(await activeRun.closed()).toEqual({ status: 'completed' });
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+
+  it('leaves a completed run completed when the step itself reports completed', async () => {
+    const context = await buildContext();
+    try {
+      const activeRun = createDurableActiveRun(
+        { ...context, terminalCleanup: async () => ({ status: 'completed' }) },
+        {
+          runId: 'cor-625-fold-completed',
+          sessionId: 'cor-625-fold-completed',
+          options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
+          prompt: 'Hello',
+        },
+      );
+
+      await activeRun.result;
+      expect(await activeRun.closed()).toEqual({ status: 'completed' });
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+
+  it('surfaces an unresolved step in place of the run own completed acknowledgement', async () => {
+    const context = await buildContext();
+    const error = new Error('the store rejected the prune');
+    try {
+      const activeRun = createDurableActiveRun(
+        {
+          ...context,
+          terminalCleanup: async () => ({
+            status: 'unresolved',
+            reason: 'persistence-failed',
+            error,
+          }),
+        },
+        {
+          runId: 'cor-625-fold-unresolved',
+          sessionId: 'cor-625-fold-unresolved',
+          options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
+          prompt: 'Hello',
+        },
+      );
+
+      await activeRun.result;
+      expect(await activeRun.closed()).toEqual({
+        status: 'unresolved',
+        reason: 'persistence-failed',
+        error,
+      });
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+
+  it('never lets a rejecting step escape closed(), which never rejects', async () => {
+    const context = await buildContext();
+    const thrown = new Error('the step itself threw');
+    try {
+      const activeRun = createDurableActiveRun(
+        {
+          ...context,
+          terminalCleanup: () => Promise.reject(thrown),
+        },
+        {
+          runId: 'cor-625-fold-rejects',
+          sessionId: 'cor-625-fold-rejects',
+          options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
+          prompt: 'Hello',
+        },
+      );
+
+      await activeRun.result;
+      expect(await activeRun.closed()).toEqual({ status: 'failed', error: thrown });
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+
+  it('disqualifies the not-required fast path, so a registered step always runs', async () => {
+    // Without this disqualification a cleanly-completed run takes the fast
+    // path, `resolveOutcome` never runs, and the step is silently skipped —
+    // `closed()` would then report `not-required` for a run whose retention
+    // step had never happened. The identical run WITHOUT a step still takes
+    // the fast path, which is the control proving this is the step's doing.
+    const context = await buildContext();
+    let stepRuns = 0;
+    try {
+      const withStep = createDurableActiveRun(
+        {
+          ...context,
+          terminalCleanup: async () => {
+            stepRuns += 1;
+            return { status: 'completed' };
+          },
+        },
+        {
+          runId: 'cor-625-fast-path-disqualified',
+          sessionId: 'cor-625-fast-path-disqualified',
+          options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
+          prompt: 'Hello',
+        },
+      );
+      await withStep.result;
+      await Promise.resolve();
+      expect(await withStep.closed()).toEqual({ status: 'completed' });
+      expect(stepRuns).toBe(1);
+
+      const withoutStep = createDurableActiveRun(context, {
+        runId: 'cor-625-fast-path-control',
+        sessionId: 'cor-625-fast-path-control',
+        options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
+        prompt: 'Hello',
+      });
+      await withoutStep.result;
+      await Promise.resolve();
+      expect(await withoutStep.closed()).toEqual({ status: 'not-required' });
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+
+  it('receives the run id it is folded into', async () => {
+    const context = await buildContext();
+    const observed: string[] = [];
+    try {
+      const activeRun = createDurableActiveRun(
+        {
+          ...context,
+          terminalCleanup: async (runId) => {
+            observed.push(runId);
+            return { status: 'completed' };
+          },
+        },
+        {
+          runId: 'cor-625-fold-run-id',
+          sessionId: 'cor-625-fold-run-id',
+          options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
+          prompt: 'Hello',
+        },
+      );
+
+      await activeRun.result;
+      await activeRun.closed();
+      expect(observed).toEqual(['cor-625-fold-run-id']);
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+
+  it('folds the same step into a reattached run — a recovered run still owes its cleanup', async () => {
+    const context = await buildContext();
+    const runId = 'cor-625-fold-reattached';
+    const handle = {
+      id: runId,
+      result: () =>
+        Promise.resolve({
+          schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          runId,
+          steps: 1,
+          content: 'recovered done',
+          finishReason: 'stop-condition' as const,
+        }),
+    };
+    try {
+      const recoveredRun = reattachDurableActiveRun(
+        {
+          engine: context.engine,
+          checkpointStore: context.checkpointStore,
+          terminalCleanup: async () => ({ status: 'unresolved', reason: 'persistence-failed' }),
+        },
+        { runId, handle },
+      );
+
+      await recoveredRun.result;
+      expect(await recoveredRun.closed()).toEqual({
+        status: 'unresolved',
+        reason: 'persistence-failed',
+      });
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+});

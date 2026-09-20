@@ -152,7 +152,7 @@ test('retry after a failed send re-runs the assistant turn', async ({ page }) =>
 // server-side pending-approval store to prime. So `/api/chat` can be mocked in
 // the usual way while `/api/chat/resume` runs for real, which is the narrowest
 // arrangement that still puts the real route, the real zod schema, and the real
-// `toolbox.resumeApproval` on the path.
+// `toolbox.resolveApproval` on the path.
 //
 // This test drives the real network boundary rather than only Chat's approval
 // affordances: the forged descriptor reaches the real resume route and fails
@@ -165,6 +165,17 @@ test('retry after a failed send re-runs the assistant turn', async ({ page }) =>
 test('a forged approvalToken is rejected by the real resume route', async ({ page }) => {
   const callId = 'call-forged-token';
   const approvalMessage = 'Save this note?';
+  const approvalAction = {
+    type: 'approval' as const,
+    message: approvalMessage,
+    risk: 'high' as const,
+    operation: {
+      kind: 'other' as const,
+      argsPreview: { text: 'A note' },
+    },
+    policyVersion: 'policy:1',
+    idempotencyKey: 'approval:forged-token-test',
+  };
 
   await page.route('**/api/chat', async (route) => {
     // Both lines matter: Chat renders the approval prompt on the tool-CALL
@@ -177,14 +188,34 @@ test('a forged approvalToken is rejected by the real resume route', async ({ pag
         callId,
         outcome: 'action_required',
         content: approvalMessage,
-        action: { type: 'approval', message: approvalMessage },
+        action: approvalAction,
         pendingApproval: {
           callId,
           toolName: 'remember_note',
           arguments: { text: 'A note' },
-          action: { type: 'approval', message: approvalMessage },
+          action: approvalAction,
           reason: approvalMessage,
           metadata: {},
+          policyPauseTier: 'tool' as const,
+          approvalBinding: {
+            version: 1,
+            nonce: 'approval-1-forged-token-test',
+            issuedAt: Date.now(),
+            expiresAt: Date.now() + 300_000,
+            principalId: 'chat-room-user',
+            tenantId: 'chat-room',
+            ownerId: 'chat-room-session',
+            agentId: 'chat-room-assistant',
+            runId: 'chat-room-session',
+            audience: 'tenant' as const,
+            replayScope: 'chat-room:chat-room-session',
+            policyRevision: 'policy:1',
+            approvalRevision: 'approval:1',
+            authorizationRevision: '1',
+            capabilitiesRevision: '[]',
+            toolboxRevision: 'toolbox:1',
+            toolDefinitionRevision: 'default:remember_note@1.0.0',
+          },
           approvalToken: 'a'.repeat(64),
         },
       },
@@ -210,20 +241,20 @@ test('a forged approvalToken is rejected by the real resume route', async ({ pag
   const response = await resumed;
 
   // The request shape is the client's, not the fixture's: `+page.svelte` builds
-  // the `{ approval, decision }` envelope and decides what goes in it.
+  // the `{ approval, resolution }` envelope and decides what goes in it.
   const posted = JSON.parse(response.request().postData() ?? '{}');
-  expect(posted.decision).toBe('approve');
+  expect(posted.resolution).toEqual({ decision: 'approve', remember: false });
   expect(posted.approval.callId).toBe(callId);
   expect(posted.approval.toolName).toBe('remember_note');
   expect(posted.approval.arguments).toEqual({ text: 'A note' });
-  expect(posted.approval.action).toEqual({ type: 'approval', message: approvalMessage });
+  expect(posted.approval.action).toEqual(approvalAction);
   expect(posted.approval.approvalToken).toBe('a'.repeat(64));
 
   // 500, not 400, is the load-bearing distinction. A 400 would mean the route's
   // zod schema rejected the envelope before verification ever ran, which is
   // what a client sending the wrong shape (a missing `approvalToken`, a bare
-  // descriptor with no `decision`) produces. Reaching a 500 means the shape was
-  // accepted and `toolbox.resumeApproval` threw on the signature.
+  // descriptor with no `resolution`) produces. Reaching a 500 means the shape was
+  // accepted and `toolbox.resolveApproval` threw on the signature.
   //
   // That the failure is a raw 500 rather than a 4xx is a gap in
   // `src/routes/api/chat/resume/+server.ts`, which does not catch armorer's
@@ -235,10 +266,15 @@ test('a forged approvalToken is rejected by the real resume route', async ({ pag
   // The client surfaces the failure and leaves the transcript alone —
   // `replaceToolResult` never runs, so the result is still `action_required`.
   //
-  // Chat's own prompt, by contrast, flips to "Approved": `approveToolCall`
+  // Chat's own prompt, by contrast, flips to "Approved": `resolveToolApproval`
   // resolves normally after setting `error`, so Chat's optimistic commit is
   // never rolled back. Consumer-side behavior, not a Chat defect — Chat rolls
   // back on a REJECTED adapter call, and this adapter does not reject.
   await expect(page.getByTestId('demo-error')).not.toBeEmpty();
-  await expect(chat.locator('.tool-call-group')).toHaveAttribute('data-status', 'action-required');
+  const toolActivity = chat.getByRole('region', { name: 'Called 1 tool' });
+  await expect(toolActivity).toContainText('remember_note: Action required');
+  await expect(toolActivity).toContainText('remember_note Waiting approval');
+  await expect(
+    chat.getByRole('article', { name: 'Approval required for remember_note' }),
+  ).toBeVisible();
 });

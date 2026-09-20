@@ -12,7 +12,7 @@ import {
   deadLetteredFixture,
   putLedgerRecord,
   queuedFixture,
-} from './get-task-diagnostics-test-support.ts';
+} from './get-task-diagnostics.test-support.ts';
 
 function runClear(engine: Engine, operationId: string, scopes: ReadonlyArray<AuthorizationScope>) {
   const operationRegistry = createOperationRegistry([clearTaskDeadLetterOperation]);

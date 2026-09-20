@@ -50,7 +50,11 @@
         ".svelte-kit/*.json",
         ".svelte-kit/*.d.ts",
         ".svelte-kit/types/**",
-        ".svelte-kit/generated/**"
+        ".svelte-kit/generated/**",
+        ".playwright/svelte-kit/*.json",
+        ".playwright/svelte-kit/*.d.ts",
+        ".playwright/svelte-kit/types/**",
+        ".playwright/svelte-kit/generated/**"
       ]
     },
     "@corvidae/chat-room#typecheck": {
@@ -116,6 +120,7 @@
         "NODE_ENV",
         "CI",
         "GITHUB_ACTIONS",
+        "WEFT_BROWSER_SMOKE",
         "WEFT_STRICT_FAULTS",
         "WEFT_SQLITE_ARCHITECTURE_BENCHMARK",
         "WEFT_SEARCH_ATTRIBUTES_ARCHITECTURE_BENCHMARK",

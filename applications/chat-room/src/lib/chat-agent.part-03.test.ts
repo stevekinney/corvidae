@@ -149,7 +149,28 @@ describe('pumpChatRun: roll_dice tool path', () => {
 
     const [toolError] = ofType(frames, 'tool.error');
     expect(toolError).toMatchObject({ toolCallId: 'call-bad', toolName: 'roll_dice' });
-    expect(toolError?.error).toMatchObject({ name: 'ZodError', message: expect.any(String) });
+    // COR-1261. This frame is derived from the toolbox `settled` event
+    // (`operative/src/create-run.ts`), which now carries the normalized
+    // `ToolError` the execution result carries rather than the raw thrown
+    // value. It used to arrive here as a flattened `{name, message}` view of
+    // the ZodError.
+    //
+    // The claim in this test's name is better served by the new shape, not
+    // merely compatible with it: it is still not the raw cause, it is still
+    // JSON-safe, and the validation issues now survive as structured data
+    // instead of only as text inside `message`.
+    expect(toolError?.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      category: 'validation',
+      retryable: false,
+      message: expect.any(String),
+    });
+    expect(toolError?.error).not.toMatchObject({ name: 'ZodError' });
+    const issues = (toolError?.error as { details?: { issues?: unknown[] } })?.details?.issues;
+    expect(Array.isArray(issues)).toBe(true);
+    expect(issues?.length).toBeGreaterThan(0);
+    // The point of the frame: whatever it carries has to survive the wire.
+    expect(() => JSON.parse(JSON.stringify(toolError?.error))).not.toThrow();
     expect(ofType(frames, 'tool.settled')[0]).toMatchObject({
       toolCallId: 'call-bad',
       result: { callId: 'call-bad', outcome: 'error' },
@@ -177,16 +198,51 @@ describe('pumpChatRun: roll_dice tool path', () => {
     // authoritative result only appears on `tools.executed` — so the frame
     // has to be sourced from there, and this pins that it is.
     const [settled] = ofType(frames, 'tool.settled');
+    const expectedAction = {
+      type: 'approval',
+      message: 'Save this note?',
+      risk: 'high',
+      operation: { kind: 'other', argsPreview: { text: 'milk' } },
+      policyVersion: 'policy:1',
+      idempotencyKey: expect.stringMatching(/^approval:/),
+    };
     expect(settled).toMatchObject({
       toolCallId: 'call-note',
       toolName: 'remember_note',
       result: {
         callId: 'call-note',
         outcome: 'action_required',
-        action: { type: 'approval', message: 'Save this note?' },
+        content: 'Save this note?',
+        action: expectedAction,
+        pendingApproval: {
+          callId: 'call-note',
+          toolName: 'remember_note',
+          arguments: { text: 'milk' },
+          reason: 'Save this note?',
+          policyPauseTier: 'tool',
+          approvalToken: expect.any(String),
+          approvalBinding: {
+            agentId: 'test-assistant',
+            ownerId: 'test-session',
+            principalId: 'test-user',
+            runId: 'test-run',
+            tenantId: 'test-tenant',
+            policyRevision: 'policy:1',
+            toolDefinitionRevision: 'default:remember_note@1.0.0',
+          },
+          action: expectedAction,
+        },
       },
     });
-    expect(settled?.result.pendingApproval).toBeDefined();
+    const pendingApproval = settled?.result.pendingApproval;
+    if (
+      typeof pendingApproval !== 'object' ||
+      pendingApproval === null ||
+      Array.isArray(pendingApproval)
+    ) {
+      throw new Error('Expected pending approval metadata to be an object.');
+    }
+    expect(Reflect.get(pendingApproval, 'action')).toEqual(settled?.result.action);
     expect(legacyFrames(frames).at(-1)).toMatchObject({
       type: 'tool_result',
       outcome: 'action_required',
@@ -244,14 +300,14 @@ describe('pumpChatRun: roll_dice tool path', () => {
 });
 
 describe('createChatStreamWriter', () => {
-  test('envelopes every frame with wireVersion 1 and a strictly increasing sequence', () => {
+  test('envelopes every frame with wireVersion 2 and a strictly increasing sequence', () => {
     const lines: string[] = [];
     const writer = createChatStreamWriter((line) => lines.push(line));
     writer.write({ type: 'text', text: 'a' });
     writer.write({ type: 'tool.started', toolCallId: 'c', toolName: 't' });
     expect(decodeLines(lines)).toEqual([
-      { type: 'text', text: 'a', wireVersion: 1, sequence: 0 },
-      { type: 'tool.started', toolCallId: 'c', toolName: 't', wireVersion: 1, sequence: 1 },
+      { type: 'text', text: 'a', wireVersion: 2, sequence: 0 },
+      { type: 'tool.started', toolCallId: 'c', toolName: 't', wireVersion: 2, sequence: 1 },
     ]);
   });
 

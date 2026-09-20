@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createConversationHistory } from '../components/chat/builders.ts';
+import { createConversationHistory, isStreamingMessage } from '../components/chat/builders.ts';
 import { createChatSessionController } from './session-controller.ts';
 import type { ChatStreamEvent } from './stream-event-codec.ts';
 
@@ -22,11 +22,7 @@ describe('chat session controller', () => {
       'hi',
       'hello',
     ]);
-    expect(
-      Object.values(conversation.messages).some(
-        (message) => message.metadata['streaming'] === true,
-      ),
-    ).toBe(false);
+    expect(Object.values(conversation.messages).some(isStreamingMessage)).toBe(false);
   });
 
   test('synchronizes subscribed stream lifecycle with the controller placeholder', async () => {

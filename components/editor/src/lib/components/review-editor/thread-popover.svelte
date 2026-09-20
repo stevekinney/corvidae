@@ -51,7 +51,8 @@
      * every click, so clicking a DIFFERENT row is unaffected and still closes
      * this popover immediately.
      */
-    ignoreClickOutsideRef?: () => Element | null;
+    /** Elements whose clicks should not dismiss this popover. */
+    ignoreClickOutsideRefs?: Array<() => Element | null>;
     /** Called when the popover should close */
     onclose?: () => void;
     /** Called when thread is deleted */
@@ -83,7 +84,7 @@
     position,
     class: className,
     restoreFallbackId,
-    ignoreClickOutsideRef,
+    ignoreClickOutsideRefs,
     onclose,
     ondelete,
     oncommentcreate,
@@ -208,7 +209,7 @@
   })}
   {@attach createClickOutside({
     handler: () => onclose?.(),
-    ...(ignoreClickOutsideRef ? { ignoreRefs: [ignoreClickOutsideRef] } : {}),
+    ...(ignoreClickOutsideRefs ? { ignoreRefs: ignoreClickOutsideRefs } : {}),
   })}
   onkeydown={handleKeyDown}
 >
@@ -281,6 +282,11 @@
     border-radius: var(--cinder-radius-lg);
     box-shadow: var(--cinder-shadow-lg);
     overflow: hidden;
+  }
+
+  .thread-popover[data-position-ready='false'] {
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .thread-popover-header {

@@ -313,6 +313,14 @@ const combined = combineToolboxes(base, adminTools);
 
 ## Safety and Policy
 
+### Started work, authority, and cleanup
+
+The cross-package provider, steering, selection, and ownership map is in [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md).
+
+Every admitted tool call has a stable `ExecutionHandle` and a revisioned snapshot. Use `toolbox.executions.locate(executionId)` or the handle returned on the tool result to inspect state, `handle.abort()` to request cancellation, and `handle.whenSettled()` to await the callback's actual terminal or `unknown-effect` state. An aborted signal is not proof that an external side effect stopped: a callback that ignores cancellation remains `cleanup-pending` until its own promise settles.
+
+Toolboxes are reusable catalogs; authority is request-scoped. Supply principal, tenant, capability, authorization, audience, agent, and run identity through `requestContext` on each execution. Use `projectExecutionSnapshot()` for untrusted output and reserve `privilegedSnapshot()` for trusted host code. During shutdown, close admission first and await `shutdown({ policy: 'drain' | 'abort' })`; inspect the cleanup report for unresolved effects and cleanup failures before declaring the owner quiescent.
+
 Use policy hooks to block or gate risky actions before execution.
 
 ## Batch Execution
@@ -1405,6 +1413,7 @@ Longer-form docs live in `documentation/`:
 - [Agent SDK Integrations](documentation/agent-sdk-integrations.md) - OpenAI Agents SDK usage via MCP
 - [OpenAI Agents SDK](documentation/openai-agents-sdk.md) - Integration with `@openai/agents` including tool gating
 - [Public API Reference](documentation/api-reference.md) - Complete API reference with all exports and types
+- [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md) - Cross-package provider, steering, ownership, and cleanup boundaries
 
 ## Roadmap
 

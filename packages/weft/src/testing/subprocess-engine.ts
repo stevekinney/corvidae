@@ -1,22 +1,22 @@
 import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
+import {
+  appendCapturedOutput,
+  type CapturedOutput,
+  drainStream,
+  formatOutput,
+  hasProcessTerminated,
+  isExpectedSignalExit,
+  normalizeSignalCode,
+  type RunningSubprocess,
+  stopProcess,
+  type SubprocessSignal,
+  waitForExit,
+} from './subprocess-lifecycle.ts';
 
 const DEFAULT_READY_PATTERN = /(?:WEFT_SUBPROCESS_READY|Weft running on)\s+(\S+)/;
 const DEFAULT_STARTUP_TIMEOUT_MS = 5_000;
 const DEFAULT_EXIT_TIMEOUT_MS = 2_000;
-const MAX_CAPTURED_OUTPUT_LENGTH = 32_768;
 
-type RunningSubprocess = Bun.Subprocess<'ignore', 'pipe', 'pipe'>;
-
-/**
- * Signals supported by the subprocess durability harness.
- *
- * @example
- * ```ts
- * import type { SubprocessSignal } from '@corvidae/weft';
- * const signal: SubprocessSignal = 'SIGKILL';
- * ```
- */
-export type SubprocessSignal = 'SIGINT' | 'SIGKILL' | 'SIGTERM';
 /**
  * Configuration for starting a Weft server in a child Bun process.
  *
@@ -155,22 +155,6 @@ class SubprocessServerHandleImpl implements SubprocessServerHandle {
   get internalRestartOptions(): NormalizedSubprocessServerOptions {
     return this.#options;
   }
-}
-
-function normalizeSignalCode(value: string | null): SubprocessSignal | null {
-  if (value === 'SIGINT' || value === 'SIGKILL' || value === 'SIGTERM') return value;
-  return null;
-}
-
-type CapturedOutput = {
-  stdout: string;
-  stderr: string;
-};
-
-function appendCapturedOutput(current: string, chunk: string): string {
-  const next = current + chunk;
-  if (next.length <= MAX_CAPTURED_OUTPUT_LENGTH) return next;
-  return next.slice(next.length - MAX_CAPTURED_OUTPUT_LENGTH);
 }
 
 function normalizeOptions(options: SubprocessServerOptions): NormalizedSubprocessServerOptions {
@@ -323,85 +307,6 @@ async function verifyProcessSurvivedReadiness(
       `Subprocess exited with code ${exitCode} after readiness.\n${formatOutput(output)}`,
     );
   }
-}
-
-async function drainStream(
-  stream: ReadableStream<Uint8Array> | null,
-  onChunk: (chunk: string) => void,
-): Promise<void> {
-  if (stream === null) return;
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      onChunk(decoder.decode(value, { stream: true }));
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-function formatOutput(output: CapturedOutput): string {
-  return [`stdout:\n${output.stdout || '<empty>'}`, `stderr:\n${output.stderr || '<empty>'}`].join(
-    '\n',
-  );
-}
-
-async function waitForExit(
-  process: RunningSubprocess,
-  timeoutMs: number,
-  label: string,
-): Promise<number> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      process.exited,
-      new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
-  }
-}
-
-function hasProcessTerminated(process: RunningSubprocess): boolean {
-  return process.exitCode !== null || process.signalCode !== null;
-}
-
-async function stopProcess(
-  process: RunningSubprocess,
-  signal: SubprocessSignal,
-  timeoutMs: number,
-): Promise<void> {
-  if (hasProcessTerminated(process)) return;
-  process.kill(signal);
-  try {
-    await waitForExit(process, timeoutMs, 'subprocess exit');
-  } catch {
-    if (!hasProcessTerminated(process)) {
-      process.kill('SIGKILL');
-      await process.exited.catch(() => undefined);
-    }
-  }
-}
-
-function expectedExitCodeForSignal(signal: SubprocessSignal): number {
-  if (signal === 'SIGKILL') return 137;
-  if (signal === 'SIGTERM') return 143;
-  return 130;
-}
-
-function isExpectedSignalExit(
-  process: RunningSubprocess,
-  signal: SubprocessSignal,
-  exitCode: number,
-): boolean {
-  const signalCode = normalizeSignalCode(process.signalCode);
-  if (signalCode !== null) return signalCode === signal;
-  return exitCode === expectedExitCodeForSignal(signal);
 }
 
 /**

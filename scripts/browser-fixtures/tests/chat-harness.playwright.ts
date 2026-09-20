@@ -1,3 +1,4 @@
+import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
 /**
  * Comprehensive browser coverage for the Chat interactive harness example
  * (`playground/src/examples/chat/interactive-harness.example.svelte`).
@@ -14,7 +15,16 @@
  * streaming cadence reliably observable.
  */
 import { loadManifest, runAxe, THEME_STORAGE_KEY } from '@corvidae/testing';
-import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Browser,
+  type BrowserContextOptions,
+  type ElementHandle,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from '@playwright/test';
 import { PNG } from 'pngjs';
 import { environmentConfiguration } from '../environment-configuration.ts';
 import { fixtureRoute } from './overlay-fixture.ts';
@@ -28,34 +38,51 @@ const privateHarnessFixture = chatEntry.fixtures?.find(
 const privateHistoryPrependStressFixture = chatEntry.fixtures?.find(
   (fixture) => fixture.name === 'private-history-prepend-stress',
 );
+
+function themeInitScriptPayload(colorScheme: 'dark' | 'light'): [string, string, string] {
+  const baseUrl = environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN;
+  return [THEME_STORAGE_KEY, colorScheme, new URL(baseUrl).origin];
+}
+
+function setFixtureThemeOnOrigin([key, value, origin]: [string, string, string]): void {
+  if (globalThis.location.origin !== origin) return;
+  localStorage.setItem(key, value);
+}
 if (privateHarnessFixture === undefined || privateHistoryPrependStressFixture === undefined) {
   throw new Error('Chat private fixtures are missing from the application manifest.');
 }
 /** Opens /page/chat and returns a Locator scoped to the harness mount. */
 async function openHarness(
   browser: Browser,
-  options?: { reducedMotion?: 'reduce' | 'no-preference' },
+  options?: {
+    reducedMotion?: 'reduce' | 'no-preference';
+    colorScheme?: 'dark' | 'light';
+    viewport?: { width: number; height: number };
+    hasTouch?: boolean;
+    locale?: string;
+    timezoneId?: string;
+  },
 ): Promise<{ page: Page; harness: Locator; dispose: () => Promise<void> }> {
-  const context = await browser.newContext({
-    baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
-    colorScheme: 'dark',
+  const colorScheme = options?.colorScheme ?? 'dark';
+  const contextOptions: BrowserContextOptions = {
+    baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+    colorScheme,
     reducedMotion: options?.reducedMotion ?? 'reduce',
-    viewport: { width: 1280, height: 900 },
-  });
+    viewport: options?.viewport ?? { width: 1280, height: 900 },
+    hasTouch: options?.hasTouch ?? false,
+  };
+  if (options?.locale !== undefined) contextOptions.locale = options.locale;
+  if (options?.timezoneId !== undefined) contextOptions.timezoneId = options.timezoneId;
+  const context = await browser.newContext(contextOptions);
   // A failure below (bad route, load regression, the harness never becoming
   // visible) would otherwise leak this context: nothing else here closes a
   // context whose owning `openHarness` call never returned. Close it on any
   // failure and rethrow.
   try {
-    await context.addInitScript(
-      ([key, value]) => {
-        localStorage.setItem(key, value);
-      },
-      [THEME_STORAGE_KEY, 'dark'] as const,
-    );
+    await context.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload(colorScheme));
     const page = await context.newPage();
     const diagnostics: string[] = [];
-    page.on('pageerror', (error) => diagnostics.push(error.message));
+    page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
     page.on('console', (message) => {
       if (message.type() === 'error' || message.type() === 'warning') {
         diagnostics.push(`${message.type()}: ${message.text()}`);
@@ -67,6 +94,15 @@ async function openHarness(
     await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
     const harness = page.locator(HARNESS);
     await harness.waitFor({ state: 'visible', timeout: 20_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          theme: document.documentElement.dataset['theme'],
+          cinderTheme: document.documentElement.dataset['cinderTheme'],
+          colorScheme: getComputedStyle(document.documentElement).colorScheme,
+        })),
+      )
+      .toEqual({ theme: colorScheme, cinderTheme: colorScheme, colorScheme });
     return {
       page,
       harness,
@@ -102,6 +138,714 @@ async function trimmedLength(locator: Locator): Promise<number> {
   return text?.trim().length ?? 0;
 }
 
+async function messageBodyText(locator: Locator): Promise<string> {
+  const text = await locator.locator('.chat-message-body').textContent();
+  return text?.trim() ?? '';
+}
+
+const validPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+  'base64',
+);
+
+function svgMarkup(width: number, height: number, fill: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="${fill}"/></svg>`;
+}
+
+function svgDataUrl(width: number, height: number, fill: string): string {
+  return `data:image/svg+xml,${encodeURIComponent(svgMarkup(width, height, fill))}`;
+}
+
+type HarnessImageContent = {
+  type: 'image';
+  url: string;
+  mimeType: string;
+  text: string;
+  width?: number;
+  height?: number;
+};
+
+async function appendHarnessImages(page: Page, images: HarnessImageContent[]): Promise<void> {
+  await page.evaluate((nextImages) => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessAppendImages?: (images: HarnessImageContent[]) => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessAppendImages === undefined) {
+      throw new Error('Chat harness image append hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessAppendImages(nextImages);
+  }, images);
+}
+
+async function expectNoHorizontalOverflow(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(() => Math.ceil(document.documentElement.scrollWidth - window.innerWidth)),
+    )
+    .toBeLessThanOrEqual(1);
+}
+
+async function expectNoInternalHorizontalOverflow(locator: Locator, label: string): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        locator.evaluate((element) =>
+          Math.ceil(element.scrollWidth - (element as HTMLElement).clientWidth),
+        ),
+      { message: `${label} must not hide horizontal overflow` },
+    )
+    .toBeLessThanOrEqual(1);
+}
+
+async function useHarnessAdapter(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessUseAdapter?: () => void;
+    };
+    harnessWindow.corvidaeChatHarnessUseAdapter?.();
+  });
+}
+
+async function holdNextFirstStreamToken(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessHoldNextFirstStreamToken?: () => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessHoldNextFirstStreamToken === undefined) {
+      throw new Error('Chat harness first-token hold hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessHoldNextFirstStreamToken();
+  });
+}
+
+async function captureHarnessScreenshot(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+): Promise<void> {
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+}
+
+async function openChatFixture(
+  browser: Browser,
+  options: {
+    colorScheme: 'dark' | 'light';
+    viewport: { width: number; height: number };
+  },
+): Promise<{ page: Page; dispose: () => Promise<void> }> {
+  const context = await browser.newContext({
+    baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+    colorScheme: options.colorScheme,
+    reducedMotion: 'reduce',
+    viewport: options.viewport,
+  });
+  const diagnostics: string[] = [];
+  try {
+    await context.addInitScript(
+      setFixtureThemeOnOrigin,
+      themeInitScriptPayload(options.colorScheme),
+    );
+    const page = await context.newPage();
+    page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error' || message.type() === 'warning') {
+        diagnostics.push(`${message.type()}: ${message.text()}`);
+      }
+    });
+    await page.goto(fixtureRoute('chat'), { waitUntil: 'load' });
+    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          theme: document.documentElement.dataset['theme'],
+          cinderTheme: document.documentElement.dataset['cinderTheme'],
+          colorScheme: getComputedStyle(document.documentElement).colorScheme,
+        })),
+      )
+      .toEqual({
+        theme: options.colorScheme,
+        cinderTheme: options.colorScheme,
+        colorScheme: options.colorScheme,
+      });
+    return {
+      page,
+      async dispose() {
+        try {
+          expect(diagnostics, 'Chat fixture must not emit browser errors or warnings').toEqual([]);
+        } finally {
+          await context.close();
+        }
+      },
+    };
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
+}
+
+async function borderBottomWidth(locator: Locator): Promise<number> {
+  return locator.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).borderBottomWidth),
+  );
+}
+
+async function pushHarnessTypingSnapshot(
+  page: Page,
+  participants: Array<{ id: string; name: string }>,
+): Promise<void> {
+  await page.evaluate((nextParticipants) => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessPushTypingSnapshot?: (
+        participants: Array<{ id: string; name: string }>,
+      ) => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessPushTypingSnapshot === undefined) {
+      throw new Error('Chat harness typing push hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessPushTypingSnapshot(nextParticipants);
+  }, participants);
+}
+
+async function setHarnessDirectTypingParticipants(
+  page: Page,
+  participants: Array<{ id: string; name: string }> | undefined,
+): Promise<void> {
+  await page.evaluate((nextParticipants) => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessSetDirectTypingParticipants?: (
+        participants: Array<{ id: string; name: string }> | undefined,
+      ) => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants === undefined) {
+      throw new Error('Chat harness direct typing hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants(nextParticipants);
+  }, participants);
+}
+
+async function computedOpacity(locator: Locator): Promise<number> {
+  return locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
+}
+
+async function renderedBox(locator: Locator, label: string) {
+  const box = await locator.boundingBox();
+  expect(box, `${label} must have a rendered box`).not.toBeNull();
+  if (box === null) throw new Error(`${label} did not render.`);
+  return box;
+}
+
+function expectContainedWithin(
+  child: NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>,
+  parent: NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>,
+  label: string,
+): void {
+  expect(child.x, `${label} left edge must stay inside its parent`).toBeGreaterThanOrEqual(
+    parent.x - 1,
+  );
+  expect(child.y, `${label} top edge must stay inside its parent`).toBeGreaterThanOrEqual(
+    parent.y - 1,
+  );
+  expect(
+    child.x + child.width,
+    `${label} right edge must stay inside its parent`,
+  ).toBeLessThanOrEqual(parent.x + parent.width + 1);
+  expect(
+    child.y + child.height,
+    `${label} bottom edge must stay inside its parent`,
+  ).toBeLessThanOrEqual(parent.y + parent.height + 1);
+}
+
+async function expectNarrowConversationLayoutStacks(layout: Locator): Promise<void> {
+  const metrics = await layout.evaluate((element) => {
+    const sidebar = element.querySelector<HTMLElement>('.chat-layout-fixture__sidebar');
+    const main = element.querySelector<HTMLElement>('.chat-layout-fixture__main');
+    if (!sidebar || !main) throw new Error('Missing conversation layout regions');
+
+    const style = getComputedStyle(element);
+    const layoutBox = element.getBoundingClientRect();
+    const sidebarBox = sidebar.getBoundingClientRect();
+    const mainBox = main.getBoundingClientRect();
+    const borderInlineStart = Number.parseFloat(style.borderInlineStartWidth);
+    const borderInlineEnd = Number.parseFloat(style.borderInlineEndWidth);
+
+    return {
+      contentX: layoutBox.x + borderInlineStart,
+      contentWidth: layoutBox.width - borderInlineStart - borderInlineEnd,
+      sidebar: {
+        bottom: sidebarBox.bottom,
+      },
+      main: {
+        x: mainBox.x,
+        y: mainBox.y,
+        width: mainBox.width,
+      },
+    };
+  });
+
+  expect(
+    metrics.main.y,
+    'narrow conversation main pane should stack below the sidebar',
+  ).toBeGreaterThanOrEqual(metrics.sidebar.bottom - 1);
+  expect(metrics.main.x, 'narrow conversation main pane should start at content edge').toBeCloseTo(
+    metrics.contentX,
+    1,
+  );
+  expect(
+    metrics.main.width,
+    'narrow conversation main pane should fill available width',
+  ).toBeCloseTo(metrics.contentWidth, 1);
+}
+
+test('selected conversations and transcript boundaries use one flat divider system', async ({
+  browser,
+}, testInfo) => {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const width of [320, 512, 848]) {
+      const { page, dispose } = await openChatFixture(browser, {
+        colorScheme,
+        viewport: { width, height: 760 },
+      });
+      try {
+        const layout = page.getByTestId('chat-conversation-layout');
+        if (width === 320) await expectNarrowConversationLayoutStacks(layout);
+        const selectedConversation = layout.locator('[data-cinder-conversation-selected]').first();
+        const inactiveConversation = layout
+          .locator('[data-cinder-conversation-item]:not([data-cinder-conversation-selected])')
+          .first();
+        await expect(selectedConversation).toHaveAttribute('aria-current', 'page');
+        await expect(selectedConversation).toBeVisible();
+        await expect(inactiveConversation).toBeVisible();
+
+        const selectedBoxBefore = await renderedBox(selectedConversation, 'selected conversation');
+        const selectedStyle = await selectedConversation.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            borderBlockStartWidth: style.borderBlockStartWidth,
+            borderColor: style.borderColor,
+            borderRadius: style.borderRadius,
+          };
+        });
+        expect(selectedStyle.borderBlockStartWidth).toBe('1px');
+        expect(selectedStyle.borderColor).toBe('rgba(0, 0, 0, 0)');
+        expect(selectedStyle.borderRadius).toBe('0px');
+
+        await inactiveConversation.click();
+        const selectedBoxAfter = await renderedBox(
+          layout.locator('[data-cinder-conversation-selected]').first(),
+          'next selected conversation',
+        );
+        expect(selectedBoxAfter.width).toBeCloseTo(selectedBoxBefore.width, 1);
+        expect(selectedBoxAfter.height).toBeCloseTo(selectedBoxBefore.height, 1);
+
+        const chatHeaderWrapper = layout.locator('.chat-header').first();
+        const conversationHeader = layout.locator('.cinder-chat-conversation-header').first();
+        await expect(chatHeaderWrapper).toBeVisible();
+        await expect(conversationHeader).toBeVisible();
+        const dividerWidth =
+          (await borderBottomWidth(chatHeaderWrapper)) +
+          (await borderBottomWidth(conversationHeader));
+        expect(dividerWidth).toBe(1);
+
+        await captureHarnessScreenshot(
+          page,
+          testInfo,
+          `chat-layout-boundary-${colorScheme}-${width}`,
+        );
+      } finally {
+        await dispose();
+      }
+    }
+  }
+});
+
+test('artifact actions remain visible and panel headers stay compact', async ({
+  browser,
+}, testInfo) => {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const width of [320, 512, 848]) {
+      const { page, dispose } = await openChatFixture(browser, {
+        colorScheme,
+        viewport: { width, height: 820 },
+      });
+      try {
+        const defaultLayout = page.getByTestId('chat-default-artifact-layout');
+        const firstArtifact = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Exports report',
+          exact: true,
+        });
+        await expect(firstArtifact).toBeVisible();
+        await expect(firstArtifact).toHaveAttribute('title', 'Exports report');
+        await page.mouse.move(1, 1);
+        await expect(firstArtifact).toBeVisible();
+
+        await expect(
+          defaultLayout.getByRole('button', {
+            name: 'Open artifact: Duplicate report',
+            exact: true,
+          }),
+        ).toHaveCount(2);
+        await expect(
+          defaultLayout.getByRole('button', { name: 'Open artifact: Artifact', exact: true }),
+        ).toBeVisible();
+        const longTitleButton = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Exports report with a long generated title that should truncate visually while retaining the full accessible name',
+        });
+        await expect(longTitleButton).toBeVisible();
+        await expect(longTitleButton).toHaveAttribute(
+          'title',
+          'Exports report with a long generated title that should truncate visually while retaining the full accessible name',
+        );
+        await expect(defaultLayout.getByTestId('custom-artifact-action')).toHaveCount(0);
+
+        await firstArtifact.focus();
+        await page.keyboard.press('Enter');
+        const panel = defaultLayout.locator('.artifact-panel').first();
+        await expect(panel).toBeVisible();
+        await expect(panel.locator('.artifact-panel-title')).toHaveText('Exports report');
+        const layoutRoot = defaultLayout.locator('.chat-artifact-layout').first();
+        const layoutGrid = defaultLayout.locator('.chat-artifact-grid').first();
+        const layoutRootBox = await renderedBox(layoutRoot, 'artifact layout root');
+        const layoutGridBox = await renderedBox(layoutGrid, 'artifact layout grid');
+        const mainBox = await renderedBox(
+          defaultLayout.locator('.chat-artifact-main').first(),
+          'artifact layout main',
+        );
+        const panelBox = await renderedBox(panel, 'artifact panel');
+        const ancestorContainer = await layoutRoot.evaluate((element) => {
+          let parent = element.parentElement;
+          while (parent) {
+            const containerType = getComputedStyle(parent).containerType;
+            if (containerType !== 'normal') return containerType;
+            parent = parent.parentElement;
+          }
+          return null;
+        });
+        expect(
+          ancestorContainer,
+          'responsive layout must not depend on an ancestor container',
+        ).toBe(null);
+        expect(
+          layoutRootBox.width,
+          'layout root should reflect the actual embedded fixture width',
+        ).toBeGreaterThan(0);
+        expect(layoutRootBox.width).toBeLessThanOrEqual(width);
+        expectContainedWithin(layoutGridBox, layoutRootBox, 'artifact layout grid');
+        if (layoutRootBox.width <= 768) {
+          expect(
+            panelBox.y,
+            'narrow artifact panel should stack below the chat area',
+          ).toBeGreaterThanOrEqual(mainBox.y + mainBox.height - 1);
+          expect(panelBox.width).toBeCloseTo(layoutRootBox.width, 1);
+        } else {
+          expect(
+            panelBox.x,
+            'wide artifact panel should sit beside the chat area',
+          ).toBeGreaterThanOrEqual(mainBox.x + mainBox.width - 1);
+          expect(panelBox.height).toBeCloseTo(mainBox.height, 1);
+        }
+        const headerBox = await renderedBox(
+          panel.locator('.artifact-panel-header'),
+          'artifact header',
+        );
+        expect(headerBox.height).toBe(48);
+        const titleBox = await renderedBox(
+          panel.locator('.artifact-panel-title'),
+          'artifact header title',
+        );
+        expect(
+          titleBox.x + titleBox.width / 2,
+          'artifact title center must align with the full header center',
+        ).toBeCloseTo(headerBox.x + headerBox.width / 2, 1);
+        const close = panel.getByRole('button', { name: 'Close artifact panel' });
+        const closeBox = await renderedBox(close, 'artifact close button');
+        expect(closeBox.width).toBe(44);
+        expect(closeBox.height).toBe(44);
+        expectContainedWithin(closeBox, headerBox, 'artifact close button');
+
+        await close.click();
+        await expect(panel).toBeHidden();
+        await expect(firstArtifact).toBeFocused();
+
+        const fallbackTitle = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Artifact',
+          exact: true,
+        });
+        await fallbackTitle.focus();
+        await page.keyboard.press(' ');
+        await expect(defaultLayout.locator('.artifact-panel-title').first()).toHaveText('Artifact');
+        await defaultLayout.getByRole('button', { name: 'Close artifact panel' }).click();
+
+        const secondDuplicate = defaultLayout
+          .getByRole('button', { name: 'Open artifact: Duplicate report', exact: true })
+          .nth(1);
+        await secondDuplicate.click();
+        await expect(defaultLayout.locator('.artifact-panel-content').first()).toContainText(
+          'const duplicate = 2;',
+        );
+
+        const groupedOne = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Grouped artifact one',
+        });
+        const groupedTwo = defaultLayout.getByRole('button', {
+          name: 'Open artifact: Grouped artifact two',
+        });
+        await expect(groupedOne).toBeVisible();
+        await expect(groupedTwo).toBeVisible();
+
+        const externalLayout = page.getByTestId('chat-external-artifact-layout');
+        await expect(externalLayout.getByTestId('custom-artifact-action').first()).toBeVisible();
+        await externalLayout
+          .getByRole('button', { name: 'Open artifact: Exports report', exact: true })
+          .click();
+        await expect(externalLayout.locator('.artifact-panel')).toHaveCount(1);
+        await expect(externalLayout.locator('.artifact-panel-title')).toHaveText('Exports report');
+
+        await captureHarnessScreenshot(
+          page,
+          testInfo,
+          `chat-artifact-layout-${colorScheme}-${width}`,
+        );
+      } finally {
+        await dispose();
+      }
+    }
+  }
+});
+
+async function expectDocumentedChatSizing(
+  shell: Locator,
+  publicClassNames: readonly string[],
+  label: string,
+): Promise<void> {
+  const layoutRoot = shell.locator('.chat-artifact-layout').first();
+  const chatContainer = shell.locator('.chat-container').first();
+  const timeline = shell.locator('.chat-timeline').first();
+
+  for (const publicClassName of publicClassNames) {
+    await expect(layoutRoot).toHaveClass(new RegExp(`\\b${publicClassName}\\b`));
+    await expect(chatContainer).not.toHaveClass(new RegExp(`\\b${publicClassName}\\b`));
+  }
+
+  const [metrics, chatContainerBox, timelineBox] = await Promise.all([
+    shell.evaluate((element) => {
+      const header = element.querySelector<HTMLElement>('.chat-public-sizing-header');
+      const layoutRoot = element.querySelector<HTMLElement>('.chat-artifact-layout');
+      if (!layoutRoot) throw new Error('Missing artifact layout root');
+      const shellBox = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const borderBlock =
+        Number.parseFloat(style.borderBlockStartWidth) +
+        Number.parseFloat(style.borderBlockEndWidth);
+      const borderInline =
+        Number.parseFloat(style.borderInlineStartWidth) +
+        Number.parseFloat(style.borderInlineEndWidth);
+      const paddingBlock =
+        Number.parseFloat(style.paddingBlockStart) + Number.parseFloat(style.paddingBlockEnd);
+      const paddingInline =
+        Number.parseFloat(style.paddingInlineStart) + Number.parseFloat(style.paddingInlineEnd);
+      const headerBox = header?.getBoundingClientRect() ?? {
+        bottom: shellBox.top,
+        height: 0,
+        y: shellBox.top,
+      };
+      const layoutBox = layoutRoot.getBoundingClientRect();
+      return {
+        availableHeight: shellBox.height - borderBlock - paddingBlock - headerBox.height,
+        availableWidth: shellBox.width - borderInline - paddingInline,
+        contentTop: headerBox.bottom,
+        layout: {
+          x: layoutBox.x,
+          y: layoutBox.y,
+          width: layoutBox.width,
+          height: layoutBox.height,
+          bottom: layoutBox.bottom,
+        },
+        shell: {
+          x: shellBox.x,
+          y: shellBox.y,
+          width: shellBox.width,
+          height: shellBox.height,
+          bottom: shellBox.bottom,
+        },
+      };
+    }),
+    renderedBox(chatContainer, `${label} chat container`),
+    renderedBox(timeline, `${label} timeline`),
+  ]);
+  const layoutRootBox = metrics.layout;
+
+  expect(layoutRootBox.y).toBeCloseTo(metrics.contentTop, 1);
+  expect(layoutRootBox.height).toBeCloseTo(metrics.availableHeight, 1);
+  expect(layoutRootBox.bottom).toBeLessThanOrEqual(metrics.shell.bottom);
+  expect(layoutRootBox.width).toBeCloseTo(metrics.availableWidth, 1);
+  expectContainedWithin(chatContainerBox, layoutRootBox, `${label} chat container`);
+  expectContainedWithin(timelineBox, chatContainerBox, `${label} timeline`);
+  expect(timelineBox.height).toBeGreaterThan(80);
+}
+
+async function expectSameDomNode(
+  locator: Locator,
+  original: ElementHandle<HTMLElement | SVGElement>,
+  label: string,
+): Promise<void> {
+  await expect(locator).toBeAttached();
+  const isSameNode = await locator.evaluate(
+    (element, originalElement) => element.isSameNode(originalElement),
+    original,
+  );
+  expect(isSameNode, `${label} should keep the same DOM node`).toBe(true);
+}
+
+async function expectFixedChatSizing(shell: Locator, label: string): Promise<void> {
+  const layoutRoot = shell.locator('.chat-artifact-layout').first();
+  const chatContainer = shell.locator('.chat-container').first();
+  const timeline = shell.locator('.chat-timeline').first();
+
+  await expect(layoutRoot).toHaveClass(/\bchat-public-theme-surface\b/);
+  await expect(chatContainer).not.toHaveClass(/\bchat-public-theme-surface\b/);
+  await expect(layoutRoot).toHaveJSProperty('style.blockSize', '100%');
+  await expect(layoutRoot).toHaveJSProperty('style.minBlockSize', '0px');
+
+  const [shellBox, layoutRootBox, chatContainerBox, timelineBox] = await Promise.all([
+    renderedBox(shell, `${label} shell`),
+    renderedBox(layoutRoot, `${label} layout root`),
+    renderedBox(chatContainer, `${label} chat container`),
+    renderedBox(timeline, `${label} timeline`),
+  ]);
+  expectContainedWithin(layoutRootBox, shellBox, `${label} layout root`);
+  expect(layoutRootBox.height).toBeCloseTo(shellBox.height, 1);
+  expect(layoutRootBox.width).toBeCloseTo(shellBox.width, 1);
+  expectContainedWithin(chatContainerBox, layoutRootBox, `${label} chat container`);
+  expectContainedWithin(timelineBox, chatContainerBox, `${label} timeline`);
+  expect(timelineBox.height).toBeGreaterThan(80);
+}
+
+test('public Chat class sizes documented flex and grid shells with artifact panel open and closed', async ({
+  browser,
+}, testInfo) => {
+  const { page, dispose } = await openChatFixture(browser, {
+    colorScheme: 'light',
+    viewport: { width: 848, height: 900 },
+  });
+  try {
+    for (const { testId, classNames, label } of [
+      {
+        testId: 'chat-public-flex-shell',
+        classNames: ['chat-public-flex-surface', 'chat-public-theme-surface'],
+        label: 'documented flex consumer',
+      },
+      {
+        testId: 'chat-public-grid-shell',
+        classNames: ['chat-public-grid-surface'],
+        label: 'documented grid consumer',
+      },
+    ]) {
+      const shell = page.getByTestId(testId);
+      const composer = shell.locator('.chat-input-area').first();
+      const transcript = shell.locator('.chat-timeline').first();
+      const composerElement = await composer.elementHandle();
+      const transcriptElement = await transcript.elementHandle();
+      if (composerElement === null) throw new Error(`${label} composer was not rendered`);
+      if (transcriptElement === null) throw new Error(`${label} transcript was not rendered`);
+      await expectDocumentedChatSizing(shell, classNames, `${label} closed`);
+
+      await shell
+        .getByRole('button', { name: 'Open artifact: Exports report', exact: true })
+        .click();
+      await expect(shell.locator('.artifact-panel')).toBeVisible();
+      await expectDocumentedChatSizing(shell, classNames, `${label} open`);
+      await expectSameDomNode(composer, composerElement, `${label} composer after open`);
+      await expectSameDomNode(transcript, transcriptElement, `${label} transcript after open`);
+
+      await shell.getByRole('button', { name: 'Close artifact panel' }).click();
+      await expect(shell.locator('.artifact-panel')).toHaveCount(0);
+      await expectDocumentedChatSizing(shell, classNames, `${label} closed after close`);
+      await expectSameDomNode(composer, composerElement, `${label} composer after close`);
+      await expectSameDomNode(transcript, transcriptElement, `${label} transcript after close`);
+    }
+
+    const fixedShell = page.getByTestId('chat-public-fixed-shell');
+    await expectFixedChatSizing(fixedShell, 'fixed-height inline-style consumer');
+    await fixedShell
+      .getByRole('button', { name: 'Open artifact: Exports report', exact: true })
+      .click();
+    await expect(fixedShell.locator('.artifact-panel')).toBeVisible();
+    await expectFixedChatSizing(fixedShell, 'fixed-height inline-style consumer open');
+
+    await captureHarnessScreenshot(page, testInfo, 'chat-public-sizing-artifact-layout');
+  } finally {
+    await dispose();
+  }
+});
+
+async function expectSingleImageGeometry(
+  locators: {
+    bubble: Locator;
+    attachments: Locator;
+    figure: Locator;
+    button: Locator;
+    image: Locator;
+  },
+  expected: { maxWidth: number; maxHeight: number; ratio: number },
+): Promise<void> {
+  const [bubbleBox, attachmentsBox, figureBox, buttonBox, imageBox] = await Promise.all([
+    locators.bubble.boundingBox(),
+    locators.attachments.boundingBox(),
+    locators.figure.boundingBox(),
+    locators.button.boundingBox(),
+    locators.image.boundingBox(),
+  ]);
+  expect(bubbleBox, 'message bubble must have a rendered box').not.toBeNull();
+  expect(attachmentsBox, 'attachment group must have a rendered box').not.toBeNull();
+  expect(figureBox, 'single image figure must have a rendered box').not.toBeNull();
+  expect(buttonBox, 'single image lightbox button must have a rendered box').not.toBeNull();
+  expect(imageBox, 'single image must have a rendered box').not.toBeNull();
+  if (
+    bubbleBox === null ||
+    attachmentsBox === null ||
+    figureBox === null ||
+    buttonBox === null ||
+    imageBox === null
+  ) {
+    return;
+  }
+
+  expect(figureBox.width).toBeGreaterThan(0);
+  expect(figureBox.height).toBeGreaterThan(0);
+  expect(figureBox.width).toBeLessThanOrEqual(expected.maxWidth);
+  expect(figureBox.height).toBeLessThanOrEqual(expected.maxHeight);
+  expect(Math.abs(figureBox.width / figureBox.height - expected.ratio)).toBeLessThan(0.06);
+
+  expectContainedWithin(attachmentsBox, bubbleBox, 'attachment group');
+  expectContainedWithin(figureBox, attachmentsBox, 'single image figure');
+  expectContainedWithin(buttonBox, figureBox, 'single image button');
+  expectContainedWithin(imageBox, buttonBox, 'single image');
+
+  await Promise.all([
+    expectNoInternalHorizontalOverflow(locators.bubble, 'message bubble'),
+    expectNoInternalHorizontalOverflow(locators.attachments, 'attachment group'),
+    expectNoInternalHorizontalOverflow(locators.figure, 'single image figure'),
+    expectNoInternalHorizontalOverflow(locators.button, 'single image button'),
+  ]);
+
+  await expect
+    .poll(() =>
+      locators.image.evaluate((node) => {
+        const image = node as HTMLImageElement;
+        return image.naturalWidth > 0 && image.naturalHeight > 0;
+      }),
+    )
+    .toBe(true);
+  const naturalSize = await locators.image.evaluate((node) => ({
+    naturalWidth: (node as HTMLImageElement).naturalWidth,
+    naturalHeight: (node as HTMLImageElement).naturalHeight,
+  }));
+  expect(naturalSize.naturalWidth).toBeGreaterThan(0);
+  expect(naturalSize.naturalHeight).toBeGreaterThan(0);
+}
+
 test.describe('chat harness — mounts cleanly', () => {
   test('renders the control panel and the chat under test with a quiet event log', async ({
     browser,
@@ -118,8 +862,117 @@ test.describe('chat harness — mounts cleanly', () => {
       await dispose();
     }
   });
-});
 
+  test('Chat tool approvals use the shared Cinder approval surface', async ({ browser }) => {
+    const cinderCardCounts: number[] = [];
+    for (const colorScheme of ['dark', 'light'] as const) {
+      const context = await browser.newContext({
+        baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+        colorScheme,
+        reducedMotion: 'reduce',
+        viewport: { width: 1280, height: 900 },
+      });
+      const diagnostics: string[] = [];
+      try {
+        await context.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload(colorScheme));
+        const page = await context.newPage();
+        page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
+        page.on('console', (message) => {
+          if (message.type() === 'error' || message.type() === 'warning') {
+            diagnostics.push(`${message.type()}: ${message.text()}`);
+          }
+        });
+
+        async function openApprovalFixture(): Promise<Locator> {
+          await page.goto(fixtureRoute('chat'), { waitUntil: 'load' });
+          await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+          const approvalChat = page.locator('#fixture-tool-approval-chat');
+          await expect(approvalChat).toBeVisible();
+          return approvalChat;
+        }
+
+        async function expectLastResolution(expected: unknown): Promise<void> {
+          await expect
+            .poll(async () => {
+              const logText = await page.getByTestId('approval-resolution-log').textContent();
+              const log = JSON.parse(logText ?? '[]') as unknown[];
+              return log.at(-1);
+            })
+            .toEqual(expected);
+        }
+
+        const approvalChat = await openApprovalFixture();
+        const card = approvalChat.locator('.cinder-approval-card');
+        cinderCardCounts.push(await card.count());
+        await expect(card.getByText('Approval required for', { exact: false })).toBeVisible();
+        await expect(card.getByRole('heading', { name: 'deploy_to_production' })).toBeVisible();
+        await expect(
+          card.getByText('deploy_to_production --environment production --version 2.4.1', {
+            exact: true,
+          }),
+        ).toBeVisible();
+        const detailsButton = card.getByRole('button', { name: 'Details' });
+        await expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
+        await detailsButton.click();
+        await expect(detailsButton).toHaveAttribute('aria-expanded', 'true');
+        await expect(
+          card
+            .getByRole('list', { name: 'Environment variable names only; values are never shown' })
+            .getByText('DEPLOY_TOKEN', { exact: true }),
+        ).toBeVisible();
+        const policyMetadata = card
+          .locator('.cinder-approval-card__metadata-item')
+          .filter({ hasText: 'Policy version' });
+        await expect(policyMetadata.locator('dt')).toHaveText('Policy version');
+        await expect(policyMetadata.locator('dd')).toContainText('approval-fixture-policy-v1');
+        await approvalChat.getByRole('button', { name: 'Approve', exact: true }).click();
+        await expectLastResolution({
+          toolCallId: 'call-deploy-prod',
+          resolution: { decision: 'approve', remember: false },
+        });
+
+        const denyChat = await openApprovalFixture();
+        await denyChat.getByRole('textbox', { name: 'Reason' }).fill('Too risky right now.');
+        await denyChat.getByRole('button', { name: 'Deny' }).click();
+        await expectLastResolution({
+          toolCallId: 'call-deploy-prod',
+          resolution: { decision: 'deny', remember: false, reason: 'Too risky right now.' },
+        });
+
+        const cancelChat = await openApprovalFixture();
+        await cancelChat.locator('.cinder-approval-card').press('Escape');
+        await expectLastResolution({
+          toolCallId: 'call-deploy-prod',
+          resolution: { decision: 'cancel', remember: false },
+        });
+
+        const editedChat = await openApprovalFixture();
+        await editedChat.getByRole('button', { name: 'Approve with edits' }).click();
+        await editedChat
+          .getByRole('textbox', { name: 'Edited arguments JSON' })
+          .fill('{"environment":"production","version":"2.4.1","replicas":2}');
+        await editedChat.getByRole('button', { name: 'Confirm edited approval' }).click();
+        await expectLastResolution({
+          toolCallId: 'call-deploy-prod',
+          resolution: {
+            decision: 'approve_with_edits',
+            editedArgs: { environment: 'production', version: '2.4.1', replicas: 2 },
+            remember: false,
+          },
+        });
+
+        expect(
+          diagnostics,
+          'Chat approval fixture must not emit browser errors or warnings',
+        ).toEqual([]);
+      } finally {
+        await context.close();
+      }
+    }
+
+    expect(cinderCardCounts).toEqual([1, 1]);
+  });
+});
 test.describe('chat harness — submit and reply', () => {
   test('a composer submit appends a user message and an auto-reply lands', async ({ browser }) => {
     const { harness, dispose } = await openHarness(browser);
@@ -165,6 +1018,58 @@ test.describe('chat harness — typing indicator', () => {
       await dispose();
     }
   });
+
+  test('adapter typing identity replaces the empty transcript state', async ({ browser }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      viewport: { width: 512, height: 900 },
+    });
+    try {
+      await useHarnessAdapter(page);
+      await expect.poll(() => page.evaluate(() => document.readyState)).toBe('complete');
+      await harness.locator('[data-testid="clear"]').click();
+      await expect(harness.locator('.chat-empty')).toBeVisible();
+
+      await pushHarnessTypingSnapshot(page, [
+        { id: 'p1', name: 'Old name' },
+        { id: 'p1', name: 'Avery' },
+      ]);
+      const typingLabel = harness.locator('.chat-participant-typing-label');
+      await expect(typingLabel).toHaveText('Avery is typing…');
+      await expect(harness.locator('.chat-empty')).toHaveCount(0);
+      await expect(harness.locator('#harness-chat')).not.toContainText('Someone');
+
+      await pushHarnessTypingSnapshot(page, [
+        { id: 'p1', name: 'Avery' },
+        { id: 'p2', name: 'Blake' },
+      ]);
+      await expect(typingLabel).toHaveText('Avery and Blake are typing…');
+
+      await pushHarnessTypingSnapshot(page, [
+        { id: 'p2', name: 'Blake' },
+        { id: 'p3', name: 'Casey' },
+        { id: 'p4', name: 'Devon' },
+      ]);
+      await expect(typingLabel).toHaveText('3 people are typing…');
+
+      await pushHarnessTypingSnapshot(page, [{ id: 'p2', name: 'Blake' }]);
+      await expect(typingLabel).toHaveText('Blake is typing…');
+      await expect(harness.locator('#harness-chat')).not.toContainText('Avery is typing');
+
+      await setHarnessDirectTypingParticipants(page, [{ id: 'direct', name: 'Dana' }]);
+      await expect(typingLabel).toHaveText('Dana is typing…');
+      await pushHarnessTypingSnapshot(page, [{ id: 'adapter', name: 'Elliot' }]);
+      await expect(typingLabel).toHaveText('Dana is typing…');
+
+      await setHarnessDirectTypingParticipants(page, undefined);
+      await expect(typingLabel).toHaveText('Elliot is typing…');
+      await pushHarnessTypingSnapshot(page, []);
+      await expect(harness.locator('.chat-participant-typing-indicator')).toHaveCount(0);
+      await expect(harness.locator('.chat-empty')).toBeVisible();
+    } finally {
+      await dispose();
+    }
+  });
 });
 
 for (const mechanism of ['imperative', 'content-mutation'] as const) {
@@ -192,8 +1097,11 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
         // The assistant message text grows across the deterministic cadence:
         // observe an intermediate partial that is non-empty but not yet final.
         const assistant = harness.locator('[data-role="assistant"]').last();
-        await expect.poll(() => trimmedLength(assistant), { timeout: 3_000 }).toBeGreaterThan(0);
-        const partialLength = await trimmedLength(assistant);
+        await expect.poll(() => messageBodyText(assistant), { timeout: 3_000 }).not.toBe('');
+        await expect(harness.locator('.chat-typing-indicator')).toHaveCount(0);
+        await expect(assistant.locator('.chat-message')).toHaveAttribute('aria-busy', 'true');
+        await expect(assistant.locator('.chat-message-streaming-progress')).toBeVisible();
+        const partialText = await messageBodyText(assistant);
 
         // Click Stop: it preserves the partial content and fires onstopgenerating.
         await stop.click();
@@ -201,8 +1109,11 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
         await expect(harness.locator('.chat-input-send[data-stop]')).toHaveCount(0);
         // Exactly one assistant message remains (no stray blank/duplicate).
         await expect(harness.locator('[data-role="assistant"]')).toHaveCount(1);
-        const afterStopLength = await trimmedLength(assistant);
-        expect(afterStopLength).toBeGreaterThanOrEqual(partialLength);
+        const afterStopText = await messageBodyText(assistant);
+        expect(afterStopText.length).toBeGreaterThanOrEqual(partialText.length);
+        expect(partialText.startsWith(afterStopText) || afterStopText.startsWith(partialText)).toBe(
+          true,
+        );
       } finally {
         await dispose();
       }
@@ -210,13 +1121,367 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
   });
 }
 
+test.describe('chat harness — streaming presentation', () => {
+  test('beginStreaming keeps the separate typing indicator until the first non-empty token', async ({
+    browser,
+  }, testInfo) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      viewport: { width: 512, height: 900 },
+    });
+    try {
+      await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
+      await harness
+        .locator('#harness-stream-mechanism')
+        .getByText('Imperative', { exact: true })
+        .click();
+      await holdNextFirstStreamToken(page);
+      await harness.locator('[data-testid="send-reply"]').click();
+
+      const assistant = harness.locator('[data-role="assistant"]').last();
+      const message = assistant.locator('.chat-message');
+      const externalTyping = harness.locator('.chat-typing-indicator');
+      const progress = assistant.locator('.chat-message-streaming-progress');
+
+      await expect(externalTyping).toBeVisible();
+      await expect(message).not.toHaveAttribute('aria-busy', 'true');
+      await expect(progress).toHaveCount(0);
+      await captureHarnessScreenshot(page, testInfo, 'held-first-token-before');
+
+      await expect.poll(() => trimmedLength(assistant), { timeout: 3_000 }).toBeGreaterThan(0);
+      await expect(externalTyping).toHaveCount(0);
+      await expect(message).toHaveAttribute('aria-busy', 'true');
+      await expect(progress).toBeVisible();
+      await captureHarnessScreenshot(page, testInfo, 'held-first-token-after');
+    } finally {
+      await dispose();
+    }
+  });
+
+  for (const width of [320, 512, 848] as const) {
+    test(`partial streaming uses one stable in-message progress surface at ${width}px`, async ({
+      browser,
+    }, testInfo) => {
+      const { page, harness, dispose } = await openHarness(browser, {
+        colorScheme: width === 512 ? 'dark' : 'light',
+        viewport: { width, height: 1100 },
+      });
+      try {
+        await harness
+          .locator('#harness-reply-mode')
+          .getByText('Streaming', { exact: true })
+          .click();
+        await harness
+          .locator('#harness-stream-mechanism')
+          .getByText('Imperative', { exact: true })
+          .click();
+        await harness.locator('[data-testid="send-reply"]').click();
+
+        const assistant = harness.locator('[data-role="assistant"]').last();
+        const message = assistant.locator('.chat-message');
+        await expect.poll(() => trimmedLength(assistant), { timeout: 3_000 }).toBeGreaterThan(0);
+        await expect(harness.locator('.chat-typing-indicator')).toHaveCount(0);
+        await expect(message).toHaveAttribute('aria-busy', 'true');
+        const progress = assistant.locator('.chat-message-streaming-progress');
+        await expect(progress).toBeVisible();
+        await expect(progress).toHaveAttribute('aria-hidden', 'true');
+        await captureHarnessScreenshot(page, testInfo, `streaming-progress-${width}`);
+        const partialBox = await renderedBox(message, 'streaming assistant message');
+        const partialWidth = partialBox.width;
+
+        await expect(harness.locator('.chat-input-send[data-stop]')).toHaveCount(0, {
+          timeout: 5_000,
+        });
+        await expect(progress).toHaveCount(0);
+        await expect(message).not.toHaveAttribute('aria-busy', 'true');
+        const finalBox = await renderedBox(message, 'final assistant message');
+        const finalWidth = finalBox.width;
+        expect(Math.abs(partialWidth - finalWidth)).toBeLessThanOrEqual(1);
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              Math.ceil(document.documentElement.scrollWidth - window.innerWidth),
+            ),
+          )
+          .toBeLessThanOrEqual(1);
+      } finally {
+        await dispose();
+      }
+    });
+  }
+});
+
 test.describe('chat harness — tool calls', () => {
+  async function appendToolScenario(page: Page, scenario: string): Promise<void> {
+    await page.evaluate((name) => {
+      const appendScenario = (
+        window as typeof window & {
+          corvidaeChatHarnessAppendToolScenario?: (scenario: string) => void;
+        }
+      ).corvidaeChatHarnessAppendToolScenario;
+      if (!appendScenario) throw new Error('Chat harness tool scenario hook is unavailable.');
+      appendScenario(name);
+    }, scenario);
+  }
+
+  async function setHarnessCustomMessageSnippets(page: Page, enabled: boolean): Promise<void> {
+    await page.evaluate((nextEnabled) => {
+      const setCustomMessageSnippets = (
+        window as typeof window & {
+          corvidaeChatHarnessSetCustomMessageSnippets?: (enabled: boolean) => void;
+        }
+      ).corvidaeChatHarnessSetCustomMessageSnippets;
+      if (!setCustomMessageSnippets) {
+        throw new Error('Chat harness custom message snippet hook is unavailable.');
+      }
+      setCustomMessageSnippets(nextEnabled);
+    }, enabled);
+  }
+
+  async function enableHarnessAdapter(page: Page): Promise<void> {
+    await page.evaluate(() => {
+      const useAdapter = (
+        window as typeof window & {
+          corvidaeChatHarnessUseAdapter?: () => void;
+        }
+      ).corvidaeChatHarnessUseAdapter;
+      if (!useAdapter) throw new Error('Chat harness adapter hook is unavailable.');
+      useAdapter();
+    });
+  }
+
+  async function activeNavigationRow(page: Page): Promise<{
+    id: string;
+    role: string | null;
+    toolCallCount: string | null;
+    text: string;
+    isTimeline: boolean;
+  } | null> {
+    return page.evaluate(() => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement)) return null;
+      return {
+        id: active.id,
+        role: active.dataset['messageRole'] ?? null,
+        toolCallCount: active.dataset['cinderToolCallCount'] ?? null,
+        text: active.textContent?.trim() ?? '',
+        isTimeline: active.classList.contains('chat-tool-call-timeline'),
+      };
+    });
+  }
+
+  async function expectNoPageOverflow(page: Page): Promise<void> {
+    await expect
+      .poll(() =>
+        page.evaluate(() => Math.ceil(document.documentElement.scrollWidth - window.innerWidth)),
+      )
+      .toBeLessThanOrEqual(1);
+  }
+
+  async function expectHeaderCentersAligned(step: Locator): Promise<void> {
+    const centers = await step.locator('.cinder-run-step-timeline__header').evaluate((header) => {
+      const icon = header.querySelector<HTMLElement>('.cinder-run-step-timeline__icon');
+      const label = header.querySelector<HTMLElement>('.cinder-run-step-timeline__label');
+      const status = header.querySelector<HTMLElement>('.cinder-run-step-timeline__status');
+      if (!label || !status) throw new Error('Header label/status missing.');
+      const center = (element: Element) => {
+        const box = element.getBoundingClientRect();
+        return box.top + box.height / 2;
+      };
+      return {
+        icon: icon ? center(icon) : null,
+        label: center(label),
+        status: center(status),
+      };
+    });
+    expect(Math.abs(centers.label - centers.status)).toBeLessThanOrEqual(2);
+    if (centers.icon !== null)
+      expect(Math.abs(centers.icon - centers.label)).toBeLessThanOrEqual(2);
+  }
+
+  async function expectContainerThreshold(activity: Locator, width: number): Promise<void> {
+    const metrics = await activity.evaluate((element) => {
+      let current: HTMLElement | null = element.parentElement;
+      while (current) {
+        const style = getComputedStyle(current);
+        if (style.containerType !== 'normal') {
+          const box = current.getBoundingClientRect();
+          return {
+            containerWidth: box.width,
+            containerType: style.containerType,
+            minInlineSize: getComputedStyle(element).minInlineSize,
+          };
+        }
+        current = current.parentElement;
+      }
+      return {
+        containerWidth: null,
+        containerType: 'none',
+        minInlineSize: getComputedStyle(element).minInlineSize,
+      };
+    });
+    expect(metrics.containerType).not.toBe('none');
+    if (width === 320) {
+      expect(metrics.containerWidth ?? 0).toBeLessThan(352);
+      expect(metrics.minInlineSize).toBe('0px');
+    } else {
+      expect(metrics.containerWidth ?? 0).toBeGreaterThanOrEqual(352);
+      expect(metrics.minInlineSize).toBe('320px');
+    }
+  }
+
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const width of [320, 512, 848] as const) {
+      test(`tool activity uses one compact syntax-highlighted detail surface (${colorScheme}, ${width}px)`, async ({
+        browser,
+      }, testInfo) => {
+        const { page, harness, dispose } = await openHarness(browser, {
+          colorScheme,
+          viewport: { width, height: 1000 },
+        });
+        try {
+          for (const { outcome, argumentsText, status, expectedText } of [
+            {
+              outcome: 'success',
+              argumentsText:
+                '{"package":"@corvidae/cinder","checks":["exports","types"],"long":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
+              status: 'succeeded',
+              expectedText: '@corvidae/cinder',
+            },
+            {
+              outcome: 'error',
+              argumentsText: '["exports","runtime",null]',
+              status: 'failed',
+              expectedText: 'exports',
+            },
+            {
+              outcome: 'action_required',
+              argumentsText: 'null',
+              status: 'waiting_approval',
+              expectedText: 'null',
+            },
+          ] as const) {
+            await harness.locator('[data-testid="tool-arguments"]').fill(argumentsText);
+            await harness.locator('#harness-tool-outcome').selectOption(outcome);
+            await harness.locator('[data-testid="inject-tool"]').click();
+
+            const activity = harness.locator('.chat-tool-call-timeline').last();
+            await expect(activity).toBeVisible();
+            // The legacy `tool-call-group` class guard that stood here asserted the old
+            // grouped markup was absent inside this region. It was removed rather
+            // than rewritten because its subject no longer exists: `ToolCallGroup`
+            // was deleted and nothing emits that class, so the assertion could not
+            // fail under any input and reported coverage it did not have. What the
+            // region renders is asserted positively below.
+            await expect(activity).toHaveAttribute('data-cinder-tool-call-count', '1');
+            await expect(activity).toContainText('exports_check');
+            await expectContainerThreshold(activity, width);
+
+            const step = activity.locator('.cinder-run-step-timeline__item').last();
+            await expect(step).toHaveAttribute('data-cinder-status', status);
+            await expect(step.locator('.cinder-run-step-timeline__header')).toBeVisible();
+            await expectHeaderCentersAligned(step);
+
+            const disclosure = step.getByRole('button', { name: 'Arguments' });
+            await disclosure.focus();
+            await expect(disclosure).toBeFocused();
+            await page.keyboard.press('Enter');
+
+            const details = step.locator('.cinder-run-step-timeline__details');
+            await expect(details).toBeVisible();
+            await expect(details.locator('.tool-call-section-title')).toHaveCount(0);
+
+            const codeBlock = details.locator('.cinder-code-block').first();
+            await expect(codeBlock).toBeVisible();
+            await expect(codeBlock.locator('.cinder-code-block__language')).toHaveCount(0);
+            const codePre = codeBlock.locator('pre').first();
+            await expect(codePre).toContainText(expectedText);
+            const codePadding = await codeBlock.evaluate((element) => {
+              const probe = document.createElement('div');
+              probe.style.padding = 'var(--cinder-code-block-padding)';
+              element.append(probe);
+              const style = getComputedStyle(probe);
+              const padding = Math.max(
+                Number.parseFloat(style.paddingTop),
+                Number.parseFloat(style.paddingRight),
+                Number.parseFloat(style.paddingBottom),
+                Number.parseFloat(style.paddingLeft),
+              );
+              probe.remove();
+              return padding;
+            });
+            expect(codePadding).toBeLessThanOrEqual(12);
+
+            await expectNoPageOverflow(page);
+          }
+
+          await appendToolScenario(page, 'pending');
+          const pending = harness.locator('.chat-tool-call-timeline').last();
+          await expect(pending).toBeVisible();
+          await expect(pending.locator('.cinder-run-step-timeline__item')).toHaveAttribute(
+            'data-cinder-status',
+            'pending',
+          );
+          await expect(pending.locator('.cinder-run-step-timeline__icon')).toHaveCount(0);
+          await expectHeaderCentersAligned(pending.locator('.cinder-run-step-timeline__item'));
+
+          await appendToolScenario(page, 'text-success');
+          const textActivity = harness.locator('.chat-tool-call-timeline').last();
+          await expect(textActivity).toBeVisible();
+          await textActivity.getByRole('button', { name: 'Result' }).click();
+          await expect(
+            textActivity.locator('.cinder-run-step-timeline__detail-content'),
+          ).toContainText('plain text result from the tool');
+          await expect(textActivity.locator('.cinder-code-block')).toHaveCount(1);
+
+          await enableHarnessAdapter(page);
+          await appendToolScenario(page, 'json-success');
+          const presentationActivity = harness.locator('.chat-tool-call-timeline').last();
+          await expect(presentationActivity).toBeVisible();
+          await expect(
+            presentationActivity.locator('.cinder-run-step-timeline__icon'),
+          ).toBeVisible();
+          await expect(
+            presentationActivity.locator('[data-cinder-tool-activity-active]'),
+          ).toHaveCount(0);
+          await expect(
+            presentationActivity.locator('.cinder-run-step-timeline__label'),
+          ).toContainText('Checked exports_check');
+          await expectHeaderCentersAligned(
+            presentationActivity.locator('.cinder-run-step-timeline__item'),
+          );
+
+          await setHarnessCustomMessageSnippets(page, false);
+          await harness.locator('[data-testid="clear"]').click();
+          await expect(harness.locator('.chat-tool-call-timeline')).toHaveCount(0);
+          await appendToolScenario(page, 'grouped');
+          const grouped = harness.locator('.chat-tool-call-timeline').last();
+          await expect(grouped).toBeVisible();
+          await expect(harness.locator('[data-testid="harness-message-action"]')).toHaveCount(0);
+          await expect(harness.locator('[data-testid="harness-message-status"]')).toHaveCount(0);
+          await expect(grouped).toHaveAttribute('data-cinder-tool-call-count', '2');
+          await expect(grouped.locator('.cinder-run-step-timeline__item')).toHaveCount(2);
+          await grouped.getByRole('button', { name: 'Error' }).click();
+          await expect(grouped).toContainText('Type check failed for the chat package.');
+
+          await captureHarnessScreenshot(
+            page,
+            testInfo,
+            `chat-tool-activity-detail-surface-${colorScheme}-${width}`,
+          );
+        } finally {
+          await dispose();
+        }
+      });
+    }
+  }
+
   for (const { outcome, status } of [
-    { outcome: 'success', status: 'success' },
-    { outcome: 'error', status: 'error' },
-    { outcome: 'action_required', status: 'action-required' },
+    { outcome: 'success', status: 'succeeded' },
+    { outcome: 'error', status: 'failed' },
+    { outcome: 'action_required', status: 'waiting_approval' },
   ] as const) {
-    test(`injects a ${outcome} tool call rendering data-status="${status}"`, async ({
+    test(`injects a ${outcome} tool call rendering data-cinder-status="${status}"`, async ({
       browser,
     }) => {
       const { harness, dispose } = await openHarness(browser);
@@ -224,10 +1489,15 @@ test.describe('chat harness — tool calls', () => {
         await harness.locator('#harness-tool-outcome').selectOption(outcome);
         await harness.locator('[data-testid="inject-tool"]').click();
 
-        const group = harness.locator(`.tool-call-group[data-status="${status}"]`);
-        await expect(group).toBeVisible();
-        await expect(harness.locator('.tool-call-name')).toContainText('exports_check');
-        // Never the [object Object] bug for the error branch.
+        const activity = harness.locator('.chat-tool-call-timeline').last();
+        await expect(activity).toBeVisible();
+        await expect(activity.locator('.cinder-run-step-timeline__item')).toHaveAttribute(
+          'data-cinder-status',
+          status,
+        );
+        await expect(activity.locator('.cinder-run-step-timeline__label')).toContainText(
+          'exports_check',
+        );
         await expect(harness.locator('#harness-chat')).not.toContainText('[object Object]');
       } finally {
         await dispose();
@@ -254,22 +1524,94 @@ test.describe('chat harness — tool calls', () => {
     try {
       await harness.locator('[data-testid="inject-tool"]').click();
 
-      const activity = harness.locator('.tool-call-group').last();
+      const activity = harness.locator('.chat-tool-call-timeline').last();
       await expect(activity).toBeVisible();
-      await expect(activity).toHaveAttribute('data-status', 'success');
-      await expect(activity.locator('.tool-call-name')).toContainText('exports_check');
+      await expect(activity.locator('.cinder-run-step-timeline__item')).toHaveAttribute(
+        'data-cinder-status',
+        'succeeded',
+      );
+      await expect(activity.locator('.cinder-run-step-timeline__label')).toContainText(
+        'exports_check',
+      );
 
-      // The grouped activity row is a transcript navigation target. A keyboard
-      // user must be able to reach its disclosure without a pointer-only path.
-      const header = activity.locator('.tool-call-header');
-      await expect(header).toBeVisible();
-      await header.focus();
-      await expect(header).toBeFocused();
+      const disclosure = activity.getByRole('button', { name: 'Arguments' });
+      await expect(disclosure).toBeVisible();
+      await disclosure.focus();
+      await expect(disclosure).toBeFocused();
       await page.keyboard.press('Enter');
-      await expect(activity.locator('.tool-call-details')).toBeVisible();
-      await expect(activity.locator('.tool-call-details')).toContainText('@corvidae/cinder');
+      const argumentsPanel = activity.getByRole('region', { name: 'Arguments' });
+      await expect(argumentsPanel).toBeVisible();
+      await expect(argumentsPanel).toContainText('@corvidae/cinder');
       await page.keyboard.press('Enter');
-      await expect(activity.locator('.tool-call-details')).toHaveCount(0);
+      await expect(argumentsPanel).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('keeps standalone tool activity IDs unique and preserves one keyboard stop per row', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser);
+    try {
+      await appendToolScenario(page, 'duplicate-call-id');
+
+      const standaloneTimelines = harness.locator('.chat-message .chat-tool-call-timeline');
+      await expect(standaloneTimelines).toHaveCount(2);
+      const timelineIdentities = await standaloneTimelines.evaluateAll((elements) =>
+        elements.map((element) => ({
+          id: element.id,
+          labelledBy: element.getAttribute('aria-labelledby'),
+          headingId: element.querySelector('h3')?.id ?? '',
+        })),
+      );
+      expect(new Set(timelineIdentities.map(({ id }) => id)).size).toBe(timelineIdentities.length);
+      expect(new Set(timelineIdentities.map(({ headingId }) => headingId)).size).toBe(
+        timelineIdentities.length,
+      );
+      for (const identity of timelineIdentities) {
+        expect(identity.id).toContain('duplicate-occurrence-');
+        expect(identity.labelledBy).toBe(identity.headingId);
+      }
+
+      await appendToolScenario(page, 'standalone-navigation');
+      const beforeStandalone = harness
+        .locator('.chat-message')
+        .filter({ hasText: 'Before standalone tool activity.' });
+      await beforeStandalone.focus();
+      await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(() => activeNavigationRow(page))
+        .toMatchObject({
+          role: 'tool-call',
+          isTimeline: false,
+        });
+      await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(() => activeNavigationRow(page))
+        .toMatchObject({
+          role: 'assistant',
+        });
+
+      await setHarnessCustomMessageSnippets(page, false);
+      await appendToolScenario(page, 'grouped-navigation');
+      const beforeGrouped = harness
+        .locator('.chat-message')
+        .filter({ hasText: 'Before grouped tool activity.' });
+      await beforeGrouped.focus();
+      await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(() => activeNavigationRow(page))
+        .toMatchObject({
+          isTimeline: true,
+          toolCallCount: '2',
+        });
+      await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(() => activeNavigationRow(page))
+        .toMatchObject({
+          role: 'assistant',
+        });
     } finally {
       await dispose();
     }
@@ -372,6 +1714,65 @@ test.describe('chat harness — snippets', () => {
   });
 });
 
+test.describe('chat harness — message metadata', () => {
+  test('message metadata reveals timestamps without receipt overlap', async ({
+    browser,
+  }, testInfo) => {
+    for (const { colorScheme, hasTouch } of [
+      { colorScheme: 'light' as const, hasTouch: false },
+      { colorScheme: 'dark' as const, hasTouch: true },
+    ]) {
+      const { page, harness, dispose } = await openHarness(browser, {
+        colorScheme,
+        hasTouch,
+        locale: 'en-US',
+        timezoneId: 'UTC',
+        viewport: { width: hasTouch ? 320 : 848, height: 900 },
+      });
+      try {
+        await harness.locator('[data-testid="seed-metadata"]').click();
+        const wrapper = harness.locator('[data-role="user"]').filter({
+          hasText: 'Timestamped message with enough text',
+        });
+        await expect(wrapper).toHaveCount(1);
+        const metadata = wrapper.locator('.chat-message-metadata');
+        const timestamp = metadata.locator('time');
+        const receipt = metadata.locator('.chat-read-receipt');
+        await expect(timestamp).toHaveAttribute('datetime', '2026-01-01T12:34:00Z');
+        await expect(timestamp).toHaveText('12:34 PM');
+        await expect(receipt).toHaveAccessibleName('Read by Avery');
+
+        if (!hasTouch) {
+          await expect.poll(() => computedOpacity(timestamp)).toBe(0);
+          await wrapper.locator('.chat-message').hover();
+          await expect.poll(() => computedOpacity(timestamp)).toBe(1);
+          await page.mouse.move(0, 0);
+          await expect.poll(() => computedOpacity(timestamp)).toBe(0);
+          await wrapper.locator('.chat-message').focus();
+          await expect.poll(() => computedOpacity(timestamp)).toBe(1);
+        } else {
+          await expect.poll(() => computedOpacity(timestamp)).toBe(1);
+        }
+        await expect(timestamp).toBeVisible();
+        await captureHarnessScreenshot(page, testInfo, `metadata-${colorScheme}`);
+
+        const [messageBox, metadataBox, receiptBox, bodyBox] = await Promise.all([
+          renderedBox(wrapper.locator('.chat-message'), 'metadata message bubble'),
+          renderedBox(metadata, 'metadata row'),
+          renderedBox(receipt, 'read receipt'),
+          renderedBox(wrapper.locator('.chat-message-body'), 'message body'),
+        ]);
+        expect(metadataBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height - 1);
+        expect(receiptBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height - 1);
+        expect(receiptBox.y).toBeGreaterThanOrEqual(metadataBox.y - 1);
+        expect(bodyBox.y + bodyBox.height).toBeLessThanOrEqual(metadataBox.y + 1);
+      } finally {
+        await dispose();
+      }
+    }
+  });
+});
+
 test.describe('chat harness — search', () => {
   test('searching a known repeated token reports the match count and navigates', async ({
     browser,
@@ -419,6 +1820,63 @@ test.describe('chat harness — copy, edit, retry', () => {
       await expect(retry).toBeVisible();
       await retry.click();
       await expectLoggedEvent(harness, 'onretry');
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('message retry and edit actions stay reachable and compact', async ({ browser }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'dark',
+      viewport: { width: 512, height: 900 },
+    });
+    try {
+      await harness.locator('[data-testid="seed-failed"]').click();
+      const failed = harness.locator('[data-role="user"]').filter({
+        hasText: 'This message failed to send.',
+      });
+      const retry = failed.getByRole('button', { name: 'Retry' });
+      await expect(retry).toBeVisible();
+      await retry.hover();
+      const retryBox = await renderedBox(retry, 'retry action');
+      expect(retryBox.width).toBeLessThanOrEqual(36);
+      expect(retryBox.height).toBeLessThanOrEqual(36);
+      await retry.focus();
+      await page.keyboard.press('Enter');
+      await expectLoggedEvent(harness, 'onretry');
+
+      await harness.locator('[data-testid="seed-thread"]').click();
+      const userMessage = harness.locator('[data-role="user"]').filter({
+        hasText: 'Tell me about alpha.',
+      });
+      const userMessageId = await userMessage.locator('.chat-message').getAttribute('id');
+      expect(userMessageId).not.toBeNull();
+      const stableUserMessage = harness.locator(`#${userMessageId}`);
+      const stableUserWrapper = stableUserMessage.locator('xpath=..');
+      await stableUserMessage.hover();
+      const edit = stableUserWrapper.getByRole('button', { name: 'Edit message' });
+      await expect(edit).toBeVisible();
+      await edit.click();
+
+      await expect(stableUserMessage.locator('.chat-message-edit-textarea')).toBeVisible();
+      await expect(stableUserMessage.locator('.chat-message-copy')).toHaveCount(0);
+      await expect(stableUserMessage.locator('.chat-message-edit-button')).toHaveCount(0);
+      const [textareaBox, bubbleBox] = await Promise.all([
+        renderedBox(stableUserMessage.locator('.chat-message-edit-textarea'), 'edit textarea'),
+        renderedBox(stableUserMessage, 'editing message bubble'),
+      ]);
+      expect(textareaBox.width).toBeGreaterThanOrEqual(bubbleBox.width - 32);
+
+      for (const button of [
+        stableUserMessage.getByRole('button', { name: 'Save' }),
+        stableUserMessage.getByRole('button', { name: 'Cancel' }),
+      ]) {
+        await expect(button).toBeVisible();
+        const buttonBox = await renderedBox(button, 'edit action');
+        expect(buttonBox.height).toBeLessThanOrEqual(36);
+      }
+      await page.keyboard.press('Escape');
+      await expect(stableUserMessage.locator('.chat-message-edit-textarea')).toHaveCount(0);
     } finally {
       await dispose();
     }
@@ -1066,7 +2524,7 @@ test.describe('chat harness — imperative scroll + focus controls', () => {
     browser,
   }) => {
     const context = await browser.newContext({
-      baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+      baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
       colorScheme: 'dark',
       // Explicit, not defaulted: this test is only meaningful when
       // behavior: 'smooth' produces a real, interruptible animation. A
@@ -1143,6 +2601,95 @@ test.describe('chat harness — imperative scroll + focus controls', () => {
 });
 
 test.describe('chat harness — attachments', () => {
+  for (const attachment of [
+    {
+      label: 'image',
+      name: 'attachment-only.png',
+      mimeType: 'image/png',
+      buffer: validPng,
+    },
+    {
+      label: 'document',
+      name: 'attachment-only.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n% attachment only\n'),
+    },
+    {
+      label: 'code',
+      name: 'attachment-only.ts',
+      mimeType: 'text/typescript',
+      buffer: Buffer.from('const attachmentOnly = true;\n'),
+    },
+  ] as const) {
+    test(`submits a ready ${attachment.label} attachment with empty text`, async ({ browser }) => {
+      const { harness, dispose } = await openHarness(browser);
+      try {
+        const chat = harness.locator('#harness-chat');
+        const fileInput = chat.locator('input[type="file"]');
+        await fileInput.setInputFiles({
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          buffer: attachment.buffer,
+        });
+
+        const remove = chat.getByRole('button', { name: `Remove ${attachment.name}` });
+        await expect(remove).toBeVisible();
+        await expect(remove).toHaveCSS('opacity', '1');
+
+        const send = chat.locator('.chat-input-send');
+        await expect(send).toBeEnabled();
+        await send.click();
+        await expect(
+          harness.locator('[data-testid="event-log-entry"][data-event="onsubmit"]').first(),
+        ).toHaveAttribute('data-payload', '{"content":"","attachments":1}');
+        await expect(chat.locator('.chat-input-attachment-wrapper')).toHaveCount(0);
+      } finally {
+        await dispose();
+      }
+    });
+  }
+
+  test('keeps the remove control inside the preview with keyboard access', async ({ browser }) => {
+    const { page, harness, dispose } = await openHarness(browser);
+    try {
+      const chat = harness.locator('#harness-chat');
+      const fileInput = chat.locator('input[type="file"]');
+      await fileInput.setInputFiles({
+        name: 'remove-target.png',
+        mimeType: 'image/png',
+        buffer: validPng,
+      });
+
+      const wrapper = chat.locator('.chat-input-attachment-wrapper').first();
+      const remove = chat.getByRole('button', { name: 'Remove remove-target.png' });
+      await expect(remove).toBeVisible();
+      await expect(remove).toHaveCSS('opacity', '1');
+      const [wrapperBox, removeBox] = await Promise.all([
+        wrapper.boundingBox(),
+        remove.boundingBox(),
+      ]);
+      expect(wrapperBox).not.toBeNull();
+      expect(removeBox).not.toBeNull();
+      expect(removeBox?.width).toBeGreaterThanOrEqual(44);
+      expect(removeBox?.height).toBeGreaterThanOrEqual(44);
+      expect(removeBox?.x ?? 0).toBeGreaterThanOrEqual(wrapperBox?.x ?? 0);
+      expect(removeBox?.y ?? 0).toBeGreaterThanOrEqual(wrapperBox?.y ?? 0);
+      expect((removeBox?.x ?? 0) + (removeBox?.width ?? 0)).toBeLessThanOrEqual(
+        (wrapperBox?.x ?? 0) + (wrapperBox?.width ?? 0),
+      );
+      expect((removeBox?.y ?? 0) + (removeBox?.height ?? 0)).toBeLessThanOrEqual(
+        (wrapperBox?.y ?? 0) + (wrapperBox?.height ?? 0),
+      );
+
+      await remove.focus();
+      await expect(remove).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(chat.locator('.chat-input-attachment-wrapper')).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+
   test('an accepted file fires onattachmentadd; a disallowed file fires onattachmentfailure', async ({
     browser,
   }) => {
@@ -1153,7 +2700,7 @@ test.describe('chat harness — attachments', () => {
       await fileInput.setInputFiles({
         name: 'pic.png',
         mimeType: 'image/png',
-        buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+        buffer: validPng,
       });
       await expectLoggedEvent(harness, 'onattachmentadd');
 
@@ -1221,6 +2768,356 @@ test.describe('chat harness — attachments', () => {
   });
 });
 
+test.describe('chat harness — composer help', () => {
+  test('composer shortcut help is contextual without shifting footer controls', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser);
+    try {
+      const chat = harness.locator('#harness-chat');
+      const send = chat.locator('.chat-input-send');
+      await expect(send).toBeDisabled();
+      await send.hover({ force: true });
+      await expect(page.getByRole('tooltip')).toHaveText('Add a message or attachment');
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+
+      const composer = chat.getByRole('textbox', { name: 'Message' });
+      await composer.fill('A contextual hint');
+      await expect(chat.locator('.chat-input-hint')).toHaveCount(0);
+
+      await expect(send).toBeEnabled();
+      await page.mouse.move(0, 0);
+      await send.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Send (Enter)');
+      await send.focus();
+      await expect(page.getByRole('tooltip')).toHaveText('Send (Enter)');
+      await send.blur();
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+      await send.focus();
+      await expect(page.getByRole('tooltip')).toHaveText('Send (Enter)');
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+});
+
+test.describe('chat harness — composer acceptance matrix', () => {
+  const wideImageMarkup = svgMarkup(1600, 400, 'navy');
+  const wideImage = `data:image/svg+xml,${encodeURIComponent(wideImageMarkup)}`;
+  const tallImage = svgDataUrl(400, 1600, 'teal');
+  const missingRatioImage = `data:image/png;base64,${validPng.toString('base64')}`;
+
+  for (const imageCase of [
+    {
+      name: 'known-wide',
+      image: {
+        type: 'image',
+        url: wideImage,
+        mimeType: 'image/svg+xml',
+        text: 'Known wide image',
+        width: 1600,
+        height: 400,
+      },
+      expected: { maxWidth: 512, maxHeight: 384, ratio: 4 },
+    },
+    {
+      name: 'known-tall',
+      image: {
+        type: 'image',
+        url: tallImage,
+        mimeType: 'image/svg+xml',
+        text: 'Known tall image',
+        width: 400,
+        height: 1600,
+      },
+      expected: { maxWidth: 512, maxHeight: 384, ratio: 0.25 },
+    },
+    {
+      name: 'missing-ratio',
+      image: {
+        type: 'image',
+        url: missingRatioImage,
+        mimeType: 'image/png',
+        text: 'Missing ratio image',
+      },
+      expected: { maxWidth: 512, maxHeight: 384, ratio: 4 / 3 },
+    },
+  ] satisfies Array<{
+    name: string;
+    image: HarnessImageContent;
+    expected: { maxWidth: number; maxHeight: number; ratio: number };
+  }>) {
+    test(`bounds a single ${imageCase.name} image at 320px`, async ({ browser }) => {
+      const { page, harness, dispose } = await openHarness(browser, {
+        viewport: { width: 320, height: 900 },
+      });
+      try {
+        await appendHarnessImages(page, [imageCase.image]);
+        const message = harness.locator('[data-role="user"]').last();
+        const bubble = message.locator('.chat-message');
+        const attachments = message.locator('.message-attachments').last();
+        const figure = attachments.locator('.message-attachment').first();
+        await expect(attachments).toHaveAttribute('data-count', '1');
+        await expectSingleImageGeometry(
+          {
+            bubble,
+            attachments,
+            figure,
+            button: figure.locator('.message-attachment-button'),
+            image: figure.locator('.message-attachment-image'),
+          },
+          imageCase.expected,
+        );
+        await expectNoHorizontalOverflow(page);
+      } finally {
+        await dispose();
+      }
+    });
+  }
+
+  test('keeps the existing multi-image grid rules unchanged', async ({ browser }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      viewport: { width: 320, height: 900 },
+    });
+    try {
+      await appendHarnessImages(page, [
+        {
+          type: 'image',
+          url: wideImage,
+          mimeType: 'image/svg+xml',
+          text: 'Wide image in grid',
+          width: 1600,
+          height: 400,
+        },
+        {
+          type: 'image',
+          url: tallImage,
+          mimeType: 'image/svg+xml',
+          text: 'Tall image in grid',
+          width: 400,
+          height: 1600,
+        },
+        {
+          type: 'image',
+          url: missingRatioImage,
+          mimeType: 'image/png',
+          text: 'Missing ratio grid image',
+        },
+      ]);
+      const attachments = harness.locator('[data-role="user"] .message-attachments').last();
+      await expect(attachments).toHaveAttribute('data-count', '3');
+      const figures = attachments.locator('.message-attachment');
+      await expect(figures).toHaveCount(3);
+      await expect
+        .poll(() => attachments.evaluate((node) => getComputedStyle(node).display))
+        .toBe('grid');
+      await expect
+        .poll(() => attachments.evaluate((node) => getComputedStyle(node).gridTemplateColumns))
+        .not.toBe('none');
+      for (let index = 0; index < 3; index += 1) {
+        const box = await figures.nth(index).boundingBox();
+        expect(box, `attachment ${index + 1} must have a rendered box`).not.toBeNull();
+        expect(box?.width).toBeGreaterThan(0);
+        expect(box?.height).toBeGreaterThan(0);
+        expect(box?.height).toBeLessThanOrEqual(400);
+      }
+      await expectNoHorizontalOverflow(page);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('keeps maximize pointer and keyboard activation available', async ({ browser }) => {
+    const { harness, page, dispose } = await openHarness(browser);
+    try {
+      const chat = harness.locator('#harness-chat');
+      await chat.locator('input[type="file"]').setInputFiles({
+        name: 'maximize.svg',
+        mimeType: 'image/svg+xml',
+        buffer: Buffer.from(wideImageMarkup),
+      });
+      await chat.locator('.chat-input-send').click();
+      const maximize = harness.locator('.message-attachment-button').last();
+      const overlay = maximize.locator('.message-attachment-maximize');
+      await expect(overlay).toBeVisible();
+      const [buttonBox, overlayBox] = await Promise.all([
+        maximize.boundingBox(),
+        overlay.boundingBox(),
+      ]);
+      expect(buttonBox).not.toBeNull();
+      expect(overlayBox).not.toBeNull();
+      expect(overlayBox?.width).toBeGreaterThanOrEqual(44);
+      expect(overlayBox?.height).toBeGreaterThanOrEqual(44);
+      expect(overlayBox?.x ?? 0).toBeGreaterThanOrEqual(buttonBox?.x ?? 0);
+      expect(overlayBox?.y ?? 0).toBeGreaterThanOrEqual(buttonBox?.y ?? 0);
+      expect((overlayBox?.x ?? 0) + (overlayBox?.width ?? 0)).toBeLessThanOrEqual(
+        (buttonBox?.x ?? 0) + (buttonBox?.width ?? 0),
+      );
+      expect((overlayBox?.y ?? 0) + (overlayBox?.height ?? 0)).toBeLessThanOrEqual(
+        (buttonBox?.y ?? 0) + (buttonBox?.height ?? 0),
+      );
+      expect((overlayBox?.x ?? 0) + (overlayBox?.width ?? 0) / 2).toBeGreaterThan(
+        (buttonBox?.x ?? 0) + (buttonBox?.width ?? 0) / 2,
+      );
+      expect((overlayBox?.y ?? 0) + (overlayBox?.height ?? 0) / 2).toBeLessThan(
+        (buttonBox?.y ?? 0) + (buttonBox?.height ?? 0) / 2,
+      );
+      await maximize.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await maximize.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await maximize.focus();
+      await page.keyboard.press('Space');
+      await expect(page.getByRole('dialog')).toBeVisible();
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('blocks pending attachments and gives the disabled trigger full tooltip context', async ({
+    browser,
+  }) => {
+    const { harness, page, dispose } = await openHarness(browser);
+    try {
+      const chat = harness.locator('#harness-chat');
+      await page.evaluate(() => {
+        const input = document.querySelector('#harness-chat input[type="file"]');
+        if (!(input instanceof HTMLInputElement)) throw new Error('file input missing');
+        const file = new File(['pending'], 'pending.ts', { type: 'text/typescript' });
+        Object.defineProperty(file, 'text', { value: () => new Promise<string>(() => {}) });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const send = chat.locator('.chat-input-send');
+      await expect(send).toBeDisabled();
+      await send.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Wait for attachments');
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('keeps empty guidance ahead of stop, then shows the stop tooltip when text is present', async ({
+    browser,
+  }) => {
+    const { harness, page, dispose } = await openHarness(browser);
+    try {
+      await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
+      await harness.locator('[data-testid="send-reply"]').click();
+      const stop = harness.locator('.chat-input-send[data-stop]');
+      await expect(stop).toBeVisible();
+      await stop.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Add a message or attachment');
+      await page.keyboard.press('Escape');
+      await stop.click();
+
+      const composer = harness.locator('#harness-chat').getByRole('textbox', { name: 'Message' });
+      await composer.fill('draft while streaming');
+      await harness.locator('[data-testid="send-reply"]').click();
+      await expect(stop).toBeVisible();
+      await stop.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Stop generating');
+      await stop.focus();
+      await stop.blur();
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+      await stop.click();
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('does not use a coarse-touch shortcut for the disabled trigger tooltip', async ({
+    browser,
+  }) => {
+    const { harness, page, dispose } = await openHarness(browser, {
+      hasTouch: true,
+      viewport: { width: 320, height: 900 },
+    });
+    try {
+      const chat = harness.locator('#harness-chat');
+      const send = chat.locator('.chat-input-send');
+      await chat.locator('input[type="file"]').setInputFiles({
+        name: 'touch-submit.svg',
+        mimeType: 'image/svg+xml',
+        buffer: Buffer.from(wideImageMarkup),
+      });
+      await expect(send).toBeEnabled();
+      await expect(send).toHaveAttribute('aria-label', 'Send message');
+      await send.tap();
+      await expect(
+        harness.locator('[data-testid="event-log-entry"][data-event="onsubmit"]').first(),
+      ).toHaveAttribute('data-payload', '{"content":"","attachments":1}');
+      await expect
+        .poll(() =>
+          harness
+            .locator('[data-role="user"] .message-attachment-image')
+            .last()
+            .evaluate((node) => (node as HTMLImageElement).naturalWidth),
+        )
+        .toBeGreaterThan(0);
+      await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
+      const unrelated = harness.getByTestId('unrelated-tooltip-trigger');
+      await unrelated.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Unrelated tooltip remains available');
+    } finally {
+      await dispose();
+    }
+  });
+
+  for (const colorScheme of ['dark', 'light'] as const) {
+    for (const width of [320, 512, 848]) {
+      test(`centers footer controls at ${width}px in ${colorScheme} reduced-motion mode`, async ({
+        browser,
+      }) => {
+        const { harness, dispose } = await openHarness(browser, {
+          colorScheme,
+          viewport: { width, height: 900 },
+          reducedMotion: 'reduce',
+        });
+        try {
+          await expect
+            .poll(() =>
+              harness.evaluate(() => ({
+                theme: document.documentElement.dataset['theme'],
+                cinderTheme: document.documentElement.dataset['cinderTheme'],
+                colorScheme: getComputedStyle(document.documentElement).colorScheme,
+              })),
+            )
+            .toEqual({ theme: colorScheme, cinderTheme: colorScheme, colorScheme });
+          const footer = harness.locator('#harness-chat .chat-input-footer');
+          const left = await footer.locator('.chat-input-footer-left').boundingBox();
+          const right = await footer.locator('.chat-input-footer-right').boundingBox();
+          expect(left).not.toBeNull();
+          expect(right).not.toBeNull();
+          expect(
+            Math.abs(
+              (left?.y ?? 0) +
+                (left?.height ?? 0) / 2 -
+                ((right?.y ?? 0) + (right?.height ?? 0) / 2),
+            ),
+          ).toBeLessThanOrEqual(1);
+          await harness.screenshot({
+            path: test.info().outputPath(`chat-composer-${colorScheme}-${width}.png`),
+          });
+        } finally {
+          await dispose();
+        }
+      });
+    }
+  }
+});
+
 test.describe('chat harness — accessibility', () => {
   test('the harnessed chat exposes log + region roles and has no critical axe violations', async ({
     browser,
@@ -1260,7 +3157,7 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
   }) => {
     test.setTimeout(120_000);
     const context = await browser.newContext({
-      baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+      baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
       colorScheme: 'dark',
       reducedMotion: 'no-preference',
       viewport: { width: 1280, height: 900 },
@@ -1425,7 +3322,7 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
   }) => {
     test.setTimeout(120_000);
     const context = await browser.newContext({
-      baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+      baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
       colorScheme: 'dark',
       reducedMotion: 'no-preference',
       viewport: { width: 1280, height: 900 },
@@ -1435,12 +3332,7 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
     // nothing else here would have closed it. Both now run inside the same
     // try that already closes `context` in its `finally`.
     try {
-      await context.addInitScript(
-        ([key, value]) => {
-          localStorage.setItem(key, value);
-        },
-        [THEME_STORAGE_KEY, 'dark'] as const,
-      );
+      await context.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload('dark'));
       const page = await context.newPage();
       await page.goto(fixtureRoute('chat', { fixtureName: 'private-history-prepend-stress' }), {
         waitUntil: 'load',

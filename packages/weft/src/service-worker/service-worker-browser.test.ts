@@ -1,3 +1,19 @@
+/**
+ * Real-browser Service Worker smoke test.
+ *
+ * Drives the Service Worker runtime — lifecycle, fetch routing, periodic sync,
+ * and restart recovery — inside a real Chromium launched by Playwright.
+ *
+ * ## Running
+ *
+ * Gate: `WEFT_BROWSER_SMOKE=1` must be set (the shared flag for all real-browser
+ * smokes, via `browserSmokeEnabled`). Otherwise the suite skips and does not run
+ * in the default `bun test` pass. Run it with
+ * `bun run --filter=@corvidae/weft test:browser`.
+ *
+ * Browser provisioning: `bunx playwright install chromium` (run once).
+ */
+
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -5,6 +21,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+
+import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
 
 const repositoryRoot = new URL('../..', import.meta.url);
 const engineModulePath = fileURLToPath(new URL('src/core/engine.ts', repositoryRoot));
@@ -760,7 +778,7 @@ async function stopServiceWorkers(
   await withinPhase('CDP detach', session.detach());
 }
 
-describe('Service Worker browser smoke', () => {
+describe.skipIf(!browserSmokeEnabled)('Service Worker browser smoke', () => {
   it(
     'runs lifecycle, fetch, periodic-sync, and restart recovery in Chromium',
     async () => {

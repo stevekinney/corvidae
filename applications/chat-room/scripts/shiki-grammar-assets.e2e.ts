@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { BROWSER_OUTPUT_DIRECTORY } from './build-output.ts';
 
 const chunksDirectory = join(
   import.meta.dirname,
-  '../.svelte-kit/output/client/_app/immutable/chunks',
+  '..',
+  BROWSER_OUTPUT_DIRECTORY,
+  'output/client/_app/immutable/chunks',
 );
 
 async function grammarChunk(language: string): Promise<string> {

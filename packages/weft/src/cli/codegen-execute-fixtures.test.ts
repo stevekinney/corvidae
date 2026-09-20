@@ -3,12 +3,36 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { executeCodegen } from './codegen.ts';
+import manifest from '../../package.json';
+
+import { codegenPackageName, executeCodegen } from './codegen.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/codegen');
 const REGISTRY_FIXTURE = join(FIXTURE_DIR, 'registry.json');
 const EXPECTED_DTS = join(FIXTURE_DIR, 'expected.d.txt');
 const TYPECHECK_GENERATED_DTS = join(FIXTURE_DIR, 'typecheck', 'weft.generated.d.ts');
+
+/**
+ * The one token in the golden that is not literal output.
+ *
+ * `weft codegen` augments whatever this package is published as, so the golden
+ * cannot hold a package name and still be right in more than one repository:
+ * the mirror transform rewrites module specifiers in files it can parse, and
+ * `.d.txt` is not one of them, so a literal name here would keep naming this
+ * workspace downstream while the emitter named the published package. Every
+ * other byte of the golden is compared exactly; only this token is filled in.
+ */
+const PACKAGE_NAME_PLACEHOLDER = '@@PACKAGE_NAME@@';
+
+async function readGolden(): Promise<string> {
+  const template = await Bun.file(EXPECTED_DTS).text();
+  if (!template.includes(PACKAGE_NAME_PLACEHOLDER)) {
+    throw new Error(
+      `${EXPECTED_DTS} no longer carries ${PACKAGE_NAME_PLACEHOLDER}; a golden with a literal package name silently stops checking the emitted module name`,
+    );
+  }
+  return template.replaceAll(PACKAGE_NAME_PLACEHOLDER, codegenPackageName);
+}
 
 const tempDirs: string[] = [];
 function makeTempDir(): string {
@@ -31,8 +55,23 @@ describe('executeCodegen end-to-end', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('codegen: wrote');
     const written = await Bun.file(out).text();
-    const expected = await Bun.file(EXPECTED_DTS).text();
-    expect(written).toBe(expected);
+    expect(written).toBe(await readGolden());
+  });
+
+  it('augments the module name this package is published under, not a hardcoded one', async () => {
+    // The generated declaration is only useful if `declare module '…'` names
+    // the specifier the consumer types, which is this package's published
+    // name. Asserting against the manifest rather than against the string the
+    // checkout happens to use is what makes this fail if the emitter ever goes
+    // back to a literal: a literal survives being republished under another
+    // name, and the manifest does not.
+    const dir = makeTempDir();
+    const out = join(dir, 'weft.d.ts');
+    const result = await executeCodegen({ from: REGISTRY_FIXTURE, out, timeoutMs: 30_000 });
+    expect(result.exitCode).toBe(0);
+    const written = await Bun.file(out).text();
+    expect(codegenPackageName).toBe(manifest.name);
+    expect(written).toContain(`declare module '${manifest.name}' {`);
   });
 
   it('keeps the tsc typecheck fixture (weft.generated.d.ts) in sync with expected.d.txt', async () => {
@@ -45,9 +84,12 @@ describe('executeCodegen end-to-end', () => {
     // matching manual edit there would leave the `tsc` proof silently
     // compiling stale content while this file's string assertions still
     // passed. Byte-comparing them here makes that drift fail loudly instead.
-    const expected = await Bun.file(EXPECTED_DTS).text();
+    //
+    // The fixture keeps a real package name rather than the golden's
+    // placeholder because `tsc` has to parse it, and the mirror transform
+    // rewrites that name along with every other module specifier it emits.
     const typecheckFixture = await Bun.file(TYPECHECK_GENERATED_DTS).text();
-    expect(typecheckFixture).toBe(expected);
+    expect(typecheckFixture).toBe(await readGolden());
   });
 
   it('reports "up to date" on the second run and does not rewrite content', async () => {

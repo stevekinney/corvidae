@@ -1,6 +1,6 @@
 # Memory
 
-`@corvidae/memory` provides persistent recall for Agent Bureau agents. It defines the memory API, storage contracts, embedding-backed retrieval, hybrid search, ingestion helpers, runtime hooks, identity primitives, and tool surfaces for storing, recalling, and forgetting memory.
+`@corvidae/memory` provides persistent recall for [Bureau](../bureau/README.md) agents. It defines the memory API, storage contracts, embedding-backed retrieval, hybrid search, ingestion helpers, runtime hooks, identity primitives, and tool surfaces for storing, recalling, and forgetting memory.
 
 ## Workspace usage
 
@@ -12,6 +12,7 @@ Declare `"@corvidae/memory": "workspace:*"` in the consuming workspace's depende
 - [How It Works](#how-it-works)
 - [Project Role](#project-role)
 - [Quick Start](#quick-start)
+- [Ownership and shutdown](#ownership-and-shutdown)
 - [Core API](#core-api)
 - [Storage Backends](#storage-backends)
 - [Hooks](#hooks)
@@ -26,7 +27,7 @@ Declare `"@corvidae/memory": "workspace:*"` in the consuming workspace's depende
 
 - Creates a `Memory` instance with `remember()`, `rememberOnce()`, `recall()`, `list()`, `forget()`, `forgetAll()`, and `count()`.
 - Defines the `MemoryRecordStorage` contract used by Weft-backed and in-memory test storage.
-- Combines vector search, **BM25** text ranking, temporal decay, and **maximal marginal relevance** (MMR) for result diversity.
+- Combines vector search, [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) text ranking, temporal decay, and [maximal marginal relevance](https://en.wikipedia.org/wiki/Maximal_marginal_relevance) (MMR) for result diversity.
 - Supports deduplication, conflict detection, namespace isolation, and external text-search providers.
 - Adds ingestion, chunking, file synchronization, reflection, run capture, and consolidation helpers.
 - Provides memory tools and identity tools for use through `armorer` and `operative`.
@@ -43,7 +44,7 @@ The storage contract is intentionally lower-level than the public memory API. Ba
 
 ## Quick Start
 
-`createMemory()` needs two things: an **embedder** (an `Embedder`—`(texts: string[]) => number[][] | Promise<number[][]>`, mapping a batch of strings to one float vector each) and a **storage backend**. This Quick Start uses the deterministic test embedder and the in-memory backend from `memory/test` so it runs with no provider or runtime wiring:
+`createMemory()` needs two things: an **embedder** (an `Embedder`—`(texts: string[]) => number[][] | Promise<number[][]>`, mapping a batch of strings to one float vector each) and a **storage backend**. This Quick Start uses the deterministic test embedder and the in-memory backend exported from the package root so it runs with no provider or runtime wiring:
 
 ```typescript
 import { createMemory } from '@corvidae/memory';
@@ -61,7 +62,8 @@ await memory.remember('The user prefers concise bullet-point summaries.');
 
 // Retrieve the most relevant memories for a query.
 const results = await memory.recall('How should I format responses?');
-// results[0] => { id: '...', score: 0.91, content: 'The user prefers concise bullet-point summaries.', ... }
+console.log(results.map(({ content, score }) => ({ content, score })));
+// Scores depend on the embedder and retrieval options.
 
 await memory.close();
 ```
@@ -82,6 +84,14 @@ const storage = createWeftMemoryRecordStorage(weftStorage);
 const memory = createMemory({ embedder, storage });
 await memory.init();
 ```
+
+## Ownership and shutdown
+
+Call `await memory.init()` before using the instance and `await memory.close()` when its owner shuts down. Initialization prepares the storage backend and optional text-search provider. Closing releases those resources; it does not delete remembered content.
+
+The Weft-backed adapter leaves its underlying `Storage` open by default because the host may share it with sessions or workflows. Set `disposeUnderlyingStorage: true` only when this memory instance owns that storage exclusively. Stop and await file synchronizers before closing memory so ingestion cannot write through a closed backend.
+
+The mock embedder is useful for repeatable tests, not semantic search quality. Production vectors must come from a consistent model and dimension; changing either requires a deliberate re-embedding strategy. A namespace chooses which records a query sees, but it does not authenticate the caller. Enforce tenant and principal authorization in the host before exposing memory tools.
 
 ## Core API
 
@@ -441,6 +451,8 @@ interface TextSearchProvider {
 
 ## Hooks
 
+The examples below compose an existing `memory`, `generate`, `toolbox`, and `conversation`. `createActiveRun()` starts immediately; await its `result` property for the terminal outcome and `closed()` for cleanup. See [Operative’s run contract](../operative/README.md#event-driven-style-with-createactiverun) when the host needs cancellation or event observation.
+
 ```typescript
 import {
   createMemoryHooks,
@@ -471,13 +483,13 @@ interface MemoryHookOptions {
 
 ```typescript
 import { createMemoryHooks } from '@corvidae/memory';
-import { createRun } from '@corvidae/operative';
+import { createActiveRun } from '@corvidae/operative';
 
 const hooks = createMemoryHooks({ memory, recallLimit: 10 });
 
 // Wire into an operative run via the top-level hook options. (RunOptions.hooks is
 // a HookRegistry, not an object map—individual hooks go at the top level.)
-const run = createRun({
+const run = createActiveRun({
   generate,
   toolbox,
   conversation,
@@ -507,7 +519,7 @@ function summarizeRun(result: StepResultLike): string;
 
 ```typescript
 import { createRunCaptureHook } from '@corvidae/memory';
-import { createRun } from '@corvidae/operative';
+import { createActiveRun } from '@corvidae/operative';
 
 const captureHook = createRunCaptureHook({
   memory,
@@ -516,7 +528,7 @@ const captureHook = createRunCaptureHook({
 });
 
 // Wire into an operative run via the top-level `onStep` option:
-const run = createRun({
+const run = createActiveRun({
   generate,
   toolbox,
   conversation,

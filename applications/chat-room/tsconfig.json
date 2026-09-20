@@ -1,5 +1,9 @@
 {
-  "extends": ["@corvidae/typescript/library.json", "./.svelte-kit/tsconfig.json"],
+  "extends": [
+    "@corvidae/typescript/library.json",
+    "./.playwright/svelte-kit/tsconfig.json",
+    "./.svelte-kit/tsconfig.json"
+  ],
   "compilerOptions": {
     "types": ["bun", "vite/client"],
     "allowImportingTsExtensions": true,

@@ -5,7 +5,7 @@ import { handleRequest } from '../handler.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { principalFromJwtClaims } from '../principal.ts';
 import { createLiveOperationRegistry, REST_BINDINGS } from '../rest-bindings.ts';
-import * as fixture from './get-task-detail-test-support.ts';
+import * as fixture from './get-task-detail.test-support.ts';
 import {
   getTaskDetailOperation,
   getTaskDetailOutputSchema,

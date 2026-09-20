@@ -1,3 +1,4 @@
+import type { ApprovalResolution } from '@corvidae/cinder';
 import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { HTMLAttributes } from 'svelte/elements';
@@ -6,8 +7,9 @@ import type {
   ChatAdapter,
   ChatAdapterErrorEvent,
   ChatReadReceiptEvent,
+  ChatToolApprovalResolution,
 } from './adapter/chat-adapter.ts';
-import type { ChatArtifact } from './artifact/artifact-viewer.types.ts';
+import type { ResolvedChatArtifact } from './artifact/artifact-viewer.types.ts';
 import type {
   ChatScrollStateChangeEvent,
   ChatStopGeneratingEvent,
@@ -67,8 +69,8 @@ export type ChatRowContext = {
   message: Message;
   /** The tool call and its folded result for a visible tool-call row. */
   toolCallPair: ToolCallPair | undefined;
-  /** Validated artifact metadata from the visible message or its folded tool result. */
-  artifact: ChatArtifact | undefined;
+  /** Source-identified artifact metadata from the visible message or its folded tool result. */
+  artifact: ResolvedChatArtifact | undefined;
 };
 
 /**
@@ -117,7 +119,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   unreadCount?: number;
   /** Whether the "new messages" indicator is currently visible above the composer. Bindable; cleared automatically when the viewport reaches the bottom. Default `false`. */
   newMessageIndicatorVisible?: boolean;
-  /** Additional class name merged onto the `.chat-container` root element. */
+  /** Additional class name merged onto the outer Chat layout element. */
   class?: string;
   /** Controls the background of the chat surface. Use `'transparent'` to inherit the host element's background when embedding chat inside a card or panel. Default `'default'`. */
   surfaceMode?: 'default' | 'transparent';
@@ -242,29 +244,30 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   onadaptererror?: (event: ChatAdapterErrorEvent) => void;
   /** Forwarded from the adapter's real-time `onMessage` push (consumer owns the transcript). */
   onpushmessage?: (message: Message) => void;
-  /** Forwarded from the adapter's real-time `onTypingChange` push. */
-  ontypingchange?: (isTyping: boolean) => void;
+  /** Forwarded from the adapter's real-time `onTypingChange` participant snapshot push. */
+  ontypingchange?: (participants: TypingParticipant[]) => void;
   /** Forwarded from the adapter's real-time `onReadReceipt` push. */
   onreadreceipt?: (event: ChatReadReceiptEvent) => void;
   onsubmit?: (event: ChatSubmitEvent) => void;
   onretry?: (messageId: string) => void;
   onedit?: (event: { messageId: string; content: string }) => void;
+  /**
+   * Overrides Chat's built-in artifact panel. When supplied, Chat calls this
+   * once with the resolved artifact and does not open its local panel.
+   */
+  onartifactopen?: (artifact: ResolvedChatArtifact) => void;
   /** Commits a confirmed transcript rollback to immediately before the selected user message. */
   onrollback?: (messageId: string) => void;
   /**
-   * Called when the user approves an action-required tool call. The
-   * consumer is responsible for updating its transcript (e.g. calling
-   * conversationalist to unblock the pending tool) and triggering a new
-   * generation. When an adapter is also wired, Chat calls
-   * `adapter.approveToolCall(toolCallId)` first and then this callback.
+   * Called when the user resolves an action-required approval. The complete
+   * resolution payload is forwarded unchanged. When an adapter is also wired,
+   * Chat calls `adapter.resolveToolApproval(toolCallId, resolution)` first and
+   * uses this callback only when the adapter does not implement that method.
    */
-  onapprove?: (toolCallId: string) => void;
-  /**
-   * Called when the user denies an action-required tool call. When an
-   * adapter is also wired, Chat calls `adapter.denyToolCall(toolCallId)` first
-   * and then this callback.
-   */
-  ondeny?: (toolCallId: string) => void;
+  onapprovalresolve?: (
+    toolCallId: string,
+    resolution: ApprovalResolution,
+  ) => void | ChatToolApprovalResolution | Promise<void | ChatToolApprovalResolution>;
   /**
    * Override or supplement the reasoning text for a message. Called per-message;
    * return a non-empty string or `{ content, summary? }` to show one reasoning

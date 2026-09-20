@@ -2,6 +2,8 @@
 
 COR-1199. Decided which of the five build prefixes carried by `@cinder/playground`'s `dev`, `test`, `typecheck`, `validate`, and `vercel-build` scripts can be removed when the playground moves into this workspace, and named the mechanism that delivers CSS and other assets once they are gone.
 
+This is the COR-1199 decision-time record. Paths, counts, and unresolved follow-up items below describe that analysis; use the current [layout map](layout-map.json) and [source transform](source.ts) when inspecting what the mirror emits today. The internal workspace continues to compile library source directly.
+
 ## Decision
 
 All five prefixes are removed, in full. None is replaced by anything.

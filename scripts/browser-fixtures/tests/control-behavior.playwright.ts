@@ -2,6 +2,7 @@ import { loadManifest } from '@corvidae/testing';
 import type { Browser, BrowserContext, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { environmentConfiguration } from '../environment-configuration.ts';
+import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
 
 type Theme = 'light' | 'dark';
 type Styles = Record<
@@ -80,7 +81,7 @@ async function open(
     reducedMotion: 'reduce',
     ...(forcedColors ? { forcedColors } : {}),
     viewport: { width: 1280, height: 900 },
-    baseURL: environmentConfiguration().browserFixtureUrl ?? 'http://127.0.0.1:5577',
+    baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
   });
   try {
     await context.addInitScript(

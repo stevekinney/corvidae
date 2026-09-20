@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SideNavigation } from '@corvidae/cinder';
+  import { NavigationItem, SideNavigation } from '@corvidae/cinder';
 
   type FixtureProps = {
     active?: string;
@@ -14,22 +14,32 @@
     <SideNavigation.Item href="/dashboard" active={active === 'dashboard'}>
       Dashboard
     </SideNavigation.Item>
-    <SideNavigation.Group label="Projects" expanded={projectsExpanded}>
+    <SideNavigation.Group label="Projects" bind:expanded={projectsExpanded}>
       <SideNavigation.Item href="/projects/phoenix" active={active === 'phoenix'}>
         Phoenix
       </SideNavigation.Item>
       <SideNavigation.Item href="/projects/atlas" active={active === 'atlas'}>
         Atlas
       </SideNavigation.Item>
-      <SideNavigation.Item href="/projects/beacon" active={active === 'beacon'}>
-        Beacon
-      </SideNavigation.Item>
+      {#if projectsExpanded}
+        <SideNavigation.Item href="/projects/beacon" active={active === 'beacon'}>
+          Beacon
+        </SideNavigation.Item>
+      {/if}
     </SideNavigation.Group>
     <SideNavigation.Group label="Settings">
       <SideNavigation.Item href="/settings/team">Team</SideNavigation.Item>
-      <SideNavigation.Item href="/settings/billing">Billing</SideNavigation.Item>
+      <SideNavigation.Item href="/settings/billing" hidden>Billing</SideNavigation.Item>
     </SideNavigation.Group>
   </SideNavigation>
+
+  <nav aria-label="Standalone entries">
+    <NavigationItem href="/standalone/first">Standalone first</NavigationItem>
+    {#if projectsExpanded}
+      <NavigationItem href="/standalone/second">Standalone second</NavigationItem>
+    {/if}
+    <NavigationItem href="/standalone/hidden" hidden>Standalone hidden</NavigationItem>
+  </nav>
 </div>
 
 <style>

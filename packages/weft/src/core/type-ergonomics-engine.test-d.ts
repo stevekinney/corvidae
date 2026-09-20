@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import type { HttpClient } from '../client/index.ts';
 import {
   activity,
   DevelopmentWarningEvent,
@@ -12,9 +14,7 @@ import {
   type WorkflowContext,
   type WorkflowDefinition,
   type WorkflowHandle,
-} from '@corvidae/weft';
-import { z } from 'zod';
-import type { HttpClient } from '../client/index.ts';
+} from '../index.ts';
 
 import {
   engine,

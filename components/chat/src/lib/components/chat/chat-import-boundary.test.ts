@@ -3,7 +3,7 @@
  *
  * Chat should get transcript types and runtime helpers from the workspace
  * package root. Runtime Conversationalist imports are allowed only through
- * the Chat builder seam and public barrel.
+ * the Chat builder seam, public barrel, and schema-version seam.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -225,7 +225,7 @@ describe('chat import boundary', () => {
     expect(indexSpecifiers).toContain('./schema-version.ts');
   });
 
-  it('the public chat barrel and schema seam own Conversationalist runtime imports', async () => {
+  it('the public chat barrel and schema seam keep direct Conversationalist runtime imports bounded', async () => {
     const source = await Bun.file(`${CHAT_ROOT}/index.ts`).text();
     const indexSpecifiers = collectModuleSpecifiers(`${CHAT_ROOT}/index.ts`, source).filter(
       ({ specifier, typeOnly }) => !typeOnly && specifier === CONVERSATIONALIST_PACKAGE,
@@ -236,10 +236,7 @@ describe('chat import boundary', () => {
       schemaSource,
     ).filter(({ specifier, typeOnly }) => !typeOnly && specifier === CONVERSATIONALIST_PACKAGE);
 
-    expect(indexSpecifiers).toEqual([
-      { specifier: CONVERSATIONALIST_PACKAGE, typeOnly: false },
-      { specifier: CONVERSATIONALIST_PACKAGE, typeOnly: false },
-    ]);
+    expect(indexSpecifiers).toEqual([{ specifier: CONVERSATIONALIST_PACKAGE, typeOnly: false }]);
     expect(schemaSpecifiers).toEqual([{ specifier: CONVERSATIONALIST_PACKAGE, typeOnly: false }]);
   });
 });

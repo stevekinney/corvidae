@@ -1,4 +1,8 @@
-import type { ChatAdapter, ChatPushHandlers } from '../components/chat/adapter/chat-adapter.ts';
+import type {
+  ChatAdapter,
+  ChatPushHandlers,
+  ChatToolApprovalResolution,
+} from '../components/chat/adapter/chat-adapter.ts';
 import {
   appendMessages,
   appendUserMessage,
@@ -9,6 +13,7 @@ import {
 import type {
   ConversationHistory,
   MessageInput,
+  ToolAction,
   ToolResult,
 } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
@@ -16,26 +21,64 @@ import {
   latestResolvedApprovalOwner,
   rebuildApprovalState,
 } from './session-controller-approval-state.ts';
-import { createSessionRunner, type SessionRunState } from './session-controller-run.ts';
+import {
+  captureHistoryToken as captureToken,
+  createSessionRunState,
+  invalidateOutstandingWork,
+  isHistoryTokenCurrent as isTokenCurrent,
+  startSubmission,
+} from './session-controller-history.ts';
+import { createSessionRunner } from './session-controller-run.ts';
 import {
   cleanIncompleteToolRows,
   pruneMessageAttachments,
+  type ChatHistoryToken,
   type ChatSessionController,
   type ChatSessionControllerOptions,
 } from './session-controller-support.ts';
+
+function fingerprintApprovalAction(action: ToolAction | undefined): string | undefined {
+  if (action?.type !== 'approval') return undefined;
+  try {
+    return JSON.stringify(action);
+  } catch {
+    return undefined;
+  }
+}
+
+function currentApprovalFingerprint(
+  history: ConversationHistory,
+  toolCallId: string,
+): string | undefined {
+  for (let index = history.ids.length - 1; index >= 0; index -= 1) {
+    const result = history.messages[history.ids[index]!]?.toolResult;
+    if (result?.callId === toolCallId && result.outcome === 'action_required') {
+      return fingerprintApprovalAction(result.action);
+    }
+  }
+  return undefined;
+}
+
+function isApprovalOwnerCurrent(
+  historyToken: ChatHistoryToken,
+  toolCallId: string,
+  actionFingerprint: string,
+  getConversation: () => ConversationHistory,
+  isHistoryTokenCurrent: (token: ChatHistoryToken) => boolean,
+): boolean {
+  return (
+    isHistoryTokenCurrent(historyToken) &&
+    currentApprovalFingerprint(getConversation(), toolCallId) === actionFingerprint
+  );
+}
 
 /** Creates an SSR-safe controller for send, retry, edit, stop, and tool approval flows. */
 export function createChatSessionController(
   options: ChatSessionControllerOptions,
 ): ChatSessionController {
   const maxTurns = options.maxContinuationTurns ?? 5;
-  const lifecycle: SessionRunState = {
-    active: undefined,
-    disposed: false,
-    running: false,
-    activeRun: undefined,
-    activeUserMessageId: undefined,
-  };
+  const executionOwner = options.executionOwner ?? 'browser';
+  const lifecycle = createSessionRunState();
   const toolOwners = new Map<string, string>();
   const messageAttachments = new Map<string, ChatAttachment[]>();
   const pendingApprovals = new Set<string>();
@@ -81,11 +124,29 @@ export function createChatSessionController(
   };
   const update = (conversation: ConversationHistory): void => {
     pruneMessageAttachments(conversation, messageAttachments, resolvedApprovalOwners);
+    // Every accepted write advances the revision, which is what retires a
+    // full-session snapshot someone is still holding a token for.
+    lifecycle.revision += 1;
     options.setConversation(conversation);
+  };
+  const captureHistoryToken = (): ChatHistoryToken =>
+    captureToken(lifecycle, options.getConversation().id);
+  const isHistoryTokenCurrent = (token: ChatHistoryToken): boolean =>
+    isTokenCurrent(lifecycle, options.getConversation().id, token);
+  const invalidate = (): void => invalidateOutstandingWork(lifecycle);
+  const adoptHistory = (history: ConversationHistory, token: ChatHistoryToken): boolean => {
+    // A run owns the conversation while it is streaming into it, and a full
+    // snapshot replaces membership outright — installing one mid-run would
+    // drop the rows the run is still appending to.
+    if (lifecycle.running || !isHistoryTokenCurrent(token) || history.id !== token.conversationId)
+      return false;
+    update(history);
+    return true;
   };
   const { executeRun, stopActiveRun } = createSessionRunner({
     options,
     maxTurns,
+    executionOwner,
     lifecycle,
     toolOwners,
     pendingApprovals,
@@ -96,6 +157,7 @@ export function createChatSessionController(
   });
   const send = async (message: MessageInput, attachments: ChatAttachment[] = []): Promise<void> => {
     assertActive();
+    startSubmission(lifecycle);
     const current = options.getConversation();
     const cleaned = cleanIncompleteToolRows(current);
     if (cleaned !== current) update(cleaned);
@@ -153,6 +215,7 @@ export function createChatSessionController(
     },
     retryMessage: async (messageId) => {
       assertActive();
+      startSubmission(lifecycle);
       const history = options.getConversation();
       const message = history.messages[messageId];
       const position = history.ids.indexOf(messageId);
@@ -173,6 +236,7 @@ export function createChatSessionController(
     },
     editMessage: async ({ messageId, content }) => {
       assertActive();
+      startSubmission(lifecycle);
       const message = options.getConversation().messages[messageId];
       if (!message || message.role !== 'user')
         throw new Error('Only a current user message can be edited');
@@ -199,9 +263,9 @@ export function createChatSessionController(
         subscribers.delete(handlers);
       };
     },
-    ...(options.hooks?.approveToolCall
+    ...(options.hooks?.resolveToolApproval
       ? {
-          approveToolCall: async (id: string) => {
+          resolveToolApproval: async (id: string, resolution) => {
             assertActive();
             rebuildApprovalState(
               options.getConversation(),
@@ -209,46 +273,54 @@ export function createChatSessionController(
               pendingApprovals,
               lifecycle.activeUserMessageId,
             );
+            if (!pendingApprovals.has(id)) {
+              throw new Error('Cannot resolve a tool approval that is not pending');
+            }
+            const actionFingerprint = currentApprovalFingerprint(options.getConversation(), id);
+            if (actionFingerprint === undefined) {
+              throw new Error('Cannot resolve a tool approval without a current approval action');
+            }
             const owner = toolOwners.get(id) ?? lifecycle.activeUserMessageId;
+            const historyToken = captureHistoryToken();
             lifecycle.running = true;
             let result: ToolResult | undefined;
             try {
-              result = await options.hooks?.approveToolCall?.(id);
+              result = await options.hooks?.resolveToolApproval?.(id, resolution);
             } catch (error) {
+              if (
+                !isApprovalOwnerCurrent(
+                  historyToken,
+                  id,
+                  actionFingerprint,
+                  options.getConversation,
+                  isHistoryTokenCurrent,
+                )
+              ) {
+                return 'pending' satisfies ChatToolApprovalResolution;
+              }
               reportError(error);
               throw error;
             } finally {
               lifecycle.running = false;
             }
             assertNotDisposed();
-            if (!result) throw new Error('Approval hook must return a tool result');
-            return completeToolDecision(id, owner, result);
-          },
-        }
-      : {}),
-    ...(options.hooks?.denyToolCall
-      ? {
-          denyToolCall: async (id: string) => {
-            assertActive();
-            rebuildApprovalState(
-              options.getConversation(),
-              toolOwners,
-              pendingApprovals,
-              lifecycle.activeUserMessageId,
-            );
-            const owner = toolOwners.get(id) ?? lifecycle.activeUserMessageId;
-            lifecycle.running = true;
-            let result: ToolResult | undefined;
-            try {
-              result = await options.hooks?.denyToolCall?.(id);
-            } catch (error) {
-              reportError(error);
-              throw error;
-            } finally {
-              lifecycle.running = false;
+            if (!result) throw new Error('Approval resolution hook must return a tool result');
+            if (result.callId !== id) {
+              throw new Error(
+                'Approval resolution hook returned a result for a different tool call',
+              );
             }
-            assertNotDisposed();
-            if (!result) throw new Error('Denial hook must return a tool result');
+            if (
+              !isApprovalOwnerCurrent(
+                historyToken,
+                id,
+                actionFingerprint,
+                options.getConversation,
+                isHistoryTokenCurrent,
+              )
+            ) {
+              return 'pending';
+            }
             return completeToolDecision(id, owner, result);
           },
         }
@@ -257,9 +329,13 @@ export function createChatSessionController(
   return {
     adapter,
     stop: stopActiveRun,
+    captureHistoryToken,
+    isHistoryTokenCurrent,
+    adoptHistory,
+    invalidate,
     dispose: () => {
+      invalidate();
       lifecycle.disposed = true;
-      lifecycle.active?.abort();
       messageAttachments.clear();
     },
   };

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
 import {
   appendMessages,
@@ -13,6 +14,16 @@ import {
   testEnvironment,
 } from './adapter-test-fixtures';
 
+function approvalAction(message: string, idempotencyKey: string) {
+  return {
+    type: 'approval' as const,
+    message,
+    risk: 'high' as const,
+    operation: { kind: 'other' as const },
+    policyVersion: 'policy:test',
+    idempotencyKey,
+  };
+}
 describe('Gemini tool content', () => {
   describe('toGeminiMessages', () => {
     it('converts tool calls to functionCall parts', () => {
@@ -207,10 +218,7 @@ describe('Gemini tool content', () => {
               retryable: false,
               message: 'Approval required',
             },
-            action: {
-              type: 'approval',
-              message: 'Approve this request',
-            },
+            action: approvalAction('Approve this request', 'approval:gemini-adapter'),
           },
         },
         testEnvironment,
@@ -234,10 +242,7 @@ describe('Gemini tool content', () => {
           retryable: false,
           message: 'Approval required',
         },
-        action: {
-          type: 'approval',
-          message: 'Approve this request',
-        },
+        action: approvalAction('Approve this request', 'approval:gemini-adapter'),
       });
     });
 

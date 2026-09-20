@@ -6,6 +6,7 @@ export function createTranscriptFixture(conversation: ConversationHistory) {
   let firstUnreadId = $state<string | null>(null);
   let streaming = $state(false);
   let streamingMessageId = $state<string | null>(null);
+  let streamingContent = $state('');
   let ungroupAllToolCalls = $state(false);
   let reasoning = $state<((item: Message) => string | undefined) | undefined>(undefined);
   const transcript = useChatTranscript({
@@ -13,6 +14,7 @@ export function createTranscriptFixture(conversation: ConversationHistory) {
     getRollbackMessageId: () => null,
     getStreaming: () => streaming,
     getStreamingMessageId: () => streamingMessageId,
+    getStreamingContent: () => streamingContent,
     getMessageReasoning: () => reasoning,
     getFirstUnreadId: () => firstUnreadId,
     getUngroupAllToolCalls: () => ungroupAllToolCalls,
@@ -23,6 +25,7 @@ export function createTranscriptFixture(conversation: ConversationHistory) {
     setFirstUnreadId: (value: string | null) => (firstUnreadId = value),
     setStreaming: (value: boolean) => (streaming = value),
     setStreamingMessageId: (value: string | null) => (streamingMessageId = value),
+    setStreamingContent: (value: string) => (streamingContent = value),
     setUngroupAllToolCalls: (value: boolean) => (ungroupAllToolCalls = value),
     setReasoning: (value: ((item: Message) => string | undefined) | undefined) =>
       (reasoning = value),

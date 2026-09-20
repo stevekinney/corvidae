@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --bun vite dev",
-    "build": "bun --bun vite build",
+    "dev": "bun run sync && bun --bun vite dev",
+    "build": "bun run sync && bun --bun vite build",
     "preview": "bun --bun vite preview",
-    "sync": "bun --bun svelte-kit sync",
+    "sync": "CHAT_ROOM_BROWSER=1 bun --bun svelte-kit sync && CHAT_ROOM_BROWSER=0 bun --bun svelte-kit sync",
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
     "lint:fix": "bun run sync && oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json --threshold warning --fail-on-warnings",

@@ -62,7 +62,7 @@
     type SelectionAnchorPosition,
   } from './review-editor-selection-geometry.ts';
   import DiffViewer from '../diff-viewer/diff-viewer.svelte';
-  import { SelectionPopover } from '@corvidae/cinder';
+  import { Button, Callout, SelectionPopover } from '@corvidae/cinder';
   import { createReviewEditorExportActions } from './review-editor-exports.ts';
   import type {
     MarkdownSummaryOptions,
@@ -73,6 +73,7 @@
 
   // Shared reduced-motion preference (OVERLAY-POLICY: use the shared hook, not inline matchMedia).
   const reducedMotion = useReducedMotion();
+  const frontMatterParseWarning = 'Front matter could not be parsed; showing as plain text.';
 
   let {
     id,
@@ -119,6 +120,9 @@
 
   // Reference to LiveRegion for screen reader announcements (DEP-47)
   let liveRegionRef: LiveRegion | undefined = $state();
+  let malformedFrontMatterDismissed = $state(false);
+  let lastMalformedFrontMatterId = $state('');
+  let lastMalformedFrontMatterAnnouncementKey = $state('');
 
   // Track when editor view is ready (for effects that need to wait for async editor creation)
   let editorViewReady = $state(false);
@@ -169,16 +173,32 @@
   // Internal active thread tracking (not exposed as bindable prop)
   let activeThreadId = $state<string | null>(null);
 
+  // Selecting a successor after deletion must update the sidebar's active row
+  // without scheduling a popover, and that intent has to survive controlled
+  // thread-array refreshes that retrigger the deep-linking effect below. This is
+  // intentionally non-reactive: activeThreadId/threads changes already rerun the
+  // effect, and explicit open/navigation handlers clear this marker before they
+  // schedule a popover.
+  let threadSelectedWithoutPopoverId: ThreadId | null = null;
+
   // Comment sidebar toggle state
   let sidebarOpen = $state(false);
 
   const currentDocument = $derived(parseReviewEditorFrontMatter(value));
   const editorValue = $derived(currentDocument.body);
+  const hasMalformedFrontMatter = $derived(
+    currentDocument.fencePresent && !currentDocument.hasFrontMatter,
+  );
   const viewPanelIds = $derived({
     editor: `${id}-editor-panel`,
     diff: `${id}-diff-panel`,
     summary: `${id}-summary-panel`,
   });
+  const sidebarRemoveControlRefs = $derived(
+    threads.map(
+      (thread) => () => document.getElementById(`${id}-sidebar-thread-remove-${thread.id}`),
+    ),
+  );
 
   // =========================================================================
   // View Switching State (DEP-47)
@@ -354,6 +374,44 @@
     liveRegionRef?.announce(message, priority);
   }
 
+  $effect(() => {
+    if (id !== lastMalformedFrontMatterId) {
+      malformedFrontMatterDismissed = false;
+      lastMalformedFrontMatterAnnouncementKey = '';
+      lastMalformedFrontMatterId = id;
+    }
+  });
+
+  $effect(() => {
+    if (!hasMalformedFrontMatter) {
+      malformedFrontMatterDismissed = false;
+      lastMalformedFrontMatterAnnouncementKey = '';
+      return;
+    }
+
+    const announcementKey = `${id}:${value}`;
+    if (announcementKey === lastMalformedFrontMatterAnnouncementKey) return;
+    lastMalformedFrontMatterAnnouncementKey = announcementKey;
+
+    void tick().then(() => {
+      if (!hasMalformedFrontMatter || lastMalformedFrontMatterAnnouncementKey !== announcementKey) {
+        return undefined;
+      }
+
+      announce(frontMatterParseWarning);
+      return undefined;
+    });
+  });
+
+  async function focusMalformedFrontMatterSource(): Promise<void> {
+    await tick();
+    const textarea = document.getElementById(id);
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 0);
+  }
+
   // Get the popover thread
   const popoverThread = $derived.by(() => {
     if (!popoverThreadId) return null;
@@ -371,6 +429,9 @@
   // Clear internal active thread if it no longer exists
   $effect(() => {
     if (activeThreadId && !threads.some((t) => t.id === activeThreadId)) {
+      if (threadSelectedWithoutPopoverId === activeThreadId) {
+        threadSelectedWithoutPopoverId = null;
+      }
       activeThreadId = null;
     }
   });
@@ -380,6 +441,8 @@
     let positionTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     if (activeThreadId && popoverThreadId !== activeThreadId) {
+      if (threadSelectedWithoutPopoverId === activeThreadId) return;
+
       const thread = threads.find((t) => t.id === activeThreadId);
       if (thread) {
         const threadIdToOpen = activeThreadId;
@@ -539,6 +602,7 @@
     selectionPopoverExpanded = false;
 
     // Set active thread and open popover
+    threadSelectedWithoutPopoverId = null;
     activeThreadId = threadId;
 
     // Find the thread to show the popover
@@ -967,7 +1031,10 @@
    * Handle thread selection from the comment sidebar.
    * Scrolls to the thread and opens its popover.
    */
-  function handleSidebarThreadSelect(threadId: string): void {
+  function handleSidebarThreadSelect(
+    threadId: string,
+    options: { openPopover?: boolean } = {},
+  ): void {
     // Re-selecting a thread whose popover is ALREADY open is a no-op.
     // Deliberately checks BOTH activeThreadId and popoverThreadId, not just
     // activeThreadId: guarding on activeThreadId alone would also block a
@@ -997,6 +1064,13 @@
 
     const thread = threads.find((t) => t.id === threadId);
     if (!thread) return;
+
+    if (options.openPopover === false) {
+      selectSidebarThreadWithoutPopover(threadId);
+      return;
+    }
+
+    threadSelectedWithoutPopoverId = null;
 
     // Cancel any timer from a PREVIOUS sidebar selection still in flight.
     // Without this, choosing a second thread within POSITION_DELAY_MS of the
@@ -1046,6 +1120,21 @@
     }, POSITION_DELAY_MS);
   }
 
+  function selectSidebarThreadWithoutPopover(threadId: string): void {
+    const thread = threads.find((t) => t.id === threadId);
+    if (!thread) return;
+
+    if (selectTimeoutId !== null) {
+      clearTimeout(selectTimeoutId);
+      selectTimeoutId = null;
+    }
+
+    threadSelectedWithoutPopoverId = threadId;
+    activeThreadId = threadId;
+    popoverThreadId = null;
+    popoverPosition = null;
+  }
+
   /**
    * Resolve the sidebar row for the currently active thread, scoped to this
    * editor instance's own sidebar (`{id}-sidebar`) so a page with more than
@@ -1067,7 +1156,9 @@
     return (
       document
         .getElementById(`${id}-sidebar`)
-        ?.querySelector<HTMLElement>('.thread-item[data-active]') ?? null
+        ?.querySelector<HTMLElement>(
+          `#${CSS.escape(`${id}-sidebar-thread-open-${activeThreadId}`)}`,
+        ) ?? null
     );
   }
 
@@ -2015,6 +2106,22 @@
         role="tabpanel"
         aria-label="Editor view"
       >
+        {#if hasMalformedFrontMatter && !malformedFrontMatterDismissed}
+          <Callout
+            semantic="note"
+            variant="warning"
+            title="Front matter warning"
+            class="review-editor-front-matter-warning"
+          >
+            <p>{frontMatterParseWarning}</p>
+            <div class="review-editor-front-matter-warning__actions">
+              <Button onclick={focusMalformedFrontMatterSource}>Edit as plain text</Button>
+              <Button variant="ghost" onclick={() => (malformedFrontMatterDismissed = true)}>
+                Dismiss front matter warning
+              </Button>
+            </div>
+          </Callout>
+        {/if}
         {#if currentDocument.hasFrontMatter}
           <FrontMatterFields
             id={`${id}-front-matter`}
@@ -2024,25 +2131,44 @@
             onchange={handleFrontMatterChange}
           />
         {/if}
-        <MarkdownEditor
-          {id}
-          bind:this={editorRef}
-          value={editorValue}
-          mode="wysiwyg"
-          readonly={isReadonly}
-          {placeholder}
-          plugins={[anchorPlugin]}
-          {snapshotMode}
-          showToolbar={false}
-          ontoolbarcontextchange={(context) => (editorToolbarContext = context)}
-          onchange={handleEditorBodyChange}
-          onready={() => {
-            if (!editorViewReady) {
-              editorViewReady = true;
-            }
-          }}
-          onselectionchange={handleSelectionChange}
-        />
+        {#if hasMalformedFrontMatter}
+          <MarkdownEditor
+            {id}
+            bind:this={editorRef}
+            {value}
+            mode="source"
+            readonly={isReadonly}
+            {placeholder}
+            {snapshotMode}
+            showToolbar={false}
+            onchange={handleChange}
+            onready={() => {
+              if (!editorViewReady) {
+                editorViewReady = true;
+              }
+            }}
+          />
+        {:else}
+          <MarkdownEditor
+            {id}
+            bind:this={editorRef}
+            value={editorValue}
+            mode="wysiwyg"
+            readonly={isReadonly}
+            {placeholder}
+            plugins={[anchorPlugin]}
+            {snapshotMode}
+            showToolbar={false}
+            ontoolbarcontextchange={(context) => (editorToolbarContext = context)}
+            onchange={handleEditorBodyChange}
+            onready={() => {
+              if (!editorViewReady) {
+                editorViewReady = true;
+              }
+            }}
+            onselectionchange={handleSelectionChange}
+          />
+        {/if}
       </div>
     {:else if activeView === 'diff'}
       <!-- Diff view content -->
@@ -2095,6 +2221,7 @@
       {activeThreadId}
       readonly={isReadonly}
       onthreadselect={handleSidebarThreadSelect}
+      onthreaddelete={deleteThread}
       onclearall={clearAllThreads}
       onadddocumentcomment={handleAddDocumentComment}
     />
@@ -2109,7 +2236,7 @@
       {mode}
       position={popoverPosition}
       restoreFallbackId={`${id}-sidebar-toggle`}
-      ignoreClickOutsideRef={activeSidebarRowElement}
+      ignoreClickOutsideRefs={[activeSidebarRowElement, ...sidebarRemoveControlRefs]}
       onclose={handlePopoverClose}
       ondelete={handlePopoverDelete}
       oncommentcreate={handlePopoverCommentCreate}

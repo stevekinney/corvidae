@@ -14,7 +14,7 @@ import {
   ThrowingScanStorage,
   TrackingScanStorage,
   writeOnlyStorageOptions,
-} from './storage-test-support.ts';
+} from './storage.test-support.ts';
 
 describe('storage REST raw operations', () => {
   it('exposes raw storage operations through REST only', () => {

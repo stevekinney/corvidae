@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+  importSkillMarkdown,
   parseSkillMarkdown,
   serializeSkillMarkdown,
+  SkillConformanceError,
   SkillParseError,
 } from '../src/parse-skill-markdown';
 
@@ -14,7 +16,7 @@ describe('parseSkillMarkdown', () => {
       'description: Use this skill when reviewing code for best practices.',
       'license: MIT',
       'compatibility: Requires filesystem access',
-      'allowed-tools: Read, Grep, Glob',
+      'allowed-tools: Read Grep Glob',
       'metadata:',
       '  author: test-author',
       '  version: "1.0"',
@@ -98,7 +100,7 @@ describe('parseSkillMarkdown', () => {
     expect(() => parseSkillMarkdown(markdown)).toThrow(SkillParseError);
   });
 
-  it('handles malformed YAML with unquoted colons in description', () => {
+  it('refuses to silently repair unquoted colons, which diagnostic import handles instead', () => {
     const markdown = [
       '---',
       'name: colon-skill',
@@ -108,11 +110,17 @@ describe('parseSkillMarkdown', () => {
       'Body content.',
     ].join('\n');
 
-    const result = parseSkillMarkdown(markdown);
+    // This document used to parse here, repaired and unreported. Strict parsing is a claim about
+    // the bytes a publisher shipped, so a document that does not parse as written fails
+    // (COR-752, Decision 6) and the repair moves to the mode that reports it.
+    expect(() => parseSkillMarkdown(markdown)).toThrow(SkillParseError);
 
-    expect(result.metadata.name).toBe('colon-skill');
-    expect(result.metadata.description).toContain('Use this skill when');
-    expect(result.metadata.description).toContain('reviewing code for problems');
+    const imported = importSkillMarkdown(markdown);
+
+    expect(imported.content.metadata.name).toBe('colon-skill');
+    expect(imported.content.metadata.description).toContain('reviewing code for problems');
+    expect(imported.repairs.map((repair) => repair.code)).toContain('yaml-value-quoted');
+    expect(imported.conformant).toBe(false);
   });
 
   it('throws SkillParseError for completely invalid YAML', () => {
@@ -147,12 +155,12 @@ describe('parseSkillMarkdown', () => {
     expect(result.body).toBe('## Section One\n\nContent here.');
   });
 
-  it('parses allowed-tools into toolPolicy.allowList', () => {
+  it('parses the space-separated allowed-tools wire format into toolPolicy.allowList', () => {
     const markdown = [
       '---',
       'name: tool-policy-test',
       'description: Test tool policy parsing.',
-      'allowed-tools: Read, Write, Bash, Edit',
+      'allowed-tools: Read Write Bash Edit',
       '---',
       '',
       'Instructions.',
@@ -164,20 +172,12 @@ describe('parseSkillMarkdown', () => {
     expect(result.metadata.toolPolicy?.allowList).toEqual(['Read', 'Write', 'Bash', 'Edit']);
   });
 
-  it('parses YAML tool arrays and drops blank or non-string entries', () => {
+  it('keeps a parameterized tool request intact', () => {
     const markdown = [
       '---',
-      'name: array-tool-policy',
-      'description: Tool arrays should be normalized.',
-      'allowed-tools:',
-      '  - Read',
-      '  - " Write "',
-      '  - ""',
-      '  - 42',
-      'denied-tools:',
-      '  - Bash',
-      '  - "  "',
-      '  - Edit',
+      'name: parameterized-tools',
+      "description: The specification's own example uses parenthesized arguments.",
+      'allowed-tools: Bash(git:*) Bash(jq:*) Read',
       '---',
       '',
       'Instructions.',
@@ -185,10 +185,67 @@ describe('parseSkillMarkdown', () => {
 
     const result = parseSkillMarkdown(markdown);
 
-    expect(result.metadata.toolPolicy).toEqual({
-      allowList: ['Read', 'Write'],
-      denyList: ['Bash', 'Edit'],
-    });
+    // The commas that used to separate this field appear *inside* real tool requests, which is
+    // why splitting on them shredded `Bash(git:*)` into two meaningless halves.
+    expect(result.metadata.toolPolicy?.allowList).toEqual(['Bash(git:*)', 'Bash(jq:*)', 'Read']);
+  });
+
+  it('repairs comma-separated allowed-tools on import without calling it conformant', () => {
+    const markdown = [
+      '---',
+      'name: legacy-tool-policy',
+      'description: Written against this package before it was pinned to the specification.',
+      'allowed-tools: Read, Write, Bash',
+      '---',
+      '',
+      'Instructions.',
+    ].join('\n');
+
+    const imported = importSkillMarkdown(markdown);
+
+    expect(imported.content.metadata.toolPolicy?.allowList).toEqual(['Read', 'Write', 'Bash']);
+    expect(imported.repairs.map((repair) => repair.code)).toContain(
+      'allowed-tools-comma-separated',
+    );
+    expect(imported.conformant).toBe(false);
+  });
+
+  it('rejects a portable denied-tools key as an unexpected field', () => {
+    const markdown = [
+      '---',
+      'name: deny-attempt',
+      'description: A skill author must not be able to disable a tool for the agent loading it.',
+      'denied-tools: Bash Edit',
+      '---',
+      '',
+      'Instructions.',
+    ].join('\n');
+
+    // `denied-tools` needs no rule of its own: it is simply not a field the specification defines,
+    // so the allowed-field check refuses it along with every other unknown key.
+    expect(() => parseSkillMarkdown(markdown)).toThrow(SkillConformanceError);
+  });
+
+  it('repairs a YAML sequence of allowed-tools on import without calling it conformant', () => {
+    const markdown = [
+      '---',
+      'name: array-tool-policy',
+      'description: A sequence is the intuitive way to write a list, and is not the wire format.',
+      'allowed-tools:',
+      '  - Read',
+      '  - Write',
+      '---',
+      '',
+      'Instructions.',
+    ].join('\n');
+
+    const imported = importSkillMarkdown(markdown);
+
+    expect(imported.content.metadata.toolPolicy?.allowList).toEqual(['Read', 'Write']);
+    expect(imported.repairs.map((repair) => repair.code)).toContain(
+      'allowed-tools-sequence-joined',
+    );
+    expect(imported.conformant).toBe(false);
   });
 
   it('produces empty string for empty body', () => {

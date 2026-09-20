@@ -13,7 +13,7 @@ describe('DiffViewer: front-matter section', () => {
   test('changed front matter renders a labelled, expandable section', () => {
     const diffs = computeLineDiff('---\ntitle: Old\n---', '---\ntitle: New\n---');
 
-    const { container } = render(DiffFrontMatter, {
+    const { container, getByRole } = render(DiffFrontMatter, {
       id: 'front-matter',
       diffs,
       viewMode: 'unified',
@@ -26,6 +26,18 @@ describe('DiffViewer: front-matter section', () => {
     const section = container.querySelector('.front-matter-section');
     expect(section?.getAttribute('data-has-changes')).toBe('true');
     expect(container.textContent).toContain('Changed');
+
+    const changedRows = Array.from(container.querySelectorAll('.diff-line-modified'));
+    const removedRow = changedRows[0];
+    const addedRow = changedRows[1];
+    if (!(removedRow instanceof HTMLElement) || !(addedRow instanceof HTMLElement)) {
+      throw new Error('Expected changed front-matter rows to render as elements.');
+    }
+    expect(changedRows).toHaveLength(2);
+    expect(removedRow.querySelector('.diff-gutter')?.textContent).toBe('-');
+    expect(getByRole('group', { name: 'Removed line: title: Old' })).toBe(removedRow);
+    expect(addedRow.querySelector('.diff-gutter')?.textContent).toBe('+');
+    expect(getByRole('group', { name: 'Added line: title: New' })).toBe(addedRow);
   });
 
   test('two DiffFrontMatter instances with distinct ids produce non-colliding toggle and content ids', () => {

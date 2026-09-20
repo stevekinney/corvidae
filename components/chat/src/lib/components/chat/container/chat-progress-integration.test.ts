@@ -23,14 +23,15 @@ describe('Chat progress affordance integration contract', () => {
     expect(source).toContain(
       "toolActivityActive={progressState === 'tool' && activeTurnMessageIds.has(message.id)}",
     );
+    expect(source).toContain("activityActive={progressState === 'tool' &&");
     expect(source).toContain(
-      "activityActive={progressState === 'tool' &&\n          renderRow.messages.some((message) => activeTurnMessageIds.has(message.id))}",
+      'renderRow.messages.some((message) => activeTurnMessageIds.has(message.id))',
     );
     expect(source).toContain('const activeTurnMessageIds = $derived.by(() => {');
   });
 
   test('does not treat completed content-driven reasoning as active', () => {
-    expect(source).toContain("activeMessage.metadata['streaming'] !== true");
+    expect(source).toContain('!isStreamingMessage(activeMessage)');
     expect(source).toContain('getStreamingMessageId() === null');
   });
 });

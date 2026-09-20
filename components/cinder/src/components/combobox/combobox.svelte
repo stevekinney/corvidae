@@ -24,6 +24,7 @@
   import FormFieldFrame from '../../_internal/form-field-frame.svelte';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import { rowDividerAttachment } from '../../utilities/row-divider.ts';
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
   import Popover from '../popover/popover.svelte';
 
@@ -546,6 +547,7 @@
       <ul bind:this={listboxElement} role="presentation" class="cinder-combobox__listbox">
         {#each filteredOptions as option, index (option.value)}
           <li
+            {@attach rowDividerAttachment}
             id="{id}-option-{index}"
             role="option"
             class="cinder-_option-row cinder-combobox__option"

@@ -94,21 +94,26 @@ function toolMessage(
 }
 
 function region(container: HTMLElement, level: 'polite' | 'assertive'): HTMLElement {
-  const result = Array.from(
-    container.querySelectorAll<HTMLElement>(`.cinder-sr-only[aria-live="${level}"]`),
-  ).find(
-    (element) => element.getAttribute('aria-atomic') === 'true' && !element.closest('.chat-input'),
-  );
-  if (!result) throw new Error(`Missing ${level} ChatStatusAnnouncer region`);
+  const log = container.querySelector<HTMLElement>('[role="log"][aria-describedby]');
+  const statusId = log?.getAttribute('aria-describedby');
+  const status = statusId ? container.querySelector<HTMLElement>(`#${CSS.escape(statusId)}`) : null;
+  const polite = status?.nextElementSibling;
+  const assertive = polite?.nextElementSibling;
+  const result = level === 'polite' ? polite : assertive;
+  if (!(result instanceof HTMLElement)) {
+    throw new Error(`Missing ${level} ChatStatusAnnouncer region`);
+  }
+  expect(result.getAttribute('aria-live')).toBe(level);
+  expect(result.getAttribute('aria-atomic')).toBe('true');
   return result;
 }
 
-function renderChat(current: Conversation, onapprove?: (id: string) => void) {
+function renderChat(current: Conversation, onapprovalresolve?: (id: string) => void) {
   return render(Chat, {
     props: {
       id: `chat-${current.id}`,
       conversation: current,
-      ...(onapprove ? { onapprove } : {}),
+      ...(onapprovalresolve ? { onapprovalresolve } : {}),
     },
   });
 }
@@ -212,7 +217,14 @@ describe('Chat announcement lifecycle', () => {
       callId: 'approval',
       outcome: 'action_required',
       content: null,
-      action: { type: 'approval', message: 'Deploy now?' },
+      action: {
+        type: 'approval',
+        message: 'Deploy now?',
+        risk: 'high',
+        operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'test-approval',
+      },
     };
     const approved: string[] = [];
     const view = renderChat(conversation('approval-status', [call, result]), (id) => {
@@ -221,11 +233,7 @@ describe('Chat announcement lifecycle', () => {
     await tick();
     const assertive = region(view.container, 'assertive');
     expect(assertive.textContent).toContain('Deploy now?');
-    const approve = view.container.querySelector<HTMLButtonElement>(
-      '.chat-tool-approval-btn-approve',
-    );
-    if (!approve) throw new Error('Missing approval button');
-    await fireEvent.click(approve);
+    await fireEvent.click(view.getByRole('button', { name: 'Approve' }));
     await tick();
     expect(approved).toEqual(['approval']);
 

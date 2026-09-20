@@ -2,6 +2,7 @@ import adapter from '@sveltejs/adapter-auto';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { createRequire } from 'node:module';
 import { defineConfig } from 'vite';
+import { buildOutputDirectory } from './scripts/build-output.ts';
 import { shikiGrammarAssets } from './scripts/shiki-grammar-assets.ts';
 
 export default defineConfig({
@@ -34,6 +35,8 @@ export default defineConfig({
   plugins: [
     shikiGrammarAssets(),
     sveltekit({
+      // Keep validation builds from replacing an active browser suite's assets.
+      outDir: buildOutputDirectory(),
       compilerOptions: {
         // Force runes mode for the project, except for libraries. Can be removed in svelte 6.
         runes: ({ filename }) =>

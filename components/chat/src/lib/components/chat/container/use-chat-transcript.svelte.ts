@@ -1,6 +1,8 @@
+import { isStreamingMessage } from '../builders.ts';
 import type { ConversationHistory, Message, ToolResult } from '../conversation-model.ts';
 import {
   getMessages,
+  getMessageText,
   pairToolCallsWithResults,
   resolveMessageReasoning,
 } from '../utilities/index.ts';
@@ -17,6 +19,7 @@ export interface UseChatTranscriptOptions {
   getRollbackMessageId: () => string | null;
   getStreaming: () => boolean;
   getStreamingMessageId: () => string | null;
+  getStreamingContent: () => string;
   getMessageReasoning?:
     (() => ((message: Message) => string | ReasoningInfo | undefined) | undefined) | undefined;
   getFirstUnreadId: () => string | null;
@@ -37,6 +40,10 @@ export interface UseChatTranscriptReturn {
   readonly toolResultMessagesByResult: Map<ToolResult, Message>;
   readonly actionRequiredToolCallIds: Set<string>;
   readonly renderRows: ChatRenderRow[];
+}
+
+function isStreamingAssistantMessage(message: Message | undefined): message is Message {
+  return message?.role === 'assistant' && isStreamingMessage(message);
 }
 
 export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTranscriptReturn {
@@ -88,7 +95,7 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
     const activeMessageId = options.getStreamingMessageId() ?? messages.at(-1)?.id;
     const activeMessage = messages.find((message) => message.id === activeMessageId);
     if (!activeMessage) return false;
-    if (options.getStreamingMessageId() === null && activeMessage.metadata['streaming'] !== true) {
+    if (options.getStreamingMessageId() === null && !isStreamingMessage(activeMessage)) {
       return false;
     }
     return Boolean(resolveMessageReasoning(activeMessage, options.getMessageReasoning?.()));
@@ -104,6 +111,20 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
       messages.filter((message) => activeTurnMessageIds.has(message.id)),
     ).some((pair) => !pair.result);
   });
+  const activeStreamingMessage = $derived.by(() => {
+    if (!options.getStreaming()) return undefined;
+    const streamingMessageId = options.getStreamingMessageId();
+    if (streamingMessageId) return messages.find((message) => message.id === streamingMessageId);
+    const latestMessage = messages.at(-1);
+    return isStreamingAssistantMessage(latestMessage) ? latestMessage : undefined;
+  });
+  const activeStreamingText = $derived.by(() => {
+    if (!options.getStreaming()) return '';
+    const streamingMessageId = options.getStreamingMessageId();
+    if (streamingMessageId) return options.getStreamingContent();
+    return activeStreamingMessage ? getMessageText(activeStreamingMessage) : '';
+  });
+  const hasActiveStreamingText = $derived(activeStreamingText.trim().length > 0);
   const progressState = $derived(
     selectChatProgressState({
       streaming: options.getStreaming(),
@@ -111,9 +132,7 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
       toolActivity,
     }),
   );
-  const showTypingIndicator = $derived(
-    progressState === 'streaming' && !options.getStreamingMessageId(),
-  );
+  const showTypingIndicator = $derived(progressState === 'streaming' && !hasActiveStreamingText);
 
   return {
     get messages() {

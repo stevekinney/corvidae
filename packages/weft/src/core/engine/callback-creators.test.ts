@@ -271,6 +271,7 @@ describe('engine callback creators', () => {
           id: 'schedule-cleanup-error',
           input: null,
           missedFireCount: 0,
+          skippedCount: 0,
           nextFireAt: 60_000,
           overlap: 'skip',
           queuedRuns: [],

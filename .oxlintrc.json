@@ -180,6 +180,19 @@
       }
     },
     {
+      "files": ["**/components/*/src/**/*.css.d.ts"],
+      "rules": {
+        "unicorn/require-module-specifiers": "off"
+      }
+    },
+    {
+      "files": ["**/components/weft-ui/src/mount.ts"],
+      "rules": {
+        "no-restricted-globals": "off",
+        "no-restricted-imports": "off"
+      }
+    },
+    {
       "files": ["**/components/chat/src/index.ts"],
       "rules": {
         "import/no-unassigned-import": [

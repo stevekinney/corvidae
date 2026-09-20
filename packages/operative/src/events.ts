@@ -3,6 +3,7 @@ import type { Conversation, ConversationActionType } from '@corvidae/conversatio
 import type {
   EventMap,
   ForwardedEvent,
+  HookReplayPolicy,
   ObservableLike,
   Observer,
   Subscription,
@@ -14,6 +15,8 @@ import { estimateCacheHitRate } from './cost-estimation';
 import type { SteeringCommandFailure, SteeringEffectiveState } from './durable/types';
 import { type AgentRunError, type AgentRunErrorKind, toAgentRunError } from './errors';
 import type { SemanticProgress } from './liveness';
+import type { SelectionOutcomeKind } from './providers/selection';
+import type { Effort } from './providers/types';
 import type { GenerateResponse, RunResult, StepResult, TokenUsage } from './types';
 
 // ---------------------------------------------------------------------------
@@ -235,12 +238,97 @@ export class StepAbortedEvent extends Event {
   }
 }
 
+/**
+ * One backend's four addressable coordinates, as `generate.started` records
+ * them. Every field is optional because a run with no selection gate and no
+ * steering gate genuinely knows none of them — the generate function owns
+ * its own defaults, and reporting a guess would be worse than reporting
+ * nothing.
+ */
+export interface GenerationBackendRecord {
+  readonly provider?: string | undefined;
+  readonly model?: string | undefined;
+  readonly route?: string | undefined;
+  readonly effort?: Effort | undefined;
+}
+
+/**
+ * One field where the configuration a generation is issued under differs
+ * from the one the selector planned (AB-68). `planned` and `effective` are
+ * the two values themselves, so a consumer never has to re-derive the
+ * difference from the two records to explain it.
+ */
+export interface GenerationDivergence {
+  readonly field: 'provider' | 'model' | 'route' | 'effort';
+  readonly reason: 'steering-override';
+  readonly planned?: string | undefined;
+  readonly effective?: string | undefined;
+}
+
+/**
+ * AB-68 — what `generate.started` records about the configuration one
+ * generation is issued under.
+ *
+ * `selected` is what AB-64's selector chose; `effective` is what this call
+ * is actually issued under, which is `selected` with the session's
+ * boundary-read `SteeringDesiredState` layered over it.
+ *
+ * `effective` is deliberately NOT the provider's post-call actual state.
+ * Operative's `generate` is caller-supplied and opaque: at the moment this
+ * event fires the request has not been issued, so the only honest claim is
+ * "this is the configuration the call is being made with". The provider's
+ * terminal state — and whether it honored any of this — is
+ * {@link import('./providers/selection').EffectiveGenerationResult}'s job,
+ * checked after the response returns. Reporting a pre-call value as the
+ * provider's effective state is exactly the divergence this record exists
+ * to make visible, so it must not itself commit that error.
+ */
+export interface GenerationSelectionRecord {
+  /** `SelectionPlan.planId`. Absent when the run has no selection gate. */
+  readonly planId?: string | undefined;
+  /** The plan's own outcome. Absent when the run has no selection gate. */
+  readonly planOutcome?: SelectionOutcomeKind | undefined;
+  /** What the selector chose. Absent when no plan reached `'selected'`. */
+  readonly selected?: GenerationBackendRecord | undefined;
+  /** The configuration this call is issued under. See the note above. */
+  readonly effective: GenerationBackendRecord;
+  /** AB-67's `SteeringDesiredState.configVersion`. Absent without a
+   *  steering gate. */
+  readonly configVersion?: number | undefined;
+  /** Every field where `effective` differs from `selected`. Empty when they
+   *  agree, or when there is no plan to diverge from. */
+  readonly divergence: readonly GenerationDivergence[];
+  /** The plan's ordered fallback backends, as recorded by the selector.
+   *  Empty when no `fallbackOrder` is configured. This is the fallback
+   *  the plan *authorizes*, not a fallback that has occurred — a route
+   *  failover happens inside the provider call, after this event. */
+  readonly fallbackPlan: readonly GenerationBackendRecord[];
+}
+
 export class GenerateStartedEvent extends Event {
   static readonly type = 'generate.started' as const;
   readonly step: number;
-  constructor(step: number) {
+  /**
+   * AB-68. Absent when the run has neither a selection gate nor a steering
+   * gate — an unconfigured run has nothing truthful to report, and an empty
+   * record would be indistinguishable from one whose every field resolved
+   * to `undefined`.
+   */
+  readonly selection?: GenerationSelectionRecord | undefined;
+  /**
+   * COR-581 — the effective-context epoch this generation was issued
+   * under, referenced by identity. The epoch itself is the authoritative
+   * record; carrying only its id here keeps the event small and keeps one
+   * epoch shared by every attempt that genuinely reused it.
+   *
+   * Absent when the run composes no context-epoch sealer.
+   */
+  readonly contextEpochId?: string | undefined;
+  constructor(step: number, selection?: GenerationSelectionRecord, contextEpochId?: string) {
     super(GenerateStartedEvent.type);
     this.step = step;
+    this.selection = selection;
+    this.contextEpochId = contextEpochId;
   }
 }
 
@@ -279,12 +367,27 @@ export class GenerateRetryEvent extends Event {
   readonly mutated: boolean;
   /** Human-readable description of the mutation, if any. */
   readonly mutationDescription?: string | undefined;
+  /**
+   * COR-581 — the successor effective-context epoch this retry will be
+   * issued under, present exactly when `mutated` is true.
+   *
+   * A provider-level retry re-issues the request built before
+   * `generate.started` fired, so it normally consumes that same epoch and
+   * carries nothing here. A `RetryMutator` genuinely changes the request,
+   * though, and the epoch contract requires a change to what the model
+   * sees to produce a successor rather than being absorbed silently. That
+   * successor is referenced here rather than on a second
+   * `generate.started`, which would change that event's cardinality for
+   * every existing consumer.
+   */
+  readonly contextEpochId?: string | undefined;
   constructor(
     step: number,
     attempt: number,
     error: unknown,
     mutated = false,
     mutationDescription?: string,
+    contextEpochId?: string,
   ) {
     super(GenerateRetryEvent.type);
     this.step = step;
@@ -292,6 +395,7 @@ export class GenerateRetryEvent extends Event {
     this.error = error;
     this.mutated = mutated;
     this.mutationDescription = mutationDescription;
+    this.contextEpochId = contextEpochId;
   }
 }
 
@@ -1379,6 +1483,73 @@ export class ScheduleCompletedEvent extends Event {
   }
 }
 
+/**
+ * Emitted once per scheduled occurrence, before the schedule's overlap policy
+ * decides whether to start, queue, replace, or drop the tick. Sourced from
+ * Weft's engine-level `schedule:attempted` (COR-105) and forwarded onto the
+ * bureau emitter by `create-bureau.ts`, the same sink the definition-level and
+ * fire-terminal schedule events use.
+ *
+ * This is the signal that separates "the schedule is ticking and choosing not
+ * to run" from "the schedule stopped ticking": `schedule.completed`/
+ * `schedule.failed` only ever describe fires that actually launched, so a
+ * schedule whose every occurrence collides is silent without this.
+ *
+ * Ephemeral, not durable. One per tick per schedule is a liveness pulse in
+ * AB-87's matrix terms, not a durable transition, so it is deliberately absent
+ * from the audit trail and the durable event history — a durable cursor must
+ * not be advanced by a pulse.
+ */
+export class ScheduleAttemptedEvent extends Event {
+  static readonly type = 'schedule.attempted' as const;
+  readonly scheduleId: string;
+  /**
+   * The scheduled grid timestamp the occurrence was due, as Weft reports it.
+   * Undefined only when an occurrence was applied without one.
+   */
+  readonly occurrence: number | undefined;
+  constructor(scheduleId: string, occurrence?: number) {
+    super(ScheduleAttemptedEvent.type);
+    this.scheduleId = scheduleId;
+    this.occurrence = occurrence;
+  }
+}
+
+/**
+ * Emitted when a scheduled occurrence is dropped because the schedule's
+ * overlap policy blocks it while a prior fire is still running — in practice
+ * `overlap: 'skip'`, the only policy that discards an occurrence outright
+ * (`'queue'` buffers it, `'cancel-running'` replaces the active run). Sourced
+ * from Weft's engine-level `schedule:skipped` (COR-105).
+ *
+ * Exactly one `schedule.attempted` precedes each of these. Distinct from a
+ * missed fire, which is a window the engine's timer never evaluated at all.
+ *
+ * Ephemeral for the same reason as {@link ScheduleAttemptedEvent}: it reports
+ * that nothing durable happened.
+ */
+export class ScheduleSkippedEvent extends Event {
+  static readonly type = 'schedule.skipped' as const;
+  readonly scheduleId: string;
+  /** The scheduled grid timestamp the dropped occurrence was due. */
+  readonly occurrence: number | undefined;
+  /**
+   * The still-running scheduled fire that occupied the slot. A scheduled
+   * fire's Weft workflow id is its AgentRun id, the same correlation
+   * {@link ScheduleFailedEvent.runId} carries.
+   */
+  readonly blockingRunId: string | undefined;
+  /** The overlap policy that produced the decision, as Weft reports it. */
+  readonly policy: string;
+  constructor(scheduleId: string, policy: string, occurrence?: number, blockingRunId?: string) {
+    super(ScheduleSkippedEvent.type);
+    this.scheduleId = scheduleId;
+    this.policy = policy;
+    this.occurrence = occurrence;
+    this.blockingRunId = blockingRunId;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Workflow versioning (AB-10). Emitted, NOT through the per-run
 // `CombinedOperativeEventMap` emitter (a recovered run's dependencies —
@@ -1602,6 +1773,127 @@ export class SteeringFailedEvent extends Event {
 }
 
 // ---------------------------------------------------------------------------
+// Hook plan (COR-766)
+//
+// A run's hook plan is the set of registrations in the `HookRegistry` it was
+// dispatched with. Bureau composes one per run (COR-567); a direct
+// `createActiveRun` caller may supply its own, and these events do not care
+// which — they observe the registry the run actually holds, so they report the
+// plan production ran rather than the plan some composition path intended.
+//
+// There is deliberately no `hook-plan.replayed`. The original acceptance
+// criterion asked for one "only for a durable replay of a previously invoked
+// hook-plan entry, distinct from a fresh invocation", and that distinction is
+// not available to make: nothing in a hook's invocation context says the step
+// is a re-execution, and the runtime would have to keep durable per-entry
+// invocation history to know an entry ran before. Keeping that history in
+// order to suppress or relabel a second invocation is precisely what
+// `HookReplayPolicy` rejects — its contract is that an effectful hook be made
+// idempotent, because a replayed step genuinely re-ran its generate call and
+// its tools, so its hooks genuinely must run again. A durable re-execution
+// therefore emits an ordinary `hook-plan.invoked`; a consumer that needs to
+// tell the two apart reads the recovery marker already carried on its own run
+// correlation, which is the only place that fact actually exists.
+// ---------------------------------------------------------------------------
+
+/**
+ * One hook registration is part of this run's plan.
+ *
+ * Fires once per entry, for the entries present when the run started as well
+ * as for any registered while it is live — a consumer replaying this stream
+ * from the run's beginning reconstructs the plan without reading the registry.
+ */
+export class HookPlanRegisteredEvent extends Event {
+  static readonly type = 'hook-plan.registered' as const;
+  /** The hook POINT, e.g. `prepareStep`. */
+  readonly hookName: string;
+  /** Stable registration identity (COR-567). Names one registration on that point. */
+  readonly hookId: string;
+  readonly priority: number;
+  readonly replay: HookReplayPolicy;
+  readonly runId: string | undefined;
+  constructor(
+    hookName: string,
+    hookId: string,
+    priority: number,
+    replay: HookReplayPolicy,
+    runId?: string,
+  ) {
+    super(HookPlanRegisteredEvent.type);
+    this.hookName = hookName;
+    this.hookId = hookId;
+    this.priority = priority;
+    this.replay = replay;
+    this.runId = runId;
+  }
+}
+
+/**
+ * A hook-plan entry was invoked and returned.
+ *
+ * Mutually exclusive with {@link HookPlanFailedEvent} for one invocation:
+ * exactly one of the two fires per handler call.
+ */
+export class HookPlanInvokedEvent extends Event {
+  static readonly type = 'hook-plan.invoked' as const;
+  readonly hookName: string;
+  readonly hookId: string;
+  readonly durationMilliseconds: number;
+  readonly runId: string | undefined;
+  constructor(hookName: string, hookId: string, durationMilliseconds: number, runId?: string) {
+    super(HookPlanInvokedEvent.type);
+    this.hookName = hookName;
+    this.hookId = hookId;
+    this.durationMilliseconds = durationMilliseconds;
+    this.runId = runId;
+  }
+}
+
+/**
+ * A hook-plan entry threw.
+ *
+ * Fires for the throw itself, before the registry's error policy decides
+ * whether to continue or abort — so a handler whose `onError` returns
+ * `'continue'` is still reported here rather than being silently absorbed.
+ */
+export class HookPlanFailedEvent extends Event {
+  static readonly type = 'hook-plan.failed' as const;
+  readonly hookName: string;
+  readonly hookId: string;
+  readonly durationMilliseconds: number;
+  readonly error: unknown;
+  readonly runId: string | undefined;
+  constructor(
+    hookName: string,
+    hookId: string,
+    durationMilliseconds: number,
+    error: unknown,
+    runId?: string,
+  ) {
+    super(HookPlanFailedEvent.type);
+    this.hookName = hookName;
+    this.hookId = hookId;
+    this.durationMilliseconds = durationMilliseconds;
+    this.error = error;
+    this.runId = runId;
+  }
+}
+
+/** A hook-plan entry was unregistered while this run held the plan. */
+export class HookPlanRemovedEvent extends Event {
+  static readonly type = 'hook-plan.removed' as const;
+  readonly hookName: string;
+  readonly hookId: string;
+  readonly runId: string | undefined;
+  constructor(hookName: string, hookId: string, runId?: string) {
+    super(HookPlanRemovedEvent.type);
+    this.hookName = hookName;
+    this.hookId = hookId;
+    this.runId = runId;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Event map: maps event type string to the Event subclass instance
 //
 // `OperativeEventClassMap` deliberately does NOT `extends EventMap`
@@ -1680,6 +1972,9 @@ export interface OperativeEventClassMap {
   [ScheduleCancelledEvent.type]: ScheduleCancelledEvent;
   [ScheduleFailedEvent.type]: ScheduleFailedEvent;
   [ScheduleCompletedEvent.type]: ScheduleCompletedEvent;
+  // Schedule tick observation (COR-660, sourced from Weft's COR-105 signals)
+  [ScheduleAttemptedEvent.type]: ScheduleAttemptedEvent;
+  [ScheduleSkippedEvent.type]: ScheduleSkippedEvent;
   // session.monitor loop events (D7)
   [SessionMonitorTickEvent.type]: SessionMonitorTickEvent;
   [SessionMonitorDoneEvent.type]: SessionMonitorDoneEvent;
@@ -1704,6 +1999,12 @@ export interface OperativeEventClassMap {
   // progress (the SemanticProgress-carrying, non-cursor-advancing pulse).
   [ChildWorkflowReattachedEvent.type]: ChildWorkflowReattachedEvent;
   [ChildWorkflowProgressEvent.type]: ChildWorkflowProgressEvent;
+  // Hook plan (COR-766). No `replayed` member — see the block comment above
+  // these classes for why that criterion cannot be met.
+  [HookPlanRegisteredEvent.type]: HookPlanRegisteredEvent;
+  [HookPlanInvokedEvent.type]: HookPlanInvokedEvent;
+  [HookPlanFailedEvent.type]: HookPlanFailedEvent;
+  [HookPlanRemovedEvent.type]: HookPlanRemovedEvent;
 }
 
 /** The runtime-usable event map. See the block comment above the class map for why this exists separately. */
@@ -1768,6 +2069,8 @@ export const OPERATIVE_EVENT_TYPES = [
   ScheduleCancelledEvent.type,
   ScheduleFailedEvent.type,
   ScheduleCompletedEvent.type,
+  ScheduleAttemptedEvent.type,
+  ScheduleSkippedEvent.type,
   SessionMonitorTickEvent.type,
   SessionMonitorDoneEvent.type,
   ChildWorkflowStartedEvent.type,
@@ -1783,6 +2086,10 @@ export const OPERATIVE_EVENT_TYPES = [
   SteeringFailedEvent.type,
   ChildWorkflowReattachedEvent.type,
   ChildWorkflowProgressEvent.type,
+  HookPlanRegisteredEvent.type,
+  HookPlanInvokedEvent.type,
+  HookPlanFailedEvent.type,
+  HookPlanRemovedEvent.type,
 ] as const satisfies readonly OperativeEventType[];
 
 /**

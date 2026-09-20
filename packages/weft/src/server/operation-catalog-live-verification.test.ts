@@ -13,7 +13,7 @@ import { workflow } from '../core/types.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { signJWT } from './authentication.ts';
 import { serve, type WeftServer } from './index.ts';
-import { jsonRecord, propertyRecord, record } from './protocol-test-support.ts';
+import { jsonRecord, propertyRecord, record } from './protocol.test-support.ts';
 import { createLiveOperationRegistry, REST_BINDINGS } from './rest-bindings.ts';
 
 const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (

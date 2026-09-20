@@ -36,6 +36,7 @@ import {
   type DurableEventOwner,
   type DurableEventPage,
   type DurableRunDeps,
+  type Effort,
   type FlowController,
   hasDefinitionResolver,
   HumanWaitParkedEvent,
@@ -49,7 +50,13 @@ import {
   reattachDurableActiveRun,
   type RecoveredRunHandle,
   type RequestHumanInputResult,
+  // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
+  // import because `./types` exports an unrelated string-union type under
+  // the same name (armorer's shutdown-owner outcome vocabulary). The two are
+  // genuinely different values and must not shadow each other here.
+  type CleanupAcknowledgement as RunCleanupAcknowledgement,
   type RunReport,
+  ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
   type ScheduledAgentRunInput,
@@ -59,6 +66,7 @@ import {
   ScheduleResumedEvent,
   SchedulerTaskCompletedEvent,
   SchedulerTaskFailedEvent,
+  ScheduleSkippedEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
   type SessionInputAdmissionOutcome,
@@ -69,7 +77,9 @@ import {
   SessionSavedEvent,
   type SessionStore,
   type SessionSummary,
+  SteeringAcceptedEvent,
   SteeringAppliedEvent,
+  type SteeringRequestedValue,
   type StepRecord,
   type Store,
   StoreActionEvent,
@@ -82,10 +92,18 @@ import {
   TaskPreemptedEvent,
 } from '@corvidae/operative';
 import {
+  SkillActivatedEvent,
+  SkillDeactivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from '@corvidae/skills';
+import {
   decode,
   KEYS,
   type ListFilter,
   type ListOptions,
+  Mailbox,
   type RecoveredWorkflowInfo,
   type ScheduleSpec,
   type WorkflowState,
@@ -105,6 +123,7 @@ import { type AgentDefinitions, createAgentCatalog } from './agent-catalog';
 import {
   type AuditTrail,
   auditTrailSessionOwnerId,
+  type CheckpointRetentionOption,
   computeInitialAuditSequence,
   createAuditTrail,
 } from './audit-trail';
@@ -155,6 +174,7 @@ import {
   createSchedulerServiceRequestContext,
   decodeScheduleRunMarker,
   isRunFailureFinishReason,
+  registerTrailingOnStep,
   wireDurableOptInTools,
 } from './runtime-composition';
 import {
@@ -166,15 +186,26 @@ import {
   serializeRunState,
   serializeUnknownError,
 } from './serialization';
+import {
+  admitSessionInput,
+  createSessionInputMailbox,
+  type PersistedSessionInput,
+} from './session-input-durability';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import {
   type BureauSteeringGate,
   createSteeringCommandLedger,
   createSteeringGate,
   type ImplementedSteeringCommand,
+  isConfigurationTarget,
   type SteeringCommandAdmissionOutcome,
   type SteeringCommandRequest,
 } from './steering';
+import {
+  createSteeringMailbox,
+  persistSteeringCommand,
+  recoverSteeringCommands,
+} from './steering-durability';
 import type {
   AbortingRun,
   Bureau,
@@ -202,6 +233,10 @@ import type {
   SubmitSchedulerTaskRequest,
   SubmitSchedulerTaskResponse,
   ToolSummary,
+} from './types';
+import {
+  DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
+  DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
 } from './types';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
 import { streamEventToFrame } from './websocket-frames';
@@ -1058,6 +1093,33 @@ function validateAuditRetentionOption(value: { olderThan: number } | 'forever' |
   }
 }
 
+/**
+ * COR-625 — `BureauOptions.checkpointRetention`'s `{ keepLast }` form feeds
+ * weft's `Engine.pruneCheckpoints` (COR-11), whose own contract requires a
+ * non-negative integer. Bureau narrows that further to a POSITIVE integer:
+ * `keepLast: 0` would discard a terminal run's entire checkpoint history,
+ * including the newest entry a postmortem needs, which is a destructive
+ * default no operator means to configure — an operator who genuinely wants
+ * nothing retained is asking to delete the run, not to retain zero of it.
+ * `timeoutMilliseconds` bounds the step's own wait and its abort signal, so
+ * `NaN` or a negative value would arm a timer that fires immediately (or
+ * never), turning every step into a spurious `'timed-out'`. Validated here at
+ * construction time, the same boundary `validateAuditRetentionOption` above
+ * uses for the other destructive-if-malformed retention option.
+ */
+function validateCheckpointRetentionOption(value: CheckpointRetentionOption | undefined): void {
+  if (value === undefined || value === 'keep-all') return;
+  if (!Number.isInteger(value.keepLast) || value.keepLast <= 0) {
+    toBadRequest('"options.checkpointRetention.keepLast" must be a positive integer');
+  }
+  const timeout = value.timeoutMilliseconds;
+  if (timeout !== undefined && (!Number.isFinite(timeout) || timeout < 0)) {
+    toBadRequest(
+      '"options.checkpointRetention.timeoutMilliseconds" must be a finite, non-negative number',
+    );
+  }
+}
+
 export async function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
   options: BureauOptions<D>,
 ): Promise<Bureau<D>> {
@@ -1075,7 +1137,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     options.sessionInput?.principalBacklogLimit,
     'principalBacklogLimit',
   );
+  // COR-435: the values `ab-42-bureau-b` above anticipated. Resolved once,
+  // here, so every session's mailbox is constructed against the identical
+  // pair this bureau validated at construction time.
+  const sessionInputSessionBacklogLimit =
+    options.sessionInput?.sessionBacklogLimit ?? DEFAULT_SESSION_INPUT_BACKLOG_LIMIT;
+  const sessionInputPrincipalBacklogLimit =
+    options.sessionInput?.principalBacklogLimit ?? DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT;
   validateAuditRetentionOption(options.auditRetention);
+  validateCheckpointRetentionOption(options.checkpointRetention);
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
   const ownsStore = !options.store;
   // AB-260 — resolve the injectable runtime-service seam exactly once,
@@ -1135,6 +1205,45 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   });
   runtime.scheduleFireEvents.addEventListener(ScheduleFailedEvent.type, (event) => {
     emitter.dispatch(new ScheduleFailedEvent(event.scheduleId, event.runId));
+  });
+  // COR-660 — the per-tick observation pair, forwarded the same way and for
+  // the same reason: a scheduled tick is headless, so the bureau emitter is
+  // the only surface it has. Fresh instances again, for the WHATWG
+  // already-being-dispatched reason above.
+  // COR-767 — skill lifecycle, forwarded the same way and for the same reason
+  // as the schedule families: the `@corvidae/skills` tools dispatch onto the
+  // composition's target, and this bureau's emitter is the surface consumers
+  // actually subscribe to. Fresh instances again, for the WHATWG
+  // already-being-dispatched constraint documented above.
+  runtime.skillEvents.addEventListener(SkillLoadedEvent.type, (event) => {
+    emitter.dispatch(new SkillLoadedEvent(event.skillName, event.correlation));
+  });
+  runtime.skillEvents.addEventListener(SkillActivatedEvent.type, (event) => {
+    emitter.dispatch(new SkillActivatedEvent(event.skillName, event.correlation));
+  });
+  runtime.skillEvents.addEventListener(SkillDeactivatedEvent.type, (event) => {
+    emitter.dispatch(new SkillDeactivatedEvent(event.skillName, event.correlation));
+  });
+  runtime.skillEvents.addEventListener(SkillRejectedEvent.type, (event) => {
+    emitter.dispatch(
+      new SkillRejectedEvent(event.skillName, event.reason, event.correlation, event.rule),
+    );
+  });
+  runtime.skillEvents.addEventListener(SkillFailedEvent.type, (event) => {
+    emitter.dispatch(new SkillFailedEvent(event.skillName, event.correlation));
+  });
+  runtime.scheduleFireEvents.addEventListener(ScheduleAttemptedEvent.type, (event) => {
+    emitter.dispatch(new ScheduleAttemptedEvent(event.scheduleId, event.occurrence));
+  });
+  runtime.scheduleFireEvents.addEventListener(ScheduleSkippedEvent.type, (event) => {
+    emitter.dispatch(
+      new ScheduleSkippedEvent(
+        event.scheduleId,
+        event.policy,
+        event.occurrence,
+        event.blockingRunId,
+      ),
+    );
   });
   // AB-389 — `SessionStore.events` (`@corvidae/operative`) now carries
   // only the best-effort `SessionOutboxAppendedEvent` drain trigger, never
@@ -1336,6 +1445,139 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // `deleteSession` below) so a reused session id never inherits a deleted
   // session's pause state / command history / applied floor.
   const steeringGates = new Map<string, BureauSteeringGate>();
+  /**
+   * AB-200 — one steering mailbox per session, for a durably-configured
+   * bureau. Cached because a `Mailbox` holds its own storage-scoped state
+   * and constructing a second one for the same `(namespace, resourceId)`
+   * would defeat the FIFO ordering that is the point of using one.
+   */
+  const steeringMailboxes = new Map<string, Mailbox>();
+  /**
+   * Sessions whose durable steering log has already been drained into a
+   * gate in this process. Recovery is once per session per boot: the
+   * mailbox is consumed by draining, so a second pass would find nothing
+   * and a concurrent second pass could interleave two replays of the same
+   * command into one gate.
+   */
+  const steeringRecoveries = new Map<string, Promise<void>>();
+
+  /** `undefined` for a non-durable bureau — nothing to persist against. */
+  function getSteeringMailbox(sessionId: string): Mailbox | undefined {
+    const storage = runtime.durableStorage;
+    if (!runtime.durable || storage === undefined) return undefined;
+    let mailbox = steeringMailboxes.get(sessionId);
+    if (!mailbox) {
+      mailbox = createSteeringMailbox(storage, sessionId);
+      steeringMailboxes.set(sessionId, mailbox);
+    }
+    return mailbox;
+  }
+
+  /**
+   * COR-435 — one session-input mailbox per session, for a
+   * durably-configured bureau. See `session-input-durability.ts`'s module
+   * doc: the cross-session identity index lives in `runtime.kv` directly,
+   * not in a second `Mailbox`. Cached for the same reason
+   * `steeringMailboxes` is: constructing a second `Mailbox` for the same
+   * `(namespace, resourceId)` would defeat the FIFO ordering that is the
+   * point of using one.
+   */
+  const sessionInputMailboxes = new Map<string, Mailbox>();
+
+  /** `undefined` for a non-durable bureau — nothing to persist against. */
+  function getSessionInputMailbox(sessionId: string): Mailbox | undefined {
+    const storage = runtime.durableStorage;
+    if (!runtime.durable || storage === undefined) return undefined;
+    let mailbox = sessionInputMailboxes.get(sessionId);
+    if (!mailbox) {
+      mailbox = createSessionInputMailbox(storage, sessionId, sessionInputSessionBacklogLimit);
+      sessionInputMailboxes.set(sessionId, mailbox);
+    }
+    return mailbox;
+  }
+
+  /**
+   * Resolves this session's gate, replaying its durable steering log into
+   * a freshly-created one first.
+   *
+   * Recovery is lazy rather than a boot sweep, and deliberately: a bureau
+   * may hold thousands of sessions whose steering logs are empty, and
+   * draining every one at startup would pay for all of them to recover the
+   * few that need it. The first steering operation on a session after a
+   * restart is exactly when its log matters.
+   */
+  async function ensureSteeringGate(
+    sessionId: string,
+    liveRunIds: readonly string[],
+  ): Promise<BureauSteeringGate> {
+    let gate = steeringGates.get(sessionId);
+    if (gate === undefined) {
+      gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
+      steeringGates.set(sessionId, gate);
+    }
+
+    const mailbox = getSteeringMailbox(sessionId);
+    if (mailbox === undefined) return gate;
+
+    // Every caller awaits the SAME recovery promise, including one that
+    // found the gate already in the map. Publishing the gate and then
+    // awaiting recovery without this would let a concurrent
+    // `submitSteeringCommand` observe the gate mid-replay and admit its
+    // own command ahead of commands that were durably admitted earlier —
+    // the recovered ones would then supersede the newer one, inverting
+    // the order the mailbox exists to preserve.
+    let recovery = steeringRecoveries.get(sessionId);
+    if (recovery === undefined) {
+      recovery = replaySteeringLog(gate, mailbox, liveRunIds).catch((error: unknown) => {
+        // A failed recovery must not be cached as done: a transient
+        // storage fault would otherwise leave this session permanently
+        // unrecoverable for the life of the process. Clearing lets the
+        // next caller retry, and rethrowing fails this one closed rather
+        // than admitting into a gate whose durable history is unknown.
+        steeringRecoveries.delete(sessionId);
+        throw error;
+      });
+      steeringRecoveries.set(sessionId, recovery);
+    }
+    await recovery;
+    return gate;
+  }
+
+  /** Drains one session's durable steering log into its gate, in order. */
+  async function replaySteeringLog(
+    gate: BureauSteeringGate,
+    mailbox: Mailbox,
+    liveRunIds: readonly string[],
+  ): Promise<void> {
+    const now = runtimeServices.clock.nowISO();
+    // The replay is handed to `recoverSteeringCommands` as a callback so
+    // each command reaches the gate BEFORE its mailbox acknowledgement.
+    // Collecting the batch first and admitting afterwards would leave a
+    // window where a crash loses a command from both sides: durably
+    // acknowledged, never applied.
+    await recoverSteeringCommands(mailbox, (recovered) => {
+      // Replayed through the gate's ordinary admission, not a private
+      // back door, so a recovered command is subject to every invariant
+      // a live one is. A pause bound to a run this process no longer has
+      // is correctly rejected `run-terminal` — the run genuinely ended.
+      gate.admit(
+        {
+          id: recovered.id,
+          idOrigin: 'caller',
+          sessionId: recovered.sessionId,
+          principal: recovered.principal,
+          requestedValue: recovered.requestedValue,
+          requestedAt: recovered.requestedAt,
+          ...(recovered.expectedRevision !== undefined
+            ? { expectedRevision: recovered.expectedRevision }
+            : {}),
+          ...(recovered.deadline !== undefined ? { deadline: recovered.deadline } : {}),
+          ...(recovered.runId !== undefined ? { runId: recovered.runId } : {}),
+        },
+        { liveRunIds, now },
+      );
+    });
+  }
   // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
   // every session's gate shares (see `steering.ts`'s `createSteeringGate`
   // `ledger` parameter doc comment): a same-`(principal, id)` retry against
@@ -1380,6 +1622,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // AB-96 — terminal RunReports, cached at the moment each run's lifecycle
   // event fires so `getRunReport` never needs to re-derive them.
   const runReports = new Map<string, RunReport>();
+  // COR-625: one memoized terminal-cleanup step per run id. Every trigger
+  // MUST route through `runTerminalCheckpointCleanup` rather than calling the
+  // step directly — the exactly-once guarantee is the memo, not the triggers.
+  // Entries are released only by `deleteRun`, which a caller can reach only
+  // for an already-terminal run, so a released entry cannot be re-created by
+  // any of today's three triggers. A future API that can re-fire a terminal
+  // transition for one run id would break that and must be routed here too. This is what
+  // makes the step exactly-once across its three independent triggers — the
+  // live run's terminal listeners, a recovered run's terminal listeners, and
+  // `cancelDurableRun` on a run this process holds no `ActiveRun` for. Its
+  // entries are released alongside that run's report (`releaseRunReport`), so
+  // a long-lived bureau does not retain one promise per run forever.
+  const terminalCheckpointCleanups = new Map<string, Promise<RunCleanupAcknowledgement>>();
+  // COR-625: registered on a durable run's `closed()` only when a retention
+  // policy is actually configured. Registering it unconditionally would
+  // disqualify every durable run's `not-required` fast path (a run with a
+  // step registered genuinely has cleanup left to do — see
+  // `active-run-create.ts`'s `disqualifiesFastPath`) and so would change
+  // `closed()`'s answer for every bureau that never asked for retention. The
+  // terminal listeners still call the step unconditionally, so the
+  // `run.cleanup-settled` audit record exists either way.
+  const durableTerminalCleanup =
+    options.checkpointRetention && options.checkpointRetention !== 'keep-all'
+      ? runTerminalCheckpointCleanup
+      : undefined;
   // AB-205/AB-37 — ids `abortRun` has already requested cancellation for
   // (`ActiveRun.abort()` called) but whose teardown has not yet genuinely
   // settled. Guards `abortRun` itself against re-calling `abort()` (and
@@ -2581,16 +2848,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           lastMaximumSteps: request.maximumSteps ?? null,
           // Reset the active-skill snapshot at the start of every run so a reused
           // session never seeds a fresh run with the PREVIOUS run's active skills.
-          // The snapshot is otherwise written only by createSkillStateSnapshotHook
+          // The snapshot is otherwise written only by createSkillRecordSnapshotHook
           // after the run's first onStep boundary; if the durable process crashes
           // before that first snapshot, recovery would read this session's stale
-          // lastActiveSkills and pre-seed the new run's SkillSession with skills a
-          // live fresh run would not have — making load_skill_resource/list_skills
-          // treat stale skills as active. null clears it: buildRunDepsFromSession
-          // runs lastActiveSkills through isActiveSkillEntryArray, which rejects
-          // null → initialActiveSkills undefined → the recovered run starts empty,
-          // exactly as a fresh run would (PRRT_kwDORvupsc6Mddv3).
-          lastActiveSkills: null,
+          // records and pre-seed the new run with skills a live fresh run would not
+          // have. null clears it: buildRunDepsFromSession runs the value through
+          // isSkillActivationRecordArray, which rejects null → the recovered run
+          // starts empty, exactly as a fresh run would (PRRT_kwDORvupsc6Mddv3).
+          //
+          // All three keys, not just the records. The run id and step are what
+          // loadCommittedScheduledActiveSkills matches on, and a stale pair left
+          // behind would let it accept a committed step snapshot belonging to a
+          // previous run on this session.
+          activeSkillRecords: null,
+          activeSkillRecordsRunId: null,
+          activeSkillRecordsStep: null,
           // Durable recovery needs the authority that was safe to persist at
           // dispatch time. Credentials, tracing, and other request-local data
           // intentionally never cross the session boundary.
@@ -2710,17 +2982,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // `promoteForNewRun()` promotes any agent-identity bump a prior run
       // deferred (AB-199's coordinator amendments, 2026-09-02 addendum); a
       // no-op when nothing was pending.
-      let steeringGate: BureauSteeringGate | undefined;
-      if (!runtime.durable) {
-        steeringGate = steeringGates.get(sessionId);
-        if (!steeringGate) {
-          steeringGate = createSteeringGate(
-            sessionId,
-            steeringCommandLedger,
-            runtimeServices.clock,
-          );
-          steeringGates.set(sessionId, steeringGate);
-        }
+      // AB-200: durable runs get a steering gate too. They were excluded
+      // while `submitSteeringCommand` refused every durable command —
+      // attaching a gate nothing could ever write to was pointless. Now
+      // that durable steering persists and recovers, excluding them would
+      // be the actual bug: a command admitted and durably recovered would
+      // never reach the run it was meant to steer.
+      let steeringGate = steeringGates.get(sessionId);
+      if (!steeringGate) {
+        steeringGate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
+        steeringGates.set(sessionId, steeringGate);
+      }
+      // A durable run starting after a restart must see the recovered
+      // desired state at its own step 0, not merely at the next steering
+      // call, so the log is drained before the run begins.
+      const steeringMailboxForRun = getSteeringMailbox(sessionId);
+      if (steeringMailboxForRun !== undefined) {
+        await ensureSteeringGate(sessionId, [runId]);
       }
       steeringGate?.promoteForNewRun(runId, runtimeServices.clock.nowISO());
       // AB-67/AB-199 — a per-run VIEW of the shared session gate (see
@@ -2739,10 +3017,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // AB-260: the bureau's single composed RuntimeServices instance,
           // snapshotted into every run it starts.
           runtime: runtimeServices,
-          prepareStep: runRuntime.prepareStep,
           ...(runSteeringGate ? { steering: runSteeringGate } : {}),
-          onStep: [
-            ...runRuntime.onStep,
+          hooks: registerTrailingOnStep(
+            runRuntime.hooks,
+            'bureau:pending-approval-persist',
             async (stepResult) => {
               for (const stepResultItem of stepResult.results) {
                 if (
@@ -2760,9 +3038,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 );
               }
             },
-          ],
+          ),
           executeOptions: requestContext === undefined ? {} : { requestContext },
-          validateResponse: runRuntime.validateResponse,
           // Thread agentName and runId so curated tool.* bubble events are stamped
           // with {agentName, runId, step} metadata (C3) and durable launch input
           // carries the owning agent for audit/recovery attribution (F2). Fall back
@@ -2780,6 +3057,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? {
               engine: runtime.durable.engine,
               checkpointStore: runtime.durable.checkpointStore,
+              // COR-625: this run's terminal checkpoint-retention step,
+              // folded into its `closed()`. Memoized per run id, so the
+              // listeners below firing it independently costs nothing.
+              ...(durableTerminalCleanup ? { terminalCleanup: durableTerminalCleanup } : {}),
               runId,
               // Carry the owning session in the durable input so boot recovery can
               // correlate a recovered handle back to its session without a side
@@ -2855,6 +3136,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         activeRuns.delete(activeRun);
         runToolboxes.delete(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
+        // COR-625: a terminal transition owes this run one checkpoint-
+        // retention step whether or not anyone ever calls `closed()`.
+        // Memoized per run id, so this and `closed()`'s own fold resolve the
+        // SAME step. Fire-and-forget: the step records its own
+        // acknowledgement durably and never rejects.
+        void runTerminalCheckpointCleanup(runId);
         // AB-67's ratified Abort row: a session's pause/resume never carries
         // into a future run. Any command still `accepted` and bound to this
         // run transitions to `failed`/`'run-terminal'` the moment the run
@@ -2903,6 +3190,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         activeRuns.delete(activeRun);
         runToolboxes.delete(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
+        // COR-625: a terminal transition owes this run one checkpoint-
+        // retention step whether or not anyone ever calls `closed()`.
+        // Memoized per run id, so this and `closed()`'s own fold resolve the
+        // SAME step. Fire-and-forget: the step records its own
+        // acknowledgement durably and never rejects.
+        void runTerminalCheckpointCleanup(runId);
         flowController?.settle(runId);
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
         // See the identical call in the `run.completed` listener above.
@@ -2963,6 +3256,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         activeRuns.delete(activeRun);
         runToolboxes.delete(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
+        // COR-625: a terminal transition owes this run one checkpoint-
+        // retention step whether or not anyone ever calls `closed()`.
+        // Memoized per run id, so this and `closed()`'s own fold resolve the
+        // SAME step. Fire-and-forget: the step records its own
+        // acknowledgement durably and never rejects.
+        void runTerminalCheckpointCleanup(runId);
         flowController?.settle(runId);
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
       });
@@ -3143,7 +3442,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     const recoveredRun = reattachDurableActiveRun(
-      { engine: runtime.durable!.engine, checkpointStore: runtime.durable!.checkpointStore },
+      {
+        engine: runtime.durable!.engine,
+        checkpointStore: runtime.durable!.checkpointStore,
+        // COR-625: same terminal checkpoint-retention step as the live path.
+        // A run recovered after a restart still owes its cleanup.
+        ...(durableTerminalCleanup ? { terminalCleanup: durableTerminalCleanup } : {}),
+      },
       {
         runId,
         handle,
@@ -3212,9 +3517,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // unavailable) or one interrupted by teardown fires NO terminal event — the
     // adapter stays write-free for those and the resolver/teardown owns the
     // session status; so these listeners only run for a genuinely settled run.
+    // COR-625: a reattached run whose `result` REJECTS — a recovered
+    // workflow whose stored result fails its schema-version check
+    // (`UnsupportedRunResultVersionError`, rethrown by
+    // `driveReattachedRun`) is the reachable case — dispatches no terminal
+    // event at all, so neither listener below ever fires and `closed()`'s
+    // own fold is skipped too (`createClosedAcknowledgement` classifies a
+    // rejected `result` as `failed` without consulting `resolveOutcome`).
+    // Without this the run would reach a dead end with NO
+    // `run.cleanup-settled` record, which is exactly the "cleanup failure
+    // that is invisible" this feature exists to prevent. The step re-reads
+    // the engine itself, so a run left non-terminal by the failure is
+    // recorded as unresolved rather than being pruned.
+    detachBestEffortPromise(recoveredRun.result.catch(() => runTerminalCheckpointCleanup(runId)));
+
     recoveredRun.once('run.completed', (event) => {
       activeRuns.delete(recoveredRun);
       disposeRecoveredRunFrameForwarder();
+      // COR-625: a terminal transition owes this run one checkpoint-
+      // retention step whether or not anyone ever calls `closed()`.
+      // Memoized per run id, so this and `closed()`'s own fold resolve the
+      // SAME step. Fire-and-forget: the step records its own
+      // acknowledgement durably and never rejects.
+      void runTerminalCheckpointCleanup(runId);
       const completedConversation = event.conversation;
       const finishReason = event.finishReason;
       const lastRunStatus = isRunFailureFinishReason(finishReason) ? 'error' : 'completed';
@@ -3245,6 +3570,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     recoveredRun.once('run.aborted', (event) => {
       activeRuns.delete(recoveredRun);
       disposeRecoveredRunFrameForwarder();
+      // COR-625: a terminal transition owes this run one checkpoint-
+      // retention step whether or not anyone ever calls `closed()`.
+      // Memoized per run id, so this and `closed()`'s own fold resolve the
+      // SAME step. Fire-and-forget: the step records its own
+      // acknowledgement durably and never rejects.
+      void runTerminalCheckpointCleanup(runId);
       const abortedConversation = event.conversation;
 
       const report = buildTerminalReportFromAbortedEvent(runId, {
@@ -3889,9 +4220,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   // instance, snapshotted into every run it starts — including
                   // a mocked/custom-engine reattach.
                   runtime: runtimeServices,
-                  prepareStep: runRuntime.prepareStep,
-                  onStep: runRuntime.onStep,
-                  validateResponse: runRuntime.validateResponse,
+                  hooks: runRuntime.hooks,
                   executeOptions: requestContext === undefined ? {} : { requestContext },
                   agentName: recoveredAgentName,
                   runId: handle.id,
@@ -4056,10 +4385,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // AB-260: the bureau's single composed RuntimeServices instance,
           // snapshotted into every scheduler task run it starts.
           runtime: runtimeServices,
-          onStep: runRuntime.onStep,
-          prepareStep: runRuntime.prepareStep,
+          hooks: runRuntime.hooks,
           stopWhen: options.stopWhen,
-          validateResponse: runRuntime.validateResponse,
         };
       },
     };
@@ -4325,6 +4652,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // AB-96 — drop the cached terminal RunReport too, or a long-lived bureau
     // that creates/deletes many runs would retain one forever per run id.
     runReports.delete(id);
+    // COR-625: released on the same boundary as the report it belongs to.
+    // The step has already recorded its acknowledgement durably by the time
+    // a report is released, so nothing observable is lost — only the
+    // in-memory memo, whose exactly-once duty is over once every trigger for
+    // this run id has passed.
+    terminalCheckpointCleanups.delete(id);
   }
 
   /**
@@ -4360,6 +4693,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         status: 'canceled',
         principal: 'system:run-abort',
       });
+      // COR-625: the third trigger. A run cancelled here may have no live
+      // `ActiveRun` in this process at all — no terminal listener will ever
+      // fire for it — so the cancellation path owes the step directly.
+      // `'requested'` is the only outcome that proves a committed
+      // cancellation; the others describe a run this call never genuinely
+      // terminated, and pruning on those would be the exact
+      // prune-before-terminal-transition this issue names as its rollback
+      // trigger. Where a live run DOES exist, its own terminal listener
+      // reaches the same memoized step, which is what keeps
+      // cancel-then-terminal at exactly one step rather than two.
+      await runTerminalCheckpointCleanup(runId);
     }
     return outcome;
   }
@@ -5118,6 +5462,188 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       : undefined;
 
     await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
+  }
+
+  /**
+   * COR-625 — the terminal-run cleanup step: one application of
+   * `options.checkpointRetention` to a durable run's weft checkpoint history,
+   * run exactly once per run id and reported as a {@link RunCleanupAcknowledgement}.
+   *
+   * Memoized on `runId` in {@link terminalCheckpointCleanups}, which is what
+   * makes "exactly one step, never two" true across the THREE independent
+   * triggers that can observe the same run reaching a terminal state: the
+   * live run's own terminal listeners, a recovered run's terminal listeners,
+   * and `cancelDurableRun` cancelling a run this process holds no
+   * `ActiveRun` for at all. Every trigger calls this; the first one to arrive
+   * performs the step and the rest await its promise.
+   *
+   * The step re-reads the durable record before pruning anything. A bureau
+   * terminal listener fires on operative's own event emitter, which is NOT
+   * proof that the engine's final checkpoint write has committed, and weft's
+   * prune rejects on a compare-and-swap race with a concurrent write
+   * (`packages/weft/src/core/engine/checkpoint-prune.ts`). Pruning on the
+   * event alone would therefore both risk this issue's own rollback trigger
+   * — a run whose checkpoints are pruned BEFORE its terminal transition —
+   * and manufacture spurious `persistence-failed` results out of a race that
+   * is really just "too early". Gating on the same post-transition re-read
+   * `resolveCancelDurableRun` already performs removes both.
+   *
+   * Never rejects: it is folded into `closed()`, which never rejects, and a
+   * throw here would be attributed to the RUN's teardown rather than to this
+   * step.
+   */
+  async function runTerminalCheckpointCleanup(runId: string): Promise<RunCleanupAcknowledgement> {
+    const existing = terminalCheckpointCleanups.get(runId);
+    if (existing) return existing;
+    const step = performTerminalCheckpointCleanup(runId);
+    terminalCheckpointCleanups.set(runId, step);
+    return step;
+  }
+
+  /** The un-memoized body of {@link runTerminalCheckpointCleanup}. */
+  async function performTerminalCheckpointCleanup(
+    runId: string,
+  ): Promise<RunCleanupAcknowledgement> {
+    // The outer fence behind this step's "never rejects" contract. Every
+    // caller depends on it: the terminal listeners fire this as
+    // `void runTerminalCheckpointCleanup(...)`, where a rejection becomes an
+    // unhandled rejection, and `cancelDurableRun` AWAITS it while its own
+    // public doc comment promises it never rejects. `classifyTerminalCheckpointCleanup`
+    // classifies the outcomes it can see, but it also awaits a
+    // caller-supplied `shutdownTimeoutSleep`, so it cannot promise this on
+    // its own — the same reason `shutdown()` wraps its identical
+    // `shutdownTimeoutSleep` race in `settleNeverRejecting`.
+    let acknowledgement: RunCleanupAcknowledgement;
+    try {
+      acknowledgement = await classifyTerminalCheckpointCleanup(runId);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'audit-trail',
+        message: `[bureau] terminal checkpoint cleanup for run "${runId}" settled via an unexpected rejection: ${serializeUnknownError(error)}`,
+      });
+      acknowledgement = { status: 'failed', error };
+    }
+    // The acknowledgement is recorded whatever it is — including the
+    // `not-required` of the default `'keep-all'` policy. "A cleanup failure
+    // that is invisible" is this issue's other named rollback trigger, and
+    // an operator can only answer "did cleanup finish?" from a record that
+    // exists for every run, not only for the ones that pruned something.
+    await auditTrailInstance
+      ?.record({
+        runId,
+        type: 'run.cleanup-settled',
+        detail: { acknowledgement },
+      })
+      .catch((error: unknown) => {
+        // `record()` is documented best-effort and does not reject without a
+        // `dedupeKey`; a rejection nonetheless must not turn a successful
+        // prune into a failed cleanup, so it is diagnosed rather than
+        // folded into the acknowledgement.
+        diagnose({
+          level: 'warn',
+          scope: 'audit-trail',
+          message: `[bureau] run.cleanup-settled audit record failed for run "${runId}"`,
+          cause: error,
+        });
+      });
+    return acknowledgement;
+  }
+
+  /**
+   * Resolves the step's acknowledgement without recording it. Split from
+   * {@link performTerminalCheckpointCleanup} so the audit write happens on
+   * exactly one path, including the early returns.
+   */
+  async function classifyTerminalCheckpointCleanup(
+    runId: string,
+  ): Promise<RunCleanupAcknowledgement> {
+    const durable = runtime.durable;
+    // Nothing durable to retain: a process-local run has no checkpoint
+    // history, which is this issue's own documented out-of-scope case.
+    if (!durable) return { status: 'not-required' };
+    const retention = options.checkpointRetention;
+    if (!retention || retention === 'keep-all') return { status: 'not-required' };
+
+    let state: WorkflowState | null;
+    try {
+      state = await durable.engine.get(runId);
+    } catch (error) {
+      return { status: 'unresolved', reason: 'persistence-failed', error };
+    }
+    if (!state || DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status)) {
+      // Either the engine has no such run, or it is not terminal yet. Both
+      // mean this step cannot truthfully claim to have pruned a terminal
+      // run's history — see this function's own doc comment.
+      return {
+        status: 'unresolved',
+        reason: 'persistence-failed',
+        error: new Error(
+          `runTerminalCheckpointCleanup("${runId}"): refusing to prune checkpoints for a run ` +
+            `the engine reports as ${state ? `"${state.status}"` : 'missing'} — not terminal.`,
+        ),
+      };
+    }
+
+    const timeoutMilliseconds = retention.timeoutMilliseconds;
+    if (timeoutMilliseconds === undefined) {
+      try {
+        await durable.engine.pruneCheckpoints(runId, { keepLast: retention.keepLast });
+        return { status: 'completed' };
+      } catch (error) {
+        return { status: 'unresolved', reason: 'persistence-failed', error };
+      }
+    }
+
+    // The bound ABORTS the prune rather than merely abandoning the wait:
+    // weft throws the abort reason before issuing any delete, so a step that
+    // times out while still scanning leaves no unowned deletes running
+    // behind a cached `'timed-out'` acknowledgement. Weft stops rechecking
+    // the signal once its first delete chunk commits (see
+    // `checkpoint-prune.ts`'s own doc comment), so a prune large enough to
+    // span more than one chunk can still finish its remaining chunks after
+    // the abort — an abandoned wait would leave EVERY delete unowned, which
+    // is the case this actually closes. Sleeps on `shutdownTimeoutSleep`, which
+    // is `RuntimeServices.timers`-backed (never a real timer), so a manual
+    // runtime drives this exactly as it drives `shutdown()`'s own wait.
+    const pruneAbort = new AbortController();
+    const sleepAbort = new AbortController();
+    try {
+      const outcome = await Promise.race([
+        durable.engine
+          .pruneCheckpoints(runId, { keepLast: retention.keepLast, signal: pruneAbort.signal })
+          .then(
+            (): RunCleanupAcknowledgement => ({ status: 'completed' }),
+            (error: unknown): RunCleanupAcknowledgement =>
+              pruneAbort.signal.aborted
+                ? { status: 'unresolved', reason: 'timed-out' }
+                : { status: 'unresolved', reason: 'persistence-failed', error },
+          ),
+        shutdownTimeoutSleep(timeoutMilliseconds, sleepAbort.signal).then(
+          (): RunCleanupAcknowledgement => {
+            pruneAbort.abort();
+            return { status: 'unresolved', reason: 'timed-out' };
+          },
+          // `shutdownTimeoutSleep` is a public, caller-injectable seam
+          // (`BureauOptions.shutdownTimeoutSleep`), so it CAN reject even
+          // though the default never does. A rejection means the bound
+          // could not be applied at all: the prune is still stopped —
+          // leaving it running behind an answer nobody owns is precisely
+          // what this bound exists to prevent — and the failure is
+          // classified as the unresolved wait it is, carrying the error
+          // rather than being silently reported as a clean timeout.
+          (error: unknown): RunCleanupAcknowledgement => {
+            pruneAbort.abort();
+            return { status: 'unresolved', reason: 'timed-out', error };
+          },
+        ),
+      ]);
+      return outcome;
+    } finally {
+      // Release whichever side of the race lost, so neither a pending timer
+      // nor a caller-supplied sleep outlives this step.
+      sleepAbort.abort();
+    }
   }
 
   /**
@@ -5925,6 +6451,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       steeringGateForAbort?.settleForDeletion(runtimeServices.clock.nowISO());
       steeringGateForAbort?.purgeFromLedger();
       steeringGates.delete(id);
+      // AB-200: the durable side needs the same treatment the gate and
+      // ledger just got, and for the identical reason — a reused session
+      // id must not inherit a deleted session's command history. The
+      // mailbox is keyed by `sessionId` as its Weft `resourceId`, so a
+      // cached instance left behind here would hand a new session the old
+      // one's undrained commands on its first `ensureSteeringGate` call.
+      // Dropping the recovery promise alongside it keeps the two in step;
+      // a future session under this id recovers from the durable log
+      // rather than from a resolved promise about a session that is gone.
+      steeringMailboxes.get(id)?.dispose();
+      steeringMailboxes.delete(id);
+      steeringRecoveries.delete(id);
 
       await Promise.allSettled(runTerminals);
 
@@ -6050,6 +6588,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * `unsupported-capability`. No `SessionInputRecord` is created and no `id`
    * is consumed by this method today.
    */
+  /**
+   * COR-435 — generalizes the `inFlightSessionDeletions` coalescing pattern
+   * (see that map's own doc comment, below `deleteSession`) to
+   * `(principal, 'session-input', id)`: two concurrent admission attempts
+   * for the identical retry identity share ONE in-flight promise rather
+   * than racing two independent mailbox admissions. Keyed by a joined
+   * string (not a nested Map) for the same reason a plain `Map<string, ...>`
+   * suffices for session deletions — the three components are individually
+   * unbounded strings, so a delimiter that cannot appear in any of them is
+   * used to prevent `("a\x00b", "c")` and `("a", "b\x00c")` from colliding.
+   */
+  const inFlightSessionInputAdmissions = new Map<string, Promise<SessionInputAdmissionOutcome>>();
+
   async function submitSessionInput(
     sessionId: string,
     request: SessionInputAdmissionRequest,
@@ -6059,14 +6610,58 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // ephemeral bureau (no persistence/storage) is a supported configuration,
     // and every sessionId is necessarily unknown in it — the correct outcome
     // per this method's own contract is `not-found`, not a throw.
-    const session = runtime.sessionStore ? await runtime.sessionStore.load(sessionId) : undefined;
-    if (!session || !isSessionAuthorityAuthorized(session.metadata, request.principal)) {
+    const sessionStoreForInput = runtime.sessionStore;
+    const session = sessionStoreForInput ? await sessionStoreForInput.load(sessionId) : undefined;
+    // `session` truthy implies `sessionStoreForInput` was truthy above, but
+    // TypeScript cannot carry that narrowing across the ternary into later
+    // code — this makes it explicit rather than asserting it away.
+    if (
+      !session ||
+      !sessionStoreForInput ||
+      !isSessionAuthorityAuthorized(session.metadata, request.principal)
+    ) {
       return { outcome: 'not-found' };
     }
     if (isSessionRunTerminal(session.metadata)) {
       return { outcome: 'session-terminal', sessionId };
     }
-    return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
+
+    const sessionMailbox = getSessionInputMailbox(sessionId);
+    const storage = runtime.durableStorage;
+    const kv = runtime.kv;
+    if (sessionMailbox === undefined || storage === undefined || kv === undefined) {
+      return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
+    }
+
+    const id = request.id ?? runtimeServices.identifiers.next('session-input');
+    const reservationKey = `${request.principal}\u0000session-input\u0000${id}`;
+    const existing = inFlightSessionInputAdmissions.get(reservationKey);
+    if (existing) return existing;
+
+    const payload: PersistedSessionInput = {
+      payload: request.payload,
+      ...(request.expiresAt !== undefined ? { expiresAt: request.expiresAt } : {}),
+      ...(request.supersedes !== undefined ? { supersedes: request.supersedes } : {}),
+    };
+
+    const admission = admitSessionInput({
+      storage,
+      kv,
+      sessionStore: sessionStoreForInput,
+      sessionMailbox,
+      sessionId,
+      id,
+      principal: request.principal,
+      deliveryMode: request.deliveryMode,
+      payload,
+      principalBacklogLimit: sessionInputPrincipalBacklogLimit,
+      sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
+      nowMs: runtimeServices.clock.now(),
+    }).finally(() => {
+      inFlightSessionInputAdmissions.delete(reservationKey);
+    });
+    inFlightSessionInputAdmissions.set(reservationKey, admission);
+    return admission;
   }
 
   /**
@@ -6130,18 +6725,181 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (isSessionRunTerminal(session.metadata) && liveRunIds.length === 0) {
       return { outcome: 'session-terminal', sessionId };
     }
-    if (request.requestedValue.target !== 'pause' && request.requestedValue.target !== 'resume') {
+    // AB-200/AB-68: `agent-identity` joins `pause`/`resume` on the admitted
+    // path. The gate has always accepted it (see `ImplementedSteeringCommand`),
+    // and what was missing was this verb's own catalog validation — the one
+    // piece `ImplementedSteeringCommand`'s doc comment names as still owed.
+    // `route`/`model`/`provider`/`effort` remain unreachable: the gate is
+    // type-narrowed against them on purpose, and widening it is the
+    // separate state-machine slice that owns per-target desired-state
+    // writes and per-run `configVersion` accounting.
+    const steeringTarget = request.requestedValue.target;
+    // A `policyRef` names a pre-approved policy only the AB-66 selector can
+    // resolve into a concrete agent name. Until that resolution path exists
+    // here, a `policyRef`-carrying command is unsupported rather than
+    // guessed at — validating an unresolved reference against the agents
+    // map would reject every legitimate policy name.
+    if (steeringTarget === 'agent-identity' && request.requestedValue.policyRef !== undefined) {
       return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
     }
-    if (runtime.durable) {
+    // A durably-configured bureau with no resolved storage backend cannot
+    // persist a command, and admitting one into the in-memory gate would
+    // silently lose it on restart — exactly what the durable contract
+    // exists to prevent. That combination is not reachable through normal
+    // composition (durable execution resolves ON only when a persistent
+    // backend is configured), so this stays a guard rather than a path.
+    if (runtime.durable && runtime.durableStorage === undefined) {
       return { outcome: 'unsupported-capability', reason: 'durable-steering-unavailable' };
     }
-
-    let gate = steeringGates.get(sessionId);
-    if (!gate) {
-      gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
-      steeringGates.set(sessionId, gate);
+    // `SteeringRequestedValue`'s own contract: an agent-identity `override`
+    // "must be a key of Bureau<D>'s agents map". Validated against the
+    // construction-time snapshot every other agent lookup in this module
+    // uses, so a name this Bureau cannot run is refused at admission rather
+    // than surfacing as an unresolvable agent at the next run's step 0.
+    //
+    // `policy-denied` rather than a new failure reason: this deployment's
+    // own catalog is what refuses the change, which is what that reason
+    // already means. Widening the exported `SteeringCommandFailure` union
+    // is a contract change owned by the steering-types issue, not this one.
+    if (
+      steeringTarget === 'agent-identity' &&
+      agentsSnapshot[request.requestedValue.override] === undefined
+    ) {
+      return {
+        outcome: 'rejected',
+        failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+      };
     }
+
+    // AB-200 — validate a configuration override against the live model
+    // catalog, coordinate by coordinate.
+    //
+    // NOT through `planSelection`, and the reason is a real constraint
+    // rather than a preference. `composePolicy`'s exact-override path
+    // (`providers/policy.ts`'s `matchesOverride`) requires provider AND
+    // model together — "a partially specified override cannot resolve to
+    // one candidate, so it matches nothing" — and rejects any override
+    // naming a `route`, because `route` is not a field `BackendDescriptor`
+    // carries. A steering command addresses exactly one coordinate, so it
+    // can never satisfy that path: routing every one of them through
+    // `planSelection` would reject every legitimate single-coordinate
+    // command as `no-candidate`. That is the catalog gap AB-65 names.
+    //
+    // What a steering override actually needs to answer is narrower: "is
+    // this coordinate one the deployment knows about?" The accumulated
+    // desired configuration is recomputed into a full plan at the runStep
+    // selection boundary anyway (AB-250's revalidation), which is where
+    // whole-backend coherence is decided. Admission's job is only to stop
+    // a value the catalog has never heard of.
+    //
+    // The one cast: every target the gate cannot admit has already
+    // returned above (the four configuration targets are admitted, and
+    // `agent-identity` with a `policyRef` returned at the policyRef check),
+    // so this value genuinely is one of the gate's accepted variants.
+    // TypeScript cannot carry that narrowing across the intervening
+    // statements because the checks are separate early returns rather than
+    // one discriminating switch.
+    let resolvedRequestedValue =
+      request.requestedValue as ImplementedSteeringCommand['requestedValue'];
+    if (isConfigurationTarget(steeringTarget)) {
+      // Narrowing `steeringTarget` does not narrow `request.requestedValue`:
+      // they are separate bindings, so the predicate above tells TypeScript
+      // nothing about the value's own discriminant. Bind the narrowed view
+      // once here rather than casting at each field access.
+      const configurationRequest = request.requestedValue as Extract<
+        SteeringRequestedValue,
+        { target: 'route' | 'model' | 'provider' | 'effort' }
+      >;
+
+      // COR-1227 — resolve a `policyRef` to a concrete coordinate.
+      //
+      // A policyRef names a key of `BureauModelPolicyOptions.users`, whose
+      // own doc comment fixes that meaning: "Named policy profiles are keys
+      // of `users`". Resolution reads that profile's coordinate for this
+      // target and admits the concrete value, so the stored command records
+      // what was actually chosen rather than an unresolved reference a
+      // later reader would have to re-resolve against possibly-changed
+      // configuration.
+      //
+      // Not through `planSelection`, for the reason the override path below
+      // documents: `composePolicy`'s exact-override test needs provider and
+      // model together and rejects routes outright, so a single-coordinate
+      // request can never satisfy it.
+      // `Effort` is a union of string literals, so `string` already
+      // covers every coordinate this can hold.
+      let override: string | undefined = configurationRequest.override;
+      if (configurationRequest.policyRef !== undefined) {
+        const profile = options.modelPolicy?.users?.[configurationRequest.policyRef];
+        if (profile === undefined) {
+          // Unknown policy name. Distinct from the case below, and the
+          // caller is entitled to tell them apart: one is a typo or a
+          // decommissioned profile, the other is a profile that simply
+          // says nothing about this coordinate.
+          return {
+            outcome: 'rejected',
+            failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+          };
+        }
+        override =
+          steeringTarget === 'model'
+            ? profile.exactOverride?.model
+            : steeringTarget === 'provider'
+              ? profile.exactOverride?.provider
+              : steeringTarget === 'route'
+                ? profile.exactOverride?.route
+                : // `effort` has a dedicated profile field beside the
+                  // override, and it is the more natural place for a policy
+                  // to express one — `exactOverride.effort` still wins when
+                  // both are set, matching the override's name.
+                  (profile.exactOverride?.effort ?? profile.defaultEffort);
+        if (override === undefined) {
+          // The profile exists but specifies nothing for this coordinate.
+          // Admitting anything here would be inventing a value the policy
+          // never stated.
+          return {
+            outcome: 'rejected',
+            failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+          };
+        }
+        // The resolved value is admitted, not the reference. It still falls
+        // through to the identical catalog check the `override` path uses
+        // below, so a policy cannot admit a coordinate an override could
+        // not — that is the authority guarantee, and it needs no second
+        // mechanism.
+        resolvedRequestedValue = (
+          steeringTarget === 'effort'
+            ? { target: 'effort', override: override as Effort }
+            : { target: steeringTarget, override }
+        ) satisfies ImplementedSteeringCommand['requestedValue'];
+      }
+      const { descriptors } = modelCatalog.catalog();
+      const known =
+        steeringTarget === 'model'
+          ? descriptors.some((descriptor) => descriptor.model === override)
+          : steeringTarget === 'provider'
+            ? descriptors.some((descriptor) => descriptor.provider === override)
+            : steeringTarget === 'effort'
+              ? descriptors.some((descriptor) =>
+                  descriptor.effort.portable.includes(override as Effort),
+                )
+              : // `route`: a routing entry is configured on the generate
+                // function (`RoutingOptions.routes`), not in the model
+                // catalog, and Bureau does not hold that table. There is
+                // nothing here to validate against, so admission accepts
+                // the name and the routing layer rejects an unknown route
+                // at generate time. Recorded rather than faked: a
+                // membership test against a catalog that structurally
+                // cannot contain routes would reject every valid route.
+                true;
+      if (!known) {
+        return {
+          outcome: 'rejected',
+          failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+        };
+      }
+    }
+
+    const gate = await ensureSteeringGate(sessionId, liveRunIds);
 
     const now = runtimeServices.clock.nowISO();
     const id = request.id ?? runtimeServices.identifiers.next('steering-command');
@@ -6150,10 +6908,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       idOrigin: request.id !== undefined ? 'caller' : 'generated',
       sessionId,
       principal: request.principal,
-      // Narrowed by the `target !== 'pause' && target !== 'resume'` early
-      // return above — TypeScript tracks this back through `request.requestedValue`
-      // without a cast because `request` is never reassigned.
-      requestedValue: request.requestedValue,
+      // For pause/resume/agent-identity this is `request.requestedValue`
+      // unchanged, narrowed by the target early returns above. For the four
+      // configuration targets it is the selector-resolved coordinate, so a
+      // `policyRef` is admitted as the concrete value the plan chose.
+      requestedValue: resolvedRequestedValue,
       requestedAt: now,
       ...(request.expectedRevision !== undefined
         ? { expectedRevision: request.expectedRevision }
@@ -6162,7 +6921,44 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...(request.runId !== undefined ? { runId: request.runId } : {}),
     };
 
-    return gate.admit(command, { liveRunIds, now });
+    // AB-200 durable steering: persist BEFORE admitting into desired
+    // state. A crash between the two then loses nothing — recovery finds
+    // the command still unconsumed and replays it. The reverse order
+    // would put a command into desired state that no restart could
+    // recover, which is precisely the failure the durable contract exists
+    // to rule out.
+    const steeringMailbox = getSteeringMailbox(sessionId);
+    if (steeringMailbox !== undefined) {
+      const persistence = await persistSteeringCommand(steeringMailbox, command);
+      if (!persistence.persisted && persistence.reason !== 'idempotency-identity-mismatch') {
+        // Backlog exhaustion: nothing was written, so nothing may enter
+        // desired state either.
+        return { outcome: 'unsupported-capability', reason: persistence.reason };
+      }
+      // A mailbox idempotency conflict deliberately falls through to the
+      // gate rather than returning here. The gate's ledger is the
+      // authority on conflict *shape* — only it holds the original
+      // command's snapshot, which `SteeringCommandConflict` requires — and
+      // after a restart that ledger is rebuilt by the recovery replay
+      // above, so it can still describe the original. The mailbox
+      // conflict and the gate conflict are the same fact seen twice; the
+      // gate reports it in the contract's own terms.
+    }
+
+    const outcome = gate.admit(command, { liveRunIds, now });
+    // AB-68: give `steering.accepted` its first production dispatch site.
+    // Only the `accepted` transition is dispatched here, and deliberately:
+    // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
+    // are documented as `accepted → X` transitions, so a PRE-admission
+    // rejection (an unknown agent name, an ambiguous run) never reached
+    // `accepted` and must not be reported as having left it. Those three
+    // belong to the gate's own post-admission transitions.
+    if (outcome.outcome === 'accepted') {
+      emitter.dispatch(
+        new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
+      );
+    }
+    return outcome;
   }
 
   function listPendingReviews(): PendingReview[] {
@@ -7475,10 +8271,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           }
         } finally {
           try {
-            runtime.disposeStorage?.();
+            // AB-200: every steering mailbox holds process-local state
+            // over the shared backend, so they are released before the
+            // backend itself is. Disposing a mailbox does not delete its
+            // durable log — the commands stay recoverable by the next
+            // process, which is the whole point of persisting them.
+            for (const mailbox of steeringMailboxes.values()) mailbox.dispose();
+            steeringMailboxes.clear();
+            steeringRecoveries.clear();
           } finally {
-            if (ownsStore) {
-              store.dispose();
+            try {
+              runtime.disposeStorage?.();
+            } finally {
+              if (ownsStore) {
+                store.dispose();
+              }
             }
           }
         }

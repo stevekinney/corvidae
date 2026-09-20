@@ -108,6 +108,7 @@
     triggerGhost: triggerGhostElement,
     actionsMeasure: actionsMeasureElement,
     groups: {
+      leading: leadingElement,
       'text-formatting': textFormattingChunkElement,
       links: linksChunkElement,
       lists: listsChunkElement,
@@ -116,7 +117,10 @@
   }));
   const overflowGroupIds = $derived(overflowController.overflowGroupIds);
 
-  $effect(() => overflowController.setLeadingElement(leadingElement));
+  $effect(() => {
+    const element = leadingElement;
+    return untrack(() => overflowController.setLeadingElement(element));
+  });
   $effect(() => {
     const element = actionsMeasureElement;
     const hasActions = actions !== undefined;
@@ -153,6 +157,47 @@
   );
   const currentBlockType = $derived(resolveCurrentBlockType(activeBlockType));
 </script>
+
+{#snippet leadingChunk()}
+  <div
+    class="toolbar-leading"
+    data-toolbar-flex-group-id="leading"
+    data-toolbar-instance-id={toolbarInstanceId}
+    bind:this={leadingElement}
+  >
+    <div class="toolbar-group" role="group" aria-label="History">
+      <ToolbarButton
+        icon={Undo2}
+        label="Undo"
+        shortcut={getShortcutDisplay('Mod-z')}
+        disabled={disabled || !canUndo}
+        onclick={() => onUndo?.()}
+        data-testid="toolbar-undo"
+      />
+      <ToolbarButton
+        icon={Redo2}
+        label="Redo"
+        shortcut={getShortcutDisplay('Mod-Shift-z')}
+        disabled={disabled || !canRedo}
+        onclick={() => onRedo?.()}
+        data-testid="toolbar-redo"
+      />
+    </div>
+
+    <ToolbarSeparator />
+
+    <!-- Block type dropdown -->
+    <div class="toolbar-group" role="group" aria-label="Block type">
+      <ToolbarDropdown
+        id={`${id}-block-type`}
+        value={currentBlockType}
+        options={blockTypeOptions}
+        {disabled}
+        onchange={handleBlockTypeChange}
+      />
+    </div>
+  </div>
+{/snippet}
 
 {#snippet textFormattingChunk()}
   <div
@@ -296,41 +341,12 @@
   {@attach toolbarOverflowSetup}
   {...rest as Record<string, unknown>}
 >
-  <!-- Undo/Redo + Block type: always visible, measured together as one
-       unit so the flexible groups below know how much room is left. -->
-  <div class="toolbar-leading" bind:this={leadingElement}>
-    <div class="toolbar-group" role="group" aria-label="History">
-      <ToolbarButton
-        icon={Undo2}
-        label="Undo"
-        shortcut={getShortcutDisplay('Mod-z')}
-        disabled={disabled || !canUndo}
-        onclick={() => onUndo?.()}
-        data-testid="toolbar-undo"
-      />
-      <ToolbarButton
-        icon={Redo2}
-        label="Redo"
-        shortcut={getShortcutDisplay('Mod-Shift-z')}
-        disabled={disabled || !canRedo}
-        onclick={() => onRedo?.()}
-        data-testid="toolbar-redo"
-      />
-    </div>
-
-    <ToolbarSeparator />
-
-    <!-- Block type dropdown -->
-    <div class="toolbar-group" role="group" aria-label="Block type">
-      <ToolbarDropdown
-        id={`${id}-block-type`}
-        value={currentBlockType}
-        options={blockTypeOptions}
-        {disabled}
-        onchange={handleBlockTypeChange}
-      />
-    </div>
-  </div>
+  <!-- Undo/Redo + Block type participate in the same priority overflow as
+       the formatting groups, so narrow host rows keep every action reachable
+       through the shared More formatting popover instead of clipping them. -->
+  {#if !isOverflowing('leading')}
+    {@render leadingChunk()}
+  {/if}
 
   <!-- Flexible groups render inline, in priority order, for as long as
        `computeToolbarOverflow` says they fit. Each keeps its own
@@ -370,6 +386,9 @@
         </Button>
       {/snippet}
       <div class="toolbar-overflow" role="group" aria-label="Additional formatting">
+        {#if isOverflowing('leading')}
+          {@render leadingChunk()}
+        {/if}
         {#if isOverflowing('text-formatting')}
           {@render textFormattingChunk()}
         {/if}
@@ -456,8 +475,10 @@
   .toolbar-overflow {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--cinder-space-1);
-    min-width: 14rem;
+    min-width: min(14rem, calc(100vw - var(--cinder-space-4)));
+    max-inline-size: calc(100vw - var(--cinder-space-4));
   }
 
   .toolbar-trailing {

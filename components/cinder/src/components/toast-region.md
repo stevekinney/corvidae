@@ -1,6 +1,6 @@
 # ToastRegion
 
-A region-scoped queue for transient notifications. `<ToastRegion>` owns the two stacked aria-live regions (polite for `info`/`success`/`warning`, assertive for `danger`); `useToast()` returns the dispatcher API to any descendant. See [`./toast-region.a11y.md`](./toast-region.a11y.md) for the ARIA contract.
+A region-scoped queue for transient notifications. `<ToastRegion>` owns the two stacked aria-live regions (polite for `info`/`success`/`warning`, assertive for `danger`); `useToast()` returns the dispatcher API to any descendant. See [`toast-region/README.md`](./toast-region/README.md) for the usage guide and [`toast-region.a11y.md`](./toast-region/toast-region.a11y.md) for the ARIA contract.
 
 ## Placement
 
@@ -18,7 +18,7 @@ Mount one `<ToastRegion />` near the root of the app — `+layout.svelte` for Sv
 </ToastRegion>
 ```
 
-Wrap the app inside the region so route components (descendants) can call `useToast()`. `useToast()` throws (see below) if no region is mounted above the caller. Multiple regions are legal: each owns an independent queue scoped to its subtree (see [Region scope](./toast-region.a11y.md#region-scope)).
+Wrap the app inside the region so route components (descendants) can call `useToast()`. `useToast()` throws (see below) if no region is mounted above the caller. Multiple regions are legal: each owns an independent queue scoped to its subtree (see [Region scope](./toast-region/toast-region.a11y.md#region-scope)).
 
 ## `<ToastRegion>` props
 
@@ -60,7 +60,7 @@ Import the hook from the toast-region subpath. Call `useToast()` from anywhere i
 
 ## Variant routing (polite vs assertive)
 
-`variant` is not just a visual prop — it picks which live region the toast announces through. Polite variants (`info`, `success`, `warning`) queue behind the user's current screen-reader focus; the assertive `danger` variant interrupts. See the [Two regions, two priorities](./toast-region.a11y.md#two-regions-two-priorities) table in the a11y doc for the exact ARIA mapping.
+`variant` is not just a visual prop — it picks which live region the toast announces through. Polite variants (`info`, `success`, `warning`) queue behind the user's current screen-reader focus; the assertive `danger` variant interrupts. See the [Two regions, two priorities](./toast-region/toast-region.a11y.md#two-regions-two-priorities) table in the a11y doc for the exact ARIA mapping.
 
 `maxStack` applies _per stack_: a region can hold up to `maxStack` polite toasts **and** `maxStack` assertive toasts simultaneously.
 
@@ -124,7 +124,7 @@ toast.show('Item moved to trash.', {
 });
 ```
 
-By default the toast dismisses immediately after `onAction` fires. Set `keepOpen: true` to persist the toast after the action runs — useful when the action kicks off async work the user should keep visible feedback about. The action button is focusable inside the live region so keyboard users can Tab to it after the announcement (see [Action button](./toast-region.a11y.md#action-button) in the a11y doc).
+By default the toast dismisses immediately after `onAction` fires. Set `keepOpen: true` to persist the toast after the action runs — useful when the action kicks off async work the user should keep visible feedback about. The action button is focusable inside the live region so keyboard users can Tab to it after the announcement (see [Action button](./toast-region/toast-region.a11y.md#action-button) in the a11y doc).
 
 > [!WARNING] For destructive-action undo flows (`'Item moved to trash.'` → `Undo`), set `dismissible: false`. With the default `dismissible: true`, the user can close the toast via the X button without ever firing `onAction` — and the destructive operation stays committed. Forcing dismissal through the action button (or auto-dismiss after `duration`) keeps the undo path explicit.
 

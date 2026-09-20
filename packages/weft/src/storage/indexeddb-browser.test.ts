@@ -18,12 +18,12 @@
  * ## Running
  *
  * Gate: WEFT_BROWSER_SMOKE=1 must be set (the shared flag for all real-browser
- * smokes). Otherwise all tests skip. This test does NOT run in the default
- * `bun test` pass.
+ * smokes, via `browserSmokeEnabled`). Otherwise all tests skip. This test does
+ * NOT run in the default `bun test` pass. Run it with
+ * `bun run --filter=@corvidae/weft test:browser`.
  *
- * Browser provisioning: `bunx playwright install chromium` (run once; the CI
- * ticket wires this into the workflow). No CHROMIUM_PATH discovery needed —
- * Playwright manages its own pinned binary.
+ * Browser provisioning: `bunx playwright install chromium` (run once). No
+ * CHROMIUM_PATH discovery needed — Playwright manages its own pinned binary.
  *
  * ## Architecture
  *
@@ -43,6 +43,8 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { Browser, BrowserContext, Page } from 'playwright';
 import { chromium } from 'playwright';
+
+import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
 
 import type { StorageCapabilities } from './capabilities.ts';
 
@@ -108,7 +110,7 @@ let server: ReturnType<typeof Bun.serve>;
 let adapterScriptSource: string;
 let baseUrl: string;
 
-describe('IndexedDBStorage — real Chromium durability', () => {
+describe.skipIf(!browserSmokeEnabled)('IndexedDBStorage — real Chromium durability', () => {
   beforeAll(async () => {
     adapterScriptSource = await buildAdapterScript();
 

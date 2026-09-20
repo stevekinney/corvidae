@@ -10,7 +10,7 @@ import {
   type ChildWorkflowHandle,
   type WorkflowConcurrencyOptions,
   type WorkflowContext,
-} from '@corvidae/weft';
+} from '../index.ts';
 
 export interface WelcomeInput {
   name: string;
@@ -31,7 +31,7 @@ export interface WelcomeServices {
   log(message: string): void;
 }
 
-declare module '@corvidae/weft' {
+declare module '../index.ts' {
   interface WorkflowRegistry {
     // Module-augmented workflow name covers the case where a downstream
     // project augments `WorkflowRegistry` via `weft codegen` output. The

@@ -1,10 +1,18 @@
 /**
  * The smallest end-to-end Weft example: define an activity, compose it into a
- * workflow, then run it on an in-memory engine. This is a real consumer starting
- * point — it imports everything from the source-only `@corvidae/weft` workspace, exactly as
- * your own project would. Run it with `bun src/hello-world-example.test-support.ts` from the Weft workspace.
+ * workflow, then run it on an in-memory engine. Run it with
+ * `bun src/hello-world-example.test-support.ts` from the Weft workspace.
+ *
+ * It imports the engine relatively (`./index.ts`) rather than by package name.
+ * A consumer-facing copy of the same example lives under `examples/` and does
+ * import by package name, which is what a consumer types; this in-repo copy
+ * must not, because a module inside a package that names that package resolves
+ * through the package's own `exports` map to its build output, and weft's
+ * `typecheck` deliberately has no build step in front of it. The specifier is
+ * the difference between a file that type-checks from source and one that needs
+ * `dist/` to exist first.
  */
-import { Engine, MemoryStorage, activity, workflow } from '@corvidae/weft';
+import { Engine, MemoryStorage, activity, workflow } from './index.ts';
 
 // --- hello-world -----------------------------------------------------------
 

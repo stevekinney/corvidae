@@ -19,6 +19,8 @@
  * @module
  */
 
+import type { ApprovalResolution } from '@corvidae/cinder';
+import type { TypingParticipant } from '../chat.types.ts';
 import type {
   JSONValue,
   Message,
@@ -85,8 +87,8 @@ export type ChatToolResult = ToolResult & {
 export type ChatPushHandlers = {
   /** A new (or updated) message arrived. Forwarded to the consumer; Chat does not mutate the transcript. */
   onMessage: (message: Message) => void;
-  /** A participant's typing state changed. Forwarded to the consumer. */
-  onTypingChange: (isTyping: boolean) => void;
+  /** Complete snapshot of participants currently typing. Forwarded to the consumer. */
+  onTypingChange: (participants: TypingParticipant[]) => void;
   /** A read receipt arrived. Forwarded to the consumer. */
   onReadReceipt: (event: ChatReadReceiptEvent) => void;
   /** Streaming began for a message — drives Chat's `beginStreaming(messageId)`. */
@@ -109,9 +111,9 @@ export type ChatToolApprovalResolution = 'resolved' | 'pending';
  * promise OR a synchronous throw from the method) to `onadaptererror` rather
  * than swallowing it.
  *
- * The optional `approveToolCall`/`denyToolCall` (consumed by the tool-approval
- * task) and `loadOlderMessages` (consumed by the load-history task) are declared
- * here so the seam is complete; their UI wiring lands with those tasks.
+ * The optional `resolveToolApproval` (consumed by the approval card) and
+ * `loadOlderMessages` (consumed by the load-history task) are declared here so
+ * the seam is complete.
  */
 export type ChatAdapter = {
   /** Supplies connector-neutral activity prose and an icon category for tool calls. */
@@ -176,10 +178,11 @@ export type ChatAdapter = {
    * finished running.
    */
   subscribe?: (conversationId: string, handlers: ChatPushHandlers) => () => void;
-  /** Approve an action-required tool call by id. (UI wired by the tool-approval task.) */
-  approveToolCall?: (toolCallId: string) => Promise<void | ChatToolApprovalResolution>;
-  /** Reject an action-required tool call by id. (UI wired by the tool-approval task.) */
-  denyToolCall?: (toolCallId: string) => Promise<void | ChatToolApprovalResolution>;
+  /** Resolve an action-required approval with the full decision payload. */
+  resolveToolApproval?: (
+    toolCallId: string,
+    resolution: ApprovalResolution,
+  ) => Promise<void | ChatToolApprovalResolution>;
 };
 
 /**
@@ -192,8 +195,7 @@ export type ChatCommand =
   | 'editMessage'
   | 'stopGenerating'
   | 'loadOlderMessages'
-  | 'approveToolCall'
-  | 'denyToolCall';
+  | 'resolveToolApproval';
 
 /** Error event surfaced when an adapter command fails (rejection or sync throw). */
 export type ChatAdapterErrorEvent = {

@@ -79,6 +79,7 @@
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
   import Badge from '../badge/badge.svelte';
+  import CodeBlock from '../code-block/code-block.svelte';
   import Collapsible from '../collapsible/collapsible.svelte';
   import RunStepBranchDisclosure from './run-step-branch-disclosure.svelte';
   import Link from '../link/link.svelte';
@@ -87,6 +88,7 @@
   import type { Attachment } from 'svelte/attachments';
   import type {
     RunStepBranchLane,
+    RunStepDetail,
     RunStepTimelineEntry,
     RunStepTimelineProps,
   } from './run-step-timeline.types.ts';
@@ -127,6 +129,7 @@
   const resolvedAriaLabel = $derived(
     ariaLabelledby === undefined && ariaLabel === undefined ? label : ariaLabel,
   );
+  const timelineInstanceId = $props.id();
 
   const renderedEntries = $derived(flattenEntries(relocateCompensationEntries(steps)));
 
@@ -333,6 +336,10 @@
     return stepId.replaceAll('%', '%25').replaceAll('/', '%2F');
   }
 
+  function runStepDetailIdBase(row: RenderedStepRow, detail: RunStepDetail): string {
+    return `cinder-run-step-timeline__details-${timelineInstanceId}-${row.pathKey}-${escapeStepPathSegment(detail.id)}`;
+  }
+
   function summarizeNestedRunSteps(list: RunStep[]): { count: number; hasCurrent: boolean } {
     let count = 0;
     let hasCurrent = false;
@@ -458,6 +465,11 @@
 
       <div class="cinder-run-step-timeline__content">
         <div class="cinder-run-step-timeline__header">
+          {#if step.icon}
+            <span class="cinder-run-step-timeline__icon" aria-hidden="true">
+              {@render step.icon()}
+            </span>
+          {/if}
           <span class="cinder-run-step-timeline__label">{step.label}</span>
           {#if step.link}
             {@const safeLinkHref = safeStepLinkHref(step.link.href)}
@@ -534,8 +546,24 @@
         {#if step.details && step.details.length > 0}
           <div class="cinder-run-step-timeline__details">
             {#each step.details as detail (detail.id)}
-              <Collapsible trigger={detail.label}>
-                <pre class="cinder-run-step-timeline__detail-content">{detail.content}</pre>
+              <Collapsible
+                idBase={runStepDetailIdBase(row, detail)}
+                trigger={detail.label}
+                open={detail.open ?? false}
+                {...detail.onToggle ? { onToggle: detail.onToggle } : {}}
+              >
+                {#if detail.type === 'text'}
+                  <pre class="cinder-run-step-timeline__detail-content">{detail.content}</pre>
+                {:else}
+                  <CodeBlock
+                    code={detail.code}
+                    {...detail.language === undefined ? {} : { language: detail.language }}
+                    languageLabelVisible={detail.languageLabelVisible ?? true}
+                    class="cinder-run-step-timeline__detail-code"
+                    --cinder-code-block-padding="var(--cinder-space-3)"
+                    --cinder-code-block-height="auto"
+                  />
+                {/if}
               </Collapsible>
             {/each}
           </div>

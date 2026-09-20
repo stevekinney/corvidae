@@ -11,7 +11,7 @@ bun install --frozen-lockfile
 bun run validate
 ```
 
-The local quality commands are `bun run lint`, `bun run typecheck`, `bun run test`, `bun run build`, and `bun run format:check`. `bun run audit` checks high-severity dependency advisories. No CI, publishing, deployment, or Git-hook setup is included.
+The local quality commands are `bun run lint`, `bun run typecheck`, `bun run test`, `bun run build`, and `bun run format:check`. `bun run audit` checks high-severity dependency advisories. The internal workspace has no release or deployment pipeline and installs no Git hooks. Public mirror tooling under `scripts/mirror/` and `.github/workflows/mirror-sync.yaml` is a separate exception: it transforms source for the public repositories that build and publish those packages.
 
 Weft's [PostgreSQL](https://www.postgresql.org/) integration tests start and dispose local clusters. Install PostgreSQL and make `initdb` and `pg_ctl` available on `PATH` before running the complete repository test suite. Those tests use temporary loopback-only databases and require no external credentials.
 
@@ -70,3 +70,7 @@ The root browser fixtures and Weft UI's browser host share the build helpers in 
 The [migration inventory](./MIGRATION.md) records source revisions, package mappings, dependency edges, removal decisions, and validation evidence. It is the completion record for this consolidation.
 
 The [Operative and Bureau API contract](./documentation/operative-type-safe-api.md) explains typed agents, durable execution, and started-work control. The [workflow versioning guide](./documentation/workflow-versioning.md) describes version stamps and recovery behavior. Generated codebase reports are disposable; `scripts/measure-codebase.ts` and `scripts/inventory-dependencies.ts` write fresh measurements to `/tmp` by default.
+
+The [runtime contracts guide](./documentation/runtime-contracts.md) connects provider capabilities, model selection, steering, and cleanup across packages. Weft's [workflow revision guide](./packages/weft/documentation/guides/workflow-revisions.md), [shared-store ownership guide](./packages/weft/documentation/guides/shared-store-ownership.md), and [remote task recovery guide](./packages/weft/documentation/guides/remote-task-recovery.md) cover durable execution across deployments. For interfaces, start with [Cinder composition](./components/cinder/documentation/interface-guide.md) and [chat-room integration](./applications/chat-room/docs/interface-surfaces.md).
+
+The [completed-project documentation audit](./documentation/completed-project-documentation.md) maps all 28 completed Linear projects to their reader-facing guides and references.

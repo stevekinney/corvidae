@@ -1,6 +1,5 @@
 <script lang="ts" module>
-  import type { Snippet } from 'svelte';
-  import type { LineDiff, WordChange } from '@corvidae/markdown';
+  import type { LineDiff } from '@corvidae/markdown';
 
   import type { DiffViewerMode } from './diff-viewer.types.ts';
 
@@ -13,8 +12,6 @@
     selected?: boolean;
     /** Called when user clicks this line (for navigation) */
     onselect?: (() => void) | undefined;
-    /** Optional: custom word change renderer */
-    wordChangeRenderer?: Snippet<[{ changes: WordChange[] }]> | undefined;
     /** Additional CSS classes */
     class?: string;
   };
@@ -23,14 +20,7 @@
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
 
-  let {
-    diff,
-    viewMode,
-    selected = false,
-    onselect,
-    wordChangeRenderer,
-    class: className,
-  }: DiffLineProps = $props();
+  let { diff, viewMode, selected = false, onselect, class: className }: DiffLineProps = $props();
 
   /**
    * Whether this line should be visible based on view mode.
@@ -68,6 +58,16 @@
           : 'Modified line';
     return `${typeLabel}: ${text || 'blank line'}`;
   });
+  const modifiedOldLineLabel = $derived.by(() =>
+    diff.type === 'modified' ? `Removed line: ${diff.oldText || 'blank line'}` : 'Removed line',
+  );
+  const modifiedNewLineLabel = $derived.by(() =>
+    diff.type === 'modified' ? `Added line: ${diff.newText || 'blank line'}` : 'Added line',
+  );
+  const removedGutter = $derived(viewMode === 'final' ? '' : '-');
+  const modifiedSideGutter = $derived(
+    viewMode === 'unified' ? '' : viewMode === 'final' ? '+' : '-',
+  );
 </script>
 
 {#if isVisible}
@@ -91,7 +91,12 @@
         <span class="diff-text">{diff.text || '\u00A0'}</span>
       </button>
     {:else}
-      <div class={classNames('diff-line diff-line-added', className)} data-selected={selected}>
+      <div
+        class={classNames('diff-line diff-line-added', className)}
+        data-selected={selected}
+        role="group"
+        aria-label={accessibleLineLabel}
+      >
         <span class="diff-gutter">+</span>
         <span class="diff-text">{diff.text || '\u00A0'}</span>
       </div>
@@ -111,7 +116,7 @@
         onclick={onselect}
         type="button"
       >
-        <span class="diff-gutter">{showStrikethrough ? '-' : ''}</span>
+        <span class="diff-gutter">{removedGutter}</span>
         <span class="diff-text">
           {#if showStrikethrough}
             <del>{diff.text || '\u00A0'}</del>
@@ -128,8 +133,10 @@
           className,
         )}
         data-selected={selected}
+        role="group"
+        aria-label={accessibleLineLabel}
       >
-        <span class="diff-gutter">{showStrikethrough ? '-' : ''}</span>
+        <span class="diff-gutter">{removedGutter}</span>
         <span class="diff-text">
           {#if showStrikethrough}
             <del>{diff.text || '\u00A0'}</del>
@@ -140,7 +147,7 @@
       </div>
     {/if}
   {:else if diff.type === 'modified'}
-    <!-- Modified line: rendering depends on view mode -->
+    <!-- Modified line: unified renders paired old/new rows; side modes render one side. -->
     {@const lineClass =
       viewMode === 'unified'
         ? 'diff-line-modified'
@@ -150,64 +157,71 @@
     {@const displayText =
       viewMode === 'unified' ? null : viewMode === 'final' ? diff.newText : diff.oldText}
 
-    {#if isInteractive}
-      <button
-        class={classNames('diff-line', lineClass, className)}
-        data-selected={selected}
-        aria-label={accessibleLineLabel}
-        onclick={onselect}
-        type="button"
-      >
-        <span class="diff-gutter">~</span>
-        <span class="diff-text">
-          {#if viewMode === 'unified'}
-            <!-- Unified: show word-level changes -->
-            {#if wordChangeRenderer}
-              {@render wordChangeRenderer({ changes: diff.wordChanges })}
-            {:else}
-              <span class="word-changes">
-                {#each diff.wordChanges as wordChange, widx (`${widx}:${wordChange.type}:${wordChange.text}`)}
-                  {#if wordChange.type === 'same'}
-                    <span>{wordChange.text}</span>
-                  {:else if wordChange.type === 'removed'}
-                    <del class="word-removed">{wordChange.text}</del>
-                  {:else if wordChange.type === 'added'}
-                    <ins class="word-added">{wordChange.text}</ins>
-                  {/if}
-                {/each}
-              </span>
-            {/if}
-          {:else}
-            <!-- Final/Original: show single text -->
-            {displayText || '\u00A0'}
-          {/if}
-        </span>
-      </button>
+    {#if viewMode === 'unified'}
+      {#if isInteractive}
+        <button
+          class={classNames('diff-line diff-line-removed', lineClass, className)}
+          data-selected={selected}
+          aria-label={modifiedOldLineLabel}
+          onclick={onselect}
+          type="button"
+        >
+          <span class="diff-gutter">-</span>
+          <span class="diff-text"><del>{diff.oldText || '\u00A0'}</del></span>
+        </button>
+        <button
+          class={classNames('diff-line diff-line-added', lineClass, className)}
+          data-selected={selected}
+          aria-label={modifiedNewLineLabel}
+          onclick={onselect}
+          type="button"
+        >
+          <span class="diff-gutter">+</span>
+          <span class="diff-text">{diff.newText || '\u00A0'}</span>
+        </button>
+      {:else}
+        <div
+          class={classNames('diff-line diff-line-removed', lineClass, className)}
+          data-selected={selected}
+          role="group"
+          aria-label={modifiedOldLineLabel}
+        >
+          <span class="diff-gutter">-</span>
+          <span class="diff-text"><del>{diff.oldText || '\u00A0'}</del></span>
+        </div>
+        <div
+          class={classNames('diff-line diff-line-added', lineClass, className)}
+          data-selected={selected}
+          role="group"
+          aria-label={modifiedNewLineLabel}
+        >
+          <span class="diff-gutter">+</span>
+          <span class="diff-text">{diff.newText || '\u00A0'}</span>
+        </div>
+      {/if}
     {:else}
-      <div class={classNames('diff-line', lineClass, className)} data-selected={selected}>
-        <span class="diff-gutter">~</span>
-        <span class="diff-text">
-          {#if viewMode === 'unified'}
-            {#if wordChangeRenderer}
-              {@render wordChangeRenderer({ changes: diff.wordChanges })}
-            {:else}
-              <span class="word-changes">
-                {#each diff.wordChanges as wordChange, widx (`${widx}:${wordChange.type}:${wordChange.text}`)}
-                  {#if wordChange.type === 'same'}
-                    <span>{wordChange.text}</span>
-                  {:else if wordChange.type === 'removed'}
-                    <del class="word-removed">{wordChange.text}</del>
-                  {:else if wordChange.type === 'added'}
-                    <ins class="word-added">{wordChange.text}</ins>
-                  {/if}
-                {/each}
-              </span>
-            {/if}
-          {:else}
-            {displayText || '\u00A0'}
-          {/if}
-        </span>
-      </div>
+      {#if isInteractive}
+        <button
+          class={classNames('diff-line', lineClass, className)}
+          data-selected={selected}
+          aria-label={accessibleLineLabel}
+          onclick={onselect}
+          type="button"
+        >
+          <span class="diff-gutter">{modifiedSideGutter}</span>
+          <span class="diff-text">{displayText || '\u00A0'}</span>
+        </button>
+      {:else}
+        <div
+          class={classNames('diff-line', lineClass, className)}
+          data-selected={selected}
+          role="group"
+          aria-label={accessibleLineLabel}
+        >
+          <span class="diff-gutter">{modifiedSideGutter}</span>
+          <span class="diff-text">{displayText || '\u00A0'}</span>
+        </div>
+      {/if}
     {/if}
   {/if}
 {/if}
@@ -252,12 +266,10 @@
 
   .diff-gutter {
     flex-shrink: 0;
-    width: 2rem;
-    padding: var(--cinder-space-0-5) var(--cinder-space-2);
+    width: 1.5rem;
+    padding: var(--cinder-space-0-5) 0;
     text-align: center;
     color: var(--cinder-text-muted);
-    background: var(--cinder-surface-inset);
-    border-inline-end: 1px solid var(--cinder-border);
     user-select: none;
     font-weight: var(--cinder-font-medium);
   }
@@ -279,7 +291,6 @@
   }
 
   .diff-line-added .diff-gutter {
-    background: var(--cinder-status-success-border);
     color: var(--cinder-status-success-text);
   }
 
@@ -289,7 +300,6 @@
   }
 
   .diff-line-removed .diff-gutter {
-    background: var(--cinder-status-danger-border);
     color: var(--cinder-status-danger-text);
   }
 
@@ -304,7 +314,6 @@
   }
 
   .diff-line-removed-original .diff-gutter {
-    background: var(--cinder-surface-inset);
     color: var(--cinder-text-muted);
   }
 
@@ -314,34 +323,7 @@
   }
 
   .diff-line-modified .diff-gutter {
-    background: color-mix(in oklch, var(--cinder-status-info-background), transparent 60%);
     color: var(--cinder-status-info-text);
-  }
-
-  .word-changes {
-    display: inline;
-  }
-
-  .word-removed {
-    background: var(--cinder-status-danger-background);
-    color: var(--cinder-status-danger-text);
-    text-decoration: line-through;
-    border-radius: 2px;
-    padding: 0 2px;
-    box-shadow: inset 0 0 0 1px var(--cinder-status-danger-border);
-  }
-
-  /* DEP-47: underline provides non-color indicator for a11y */
-  .word-added {
-    background: var(--cinder-status-success-background);
-    color: var(--cinder-status-success-text);
-    text-decoration: underline;
-    text-decoration-color: var(--cinder-status-success-solid);
-    text-decoration-thickness: 2px;
-    text-underline-offset: 2px;
-    border-radius: 2px;
-    padding: 0 2px;
-    box-shadow: inset 0 0 0 1px var(--cinder-status-success-border);
   }
 
   /* Modified in final view (highlight subtly) */
@@ -350,7 +332,6 @@
   }
 
   .diff-line-modified-final .diff-gutter {
-    background: color-mix(in oklch, var(--cinder-status-info-background), transparent 65%);
     color: var(--cinder-status-info-text);
   }
 
@@ -360,7 +341,6 @@
   }
 
   .diff-line-modified-original .diff-gutter {
-    background: color-mix(in oklch, var(--cinder-status-info-background), transparent 65%);
     color: var(--cinder-status-info-text);
   }
 </style>

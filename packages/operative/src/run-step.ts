@@ -3,6 +3,7 @@ import { Conversation } from '@corvidae/conversationalist';
 import type { RuntimeServices } from '@corvidae/lifecycle';
 import type { ZodType } from 'zod';
 
+import type { ContextEpochSealer } from './context-epoch';
 import type { AgentRunErrorKind } from './errors';
 import {
   GenerateCompletedEvent,
@@ -111,6 +112,13 @@ export interface StepDeps {
    * and behavior is unchanged.
    */
   readonly selection: SelectionGate | undefined;
+  /**
+   * COR-581's effective-context epoch sealer, threaded from
+   * `RunOptions.contextEpoch`. `undefined` when the run composes none —
+   * the seal below is skipped entirely and `generate.started` carries no
+   * `contextEpochId`, exactly as before.
+   */
+  readonly contextEpoch: ContextEpochSealer | undefined;
   readonly stopConditions: StopCondition[];
   readonly prepareStepHooks: PrepareStepHook[];
   readonly beforeToolExecutionHooks: BeforeToolExecutionHook[];

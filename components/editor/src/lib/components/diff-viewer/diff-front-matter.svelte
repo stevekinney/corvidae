@@ -1,7 +1,6 @@
 <script lang="ts" module>
   import type { HTMLAttributes } from 'svelte/elements';
-  import type { Snippet } from 'svelte';
-  import type { LineDiff, WordChange } from '@corvidae/markdown';
+  import type { LineDiff } from '@corvidae/markdown';
   import type { BadgeVariant } from '@corvidae/cinder';
 
   import type { DiffViewerMode } from './diff-viewer.types.ts';
@@ -19,8 +18,6 @@
     badgeLabel?: string | null;
     /** Badge variant */
     badgeVariant?: BadgeVariant;
-    /** Optional: custom word change renderer (passed to DiffLine) */
-    wordChangeRenderer?: Snippet<[{ changes: WordChange[] }]> | undefined;
     /** Additional CSS classes */
     class?: string;
   };
@@ -38,7 +35,6 @@
     expanded = $bindable(true),
     badgeLabel = null,
     badgeVariant = 'warning',
-    wordChangeRenderer,
     class: className,
     ...rest
   }: DiffFrontMatterProps = $props();
@@ -66,7 +62,7 @@
   {#if expanded}
     <div id={contentId} class="front-matter-content">
       {#each diffs as lineDiff, idx (`fm-${idx}:${lineDiff.type}:${lineDiff.type === 'modified' ? lineDiff.newText : lineDiff.text}`)}
-        <DiffLine diff={lineDiff} {viewMode} {wordChangeRenderer} />
+        <DiffLine diff={lineDiff} {viewMode} />
       {/each}
     </div>
   {/if}

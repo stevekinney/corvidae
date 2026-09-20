@@ -11,3 +11,5 @@ PolicyLock explains why a setting is managed, names the policy source when avail
 
 <PolicyLock id="retention-policy" reason="Managed by your organization" source="Security policy" />
 ```
+
+`reason` is the required explanation; `source` and `scope` add context when the host can name the policy that applies. PolicyLock is explanatory UI, not an authorization check and not a disabled form control. Pair it with [`SettingRow`](../setting-row/README.md), keep the setting visible, and let the host decide whether a request-access or retry action is available.

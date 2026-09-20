@@ -47,6 +47,9 @@ bun run format:check
 bun run test:self
 bun run validate
 bun audit --audit-level=high
+bun run --filter=@corvidae/weft test:benchmarks
 ```
 
 Run local quality commands explicitly. This repository has no Git hooks or automated release pipeline.
+
+Weft's throughput, latency, and memory benchmarks are the one workspace-scoped entry in that list, because they belong to `@corvidae/weft` alone and `bun run --filter` is how the root invokes a single workspace's script. `bun run test` excludes them: their measurements swing far enough between runs on the same machine that they cannot assert a target, so they record numbers on demand instead of gating validation. Their targets are unchanged, and the benchmark directory's unit tests still run in the default suite.

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Expose a Toolbox registry as an MCP server, with tools, resources, and prompts. Toolbox handles tool registration; MCP handles transport and protocol details.
+Expose a Toolbox registry as a [Model Context Protocol](https://modelcontextprotocol.io/) server, with tools, resources, and prompts. Toolbox handles tool registration; MCP handles transport and protocol details.
 
 ## Prerequisites
 

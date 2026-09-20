@@ -159,7 +159,28 @@ export {
   ToolSettledBubbleEvent,
   ToolStartedBubbleEvent,
 } from './events';
-export type { ToolEventStamp } from './events';
+export type {
+  GenerationBackendRecord,
+  GenerationDivergence,
+  GenerationSelectionRecord,
+  ToolEventStamp,
+} from './events';
+// COR-581 — effective-context epochs
+export { createContextEpochSealer, digestText, epochSourcesUnchanged } from './context-epoch';
+export type {
+  ContextEpochConsumer,
+  ContextEpochSealInput,
+  ContextEpochSealer,
+  ContextSourceAvailability,
+  ContextSourceDisposition,
+  ContextSourceRecord,
+  ContextSourceRedaction,
+  ContextSourceTrust,
+  CreateContextEpochSealerOptions,
+  EffectiveContextEpoch,
+  SkillActivationBinding,
+  SkillActivationContext,
+} from './context-epoch';
 // C3 — session verb events
 export {
   SessionCancelEvent,
@@ -192,7 +213,16 @@ export {
 export type { ChildWorkflowCorrelation } from './events';
 // AB-90 child ab90-02 / AB-222 — child reattachment and progress events
 export { ChildWorkflowProgressEvent, ChildWorkflowReattachedEvent } from './events';
+// Hook plan (COR-766). No `HookPlanReplayedEvent` — see the block comment
+// above these classes in `events.ts`.
+export {
+  HookPlanFailedEvent,
+  HookPlanInvokedEvent,
+  HookPlanRegisteredEvent,
+  HookPlanRemovedEvent,
+} from './events';
 export type { ChildWorkflowProgressPayload, ChildWorkflowReattachedPayload } from './events';
+export { observeHookPlan } from './hook-plan-events';
 // D6 — scheduling events
 export * from './create-request-human-input-tool';
 export { createScheduleSelfTool } from './create-schedule-self-tool';
@@ -210,11 +240,13 @@ export { DurableCapabilityUnavailableError } from './durable/durable-capability-
 export * from './durable/schedule-agent';
 export {
   AgentScheduledEvent,
+  ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
   ScheduleFailedEvent,
   SchedulePausedEvent,
   ScheduleResumedEvent,
+  ScheduleSkippedEvent,
   WakeupScheduledEvent,
 } from './events';
 // AB-10 — workflow versioning for in-flight durable runs

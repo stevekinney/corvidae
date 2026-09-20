@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { ports } from './scripts/browser-ports.ts';
 
 // ROADMAP HS-3: run the focus, accessibility, and streaming contracts in all
 // three engines. Chromium still owns the complete suite; WebKit and Firefox run
@@ -38,7 +39,7 @@ export default defineConfig({
   // projects do not touch it. The root `use` merges into every project, so
   // `baseURL` reaches WebKit and Firefox without being restated.
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: `http://localhost:${ports.CHAT_ROOM_PREVIEW_PORT}`,
     // ROADMAP HS-4: leave a trail when something fails, so a flaky-looking
     // failure can be diagnosed instead of guessed at — the pressure that
     // produces "just bump the timeout", which this repo rules out.
@@ -102,7 +103,7 @@ export default defineConfig({
     // `reuseExistingServer: false` on every entry, written down rather than left
     // to the default it already equals (CIN-509). Playwright's default for an
     // UNSET option is `false`, which makes a held port a startup error
-    // (`http://localhost:4599 is already used …`) — the docs' `!process.env.CI`
+    // (`http://localhost:<port> is already used …`) — the docs' `!process.env.CI`
     // is a value they recommend setting, not what unset evaluates to. That
     // matters here because this repository is worked in several git worktrees
     // at once: with reuse on, a second worktree starting the suite while the
@@ -115,19 +116,21 @@ export default defineConfig({
     // cannot drift to `!process.env.CI` unnoticed. `--strictPort` on the dev
     // server below is not what protects it — under reuse the command never
     // runs when the port is held — this setting is.
-    { command: 'bun src/routes/streaming-fixture.ts', port: 4599, reuseExistingServer: false },
     {
-      command: 'bun run build && bun run preview',
-      port: 4173,
+      command: 'bun src/routes/streaming-fixture.ts',
+      port: ports.CHAT_ROOM_FIXTURE_PORT,
       reuseExistingServer: false,
-      // Same port as the fixture entry above. `streaming-fixture.ts` exports
-      // `FIXTURE_PORT` so the number has one home, but a `webServer` command is
-      // a string — this is the one place it has to be spelled again.
+    },
+    {
+      command: `bun run build && bun run preview -- --port ${ports.CHAT_ROOM_PREVIEW_PORT} --strictPort`,
+      port: ports.CHAT_ROOM_PREVIEW_PORT,
+      reuseExistingServer: false,
       env: {
+        CHAT_ROOM_BROWSER: '1',
         // The SDK requires a non-empty key before it will send the request to
         // the local fixture; this value is never sent to Anthropic.
         ANTHROPIC_API_KEY: 'test-key',
-        ANTHROPIC_BASE_URL: 'http://127.0.0.1:4599',
+        ANTHROPIC_BASE_URL: `http://127.0.0.1:${ports.CHAT_ROOM_FIXTURE_PORT}`,
       },
     },
     // A dev server alongside the production preview, purely so hydration
@@ -137,7 +140,31 @@ export default defineConfig({
     //
     // One pair of servers regardless of project count — the webServer plugins
     // are built once from the top-level config in global setup, not per project.
-    { command: 'bun run dev -- --port 5175 --strictPort', port: 5175, reuseExistingServer: false },
+    //
+    // `url` rather than `port`, and this is the one entry where the difference
+    // is observable. A `port` probe resolves the moment something accepts a TCP
+    // connection; Vite binds immediately and only then transforms the
+    // application, on the first request that asks for it. So `port` here means
+    // "the dev server exists", not "the dev server can serve a page", and the
+    // first navigation in `hydration.e2e.ts` races that cold transform — which
+    // aborts in-flight requests when Vite discovers a dependency and restarts
+    // its optimizer. Observed as `net::ERR_ABORTED` on `page.goto` after the
+    // 30s TEST timeout, in a full-matrix run, against a spec that passes in
+    // isolation in 15.7s with 4.0s and 8.4s cold builds in this server's own
+    // output. The two entries above never show it because `bun run build &&
+    // bun run preview` does not bind until the build has finished.
+    //
+    // `url` waits for an actual HTTP response (2xx/3xx/400-403), so cold start
+    // is paid inside `webServer.timeout` where startup belongs, instead of
+    // inside a test's budget. Note what this deliberately is NOT: `retries`
+    // stays 0 and no timeout moves, because the failure was a real race and
+    // both of those would have hidden it rather than removed it.
+    {
+      command: `bun run dev -- --port ${ports.CHAT_ROOM_DEV_PORT} --strictPort`,
+      url: `http://localhost:${ports.CHAT_ROOM_DEV_PORT}/`,
+      env: { CHAT_ROOM_BROWSER: '1' },
+      reuseExistingServer: false,
+    },
   ],
   testMatch: '**/*.e2e.{ts,js}',
 });

@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
-import { mount, unmount } from 'svelte';
+import { mount, tick, unmount } from 'svelte';
 
 import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@corvidae/testing';
 
@@ -25,6 +25,26 @@ describe('LiveRegion', () => {
     try {
       const instance = mount(LiveRegion, { target });
       expect(target.querySelector('[role="status"]')).not.toBeNull();
+      unmount(instance);
+    } finally {
+      target.remove();
+    }
+  });
+
+  test('announces the malformed front-matter recovery sentence politely', async () => {
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    try {
+      const instance = mount(LiveRegion, { target });
+
+      instance.announce('Front matter could not be parsed; showing as plain text.', 'polite');
+      await Promise.resolve();
+      await tick();
+
+      const region = target.querySelector('[aria-live="polite"]');
+      expect(region?.textContent).toBe('Front matter could not be parsed; showing as plain text.');
+      expect(target.querySelector('[role="alert"]')).toBeNull();
+
       unmount(instance);
     } finally {
       target.remove();

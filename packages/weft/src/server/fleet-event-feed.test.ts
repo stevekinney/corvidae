@@ -236,6 +236,49 @@ class RetainingDuringReplayStorage extends MemoryStorage {
   }
 }
 
+class RetainingBetweenWorkflowIndexScanAndEventReadStorage extends MemoryStorage {
+  retainOnNextEventRead = false;
+
+  override async get(key: string): Promise<Uint8Array | null> {
+    if (key === KEYS.fleetEvent(0) && this.retainOnNextEventRead) {
+      this.retainOnNextEventRead = false;
+      await super.conditionalBatch(
+        [{ key: KEYS.fleetEventWatermark(), expectedValue: null }],
+        [
+          { type: 'delete', key: KEYS.fleetEvent(0) },
+          { type: 'delete', key: KEYS.fleetEventByWorkflow('wf-race', 0) },
+          {
+            type: 'put',
+            key: KEYS.fleetEventWatermark(),
+            value: encode({ firstRetainedSequence: 1 }),
+          },
+        ],
+      );
+    }
+    return super.get(key);
+  }
+}
+
+class PurgingBetweenWorkflowIndexScanAndEventReadStorage extends MemoryStorage {
+  purgeOnNextEventRead = false;
+
+  override async get(key: string): Promise<Uint8Array | null> {
+    if (key === KEYS.fleetEvent(0) && this.purgeOnNextEventRead) {
+      this.purgeOnNextEventRead = false;
+      // Mimic Engine.purge() (addWorkflowLinkedFleetEventDeleteKeys in
+      // core/engine/bulk-operations-purge.ts): it deletes a fleet event and
+      // its by-workflow index entry together in one atomic batch, but unlike
+      // retain(), purge never writes fleetEventWatermark — grep confirms it
+      // has no reference to that key.
+      await super.batch([
+        { type: 'delete', key: KEYS.fleetEvent(0) },
+        { type: 'delete', key: KEYS.fleetEventByWorkflow('wf-purged', 0) },
+      ]);
+    }
+    return super.get(key);
+  }
+}
+
 class UnstableWatermarkStorage extends MemoryStorage {
   watermarkReads = 0;
 
@@ -925,6 +968,192 @@ describe('createFleetEventFeed', () => {
       prefix: KEYS.fleetEventPrefix(),
       options: { gt: KEYS.fleetEvent(2), limit: 128 },
     });
+    feed.dispose();
+  });
+
+  it('replays one workflow through the index and matches a full-replay filter exactly', async () => {
+    const feed = createFleetEventFeed(new MemoryStorage());
+    const workflowIds = ['wf-alpha', 'wf-beta', 'wf-gamma'];
+    for (let index = 0; index < 24; index += 1) {
+      const workflowId = workflowIds[index % workflowIds.length];
+      await feed.append({
+        kind: index % 2 === 0 ? 'workflow:started' : 'workflow:completed',
+        // Every third event is fleet-wide (no workflowId) to prove those are excluded.
+        ...(index % 3 === 0 ? {} : { workflowId }),
+        emittedAtMs: index,
+        payload: { index },
+      });
+    }
+
+    const fullReplay = await collect(feed.replay(), 100);
+    for (const workflowId of workflowIds) {
+      const expected = fullReplay.filter((envelope) => envelope.workflowId === workflowId);
+      const indexed = await collect(feed.replay({ workflowId }), 100);
+      expect(indexed).toEqual(expected);
+    }
+    feed.dispose();
+  });
+
+  it('scans only the by-workflow index, never the full fleet-event keyspace', async () => {
+    const storage = new RecordingScanStorage();
+    const feed = createFleetEventFeed(storage);
+    for (let index = 0; index < 12; index += 1) {
+      await feed.append({
+        kind: 'workflow:started',
+        workflowId: index % 2 === 0 ? 'wf-target' : 'wf-other',
+        emittedAtMs: index,
+        payload: { index },
+      });
+    }
+    storage.scanCalls.length = 0;
+
+    const indexed = await collect(feed.replay({ workflowId: 'wf-target' }), 100);
+
+    expect(indexed).toHaveLength(6);
+    expect(indexed.every((envelope) => envelope.workflowId === 'wf-target')).toBeTrue();
+    expect(
+      storage.scanCalls.some(
+        ({ prefix }) => prefix === KEYS.fleetEventByWorkflowPrefix('wf-target'),
+      ),
+    ).toBeTrue();
+    expect(storage.scanCalls.some(({ prefix }) => prefix === KEYS.fleetEventPrefix())).toBeFalse();
+    feed.dispose();
+  });
+
+  it('resumes an indexed workflow replay from a cursor with a lower-bound scan', async () => {
+    const storage = new RecordingScanStorage();
+    const feed = createFleetEventFeed(storage);
+    for (let index = 0; index < 5; index += 1) {
+      await feed.append({
+        kind: 'workflow:started',
+        workflowId: 'wf-cursor',
+        emittedAtMs: index,
+        payload: { index },
+      });
+    }
+
+    const replayed = await collect(feed.replay({ workflowId: 'wf-cursor', fromCursor: '2' }), 10);
+
+    expect(replayed.map((envelope) => envelope.sequence)).toEqual([3, 4]);
+    expect(storage.scanCalls).toContainEqual({
+      prefix: KEYS.fleetEventByWorkflowPrefix('wf-cursor'),
+      options: { gt: KEYS.fleetEventByWorkflow('wf-cursor', 2), limit: 128 },
+    });
+    feed.dispose();
+  });
+
+  it('applies limit to an indexed workflow replay the same way as the unfiltered replay', async () => {
+    const feed = createFleetEventFeed(new MemoryStorage());
+    for (let index = 0; index < 5; index += 1) {
+      await feed.append({
+        kind: 'workflow:started',
+        workflowId: 'wf-limited',
+        emittedAtMs: index,
+        payload: { index },
+      });
+    }
+
+    const replayed = await collect(feed.replay({ workflowId: 'wf-limited' }), 2);
+
+    expect(replayed.map((envelope) => envelope.sequence)).toEqual([0, 1]);
+    feed.dispose();
+  });
+
+  it('reports the same retention gap for an indexed workflow replay as the unfiltered replay', async () => {
+    const feed = createFleetEventFeed(new MemoryStorage());
+    for (let index = 0; index < 4; index += 1) {
+      await feed.append({
+        kind: 'workflow:started',
+        workflowId: 'wf-retained',
+        emittedAtMs: index,
+        payload: { index },
+      });
+    }
+    await feed.retain({ beforeSequence: 2, limit: 10 });
+
+    const indexed = await collect(feed.replay({ workflowId: 'wf-retained', fromCursor: '-1' }), 10);
+
+    expect(indexed[0]?.kind).toBe('fleet:gap');
+    expect(indexed[0]?.payload).toEqual({ requestedCursor: '-1', firstRetainedSequence: 2 });
+    expect(indexed.slice(1).map((envelope) => envelope.sequence)).toEqual([2, 3]);
+    feed.dispose();
+  });
+
+  it('rejects an empty workflowId when replaying the by-workflow index', async () => {
+    const feed = createFleetEventFeed(new MemoryStorage());
+
+    expect(collect(feed.replay({ workflowId: '' }), 1)).rejects.toThrow(
+      'Fleet event replay workflowId must not be empty.',
+    );
+    feed.dispose();
+  });
+
+  it('rejects a malformed cursor identically whether or not the replay is workflow-scoped', async () => {
+    const feed = createFleetEventFeed(new MemoryStorage());
+
+    // The unfiltered path decodes `fromCursor` through the shared
+    // `ReplayLiveFeed.replay()` helper in workflow-event-feed.ts; the
+    // workflow-scoped path has its own private `decodeCursorOrThrow` in
+    // fleet-event-feed.ts. Both must reject the same malformed input with the
+    // same error, or "identical cursor semantics" would be an unverified claim.
+    expect(collect(feed.replay({ fromCursor: 'not-a-cursor' }), 1)).rejects.toThrow(
+      'Invalid cursor',
+    );
+    expect(
+      collect(feed.replay({ workflowId: 'wf-cursor-check', fromCursor: 'not-a-cursor' }), 1),
+    ).rejects.toThrow('Invalid cursor');
+    feed.dispose();
+  });
+
+  it('retries an indexed workflow replay page instead of reporting corruption when retention races the per-event read', async () => {
+    const storage = new RetainingBetweenWorkflowIndexScanAndEventReadStorage();
+    const feed = createFleetEventFeed(storage);
+    await feed.append({
+      kind: 'worker:connected',
+      workflowId: 'wf-race',
+      emittedAtMs: 0,
+      payload: { index: 0 },
+    });
+    await feed.append({
+      kind: 'worker:connected',
+      workflowId: 'wf-race',
+      emittedAtMs: 1,
+      payload: { index: 1 },
+    });
+    storage.retainOnNextEventRead = true;
+
+    const replayed = await collect(feed.replay({ workflowId: 'wf-race', fromCursor: '-1' }), 10);
+
+    expect(replayed.map((event) => event.kind)).toEqual(['fleet:gap', 'worker:connected']);
+    expect(replayed.map((event) => event.sequence)).toEqual([0, 1]);
+    feed.dispose();
+  });
+
+  it('skips a workflow event purged mid-page instead of reporting corruption, with no watermark to lean on', async () => {
+    const storage = new PurgingBetweenWorkflowIndexScanAndEventReadStorage();
+    const feed = createFleetEventFeed(storage);
+    await feed.append({
+      kind: 'worker:connected',
+      workflowId: 'wf-purged',
+      emittedAtMs: 0,
+      payload: { index: 0 },
+    });
+    await feed.append({
+      kind: 'worker:connected',
+      workflowId: 'wf-purged',
+      emittedAtMs: 1,
+      payload: { index: 1 },
+    });
+    storage.purgeOnNextEventRead = true;
+
+    const replayed = await collect(feed.replay({ workflowId: 'wf-purged', fromCursor: '-1' }), 10);
+
+    // Unlike the retention race above, retention never advanced (purge
+    // doesn't touch the floor), so there is no fleet:gap — event 0 is just
+    // silently absent, exactly as it would be if the by-workflow index scan
+    // had simply run a moment later and never seen it at all.
+    expect(replayed.map((event) => event.kind)).toEqual(['worker:connected']);
+    expect(replayed.map((event) => event.sequence)).toEqual([1]);
     feed.dispose();
   });
 

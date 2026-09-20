@@ -37,13 +37,12 @@ export type TypingItem = {
   type: 'typing';
 };
 
-export type ToolCallGroupItem = {
+export type ToolCallRunItem = {
   type: 'tool-call-group';
   messages: Message[];
 };
 
-export type ChatRenderRow =
-  MessageWithDateItem | UnreadDividerItem | TypingItem | ToolCallGroupItem;
+export type ChatRenderRow = MessageWithDateItem | UnreadDividerItem | TypingItem | ToolCallRunItem;
 
 // Re-export ToolCallPair type for convenience.
 export type { ToolCallPair } from '../conversation-model.ts';

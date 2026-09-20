@@ -21,6 +21,7 @@
   import type { Attachment } from 'svelte/attachments';
 
   import { classNames } from '../../utilities/class-names.ts';
+  import { rowDividerAttachment } from '../../utilities/row-divider.ts';
   import {
     getCommandListContext,
     hasCommandListContext,
@@ -109,6 +110,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <li
   {@attach registerWithPalette}
+  {@attach rowDividerAttachment}
   id={itemId ?? undefined}
   role="option"
   class={classNames('cinder-_row-item', 'cinder-command-item', className)}

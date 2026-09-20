@@ -1,11 +1,6 @@
-/**
- * Fixed, and deliberately not one of the ports the rest of the suite uses
- * (4173 preview, 5175 dev). `playwright.config.ts` has to name the same number
- * in two places — the `webServer` entry that starts this file and the
- * `ANTHROPIC_BASE_URL` handed to the preview server — so it lives here rather
- * than being spelled twice in the config.
- */
-export const FIXTURE_PORT = 4599;
+import { ports } from '../../scripts/browser-ports.ts';
+
+export const FIXTURE_PORT = ports.CHAT_ROOM_FIXTURE_PORT;
 
 export const FIXTURE_ORIGIN = `http://127.0.0.1:${FIXTURE_PORT}`;
 

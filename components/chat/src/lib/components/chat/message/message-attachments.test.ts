@@ -37,6 +37,14 @@ describe('MessageAttachments image layout contract', () => {
     expect(source).toContain('background: var(--cinder-surface-inset)');
   });
 
+  test('bounds a single image without reserving a second grid column', () => {
+    expect(source).toContain('inline-size: fit-content;');
+    expect(source).toContain('max-inline-size: min(32rem, 100%)');
+    expect(source).toContain('inline-size: min(20rem, 100%);');
+    expect(source).toContain('max-block-size: 24rem');
+    expect(source).toContain('object-fit: contain');
+  });
+
   test('keeps lazy asynchronous image loading', () => {
     expect(source).toContain("loading?: 'lazy' | 'eager'");
     expect(source).toContain('{loading}');
@@ -51,6 +59,7 @@ describe('MessageAttachments image layout contract', () => {
       '.message-attachment-button:focus-visible .message-attachment-maximize',
     );
     expect(source).toContain('aria-hidden="true"');
+    expect(source).toContain('opacity: 1;');
   });
 
   test('disables affordance transitions for reduced motion', () => {

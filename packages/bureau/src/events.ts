@@ -3,15 +3,25 @@ import type {
   Action,
   AgentScheduledEvent,
   LivenessLeaseEvidence,
+  ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
   ScheduleFailedEvent,
   SchedulePausedEvent,
   ScheduleResumedEvent,
+  ScheduleSkippedEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
   SessionSavedEvent,
+  SteeringAcceptedEvent,
 } from '@corvidae/operative';
+import type {
+  SkillActivatedEvent,
+  SkillDeactivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from '@corvidae/skills';
 
 /**
  * Fired when the store records an action from a run.
@@ -348,6 +358,15 @@ export interface BureauEventMap extends EventMap {
   'schedule.cancelled': ScheduleCancelledEvent;
   'schedule.failed': ScheduleFailedEvent;
   'schedule.completed': ScheduleCompletedEvent;
+  'schedule.attempted': ScheduleAttemptedEvent;
+  'schedule.skipped': ScheduleSkippedEvent;
+  // Skill lifecycle (COR-767), dispatched by the `@corvidae/skills` tools and
+  // forwarded onto this emitter by `create-bureau.ts`.
+  'skill.loaded': SkillLoadedEvent;
+  'skill.activated': SkillActivatedEvent;
+  'skill.deactivated': SkillDeactivatedEvent;
+  'skill.rejected': SkillRejectedEvent;
+  'skill.failed': SkillFailedEvent;
   'session.created': SessionCreatedEvent;
   'session.saved': SessionSavedEvent;
   'session.deleted': SessionDeletedEvent;
@@ -358,4 +377,12 @@ export interface BureauEventMap extends EventMap {
   [ReviewRevokedEvent.type]: ReviewRevokedEvent;
   [ReviewCanceledEvent.type]: ReviewCanceledEvent;
   [ReviewSupersededEvent.type]: ReviewSupersededEvent;
+  /**
+   * AB-68. Only the `accepted` transition appears here: it is the one
+   * steering transition Bureau's own admission verb produces. The
+   * `rejected`/`superseded`/`failed` events are `accepted → X` transitions
+   * owned by the gate's post-admission state machine, and `applied` is
+   * dispatched by `runStep` onto the run emitter, not this one.
+   */
+  'steering.accepted': SteeringAcceptedEvent;
 }

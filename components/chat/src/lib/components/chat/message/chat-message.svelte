@@ -1,5 +1,6 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
+  import type { ApprovalResolution, ApprovalState } from '@corvidae/cinder';
   import type { HTMLAttributes } from 'svelte/elements';
   import type { Message, ToolCallPair } from '../conversation-model.ts';
   import type { MarkdownNodeOverride, MessagePartOverride } from './chat-message-parts.ts';
@@ -19,8 +20,10 @@
     searchMatch?: boolean;
     /** Actions region snippet (copy, edit, retry buttons) */
     actions?: Snippet;
-    /** Status indicator snippet (sending, delivered, error) */
+    /** Status indicator snippet that belongs to the semantic message article. */
     status?: Snippet;
+    /** Visual metadata rendered below the message bubble, such as read receipts. */
+    metadata?: Snippet;
     /**
      * Per-part render override. Forwarded to the parts renderer; lets a consumer
      * replace the rendering of an individual body part while delegating the rest
@@ -49,14 +52,13 @@
     onrollback?: ((messageId: string) => void) | undefined;
     /** Visually marks this row as content that a pending rollback will discard. */
     rollbackDiscarded?: boolean;
-    /** The set of approved tool call IDs for deriving approval state. */
-    approvedToolCallIds?: ReadonlySet<string> | undefined;
-    /** The set of denied tool call IDs for deriving denial state. */
-    deniedToolCallIds?: ReadonlySet<string> | undefined;
-    /** Called when the user approves an action-required tool call. */
-    onapprove?: ((toolCallId: string) => void) | undefined;
-    /** Called when the user denies an action-required tool call. */
-    ondeny?: ((toolCallId: string) => void) | undefined;
+    /** UI-only approval states keyed by tool-call id. */
+    approvalStates?: ReadonlyMap<string, ApprovalState> | undefined;
+    /** Tool-call ids currently submitting a resolution. */
+    approvalResolutionInFlightIds?: ReadonlySet<string> | undefined;
+    /** Called when the user resolves an action-required approval. */
+    onapprovalresolve?:
+      ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
     toolCallPresentation?: import('../utilities/types.ts').ToolCallPresentation | undefined;
     /**
      * Reasoning text to surface as a collapsible block before the body.
@@ -111,7 +113,7 @@
     getMessageRoleLabel,
     getMessageText,
   } from '../utilities/utilities.ts';
-  import { Pencil, RotateCcw, CopyButton } from '@corvidae/cinder';
+  import { Button, Pencil, RotateCcw, CopyButton } from '@corvidae/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
 
@@ -124,6 +126,7 @@
     searchMatch = false,
     actions,
     status,
+    metadata,
     messagePart,
     markdownNode,
     showDefaultActions = true,
@@ -136,10 +139,9 @@
     oneditingchange,
     onrollback,
     rollbackDiscarded = false,
-    approvedToolCallIds,
-    deniedToolCallIds,
-    onapprove,
-    ondeny,
+    approvalStates,
+    approvalResolutionInFlightIds,
+    onapprovalresolve,
     toolCallPresentation,
     reasoning,
     entries,
@@ -239,11 +241,28 @@
   );
   const isFailed = $derived(deliveryStatus === 'failed');
 
+  const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  function formatMessageTimestamp(value: unknown): string | undefined {
+    if (typeof value !== 'string' || value.length === 0) return undefined;
+    const timestamp = new Date(value);
+    if (Number.isNaN(timestamp.getTime())) return undefined;
+    return messageTimestampFormatter.format(timestamp);
+  }
+
   // Derived values for content processing. `textContent` drives message chrome
   // (copy, edit, the Show more/less control) — the rendered body itself flows
   // through deriveMessageParts + the parts renderer below.
   const textContent = $derived(getMessageText(message));
   const roleLabel = $derived(getMessageRoleLabel(message));
+  const formattedCreatedAt = $derived(formatMessageTimestamp(message.createdAt));
+  const createdAtValue = $derived(
+    typeof message.createdAt === 'string' && formattedCreatedAt ? message.createdAt : undefined,
+  );
+  const hasMetadata = $derived(Boolean(formattedCreatedAt || metadata));
 
   // Role detection — kept for wrapper-level layout + a11y (data-tool-pair,
   // aria-label). The body branches that used to live here are now derived parts.
@@ -260,16 +279,16 @@
   // The cinder-owned render parts for this message. The streaming override and
   // expanded state are resolved into the parts here so the renderer + part
   // components stay dumb (no override/streaming plumbing leaks into them).
-  // C3: approval id sets are threaded in so tool-approval parts derive their
-  // `approved` state without mutating the transcript.
+  // Approval state is UI-only and is threaded in so tool-approval parts
+  // derive their Cinder state without mutating the transcript.
   const messageParts = $derived(
     deriveMessageParts(message, {
       toolCallPair: toolPair ?? undefined,
       overrideContent,
       streaming,
       expanded,
-      approvedToolCallIds,
-      deniedToolCallIds,
+      approvalStates,
+      approvalResolutionInFlightIds,
       toolCallPresentation,
       // C4: reasoning and steps are UI-only overlays derived from metadata or
       // explicit per-message props; never written back to the transcript.
@@ -354,15 +373,11 @@
     data-message-role={message.role}
     aria-labelledby={isToolCall && toolPair ? undefined : roleId}
     aria-label={isToolCall && toolPair ? `Tool call: ${toolPair.call.name}` : undefined}
+    aria-busy={streaming ? 'true' : undefined}
     {tabindex}
   >
     <header class="chat-message-header">
       <span id={roleId} class="chat-message-role">{roleLabel}</span>
-      {#if status}
-        <div class="chat-message-status">
-          {@render status()}
-        </div>
-      {/if}
     </header>
 
     <div class="chat-message-body">
@@ -379,12 +394,25 @@
             aria-label="Edit message content"
             rows={Math.min(Math.max(editContent.split('\n').length, 2), 10)}></textarea>
           <div class="chat-message-edit-actions">
-            <button type="button" class="chat-message-edit-save" onclick={saveEdit}>
-              Save & Resend
-            </button>
-            <button type="button" class="chat-message-edit-cancel" onclick={cancelEditing}>
+            <Button
+              type="button"
+              class="chat-message-edit-save"
+              size="xs"
+              variant="primary"
+              aria-label="Save & Resend"
+              onclick={saveEdit}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              class="chat-message-edit-cancel"
+              size="xs"
+              variant="secondary"
+              onclick={cancelEditing}
+            >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       {:else}
@@ -396,12 +424,12 @@
              of this body div, matching the historical structure. -->
         <ChatMessagePartsRenderer
           parts={bodyParts}
+          {messageId}
           {messagePart}
           {markdownNode}
           expanded={toolCallExpanded}
           onToggle={toggleToolCallExpanded}
-          {onapprove}
-          {ondeny}
+          {onapprovalresolve}
           {reasoningExpanded}
           {onreasoning}
           {stepsExpanded}
@@ -421,21 +449,45 @@
     {#if imageParts.length > 0}
       <!-- Images render through the grouped default path (the attachment grid
            lays out by total count); they do not flow through `messagePart`. -->
-      <ChatMessagePartsRenderer parts={imageParts} />
+      <ChatMessagePartsRenderer parts={imageParts} {messageId} />
     {/if}
 
     {#if isFailed && onretry}
       <div class="chat-message-failed-actions">
         <span class="chat-message-failed-label" role="alert">Failed to send</span>
-        <button type="button" class="chat-message-retry" onclick={() => onretry(message.id)}>
+        <Button
+          type="button"
+          class="chat-message-retry"
+          size="xs"
+          variant="ghost-danger"
+          iconOnly
+          label="Retry"
+          onclick={() => onretry(message.id)}
+        >
           <RotateCcw class="cinder-icon-xs" />
-          Retry
-        </button>
+        </Button>
+      </div>
+    {/if}
+
+    {#if status}
+      <div class="chat-message-status">
+        {@render status()}
       </div>
     {/if}
   </article>
 
-  {#if actions || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onrollback)}
+  {#if hasMetadata}
+    <div class="chat-message-metadata">
+      {#if createdAtValue && formattedCreatedAt}
+        <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+      {/if}
+      {#if metadata}
+        {@render metadata()}
+      {/if}
+    </div>
+  {/if}
+
+  {#if !isEditing && (actions || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onrollback))}
     <footer class="chat-message-footer" role="none">
       <div class="chat-message-actions" role="group" aria-label="Message actions">
         {#if actions}
@@ -580,9 +632,12 @@
 
   .chat-message-wrapper[data-role='assistant'] {
     margin-inline-end: auto;
+    inline-size: min(100%, var(--cinder-chat-message-max-width, 48rem));
   }
 
   .chat-message-wrapper[data-role='assistant'] .chat-message {
+    box-sizing: border-box;
+    inline-size: min(100%, var(--cinder-chat-message-max-width, 48rem));
     background: var(--cinder-surface);
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg) var(--cinder-radius-lg) var(--cinder-radius-lg)
@@ -624,7 +679,7 @@
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
-  /* When a tool-call has a paired result, ToolCallGroup is the canonical card.
+  /* When a tool-call has a paired result, ToolCallTimeline is the canonical card.
    * Strip the outer bubble shell (background, border, padding, role label, footer)
    * so the unified card is the only visible boundary. The wrapper expands
    * within the same readability cap as regular bubbles — chat bubbles hug
@@ -735,6 +790,38 @@
     border: 0;
   }
 
+  .chat-message-metadata {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-height: 1rem;
+    margin-block-start: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-1);
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    line-height: 1.2;
+  }
+
+  .chat-message-metadata time {
+    opacity: 1;
+    transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .chat-message-metadata time {
+      opacity: 0;
+    }
+
+    .chat-message-wrapper:hover .chat-message-metadata time,
+    .chat-message-wrapper:focus-within .chat-message-metadata time {
+      opacity: 1;
+    }
+  }
+
+  .chat-message-wrapper[data-role='user'] .chat-message-metadata {
+    justify-content: flex-end;
+  }
+
   .chat-message-status {
     display: flex;
     align-items: center;
@@ -804,33 +891,23 @@
     font-weight: var(--cinder-font-medium);
   }
 
-  .chat-message-retry {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
-    padding: var(--cinder-space-0-5) var(--cinder-space-2);
-    min-height: var(--cinder-touch-target-min);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-status-danger-solid);
-    background: transparent;
-    border: 1px solid var(--cinder-status-danger-border);
-    border-radius: var(--cinder-radius-sm);
-    cursor: pointer;
-    transition:
-      background var(--cinder-duration-fast) var(--cinder-ease-standard),
-      border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  :global(.chat-message-retry) {
+    inline-size: 2rem;
+    min-inline-size: 2rem;
+    max-inline-size: 2rem;
+    block-size: 2rem;
+    min-block-size: 2rem;
+    padding: 0;
   }
 
-  @media (hover: hover) {
-    .chat-message-retry:hover {
-      background: var(--cinder-status-danger-background);
-      border-color: var(--cinder-status-danger-solid);
-    }
-  }
-
-  .chat-message-retry:focus-visible {
+  .chat-message-retry:focus-visible,
+  .chat-message-edit-save:focus-visible,
+  .chat-message-edit-cancel:focus-visible,
+  :global(.chat-message-retry:focus-visible),
+  :global(.chat-message-edit-save:focus-visible),
+  :global(.chat-message-edit-cancel:focus-visible) {
     outline: var(--cinder-ring-width) solid transparent;
+    outline-offset: var(--cinder-ring-offset);
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
@@ -1081,57 +1158,6 @@
     align-items: center;
   }
 
-  .chat-message-edit-save {
-    padding: var(--cinder-space-1) var(--cinder-space-3);
-    min-height: var(--cinder-touch-target-min);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-accent-contrast);
-    background: var(--cinder-accent-solid);
-    border: none;
-    border-radius: var(--cinder-radius-sm);
-    cursor: pointer;
-    transition: background var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  @media (hover: hover) {
-    .chat-message-edit-save:hover {
-      background: color-mix(in oklch, var(--cinder-accent-solid), black 15%);
-    }
-  }
-
-  .chat-message-edit-save:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
-  .chat-message-edit-cancel {
-    padding: var(--cinder-space-1) var(--cinder-space-3);
-    min-height: var(--cinder-touch-target-min);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-text-muted);
-    background: transparent;
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-sm);
-    cursor: pointer;
-    transition:
-      background var(--cinder-duration-fast) var(--cinder-ease-standard),
-      color var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  @media (hover: hover) {
-    .chat-message-edit-cancel:hover {
-      color: var(--cinder-text-default);
-      background: var(--cinder-surface-hover);
-    }
-  }
-
-  .chat-message-edit-cancel:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
   /* Responsive sizing for narrow viewports */
   @media (max-width: 480px) {
     .chat-message-wrapper {
@@ -1157,9 +1183,12 @@
     .chat-message:focus-visible,
     .chat-message-expand:focus-visible,
     .chat-message-retry:focus-visible,
-    :global(.chat-message-action-button:focus-visible),
     .chat-message-edit-save:focus-visible,
-    .chat-message-edit-cancel:focus-visible {
+    .chat-message-edit-cancel:focus-visible,
+    :global(.chat-message-retry:focus-visible),
+    :global(.chat-message-action-button:focus-visible),
+    :global(.chat-message-edit-save:focus-visible),
+    :global(.chat-message-edit-cancel:focus-visible) {
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: 3px;
     }

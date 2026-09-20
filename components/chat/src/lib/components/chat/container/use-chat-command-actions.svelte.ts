@@ -1,12 +1,23 @@
+import type { ApprovalResolution, ApprovalState } from '@corvidae/cinder';
 import type {
   ChatAdapter,
   ChatCommand,
   ChatToolApprovalResolution,
 } from '../adapter/chat-adapter.ts';
-import type { Message, MessageInput } from '../conversation-model.ts';
+import type { Message, MessageInput, ToolAction } from '../conversation-model.ts';
 import type { ChatAttachment } from '../input/chat-attachment.ts';
 
 type CommandCallback<T extends unknown[]> = (...args: T) => void | Promise<void>;
+type ApprovalResolveCallback = (
+  toolCallId: string,
+  resolution: ApprovalResolution,
+) => void | ChatToolApprovalResolution | Promise<void | ChatToolApprovalResolution>;
+
+type ApprovalOwner = {
+  conversationIdentity: string;
+  adapter: ChatAdapter | undefined;
+  actionFingerprint: string;
+};
 
 type CommandActionsOptions = {
   getAdapter: () => ChatAdapter | undefined;
@@ -16,8 +27,7 @@ type CommandActionsOptions = {
     CommandCallback<[{ message: MessageInput; attachments: ChatAttachment[] }]> | undefined;
   getOnRetry: () => CommandCallback<[string]> | undefined;
   getOnEdit: () => CommandCallback<[{ messageId: string; content: string }]> | undefined;
-  getOnApprove: () => CommandCallback<[string]> | undefined;
-  getOnDeny: () => CommandCallback<[string]> | undefined;
+  getOnApprovalResolve: () => ApprovalResolveCallback | undefined;
   getOnStop: () => CommandCallback<[{ messageId: string }]> | undefined;
   invalidateHistory: () => void;
   afterSubmit: (editing: boolean) => void;
@@ -30,18 +40,99 @@ function removeFromSet(set: Set<string>, value: string): Set<string> {
   return next;
 }
 
+function setApprovalState(
+  states: ReadonlyMap<string, ApprovalState>,
+  toolCallId: string,
+  state: ApprovalState,
+): Map<string, ApprovalState> {
+  return new Map(states).set(toolCallId, state);
+}
+
+function deleteApprovalState(
+  states: ReadonlyMap<string, ApprovalState>,
+  toolCallId: string,
+): Map<string, ApprovalState> {
+  const next = new Map(states);
+  next.delete(toolCallId);
+  return next;
+}
+
+function stateForResolution(resolution: ApprovalResolution): ApprovalState {
+  if (resolution.decision === 'approve') return 'approved';
+  if (resolution.decision === 'approve_with_edits') return 'approved_with_edits';
+  if (resolution.decision === 'deny') return 'denied';
+  return 'cancelled';
+}
+
+function isTerminalApprovalState(state: ApprovalState | undefined): boolean {
+  return state !== undefined && state !== 'pending';
+}
+
+function findApprovalAction(
+  messages: readonly Message[],
+  toolCallId: string,
+): ToolAction | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const result = messages[index]?.toolResult;
+    if (result?.callId === toolCallId && result.outcome === 'action_required') {
+      return result.action;
+    }
+  }
+  return undefined;
+}
+
+function fingerprintApprovalAction(action: ToolAction | undefined): string | undefined {
+  if (action?.type !== 'approval') return undefined;
+  try {
+    return JSON.stringify(action);
+  } catch {
+    return undefined;
+  }
+}
+
+function sameApprovalOwner(a: ApprovalOwner | undefined, b: ApprovalOwner | undefined): boolean {
+  return (
+    a !== undefined &&
+    b !== undefined &&
+    a.conversationIdentity === b.conversationIdentity &&
+    a.adapter === b.adapter &&
+    a.actionFingerprint === b.actionFingerprint
+  );
+}
+
+function approvalOwnerMapsEqual(
+  a: ReadonlyMap<string, ApprovalOwner>,
+  b: ReadonlyMap<string, ApprovalOwner>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [toolCallId, owner] of a) {
+    if (!sameApprovalOwner(owner, b.get(toolCallId))) return false;
+  }
+  return true;
+}
+
+function approvalExpired(action: ToolAction | undefined): boolean {
+  if (action?.type !== 'approval' || action.expiresAt === undefined) return false;
+  const timestamp = Date.parse(action.expiresAt);
+  return Number.isFinite(timestamp) && Date.now() >= timestamp;
+}
+
 /** Owns Chat command routing, retry flights, editing state, and approval rollback. */
 export function useChatCommandActions(options: CommandActionsOptions) {
-  let approvedToolCallIds = $state(new Set<string>());
-  let deniedToolCallIds = $state(new Set<string>());
+  let approvalStates = $state(new Map<string, ApprovalState>());
+  let approvalResolutionInFlightIds = $state(new Set<string>());
+  let approvalResolutionFlightTokens = $state(new Map<string, symbol>());
+  let approvalOwners = $state(new Map<string, ApprovalOwner>());
   let editingMessageIds = $state(new Set<string>());
   let pendingRetryMessageTokens = $state(new Map<string, symbol>());
 
   $effect(() => {
     options.getConversationIdentity();
-    approvedToolCallIds = new Set();
+    approvalStates = new Map();
+    approvalResolutionInFlightIds = new Set();
+    approvalResolutionFlightTokens = new Map();
+    approvalOwners = new Map();
     pendingRetryMessageTokens = new Map();
-    deniedToolCallIds = new Set();
     editingMessageIds = new Set();
   });
 
@@ -66,6 +157,54 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     }
     void callback?.();
   }
+
+  $effect(() => {
+    const conversationIdentity = options.getConversationIdentity();
+    const adapter = options.getAdapter();
+    const nextOwners = new Map<string, ApprovalOwner>();
+
+    for (const message of options.getMessages()) {
+      const result = message.toolResult;
+      if (
+        message.role !== 'tool-result' ||
+        result?.outcome !== 'action_required' ||
+        result.action?.type !== 'approval'
+      ) {
+        continue;
+      }
+
+      const actionFingerprint = fingerprintApprovalAction(result.action);
+      if (actionFingerprint === undefined) continue;
+      nextOwners.set(result.callId, { conversationIdentity, adapter, actionFingerprint });
+    }
+
+    let nextStates = approvalStates;
+    let nextInFlightIds = approvalResolutionInFlightIds;
+    let nextFlightTokens = approvalResolutionFlightTokens;
+    let changed = false;
+
+    for (const [toolCallId, owner] of approvalOwners) {
+      if (sameApprovalOwner(owner, nextOwners.get(toolCallId))) continue;
+      if (!changed) {
+        nextStates = new Map(approvalStates);
+        nextInFlightIds = new Set(approvalResolutionInFlightIds);
+        nextFlightTokens = new Map(approvalResolutionFlightTokens);
+        changed = true;
+      }
+      nextStates.delete(toolCallId);
+      nextInFlightIds.delete(toolCallId);
+      nextFlightTokens.delete(toolCallId);
+    }
+
+    if (!approvalOwnerMapsEqual(approvalOwners, nextOwners)) {
+      approvalOwners = nextOwners;
+    }
+    if (changed) {
+      approvalStates = nextStates;
+      approvalResolutionInFlightIds = nextInFlightIds;
+      approvalResolutionFlightTokens = nextFlightTokens;
+    }
+  });
 
   function handleSubmit(message: MessageInput, attachments: ChatAttachment[]): void {
     options.invalidateHistory();
@@ -116,73 +255,100 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     );
   }
 
-  function resolveToolApproval(
-    toolCallId: string,
-    command: 'approveToolCall' | 'denyToolCall',
-    canHandle: boolean,
-    commit: (id: string) => void,
-    rollback: (id: string) => void,
-    runAdapter: (adapter: ChatAdapter) => Promise<void | ChatToolApprovalResolution> | undefined,
-    callback: (() => void | Promise<void>) | undefined,
-  ): void {
-    if (!canHandle) return;
-    if (approvedToolCallIds.has(toolCallId) || deniedToolCallIds.has(toolCallId)) return;
-    commit(toolCallId);
+  function resolveToolApproval(toolCallId: string, resolution: ApprovalResolution): void {
+    const callback = options.getOnApprovalResolve();
     const adapter = options.getAdapter();
-    if (adapter) {
-      let run: Promise<void | ChatToolApprovalResolution> | undefined;
-      try {
-        run = runAdapter(adapter);
-      } catch (error) {
-        rollback(toolCallId);
-        options.getOnAdapterError()?.({ command, error });
-        return;
-      }
-      if (run !== undefined) {
-        const handleResolution = (
-          resolution: void | ChatToolApprovalResolution,
-        ): void | Promise<void> => {
-          if (resolution === 'pending') {
-            rollback(toolCallId);
-            return undefined;
-          }
-          return callback?.();
-        };
-        const handleFailure = (error: unknown): void => {
-          rollback(toolCallId);
-          options.getOnAdapterError()?.({ command, error });
-        };
-        void run.then(handleResolution, handleFailure);
-        return;
-      }
+    const canResolve = callback !== undefined || adapter?.resolveToolApproval !== undefined;
+    if (!canResolve) return;
+    if (approvalResolutionInFlightIds.has(toolCallId)) return;
+    if (isTerminalApprovalState(approvalStates.get(toolCallId))) return;
+
+    const action = findApprovalAction(options.getMessages(), toolCallId);
+    const actionFingerprint = fingerprintApprovalAction(action);
+    if (actionFingerprint === undefined) return;
+    if (approvalExpired(action)) {
+      approvalStates = setApprovalState(approvalStates, toolCallId, 'expired');
+      return;
     }
-    void callback?.();
-  }
 
-  function handleApprove(toolCallId: string): void {
-    resolveToolApproval(
+    const owner: ApprovalOwner = {
+      conversationIdentity: options.getConversationIdentity(),
+      adapter,
+      actionFingerprint,
+    };
+    const flightToken = Symbol(toolCallId);
+    approvalStates = setApprovalState(approvalStates, toolCallId, 'pending');
+    approvalResolutionInFlightIds = new Set([...approvalResolutionInFlightIds, toolCallId]);
+    approvalResolutionFlightTokens = new Map(approvalResolutionFlightTokens).set(
       toolCallId,
-      'approveToolCall',
-      canApprove,
-      (id) => (approvedToolCallIds = new Set([...approvedToolCallIds, id])),
-      (id) => (approvedToolCallIds = removeFromSet(approvedToolCallIds, id)),
-      (adapter) =>
-        adapter.approveToolCall ? Promise.resolve(adapter.approveToolCall(toolCallId)) : undefined,
-      () => options.getOnApprove()?.(toolCallId),
+      flightToken,
     );
-  }
 
-  function handleDeny(toolCallId: string): void {
-    resolveToolApproval(
-      toolCallId,
-      'denyToolCall',
-      canDeny,
-      (id) => (deniedToolCallIds = new Set([...deniedToolCallIds, id])),
-      (id) => (deniedToolCallIds = removeFromSet(deniedToolCallIds, id)),
-      (adapter) =>
-        adapter.denyToolCall ? Promise.resolve(adapter.denyToolCall(toolCallId)) : undefined,
-      () => options.getOnDeny()?.(toolCallId),
-    );
+    const isCurrentFlight = (): boolean => {
+      if (approvalResolutionFlightTokens.get(toolCallId) !== flightToken) return false;
+      if (!approvalResolutionInFlightIds.has(toolCallId)) return false;
+      const currentAction = findApprovalAction(options.getMessages(), toolCallId);
+      const currentFingerprint = fingerprintApprovalAction(currentAction);
+      return sameApprovalOwner(
+        owner,
+        currentFingerprint === undefined
+          ? undefined
+          : {
+              conversationIdentity: options.getConversationIdentity(),
+              adapter: options.getAdapter(),
+              actionFingerprint: currentFingerprint,
+            },
+      );
+    };
+
+    const clearFlight = (): void => {
+      if (!isCurrentFlight()) return;
+      approvalResolutionInFlightIds = removeFromSet(approvalResolutionInFlightIds, toolCallId);
+      const nextTokens = new Map(approvalResolutionFlightTokens);
+      nextTokens.delete(toolCallId);
+      approvalResolutionFlightTokens = nextTokens;
+    };
+
+    const rollback = (): void => {
+      if (!isCurrentFlight()) return;
+      approvalStates = deleteApprovalState(approvalStates, toolCallId);
+      approvalResolutionInFlightIds = removeFromSet(approvalResolutionInFlightIds, toolCallId);
+      const nextTokens = new Map(approvalResolutionFlightTokens);
+      nextTokens.delete(toolCallId);
+      approvalResolutionFlightTokens = nextTokens;
+    };
+
+    const acceptResolution = (acknowledgement: void | ChatToolApprovalResolution): void => {
+      if (!isCurrentFlight()) return;
+      if (acknowledgement === 'pending') {
+        rollback();
+        return;
+      }
+      approvalStates = setApprovalState(approvalStates, toolCallId, stateForResolution(resolution));
+      clearFlight();
+    };
+
+    const failResolution = (error: unknown): void => {
+      if (!isCurrentFlight()) return;
+      rollback();
+      options.getOnAdapterError()?.({ command: 'resolveToolApproval', error });
+    };
+
+    try {
+      if (adapter?.resolveToolApproval) {
+        void Promise.resolve(adapter.resolveToolApproval(toolCallId, resolution)).then(
+          acceptResolution,
+          failResolution,
+        );
+        return;
+      }
+      void Promise.resolve(callback?.(toolCallId, resolution)).then(
+        acceptResolution,
+        failResolution,
+      );
+    } catch (error) {
+      failResolution(error);
+    }
   }
 
   function handleStopGenerating(): void {
@@ -209,36 +375,30 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     editingMessageIds = next;
   }
 
-  const canApprove = $derived(
-    options.getOnApprove() !== undefined || options.getAdapter()?.approveToolCall !== undefined,
-  );
-  const canDeny = $derived(
-    options.getOnDeny() !== undefined || options.getAdapter()?.denyToolCall !== undefined,
+  const canResolveToolApproval = $derived(
+    options.getOnApprovalResolve() !== undefined ||
+      options.getAdapter()?.resolveToolApproval !== undefined,
   );
 
   return {
     handleSubmit,
     handleRetry: dispatchRetryMessage,
     handleEdit,
-    handleApprove,
-    handleDeny,
+    resolveToolApproval,
     handleStopGenerating,
     handleEditingChange,
     retryMessage: dispatchRetryMessage,
-    get canApprove() {
-      return canApprove;
-    },
-    get canDeny() {
-      return canDeny;
+    get canResolveToolApproval() {
+      return canResolveToolApproval;
     },
     get isEditing() {
       return editingMessageIds.size > 0;
     },
-    get approvedToolCallIds() {
-      return approvedToolCallIds;
+    get approvalStates() {
+      return approvalStates;
     },
-    get deniedToolCallIds() {
-      return deniedToolCallIds;
+    get approvalResolutionInFlightIds() {
+      return approvalResolutionInFlightIds;
     },
   };
 }

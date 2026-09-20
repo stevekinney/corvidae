@@ -95,6 +95,16 @@ const result = await activeRun.result;
 
 ## Public API
 
+### Provider capability and effective context
+
+For the cross-package contract, including the provider capability matrix, selection-plan fields, steering boundary, and cleanup ownership table, see [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md).
+
+Operative keeps provider differences at the provider boundary. [Anthropic](https://www.anthropic.com/api), [OpenAI](https://platform.openai.com/docs/api-reference), [Gemini](https://ai.google.dev/gemini-api/docs), and OpenAI-compatible generators share the same `GenerateFunction` contract; native features such as Anthropic extended thinking, Gemini cached content, Gemini token counting, and provider batch operations are exposed through capability-aware provider helpers. A capability that has no portable fallback is reported as unavailable rather than synthesized into a misleading success. Vision and managed-file policy belong to their own capability contracts and are not inferred from a text-only generator.
+
+When a host composes the context-epoch sealer, each generation records the effective context it consumed: the context epoch, selected model plan, and provider response metadata travel with the step and its events. Without that optional dependency, no context epoch is emitted. If a caller changes model policy or steering while a step is already running, that change applies at the next named generation boundary. Read the plan from the run or Bureau selection surface before presenting it to a user; do not infer it from the requested model alone.
+
+The started-work boundary is equally explicit. In-memory `AgentRun` handles are live locators whose `result`, events, snapshots, and abort methods observe one run. A durable `createActiveRun(options, { engine, checkpointStore, runId })` additionally exposes `durablyStarted`, which settles after the initial workflow record commits. Await that promise before treating a returned durable identifier as recoverable after a crash. Cancellation requests are signals; `result()` reports the terminal run outcome, while `closed()` is the cleanup acknowledgement that waits for owned drains and children.
+
 ### Core Entry Point
 
 The main import surface for defining agents, running loops, managing sessions, backpressure, caching, context assembly, cost tracking, and multi-agent patterns.
@@ -484,7 +494,7 @@ await saveAgentSession(store, session);
 const loaded = await loadAgentSession(store, 'session-abc');
 ```
 
-For richer session management, `createSessionStore()` and `resumeSession()` are available at the same path and documented below under [`operative`—Core](#operativecreatesessionstore-and-resumesession).
+For richer session management, [`createSessionStore()` and `resumeSession()`](#createsessionstore-and-resumesession) are available from the same package root and documented below.
 
 ### `createSessionStore()` and `resumeSession()`
 
@@ -653,7 +663,9 @@ sessions.events.addEventListener('session.outbox-appended', () => {
 
 ### Hooks
 
-Hooks plug into the loop lifecycle. Register them on `RunOptions.hooks` using a `HookRegistry`, or use the simpler array fields (`prepareStep`, `onStep`, etc.).
+Hooks plug into the loop lifecycle. Register them on `RunOptions.hooks` using a `HookRegistry`, or use the simpler array fields (`prepareStep`, `onStep`, etc.). A registry and the arrays can coexist on one run — the arrays run first for a given hook point, then the registry.
+
+Prefer a registry when you want any of what only it carries: a stable `id` per registration, explicit `priority` ordering, per-registration error policy, or the `hook-plan.*` events below. Bureau composes one per run for exactly those reasons.
 
 ```typescript
 import {
@@ -702,6 +714,38 @@ const activeRun = createActiveRun({
 | `runOnce` | `(hook: H) => H & { reset() }` | Fires at most once; call `.reset()` to re-arm between runs. |
 | `everyNSteps` | `(n: number, hook: H) => H` | Fires on steps 0, N, 2N, … |
 | `withTimeout` | `(ms, hook, onTimeout?) => H` | Races the hook against a timeout; `'ignore'` (default) silently returns `undefined`, `'error'` throws. |
+
+### Hook plan events
+
+A run emits four events describing the `HookRegistry` it was dispatched with, so a consumer can see which hooks were in force and what each of them did without holding the registry itself. They fire only for a run given a registry; a run using only the legacy hook arrays emits none, because an array registration has no identity to report.
+
+| Event | Fires | Carries |
+| --- | --- | --- |
+| `hook-plan.registered` | once per entry in the plan, and again for any entry registered while the run is live | `hookName`, `hookId`, `priority`, `replay`, `runId` |
+| `hook-plan.invoked` | once per handler call that returned | `hookName`, `hookId`, `durationMilliseconds`, `runId` |
+| `hook-plan.failed` | once per handler call that threw | the same, plus `error` |
+| `hook-plan.removed` | when an entry is unregistered while the run holds the plan | `hookName`, `hookId`, `runId` |
+
+```typescript
+const activeRun = createActiveRun({ generate, toolbox, conversation, stopWhen, hooks });
+
+activeRun.addEventListener('hook-plan.registered', (event) => {
+  console.log(`plan: ${event.hookName}/${event.hookId} priority=${event.priority}`);
+});
+activeRun.addEventListener('hook-plan.failed', (event) => {
+  console.error(`hook ${event.hookId} threw during ${event.hookName}`, event.error);
+});
+
+await activeRun.result;
+```
+
+The plan present at dispatch is announced in full before any hook runs, so a consumer reading the stream from `run.started` reconstructs the plan without reading the registry. Observation begins before `onRunStart`, which is itself a plan entry — its invocation is reported like any other.
+
+`invoked` and `failed` are mutually exclusive for one invocation. `failed` fires for the throw itself, before the registry's error policy decides whether to continue or abort, so a handler whose `onError` returns `'continue'` is still visible.
+
+**There is no `hook-plan.replayed`.** On a durable recovery a crashed step re-runs from its boundary, and its hooks genuinely run again — that is the contract `HookReplayPolicy` describes, which asks an effectful hook to be idempotent rather than skipped. Distinguishing "this entry ran before" would take durable per-entry invocation history, which is the very thing that contract avoids. A durable re-execution therefore emits an ordinary `hook-plan.invoked`. A consumer that needs to tell the two apart reads the recovery marker on its own run correlation, which is where that fact actually lives.
+
+`replay` on `hook-plan.registered` reports the entry's declared `HookReplayPolicy`, or `'effectful'` when none was declared — the classification in force, not the absence of a declaration. It is documentation for a consumer; nothing in the runtime gates execution on it.
 
 ### Guardrails
 
@@ -2245,7 +2289,7 @@ const result = await activeRun.result;
 | `SCHEDULER_ORIGIN_TAG` | Tag identifying scheduler-originated durable runs. |
 | `SCHEDULER_RUN_ID_PREFIX` | Prefix for scheduler-managed run IDs. |
 
-**Exported types:** `DurableActiveRunOptions`, `DurableActiveRunContext`, `RecoveredRunHandle`, `StartDurableRunResultOptions`, `CheckpointStore`, `RunEngine`, `RegistryAgnosticEngine`, `CreateRunEngineOptions`, `RunEngineObservability`, `AgentRunWorkflowInput`, `AgentRunWorkflowResult`, `DurableRunDeps`, `RunCheckpoint`, `RunCursor`, `StepRecord`, `SteeringCommand`, `SteeringCommandFailure`, `SteeringCommandState`, `SteeringDesiredState`, `SteeringEffectiveState`, `SteeringRequestedValue`, `SteeringTargetKind` (AB-67—the runtime steering contract's type-only surface). `SteeringDesiredState`/`SteeringEffectiveState` are exported here for the contract's shape; the runtime consumer of `SteeringDesiredState` is `RunOptions.steering: SteeringGate` (see the `RunOptions` table above and `GenerateContext.steering` below)—the `runStep` boundary read, pause/resume gate, and `GenerateContext` threading now ship. `submitSteeringCommand` (Bureau's admission surface, `packages/bureau`) ships `pause`/`resume` on in-memory sessions only (AB-199); `route`/`model`/`provider`/`effort`/`agent-identity` and durable-session pause/resume remain `unsupported-capability` until `ab-67-bureau-b`. AB-67's 2026-09-02 coordinator amendments, as tightened by AB-236: `SteeringCommandFailure` is a discriminated union on `reason`—the `'superseded-by'` member requires `readonly supersededBy: string` (the successor command's `id`); every other member carries `supersededBy?: never`, so a literal or non-literal value supplying a real `supersededBy` alongside a different reason, or omitting it alongside `'superseded-by'`, fails to type-check rather than merely violating a documented invariant (the shared TypeScript configuration also rejects an explicit `supersededBy: undefined`); every `SteeringRequestedValue` variant encodes `policyRef`/`override` as an exclusive pair (`policyRef?: never` alongside `override`, `override?: never` alongside `policyRef`), rejecting a literal that supplies both or neither; `SteeringCommand` carries `runId?: string`, binding a `pause`/`resume` command to a session's non-terminal run—present, it must name a non-terminal run owned by the session or admission fails with `'run-terminal'`; absent with exactly one non-terminal run, the command binds to it; absent with zero or more than one, admission fails with the new `SteeringCommandFailure.reason: 'run-ambiguous'`.
+**Exported types:** `DurableActiveRunOptions`, `DurableActiveRunContext`, `RecoveredRunHandle`, `StartDurableRunResultOptions`, `CheckpointStore`, `RunEngine`, `RegistryAgnosticEngine`, `CreateRunEngineOptions`, `RunEngineObservability`, `AgentRunWorkflowInput`, `AgentRunWorkflowResult`, `DurableRunDeps`, `RunCheckpoint`, `RunCursor`, `StepRecord`, `SteeringCommand`, `SteeringCommandFailure`, `SteeringCommandState`, `SteeringDesiredState`, `SteeringEffectiveState`, `SteeringRequestedValue`, `SteeringTargetKind` (AB-67—the runtime steering contract's type-only surface). `SteeringDesiredState`/`SteeringEffectiveState` are exported here for the contract's shape; the runtime consumer of `SteeringDesiredState` is `RunOptions.steering: SteeringGate` (see the `RunOptions` table above and `GenerateContext.steering` below)—the `runStep` boundary read, pause/resume gate, and `GenerateContext` threading now ship. Bureau's `submitSteeringCommand` admission surface ships all seven steering targets on authorized in-memory and durable sessions; durable commands persist before desired-state admission and replay during recovery. Policy references remain unsupported until the selector can resolve them, while unknown concrete coordinates are rejected at admission. See [the full steering contract](../../documentation/operative-type-safe-api.md#steering-commands). AB-67's 2026-09-02 coordinator amendments, as tightened by AB-236: `SteeringCommandFailure` is a discriminated union on `reason`—the `'superseded-by'` member requires `readonly supersededBy: string` (the successor command's `id`); every other member carries `supersededBy?: never`, so a literal or non-literal value supplying a real `supersededBy` alongside a different reason, or omitting it alongside `'superseded-by'`, fails to type-check rather than merely violating a documented invariant (the shared TypeScript configuration also rejects an explicit `supersededBy: undefined`); every `SteeringRequestedValue` variant encodes `policyRef`/`override` as an exclusive pair (`policyRef?: never` alongside `override`, `override?: never` alongside `policyRef`), rejecting a literal that supplies both or neither; `SteeringCommand` carries `runId?: string`, binding a `pause`/`resume` command to a session's non-terminal run—present, it must name a non-terminal run owned by the session or admission fails with `'run-terminal'`; absent with exactly one non-terminal run, the command binds to it; absent with zero or more than one, admission fails with the new `SteeringCommandFailure.reason: 'run-ambiguous'`.
 
 > [!NOTE] Session-input admission types (AB-42, type-only) `@corvidae/operative` also exports `SessionInputDeliveryMode`, `UserAdmissibleContent`, `SessionInputPayload`, `SessionInputRecord`, `SessionInputAdmissionRequest`, `SessionInputReceipt`, `SessionInputConflict`, `SessionInputAdmissionOutcome`, `SessionInputState`, `SessionInputPromotion`, and `SessionInputFailure`—the request, receipt, and state-transition shapes AB-42's decision record fixes for session-input admission (`submitSessionInput`, illustratively named). Operative exports these shapes as types. Bureau implements `submitSessionInput` pre-admission checks, but does not admit records: authorized, non-terminal requests return `unsupported-capability` with reason `durable-mailbox-unavailable`. Per AB-42's coordinator amendments (2026-09-02, applied by AB-202): `SessionInputRecord` and `SessionInputAdmissionRequest` take a `TPayload extends SessionInputPayload` bound rather than an unbounded generic, `SessionInputPayload` accepts only `UserAdmissibleContent`, an explicit allowlist of `TextContent` (with citation values structurally forbidden via `citations?: undefined`, not merely omitted; an explicit `undefined` remains allowed), `ImageContent`, and `DocumentContent`—not an `Exclude<>` blacklist, because a blacklist would silently admit a future conversation content kind, and `SessionInputConflict.reason` gains `'id-owned-by-other-principal'` for a session-input `id` collision across principals. See `documentation/operative-type-safe-api.md`'s "Session input admission" section for the full contract.
 

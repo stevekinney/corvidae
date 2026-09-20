@@ -23,7 +23,7 @@ import { z } from 'zod';
 import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';
 import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
 import { anonymousPrincipal } from './principal.ts';
-import { isRecord, record } from './protocol-test-support.ts';
+import { isRecord, record } from './protocol.test-support.ts';
 
 const fakeEngine: Parameters<typeof executeOperation>[2]['engine'] = {};
 

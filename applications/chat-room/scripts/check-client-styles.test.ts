@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { BROWSER_OUTPUT_DIRECTORY, buildOutputDirectory } from './build-output.ts';
 
 import {
   findMissingStyleMarkers,
@@ -132,4 +133,12 @@ describe('main', () => {
     const directory = await assetsDirectory({ 'chat.hash.css': EVERY_SIDECAR });
     expect(await main(directory)).toBe(0);
   });
+});
+
+test('browser build output is separate from ordinary build cache artifacts', () => {
+  const ordinary = buildOutputDirectory({});
+  const browser = buildOutputDirectory({ CHAT_ROOM_BROWSER: '1' });
+  expect(browser).toBe(BROWSER_OUTPUT_DIRECTORY);
+  expect(browser).not.toBe(ordinary);
+  expect(browser.startsWith(`${ordinary}/`)).toBe(false);
 });

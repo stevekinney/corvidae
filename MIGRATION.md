@@ -1,5 +1,7 @@
 # Migration inventory
 
+This is the historical consolidation record, including decisions and validation results from the migration. Use the [workspace README](README.md) for current commands and package boundaries. Temporary evidence paths and test totals below describe their recorded runs; they are not prerequisites or current validation results.
+
 This inventory records the consolidation boundaries and validation evidence. The architecture and dependency tables describe the current workspace; later sections retain earlier checkpoints and their original commands. Dependency arrows point from consumer to provider. All fifteen libraries are private source workspaces; Chat-room is the application.
 
 ## Source revisions

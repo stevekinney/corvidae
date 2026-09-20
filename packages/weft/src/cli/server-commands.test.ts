@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { Engine, serve } from '@corvidae/weft';
+import { Engine, serve } from '../index.ts';
 import { executeServer } from './server-commands.ts';
 import type { ServerCommand } from './types.ts';
 

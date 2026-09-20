@@ -5,7 +5,14 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { parseFrontMatter, stringifyFrontMatter } from './index';
+import { parseFrontMatter, serializeYaml, stringifyFrontMatter } from './index';
+
+function assertPublicSerializeYamlOptions() {
+  // @ts-expect-error keyOrder is recovered privately from original raw front matter.
+  serializeYaml({ first: 'one' }, { keyOrder: ['first'] });
+}
+
+void assertPublicSerializeYamlOptions;
 
 describe('parseFrontMatter', () => {
   test('parses valid YAML front matter', () => {
@@ -265,6 +272,109 @@ describe('stringifyFrontMatter', () => {
     expect(keyOrder).toEqual(['apple', 'mango', 'zebra']);
   });
 
+  test('keeps sorted key output as the default when raw YAML cannot be preserved', () => {
+    const data = { zebra: 'last', apple: 'first', mango: 'middle' };
+    const body = 'Content';
+
+    expect(stringifyFrontMatter(data, body)).toBe(
+      '---\napple: first\nmango: middle\nzebra: last\n---\nContent',
+    );
+  });
+
+  test('can serialize mappings in insertion order while quoting key names that need it', () => {
+    const data = {
+      first: 'one',
+      'tag: group #1': ['alpha', 'beta'],
+      'quoted "key"': 'value',
+      second: 'two',
+      obj: {
+        'nested: key #2': true,
+        apple: 'first',
+      },
+    };
+    const body = '\n# Content';
+
+    const result = stringifyFrontMatter(data, body, {
+      preserveRaw: false,
+      sortKeys: false,
+    });
+
+    expect(result).toBe(
+      '---\nfirst: one\n"tag: group #1": [alpha, beta]\n"quoted \\"key\\"": value\nsecond: two\nobj:\n  apple: first\n  "nested: key #2": true\n---\n\n# Content',
+    );
+    expect(parseFrontMatter(result).data).toEqual(data);
+  });
+
+  test('uses block-style original raw order for quoted numeric-looking keys when preserving top-level insertion order', () => {
+    const originalRaw =
+      'first: one\n' +
+      '"2": two\n' +
+      '"tag: group #1": [alpha, beta]\n' +
+      '"quoted \\"key\\"": value\n' +
+      'nested:\n' +
+      '  "1": one\n' +
+      '  z: zee\n' +
+      'second: { "3": three, a: aye }\n';
+    const original = parseFrontMatter(`---\n${originalRaw}---\n\n# Content`);
+    if (!original.data) throw new Error('Expected original front matter data.');
+
+    const result = stringifyFrontMatter(
+      {
+        ...original.data,
+        second: { '3': 'three', a: 'updated' },
+      },
+      '\n# Content',
+      {
+        originalRaw,
+        originalData: original.data,
+        sortKeys: false,
+      },
+    );
+
+    expect(result).toBe(
+      '---\nfirst: one\n"2": two\n"tag: group #1": [alpha, beta]\n"quoted \\"key\\"": value\nnested:\n  "1": one\n  z: zee\nsecond:\n  "3": three\n  a: updated\n---\n\n# Content',
+    );
+    expect(parseFrontMatter(result).data).toEqual({
+      first: 'one',
+      '2': 'two',
+      'tag: group #1': ['alpha', 'beta'],
+      'quoted "key"': 'value',
+      nested: { '1': 'one', z: 'zee' },
+      second: { '3': 'three', a: 'updated' },
+    });
+  });
+
+  test('uses flow-style original raw order for quoted numeric-looking keys when preserving top-level insertion order', () => {
+    const originalRaw =
+      '{ first: one, "2": two, "tag: group #1": [alpha, beta], nested: { "1": one, z: zee }, second: { "3": three, a: aye } }';
+    const original = parseFrontMatter(`---\n${originalRaw}\n---\n\n# Content`);
+    if (!original.data) throw new Error('Expected original front matter data.');
+
+    const result = stringifyFrontMatter(
+      {
+        ...original.data,
+        second: { '3': 'three', a: 'updated' },
+      },
+      '\n# Content',
+      {
+        originalRaw,
+        originalData: original.data,
+        sortKeys: false,
+      },
+    );
+
+    expect(result).toBe(
+      '---\nfirst: one\n"2": two\n"tag: group #1": [alpha, beta]\nnested:\n  "1": one\n  z: zee\nsecond:\n  "3": three\n  a: updated\n---\n\n# Content',
+    );
+    expect(parseFrontMatter(result).data).toEqual({
+      first: 'one',
+      '2': 'two',
+      'tag: group #1': ['alpha', 'beta'],
+      nested: { '1': 'one', z: 'zee' },
+      second: { '3': 'three', a: 'updated' },
+    });
+  });
+
   test('preserves original raw when data unchanged', () => {
     const originalRaw = 'zebra: last\napple: first';
     const data = { zebra: 'last', apple: 'first' };
@@ -277,6 +387,21 @@ describe('stringifyFrontMatter', () => {
     });
 
     expect(result).toContain(originalRaw);
+  });
+
+  test('preserves unchanged raw comments and quoted keys before considering insertion order', () => {
+    const originalRaw = '# keep me\n"tag: group #1": [alpha]\nsecond: two';
+    const data = { 'tag: group #1': ['alpha'], second: 'two' };
+    const body = '\n# Content';
+
+    const result = stringifyFrontMatter(data, body, {
+      preserveRaw: true,
+      originalRaw,
+      originalData: data,
+      sortKeys: false,
+    });
+
+    expect(result).toBe(`---\n${originalRaw}\n---\n\n# Content`);
   });
 
   test('handles arrays', () => {
