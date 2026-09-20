@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { discoverComponents } from '../../components/cinder/scripts/lib/discover-components.ts';
+import { serializeJson } from './json-formatting.ts';
 import {
   ManifestTransformError,
   planManifests,
@@ -112,10 +113,6 @@ export interface SurfacePlan extends Omit<ManifestPlan, 'files'> {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function serialize(manifest: JsonObject): string {
-  return `${JSON.stringify(manifest, undefined, 2)}\n`;
 }
 
 /**
@@ -273,7 +270,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
 
     applySurfaceToManifest(manifest, entry, resolved.exports, resolved.files, existing);
     applyToolchain(manifest, entry.build.toolchain, catalog, targetHasCatalog, workspace.workspace);
-    files[path] = serialize(manifest);
+    files[path] = await serializeJson(manifest, options.targetDirectory, path);
 
     published.push({
       workspace: workspace.workspace,
@@ -311,6 +308,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     options.corvidaeRoot,
     emittedWorkspaces,
     manifestPlan.publicNames,
+    options.targetDirectory,
   );
   for (const entry of privateWorkspaces) {
     entry.emitsTypeScript = source.typeScriptWorkspaces.includes(entry.workspace);

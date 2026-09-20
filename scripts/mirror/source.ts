@@ -2,6 +2,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
 import { rewriteEmittedSource } from './internal-names.ts';
+import { formatEmittedFile } from './json-formatting.ts';
 import type { PackageSurfaceEntry } from './package-surface.ts';
 import { isTypeScriptConfiguration } from './source-escapes.ts';
 
@@ -93,15 +94,23 @@ export interface DeclaredSourceFiles {
  * does not reach. `assertNoSourceEscapes` in `source-escapes.ts` is what makes that loud; this is
  * what answers it.
  *
+ * **What counts as a declarable path.** One an emitted file depends on, by either of two routes:
+ * a module specifier it imports, or a literal path it reads at run time. Every entry was the first
+ * kind until weft's protocol suite, which reads four documentation files with `Bun.file()` and
+ * asserts on their text. Both are real edges out of `src/` — an emitted file that cannot reach
+ * what it names is broken either way — but only one of them is detectable, which the last
+ * paragraph is about. A path nothing emitted imports or reads is not an entry here, whatever else
+ * might recommend shipping it.
+ *
  * **Why files and not directories.** Every path here names one file, and the set is the transitive
- * closure of what the emitted source imports, plus one type-declaration sibling that TypeScript
- * finds by name rather than by specifier and that says so in its own reason. The alternatives were
- * both worse. `components/cinder/scripts`
- * is 236 files, which is the "emit the whole workspace" fork COR-1221 ruled against wearing a
- * different name. Declaring the containing directories instead — `scripts/tokens` alone is 81
- * files, `packages/armorer/test` is 91 for the one helper five tests import — lands at over a
- * hundred files of fixtures, token schemas and unrelated suites, chosen by where something
- * happens to sit rather than by whether anything emitted needs it.
+ * closure of what the emitted source imports and reads, plus one type-declaration sibling that
+ * TypeScript finds by name rather than by specifier and that says so in its own reason. The
+ * alternatives were both worse. `components/cinder/scripts` is 236 files, which is the "emit the
+ * whole workspace" fork COR-1221 ruled against wearing a different name. Declaring the containing
+ * directories instead — `scripts/tokens` alone is 81 files, `packages/armorer/test` is 91 for the
+ * one helper five tests import — lands at over a hundred files of fixtures, token schemas and
+ * unrelated suites, chosen by where something happens to sit rather than by whether anything
+ * emitted needs it.
  *
  * **Why a file root adds no prune scope.** `ownedPrefixes` is deletion authority, and a directory
  * prefix here would hand the transform the right to delete target files under directories nobody
@@ -110,8 +119,17 @@ export interface DeclaredSourceFiles {
  * already treats `package-surface.json`'s build inputs.
  *
  * **Why the list is long rather than lenient.** Each entry is a real edge out of `src/`, and the
- * gate fails on any edge that is not here. A new shim, or a new import in an existing one, adds a
- * line with a reason; it cannot pass silently, which is the whole point of the pairing.
+ * gate fails on any import edge that is not here. A new shim, or a new import in an existing one,
+ * adds a line with a reason; it cannot pass silently, which is the whole point of the pairing.
+ *
+ * **What the gate cannot see.** That pairing holds for import edges only. `assertNoSourceEscapes`
+ * reads module specifiers out of a TypeScript AST and a Svelte parse, so it finds every edge an
+ * emitted file *imports* and no edge an emitted file *reads*: a `Bun.file('documentation/…')` is
+ * a string argument to a runtime call and is invisible to it. That is why the weft documentation
+ * entry below was found by the target's own test suite failing after a sync rather than by the
+ * gate refusing the plan. Nothing here is broken — the gate's subject is narrower than its name —
+ * but a read-by-path edge arrives only by someone noticing it, so it is worth suspecting whenever
+ * an emitted test reads a fixture, a schema or a document by literal path.
  */
 export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
   '@corvidae/cinder': [
@@ -239,6 +257,16 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
       reason:
         '`src/storage/bun-sql-benchmark.test.ts` imports the first, which imports the second. The other 21 files under `scripts/benchmarks/` are the benchmark suites themselves, which nothing emitted imports. Neither path is under `packages/weft/scripts/husky/`, which `target-owned.json` reserves to the target.',
     },
+    {
+      paths: [
+        'documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md',
+        'documentation/guides/remote-workers.md',
+        'documentation/reference/api-workers.md',
+        'documentation/reference/remote-worker-protocol.md',
+      ],
+      reason:
+        '`src/worker/protocol.test.ts` reads all four by literal path with `Bun.file()` and asserts on their prose: the protocol reference’s `### `name`` headings must equal `Object.keys(REMOTE_WORKER_MESSAGE_SCHEMAS)`, and the other three must describe the protocol version `src/worker/protocol-version.ts` exports. Emitted without them, that suite reads the target’s copies while reading corvidae’s constant — and the target is three versions behind, documenting v3 under `#### ` headings, so the heading match yields an empty list and all five version assertions miss. These four are every documentation file anything emitted reads; corvidae’s weft carries eight and the target carries 156, so the other four here are declared by nothing and a `documentation/` root would claim 152 files of the target’s own. Corvidae’s copy overwrites the target’s, and for `api-workers.md` the target’s is the larger file — 37,778 bytes against 31,616 — so this is not only formatting drift a sync exists to flatten but upstream prose that the sync removes.',
+    },
   ],
 };
 
@@ -320,13 +348,14 @@ async function readSourceTree(
   workspace: EmittedWorkspace,
   plan: SourcePlan,
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory: string | undefined,
 ): Promise<boolean> {
   const root = join(corvidaeRoot, workspace.corvidaeDirectory, sourceTree);
   let carriesTypeScript = false;
   for (const { absolute, relative: path } of await walkSourceFiles(root)) {
     if (isTypeScriptConfiguration(path)) continue;
     const target = `${workspace.targetDirectory}/${sourceTree}/${path}`;
-    await readInto(plan, absolute, target, publicNames);
+    await readInto(plan, absolute, target, publicNames, targetDirectory);
     if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
   }
   return carriesTypeScript;
@@ -348,9 +377,13 @@ async function readInto(
   absolute: string,
   path: string,
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory: string | undefined,
 ): Promise<void> {
   const contents = new Uint8Array(await Bun.file(absolute).arrayBuffer());
-  plan.files[path] = rewriteEmittedSource(contents, path, publicNames);
+  const rewritten = rewriteEmittedSource(contents, path, publicNames);
+  // After the rewrite, never before it: what ships is the rewritten text, so that is what the
+  // target's formatter has to agree with.
+  plan.files[path] = await formatEmittedFile(rewritten, targetDirectory, path);
   const metadata = await stat(absolute);
   if ((metadata.mode & 0o111) !== 0) plan.executable.push(path);
 }
@@ -368,6 +401,7 @@ async function readAdditionalSourceRoots(
   workspace: EmittedWorkspace,
   plan: SourcePlan,
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory: string | undefined,
 ): Promise<boolean> {
   let carriesTypeScript = false;
   for (const declared of additionalSourceRoots[workspace.workspace] ?? []) {
@@ -378,7 +412,13 @@ async function readAdditionalSourceRoots(
           `${workspace.workspace} declares ${path} as source beyond its ${sourceTree}/ tree, but corvidae has no file there. Either restore it or remove the declaration from additionalSourceRoots in source.ts.`,
         );
       }
-      await readInto(plan, absolute, `${workspace.targetDirectory}/${path}`, publicNames);
+      await readInto(
+        plan,
+        absolute,
+        `${workspace.targetDirectory}/${path}`,
+        publicNames,
+        targetDirectory,
+      );
       if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
     }
   }
@@ -391,12 +431,19 @@ async function readDeclaredBuildInputs(
   workspace: EmittedWorkspace,
   plan: SourcePlan,
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory: string | undefined,
 ): Promise<void> {
   for (const input of workspace.entry?.build.requiredInputs ?? []) {
     const absolute = join(corvidaeRoot, workspace.corvidaeDirectory, input);
     const file = Bun.file(absolute);
     if (!(await file.exists())) continue;
-    await readInto(plan, absolute, `${workspace.targetDirectory}/${input}`, publicNames);
+    await readInto(
+      plan,
+      absolute,
+      `${workspace.targetDirectory}/${input}`,
+      publicNames,
+      targetDirectory,
+    );
   }
 }
 
@@ -410,6 +457,7 @@ export async function planSource(
   corvidaeRoot: string,
   emitted: readonly EmittedWorkspace[],
   publicNames: ReadonlyMap<string, string>,
+  targetDirectory?: string,
 ): Promise<SourcePlan> {
   const plan: SourcePlan = {
     files: {},
@@ -419,10 +467,22 @@ export async function planSource(
   };
   for (const workspace of emitted) {
     plan.ownedPrefixes.push(`${workspace.targetDirectory}/${sourceTree}`);
-    const inTree = await readSourceTree(corvidaeRoot, workspace, plan, publicNames);
-    const declared = await readAdditionalSourceRoots(corvidaeRoot, workspace, plan, publicNames);
+    const inTree = await readSourceTree(
+      corvidaeRoot,
+      workspace,
+      plan,
+      publicNames,
+      targetDirectory,
+    );
+    const declared = await readAdditionalSourceRoots(
+      corvidaeRoot,
+      workspace,
+      plan,
+      publicNames,
+      targetDirectory,
+    );
     if (inTree || declared) plan.typeScriptWorkspaces.push(workspace.workspace);
-    await readDeclaredBuildInputs(corvidaeRoot, workspace, plan, publicNames);
+    await readDeclaredBuildInputs(corvidaeRoot, workspace, plan, publicNames, targetDirectory);
   }
   plan.ownedPrefixes.sort();
   plan.executable.sort();

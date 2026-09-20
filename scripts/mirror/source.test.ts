@@ -168,13 +168,19 @@ describe('what counts as source', () => {
       {
         'packages/weft/src/cli-main.ts': '#!/usr/bin/env bun\nexport const main = true;\n',
         'packages/weft/src/library.ts': 'export const library = true;\n',
-        // `@corvidae/weft` declares three files beyond `src/`, and a declared file corvidae does
+        // `@corvidae/weft` declares seven files beyond `src/`, and a declared file corvidae does
         // not carry is a refusal rather than a skip, so the fixture carries them.
         'packages/weft/scripts/lib/workflow-visibility-backfill.ts': 'export const backfill = 1;\n',
         'packages/weft/scripts/benchmarks/benchmark-environment.ts':
           'export const environment = 1;\n',
         'packages/weft/scripts/benchmarks/environment-configuration.ts':
           'export const configuration = 1;\n',
+        'packages/weft/documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md':
+          '# Workflows are TypeScript only\n',
+        'packages/weft/documentation/guides/remote-workers.md': '# Remote workers\n',
+        'packages/weft/documentation/reference/api-workers.md': '# Worker API\n',
+        'packages/weft/documentation/reference/remote-worker-protocol.md':
+          '# Remote worker protocol\n',
       },
       async (root) => {
         await chmod(join(root, 'packages/weft/src/cli-main.ts'), 0o755);
