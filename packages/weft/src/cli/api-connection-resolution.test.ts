@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { jsonRpcEndpoint, resolveConnection } from '@corvidae/weft';
+import { jsonRpcEndpoint, resolveConnection } from '../index.ts';
 
 describe('api connection resolution', () => {
   it('uses a named profile with env token indirection', async () => {

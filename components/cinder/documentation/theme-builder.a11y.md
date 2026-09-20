@@ -8,10 +8,10 @@ This record belongs to CIN-573/TB03. It is intentionally a review form plus a te
 | --- | --- |
 | Issue | CIN-573 / TB03 |
 | Artifact | `docs/theme-builder.md` and this review record |
-| Branch | steve/cinder-delivery-theme-design |
+| Branch | steve/open-decisions-2026-09-19 (corvidae; originally steve/cinder-delivery-theme-design in cinder) |
 | Contract inputs | CIN-573 execution contract; [R4 approved specification](https://linear.app/lost-gradient/document/theme-builder-approved-specification-and-issue-graph-e620a80331ee); [R5 amendment](https://linear.app/lost-gradient/document/theme-builder-open-source-research-and-planning-amendment-e2cff94ed833) |
-| Artifact commit | Pending: no commit has been created |
-| Design artifact SHA-256 | `830519a9f42f33100ca84017b608bd8a428209c3ddf2736522a93687e2258fb3` (`docs/theme-builder.md`) |
+| Artifact commit | Branch `steve/open-decisions-2026-09-19` in corvidae; the commit SHA is recorded on COR-242 |
+| Design artifact SHA-256 | `48624c0d109349a334a8b77c01a02bcb377f7df7e6fb9d7660f0c2d55fb8b3b7` (`docs/theme-builder.md`) |
 | Review status | Pending human design and accessibility review |
 
 Do not complete a pending field by inference. The final record must identify the exact commit or content digest that Steve reviewed.

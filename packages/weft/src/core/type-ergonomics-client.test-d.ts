@@ -4,7 +4,7 @@ import {
   type LocalClient,
   type UnknownNameWhenRegistryEmpty,
   type WeftClient,
-} from '@corvidae/weft';
+} from '../index.ts';
 import type {
   HttpClient,
   KnownWorkflowName as KnownWorkflowNameFromClientEntry,

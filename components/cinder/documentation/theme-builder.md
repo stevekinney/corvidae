@@ -2,7 +2,9 @@
 
 This is the implementation-facing interaction record for CIN-573/TB03. It describes the approved Cinder theme builder at an exact design revision and leaves the required human product and accessibility decisions visible. The builder is a route in `packages/playground`, not a new published Cinder component. The source contract is the [R4 approved specification](https://linear.app/lost-gradient/document/theme-builder-approved-specification-and-issue-graph-e620a80331ee); the additions are the [R5 open-source amendment](https://linear.app/lost-gradient/document/theme-builder-open-source-research-and-planning-amendment-e2cff94ed833).
 
-> [!WARNING] Review status This document is ready for Steve's design review and for review by Steve or his named human accessibility practitioner. Those approvals are pending. An agent must not fill either approval field.
+> [!WARNING] Review status
+>
+> This document is ready for Steve's design review and for review by Steve or his named human accessibility practitioner. Those approvals are pending. An agent must not fill either approval field.
 
 ## Contract and boundaries
 

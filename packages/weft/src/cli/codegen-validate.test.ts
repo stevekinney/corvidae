@@ -15,7 +15,7 @@ import {
   buildWorkflowRevisionManifest,
   type BuildWorkflowRevisionManifestOptions,
   type WorkflowContract,
-} from '@corvidae/weft';
+} from '../index.ts';
 import { validateRegistrySnapshot } from './codegen-validate.ts';
 
 async function fixtureManifest(

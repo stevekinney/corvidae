@@ -1,4 +1,4 @@
-import { Engine, workflow, type ActivityContext, type ActivityDefinition } from '@corvidae/weft';
+import { Engine, workflow, type ActivityContext, type ActivityDefinition } from '../index.ts';
 import { describe, expect, it } from 'bun:test';
 import { registerModuleExports, toActivityCallable } from './serve-registrations.ts';
 

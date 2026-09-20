@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { Engine, serve, workflow, type WorkflowContext } from '@corvidae/weft';
+import { Engine, serve, workflow, type WorkflowContext } from '../index.ts';
 import { executeTail, streamWorkflowEvents } from './tail.ts';
 
 const encoder = new TextEncoder();

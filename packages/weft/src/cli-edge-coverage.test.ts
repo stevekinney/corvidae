@@ -11,7 +11,7 @@ import {
   encode,
   KEYS,
   serializeCheckpoint,
-} from '@corvidae/weft';
+} from './index.ts';
 import { executeSchedule, executeTimeline, parseCliArguments } from './cli/index.ts';
 
 const databasesToDelete = new Set<string>();

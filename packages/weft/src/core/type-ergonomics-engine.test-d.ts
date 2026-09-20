@@ -12,7 +12,7 @@ import {
   type WorkflowContext,
   type WorkflowDefinition,
   type WorkflowHandle,
-} from '@corvidae/weft';
+} from '../index.ts';
 import { z } from 'zod';
 import type { HttpClient } from '../client/index.ts';
 

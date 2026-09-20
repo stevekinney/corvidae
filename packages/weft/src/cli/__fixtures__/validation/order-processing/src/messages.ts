@@ -1,4 +1,4 @@
-import { query, signal, update } from '@corvidae/weft';
+import { query, signal, update } from '../../../../../index.ts';
 
 import type { AddItemInput, AddItemResult, CancelOrderInput, OrderStatus } from './model';
 

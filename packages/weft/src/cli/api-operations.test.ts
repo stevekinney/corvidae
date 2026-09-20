@@ -1,4 +1,4 @@
-import { createCatalogSnapshot } from '@corvidae/weft';
+import { createCatalogSnapshot } from '../index.ts';
 import { describe, expect, it } from 'bun:test';
 
 import { executeApi } from './api.ts';

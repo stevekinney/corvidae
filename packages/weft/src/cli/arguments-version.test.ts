@@ -1,4 +1,4 @@
-import { VERSION } from '@corvidae/weft';
+import { VERSION } from '../index.ts';
 import { describe, expect, it } from 'bun:test';
 import { executeVersion, parseCliArguments } from './index.ts';
 

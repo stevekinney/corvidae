@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { workflow } from '@corvidae/weft';
+import { workflow } from '../index.ts';
 import { collectDiffLines, createStorage, executeTimeline } from './index.ts';
 
 async function firstCliStep() {
@@ -41,7 +41,7 @@ describe('executeTimeline', () => {
   it('prints timeline rows, replay output, and diffs for a stored workflow history', async () => {
     const database = join(tmpdir(), `weft-timeline-${crypto.randomUUID()}.db`);
     const storage = await createStorage('sqlite', database);
-    const { Engine } = await import('@corvidae/weft');
+    const { Engine } = await import('../index.ts');
     const engine = new Engine({ storage, checkpointHistory: 10 });
 
     try {
@@ -95,7 +95,7 @@ describe('executeTimeline', () => {
   it('shows failed timeline entries with the terminal status and error summary', async () => {
     const database = join(tmpdir(), `weft-timeline-failed-${crypto.randomUUID()}.db`);
     const storage = await createStorage('sqlite', database);
-    const { Engine } = await import('@corvidae/weft');
+    const { Engine } = await import('../index.ts');
     const engine = new Engine({ storage, checkpointHistory: 10 });
 
     try {
@@ -144,7 +144,7 @@ describe('executeTimeline', () => {
 
     const database = join(tmpdir(), `weft-timeline-missing-${crypto.randomUUID()}.db`);
     const storage = await createStorage('sqlite', database);
-    const { Engine } = await import('@corvidae/weft');
+    const { Engine } = await import('../index.ts');
     const engine = new Engine({ storage });
 
     try {
