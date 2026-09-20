@@ -805,17 +805,24 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265 criterion 3b)', 
     }
   });
 
-  it('cannot reach a non-durable dispatch of an agent that resolves no run options', async () => {
+  // The documented gap, pinned so it stays a stated limitation rather than a
+  // silent one. `runAgent` takes the invariant-merging branch only when
+  // `runtime.durable && hasDefinitionResolver(agent)`; everything else calls
+  // `agent.run(input, context)`, where no `RunOptions` exists outside the agent
+  // for anyone to augment. The only remaining seam is a caller-facing hook field
+  // on `AgentRunContext`, which COR-567 Decision 4 declines.
+  //
+  // Both halves of that `&&` are pinned, because the first version of this
+  // suite pinned only the second and the documentation then understated the gap
+  // as an unusual agent shape. It is not: the third case below is an ORDINARY
+  // `createAgent` agent on a bureau that simply was not built durable, which is
+  // the common configuration.
+  //
+  // If either starts failing, that gap closed: delete the case and update
+  // `documentation/hierarchical-hook-composition.md`, which currently tells
+  // readers these paths are outside Bureau's hook authority.
+  it('cannot reach a durable dispatch of an agent that resolves no run options', async () => {
     const seen: string[] = [];
-    // The documented gap, pinned so it stays a stated limitation rather than a
-    // silent one. This agent exposes only `run()` — no
-    // `OPERATIVE_RESOLVE_RUN_OPTIONS`, so no `RunOptions` exists outside it for
-    // anyone to augment, and the only remaining seam would be a caller-facing
-    // hook field on `AgentRunContext`, which COR-567 Decision 4 declines.
-    //
-    // If this ever starts failing, the gap closed: delete the test and update
-    // `documentation/hierarchical-hook-composition.md`, which currently tells
-    // readers this path is outside Bureau's hook authority.
     const nonResolvingAgent: RunnableAgent = {
       name: 'plain',
       hasOutput: false,
@@ -826,10 +833,33 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265 criterion 3b)', 
       agents: { plain: nonResolvingAgent },
       identity: { resolve: async () => 'You are the house agent.' },
       storage: { type: 'memory' },
+      durableExecution: true,
     });
 
     try {
       await bureau.run('plain', 'hi').result();
+      expect(seen).not.toContain('You are the house agent.');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('cannot reach ANY dispatch by a bureau that is not durable, resolver or not', async () => {
+    const seen: string[] = [];
+    // An ordinary `createAgent` result, which DOES expose
+    // `OPERATIVE_RESOLVE_RUN_OPTIONS`. The only thing missing is
+    // `durableExecution: true` on the bureau, and that alone is enough.
+    const bureau = await createBureau({
+      agents: { echo: createAgent({ name: 'echo', generate: captureSystemMessages(seen) }) },
+      identity: { resolve: async () => 'You are the house agent.' },
+      storage: { type: 'memory' },
+    });
+
+    try {
+      const result = await bureau.run('echo', 'hi').result();
+      // Not vacuous: the agent really did run to completion. It simply saw no
+      // Bureau-contributed system message while doing so.
+      expect(result.content).toBe('ok');
       expect(seen).not.toContain('You are the house agent.');
     } finally {
       await bureau.dispose();

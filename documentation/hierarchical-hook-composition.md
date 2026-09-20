@@ -48,15 +48,20 @@ The whole Bureau tier cannot travel there: `bureau:memory-recall`, `bureau:memor
 
 Which paths that reaches:
 
-| Catalog path                                           | Bureau invariants |
-| ------------------------------------------------------ | ----------------- |
-| Durable dispatch of an agent that resolves run options | Yes               |
-| Recovery of a durably dispatched catalog run           | Yes               |
-| Non-durable dispatch of an agent with no resolver      | **No**            |
+`bureau-catalog-dispatch.ts` takes the invariant-merging branch only when `runtime.durable && hasDefinitionResolver(agent)`. Everything else falls through to `agent.run()`:
 
-> [!WARNING] The third row is a real gap, not an oversight
+| Catalog path                                                  | Bureau invariants |
+| ------------------------------------------------------------- | ----------------- |
+| Durable dispatch of an agent that resolves run options        | Yes               |
+| Recovery of a durably dispatched catalog run                  | Yes               |
+| **Any** dispatch by a bureau with `durableExecution` off      | **No**            |
+| Durable dispatch of an agent exposing no run-options resolver | **No**            |
+
+> [!WARNING] The last two rows are a real gap, and a wide one
 >
-> That path calls `agent.run(input, context)` directly, so no `RunOptions` exists outside the agent for anything to augment. The only remaining injection point would be a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines. A hand-written catalog `RunnableAgent` dispatched by a non-durable Bureau is outside Bureau's hook authority. A test pins this so it stays a stated limitation; if that test starts failing, the gap closed and this section is stale.
+> Both call `agent.run(input, context)` directly, so no `RunOptions` exists outside the agent for anything to augment. The only remaining injection point would be a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines.
+>
+> Read the third row carefully: it is not an edge case. A bureau constructed without `durableExecution: true` dispatches **every** agent this way, including an ordinary `createAgent` result that does expose a resolver — the `&&` means one missing condition is enough. So the common non-durable configuration is outside Bureau's hook authority entirely, not merely some unusual agent shape. Tests pin both rows; if either starts failing, that gap closed and this section is stale.
 
 ## Child runs
 
