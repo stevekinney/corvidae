@@ -490,6 +490,17 @@ export interface ManifestPlan {
   addedDependencies: string[];
   /** Every workspace this target receives, with the directory it lands in. */
   emitted: EmittedWorkspace[];
+  /**
+   * The public name of every workspace in this tree, keyed by its `@corvidae/*` name.
+   *
+   * Recorded rather than recomputed because it is the authority the rest of the transform renames
+   * by. The manifest half has always used it for dependency edges; the source half rewrites import
+   * specifiers with it and the TypeScript half rewrites `paths` keys, and three producers deriving
+   * the same map separately is three chances for them to disagree about what a package is called.
+   * Workspaces `package-map.json` excludes are absent: they have no public name, and asking for one
+   * must fail rather than invent one.
+   */
+  publicNames: ReadonlyMap<string, string>;
   /** Workspaces whose placement is unresolved. Nothing is emitted for them and a sync refuses. */
   deferred: DeferredWorkspace[];
 }
@@ -637,6 +648,7 @@ export async function planManifests({
     droppedEdges: context.dropped,
     addedDependencies: addedDependencies.toSorted(),
     emitted: emittedWorkspaces,
+    publicNames,
     deferred,
   };
 }

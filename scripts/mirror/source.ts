@@ -1,7 +1,9 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
+import { rewriteEmittedSource } from './internal-names.ts';
 import type { PackageSurfaceEntry } from './package-surface.ts';
+import { isTypeScriptConfiguration } from './source-escapes.ts';
 
 /**
  * The source half of the mirror transform: corvidae's workspace source in, the same tree at the
@@ -301,30 +303,54 @@ function relativeTo(root: string, absolute: string): string {
   return relative(root, absolute).split(sep).join('/');
 }
 
-/** Read one workspace's source tree, or nothing when the workspace has none. */
+/**
+ * Read one workspace's source tree, or nothing when the workspace has none.
+ *
+ * Every `tsconfig*.json` under the tree is left to `typescript-configuration.ts`, which is the
+ * only producer that knows what an `extends` into `@corvidae/typescript` becomes in this target —
+ * a public specifier where the target holds the package, a relative path into a vendored copy
+ * where it cannot. Emitting them here as opaque bytes is what shipped
+ * `src/cli/__fixtures__/codegen/typecheck/tsconfig.json` still extending a package name that
+ * exists nowhere downstream. The skip is here rather than in `isSourceFile` on purpose:
+ * `collectPrunablePaths` shares that predicate, and a tsconfig the target keeps after corvidae
+ * drops it still has to be prunable.
+ */
 async function readSourceTree(
   corvidaeRoot: string,
   workspace: EmittedWorkspace,
   plan: SourcePlan,
+  publicNames: ReadonlyMap<string, string>,
 ): Promise<boolean> {
   const root = join(corvidaeRoot, workspace.corvidaeDirectory, sourceTree);
   let carriesTypeScript = false;
   for (const { absolute, relative: path } of await walkSourceFiles(root)) {
+    if (isTypeScriptConfiguration(path)) continue;
     const target = `${workspace.targetDirectory}/${sourceTree}/${path}`;
-    await readInto(plan, absolute, target);
+    await readInto(plan, absolute, target, publicNames);
     if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
   }
   return carriesTypeScript;
 }
 
 /**
- * Read one file into the plan, recording the executable bit.
+ * Read one file into the plan, rewriting its internal names and recording the executable bit.
  *
- * Preserved because corvidae's two `bin` entry points are executable in the source tree, and a
- * write path that dropped the mode would publish a binary nothing can run.
+ * The rewrite is here rather than at any of the three call sites because this is the one funnel
+ * every emitted source file passes through — the `src/` tree, the declared roots and the declared
+ * build inputs alike — and a file that named `@corvidae/*` downstream would be equally broken
+ * whichever of them read it.
+ *
+ * The executable bit is preserved because corvidae's two `bin` entry points are executable in the
+ * source tree, and a write path that dropped the mode would publish a binary nothing can run.
  */
-async function readInto(plan: SourcePlan, absolute: string, path: string): Promise<void> {
-  plan.files[path] = new Uint8Array(await Bun.file(absolute).arrayBuffer());
+async function readInto(
+  plan: SourcePlan,
+  absolute: string,
+  path: string,
+  publicNames: ReadonlyMap<string, string>,
+): Promise<void> {
+  const contents = new Uint8Array(await Bun.file(absolute).arrayBuffer());
+  plan.files[path] = rewriteEmittedSource(contents, path, publicNames);
   const metadata = await stat(absolute);
   if ((metadata.mode & 0o111) !== 0) plan.executable.push(path);
 }
@@ -341,6 +367,7 @@ async function readAdditionalSourceRoots(
   corvidaeRoot: string,
   workspace: EmittedWorkspace,
   plan: SourcePlan,
+  publicNames: ReadonlyMap<string, string>,
 ): Promise<boolean> {
   let carriesTypeScript = false;
   for (const declared of additionalSourceRoots[workspace.workspace] ?? []) {
@@ -351,7 +378,7 @@ async function readAdditionalSourceRoots(
           `${workspace.workspace} declares ${path} as source beyond its ${sourceTree}/ tree, but corvidae has no file there. Either restore it or remove the declaration from additionalSourceRoots in source.ts.`,
         );
       }
-      await readInto(plan, absolute, `${workspace.targetDirectory}/${path}`);
+      await readInto(plan, absolute, `${workspace.targetDirectory}/${path}`, publicNames);
       if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
     }
   }
@@ -363,12 +390,13 @@ async function readDeclaredBuildInputs(
   corvidaeRoot: string,
   workspace: EmittedWorkspace,
   plan: SourcePlan,
+  publicNames: ReadonlyMap<string, string>,
 ): Promise<void> {
   for (const input of workspace.entry?.build.requiredInputs ?? []) {
     const absolute = join(corvidaeRoot, workspace.corvidaeDirectory, input);
     const file = Bun.file(absolute);
     if (!(await file.exists())) continue;
-    await readInto(plan, absolute, `${workspace.targetDirectory}/${input}`);
+    await readInto(plan, absolute, `${workspace.targetDirectory}/${input}`, publicNames);
   }
 }
 
@@ -381,6 +409,7 @@ async function readDeclaredBuildInputs(
 export async function planSource(
   corvidaeRoot: string,
   emitted: readonly EmittedWorkspace[],
+  publicNames: ReadonlyMap<string, string>,
 ): Promise<SourcePlan> {
   const plan: SourcePlan = {
     files: {},
@@ -390,10 +419,10 @@ export async function planSource(
   };
   for (const workspace of emitted) {
     plan.ownedPrefixes.push(`${workspace.targetDirectory}/${sourceTree}`);
-    const inTree = await readSourceTree(corvidaeRoot, workspace, plan);
-    const declared = await readAdditionalSourceRoots(corvidaeRoot, workspace, plan);
+    const inTree = await readSourceTree(corvidaeRoot, workspace, plan, publicNames);
+    const declared = await readAdditionalSourceRoots(corvidaeRoot, workspace, plan, publicNames);
     if (inTree || declared) plan.typeScriptWorkspaces.push(workspace.workspace);
-    await readDeclaredBuildInputs(corvidaeRoot, workspace, plan);
+    await readDeclaredBuildInputs(corvidaeRoot, workspace, plan, publicNames);
   }
   plan.ownedPrefixes.sort();
   plan.executable.sort();

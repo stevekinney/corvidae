@@ -301,12 +301,17 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
     workspaces: emittedWorkspaces,
+    publicNames: manifestPlan.publicNames,
     targetDirectory: options.targetDirectory,
     policy: options.policy,
   });
   assertTypeScriptEdgeClosed(manifestPlan.droppedEdges, typescript);
 
-  const source = await planSource(options.corvidaeRoot, emittedWorkspaces);
+  const source = await planSource(
+    options.corvidaeRoot,
+    emittedWorkspaces,
+    manifestPlan.publicNames,
+  );
   for (const entry of privateWorkspaces) {
     entry.emitsTypeScript = source.typeScriptWorkspaces.includes(entry.workspace);
   }
