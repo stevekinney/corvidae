@@ -2859,6 +2859,65 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
     );
   });
 
+  it('warns but still drops the outbox entry when a taskResultAck is dead-lettered', async () => {
+    // A `dead-lettered` disposition means the server's durable ledger could
+    // not resolve the result as completed/failed and recorded a dead letter
+    // instead — the activity's outcome is lost from the workflow's point of
+    // view. The ack still removes the outbox entry (resending cannot help),
+    // so the only signal an operator gets is this warning; without it the
+    // drop is indistinguishable from a clean `applied` ack.
+    const harness = createReconnectServer((ws, idx) => {
+      if (idx === 0) {
+        ws.send(
+          JSON.stringify({
+            type: 'task',
+            operationId: 'op-dead-lettered',
+            attemptToken: 'attempt-token',
+            activityName: 'orders.echo',
+            input: 'hi',
+          }),
+        );
+      }
+    });
+    server = harness.server;
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workflows: workflowsOf({ echo: async (input) => input }),
+    });
+
+    using warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+
+    await worker.connect();
+    await waitForCondition(() => harness.framesFor(0).some((m) => m.type === 'taskResult'), {
+      timeoutMs: 1_000,
+      label: 'result sent, awaiting ack',
+    });
+    expect(worker.unacknowledgedResultCount).toBe(1);
+
+    harness.socketFor(0).send(
+      JSON.stringify({
+        type: 'taskResultAck',
+        operationId: 'op-dead-lettered',
+        attemptToken: 'attempt-token',
+        disposition: 'dead-lettered',
+      }),
+    );
+
+    // Existing behavior, unchanged: a dead-lettered ack drains the entry.
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
+      timeoutMs: 1_000,
+      label: 'dead-lettered result acknowledged',
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('op-dead-lettered'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('dead-lettered'));
+
+    await worker.disconnect();
+  });
+
   it('buffers a failed result and flushes it on reconnect', async () => {
     let resolveBlock: (() => void) | undefined;
     const blockPromise = new Promise<void>((resolve) => {

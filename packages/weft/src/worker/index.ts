@@ -561,6 +561,15 @@ export class RemoteWorker implements Disposable {
         this.#handleCancel(data.operationId, data.attemptToken);
         break;
       case 'taskResultAck':
+        // A dead-lettered disposition still drains the outbox entry — the
+        // server has made its terminal decision and resending cannot change
+        // it — but the activity's outcome never reached the workflow, so say
+        // so rather than letting the drop look like a clean `applied` ack.
+        if (data.disposition === 'dead-lettered') {
+          console.warn(
+            `[weft] RemoteWorker result for operation ${data.operationId} (attempt ${data.attemptToken}) was dead-lettered by the server; the activity's outcome was not applied to the workflow`,
+          );
+        }
         this.#taskResultOutbox.acknowledge(data.operationId, data.attemptToken);
         break;
     }
