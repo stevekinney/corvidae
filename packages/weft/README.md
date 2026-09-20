@@ -653,6 +653,7 @@ The [TypeScript workflow decision](documentation/contributing/architecture-decis
 - [Shared-store ownership and crash takeover](documentation/guides/shared-store-ownership.md)
 - [Remote task recovery, adoption, and retention](documentation/guides/remote-task-recovery.md)
 - [Remote workers](documentation/guides/remote-workers.md)
+- [Application mailbox](documentation/guides/application-mailbox.md)
 - [Worker API](documentation/reference/api-workers.md)
 - [Remote-worker wire protocol](documentation/reference/remote-worker-protocol.md)
 - [TypeScript workflows and polyglot activities](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md)

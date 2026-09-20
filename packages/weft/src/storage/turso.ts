@@ -1,5 +1,4 @@
 import type { Client, Config, InValue } from '@libsql/client';
-import { createClient as createWebClient } from '@libsql/client/web';
 
 import { tryLoadNodeBuiltin } from '../runtime/portable.ts';
 
@@ -42,9 +41,20 @@ function isLibsqlModule(value: unknown): value is typeof import('@libsql/client'
   );
 }
 
-function createClient(configuration: Config): Client {
+/**
+ * Load the libSQL driver and construct a client. Called at most once per
+ * {@link TursoStorage}, lazily, from {@link TursoStorage.#resolveClient} —
+ * never eagerly at module load, so importing this module (directly, via
+ * `resolve.ts`, or via the package root re-export) never requires the
+ * optional `@libsql/client` peer dependency. Only actually using a
+ * `TursoStorage` does.
+ */
+async function createClient(configuration: Config): Promise<Client> {
   const module = tryLoadNodeBuiltin('node:module');
-  if (module === undefined) return createWebClient(configuration);
+  if (module === undefined) {
+    const { createClient: createWebClient } = await import('@libsql/client/web');
+    return createWebClient(configuration);
+  }
   const driver: unknown = module.createRequire(import.meta.url)('@libsql/client');
   if (!isLibsqlModule(driver))
     throw new TypeError('The libSQL dependency must export createClient.');
@@ -192,15 +202,43 @@ export type TursoStorageOptions = {
  * ```
  */
 export class TursoStorage implements Storage {
-  #client: Client;
+  #configuration: Config;
+  #clientPromise: Promise<Client> | undefined;
   #persistence: TursoStoragePersistence;
   #initialized = false;
+  #disposed = false;
 
   constructor(options: TursoStorageOptions) {
     this.#persistence = resolveTursoStoragePersistence(options.url);
-    this.#client = createClient(
-      options.authToken ? { url: options.url, authToken: options.authToken } : { url: options.url },
-    );
+    this.#configuration = options.authToken
+      ? { url: options.url, authToken: options.authToken }
+      : { url: options.url };
+  }
+
+  /**
+   * Resolve (and memoize) the libSQL client, importing its driver on first
+   * call rather than at construction. A rejected import is not memoized, so
+   * a transient failure — or a driver installed after construction but
+   * before first use — can succeed on a later call instead of failing every
+   * operation forever.
+   *
+   * Disposed is terminal, matching `createLazyPostgresPool`: once
+   * {@link TursoStorage.[Symbol.dispose]} has run, further use throws rather
+   * than silently building a fresh, unreachable client — which laziness
+   * would otherwise allow, since dispose before first use has nothing yet
+   * to close.
+   */
+  #resolveClient(): Promise<Client> {
+    if (this.#disposed) {
+      throw new Error(
+        'TursoStorage has been disposed and cannot be reused. Construct a new adapter.',
+      );
+    }
+    this.#clientPromise ??= createClient(this.#configuration).catch((error: unknown) => {
+      this.#clientPromise = undefined;
+      throw error;
+    });
+    return this.#clientPromise;
   }
 
   /**
@@ -224,16 +262,18 @@ export class TursoStorage implements Storage {
     };
   }
 
-  async #ensureTable(): Promise<void> {
-    if (this.#initialized) return;
-    await this.#client.executeMultiple(LIBSQL_CREATE_KEY_VALUE_TABLE_STATEMENT);
+  async #ensureTable(): Promise<Client> {
+    const client = await this.#resolveClient();
+    if (this.#initialized) return client;
+    await client.executeMultiple(LIBSQL_CREATE_KEY_VALUE_TABLE_STATEMENT);
     this.#initialized = true;
+    return client;
   }
 
   async get(key: string): Promise<Uint8Array | null> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
-    const result = await this.#client.execute({
+    const result = await client.execute({
       sql: SQLITE_SELECT_VALUE_BY_KEY,
       args: [key],
     });
@@ -246,27 +286,27 @@ export class TursoStorage implements Storage {
   }
 
   async put(key: string, value: Uint8Array): Promise<void> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
-    await this.#client.execute({
+    await client.execute({
       sql: SQLITE_UPSERT_VALUE_BY_KEY,
       args: [key, value],
     });
   }
 
   async delete(key: string): Promise<void> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
-    await this.#client.execute({
+    await client.execute({
       sql: SQLITE_DELETE_VALUE_BY_KEY,
       args: [key],
     });
   }
 
   async has(key: string): Promise<boolean> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
-    const result = await this.#client.execute({
+    const result = await client.execute({
       sql: SQLITE_SELECT_KEY_PRESENCE,
       args: [key],
     });
@@ -275,10 +315,10 @@ export class TursoStorage implements Storage {
   }
 
   async deletePrefix(prefix: string): Promise<number> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
     const [rangeStart, rangeEnd] = buildSqlitePrefixRangeParameters(prefix);
-    const result = await this.#client.execute({
+    const result = await client.execute({
       sql: SQLITE_DELETE_KEYS_BY_PREFIX,
       args: [rangeStart, rangeEnd],
     });
@@ -287,11 +327,11 @@ export class TursoStorage implements Storage {
   }
 
   async deleteRange(prefix: string, options: DeleteRangeOptions): Promise<number> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
     const normalized = normalizeDeleteRangeOptions(options);
     const { parameters, sql } = buildSqliteKeyRangeDelete(prefix, normalized);
-    const result = await this.#client.execute({
+    const result = await client.execute({
       sql,
       args: parameters,
     });
@@ -300,10 +340,10 @@ export class TursoStorage implements Storage {
   }
 
   async *scan(prefix: string, options: ScanOptions = {}): AsyncIterable<[string, Uint8Array]> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
     const { parameters, sql } = buildSqliteKeyValueRangeSelect(prefix, options);
-    const result = await this.#client.execute({
+    const result = await client.execute({
       sql,
       args: parameters,
     });
@@ -317,10 +357,10 @@ export class TursoStorage implements Storage {
   }
 
   async *keys(prefix: string, options: ScanOptions = {}): AsyncIterable<string> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
     const { parameters, sql } = buildSqliteKeyRangeSelect(prefix, options);
-    const result = await this.#client.execute({
+    const result = await client.execute({
       sql,
       args: parameters,
     });
@@ -331,10 +371,10 @@ export class TursoStorage implements Storage {
   }
 
   async count(prefix: string): Promise<number> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
     const [rangeStart, rangeEnd] = buildSqlitePrefixRangeParameters(prefix);
-    const result = await this.#client.execute({
+    const result = await client.execute({
       sql: SQLITE_COUNT_KEYS_BY_PREFIX,
       args: [rangeStart, rangeEnd],
     });
@@ -351,7 +391,7 @@ export class TursoStorage implements Storage {
     assertStorageBatchOperationCount('batch operations', operations.length);
     if (operations.length === 0) return;
 
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
     const statements = operations.map((operation) => {
       if (operation.type === 'put') {
@@ -366,7 +406,7 @@ export class TursoStorage implements Storage {
       };
     });
 
-    await executeWriteBatchWithBusyRetry(this.#client, statements);
+    await executeWriteBatchWithBusyRetry(client, statements);
   }
 
   async conditionalBatch(
@@ -376,13 +416,13 @@ export class TursoStorage implements Storage {
     assertStorageBatchOperationCount('conditionalBatch conditions', conditions.length);
     assertStorageBatchOperationCount('conditionalBatch operations', operations.length);
 
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
 
     let lastContentionError: unknown;
     for (let attempt = 1; attempt <= MAX_WRITE_RETRIES; attempt++) {
       let transaction: TursoTransaction | undefined;
       try {
-        transaction = await beginWriteTransaction(this.#client);
+        transaction = await beginWriteTransaction(client);
         await transaction.executeMultiple(LIBSQL_CREATE_KEY_VALUE_TABLE_STATEMENT);
 
         if (!(await conditionsMatch(transaction, conditions))) {
@@ -414,10 +454,10 @@ export class TursoStorage implements Storage {
   }
 
   async query<T>(sql: string, parameters?: unknown[]): Promise<T[]> {
-    await this.#ensureTable();
+    const client = await this.#ensureTable();
     assertReadOnlyQuery(sql);
 
-    const result = await this.#client.execute({
+    const result = await client.execute({
       sql,
       args: (parameters ?? []) as InValue[],
     });
@@ -425,7 +465,17 @@ export class TursoStorage implements Storage {
     return result.rows as unknown as T[];
   }
 
+  /**
+   * Marks this storage disposed (terminal — see {@link TursoStorage.#resolveClient})
+   * and best-effort closes the underlying client. If the client was never
+   * resolved (no operation ever ran), there is nothing to close, and any
+   * later use throws instead of silently constructing one; the client is
+   * closed once its own import settles, rather than blocking this
+   * synchronous method on it.
+   */
   [Symbol.dispose](): void {
-    this.#client.close();
+    this.#disposed = true;
+    if (this.#clientPromise === undefined) return;
+    void this.#clientPromise.then((client) => client.close()).catch(() => {});
   }
 }

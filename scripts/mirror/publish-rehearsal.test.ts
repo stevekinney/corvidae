@@ -81,6 +81,36 @@ const builtFiles = {
   'dist/index.d.cts': 'export declare const answer: number;\n',
 } as const;
 
+/**
+ * COR-1230: `checkTarball` now ignores `cjs-resolves-to-esm` and `no-resolution`, so this manifest
+ * no longer fails `attw` at all — see the test below pinning the new, passing outcome. This shape
+ * still fails it: a declaration file importing an extensionless sibling, which node16 module
+ * resolution cannot follow regardless of `--ignore-rules`, because `internal-resolution-error` is
+ * not one of the two names COR-1230 ignores.
+ */
+function internalResolutionErrorManifest(name: string, version: string): Record<string, unknown> {
+  return {
+    name,
+    version,
+    type: 'module',
+    license: 'MIT',
+    main: './dist/index.js',
+    types: './dist/index.d.ts',
+    exports: {
+      '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+      './package.json': './package.json',
+    },
+    files: ['dist'],
+  };
+}
+
+const internalResolutionErrorFiles = {
+  'dist/index.js': "export * from './types.js';\n",
+  'dist/index.d.ts': "export * from './types';\n",
+  'dist/types.js': 'export const value = 1;\n',
+  'dist/types.d.ts': 'export declare const value: number;\n',
+} as const;
+
 /** What npm reports it would ship for a package that really was built. */
 const shippedByNpm = [
   'dist/index.cjs',
@@ -143,19 +173,29 @@ function fakeRunner(
  * successful publish rehearsal against.
  */
 async function withStagedTree(
-  options: { built: boolean; version?: string; esmOnly?: boolean },
+  options: {
+    built: boolean;
+    version?: string;
+    esmOnly?: boolean;
+    internalResolutionError?: boolean;
+  },
   body: (work: string, scratch: string) => Promise<void>,
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'mirror-publish-rehearsal-'));
   try {
     const work = join(root, 'clone');
-    const manifest = options.esmOnly ? esmOnlyManifest : soundManifest;
+    const manifest = options.internalResolutionError
+      ? internalResolutionErrorManifest
+      : options.esmOnly
+        ? esmOnlyManifest
+        : soundManifest;
     await Bun.write(
       join(work, packageDirectory, 'package.json'),
       `${JSON.stringify(manifest(publicName, options.version ?? '1.4.0'), undefined, 2)}\n`,
     );
     if (options.built) {
-      for (const [path, contents] of Object.entries(builtFiles)) {
+      const files = options.internalResolutionError ? internalResolutionErrorFiles : builtFiles;
+      for (const [path, contents] of Object.entries(files)) {
         await Bun.write(join(work, packageDirectory, path), contents);
       }
     }
@@ -344,15 +384,34 @@ describe('proveNpmPublishDryRun', () => {
   });
 
   /**
+   * COR-1230: `checkTarball`'s gate is scoped to `internal-resolution-error`, so the ESM-only
+   * shape every package the mirror publishes actually has no longer fails `attw` at all. Pinned
+   * here so that scoping cannot silently regress.
+   */
+  test('an ESM-only tarball clears attw under the scoped gate', async () => {
+    await withStagedTree({ built: true, esmOnly: true }, async (work, scratch) => {
+      const probe = await proveNpmPublishDryRun({
+        run: fakeRunner().run,
+        workDirectory: work,
+        outcome: outcomeFor(),
+        scratchDirectory: scratch,
+      });
+      expect(probe.publintExitCode).toBe(0);
+      expect(probe.typeResolutionExitCode).toBe(0);
+      expect(probe.exitCode).toBe(0);
+    });
+  });
+
+  /**
    * The ruling this module makes, pinned so it cannot drift back by accident.
    *
-   * `attw` is reported, not asserted. Every package the mirror publishes fails it today in the
-   * form it is published in, so gating the rehearsal on it would make the publish unprovable for
-   * all of them and say nothing about the transform. `verifyTarget` in `sync.ts` still gates on
-   * it; this probe rules on whether the tarball is complete, which is publint's answer.
+   * `attw` is reported, not asserted. `internal-resolution-error` is a genuine declaration defect
+   * that `checkTarball`'s scoped gate still fails on, so gating the rehearsal on it too would make
+   * this probe redundant with `verifyTarget` in `sync.ts`, which already does. This probe rules on
+   * whether the tarball is complete, which is publint's answer.
    */
   test('reports a failing type resolution without refusing an otherwise complete tarball', async () => {
-    await withStagedTree({ built: true, esmOnly: true }, async (work, scratch) => {
+    await withStagedTree({ built: true, internalResolutionError: true }, async (work, scratch) => {
       const probe = await proveNpmPublishDryRun({
         run: fakeRunner().run,
         workDirectory: work,
