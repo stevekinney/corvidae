@@ -1,5 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { createPostgresTestServer } from './postgres-server.test-support.ts';
+import {
+  createPostgresTestServer,
+  postgresTestDatabase,
+  type PostgresTestDatabase,
+} from './postgres-server.test-support.ts';
 
 import { createPGliteTestFixture } from './pglite.test-support.ts';
 import { PostgresStorage, type PostgresPool } from './postgres.ts';
@@ -159,8 +163,12 @@ describe('PostgresStorage', () => {
   });
 });
 
-describe('PostgresStorage (live pg)', () => {
-  let database: Awaited<ReturnType<typeof createPostgresTestServer>>;
+// Skip only when no database is obtainable at all — neither a supplied
+// `WEFT_TEST_POSTGRES_URL` nor the client binaries to spawn a disposable cluster.
+// Where a database exists this suite must run: it is the only place the real `pg`
+// wire protocol is exercised end to end.
+describe.skipIf(postgresTestDatabase === null)('PostgresStorage (live pg)', () => {
+  let database: PostgresTestDatabase;
   beforeAll(async () => {
     database = await createPostgresTestServer();
   });

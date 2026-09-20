@@ -131,7 +131,8 @@
         "WEFT_EVENT_DISPATCH_ARCHITECTURE_BENCHMARK",
         "WEFT_COVERAGE_MODE",
         "NODE_V8_COVERAGE",
-        "WEFT_KEEP_DURABILITY_FIXTURES"
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "WEFT_TEST_POSTGRES_URL"
       ]
     },
     "@corvidae/cinder#test": {
