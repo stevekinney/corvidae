@@ -150,9 +150,20 @@ export interface TarballReport {
  * missing `license` field) stay advisory and do not fail, because neither changes how the package
  * resolves. `--no-definitely-typed` stops `attw` looking up a DefinitelyTyped package on the
  * registry, which is what keeps this check offline; every package the mirror publishes ships its
- * own declarations, so there is nothing for that lookup to find anyway. No `--profile` and no
- * `--ignore-rules`: a resolution these packages cannot satisfy is a ruling for the owner, not a
- * flag for this module to set.
+ * own declarations, so there is nothing for that lookup to find anyway.
+ *
+ * COR-1230 ruled `--ignore-rules cjs-resolves-to-esm no-resolution`, no `--profile`: `attw`'s two
+ * remaining default findings are not defects in these packages, and the third is. `cjs-resolves-to-esm`
+ * is ignored because these packages are ESM-only by design and declare no `require` condition, so a
+ * `require()` resolving to ESM is the intended shape, not a mistake. `no-resolution` is ignored
+ * because every finding is `resolutionKind: node10`, a legacy resolution mode these packages choose
+ * not to support; `typesVersions` was considered as the fix and rejected as a manifest surface the
+ * mirror should not author on a package's behalf. `internal-resolution-error` stays fatal because it
+ * is a genuine declaration defect: a `.d.ts` importing a sibling module resolution cannot follow.
+ *
+ * `--ignore-rules` is variadic (`<rules...>`) and greedily consumes every argument after it,
+ * including a positional one; the tarball is passed before any flag so it is never swallowed by
+ * that list. Verified against the installed `@arethetypeswrong/cli@0.18.5`'s `--help` output.
  */
 export async function checkTarball(
   publicName: string,
@@ -163,7 +174,16 @@ export async function checkTarball(
     cwd: toolsRoot,
   });
   const typeResolution = await runCommand(
-    [await resolveTool(toolsRoot, 'attw'), '--no-definitely-typed', '--format', 'ascii', tarball],
+    [
+      await resolveTool(toolsRoot, 'attw'),
+      tarball,
+      '--no-definitely-typed',
+      '--format',
+      'ascii',
+      '--ignore-rules',
+      'cjs-resolves-to-esm',
+      'no-resolution',
+    ],
     { cwd: toolsRoot },
   );
   return { publicName, tarball, publint, typeResolution };
