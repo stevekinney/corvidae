@@ -127,6 +127,38 @@ describe('rewriting one file', () => {
     );
   });
 
+  /**
+   * The form the Svelte-AST walk alone could not see. `markdown-editor.svelte` writes
+   * `Pick<typeof import('@corvidae/markdown'), …>` in a type position: a `TSImportType`, not an
+   * ESTree `ImportDeclaration`, and TS2307 downstream exactly like a plain import. The `<script>`
+   * block's own text is handed to the TypeScript walk for this reason, which brings `declare
+   * module` and `import.meta.resolve()` inside a component into scope with it.
+   */
+  test('a type-position `import()` inside a Svelte script is rewritten too', () => {
+    const component = [
+      '<script lang="ts">',
+      "  import { render } from '@corvidae/markdown';",
+      "  type Utilities = Pick<typeof import('@corvidae/markdown'), 'normalize'>;",
+      "  const where = import.meta.resolve('@corvidae/armorer');",
+      '  let utilities: Utilities | undefined;',
+      '</script>',
+      '<span>{render}{where}{utilities}</span>',
+    ].join('\n');
+    expect(
+      rewriteInternalSpecifiers(component, 'packages/editor/src/editor.svelte', publicNames),
+    ).toBe(
+      [
+        '<script lang="ts">',
+        "  import { render } from '@lostgradient/markdown';",
+        "  type Utilities = Pick<typeof import('@lostgradient/markdown'), 'normalize'>;",
+        "  const where = import.meta.resolve('@lostgradient/armorer');",
+        '  let utilities: Utilities | undefined;',
+        '</script>',
+        '<span>{render}{where}{utilities}</span>',
+      ].join('\n'),
+    );
+  });
+
   test('a double-quoted specifier keeps its quotes; only the name between them changes', () => {
     expect(
       rewriteInternalSpecifiers(

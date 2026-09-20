@@ -238,6 +238,26 @@ describe('an internal name in emitted source', () => {
     ]);
   });
 
+  test('a type-position `import()` in a Svelte script is caught, not only a plain import', () => {
+    expect(
+      findSourceEscapes({
+        'packages/editor/src/editor.svelte': [
+          '<script lang="ts">',
+          "  type Utilities = Pick<typeof import('@corvidae/markdown'), 'normalize'>;",
+          '  let utilities: Utilities | undefined;',
+          '</script>',
+          '<span>{utilities}</span>',
+        ].join('\n'),
+      }),
+    ).toEqual([
+      {
+        file: 'packages/editor/src/editor.svelte',
+        specifier: '@corvidae/markdown',
+        kind: 'internal-name',
+      },
+    ]);
+  });
+
   test('a third-party bare specifier is still not an escape', () => {
     expect(
       findSourceEscapes({

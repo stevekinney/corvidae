@@ -219,15 +219,23 @@ function isWalkable(value: unknown): value is Record<string, unknown> {
 /**
  * Every module specifier one Svelte component carries.
  *
- * Svelte's parser is asked for the whole component rather than its `<script>` blocks alone, and
- * the walk covers the fragment too: a `{#await import('./x.ts')}` in markup is a module edge the
- * instance script never mentions. The `source.value` shape is ESTree's, shared by the
- * `ImportDeclaration`, `ExportNamedDeclaration`, `ExportAllDeclaration` and `ImportExpression`
- * nodes Svelte embeds unchanged.
+ * Two readers, because neither sees the whole component.
  *
- * The `start` and `end` Svelte records on those `Literal` nodes are offsets into the whole
- * component, not into the `<script>` block they sit in, and they bracket the quotes — so the
- * arithmetic here is the same as the TypeScript walk's.
+ * Svelte's own parser is asked for everything, and the walk covers the fragment as well as the
+ * scripts: a `{#await import('./x.ts')}` in markup is a module edge the instance script never
+ * mentions. The `source.value` shape is ESTree's, shared by the `ImportDeclaration`,
+ * `ExportNamedDeclaration`, `ExportAllDeclaration` and `ImportExpression` nodes Svelte embeds
+ * unchanged, and the `start`/`end` on those `Literal` nodes are whole-component offsets bracketing
+ * the quotes, so the arithmetic matches the TypeScript walk's.
+ *
+ * What that walk cannot see is every edge that is *not* an ESTree `Import*`/`Export*` node.
+ * `components/editor/src/lib/components/markdown-editor/markdown-editor.svelte` writes
+ * `Pick<typeof import('@corvidae/markdown'), 'normalize' | 'parseOrThrow'>` in a type position —
+ * a `TSImportType`, which the walk skipped and which is TS2307 downstream exactly like a plain
+ * import. So each `<script>` block's own text is handed to the TypeScript walk as well, at its
+ * whole-component offset, which also brings `declare module`, `import.meta.resolve`, `require` and
+ * `import … = require` inside a script into scope. The two readers overlap on ordinary imports, so
+ * the results are merged by position rather than concatenated.
  */
 function svelteSpecifierRanges(contents: string, path: string): SpecifierRange[] {
   let ast: unknown;
@@ -239,6 +247,7 @@ function svelteSpecifierRanges(contents: string, path: string): SpecifierRange[]
     );
   }
   const ranges: SpecifierRange[] = [];
+  const scripts: { start: number; end: number }[] = [];
   const walk = (node: unknown): void => {
     if (Array.isArray(node)) {
       for (const child of node) walk(child);
@@ -246,6 +255,15 @@ function svelteSpecifierRanges(contents: string, path: string): SpecifierRange[]
     }
     if (!isWalkable(node)) return;
     const type = node['type'];
+    const content = node['content'];
+    if (
+      type === 'Script' &&
+      isWalkable(content) &&
+      typeof content['start'] === 'number' &&
+      typeof content['end'] === 'number'
+    ) {
+      scripts.push({ start: content['start'], end: content['end'] });
+    }
     const source = node['source'];
     if (
       typeof type === 'string' &&
@@ -264,7 +282,19 @@ function svelteSpecifierRanges(contents: string, path: string): SpecifierRange[]
     for (const value of Object.values(node)) walk(value);
   };
   walk(ast);
-  return ranges;
+  for (const script of scripts) {
+    const body = contents.slice(script.start, script.end);
+    for (const range of typeScriptSpecifierRanges(body, `${path}.ts`)) {
+      ranges.push({
+        specifier: range.specifier,
+        start: range.start + script.start,
+        end: range.end + script.start,
+      });
+    }
+  }
+  const byStart = new Map<number, SpecifierRange>();
+  for (const range of ranges) byStart.set(range.start, range);
+  return [...byStart.values()].toSorted((left, right) => left.start - right.start);
 }
 
 /** Every module specifier one emitted file carries, with its position, whatever the language. */
