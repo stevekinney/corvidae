@@ -38,9 +38,9 @@ import {
   runSerializedScheduleStateOperation,
   writeScheduleState,
 } from './storage-io.ts';
+import { decodeScheduleState } from './validation/schedule-decode.ts';
 import {
   coerceScheduleId,
-  decodeScheduleState,
   isValidScheduleIdentifier,
   normalizeScheduleFilter,
   normalizeScheduleOptions,
