@@ -11,8 +11,8 @@
  * See `README.md`'s "Cache Economics" note under Context Assembly for the
  * narrative version of these numbers.
  */
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createContextAssembler } from '../src/context/assembly.ts';
 import { createTokenBudget } from '../src/context/token-budget.ts';

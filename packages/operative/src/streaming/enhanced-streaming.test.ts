@@ -1,7 +1,7 @@
-import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { TypedEventTarget } from '@lostgradient/lifecycle';
+import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createAgent } from '../create-agent';
 import { readGenerationProfile } from '../generation-profile';

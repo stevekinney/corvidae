@@ -1,11 +1,11 @@
-import type { ToolCall } from 'armorer';
-import { Conversation } from 'conversationalist';
 import {
   LIVENESS_POLICY_VERSION,
   type ActiveRun,
   type RunState,
   type StepResult,
 } from '@lostgradient/operative';
+import type { ToolCall } from 'armorer';
+import { Conversation } from 'conversationalist';
 
 export function requireRecord(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new Error('Expected a serialized record');

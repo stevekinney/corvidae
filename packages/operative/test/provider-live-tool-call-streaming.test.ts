@@ -18,10 +18,10 @@
  * from the resolved `GenerateResponse`, pairing each resolved tool call with
  * the live block at the same ordinal position.
  */
-import { createTool, createToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { TypedEventTarget } from '@lostgradient/lifecycle';
+import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { createAnthropicProviderStream } from '../src/providers/anthropic.ts';

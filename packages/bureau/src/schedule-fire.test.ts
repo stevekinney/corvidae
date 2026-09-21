@@ -2,8 +2,6 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createTool, createToolbox } from 'armorer';
-import { getMessages } from 'conversationalist';
 import type {
   GenerateContext,
   GenerateFunction,
@@ -19,7 +17,9 @@ import {
   ScheduleResumedEvent,
   stopWhen,
 } from '@lostgradient/operative';
+import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { getMessages } from 'conversationalist';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';

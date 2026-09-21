@@ -2,18 +2,6 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  ApprovalBindingError,
-  createMockTool,
-  createProcessLocalApprovalStateStore,
-  createTestToolbox,
-  createTool,
-  createToolbox,
-  type InputDetector,
-  type PendingToolApproval,
-  type ToolExecutionResult,
-} from 'armorer';
-import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
 import type { RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 import {
   CompletableEventTarget,
@@ -84,7 +72,19 @@ import {
   textValueStore,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
+import {
+  ApprovalBindingError,
+  createMockTool,
+  createProcessLocalApprovalStateStore,
+  createTestToolbox,
+  createTool,
+  createToolbox,
+  type InputDetector,
+  type PendingToolApproval,
+  type ToolExecutionResult,
+} from 'armorer';
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
 import { z } from 'zod';
 
 import type { AuditRecord } from './audit-trail';

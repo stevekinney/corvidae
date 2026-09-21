@@ -41,9 +41,9 @@ function packageRootOf(specifier: string): string {
   return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : (parts[0] ?? specifier);
 }
 
-// Former names from before this workspace consolidated as `@corvidae/*`, and from before
-// COR-1284 reinstated the two public unscoped names below. Bare `armorer` and `conversationalist`
-// are deliberately absent: COR-1284 made them current again, not retired.
+// Former names from before this workspace consolidated under its old internal scope, and from
+// before COR-1284 reinstated the two public unscoped names below. Bare `armorer` and
+// `conversationalist` are deliberately absent: COR-1284 made them current again, not retired.
 const formerPackageNames = [
   'bureau',
   'memory',

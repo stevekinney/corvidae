@@ -12,8 +12,8 @@
  * timestamp and plan id is injected.
  */
 import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { noToolCalls } from '../src/conditions/predicates';
 import { SelectionRevalidationError } from '../src/errors';

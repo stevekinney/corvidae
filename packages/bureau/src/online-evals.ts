@@ -29,7 +29,6 @@
  * detection once a per-evaluation deadline exists, without reopening this
  * module later to add it.
  */
-import { Conversation } from 'conversationalist';
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   BACKGROUND_EVALUATION_POLICY,
@@ -46,6 +45,7 @@ import {
   type StallWatchdogClock,
   type Subscription,
 } from '@lostgradient/operative';
+import { Conversation } from 'conversationalist';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { AuditTrail } from './audit-trail';

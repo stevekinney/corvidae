@@ -2,7 +2,6 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createTool, createToolbox } from 'armorer';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
@@ -12,6 +11,7 @@ import {
   waitForCondition,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { createTool, createToolbox } from 'armorer';
 import { file } from 'bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';

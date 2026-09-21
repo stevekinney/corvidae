@@ -37,7 +37,13 @@
    * future implementation (here or on the Dashboard mirror) has one shared
    * key to invalidate together the day a real endpoint exists.
    */
-  import { Button, ConfirmDialog, CodeBlock, CopyButton, DescriptionList } from '@lostgradient/cinder';
+  import {
+    Button,
+    ConfirmDialog,
+    CodeBlock,
+    CopyButton,
+    DescriptionList,
+  } from '@lostgradient/cinder';
   import { CircleAlert, Terminal } from 'lucide-svelte';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
   import type { RetentionOverview } from '@lostgradient/weft';

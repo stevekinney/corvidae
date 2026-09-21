@@ -1,6 +1,5 @@
 import { tmpdir } from 'node:os';
 
-import { createToolbox } from 'armorer';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
@@ -10,6 +9,7 @@ import {
   readReproductionArtifact,
   writeReproductionArtifact,
 } from '@lostgradient/operative';
+import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { BureauShutdownReport } from '../types';

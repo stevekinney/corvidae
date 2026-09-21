@@ -1,7 +1,7 @@
-import { Conversation } from 'conversationalist';
 import * as weft from '@lostgradient/weft';
 import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 import { assertDefined } from '../assert-defined';
 
 import { createRunEngine } from '../../src/durable/create-run-engine';

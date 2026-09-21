@@ -1,6 +1,6 @@
-import { Conversation, createConversationHistory } from 'conversationalist';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createCheckpointStore } from './checkpoint-store';
 import type { RunCursor, StepRecord } from './types';

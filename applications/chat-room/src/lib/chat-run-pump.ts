@@ -1,4 +1,3 @@
-import type { ToolExecutionResult, ToolResult } from 'armorer';
 import type { ChatStreamEvent } from '@lostgradient/chat';
 import {
   ElicitationRequestedEvent,
@@ -13,6 +12,7 @@ import {
   type AgentRun,
   type ConversationHistory,
 } from '@lostgradient/operative';
+import type { ToolExecutionResult, ToolResult } from 'armorer';
 import {
   classifyChatRunFailure,
   SAFE_CHAT_FAILURE_MESSAGE,

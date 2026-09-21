@@ -114,7 +114,9 @@ describe('the documents a workspace declares', () => {
 });
 
 describe('the files that check a workspace’s emitted source', () => {
-  const declared = (validationInputs['@lostgradient/weft'] ?? []).flatMap((cluster) => cluster.paths);
+  const declared = (validationInputs['@lostgradient/weft'] ?? []).flatMap(
+    (cluster) => cluster.paths,
+  );
 
   test('every declared path is emitted, all thirty-one of them', () => {
     // Against the real tree rather than a fixture, because the thing that can go wrong is a path

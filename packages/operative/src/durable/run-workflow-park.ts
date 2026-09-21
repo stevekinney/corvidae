@@ -1,6 +1,6 @@
-import { Conversation } from 'conversationalist';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { NormalizeActivities, WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
+import { Conversation } from 'conversationalist';
 
 import type { FinishReason } from '../types';
 import {

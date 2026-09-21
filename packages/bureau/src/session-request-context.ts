@@ -1,5 +1,5 @@
-import type { ToolRequestContext } from 'armorer';
 import type { JSONValue } from '@lostgradient/operative';
+import type { ToolRequestContext } from 'armorer';
 
 import { isPlainAuthorityRecord } from './session-authority';
 

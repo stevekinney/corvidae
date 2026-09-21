@@ -27,10 +27,10 @@
  * exactly as the OpenAI provider does — and unconditionally, because Gemini
  * reports the field for its own implicit caching too.
  */
-import { createToolbox } from 'armorer';
-import { Conversation, type Message } from 'conversationalist';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation, type Message } from 'conversationalist';
 
 import { createContextAssembler } from '../src/context/assembly.ts';
 import { createTokenBudget } from '../src/context/token-budget.ts';

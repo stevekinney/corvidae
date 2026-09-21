@@ -1,5 +1,5 @@
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import type { RunResultBase } from './types';
 import { toRedactedRunResultSummary } from './types';

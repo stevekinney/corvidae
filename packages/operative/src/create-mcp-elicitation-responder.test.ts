@@ -1,5 +1,5 @@
-import type { ToolElicitationRequest } from 'armorer';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
+import type { ToolElicitationRequest } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createMcpElicitationResponder } from './create-mcp-elicitation-responder';

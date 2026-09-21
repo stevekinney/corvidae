@@ -4,8 +4,8 @@
  * these cover only the descriptor-attachment contract AB-288 adds.
  */
 import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createAgent } from '../../create-agent';
 import { readGenerationProfile } from '../../generation-profile';

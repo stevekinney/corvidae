@@ -7,10 +7,10 @@
  *   (c) the async iterator is independent of result-resolution state
  *   (d) a second `for await` on a completed run errors or replays predictably, never hangs
  */
-import { createMockTool, createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { createMockTool, createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import {
   CompletedRunIterationError,

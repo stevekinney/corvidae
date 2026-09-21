@@ -10,8 +10,8 @@ import { assertDefined } from './assert-defined';
  */
 
 import { createMockTool, createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import type { MemoryLike } from '../src/create-memory-bridge';
 import { combineIdentity, combineMemory, combineProvider, combineTools } from '../src/inheritance';

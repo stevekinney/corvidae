@@ -13,10 +13,10 @@
  *   - Symbol.dispose aborts and cleans up
  */
 
-import { createTool, createToolbox, type SignedPendingToolApproval } from 'armorer';
-import { Conversation, isConversation } from 'conversationalist';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createTool, createToolbox, type SignedPendingToolApproval } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation, isConversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { noToolCalls, pendingApproval } from '../src/conditions/predicates';

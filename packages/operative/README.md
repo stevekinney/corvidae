@@ -497,7 +497,12 @@ For richer session management, [`createSessionStore()` and `resumeSession()`](#c
 ### `createSessionStore()` and `resumeSession()`
 
 ```typescript
-import { createActiveRun, createSessionStore, resumeSession, stopWhen } from '@lostgradient/operative';
+import {
+  createActiveRun,
+  createSessionStore,
+  resumeSession,
+  stopWhen,
+} from '@lostgradient/operative';
 import type { GenerateFunction } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';

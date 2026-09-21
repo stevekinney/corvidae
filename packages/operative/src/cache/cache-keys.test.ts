@@ -1,6 +1,6 @@
 import { createTestToolbox, createTool } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import type { GenerateContext } from '../types';
 import { conversationHashKey, lastMessageKey } from './cache-keys';

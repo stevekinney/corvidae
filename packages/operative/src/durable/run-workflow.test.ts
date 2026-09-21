@@ -1,5 +1,3 @@
-import { createTool, createToolbox } from 'armorer';
-import { Conversation, createConversationHistory } from 'conversationalist';
 import { HookRegistry } from '@lostgradient/lifecycle';
 import {
   Engine,
@@ -10,7 +8,9 @@ import {
   type WorkflowServicesResolverInfo,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
+import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { Conversation, createConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 
 import { noToolCalls } from '../conditions/predicates';

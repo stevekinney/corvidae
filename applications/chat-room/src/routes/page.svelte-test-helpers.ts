@@ -1,5 +1,5 @@
-import { appendUserMessage, createConversationHistory } from 'conversationalist';
 import type { Page } from '@playwright/test';
+import { appendUserMessage, createConversationHistory } from 'conversationalist';
 import {
   fixtureGateHeld,
   fixtureRequestCount,

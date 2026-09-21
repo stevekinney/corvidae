@@ -10,8 +10,8 @@
  * cached count for provider-neutral parity.
  */
 import { createToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import {
   createAnthropicProvider,

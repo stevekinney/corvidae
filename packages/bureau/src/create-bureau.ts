@@ -1,16 +1,4 @@
 import {
-  type GrantListFilter,
-  type ReusableApprovalGrant,
-  type ReusableApprovalGrantInput,
-  type SignedPendingToolApproval,
-  type ToolRequestContext,
-} from 'armorer';
-import {
-  Conversation,
-  createConversationHistory,
-  isConversationHistory,
-} from 'conversationalist';
-import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
   mergeHookRegistries,
@@ -110,6 +98,14 @@ import {
   type ScheduleSpec,
   type WorkflowState,
 } from '@lostgradient/weft';
+import {
+  type GrantListFilter,
+  type ReusableApprovalGrant,
+  type ReusableApprovalGrantInput,
+  type SignedPendingToolApproval,
+  type ToolRequestContext,
+} from 'armorer';
+import { Conversation, createConversationHistory, isConversationHistory } from 'conversationalist';
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
@@ -7882,7 +7878,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function listSchedules(
     filter?: import('@lostgradient/weft').ScheduleFilter,
   ): Promise<
-    import('@lostgradient/weft').PaginatedResult<import('@lostgradient/weft').ScheduleSummary> | undefined
+    | import('@lostgradient/weft').PaginatedResult<import('@lostgradient/weft').ScheduleSummary>
+    | undefined
   > {
     if (!runtime.durable) return undefined;
     return runtime.durable.engine.listSchedules(filter);

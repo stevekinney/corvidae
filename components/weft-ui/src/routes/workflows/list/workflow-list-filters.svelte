@@ -21,7 +21,14 @@
    * model would just duplicate that. `onClearAll` resets everything this
    * component owns, tags/status included, so "Clear all" still works.
    */
-  import { Chip, FilterBar, Input, Select, TagInput, type AppliedFilter } from '@lostgradient/cinder';
+  import {
+    Chip,
+    FilterBar,
+    Input,
+    Select,
+    TagInput,
+    type AppliedFilter,
+  } from '@lostgradient/cinder';
   import { SlidersHorizontal } from 'lucide-svelte';
   import type { WorkflowStatus } from '@lostgradient/weft';
 

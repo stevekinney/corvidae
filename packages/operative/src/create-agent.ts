@@ -1,8 +1,8 @@
+import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, mergeHookRegistries } from '@lostgradient/lifecycle';
 import type { AnyToolbox, HeadlessPermissionPolicyConfiguration, Tool } from 'armorer';
 import { createHeadlessPermissionPolicyHooks, createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
-import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
-import { createDefaultRuntimeServices, mergeHookRegistries } from '@lostgradient/lifecycle';
 import type { ZodType } from 'zod';
 
 import type { AgentRun } from './agent-run';

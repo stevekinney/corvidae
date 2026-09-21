@@ -1,7 +1,7 @@
-import { Conversation, createConversationHistory } from 'conversationalist';
 import { TypedEventTarget } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import type { AgentSession } from '../agent-session';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from '../durable/run-workflow-result';

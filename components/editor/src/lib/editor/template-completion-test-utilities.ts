@@ -7,7 +7,10 @@
  * a real DOM runtime.
  */
 
-import type { PlaceholderCandidate, PlaceholderCompletionConfiguration } from '@lostgradient/markdown';
+import type {
+  PlaceholderCandidate,
+  PlaceholderCompletionConfiguration,
+} from '@lostgradient/markdown';
 import { Schema } from '@milkdown/kit/prose/model';
 import type { Plugin, Transaction } from '@milkdown/kit/prose/state';
 import { EditorState, TextSelection } from '@milkdown/kit/prose/state';

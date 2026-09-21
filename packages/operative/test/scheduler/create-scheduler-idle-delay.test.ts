@@ -1,8 +1,8 @@
-import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createScheduler } from '../../src/scheduler/create-scheduler';
 import type { SchedulerPriority, SchedulerTask } from '../../src/scheduler/types';

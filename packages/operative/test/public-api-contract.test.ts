@@ -19,8 +19,6 @@ import { assertDefined } from './assert-defined';
  *      causes the in-flight step (including its tools) to re-run on recovery.
  */
 
-import { createTool, createToolbox } from 'armorer';
-import { createConversationHistory } from 'conversationalist';
 import { CompletableEventTarget, HookRegistry } from '@lostgradient/lifecycle';
 import type {
   CombinedOperativeEventMap,
@@ -42,7 +40,9 @@ import {
   waitForCondition,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { createConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 const run = (opts: Parameters<typeof createActiveRun>[0]) => createActiveRun(opts).result;
 

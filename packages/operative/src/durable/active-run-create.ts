@@ -1,5 +1,5 @@
-import { Conversation, isConversation } from 'conversationalist';
 import { CompletableEventTarget, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { Conversation, isConversation } from 'conversationalist';
 
 import { createClosedAcknowledgement, foldTerminalCleanup } from '../closed-acknowledgement';
 import type { ActiveRun } from '../create-run';

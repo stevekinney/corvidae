@@ -181,9 +181,7 @@ describe('chat stream cancellation guard', () => {
 
 describe('chat approval continuation response', () => {
   test('accepts the unified resolution endpoint contract', () => {
-    expect(resumeSource).toContain(
-      "import { toolActionSchema } from 'conversationalist';",
-    );
+    expect(resumeSource).toContain("import { toolActionSchema } from 'conversationalist';");
     expect(resumeSource).toContain('resolutionSchema');
     expect(resumeSource).toContain(
       'toolbox.resolveApproval(approval, resolution, { requestContext })',

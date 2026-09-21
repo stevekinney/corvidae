@@ -15,10 +15,10 @@
  *     idempotent on an unknown or already-terminal id, never propagates to
  *     a sibling
  */
-import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
+import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createAgentRun } from './agent-run';
 import {

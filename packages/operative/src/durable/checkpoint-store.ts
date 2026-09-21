@@ -1,5 +1,5 @@
-import type { ConversationSnapshot } from 'conversationalist';
 import type { TextValueStore } from '@lostgradient/weft';
+import type { ConversationSnapshot } from 'conversationalist';
 
 import type { RunCheckpoint, RunCursor, StepRecord } from './types';
 

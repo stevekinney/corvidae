@@ -140,7 +140,9 @@ function validateArtifactMetadata(
     issues.push(`${packagePath}: import must use public root "${PUBLIC_ROOT_IMPORT}"`);
   }
   if (
-    value.examples.some((example) => /(?:from|import)\s+['"]@lostgradient\/cinder\//.test(example.code))
+    value.examples.some((example) =>
+      /(?:from|import)\s+['"]@lostgradient\/cinder\//.test(example.code),
+    )
   ) {
     issues.push(
       `${packagePath}: example code must use the public root import "${PUBLIC_ROOT_IMPORT}"`,

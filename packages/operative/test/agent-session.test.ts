@@ -1,7 +1,7 @@
-import { createConversationHistory } from 'conversationalist';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
+import { createConversationHistory } from 'conversationalist';
 
 import { createAgentSession, loadAgentSession, saveAgentSession } from '../src/agent-session';
 

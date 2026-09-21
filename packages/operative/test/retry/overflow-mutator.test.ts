@@ -1,6 +1,6 @@
 import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createOverflowMutator } from '../../src/retry/overflow-mutator';
 import type { GenerateContext } from '../../src/types';

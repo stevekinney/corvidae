@@ -1,4 +1,3 @@
-import { Conversation } from 'conversationalist';
 import type { TypedEventTarget } from '@lostgradient/lifecycle';
 import {
   type ActiveRun,
@@ -21,6 +20,7 @@ import {
   type SummarizeOptions,
   type ToolFrameStatus,
 } from '@lostgradient/operative';
+import { Conversation } from 'conversationalist';
 
 import { serializeUnknownError } from './serialization';
 

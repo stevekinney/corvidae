@@ -456,24 +456,24 @@ Exact statuses and logs are in `/tmp/corvidae-app-ownership/validation-02/status
 
 All fifteen migrated libraries and Chat-room also passed their focused commands. The TypeScript configuration workspace is configuration-only and is validated through its consumers and the root contracts. Exact focused evidence is in `/tmp/corvidae-app-ownership/focused-accepted.json`; the Weft UI entry points to the fresh command after the final host change.
 
-| Exact focused command                                                                     | Exit |
-| ----------------------------------------------------------------------------------------- | ---- |
-| `bunx turbo run lint typecheck test --filter=armorer --concurrency=1`           | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/bureau --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/chat --concurrency=1`              | 0    |
-| `bunx turbo run lint typecheck test build --filter=@lostgradient/chat-room --concurrency=1`   | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/cinder --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=conversationalist --concurrency=1` | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/editor --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/interoperability --concurrency=1`  | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/lifecycle --concurrency=1`         | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/markdown --concurrency=1`          | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/memory --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/operative --concurrency=1`         | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/skills --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/testing --concurrency=1`           | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/weft --concurrency=1`              | 0    |
-| `bunx turbo run lint typecheck test --filter=@lostgradient/weft-ui --concurrency=1`           | 0    |
+| Exact focused command | Exit |
+| --- | --- |
+| `bunx turbo run lint typecheck test --filter=armorer --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/bureau --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/chat --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test build --filter=@lostgradient/chat-room --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/cinder --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=conversationalist --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/editor --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/interoperability --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/lifecycle --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/markdown --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/memory --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/operative --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/skills --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/testing --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/weft --concurrency=1` | 0 |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/weft-ui --concurrency=1` | 0 |
 
 The final Weft UI browser rerun passed all 17 tests; its status is in `weft-ui-browser-accepted.status.json`. The final watcher regression passes both in the complete package suite and through root validation. Removing startup cleanup in the disposable copy makes the new process-exit regression fail at the unchanged test timeout; restoring it passes. The control is retained in `startup-cleanup-control.json` and does not modify the live checkout.
 

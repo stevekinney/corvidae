@@ -96,7 +96,10 @@ test('the root import rule still rejects unassigned JavaScript module imports', 
 });
 
 test('Chat can load its stylesheet-owning Cinder dependency from the public root', async () => {
-  const result = await lintImport("import '@lostgradient/cinder';\n", 'components/chat/src/index.ts');
+  const result = await lintImport(
+    "import '@lostgradient/cinder';\n",
+    'components/chat/src/index.ts',
+  );
   expect(result.output).not.toContain('no-unassigned-import');
   expect(result.exitCode).toBe(0);
 });

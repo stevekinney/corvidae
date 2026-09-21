@@ -59,10 +59,13 @@ describe('virtual-list dependency guard test-support ownership', () => {
   });
 
   test('keeps runtime dependency rules for an unreferenced production module', async () => {
-    await withTemporaryFileTree({ 'utility.ts': "import '@lostgradient/testing';" }, async (root) => {
-      const result = await walkDependencyGraph([join(root, 'utility.ts')], new Set());
-      expect(result.violations).toHaveLength(1);
-      expect(result.violations[0]?.specifier).toBe('@lostgradient/testing');
-    });
+    await withTemporaryFileTree(
+      { 'utility.ts': "import '@lostgradient/testing';" },
+      async (root) => {
+        const result = await walkDependencyGraph([join(root, 'utility.ts')], new Set());
+        expect(result.violations).toHaveLength(1);
+        expect(result.violations[0]?.specifier).toBe('@lostgradient/testing');
+      },
+    );
   });
 });

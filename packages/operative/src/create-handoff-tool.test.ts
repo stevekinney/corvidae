@@ -1,7 +1,7 @@
-import { createToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { stopWhen } from './conditions';

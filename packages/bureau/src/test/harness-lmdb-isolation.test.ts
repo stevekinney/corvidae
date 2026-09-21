@@ -1,7 +1,7 @@
-import { createToolbox } from 'armorer';
 import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
+import { createToolbox } from 'armorer';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import type { Bureau, RunSummary } from '../types';

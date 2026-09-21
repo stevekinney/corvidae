@@ -1,8 +1,8 @@
-import type { ConversationHistory } from 'conversationalist';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { JSONValue } from '@lostgradient/tool-protocol';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConversationHistory } from 'conversationalist';
 
 import { createSessionStore } from './session/create-session-store';
 import type { RunOutcome } from './types';

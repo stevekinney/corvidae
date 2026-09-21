@@ -8,8 +8,8 @@
  * contract; `create-lazy-agent.ts` is its lazy-loading implementation.
  */
 
-import type { ConversationHistory } from 'conversationalist';
 import type { HookObservationCorrelation, HookRegistry } from '@lostgradient/lifecycle';
+import type { ConversationHistory } from 'conversationalist';
 
 import type { AgentRun, RunEvent } from './agent-run';
 import type { ChildRunRegistry } from './child-run';

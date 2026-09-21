@@ -1,5 +1,5 @@
-import type { MimeFamily, ModalityMatrix } from 'conversationalist';
 import type { BackendDescriptor } from '@lostgradient/operative';
+import type { MimeFamily, ModalityMatrix } from 'conversationalist';
 
 import {
   type CatalogDescriptorSource,

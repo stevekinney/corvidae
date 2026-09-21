@@ -1,6 +1,6 @@
 import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { noToolCalls } from '../src/conditions/predicates.ts';
 import { createActiveRun } from '../src/create-run.ts';

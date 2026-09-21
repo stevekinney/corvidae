@@ -1,8 +1,8 @@
-import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { createManualRuntimeServices, eventObservable } from '@lostgradient/lifecycle';
+import { createTestToolbox } from 'armorer';
 import { file } from 'bun';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createChildRunRegistry } from '../child-run';
 import { noToolCalls } from '../conditions/predicates';

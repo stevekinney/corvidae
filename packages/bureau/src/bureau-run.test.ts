@@ -8,7 +8,6 @@
  * initialization failure are covered by `agent-catalog.test.ts` and
  * `create-bureau.test.ts` respectively.
  */
-import { createToolbox, type Toolbox } from 'armorer';
 import {
   AgentContractError,
   type AgentRun,
@@ -19,6 +18,7 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type RunnableAgent,
 } from '@lostgradient/operative';
+import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

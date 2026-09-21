@@ -1,5 +1,5 @@
-import { createTool } from 'armorer';
 import type { TypedEventTarget } from '@lostgradient/lifecycle';
+import { createTool } from 'armorer';
 import { z } from 'zod';
 
 import type { OperativeEventMap } from './events';

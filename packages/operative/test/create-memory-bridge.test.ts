@@ -1,5 +1,5 @@
-import { Conversation } from 'conversationalist';
 import { beforeEach, describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 import { assertDefined } from './assert-defined';
 
 import type { MemoryLike } from '../src/create-memory-bridge';

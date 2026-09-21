@@ -1,7 +1,7 @@
-import { createConversationHistory } from 'conversationalist';
 import { TypedEventTarget } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
 import type { OperativeEventMap, SessionRecoverEvent } from '../events';

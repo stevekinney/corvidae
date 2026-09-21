@@ -6,7 +6,12 @@
  * on. See `fixtures/workflows.ts` for the append-only contract this file
  * participates in.
  */
-import { activity, workflow, type SearchAttributeValue, type WorkflowHandle } from '@lostgradient/weft';
+import {
+  activity,
+  workflow,
+  type SearchAttributeValue,
+  type WorkflowHandle,
+} from '@lostgradient/weft';
 
 const ATTRIBUTE_PERSISTENCE_POLL_ATTEMPTS = 5;
 const ATTRIBUTE_PERSISTENCE_POLL_DELAY_MS = 20;

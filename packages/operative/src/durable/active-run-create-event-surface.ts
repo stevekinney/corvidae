@@ -1,5 +1,5 @@
-import type { AnyToolbox, ToolboxEventMap } from 'armorer';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { AnyToolbox, ToolboxEventMap } from 'armorer';
 
 import type { OperativeEventEmitter } from '../events';
 import {

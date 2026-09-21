@@ -294,8 +294,7 @@ describe('an internal name in an emitted TypeScript configuration', () => {
   test('`extends` is read, which a `.json` file was never scanned for before', () => {
     expect(
       findSourceEscapes({
-        'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json':
-          `{\n  // a tsconfig is JSON with comments\n  "extends": "${internalScope}/typescript/library.json"\n}\n`,
+        'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json': `{\n  // a tsconfig is JSON with comments\n  "extends": "${internalScope}/typescript/library.json"\n}\n`,
       }),
     ).toEqual([
       {

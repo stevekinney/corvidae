@@ -10,10 +10,10 @@ import { assertDefined } from './assert-defined';
  * provider cache fields). See the mapping table in the package README
  * (the instrumentation section) for the pinned conventions version.
  */
-import { createToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { instrumentGenerate } from '../src/index.ts';
 import type { GenerateContext, GenerateFunction, TokenUsage } from '../src/types.ts';

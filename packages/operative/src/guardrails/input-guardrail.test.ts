@@ -1,5 +1,5 @@
-import { Conversation } from 'conversationalist';
 import { describe, expect, it, mock } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createInputGuardrail } from './input-guardrail';
 import type {

@@ -7,8 +7,8 @@
  * never resolved.
  */
 import { createTestToolbox, createToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createAgentRun } from '../src/agent-run';
 import { noToolCalls } from '../src/conditions/predicates';

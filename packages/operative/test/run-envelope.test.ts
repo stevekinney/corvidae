@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'bun:test';
 import {
   appendAssistantMessage,
   appendToolCall,
@@ -6,7 +7,6 @@ import {
   type ConversationHistory,
   createConversationHistory,
 } from 'conversationalist';
-import { describe, expect, it } from 'bun:test';
 
 import type { CostEstimate } from '../src/cost-estimation';
 import {

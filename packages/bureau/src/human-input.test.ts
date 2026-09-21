@@ -31,13 +31,13 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import {
   createProcessLocalGrantStateStore,
   createTool,
   createToolbox,
   type Toolbox,
 } from 'armorer';
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -1,6 +1,6 @@
-import { Conversation } from 'conversationalist';
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createChildRunRegistry } from '../child-run';
 import { createClosedAcknowledgement } from '../closed-acknowledgement';

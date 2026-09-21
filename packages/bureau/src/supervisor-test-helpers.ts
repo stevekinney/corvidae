@@ -1,5 +1,5 @@
-import { Conversation } from 'conversationalist';
 import type { AgentInput, AgentRun, RunResult } from '@lostgradient/operative';
+import { Conversation } from 'conversationalist';
 
 export function makeRunResult(
   content: string,

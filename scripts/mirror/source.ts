@@ -244,7 +244,7 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         'Workflow fixtures reached from `src/routes/` through `fixtures/workflows.ts`, which re-exports the rest. `fixtures/dynamic-sources.ts`, its test and `fixtures/dynamic-workflows/` are not declared: nothing emitted imports them.',
     },
   ],
-  'armorer': [
+  armorer: [
     {
       paths: ['test/helpers/async-assertions.ts'],
       reason:

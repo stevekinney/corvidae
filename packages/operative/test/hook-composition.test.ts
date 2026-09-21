@@ -1,7 +1,7 @@
-import { createTestToolbox, createTool } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
+import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { noToolCalls } from '../src/conditions/predicates';

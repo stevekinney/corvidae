@@ -1,8 +1,8 @@
-import type { Conversation as ConversationType } from 'conversationalist';
-import { Conversation, createConversationHistory } from 'conversationalist';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { JSONValue } from '@lostgradient/tool-protocol';
+import type { Conversation as ConversationType } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import type { AgentSession } from '../agent-session';
 import { createAgentSession } from '../agent-session';

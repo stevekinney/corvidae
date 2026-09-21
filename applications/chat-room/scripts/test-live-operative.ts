@@ -10,7 +10,6 @@
  * already has that credential available as an environment variable — this
  * script reads it but never logs, prints, or otherwise echoes its value.
  */
-import { createToolbox } from 'armorer';
 import {
   appendUserMessage,
   createConversationHistory,
@@ -18,6 +17,7 @@ import {
   type ChatStreamEvent,
 } from '@lostgradient/chat';
 import { createAnthropicProviderStream } from '@lostgradient/operative';
+import { createToolbox } from 'armorer';
 import { readLiveEnvironmentConfiguration } from './environment-configuration.ts';
 
 import { createChatAgent, createChatStreamWriter, startChatRun } from '../src/lib/chat-agent.ts';

@@ -1,7 +1,7 @@
-import type { ConversationHistory } from 'conversationalist';
-import { Conversation, createConversationHistory } from 'conversationalist';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { CompletableEventTarget, ForwardedEvent } from '@lostgradient/lifecycle';
+import type { ConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import type { AgentRun, RunEvent } from '../agent-run';
 import { createAgentRun } from '../agent-run';

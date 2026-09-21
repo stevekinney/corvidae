@@ -1,10 +1,10 @@
+import type { AgentSession, JSONValue, SessionStore, Store } from '@lostgradient/operative';
+import { createAgentSession } from '@lostgradient/operative';
 import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
 } from 'conversationalist';
-import type { AgentSession, JSONValue, SessionStore, Store } from '@lostgradient/operative';
-import { createAgentSession } from '@lostgradient/operative';
 
 import { isPlainAuthorityRecord } from './session-authority';
 import type { DiagnosticSink } from './types';

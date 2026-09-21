@@ -1,5 +1,5 @@
-import { Conversation } from 'conversationalist';
 import { describe, expect, it, mock } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { GuardrailTripwireError } from '../errors';
 import { createGuardrails } from './create-guardrails';

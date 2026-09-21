@@ -1,3 +1,4 @@
+import type { JSONValue, ToolCall } from '@lostgradient/tool-protocol';
 import type { AnyToolbox, ToolExecutionResult } from 'armorer';
 import type {
   ConversationSnapshot,
@@ -5,7 +6,6 @@ import type {
   ImageContent,
   TextContent,
 } from 'conversationalist';
-import type { JSONValue, ToolCall } from '@lostgradient/tool-protocol';
 
 import type { Effort } from '../providers/types';
 import type { EventDispatcher } from '../run-step';

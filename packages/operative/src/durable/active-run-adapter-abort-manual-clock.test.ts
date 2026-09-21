@@ -1,8 +1,8 @@
-import { createToolbox } from 'armorer';
-import { createConversationHistory } from 'conversationalist';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { createConversationHistory } from 'conversationalist';
 
 import { stopWhen } from '../conditions/index';
 import { createActiveRun } from '../create-run';

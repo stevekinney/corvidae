@@ -1,8 +1,8 @@
-import type { ConversationHistory } from 'conversationalist';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
 import type { JSONValue } from '@lostgradient/tool-protocol';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConversationHistory } from 'conversationalist';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';

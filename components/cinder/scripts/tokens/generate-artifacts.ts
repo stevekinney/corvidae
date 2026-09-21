@@ -133,7 +133,8 @@ const contextExports: Readonly<Record<string, string>> = {
 
 function rootExportName(exports: Readonly<Record<string, string>>, key: string): string {
   const name = exports[key];
-  if (!name) throw new Error(`Token artifact ${key} needs a named @lostgradient/cinder root export.`);
+  if (!name)
+    throw new Error(`Token artifact ${key} needs a named @lostgradient/cinder root export.`);
   return name;
 }
 

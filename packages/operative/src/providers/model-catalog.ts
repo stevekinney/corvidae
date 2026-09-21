@@ -1,10 +1,5 @@
-import type {
-  MediaLimits,
-  MimeFamily,
-  Modality,
-  ModalityMatrix,
-} from 'conversationalist';
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
+import type { MediaLimits, MimeFamily, Modality, ModalityMatrix } from 'conversationalist';
 
 import { readEnvironmentConfiguration } from '../environment-configuration.ts';
 import { ANTHROPIC_LIMITS, GEMINI_LIMITS, OPENAI_LIMITS } from './model-catalog-data.ts';

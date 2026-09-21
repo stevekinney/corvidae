@@ -1,4 +1,3 @@
-import { createConversationHistory } from 'conversationalist';
 import { createAgentSession, createSessionStore, type SessionStore } from '@lostgradient/operative';
 import {
   resolveStorage,
@@ -9,6 +8,7 @@ import {
   type TextValueStoreCondition,
 } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
+import { createConversationHistory } from 'conversationalist';
 
 import {
   admitSessionInput,

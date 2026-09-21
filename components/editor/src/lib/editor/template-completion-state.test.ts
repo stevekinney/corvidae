@@ -1,4 +1,7 @@
-import type { PlaceholderCandidate, PlaceholderCompletionConfiguration } from '@lostgradient/markdown';
+import type {
+  PlaceholderCandidate,
+  PlaceholderCompletionConfiguration,
+} from '@lostgradient/markdown';
 import { describe, expect, it } from 'bun:test';
 import { filterAndSortCandidates } from './template-completion-query.js';
 import {

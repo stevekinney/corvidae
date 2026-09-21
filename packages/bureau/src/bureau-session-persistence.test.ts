@@ -1,4 +1,3 @@
-import { Conversation, createConversationHistory } from 'conversationalist';
 import {
   createAgentSession,
   type AgentSession,
@@ -6,6 +5,7 @@ import {
   type SessionStore,
 } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createSessionPersistence } from './bureau-session-persistence';
 

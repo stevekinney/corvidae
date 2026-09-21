@@ -1,7 +1,7 @@
-import { createTestToolbox, createTool } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { SpanStatusCode } from '@opentelemetry/api';
+import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';
 

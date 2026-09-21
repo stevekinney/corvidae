@@ -1,6 +1,6 @@
-import { Conversation } from 'conversationalist';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { isWeftErrorLike } from '@lostgradient/weft';
+import { Conversation } from 'conversationalist';
 
 import { AgentRunError } from '../errors';
 import type { OperativeEventEmitter } from '../events';

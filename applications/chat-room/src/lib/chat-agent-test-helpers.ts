@@ -1,9 +1,3 @@
-import {
-  createTool,
-  createToolbox,
-  type AnyToolbox,
-  type ToolRequestContext,
-} from 'armorer';
 import type { ChatStreamEvent } from '@lostgradient/chat';
 import {
   appendUserMessage,
@@ -24,6 +18,7 @@ import {
   type OperativeHookMap,
   type StreamingGenerateFunction,
 } from '@lostgradient/operative';
+import { createTool, createToolbox, type AnyToolbox, type ToolRequestContext } from 'armorer';
 import { expect } from 'bun:test';
 import { z } from 'zod';
 import {

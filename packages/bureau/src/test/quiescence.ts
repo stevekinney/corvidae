@@ -130,7 +130,11 @@
  * `quiescent`.
  */
 
-import { type LeakedResource, QuiescenceError, type QuiescenceReport } from '@lostgradient/operative';
+import {
+  type LeakedResource,
+  QuiescenceError,
+  type QuiescenceReport,
+} from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import type { AbortingRun, BureauShutdownOptions, BureauShutdownReport } from '../types';

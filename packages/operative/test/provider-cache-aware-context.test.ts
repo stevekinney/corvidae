@@ -7,10 +7,10 @@
  * `cacheBoundary` mark is lowered to Anthropic's `cache_control` breakpoint —
  * built on the conversation-level `cacheBoundary` mechanism, not a parallel one.
  */
-import { createToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createContextAssembler } from '../src/context/assembly.ts';
 import { createTokenBudget } from '../src/context/token-budget.ts';

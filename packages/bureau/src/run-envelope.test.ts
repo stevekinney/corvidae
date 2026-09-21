@@ -1,5 +1,3 @@
-import { createTestToolbox, createTool, createToolbox, type Tool } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { TypedEventTarget } from '@lostgradient/lifecycle';
 import {
   type ActiveRun,
@@ -15,7 +13,9 @@ import {
   StreamCustomEvent,
   type StreamEventMap,
 } from '@lostgradient/operative';
+import { createTestToolbox, createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { createRunFrameForwarder } from './run-envelope';

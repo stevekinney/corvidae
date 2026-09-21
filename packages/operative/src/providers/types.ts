@@ -1,5 +1,5 @@
-import type { Message } from 'conversationalist';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { Message } from 'conversationalist';
 
 import type { TokenBudget } from '../context/token-budget.ts';
 import type { ContextAssembler } from '../context/types.ts';

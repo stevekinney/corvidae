@@ -303,7 +303,10 @@ function rewriteTestImports(
   // After moving to src/components/experimental/<name>/<name>.test.ts, similarly one
   // extra `..`.
   let next = source;
-  next = next.replace(/from ['"](?:\.\.\/)+test\/happy-dom\.ts['"]/g, "from '@lostgradient/testing'");
+  next = next.replace(
+    /from ['"](?:\.\.\/)+test\/happy-dom\.ts['"]/g,
+    "from '@lostgradient/testing'",
+  );
   next = next.replace(
     /await import\(['"](?:\.\.\/)+test\/happy-dom\.ts['"]\)/g,
     "await import('@lostgradient/testing')",

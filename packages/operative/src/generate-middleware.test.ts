@@ -4,8 +4,8 @@
  * descriptors, deduplicated by `(provider, endpoint, model)`.
  */
 import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createAgent } from './create-agent';
 import { composeGenerate, createFallbackGenerate } from './generate-middleware';

@@ -1,7 +1,11 @@
 import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
 /// <reference lib="dom" />
 /** Browser proof for dense domain focus rings in the application-owned Chat fixture. */
-import { boxShadowLayerCount, THEME_STORAGE_KEY, waitForFocusStyleFrame } from '@lostgradient/testing';
+import {
+  boxShadowLayerCount,
+  THEME_STORAGE_KEY,
+  waitForFocusStyleFrame,
+} from '@lostgradient/testing';
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 
 import { environmentConfiguration } from '../environment-configuration.ts';

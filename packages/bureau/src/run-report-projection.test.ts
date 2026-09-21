@@ -1,12 +1,12 @@
-import { createToolbox, type Tool } from 'armorer';
-import { Conversation } from 'conversationalist';
 import {
   AbortAgentRunError,
   createActiveRun,
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
+import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import {
   buildPartialRunReport,

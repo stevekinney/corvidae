@@ -1,6 +1,6 @@
-import { createTool } from 'armorer';
 import type { EventMap, ObservableLike, Observer, Subscription } from '@lostgradient/lifecycle';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
+import { createTool } from 'armorer';
 import type { ZodType } from 'zod';
 import { z } from 'zod';
 

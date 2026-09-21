@@ -383,7 +383,11 @@ const result = await run.result();
 Both moved here from `operative` (AB-22), rebuilt against `BureauAgentCatalog<D>` in place of the deleted `AgentRegistry`.
 
 ```typescript
-import { createAgentDiscoveryTool, createFanOutRouting, createSupervisor } from '@lostgradient/bureau';
+import {
+  createAgentDiscoveryTool,
+  createFanOutRouting,
+  createSupervisor,
+} from '@lostgradient/bureau';
 
 const supervisor = createSupervisor({
   agents: bureau.agents,

@@ -1,5 +1,5 @@
-import { Conversation, createConversationHistory } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import type { RegistryAgnosticEngine } from '../durable/create-run-engine';
 import {

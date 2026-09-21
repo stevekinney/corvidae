@@ -1,7 +1,7 @@
-import { createConversationHistory } from 'conversationalist';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { createConversationHistory } from 'conversationalist';
 
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';

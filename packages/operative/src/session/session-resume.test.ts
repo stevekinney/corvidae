@@ -1,6 +1,6 @@
-import { Conversation, createConversationHistory } from 'conversationalist';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
 import { createSessionStore } from './create-session-store';

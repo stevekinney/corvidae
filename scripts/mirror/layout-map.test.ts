@@ -54,7 +54,9 @@ describe('the deferred workspace', () => {
   test('refuses to give a directory and names the issue that must rule on it', async () => {
     const layout = await layoutFor('@lostgradient/chat-room');
     expect(layout.disposition).toBe('deferred');
-    await expect(targetDirectoryFor('@lostgradient/chat-room')).rejects.toThrow(DeferredWorkspaceError);
+    await expect(targetDirectoryFor('@lostgradient/chat-room')).rejects.toThrow(
+      DeferredWorkspaceError,
+    );
     try {
       await targetDirectoryFor('@lostgradient/chat-room');
     } catch (error) {

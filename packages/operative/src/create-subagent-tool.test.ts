@@ -1,7 +1,7 @@
-import { createToolbox } from 'armorer';
-import { Conversation, type ConversationHistory } from 'conversationalist';
 import { CompletableEventTarget, HookRegistry } from '@lostgradient/lifecycle';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation, type ConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 
 import type { AgentRun, SuccessfulRunResult } from './agent-run';

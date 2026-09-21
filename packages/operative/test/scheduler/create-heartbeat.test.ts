@@ -1,7 +1,7 @@
-import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { createHeartbeat } from '../../src/scheduler/create-heartbeat';
 import type { Scheduler } from '../../src/scheduler/create-scheduler';

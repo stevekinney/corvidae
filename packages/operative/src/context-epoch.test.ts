@@ -5,8 +5,8 @@
  * are injected so every assertion names the exact chain it is about.
  */
 import { createTestToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import {
   createContextEpochSealer,

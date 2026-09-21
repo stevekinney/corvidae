@@ -17,8 +17,8 @@
  *      cover the runtime path.
  */
 import { createToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { ProviderError } from '../src/providers/errors.ts';
 import { createGeminiProvider, createGeminiProviderStream } from '../src/providers/gemini.ts';

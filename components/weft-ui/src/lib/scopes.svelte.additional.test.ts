@@ -7,7 +7,10 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient, AUTHORIZATION_SCOPES as UPSTREAM_AUTHORIZATION_SCOPES } from '@lostgradient/weft';
+import {
+  HttpClient,
+  AUTHORIZATION_SCOPES as UPSTREAM_AUTHORIZATION_SCOPES,
+} from '@lostgradient/weft';
 
 import {
   AUTHORIZATION_SCOPES,
