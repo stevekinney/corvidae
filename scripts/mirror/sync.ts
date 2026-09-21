@@ -1,6 +1,7 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { assertInstallParity, readWorkflowInstalls, type InstallParity } from './install-parity.ts';
 import { assertNothingDeferred, runInstall, type MirrorTarget } from './manifests.ts';
 import { loadPackageSurface, missingBuildInputs } from './package-surface.ts';
 import {
@@ -94,16 +95,41 @@ const mirrorIdentity = {
  * The global and system configuration are neutralized so a developer's signing key, commit
  * template or hooks path cannot change what a sync produces, and the identity is supplied
  * explicitly rather than inherited: a mirror commit is authored by the mirror.
+ *
+ * `core.hooksPath` needs its own neutralization because husky writes it into the clone's **local**
+ * configuration, which `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` do not reach. It is injected
+ * through `GIT_CONFIG_COUNT` rather than passed as `-c` on one command so it covers every git
+ * invocation this module makes: weft's checked-in hooks are `pre-commit`, `post-checkout` and
+ * `post-merge` today, but the hook set is target-owned and a `pre-push` added upstream would
+ * otherwise fire on the sync's push with nothing here to notice. This replaces `--ignore-scripts`
+ * as the mechanism keeping the target's hooks out of the sync's way — that flag was suppressing
+ * dependency build steps as a side effect (COR-1278), which is far too much collateral for a
+ * problem that git configuration addresses directly.
  */
-export function gitEnvironment(): Record<string, string | undefined> {
+export function gitEnvironment(
+  environment: Record<string, string | undefined> = Bun.env,
+): Record<string, string | undefined> {
+  // Appended to whatever `GIT_CONFIG_COUNT` the caller already set rather than assuming index 0
+  // is free. Nothing sets those variables today, so hardcoding `COUNT=1` would work and would
+  // keep working right up until something did, at which point it would silently drop that entry
+  // and overwrite its key — the quiet kind of defect that only appears in an environment nobody
+  // tested. Taking the environment as a parameter is `github-app.ts`'s convention for the same
+  // reason it is here: a named read belongs to a registered environment boundary, and threading
+  // the map through keeps this one testable without process-wide mutation.
+  const inheritedCount = Number.parseInt(environment['GIT_CONFIG_COUNT'] ?? '', 10);
+  const nextIndex = Number.isInteger(inheritedCount) && inheritedCount > 0 ? inheritedCount : 0;
+
   const mirrorEnvironment: Record<string, string | undefined> = {
-    ...Bun.env,
+    ...environment,
     GIT_AUTHOR_NAME: mirrorIdentity.name,
     GIT_AUTHOR_EMAIL: mirrorIdentity.email,
     GIT_COMMITTER_NAME: mirrorIdentity.name,
     GIT_COMMITTER_EMAIL: mirrorIdentity.email,
     GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_CONFIG_SYSTEM: '/dev/null',
+    GIT_CONFIG_COUNT: String(nextIndex + 1),
+    [`GIT_CONFIG_KEY_${nextIndex}`]: 'core.hooksPath',
+    [`GIT_CONFIG_VALUE_${nextIndex}`]: '/dev/null',
   };
   return mirrorEnvironment;
 }
@@ -329,6 +355,12 @@ export interface VerifyResult {
   smokeTest: SmokeTestResult;
   /** Private workspaces whose emitted source was type-checked, by public name. */
   privateTypechecks: string[];
+  /**
+   * What the verification install was compared against. An empty `checkedAgainst` means the
+   * target carries no workflows to compare with, which is a gap in the evidence rather than a
+   * clean result — recorded here so it is visible instead of reading as a pass.
+   */
+  installParity: InstallParity;
 }
 
 /**
@@ -377,14 +409,33 @@ export async function verifyTarget({
   scratchDirectory,
   installArguments = [],
 }: VerifyOptions): Promise<VerifyResult> {
-  // `--ignore-scripts` for the same reason the staging install uses it: both real targets
-  // preserve a `prepare` hook running husky, and letting it install hooks here would arm a
-  // pre-commit that fires on the sync's own commit, against a root manifest with no scripts.
+  // This install is the one thing standing between the mirror and publishing a tree that does
+  // not build, so it runs the way the target's own CI runs: no `--ignore-scripts`, from an empty
+  // `node_modules`. Both halves are load-bearing and neither works alone.
+  //
+  // The flag used to be here to keep the target's husky `prepare` from arming hooks before the
+  // sync's commit. It also suppressed every dependency's `install` script, which left
+  // `better-sqlite3` present, requirable, and missing the compiled `better_sqlite3.node` it only
+  // reaches for when a database is constructed — so the staged tree passed every check that
+  // stopped at `require` and failed the one integration test that went further (COR-1278). Hooks
+  // are now neutralized where they actually live, in `gitEnvironment`'s `core.hooksPath`.
+  //
+  // The wipe is what makes dropping the flag do anything. `stageTarget` has already installed
+  // into this directory to regenerate the lockfile, and Bun does not re-run lifecycle scripts for
+  // a package that is already linked: a second install over a populated tree leaves an unbuilt
+  // binding exactly as unbuilt, whatever flags it carries. Removing `node_modules` first also
+  // makes this a fresh-checkout install, which is what CI actually does. `bun install --force`
+  // would rebuild too, but it is not a command any target runs, and answering "the harness
+  // diverges from the real environment" with a second divergence is not an answer.
+  const installCommand = ['bun', 'install', '--frozen-lockfile', ...installArguments];
+  const installParity = assertInstallParity({
+    command: installCommand,
+    workflowInstalls: await readWorkflowInstalls(directory),
+    allowedExtraFlags: installArguments,
+  });
+  await rm(join(directory, 'node_modules'), { recursive: true, force: true });
   assertSucceeded(
-    await runCommand(
-      ['bun', 'install', '--frozen-lockfile', '--ignore-scripts', ...installArguments],
-      { cwd: directory },
-    ),
+    await runCommand(installCommand, { cwd: directory }),
     'verifying the staged lockfile satisfies the emitted manifests',
   );
 
@@ -425,7 +476,7 @@ export async function verifyTarget({
     })),
     installArguments,
   });
-  return { reports, smokeTest, privateTypechecks };
+  return { reports, smokeTest, privateTypechecks, installParity };
 }
 
 export type SyncDecision = 'skip' | 'pushed';
@@ -572,6 +623,16 @@ export async function runSyncCommand(argv: readonly string[]): Promise<number> {
       result.decision === 'skip'
         ? `${target}: no change, skipping\n`
         : `${target}: pushed ${result.commit} with ${result.changed.length} changed path(s)\n`,
+    );
+    // Printed on every run, including a skip, because the interesting value is zero: a target
+    // whose workflows the mirror could not read is one whose verification install was compared
+    // against nothing. Recording that only in the returned object would leave the claim that it
+    // is "visible" true of the type and false of the tool.
+    const { installParity } = result.verification;
+    process.stdout.write(
+      installParity.checkedAgainst.length === 0
+        ? `${target}: install parity UNVERIFIED — no workflow install found to compare \`${installParity.command}\` against\n`
+        : `${target}: install parity checked against ${installParity.checkedAgainst.length} workflow install(s)\n`,
     );
     if (result.seededFromPackageMap.length > 0) {
       process.stdout.write(

@@ -729,6 +729,14 @@ export async function stageTarget(
  * Exported because the surface half of the transform stages through its own path — it has two
  * gates to run between planning and writing — and a second copy of this would be a second place
  * for the `--ignore-scripts` reasoning above to drift.
+ *
+ * `--ignore-scripts` is correct *here* and wrong in `verifyTarget`, which is not an inconsistency
+ * to tidy up. This install exists only to resolve a lockfile, and resolution does not depend on
+ * lifecycle scripts, so skipping them is free. Verification is a claim about a tree that builds
+ * and runs, and skipping them there silently left `better-sqlite3` with no compiled binding while
+ * every check that stopped short of constructing a database still passed (COR-1278). `verifyTarget`
+ * therefore wipes this `node_modules` and reinstalls with scripts enabled — Bun will not re-run an
+ * already-linked package's scripts, so the wipe is what makes that second install mean anything.
  */
 export async function runInstall(directory: string, extra: readonly string[] = []): Promise<void> {
   const install = Bun.spawn(['bun', 'install', '--ignore-scripts', ...extra], {

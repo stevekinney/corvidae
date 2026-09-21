@@ -7,8 +7,15 @@ import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
 import { loadBetterSqlite3ForTest } from './node-sqlite-loader.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 
+// The loader distinguishes the three ways a better-sqlite3 load can fail, because
+// their remedies differ and a single catch-all sentence hid an unbuilt binding
+// behind "the dependency is missing" for three investigations (COR-1278).
 const MISSING_BETTER_SQLITE_ERROR =
   'NodeSQLiteStorage requires the optional peer dependency "better-sqlite3". Install it in your application with: bun add better-sqlite3 (or npm install better-sqlite3).';
+const UNBUILT_BETTER_SQLITE_BINDING_ERROR =
+  'NodeSQLiteStorage found "better-sqlite3" installed, but its native binding was never compiled';
+const REFUSED_BETTER_SQLITE_BINDING_ERROR =
+  'NodeSQLiteStorage could not load the "better-sqlite3" native binding in this runtime.';
 
 // better-sqlite3 uses native bindings that aren't supported in Bun.
 // Bun launches the native integration cases in a Node subprocess and checks
@@ -161,10 +168,10 @@ describe('NodeSQLiteStorage', () => {
     ).toThrow(MISSING_BETTER_SQLITE_ERROR);
   });
 
-  it('throws a clear runtime error when the better-sqlite3 native binding fails to load', () => {
+  it('reports a refused native binding as a runtime problem, not a missing package', () => {
     // Simulate better-sqlite3's native binding failing to dlopen under Bun: the
-    // require itself rejects with ERR_DLOPEN_FAILED. The loader recognizes this as
-    // a load failure and reshapes it into the actionable peer-dependency error.
+    // require itself rejects with ERR_DLOPEN_FAILED. The compiled addon is present,
+    // so telling the caller to install the package would be wrong advice.
     expect(() =>
       loadBetterSqlite3ForTest(() => {
         const error = new Error("'better-sqlite3' is not yet supported in Bun.") as Error & {
@@ -173,22 +180,37 @@ describe('NodeSQLiteStorage', () => {
         error.code = 'ERR_DLOPEN_FAILED';
         throw error;
       }),
-    ).toThrow(MISSING_BETTER_SQLITE_ERROR);
+    ).toThrow(REFUSED_BETTER_SQLITE_BINDING_ERROR);
   });
 
-  it('throws a clear runtime error when the better-sqlite3 native binding is absent', () => {
+  it('reports an uncompiled native binding as an install-script problem', () => {
+    // The package is on disk and requirable; only `build/better_sqlite3.node` is
+    // absent, which is what an install with lifecycle scripts suppressed leaves
+    // behind. The remedy is a rebuild, not an install.
     expect(() =>
       loadBetterSqlite3ForTest(() => {
         throw new Error(
           'Could not locate the bindings file. Tried: /node_modules/better-sqlite3/build/better_sqlite3.node',
         );
       }),
-    ).toThrow(MISSING_BETTER_SQLITE_ERROR);
+    ).toThrow(UNBUILT_BETTER_SQLITE_BINDING_ERROR);
+  });
+
+  it('names the underlying failure rather than only the guidance', () => {
+    // The whole point of the change: the real error is in the message, not buried
+    // on `cause` where no assertion or test reporter prints it.
+    expect(() =>
+      loadBetterSqlite3ForTest(() => {
+        throw new Error(
+          'Could not locate the bindings file. Tried: /node_modules/better-sqlite3/build/better_sqlite3.node',
+        );
+      }),
+    ).toThrow('Underlying error: Could not locate the bindings file.');
   });
 
   if (IS_BUN) {
     it('throws a clear runtime error when better-sqlite3 is unavailable', () => {
-      expect(() => new NodeSQLiteStorage(':memory:')).toThrow(MISSING_BETTER_SQLITE_ERROR);
+      expect(() => new NodeSQLiteStorage(':memory:')).toThrow(REFUSED_BETTER_SQLITE_BINDING_ERROR);
     });
   }
 });
@@ -316,6 +338,32 @@ it('rejects a PATH containing only a filesystem Bun shim', () => {
   }
 });
 
+/**
+ * Summarize a failed integration child for the assertion message.
+ *
+ * The raw TAP of 21 identically-failing cases buries the one line that matters
+ * under repetition, and the distinct `error:` values are what identify the
+ * cause. Surfacing them — deduplicated, with the child's stderr, which carries
+ * anything that failed before TAP started — is what turns "0 pass 21 fail" into
+ * a diagnosis without a second run (COR-1278).
+ */
+function describeChildFailure(stdout: string, stderr: string): string {
+  const errors = [
+    ...new Set(
+      stdout
+        .split('\n')
+        .filter((line) => line.trimStart().startsWith('error:'))
+        .map((line) => line.trim()),
+    ),
+  ];
+  const sections = [
+    errors.length > 0 ? `distinct child errors:\n${errors.join('\n')}` : '',
+    stderr.trim() ? `child stderr:\n${stderr.trim()}` : '',
+    `full TAP:\n${stdout}`,
+  ];
+  return sections.filter((section) => section.length > 0).join('\n\n');
+}
+
 it('runs all native SQLite integration cases under Node', async () => {
   // Bun's run.bun setting can inject both virtual and filesystem Node shims.
   // Verify runtime identity while preserving the inherited runtime managers.
@@ -340,7 +388,7 @@ it('runs all native SQLite integration cases under Node', async () => {
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]);
-  expect(exitCode, stdout + stderr).toBe(0);
+  expect(exitCode, describeChildFailure(stdout, stderr)).toBe(0);
   expect(stdout).toContain('# tests 21');
   expect(stdout).toContain('# pass 21');
   expect(stdout).toContain('# skipped 0');
