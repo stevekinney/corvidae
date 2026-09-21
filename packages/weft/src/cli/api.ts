@@ -1,9 +1,6 @@
+import { sendJsonRpcRequest } from '../client/json-rpc-request.ts';
 import type { CatalogAccessSnapshot, CatalogOperationSnapshot } from '../index.ts';
-import {
-  createCatalogSnapshot,
-  createLiveOperationRegistry,
-  sendJsonRpcRequest,
-} from '../index.ts';
+import { createCatalogSnapshot, createLiveOperationRegistry } from '../index.ts';
 import { findNearestCandidate } from './command-suggestions.ts';
 import { loadJsonInput } from './json-input.ts';
 import type { CliCommand, CommandOutput } from './types.ts';

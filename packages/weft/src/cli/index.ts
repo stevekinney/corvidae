@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
-export { createWeftClient, removeRunLockfile, writeRunLockfile } from '../index.ts';
+export { removeRunLockfile, writeRunLockfile } from '../connection.ts';
+export { createWeftClient } from '../index.ts';
 export type { CatalogOperationName, WeftClient } from '../index.ts';
 export { executeApi } from './api.ts';
 export { executeCodegen } from './codegen.ts';

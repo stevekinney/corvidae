@@ -3,7 +3,8 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { jsonRpcEndpoint, resolveConnection } from '../index.ts';
+import { jsonRpcEndpoint } from '../client/json-rpc-request.ts';
+import { resolveConnection } from '../index.ts';
 
 describe('api connection resolution', () => {
   it('uses a named profile with env token indirection', async () => {

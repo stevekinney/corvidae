@@ -60,12 +60,9 @@
  * @module cli/codegen-emit-registry
  */
 
-import {
-  compareCodepoint,
-  emitPropertyKey,
-  emitStringLiteral,
-  jsonSchemaToTypeScript,
-} from '../index.ts';
+import { compareCodepoint } from '../core/compare-codepoint.ts';
+import { jsonSchemaToTypeScript } from '../index.ts';
+import { emitPropertyKey, emitStringLiteral } from '../json-schema/codegen-emit.ts';
 import {
   buildSchemaAliasTable,
   type SchemaAliasEntry,

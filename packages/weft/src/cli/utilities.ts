@@ -2,7 +2,7 @@ import type { Dirent } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { isRecord, safeDebugStringify } from '../index.ts';
+import { isRecord, safeDebugStringify } from '../core/debug-output.ts';
 
 function isGlobPattern(value: string): boolean {
   return value.includes('*') || value.includes('?') || value.includes('[');
