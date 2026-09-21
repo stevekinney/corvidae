@@ -38,7 +38,7 @@ describe('buildCurrentAttemptDispositionWrites', () => {
   it('returns no writes when current is null', async () => {
     const storage = new MemoryStorage();
     const writes = await buildCurrentAttemptDispositionWrites(storage, null, {
-      disposition: 'completed',
+      disposition: 'resolved',
     });
     expect(writes).toEqual([]);
   });
@@ -46,7 +46,7 @@ describe('buildCurrentAttemptDispositionWrites', () => {
   it('returns no writes when current has never held an attempt (still queued)', async () => {
     const storage = new MemoryStorage();
     const writes = await buildCurrentAttemptDispositionWrites(storage, queuedFixture(), {
-      disposition: 'completed',
+      disposition: 'resolved',
     });
     expect(writes).toEqual([]);
   });

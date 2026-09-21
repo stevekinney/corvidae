@@ -12,7 +12,11 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../../storage/interface.ts';
+import {
+  KEYS,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+} from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
 import { encode } from '../../codec.ts';
 import { PayloadSizeExceededError } from '../../payload-size.ts';

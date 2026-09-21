@@ -77,7 +77,8 @@ describe('catalogWorkflow — registration and metadata', () => {
     // generator body is not provably driven to completion by that test.
     // Drive it directly here instead.
     const registration = checkoutWorkflowRegistration();
-    const iterator = registration.handler({} as never, { orderId: 'ord-1', amount: 1 });
+    // The fixture's handler takes only the context; its input is fixed by the registration.
+    const iterator = registration.handler({} as never);
     let step = await iterator.next();
     while (!step.done) {
       step = await iterator.next();

@@ -12,6 +12,7 @@ import {
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskCompleting,
+  type RemoteTaskTerminalCancelled,
 } from '../../core/task-ledger/task-ledger.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';

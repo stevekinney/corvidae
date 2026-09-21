@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { renderNode, schemaToNode } from './operation-client-schema.ts';
+import { renderNode, schemaToNode, type TypeNode } from './operation-client-schema.ts';
 
 const NO_ALIASES = new Map<string, string>();
 /** Render a JSON Schema with no alias substitution — the pre-hoist baseline. */
