@@ -1,6 +1,6 @@
 {
   "documentation": "Paths in the public mirror targets that the corvidae transform must never write, and the keys it must not author inside the files it does write. Change detection in the mirror works by transforming into a clone of the target and asking git whether anything differs: an empty `git status --porcelain` means skip the sync. That only holds when this enumeration is exhaustive, so a missing entry degrades the mirror into 'always open a pull request'. `paths` is enforced by the guard in `target-owned.ts`, over a plan's writes and, since COR-1221, over its deletions. `retired` is the opposite list and the only place a whole target directory may be removed; it is enforced by the same guard and never relaxes `paths`. `insideFiles` states the ownership default for the structured files the transform does write — manifests and tsconfigs — which a whole-file guard cannot express; it is applied by `manifests.ts` and `typescript-configuration.ts` rather than by the guard. `targets` names the public repositories an entry applies to; omit it when the entry applies to every target.",
-  "targets": ["weft", "cinder"],
+  "targets": ["weft", "cinder", "agent-bureau"],
   "paths": [
     {
       "glob": "LICENSE",

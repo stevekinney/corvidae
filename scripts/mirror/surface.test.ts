@@ -59,6 +59,9 @@ function planText(plan: SurfacePlan, path: string): string {
  */
 const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
   weft: [],
+  // COR-1287: the agent-bureau target's ten packages each resolve every subpath their emitted
+  // manifest names, so it joins weft with nothing accepted.
+  'agent-bureau': [],
   cinder: [
     // The two promoted components' deprecated shims: `src/components/experimental/` is absent
     // here, and only the bare component entry narrows — each one's `/schema`, `/variables` and

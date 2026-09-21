@@ -117,19 +117,19 @@
       "reason": "The application formerly named `chat-room`, which the repository owner excluded from the mirror on 2026-09-21 because it is not part of the mirror tooling and `private-workspace` would ship its source to the public cinder repository beside the lab already living there at `labs/chat-room`. Replacing the SvelteKit lab with an Electrobun desktop application changes the implementation, not that reasoning, so the exclusion carries over rather than reverting to `private-workspace`. No workspace declares it as a dependency. Reversible: promote to `private-workspace` and rule on its layout if it should ever become public."
     },
     "@lostgradient/bureau": {
-      "disposition": "exclude",
-      "basis": "owner-excluded-from-public-mirror",
-      "reason": "Excluded from the mirror by the repository owner, 2026-09-19. Never published and never public: agent-bureau's manifest is `private: true`, and the identically-named public npm package belongs to an unrelated third party. `private-workspace` would still ship the source to the public mirror repository, which would make it public for the first time; `exclude` keeps it in corvidae only. Nothing outside the bureau/memory/skills cluster depends on it, so excluding all three breaks no other workspace. Reversible: promote to `publish-as` or `private-workspace` if it should become public later."
+      "disposition": "private-workspace",
+      "basis": "already-public-in-target",
+      "reason": "Ships to the public agent-bureau mirror as private source. The repository owner ruled on 2026-09-21 that stevekinney/agent-bureau is kept public, which reverses the 2026-09-19 exclusion: that ruling rested on the premise that these three had never been public, and the premise was wrong — the target carries packages/bureau today as a `private: true` workspace, so `private-workspace` publishes nothing new and `exclude` would instead delete source the public repository already ships. `private-workspace` rather than `publish-as` because the target's manifest is still `private: true` and no registry name has been claimed; the @lostgradient/* name stays available if that changes."
     },
     "@lostgradient/memory": {
-      "disposition": "exclude",
-      "basis": "owner-excluded-from-public-mirror",
-      "reason": "Excluded from the mirror by the repository owner, 2026-09-19. Never published and never public: agent-bureau's manifest is `private: true`, and the identically-named public npm package belongs to an unrelated third party. `private-workspace` would still ship the source to the public mirror repository, which would make it public for the first time; `exclude` keeps it in corvidae only. Nothing outside the bureau/memory/skills cluster depends on it, so excluding all three breaks no other workspace. Reversible: promote to `publish-as` or `private-workspace` if it should become public later."
+      "disposition": "private-workspace",
+      "basis": "already-public-in-target",
+      "reason": "Ships to the public agent-bureau mirror as private source. The repository owner ruled on 2026-09-21 that stevekinney/agent-bureau is kept public, which reverses the 2026-09-19 exclusion: that ruling rested on the premise that these three had never been public, and the premise was wrong — the target carries packages/memory today as a `private: true` workspace, so `private-workspace` publishes nothing new and `exclude` would instead delete source the public repository already ships. `private-workspace` rather than `publish-as` because the target's manifest is still `private: true` and no registry name has been claimed; the @lostgradient/* name stays available if that changes."
     },
     "@lostgradient/skills": {
-      "disposition": "exclude",
-      "basis": "owner-excluded-from-public-mirror",
-      "reason": "Excluded from the mirror by the repository owner, 2026-09-19. Never published and never public: agent-bureau's manifest is `private: true`, and the identically-named public npm package belongs to an unrelated third party. `private-workspace` would still ship the source to the public mirror repository, which would make it public for the first time; `exclude` keeps it in corvidae only. Nothing outside the bureau/memory/skills cluster depends on it, so excluding all three breaks no other workspace. Reversible: promote to `publish-as` or `private-workspace` if it should become public later."
+      "disposition": "private-workspace",
+      "basis": "already-public-in-target",
+      "reason": "Ships to the public agent-bureau mirror as private source. The repository owner ruled on 2026-09-21 that stevekinney/agent-bureau is kept public, which reverses the 2026-09-19 exclusion: that ruling rested on the premise that these three had never been public, and the premise was wrong — the target carries packages/skills today as a `private: true` workspace, so `private-workspace` publishes nothing new and `exclude` would instead delete source the public repository already ships. `private-workspace` rather than `publish-as` because the target's manifest is still `private: true` and no registry name has been claimed; the @lostgradient/* name stays available if that changes."
     }
   },
   "publishedOnly": {
@@ -193,7 +193,7 @@
     ]
   },
   "openQuestions": [
-    "@lostgradient/bureau, @lostgradient/memory and @lostgradient/skills are excluded from the mirror entirely, ruled by the repository owner 2026-09-19 once it was clear that `private-workspace` still ships source to the public mirror repository. They stay in corvidae. Each has an available @lostgradient/* name if that changes.",
+    "@lostgradient/bureau, @lostgradient/memory and @lostgradient/skills are private workspaces in the agent-bureau mirror, ruled by the repository owner 2026-09-21. This supersedes the 2026-09-19 exclusion, whose premise — that shipping them to a mirror would make them public for the first time — was false: stevekinney/agent-bureau is public and already carries all three. What is still unresolved is whether they should ever be published to the registry; each has an available @lostgradient/* name if that changes.",
     "@lostgradient/cinder-mcp is left untouched rather than deprecated. It has no corvidae source and therefore no maintenance path through this pipeline; whether it should be deprecated, re-homed, or given source is unresolved.",
     "COR-1189's surface-parity gate fetches each published package's last subpath set from the registry. The four packages newly marked publish-as here have no published predecessor, so that gate has no baseline for them and must treat a missing predecessor as a first publish rather than a parity failure."
   ]
