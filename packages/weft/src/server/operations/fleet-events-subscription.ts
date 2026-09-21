@@ -25,7 +25,16 @@ const fleetCursorSchema = z
 
 const fleetEventsSubscriptionInput = z.object({
   workflowId: z.string().min(1).optional(),
-  kind: fleetEventKindSchema.optional(),
+  /*
+   * One kind, or several. Omitting it delivers every kind.
+   *
+   * A client wanting three of the readable kinds previously had to open three
+   * subscriptions and reconcile three cursors for what is logically one
+   * stream, or take the whole fleet feed and discard most of it across a
+   * socket. The union keeps a bare string valid, so narrowing to one kind is
+   * unchanged for existing callers.
+   */
+  kind: z.union([fleetEventKindSchema, z.array(fleetEventKindSchema).min(1)]).optional(),
   fromCursor: fleetCursorSchema.optional(),
 });
 
@@ -118,6 +127,7 @@ function matchesKindFilter(
   kind: FleetEventsSubscriptionInput['kind'],
 ): boolean {
   if (kind === undefined) return true;
+  if (Array.isArray(kind)) return kind.includes(envelope.kind as (typeof kind)[number]);
   return envelope.kind === kind;
 }
 

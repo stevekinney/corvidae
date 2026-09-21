@@ -1,0 +1,45 @@
+{
+  "name": "@lostgradient/desktop",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "An Electrobun desktop chat room backed by Operative and Cinder.",
+  "scripts": {
+    "architecture:check": "bun scripts/check-architecture.ts",
+    "build": "bun run prepare:devkit && bun run build:renderer && electrobun build --env=dev",
+    "build:renderer": "vite build",
+    "build:stable": "bun run prepare:devkit && bun run build:renderer && electrobun build --env=stable",
+    "clean": "bun scripts/clean.ts",
+    "dev": "bun run prepare:devkit && bun run build:renderer && electrobun dev --watch",
+    "dev:renderer": "bun run prepare:devkit && vite --port 5173",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "prepare:devkit": "electrobun prepare",
+    "test": "bun run architecture:check && bun test tests",
+    "typecheck": "tsc -p tsconfig.main.json && tsc -p tsconfig.tools.json && svelte-check --tsconfig ./tsconfig.renderer.json --fail-on-warnings"
+  },
+  "dependencies": {
+    "armorer": "workspace:*",
+    "@lostgradient/chat": "workspace:*",
+    "@lostgradient/cinder": "workspace:*",
+    "conversationalist": "workspace:*",
+    "@lostgradient/operative": "workspace:*",
+    "@lostgradient/telephone": "workspace:*",
+    "@lostgradient/environmentalist": "catalog:",
+    "electrobun": "^2.0.1",
+    "svelte": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/typescript": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "catalog:",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "prettier": "catalog:",
+    "prettier-plugin-svelte": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

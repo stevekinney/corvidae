@@ -1,6 +1,25 @@
-import type { ConversationHistory, TokenUsage } from 'conversationalist';
-import type { ChatToolResult } from '../components/chat/adapter/chat-adapter.ts';
-import type { JSONValue } from '../components/chat/conversation-model.ts';
+import type { ConversationHistory, JSONValue, TokenUsage, ToolResult } from 'conversationalist';
+
+/**
+ * A settled tool call as the wire carries it.
+ *
+ * DEFINED HERE, not imported from the component layer, and that direction is
+ * the point. This module describes a transport contract: it is compiled by
+ * every producer of chat frames, including servers and desktop main processes
+ * that render nothing. It previously took this type from
+ * `components/chat/adapter/chat-adapter.ts`, which type-imports
+ * `@lostgradient/cinder` for an unrelated approval type — so a producer that
+ * wanted `ChatStreamEvent` and nothing else compiled 1,086 Cinder files and
+ * every one of their `import './x.css'` side effects, which a bundler-free
+ * `tsc` program cannot resolve at all.
+ *
+ * Both halves come from `conversationalist`, which the wire types
+ * already depend on, so nothing about the type changed — only who owns it.
+ * `chat-adapter.ts` re-exports it, so every existing consumer is unaffected.
+ */
+export type ChatToolResult = ToolResult & {
+  pendingApproval?: JSONValue;
+};
 
 /**
  * Wire-envelope fields a frame carries per the reference architecture's
@@ -52,6 +71,26 @@ export type V2WireEnvelope = {
  */
 export type WithOptionalEnvelope<T> =
   (T & { wireVersion?: never; sequence?: never }) | (T & WireEnvelope);
+
+/**
+ * An envelope that has been read but not yet required: either complete, or
+ * absent entirely.
+ *
+ * `Partial<WireEnvelope>` is the obvious spelling and the wrong one, for the
+ * same reason {@link WithOptionalEnvelope} exists — it admits half an
+ * envelope. It is also not portable across `exactOptionalPropertyTypes`:
+ * with the flag off, `Partial<T>` adds `| undefined` to every member, and
+ * spreading the result into a frame matches neither branch of
+ * `WithOptionalEnvelope` (the bare branch declares the keys `?: never`, the
+ * versioned branch requires them). A consumer compiling this package with the
+ * flag off — an application whose other dependencies force it — would see
+ * three otherwise inexplicable errors in the decoder.
+ *
+ * Stating the same all-or-nothing union the public type already promises
+ * fixes both: it cannot express half an envelope, and it means the same thing
+ * under either setting.
+ */
+export type OptionalWireEnvelope = WireEnvelope | { wireVersion?: never; sequence?: never };
 
 /** The supported wire versions. Any other value is rejected outright. */
 export const SUPPORTED_WIRE_VERSIONS = [1, 2] as const;

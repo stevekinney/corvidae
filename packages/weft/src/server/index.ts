@@ -19,6 +19,7 @@ import {
 } from './dashboard-assets.ts';
 import type { DiscoveryInfo } from './discovery-info.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
+import type { RegistrableOperation } from './operation-catalog.ts';
 import { createServerWebSocketHandlers } from './runtime/authentication-bridge.ts';
 import type { CorsOptions } from './runtime/cors.ts';
 import {
@@ -216,6 +217,20 @@ export interface ServeOptions {
    * (`storage`, event listening, `dispatchEvent`). See #708.
    */
   engine: RegistryAgnosticEngine;
+  /**
+   * Operations declared outside this package, served alongside Weft's own.
+   *
+   * This is what makes the catalog shared rather than Weft-private.
+   * `@lostgradient/operative` and `@lostgradient/bureau` declare subscriptions with
+   * `defineOperation`, and a gateway serving all three passes them here to
+   * get one dispatch pipeline, one access policy, one transport matrix, and
+   * one set of discovery documents instead of a second RPC surface beside
+   * this one.
+   *
+   * A duplicate name fails registry construction — synchronously, before a
+   * port is bound — so a foreign operation cannot shadow one of Weft's.
+   */
+  operations?: ReadonlyArray<RegistrableOperation>;
   port?: number;
   hostname?: string;
   /** Enable Bun's development mode (HMR, source maps, detailed errors). */

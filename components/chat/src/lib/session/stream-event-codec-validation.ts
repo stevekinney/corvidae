@@ -8,6 +8,7 @@ import {
   type ChatStreamBlock,
   type ChatStreamBlockType,
   type ChatStreamState,
+  type OptionalWireEnvelope,
   type V2WireEnvelope,
   type WireEnvelope,
 } from './stream-event-codec-types.ts';
@@ -37,7 +38,7 @@ export function isNonNegativeSafeInteger(value: unknown): value is number {
  * bare legacy format nor a valid versioned frame, and a sequence-only frame
  * could otherwise bypass `wireVersion` validation entirely.
  */
-export function readWireEnvelope(parsed: Record<string, unknown>): Partial<WireEnvelope> {
+export function readWireEnvelope(parsed: Record<string, unknown>): OptionalWireEnvelope {
   // Own keys only: an inherited `wireVersion` (a polluted prototype, a
   // non-plain object) is not part of the frame.
   const hasWireVersion = Object.hasOwn(parsed, 'wireVersion');
@@ -58,7 +59,7 @@ export function readWireEnvelope(parsed: Record<string, unknown>): Partial<WireE
 }
 
 /** A fully-present wire envelope, required on every new (CIN-507) member. */
-export function requireWireEnvelope(envelope: Partial<WireEnvelope>): WireEnvelope {
+export function requireWireEnvelope(envelope: OptionalWireEnvelope): WireEnvelope {
   if (envelope.wireVersion === undefined || envelope.sequence === undefined)
     throw new Error('Invalid chat stream event');
   return { wireVersion: envelope.wireVersion, sequence: envelope.sequence };
@@ -70,7 +71,7 @@ export function requireWireEnvelope(envelope: Partial<WireEnvelope>): WireEnvelo
  * producer must not be able to emit a version 2 member at all — accepting one
  * would make the version field decorative.
  */
-export function requireV2Envelope(envelope: Partial<WireEnvelope>): V2WireEnvelope {
+export function requireV2Envelope(envelope: OptionalWireEnvelope): V2WireEnvelope {
   const required = requireWireEnvelope(envelope);
   if (required.wireVersion !== 2) throw new Error('Invalid chat stream event');
   return { wireVersion: 2, sequence: required.sequence };

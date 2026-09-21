@@ -13,6 +13,7 @@ import {
   type AgentSession,
   type CombinedOperativeEventMap,
   createActiveRun,
+  createAgentRunEventRegistry,
   createAgentScheduler,
   createFlowController,
   createModelCatalog,
@@ -126,6 +127,7 @@ import {
   createAuditTrail,
 } from './audit-trail';
 import { createCatalogDispatcher } from './bureau-catalog-dispatch';
+import { createBureauEventFeed } from './bureau-event-feed.ts';
 import { createSessionPersistence } from './bureau-session-persistence';
 import {
   createDurableEventHistory,
@@ -166,6 +168,7 @@ import {
   buildTerminalReportFromCompletedEvent,
   createRunFrameForwarder,
 } from './run-envelope';
+import { attachRunEventFeed, disposeRunEventFeed } from './run-event-feed-attachment.ts';
 import type { BureauToolbox, CatalogAgentRunOptionsResolution } from './runtime-composition';
 import {
   createRuntimeComposition,
@@ -1208,6 +1211,37 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // timestamps (AB-370's regression test did exactly that before this fix).
   const store: Store = options.store ?? createStore({ runtime: runtimeServices });
   const emitter = new CompletableEventTarget<BureauEventMap>();
+  const bureauId = options.id ?? runtimeServices.identifiers.next('bureau');
+  // A bureau owns its own events: every dispatch onto `emitter` is also
+  // recorded here, with cursors, so a reconnecting client resumes instead of
+  // missing whatever happened while it was away. `toObservable()` is the
+  // emitter's all-types interception point, so this needs no per-type list
+  // and cannot drift from `BureauEventMap`. Events the feed has no
+  // projection for are dropped by `publish`, which is what keeps the
+  // supervisor's task and synthesis events off it.
+  const eventFeed = createBureauEventFeed({ bureauId, now: runtimeServices.clock.now });
+  const eventFeedSubscription = emitter.toObservable().subscribe((event: Event) => {
+    // Guarded for the reason `emitLiveFrame` is (AB-96): `dispatchEvent`
+    // walks its all-events listeners unguarded, so a throw here would
+    // propagate out of whichever `emitter.dispatch` call was in flight —
+    // several of which run synchronously inside run setup, where an
+    // exception leaves a run launched but untracked. Recording an event must
+    // never be able to break the thing it is recording.
+    try {
+      eventFeed.publish(event);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'event-feed',
+        message: `[bureau] event feed threw recording a "${event.type}" event:`,
+        cause: error,
+      });
+    }
+  });
+  // ...and its operatives' events: one feed per run, created before the run
+  // is registered and reaped when it is removed. See
+  // `run-event-feed-attachment.ts`.
+  const runEventFeeds = createAgentRunEventRegistry();
   // Snapshot `agents` synchronously, before the first `await` below — the
   // "fixed at createBureau() call time" catalog contract otherwise has a
   // real mutation window: a caller that mutates the SAME `agents` object it
@@ -1825,6 +1859,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         const removedRun = store.getRun(removedRunId);
         const removedSessionId = removedRun ? getRunSessionIdentifier(removedRun) : '';
         runSequenceCounters.delete(removedRunId);
+        // Reaped with the rest of this run's per-run state: the feed holds a
+        // bounded log per run, so a long-lived gateway that never released
+        // them would leak one per run forever. Disposal aborts the feed's
+        // lifetime signal, so a client still reading it ends cleanly rather
+        // than parking on a generator that can never yield again.
+        disposeRunEventFeed(removedRunId, runEventFeeds);
         runRequestContexts.delete(removedRunId);
         recoveredRunIds.delete(removedRunId);
         runToolboxesByRunId.delete(removedRunId);
@@ -3127,6 +3167,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         { streamEventTarget, clock: runtimeServices.clock.now },
       );
       disposeStreamListeners.push(disposeRunFrameForwarder);
+      // Registered here, for the same reason the frame forwarder is: before
+      // `store.register`, which is what drives `run.registered` onto this
+      // bureau's own feed. A client that reacts to `run.registered` by
+      // subscribing to `operative.runs.events` would otherwise race an entry
+      // that does not exist yet.
+      disposeStreamListeners.push(
+        attachRunEventFeed(runId, activeRun, runEventFeeds, {
+          now: runtimeServices.clock.now,
+          onError: (error, kind) => {
+            diagnose({
+              level: 'error',
+              scope: 'event-feed',
+              message: `[bureau] run event feed threw recording a "${kind}" event for run ${runId}:`,
+              cause: error,
+            });
+          },
+        }),
+      );
       emitLiveFrame({
         type: 'run-envelope',
         runId,
@@ -3542,6 +3600,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // AB-260: same origin-derived clock threading as the live-run forwarder.
       { clock: runtimeServices.clock.now },
     );
+    // A recovered run gets a feed too, and it starts without `run.started`:
+    // that event fired in the process that died, so this feed's first
+    // envelope is whatever step the run resumes into. That is the honest
+    // record — this bureau did not start this run — and a client tells the
+    // two apart by the run's session status rather than by guessing from
+    // the feed's first envelope.
+    //
+    // Detached alongside the frame forwarder, on whichever terminal event
+    // settles this run. Both are registered BEFORE those `once` handlers,
+    // and an EventTarget fires listeners in registration order, so the
+    // terminal event still reaches the feed before the feed stops listening
+    // for it. The feed itself stays registered and readable until the run is
+    // removed.
+    const disposeRecoveredRunEventFeed = attachRunEventFeed(runId, recoveredRun, runEventFeeds, {
+      now: runtimeServices.clock.now,
+      onError: (error, kind) => {
+        diagnose({
+          level: 'error',
+          scope: 'event-feed',
+          message: `[bureau] run event feed threw recording a "${kind}" event for run ${runId}:`,
+          cause: error,
+        });
+      },
+    });
 
     // Persist terminal session status from the recovered run's OWN terminal
     // events — the same fields the live-run listeners write. The conversation
@@ -3569,6 +3651,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     recoveredRun.once('run.completed', (event) => {
       activeRuns.delete(recoveredRun);
       disposeRecoveredRunFrameForwarder();
+      disposeRecoveredRunEventFeed();
       // COR-625: a terminal transition owes this run one checkpoint-
       // retention step whether or not anyone ever calls `closed()`.
       // Memoized per run id, so this and `closed()`'s own fold resolve the
@@ -3605,6 +3688,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     recoveredRun.once('run.aborted', (event) => {
       activeRuns.delete(recoveredRun);
       disposeRecoveredRunFrameForwarder();
+      disposeRecoveredRunEventFeed();
       // COR-625: a terminal transition owes this run one checkpoint-
       // retention step whether or not anyone ever calls `closed()`.
       // Memoized per run id, so this and `closed()`'s own fold resolve the
@@ -8254,6 +8338,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
           emitter.dispatch(new BureauDisposedEvent());
           storeSubscription.unsubscribe();
+          // After `BureauDisposedEvent` is dispatched, so the feed records
+          // its own last event before it stops recording. Unsubscribing
+          // first, then disposing, ends every watcher: disposal aborts the
+          // feed's lifetime signal, which each subscription is bound to.
+          eventFeedSubscription.unsubscribe();
+          // Any run feed still registered goes with it — `run.removed` reaps
+          // the runs a host deleted, and this covers the rest.
+          for (const feedRunId of runEventFeeds.runIds()) {
+            disposeRunEventFeed(feedRunId, runEventFeeds);
+          }
+          eventFeed.dispose();
           for (const disposeListener of schedulerCleanup) {
             disposeListener();
           }
@@ -8721,6 +8816,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   });
 
   const bureau: Bureau<D> = {
+    id: bureauId,
+    eventFeed,
+    runEventFeeds,
     store,
     memory: runtime.memory,
     scheduler: runtime.scheduler,

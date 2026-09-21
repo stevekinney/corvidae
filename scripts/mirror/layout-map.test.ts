@@ -52,15 +52,15 @@ describe('the layout table against the committed tree', () => {
 
 describe('the deferred workspace', () => {
   test('refuses to give a directory and names the issue that must rule on it', async () => {
-    const layout = await layoutFor('@lostgradient/chat-room');
+    const layout = await layoutFor('@lostgradient/desktop');
     expect(layout.disposition).toBe('deferred');
-    await expect(targetDirectoryFor('@lostgradient/chat-room')).rejects.toThrow(
+    await expect(targetDirectoryFor('@lostgradient/desktop')).rejects.toThrow(
       DeferredWorkspaceError,
     );
     try {
-      await targetDirectoryFor('@lostgradient/chat-room');
+      await targetDirectoryFor('@lostgradient/desktop');
     } catch (error) {
-      expect((error as Error).message).toContain('@lostgradient/chat-room');
+      expect((error as Error).message).toContain('@lostgradient/desktop');
       expect((error as Error).message).toContain('COR-1221');
     }
   });

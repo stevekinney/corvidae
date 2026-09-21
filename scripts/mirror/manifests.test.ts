@@ -26,8 +26,8 @@ const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
  * while the dependency edges are pared down to the ones each assertion needs.
  */
 const workspaces: Record<string, Record<string, unknown>> = {
-  'applications/chat-room': {
-    name: '@lostgradient/chat-room',
+  'applications/desktop': {
+    name: '@lostgradient/desktop',
     private: true,
     dependencies: {
       '@lostgradient/cinder': 'workspace:*',
@@ -303,7 +303,7 @@ describe('workspace and catalog resolution', () => {
 
   test('every edge into weft routes through the one root catalog entry', async () => {
     const plan = await planFor('cinder');
-    // `applications/chat-room` is absent deliberately: `package-map.json` excludes it, so nothing
+    // `applications/desktop` is absent deliberately: `package-map.json` excludes it, so nothing
     // is emitted for it at all. The test below is what holds that.
     const consumers = ['packages/weft-ui/package.json', 'packages/operative/package.json'];
     for (const consumer of consumers) {
@@ -669,35 +669,35 @@ describe('COR-1229: seeding a released package the target clone does not yet car
 });
 
 /**
- * `@lostgradient/chat-room` was the one deferred workspace until the repository owner excluded it
+ * `@lostgradient/desktop` was the one deferred workspace until the repository owner excluded it
  * from the mirror outright (2026-09-21). Exclusion is decided in `package-map.json` before the
  * layout is ever consulted, so the plan carries no deferred entry and the cinder sync no longer
  * refuses on its account — while the layout entry keeps its `deferred` disposition, so lifting
  * the exclusion would bring the refusal back until the placement is actually ruled on.
  */
-describe('the excluded chat-room application', () => {
+describe('the excluded desktop application', () => {
   test('is emitted nowhere and no longer holds the cinder sync', async () => {
     const plan = await planFor('cinder');
     expect(plan.deferred).toEqual([]);
     expect(
-      Object.keys(plan.files).filter((path) => path.includes('chat-room')),
+      Object.keys(plan.files).filter((path) => path.includes('desktop')),
       'nothing is emitted for an excluded workspace',
     ).toEqual([]);
     expect(() => assertNothingDeferred(plan)).not.toThrow();
-    const layout = await layoutFor('@lostgradient/chat-room');
+    const layout = await layoutFor('@lostgradient/desktop');
     expect(layout.disposition).toBe('deferred');
   });
 
   test('a deferred workspace that is not excluded still refuses the sync by name', async () => {
-    const layout = await layoutFor('@lostgradient/chat-room');
+    const layout = await layoutFor('@lostgradient/desktop');
     if (layout.disposition !== 'deferred') throw new Error('the fixture entry must stay deferred');
-    const plan = { deferred: [{ workspace: '@lostgradient/chat-room', layout }] };
+    const plan = { deferred: [{ workspace: '@lostgradient/desktop', layout }] };
     expect(() => assertNothingDeferred(plan)).toThrow(DeferredWorkspaceError);
     try {
       assertNothingDeferred(plan);
     } catch (error) {
-      expect((error as Error).message).toContain('@lostgradient/chat-room');
-      expect((error as Error).message).toContain('applications/chat-room');
+      expect((error as Error).message).toContain('@lostgradient/desktop');
+      expect((error as Error).message).toContain('applications/desktop');
       expect((error as Error).message).toContain('COR-1221');
     }
   });

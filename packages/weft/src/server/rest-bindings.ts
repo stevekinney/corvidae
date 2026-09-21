@@ -16,7 +16,11 @@
 
 import type { MetricsCollector } from '../observability/metrics.ts';
 import type { WorkerRegistry } from '../worker/registry.ts';
-import { createOperationRegistry, type OperationRegistry } from './operation-catalog.ts';
+import {
+  createOperationRegistry,
+  type OperationRegistry,
+  type RegistrableOperation,
+} from './operation-catalog.ts';
 import {
   createGetSystemMetricsOperation,
   createGetSystemMetricsRestBinding,
@@ -122,11 +126,25 @@ export function createLiveRestBindings(): ReadonlyArray<UnknownRestBinding> {
  * surface, but their `invoke` paths throw if reached — no discovery-only
  * registry is ever used to serve real requests.
  */
-type LiveOperationRegistryOptions = {
+export type LiveOperationRegistryOptions = {
   metricsCollector?: MetricsCollector;
   workerRegistry?: WorkerRegistry;
   taskQueue?: TaskQueue;
   clock?: () => number;
+  /**
+   * Operations declared outside this package, registered alongside Weft's own.
+   *
+   * The catalog is shared: `@lostgradient/operative` and `@lostgradient/bureau`
+   * declare subscriptions with `defineOperation` and both already depend on
+   * Weft, so a host serving all three wants one registry, one dispatch
+   * pipeline, and one discovery document rather than a second RPC surface
+   * standing beside this one.
+   *
+   * Appended last, and `createOperationRegistry` rejects a duplicate name, so
+   * a foreign operation cannot shadow one of Weft's — it fails construction
+   * instead, before a port is bound.
+   */
+  additionalOperations?: ReadonlyArray<RegistrableOperation>;
 };
 
 function buildSystemMetricsOperation(options: LiveOperationRegistryOptions) {
@@ -242,5 +260,6 @@ export function createLiveOperationRegistry(
     buildListTaskQueuesOperationForRegistry(resolved),
     buildWorkerDiagnosticsOperationForRegistry(resolved),
     buildWorkerRegistrationRejectionsOperationForRegistry(resolved),
+    ...(resolved.additionalOperations ?? []),
   ]);
 }

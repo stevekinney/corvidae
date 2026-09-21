@@ -6,16 +6,40 @@ import type { OperationFault, TransportKind } from '../operation-fault.ts';
 import type { Principal } from '../principal.ts';
 
 /**
- * Regex for the canonical `weft.<segment>(.<segment>)+` operation-name form.
- * Mandatory `weft.` prefix and at least one additional dot-separated segment.
+ * Regex for the canonical `<namespace>.<segment>(.<segment>)*` operation-name
+ * form: at least two dot-separated segments, each starting with a lowercase
+ * ASCII letter and continuing with lowercase ASCII letters or digits.
+ *
+ * THE NAMESPACE IS NO LONGER FIXED TO `weft`. It was, and every operation this
+ * package defines still begins with `weft.` — the change is backward
+ * compatible, because the old pattern's language is a strict subset of this
+ * one. What it admits is a catalog shared with other packages: a gateway that
+ * serves `@lostgradient/operative` and `@lostgradient/bureau` alongside Weft needs
+ * `operative.*` and `bureau.*` to be legal names, and those packages already
+ * depend on this one, so registering through this catalog is the path that
+ * keeps one dispatch pipeline, one transport matrix, and one AsyncAPI document
+ * rather than a second RPC dialect beside them.
+ *
+ * The two-segment minimum is retained deliberately: a bare `start` carries no
+ * owner, and an unnamespaced catalog is one collision away from ambiguity
+ * about which package answers a method.
+ *
+ * `rpc.` IS RESERVED, and the negative lookahead is what keeps a guarantee the
+ * mandatory `weft.` prefix used to provide for free. JSON-RPC 2.0 reserves
+ * every method name beginning with `rpc.` for rpc-internal methods and
+ * extensions, and this server answers `rpc.discover` itself. Under a pattern
+ * that admitted any namespace, a registered `rpc.discover` would shadow
+ * discovery, and the only thing standing between that and a served catalog
+ * would be the OpenRPC generator's deduplication guard — a backstop rather
+ * than an impossibility. `openrpc-regressions.test.ts` pins this.
  */
-export const OPERATION_NAME_PATTERN = /^weft\.[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+$/;
+export const OPERATION_NAME_PATTERN = /^(?!rpc\.)[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+$/;
 
 /** Throws if `name` does not match the canonical operation-name pattern. */
 export function validateOperationName(name: string): void {
   if (!OPERATION_NAME_PATTERN.test(name)) {
     throw new Error(
-      `invalid operation name "${name}" — must match weft.<segment>(.<segment>)+ where each segment starts with a lowercase ASCII letter and may contain lowercase ASCII letters or digits (e.g., "weft.workflows.start", "weft.workflows.list2")`,
+      `invalid operation name "${name}" — must match <namespace>.<segment>(.<segment>)* where each segment starts with a lowercase ASCII letter and may contain lowercase ASCII letters or digits (e.g., "weft.workflows.start", "operative.runs.list2")`,
     );
   }
 }
