@@ -8,28 +8,16 @@ import { anonymousPrincipal, principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import { storageCapabilitiesOperation } from './storage-capabilities.ts';
 import { storageGetOutput, storagePutInput } from './storage-schemas.ts';
+import {
+  adminOnlyStorageOptions,
+  adminStorageOptions,
+  DistinctCapabilityStorage,
+  encode,
+  readWriteStorageOptions,
+  request,
+  writeOnlyStorageOptions,
+} from './storage.test-support.ts';
 import { storageGetOperation } from './storage.ts';
-
-function encode(value: string): Uint8Array<ArrayBuffer> {
-  return new Uint8Array(new TextEncoder().encode(value));
-}
-
-class DistinctCapabilityStorage extends MemoryStorage {
-  override capabilities(): ReturnType<MemoryStorage['capabilities']> {
-    return {
-      persistence: 'remote',
-      readAfterWrite: 'eventual',
-      scanConsistency: 'best-effort',
-      atomicBatch: false,
-      conditionalBatch: false,
-      boundedRangeDelete: false,
-    };
-  }
-}
-
-function request(path: string, init?: RequestInit): Request {
-  return new Request(`http://localhost${path}`, init);
-}
 
 function responseError(value: unknown): string {
   if (typeof value !== 'object' || value === null || !('error' in value)) {
@@ -38,54 +26,6 @@ function responseError(value: unknown): string {
   const error = value.error;
   if (typeof error !== 'string') throw new Error('Expected a string error response.');
   return error;
-}
-
-function writeOnlyStorageOptions() {
-  return {
-    authContext: {
-      method: 'api-key' as const,
-      principal: principalFromApiKey({
-        subject: 'write-only-caller',
-        scopes: ['storage:write'],
-      }),
-    },
-  };
-}
-
-function readWriteStorageOptions() {
-  return {
-    authContext: {
-      method: 'api-key' as const,
-      principal: principalFromApiKey({
-        subject: 'read-write-caller',
-        scopes: ['storage:read', 'storage:write'],
-      }),
-    },
-  };
-}
-
-function adminOnlyStorageOptions() {
-  return {
-    authContext: {
-      method: 'api-key' as const,
-      principal: principalFromApiKey({
-        subject: 'admin-only-caller',
-        scopes: ['storage:admin'],
-      }),
-    },
-  };
-}
-
-function adminStorageOptions() {
-  return {
-    authContext: {
-      method: 'api-key' as const,
-      principal: principalFromApiKey({
-        subject: 'admin-caller',
-        scopes: ['storage:read', 'storage:write', 'storage:admin'],
-      }),
-    },
-  };
 }
 
 describe('storage REST operations', () => {
