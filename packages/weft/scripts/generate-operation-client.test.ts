@@ -238,3 +238,11 @@ describe('createOperationClientSources — generated output', () => {
     }
   });
 });
+
+describe('snapshotOperation', () => {
+  it('throws when no catalog operation matches the given name', () => {
+    expect(() => snapshotOperation('not-a-real-operation-name')).toThrow(
+      'Missing operation snapshot not-a-real-operation-name',
+    );
+  });
+});

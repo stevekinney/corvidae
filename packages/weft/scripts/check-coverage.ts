@@ -1602,7 +1602,44 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
  * so a corvidae-authored entry always wins over a same-keyed historical one rather than
  * the reverse.
  */
-export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERAGE_ALLOWANCES', []);
+export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERAGE_ALLOWANCES', [
+  [
+    'src/hello-world-example.test-support.ts',
+    {
+      reason:
+        "The `if (import.meta.main) {...}` CLI entry point only runs when this file is spawned directly (bun src/hello-world-example.test-support.ts), never when imported — proven by a dedicated subprocess test (src/examples.test.ts) that spawns it and asserts its stdout, exit code, and empty stderr. That child process runs outside the parent Bun test process's --coverage instrumentation, so its hits are never attributed to the parent LCOV report — the same class of gap TARGET_ONLY_COVERAGE_ALLOWANCES documents for scripts/run-gates.ts, scripts/verify-no-test-sleeps.ts, and examples/hello-world/src/index.ts above.",
+      lines: new Set([76, 77, 79, 80]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
+    'src/core/engine/operations-activity.ts',
+    {
+      reason:
+        "Two defensive guards inside invokeRemoteActivity()/requireWorkflowTypeForRemoteDispatch() (both module-private, not exported): (1) `if (!broker) throw` — invokeRemoteActivity's ONLY call site gates it behind `isRemoteMode = Boolean(internals.remoteActivityBroker) && allowRemoteDispatch`, so `broker` is always truthy by construction whenever this function runs; the module comment states remoteActivityBroker is non-null if and only if activityExecution.mode === 'remote'. Reaching the throw would require internals.remoteActivityBroker to flip to null (engine disposal does this) in the exact synchronous gap between that boolean check and the call, which is not achievable from a test without internals manipulation the check-engine-internals-field-access lint already forbids reaching for. (2) `if (identity === undefined) throw` in requireWorkflowTypeForRemoteDispatch — internals.workflowTypeByWorkflowId only loses an entry via bulk-operations-purge.ts, which purge requires a TERMINAL workflow; a live in-flight remote dispatch by definition has a non-terminal workflow, so the two conditions (an active remote-mode ctx.run() and a purged mapping for the same id) are mutually exclusive in normal operation.",
+      lines: new Set([169, 170, 172, 204]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
+    'src/server/operations/task-diagnostics-collector.ts',
+    {
+      reason:
+        "addRecordDiagnostics()'s switch over RemoteTaskRecord['state'] ends with a closed-union exhaustiveness guard (`const exhaustive: never = decoded`). Every record this module-private function receives was already validated by decodeRemoteTaskRecord() -> isRemoteTaskRecord(), which returns null (silently skipped by the one caller, collectTaskDiagnostics) for any record whose state is not one of the six known values. A record with an out-of-union state can therefore never reach this switch at all — the sibling decode validator forecloses it before addRecordDiagnostics is ever called, the same class of guard already documented for get-task-detail.ts/task-ledger-recovery.ts's case-label/brace lines elsewhere in this file.",
+      lines: new Set([104, 107, 108, 109]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
+    'src/runtime/environment-configuration.ts',
+    {
+      reason:
+        "Two structurally environment-locked branches. (1) rawRuntimeEnvironment()'s `typeof process !== 'undefined'` fallback and empty-object fallback: this workspace runs exclusively under Bun (AGENTS.md: \"Bun is the default runtime... Use Bun commands only\"), so `typeof Bun !== 'undefined'` is always true in every test process — reaching the fallback would require deleting globalThis.Bun for the duration of a test, corrupting every other test sharing the same Bun process (this repo's coverage shards run many files per process). (2) readEnvironmentVariable()'s `exactSource.load` (the async Source variant): every call site in this file uses environmentalist.sync(...), never .async(...), and `exactSource` is a function-local value never exported or returned, so nothing in this codebase ever invokes `load` — only `loadSync`, which environmentalist.sync() calls exclusively. `load` exists solely to satisfy the Source interface's required shape.",
+      lines: new Set([8, 9, 139, 140, 141, 142]),
+      requireUncoveredLines: true,
+    },
+  ],
+]);
 
 /**
  * Allowances for files that exist only in the public mirror the sync emits to, never in

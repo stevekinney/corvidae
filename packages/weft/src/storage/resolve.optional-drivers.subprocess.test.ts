@@ -56,4 +56,20 @@ describe('storage/resolve (optional-driver subprocess gates)', () => {
     }
     expect(exitCode).toBe(0);
   }, 30_000);
+
+  it('skips a package that is not installed under the given root rather than treating it as an error', async () => {
+    // `weftRoot` here has no `node_modules` at all, so every optional
+    // storage-driver package's `exists()` check reports false — the same
+    // "not installed" path a workspace missing a subset of the optional
+    // peers takes in production, distinct from the "installed, temporarily
+    // renamed" path the other tests in this file exercise.
+    const emptyRoot = import.meta.dir;
+    let bodyRan = false;
+    const result = await withOptionalStorageDriversHidden(emptyRoot, async () => {
+      bodyRan = true;
+      return 'ok';
+    });
+    expect(result).toBe('ok');
+    expect(bodyRan).toBe(true);
+  });
 });

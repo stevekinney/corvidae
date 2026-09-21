@@ -71,6 +71,20 @@ describe('catalogWorkflow — registration and metadata', () => {
     expect(result.ok).toBe(true);
   });
 
+  it("checkoutWorkflowRegistration()'s handler runs to completion and returns { completed: true }", async () => {
+    // `executeOperation('weft.workflows.checkout.start', ...)` above starts
+    // the workflow without awaiting its result, so the fixture's own
+    // generator body is not provably driven to completion by that test.
+    // Drive it directly here instead.
+    const registration = checkoutWorkflowRegistration();
+    const iterator = registration.handler({} as never, { orderId: 'ord-1', amount: 1 });
+    let step = await iterator.next();
+    while (!step.done) {
+      step = await iterator.next();
+    }
+    expect(step.value).toEqual({ completed: true });
+  });
+
   it('lets adapter options override workflow registration presentation metadata', () => {
     const registration = checkoutWorkflowRegistration();
     const registry = createOperationRegistry([

@@ -122,4 +122,48 @@ describe('commitTaskLedgerCompletion', () => {
     );
     expect(persisted?.state).toBe('deadLettered');
   });
+
+  it('reports an idempotent duplicate for a result resubmitted against an already-cancelled terminal record with a matching attemptToken', async () => {
+    const storage = new MemoryStorage();
+    const now = Date.now();
+    const cancelled: RemoteTaskTerminalCancelled = {
+      recordVersion: 1,
+      operationId: 'op-cancelled-1',
+      workflowType: 'test',
+      activityName: 'test.charge',
+      queue: 'default',
+      input: null,
+      headers: {},
+      visibilityTimeoutMilliseconds: 30_000,
+      createdAt: now,
+      generation: 3,
+      state: 'terminal',
+      disposition: 'cancelled',
+      attempt: 1,
+      attemptToken: 'attempt-token',
+      cancellationReason: 'user requested',
+      resultDigest: 'cancelled-digest',
+      terminalAt: now,
+      adopted: false,
+      retentionGeneration: 0,
+    };
+    await storage.put(taskLedgerKey(cancelled.operationId), encodeRemoteTaskRecord(cancelled));
+
+    const result = await commitTaskLedgerCompletion(storage, {
+      operationId: cancelled.operationId,
+      attemptToken: cancelled.attemptToken!,
+      status: 'cancelled',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected a duplicate ack, not a rejection');
+    expect(result.disposition).toBe('duplicate');
+    expect(result.terminal).toEqual(cancelled);
+
+    // Never actually applied: the terminal record is unchanged.
+    const persisted = decodeRemoteTaskRecord(
+      await storage.get(taskLedgerKey(cancelled.operationId)),
+    );
+    expect(persisted).toEqual(cancelled);
+  });
 });

@@ -125,6 +125,21 @@ describe('choosing where the live suites get a database', () => {
   });
 });
 
+describe('the disposable cluster failure path', () => {
+  it('cleans up the working directory and reports the server log detail when initdb fails', async () => {
+    // `/usr/bin/false` is a real, always-present executable that exits 1
+    // immediately — no real PostgreSQL install required to exercise the
+    // startDisposablePostgres catch block deterministically.
+    await expect(
+      createPostgresTestServer({
+        kind: 'cluster',
+        initialize: '/usr/bin/false',
+        control: '/usr/bin/false',
+      }),
+    ).rejects.toThrow('Could not start disposable PostgreSQL:');
+  });
+});
+
 describe.skipIf(clusterSource === null)('the disposable PostgreSQL cluster', () => {
   it('starts a cluster that accepts connections', async () => {
     await using server = await createPostgresTestServer(clusterSource);

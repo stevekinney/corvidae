@@ -5,7 +5,14 @@
 bun = true
 
 [test]
-coveragePathIgnorePatterns = ["scripts/check-coverage.ts"]
+coveragePathIgnorePatterns = [
+  "scripts/check-coverage.ts",
+  # Static fixture trees under src/cli/__fixtures__/validation/** are fixed
+  # test input fed to CLI validation tests (src/cli/*.test.ts), not code
+  # under test — instrumenting them just adds unowned lines/functions no
+  # allowance or written test should ever need to describe.
+  "src/cli/__fixtures__/**",
+]
 # Nested git worktrees live inside the repo tree (Scrumlord task worktrees under
 # `tmp/worktrees/`, agent worktrees under `.claude/worktrees/`), each holding a
 # full `src/` tree on an unrelated branch. `bun test` discovers tests tree-wide

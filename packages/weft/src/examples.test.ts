@@ -97,4 +97,22 @@ describe('bundled examples', () => {
       loyaltyTier: 'gold',
     });
   });
+
+  it('runs the CLI entry point (import.meta.main) when spawned directly, printing both examples', async () => {
+    const weftRoot = import.meta.dir + '/..';
+    const proc = Bun.spawn(['bun', 'src/hello-world-example.test-support.ts'], {
+      cwd: weftRoot,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const exitCode = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe('');
+    expect(stdout).toContain('"greeting": "hello Ada"');
+    expect(stdout).toContain('"customerId": "42"');
+    expect(stdout).toContain('"loyaltyTier": "gold"');
+  }, 15_000);
 });

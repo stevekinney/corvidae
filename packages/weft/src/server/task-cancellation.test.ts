@@ -176,6 +176,99 @@ describe('Queued-origin cancellation commits without worker delivery (criterion 
 
     expect(await cancelTask(context, options, 'never-existed')).toBe(false);
   });
+
+  it('cancelTask on an already-cancelled terminal record is an idempotent no-op returning true', async () => {
+    const storage = new MemoryStorage();
+    const options = minimalServeOptions(storage);
+    const context = minimalServerContext();
+
+    const cancelledTerminal: RemoteTaskRecord = {
+      recordVersion: 1,
+      operationId: 'op-already-cancelled',
+      workflowType: 'test',
+      activityName: 'test.charge',
+      queue: 'default',
+      input: null,
+      headers: {},
+      visibilityTimeoutMilliseconds: 30_000,
+      createdAt: Date.now(),
+      generation: 3,
+      state: 'terminal',
+      disposition: 'cancelled',
+      attempt: 1,
+      cancellationReason: 'user requested',
+      resultDigest: 'cancelled-digest',
+      terminalAt: Date.now(),
+      adopted: false,
+      retentionGeneration: 0,
+    };
+    await storage.put(
+      taskLedgerKey(cancelledTerminal.operationId),
+      encodeRemoteTaskRecord(cancelledTerminal),
+    );
+
+    expect(await cancelTask(context, options, cancelledTerminal.operationId)).toBe(true);
+  });
+
+  it('cancelTask on a resolved (non-cancelled) terminal record returns false — cannot cancel after the fact', async () => {
+    const storage = new MemoryStorage();
+    const options = minimalServeOptions(storage);
+    const context = minimalServerContext();
+
+    const resolvedTerminal: RemoteTaskRecord = {
+      recordVersion: 1,
+      operationId: 'op-already-resolved',
+      workflowType: 'test',
+      activityName: 'test.charge',
+      queue: 'default',
+      input: null,
+      headers: {},
+      visibilityTimeoutMilliseconds: 30_000,
+      createdAt: Date.now(),
+      generation: 3,
+      state: 'terminal',
+      disposition: 'resolved',
+      attempt: 1,
+      attemptToken: 'attempt-1',
+      status: 'completed',
+      resultDigest: 'digest-1',
+      terminalAt: Date.now(),
+      adopted: false,
+      retentionGeneration: 0,
+    };
+    await storage.put(
+      taskLedgerKey(resolvedTerminal.operationId),
+      encodeRemoteTaskRecord(resolvedTerminal),
+    );
+
+    expect(await cancelTask(context, options, resolvedTerminal.operationId)).toBe(false);
+  });
+
+  it('cancelTask on a completing record (result already pending commit) returns false — no live attempt left to cancel', async () => {
+    const storage = new MemoryStorage();
+    const options = minimalServeOptions(storage);
+    const context = minimalServerContext();
+
+    const leased = leaseIt(
+      freshQueued(Date.now(), 'op-completing'),
+      Date.now(),
+      'w-1',
+      'attempt-1',
+    );
+    const completing = beginCompletion(leased, {
+      attemptToken: 'attempt-1',
+      pendingStatus: 'completed',
+      pendingResultDigest: 'digest-1',
+    });
+    if (!completing.ok)
+      throw new Error(`Expected beginCompletion to succeed: ${completing.reason}`);
+    await storage.put(
+      taskLedgerKey('op-completing'),
+      encodeRemoteTaskRecord(completing.nextRecord),
+    );
+
+    expect(await cancelTask(context, options, 'op-completing')).toBe(false);
+  });
 });
 
 describe('Leased-origin cancellation records durable intent before sending control (criterion 10, 11)', () => {
