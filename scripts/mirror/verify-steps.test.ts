@@ -49,7 +49,6 @@ function workflowEnvironment(): VerifyEnvironment {
       'bunx',
       '--bun',
       `${tool === 'attw' ? '@arethetypeswrong/cli' : tool}@1.0.0`,
-      tool,
     ],
   };
 }

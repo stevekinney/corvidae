@@ -217,8 +217,12 @@ describe('renderMirrorVerifyWorkflow', () => {
         published,
         privateWorkspaces,
       });
-      expect(workflow).toContain('bunx --bun publint@0.3.24 publint');
-      expect(workflow).toContain('bunx --bun @arethetypeswrong/cli@0.18.5 attw');
+      // The package spec alone, then the tool's own flags: `bunx` runs the package's single bin,
+      // and a repeated binary name becomes a positional argument the tool tries to read.
+      expect(workflow).toContain('bunx --bun publint@0.3.24 --strict ');
+      expect(workflow).toContain('bunx --bun @arethetypeswrong/cli@0.18.5 ${{ runner.temp }}/');
+      expect(workflow).not.toContain('publint@0.3.24 publint');
+      expect(workflow).not.toContain('cli@0.18.5 attw');
       expect(workflow).not.toContain('publint@^');
       expect(workflow).not.toContain('arethetypeswrong/cli@^');
     });

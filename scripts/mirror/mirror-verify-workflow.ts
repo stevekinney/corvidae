@@ -27,11 +27,6 @@ export const packagingToolPackage: Record<PackagingTool, string> = {
   attw: '@arethetypeswrong/cli',
 };
 
-export const packagingToolBinary: Record<PackagingTool, string> = {
-  publint: 'publint',
-  attw: 'attw',
-};
-
 /** A packaging tool's locked version, read from a `bun.lock` rather than a `package.json` range. */
 export async function readLockedVersion(bunLockPath: string, packageName: string): Promise<string> {
   const text = await Bun.file(bunLockPath).text();
@@ -61,11 +56,14 @@ export function createWorkflowVerifyEnvironment({
   return {
     resolveDirectory: (targetRelativeDirectory) => targetRelativeDirectory,
     scratchDirectory: '${{ runner.temp }}/mirror-verify',
+    // `bunx <package>@<version>` runs that package's binary: `publint` and `attw` each ship one
+    // bin, so the package spec alone names it. Naming the binary again hands the tool a stray
+    // positional argument — the seventh dry run's `publint publint --strict <tarball>` linted a
+    // directory called `publint`, and attw would have opened a file called `attw`.
     toolCommand: (tool) => [
       'bunx',
       '--bun',
       `${packagingToolPackage[tool]}@${lockedVersions[tool]}`,
-      packagingToolBinary[tool],
     ],
   };
 }
