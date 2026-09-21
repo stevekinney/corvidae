@@ -176,7 +176,7 @@ describe('what counts as an internal name', () => {
   test('the scope, a workspace under it, and a subpath into one', () => {
     expect(isInternalSpecifier(`${internalScope}/weft`)).toBe(true);
     expect(isInternalSpecifier(`${internalScope}/weft/client`)).toBe(true);
-    expect(isInternalSpecifier(`${internalScope}`)).toBe(true);
+    expect(isInternalSpecifier(internalScope)).toBe(true);
     expect(isInternalSpecifier('@lostgradient/weft')).toBe(false);
     expect(isInternalSpecifier(`${internalScope}monium/weft`)).toBe(false);
     expect(isInternalSpecifier('./corvidae/weft.ts')).toBe(false);
@@ -190,7 +190,11 @@ describe('what counts as an internal name', () => {
       '@lostgradient/weft/client',
     );
     expect(
-      publicSpecifierFor(`${internalScope}/operative/backend/descriptors`, publicNames, 'fixture.ts'),
+      publicSpecifierFor(
+        `${internalScope}/operative/backend/descriptors`,
+        publicNames,
+        'fixture.ts',
+      ),
     ).toBe('@lostgradient/operative/backend/descriptors');
   });
 
