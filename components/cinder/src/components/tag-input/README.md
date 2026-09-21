@@ -59,7 +59,7 @@ For native forms, pass both `name` and `commitOnSubmit` when the expected path i
 | `spellcheck` | `false` \| `true` \| `"true"` \| `"false"` \| `null` | no | — | Spellcheck setting forwarded to the visible text input. |
 | `value` | `string`[] | no | — | Bindable tags. |
 | `autocomplete` | `(opaque)` | no | — | Autocomplete hint forwarded to the visible text input. Not expressible in JSON Schema; see the component types for the signature. |
-| `delimiter` | `(opaque)` | no | — | Key that commits the current input into a tag. Enter always commits separately. Not expressible in JSON Schema; see the component types for the signature. |
+| `delimiter` | `(opaque)` | no | — | Key that commits the current input into a tag. Enter always commits separately. Defaults to `','`. (`string \| RegExp` is not expressible in JSON Schema, so this default only appears here in prose—the `@default` tag has no effect on an opaque prop's generated Default cell.) Not expressible in JSON Schema; see the component types for the signature. |
 | `onblur` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `onfocus` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `oninput` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
