@@ -1,4 +1,8 @@
-import { readReleaseWorkflowBunVersion, readWorkflowInstalls } from './install-parity.ts';
+import {
+  readReleaseWorkflowBunVersion,
+  readWorkflowInstalls,
+  resolveReleaseWorkflowFile,
+} from './install-parity.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
 import {
   buildVerifySteps,
@@ -75,7 +79,10 @@ export interface RenderMirrorVerifyWorkflowOptions {
   bunLockPath: string;
   published: readonly PublishedPackage[];
   privateWorkspaces: readonly PrivateWorkspace[];
-  /** Filename of the target's release workflow; `release.yaml` for both targets today. */
+  /**
+   * Filename of the target's release workflow. Resolved from the clone when omitted, because the
+   * spelling is the target's: weft and cinder carry `release.yaml`, agent-bureau `release.yml`.
+   */
   releaseWorkflowFile?: string;
 }
 
@@ -135,24 +142,29 @@ function renderStep(step: VerifyStep): string {
 /**
  * Render `mirror-verify.yaml` for one target's staged clone.
  *
- * `on: pull_request` is the workflow this replaces (`ci.yaml`, retired for weft): a mirror sync
- * opens a pull request against the target, so the jobs that used to gate a pull request there now
- * gate it here instead. `merge_group` is carried over from the same retired `ci.yaml` rather than
- * from `release.yaml`, which triggers on a tag push and has never used a merge queue — the two
- * targets' `ci.yaml`/`release.yaml` split confirms `merge_group` belongs to the PR gate, not the
- * release workflow, so this workflow keeps it even though it is not literally reading it off
- * `release.yaml`.
+ * `on: pull_request` is the workflow this replaces (`ci.yaml`, retired for weft; `ci.yml` for
+ * agent-bureau): a mirror sync opens a pull request against the target, so the jobs that used to
+ * gate a pull request there now gate it here instead. `merge_group` is carried over from that same
+ * retired CI workflow rather than from the release workflow, which triggers on a tag push and has
+ * never used a merge queue — every target's CI/release split confirms `merge_group` belongs to the
+ * PR gate, not the release workflow, so this workflow keeps it even though it is not literally
+ * reading it off the release workflow.
  */
 export async function renderMirrorVerifyWorkflow({
   targetDirectory,
   bunLockPath,
   published,
   privateWorkspaces,
-  releaseWorkflowFile = 'release.yaml',
+  releaseWorkflowFile,
 }: RenderMirrorVerifyWorkflowOptions): Promise<string> {
-  const bunVersion = await readReleaseWorkflowBunVersion(targetDirectory, releaseWorkflowFile);
+  // Resolved once and reused for both reads. Resolving it twice would be the defect this replaced
+  // in a new shape: the `find` below has to look for the same filename the pin was read from, or
+  // the rendered install silently loses the release workflow's own arguments.
+  const releaseWorkflow =
+    releaseWorkflowFile ?? (await resolveReleaseWorkflowFile(targetDirectory));
+  const bunVersion = await readReleaseWorkflowBunVersion(targetDirectory, releaseWorkflow);
   const workflowInstalls = await readWorkflowInstalls(targetDirectory);
-  const releaseInstall = workflowInstalls.find((install) => install.file === releaseWorkflowFile);
+  const releaseInstall = workflowInstalls.find((install) => install.file === releaseWorkflow);
   const installArguments = releaseInstall ? installArgumentsFrom(releaseInstall.command) : [];
   const installCommand = ['bun', 'install', '--frozen-lockfile', ...installArguments];
 

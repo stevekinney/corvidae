@@ -62,14 +62,14 @@ const fixtureBunLock = [
 
 async function withFixture(
   body: (options: { targetDirectory: string; bunLockPath: string }) => Promise<void>,
+  releaseWorkflowNames: readonly string[] = ['release.yaml'],
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'mirror-verify-workflow-'));
   try {
     const targetDirectory = join(root, 'clone');
-    await Bun.write(
-      join(targetDirectory, '.github/workflows/release.yaml'),
-      fixtureReleaseWorkflow,
-    );
+    for (const name of releaseWorkflowNames) {
+      await Bun.write(join(targetDirectory, '.github/workflows', name), fixtureReleaseWorkflow);
+    }
     const bunLockPath = join(root, 'bun.lock');
     await Bun.write(bunLockPath, fixtureBunLock);
     await body({ targetDirectory, bunLockPath });
@@ -96,6 +96,58 @@ describe('readLockedVersion', () => {
 });
 
 describe('renderMirrorVerifyWorkflow', () => {
+  /**
+   * COR-1287: `release.yaml` was a default parameter here, which made the renderer silently
+   * target-specific. stevekinney/agent-bureau spells it `release.yml`, and the failure would not
+   * have been a missing file — `readWorkflowInstalls` reads both extensions, so the pin read would
+   * have thrown while the *install line* lookup would merely have missed, rendering a workflow
+   * that installs without the target's own arguments. Both halves are asserted together.
+   */
+  test('a target whose release workflow is spelled .yml is read the same way', async () => {
+    await withFixture(
+      async ({ targetDirectory, bunLockPath }) => {
+        const workflow = await renderMirrorVerifyWorkflow({
+          targetDirectory,
+          bunLockPath,
+          published,
+          privateWorkspaces,
+        });
+        expect(workflow).toContain('bun-version: 1.4.2');
+        expect(workflow).toContain('bun install --frozen-lockfile --linker=isolated');
+      },
+      ['release.yml'],
+    );
+  });
+
+  test('a clone carrying both spellings is refused rather than resolved by probe order', async () => {
+    await withFixture(
+      async ({ targetDirectory, bunLockPath }) => {
+        await expect(
+          renderMirrorVerifyWorkflow({
+            targetDirectory,
+            bunLockPath,
+            published,
+            privateWorkspaces,
+          }),
+        ).rejects.toThrow(/carries both release\.yaml and release\.yml/);
+      },
+      ['release.yaml', 'release.yml'],
+    );
+  });
+
+  test('a clone carrying neither spelling names both in its refusal', async () => {
+    await withFixture(async ({ targetDirectory, bunLockPath }) => {
+      await expect(
+        renderMirrorVerifyWorkflow({
+          targetDirectory,
+          bunLockPath,
+          published,
+          privateWorkspaces,
+        }),
+      ).rejects.toThrow(/carries neither release\.yaml nor release\.yml/);
+    }, []);
+  });
+
   test('pins the release workflow’s own Bun version and carries pull_request + merge_group triggers', async () => {
     await withFixture(async ({ targetDirectory, bunLockPath }) => {
       const workflow = await renderMirrorVerifyWorkflow({
