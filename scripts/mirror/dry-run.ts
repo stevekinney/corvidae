@@ -9,6 +9,7 @@ import {
   type InstallationCoverage,
   type PullRequestRecord,
   type RepositoryRecord,
+  type WorkflowRunRecord,
 } from './github-api.ts';
 import { installationSettingsUrl, mirrorAppId, mirrorInstallationId } from './github-app.ts';
 import { mirrorTargets, type MirrorTarget } from './manifests.ts';
@@ -208,6 +209,8 @@ export interface DryRunReport {
   changed: number;
   pullRequest: PullRequestRecord;
   checkRuns: readonly CheckRunRecord[];
+  /** The Actions runs behind those check runs; their URLs are the CI evidence a run records. */
+  workflowRuns: readonly WorkflowRunRecord[];
   publish: PublishProbe;
   deleted: boolean;
 }
@@ -416,8 +419,8 @@ const passingConclusions = new Set(['success', 'skipped', 'neutral']);
 export type CheckRunWaitStop =
   'completed' | 'never-appeared' | 'never-completed' | 'never-stabilised';
 
-/** Whether two polls saw the same check runs, by name rather than by how many there were. */
-function sameCheckRuns(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+/** Whether two polls saw the same set, by identity rather than by how many there were. */
+function sameObservation(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
   if (left.size !== right.size) return false;
   for (const name of left) {
     if (!right.has(name)) return false;
@@ -425,9 +428,26 @@ function sameCheckRuns(left: ReadonlySet<string>, right: ReadonlySet<string>): b
   return true;
 }
 
+/**
+ * What one poll saw, as the identities that have to repeat before the run counts as whole: every
+ * workflow run by id and every check run by name. Ids and names live in one set because the
+ * question is whether the *observation* repeated, and a workflow run that appeared between two
+ * polls with identical check runs is a different observation.
+ */
+function observedIdentities(
+  workflowRuns: readonly WorkflowRunRecord[],
+  checkRuns: readonly CheckRunRecord[],
+): ReadonlySet<string> {
+  const identities = new Set<string>();
+  for (const run of workflowRuns) identities.add(`workflow-run:${run.id}`);
+  for (const check of checkRuns) identities.add(`check-run:${check.name}`);
+  return identities;
+}
+
 export interface CheckRunWait {
   stop: CheckRunWaitStop;
   checkRuns: readonly CheckRunRecord[];
+  workflowRuns: readonly WorkflowRunRecord[];
   /** How long a live run would have spent waiting, which is what a timeout message reports. */
   waitedMilliseconds: number;
 }
@@ -450,11 +470,22 @@ export interface CheckRunWait {
  * only the whole set once the set has stopped growing. A live run of this driver saw `enforce`
  * and `format-check` complete while eighteen other checks had not yet registered; a poll landing
  * a few seconds earlier would have read two completed, passing checks, called CI settled, and
- * exited 0 having observed almost none of it. So settling requires the same check runs — compared
- * by name, because two polls that both show twenty are not the same observation if one name
- * appeared and another vanished — across two consecutive polls. A set that never repeats inside
- * the completion bound is its own refusal rather than a fall-through to whatever the last poll
- * held, which means confirmation needs at least two polls to be possible at all.
+ * exited 0 having observed almost none of it. So settling requires the same observation across
+ * two consecutive polls — compared by identity, because two polls that both show twenty are not
+ * the same observation if one name appeared and another vanished. A set that never repeats
+ * inside the completion bound is its own refusal rather than a fall-through to whatever the last
+ * poll held, which means confirmation needs at least two polls to be possible at all.
+ *
+ * Two consecutive polls of the check runs alone are not enough, and a later live run proved it:
+ * `enforce` — a `pull_request_target` job that finishes in seconds — was the only check run on
+ * two polls ten seconds apart, the driver called CI settled on one passing check, and the twelve
+ * `ci.yaml` and `verify-jsdoc.yaml` jobs registered after it had already deleted the repository.
+ * The check runs cannot say how much CI is still coming, but the workflow runs can: GitHub creates
+ * a workflow run when it delivers the triggering event and holds it `queued` until a runner takes
+ * its jobs, so a queued workflow run is CI that has not started registering check runs yet. The
+ * poll therefore reads both, and settling requires at least one workflow run, every workflow run
+ * and every check run `completed`, and the same workflow-run ids and check-run names across two
+ * consecutive polls.
  */
 export async function waitForCheckRuns(options: {
   api: GitHubApi;
@@ -474,27 +505,47 @@ export async function waitForCheckRuns(options: {
   const delay = options.delayMilliseconds ?? checkRunPollDelayMilliseconds;
   const sleep = options.sleep ?? ((milliseconds) => Bun.sleep(milliseconds));
   let latest: readonly CheckRunRecord[] = [];
+  let latestWorkflowRuns: readonly WorkflowRunRecord[] = [];
   let settledOnce = false;
-  // The names from the previous poll, and only while that poll showed every check completed. A
-  // poll that shows anything unfinished clears it, because a check that just registered means the
-  // set is growing again and an earlier agreement says nothing about the set that is arriving.
+  // The identities from the previous poll, and only while that poll showed everything completed.
+  // A poll that shows anything unfinished — a queued workflow run counts — clears it, because a
+  // run that just registered means the set is growing again and an earlier agreement says nothing
+  // about the set that is arriving.
   let previous: ReadonlySet<string> | undefined;
   for (let attempt = 1; attempt <= completion; attempt += 1) {
-    latest = await options.api.readCheckRuns(options.scratchRepository, options.ref);
+    [latestWorkflowRuns, latest] = await Promise.all([
+      options.api.readWorkflowRuns(options.scratchRepository, options.ref),
+      options.api.readCheckRuns(options.scratchRepository, options.ref),
+    ]);
     const waitedMilliseconds = (attempt - 1) * delay;
-    const names = new Set(latest.map((check) => check.name));
-    if (latest.length > 0 && latest.every((check) => check.status === 'completed')) {
+    const identities = observedIdentities(latestWorkflowRuns, latest);
+    const everythingCompleted =
+      latestWorkflowRuns.length > 0 &&
+      latest.length > 0 &&
+      latestWorkflowRuns.every((run) => run.status === 'completed') &&
+      latest.every((check) => check.status === 'completed');
+    if (everythingCompleted) {
       settledOnce = true;
-      if (previous && sameCheckRuns(previous, names)) {
-        return { stop: 'completed', checkRuns: latest, waitedMilliseconds };
+      if (previous && sameObservation(previous, identities)) {
+        return {
+          stop: 'completed',
+          checkRuns: latest,
+          workflowRuns: latestWorkflowRuns,
+          waitedMilliseconds,
+        };
       }
-      previous = names;
+      previous = identities;
     } else {
       settledOnce = false;
       previous = undefined;
     }
     if (latest.length === 0 && attempt >= appearance) {
-      return { stop: 'never-appeared', checkRuns: latest, waitedMilliseconds };
+      return {
+        stop: 'never-appeared',
+        checkRuns: latest,
+        workflowRuns: latestWorkflowRuns,
+        waitedMilliseconds,
+      };
     }
     if (attempt < completion) await sleep(delay);
   }
@@ -505,8 +556,16 @@ export async function waitForCheckRuns(options: {
     // conclusions off part of the run.
     stop: settledOnce ? 'never-stabilised' : 'never-completed',
     checkRuns: latest,
+    workflowRuns: latestWorkflowRuns,
     waitedMilliseconds: (completion - 1) * delay,
   };
+}
+
+/** The workflow runs a message lists when the reader needs to know what CI was doing. */
+function describeWorkflowRuns(workflowRuns: readonly WorkflowRunRecord[]): string[] {
+  return workflowRuns.map(
+    (run) => `  workflow run ${run.name}: ${run.conclusion ?? run.status} ${run.htmlUrl}`,
+  );
 }
 
 function minutes(milliseconds: number): string {
@@ -553,17 +612,22 @@ export function assertCheckRunsPassed(options: {
     throw new CheckRunTimeoutError(
       [
         `No check run appeared on ${pullRequest.htmlUrl} within ${minutes(wait.waitedMilliseconds)}, so this run cannot claim CI passed: nothing ran.`,
-        `Either the target's workflows do not trigger on a pull request from this branch, or the App that opened it cannot dispatch them.`,
+        wait.workflowRuns.length === 0
+          ? `Either the target's workflows do not trigger on a pull request from this branch, or the App that opened it cannot dispatch them.`
+          : `${wait.workflowRuns.length} workflow run(s) exist for the head commit, so the workflows did trigger; a run that finished without registering a job is usually a workflow file GitHub refused to start:`,
+        ...describeWorkflowRuns(wait.workflowRuns),
         ...surviving,
       ].join('\n'),
     );
   }
   if (wait.stop === 'never-completed') {
     const pending = wait.checkRuns.filter((check) => check.status !== 'completed');
+    const pendingWorkflowRuns = wait.workflowRuns.filter((run) => run.status !== 'completed');
     throw new CheckRunTimeoutError(
       [
-        `${pending.length} of ${wait.checkRuns.length} check run(s) on ${pullRequest.htmlUrl} were still unfinished after ${minutes(wait.waitedMilliseconds)}, so this run cannot claim CI passed:`,
+        `${pending.length} of ${wait.checkRuns.length} check run(s) and ${pendingWorkflowRuns.length} of ${wait.workflowRuns.length} workflow run(s) on ${pullRequest.htmlUrl} were still unfinished after ${minutes(wait.waitedMilliseconds)}, so this run cannot claim CI passed:`,
         ...pending.map((check) => `  ${check.name}: ${check.status}`),
+        ...describeWorkflowRuns(pendingWorkflowRuns),
         `Raise --check-run-timeout-minutes only if this target's CI genuinely takes longer than that. A check that is stuck does not finish because the wait got longer.`,
         ...surviving,
       ].join('\n'),
@@ -575,6 +639,21 @@ export function assertCheckRunsPassed(options: {
         `The check runs on ${pullRequest.htmlUrl} were all finished but the set of them was still changing after ${minutes(wait.waitedMilliseconds)}, so this run cannot claim CI passed: a set that is still registering is not the whole run, and a conclusion read off part of a run is not a verdict on it.`,
         `The last ${wait.checkRuns.length} observed were:`,
         ...wait.checkRuns.map((check) => `  ${check.name}: ${check.conclusion ?? check.status}`),
+        ...surviving,
+      ].join('\n'),
+    );
+  }
+  // A workflow run can fail without any of its jobs ever becoming a check run — a workflow file
+  // GitHub refuses to parse ends as `startup_failure` with nothing registered under it — so the
+  // workflow runs are ruled on first, and on their own.
+  const failedWorkflowRuns = wait.workflowRuns.filter(
+    (run) => !passingConclusions.has(run.conclusion ?? 'none'),
+  );
+  if (failedWorkflowRuns.length > 0) {
+    throw new CheckRunFailureError(
+      [
+        `${failedWorkflowRuns.length} of ${wait.workflowRuns.length} workflow run(s) on ${pullRequest.htmlUrl} did not pass, so the transform this run produced does not build on the target's own CI:`,
+        ...describeWorkflowRuns(failedWorkflowRuns),
         ...surviving,
       ].join('\n'),
     );
@@ -661,6 +740,7 @@ export async function runDryRun(options: DryRunOptions): Promise<DryRunReport> {
     changed: transformed.changed,
     pullRequest: transformed.pullRequest,
     checkRuns: wait.checkRuns,
+    workflowRuns: wait.workflowRuns,
     publish,
     deleted: options.keep !== true,
   };
@@ -722,6 +802,10 @@ function describe(report: DryRunReport): string {
   return [
     `${report.scratchRepository}: pull request #${report.pullRequest.number} ${report.pullRequest.htmlUrl}`,
     `  branch ${report.branch} with ${report.changed} changed path(s)`,
+    // The workflow run URLs are the CI evidence this driver exists to record; a deleted scratch
+    // repository takes its pull request page with it, but the run URL is what gets written down.
+    `  ${report.workflowRuns.length} workflow run(s) completed, all passing:`,
+    ...describeWorkflowRuns(report.workflowRuns),
     `  ${report.checkRuns.length} check run(s) completed, all passing:`,
     checks,
     `  publish dry run: ${report.publish.publicName}@${report.publish.version} built (exit ${report.publish.buildExitCode}), linted by publint (exit ${report.publish.publintExitCode}) and attw (exit ${report.publish.typeResolutionExitCode}), then \`${report.publish.command}\` exited ${report.publish.exitCode} shipping ${report.publish.entries.length} file(s) covering ${report.publish.entryPoints.length} entry point(s)`,

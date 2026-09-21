@@ -51,6 +51,23 @@ export interface CheckRunRecord {
   conclusion: string | null;
 }
 
+/**
+ * One Actions workflow run on a head commit.
+ *
+ * A workflow run exists from the moment GitHub delivers the event that triggers it, and sits
+ * `queued` until a runner picks its jobs up; a check run, by contrast, is registered only when a
+ * job starts. That gap is why the driver reads both: the workflow runs say how much CI is still
+ * coming, which the check runs alone cannot.
+ */
+export interface WorkflowRunRecord {
+  id: number;
+  name: string;
+  /** `queued`, `in_progress`, `completed`, or one of GitHub's other pre-completion states. */
+  status: string;
+  conclusion: string | null;
+  htmlUrl: string;
+}
+
 export interface CreateRepositoryInput {
   fullName: string;
   description: string;
@@ -72,6 +89,8 @@ export interface GitHubApi {
   createRepository(input: CreateRepositoryInput): Promise<RepositoryRecord>;
   createPullRequest(input: CreatePullRequestInput): Promise<PullRequestRecord>;
   readCheckRuns(fullName: string, ref: string): Promise<readonly CheckRunRecord[]>;
+  /** Every Actions workflow run whose head is exactly `headSha`, whatever its state. */
+  readWorkflowRuns(fullName: string, headSha: string): Promise<readonly WorkflowRunRecord[]>;
   deleteRepository(fullName: string): Promise<void>;
   /**
    * Environment variables that authenticate a `git push` to a mirror as the App.
@@ -270,6 +289,36 @@ export function createGitHubApi({
         name: entry.name ?? '',
         status: entry.status ?? '',
         conclusion: entry.conclusion ?? null,
+      }));
+    },
+
+    async readWorkflowRuns(
+      fullName: string,
+      headSha: string,
+    ): Promise<readonly WorkflowRunRecord[]> {
+      // The installation token, same as the check runs: the App holds no `actions` permission,
+      // and does not need one, because both listings are public reads on a public repository.
+      // Probed before this was written — the token answers 200 on a real repository's runs.
+      const response = await request(
+        `/repos/${fullName}/actions/runs?head_sha=${headSha}&per_page=100`,
+        { token: await installationToken() },
+      );
+      assertStatus(response, 200, `Reading workflow runs for ${fullName}@${headSha}`);
+      const payload = response.body as {
+        workflow_runs?: {
+          id?: number;
+          name?: string;
+          status?: string;
+          conclusion?: string | null;
+          html_url?: string;
+        }[];
+      };
+      return (payload.workflow_runs ?? []).map((entry) => ({
+        id: entry.id ?? 0,
+        name: entry.name ?? '',
+        status: entry.status ?? '',
+        conclusion: entry.conclusion ?? null,
+        htmlUrl: entry.html_url ?? '',
       }));
     },
 

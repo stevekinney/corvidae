@@ -22,6 +22,7 @@ import type {
   CreateRepositoryInput,
   GitHubApi,
   RepositoryRecord,
+  WorkflowRunRecord,
 } from './github-api.ts';
 import { runCommand, type CommandResult, type CommandRunner } from './packaging.ts';
 import type { proveNpmPublishDryRun, PublishProbe } from './publish-rehearsal.ts';
@@ -112,6 +113,20 @@ function fakeGitHub(options: FakeOptions = {}): { api: GitHubApi; calls: Recorde
     },
     async readCheckRuns() {
       return [{ name: 'build', status: 'completed', conclusion: 'success' }];
+    },
+    async readWorkflowRuns(fullName) {
+      // One finished, passing workflow run behind the one finished, passing check run above, so
+      // the default fake describes a CI run that is whole. A test about the wait overrides one or
+      // both reads to describe the run it is interested in.
+      return [
+        {
+          id: 1,
+          name: 'ci',
+          status: 'completed',
+          conclusion: 'success',
+          htmlUrl: `https://github.com/${fullName}/actions/runs/1`,
+        },
+      ];
     },
     async deleteRepository(fullName) {
       calls.deleted.push(fullName);
@@ -610,6 +625,8 @@ describe('runDryRun', () => {
 async function runWithCheckRuns(options: {
   /** One answer repeated, or one answer per poll, for a set that is still registering. */
   checkRuns: readonly CheckRunRecord[] | ((poll: number) => readonly CheckRunRecord[]);
+  /** The workflow runs behind those checks; the fake's one passing run when left out. */
+  workflowRuns?: readonly WorkflowRunRecord[];
   appearanceAttempts?: number;
   completionAttempts?: number;
 }): Promise<{ failure: unknown; calls: Recorded; probes: ProbeHarness }> {
@@ -619,6 +636,13 @@ async function runWithCheckRuns(options: {
   let polls = 0;
   const answering: GitHubApi = {
     ...api,
+    ...(options.workflowRuns
+      ? {
+          async readWorkflowRuns() {
+            return options.workflowRuns ?? [];
+          },
+        }
+      : {}),
     async readCheckRuns() {
       polls += 1;
       const { checkRuns } = options;
@@ -699,6 +723,67 @@ describe('runDryRun check run verdict', () => {
     expect(message).toContain('No check run appeared');
     expect(message).toContain(`https://github.com/${validName}/pull/1`);
     expect(calls.deleted).toEqual([]);
+  });
+
+  /**
+   * A workflow file GitHub refuses to start ends as a workflow run concluded `startup_failure`
+   * with no check run under it. Every check run that did register can pass and the target's CI
+   * still did not: the verdict has to read the workflow runs, not only the checks they produced.
+   */
+  test('fails the run and keeps the scratch repository when a workflow run fails without registering a check', async () => {
+    const { failure, calls, probes } = await runWithCheckRuns({
+      checkRuns: [{ name: 'build', status: 'completed', conclusion: 'success' }],
+      workflowRuns: [
+        {
+          id: 1,
+          name: 'ci',
+          status: 'completed',
+          conclusion: 'success',
+          htmlUrl: `https://github.com/${validName}/actions/runs/1`,
+        },
+        {
+          id: 2,
+          name: 'verify-jsdoc',
+          status: 'completed',
+          conclusion: 'startup_failure',
+          htmlUrl: `https://github.com/${validName}/actions/runs/2`,
+        },
+      ],
+    });
+    expect(failure).toBeInstanceOf(CheckRunFailureError);
+    const message = failure instanceof Error ? failure.message : '';
+    expect(message).toContain('1 of 2 workflow run(s)');
+    expect(message).toContain(
+      `workflow run verify-jsdoc: startup_failure https://github.com/${validName}/actions/runs/2`,
+    );
+    expect(calls.deleted).toEqual([]);
+    expect(probes.calls).toEqual([]);
+  });
+
+  test('records every workflow run URL in the report of a passing run', async () => {
+    const { api } = fakeGitHub();
+    const harness = fakeRunner();
+    const probes = fakeProbe();
+    const report = await withWorkDirectory((workDirectory) =>
+      runDryRun({
+        api,
+        corvidaeRoot: workDirectory,
+        target: 'weft',
+        workDirectory: join(workDirectory, 'clone'),
+        scratchDirectory: join(workDirectory, 'scratch'),
+        corvidaeCommit: 'abc123',
+        scratchRepository: validName,
+        run: harness.run,
+        stage: fakeStage('1.0.0'),
+        probe: probes.probe,
+        checkRunAppearanceAttempts: 2,
+        checkRunCompletionAttempts: 3,
+        sleep: async () => {},
+      }),
+    );
+    expect(report.workflowRuns.map((run) => run.htmlUrl)).toEqual([
+      `https://github.com/${validName}/actions/runs/1`,
+    ]);
   });
 
   /**
@@ -1051,6 +1136,145 @@ describe('waitForCheckRuns', () => {
     // pair is the third and fourth polls rather than the first and third.
     expect(reads).toBe(4);
     expect(wait.stop).toBe('completed');
+  });
+
+  /**
+   * The second live false green, reproduced exactly.
+   *
+   * `enforce` is a `pull_request_target` job that finishes in seconds. Two polls ten seconds
+   * apart both showed it as the only check run, completed and passing, while `ci.yaml`'s eleven
+   * jobs and `verify-jsdoc.yaml`'s `audit` had not yet registered a single check run — and the
+   * driver, comparing check runs alone, called the set stable, exited 0 and deleted the
+   * repository. The workflow run for `ci.yaml` had existed the whole time, `queued`. This test's
+   * polls show exactly that: the check runs agree from the first poll, and the only thing saying
+   * CI is not finished is a workflow run that has not started.
+   */
+  test('does not settle on agreeing check runs while a workflow run is still queued', async () => {
+    const enforce: CheckRunRecord = { name: 'enforce', status: 'completed', conclusion: 'success' };
+    const lint: CheckRunRecord = { name: 'lint', status: 'completed', conclusion: 'success' };
+    const prTitle: WorkflowRunRecord = {
+      id: 10,
+      name: 'pr-title',
+      status: 'completed',
+      conclusion: 'success',
+      htmlUrl: 'https://github.com/example/actions/runs/10',
+    };
+    const ciQueued: WorkflowRunRecord = {
+      id: 11,
+      name: 'ci',
+      status: 'queued',
+      conclusion: null,
+      htmlUrl: 'https://github.com/example/actions/runs/11',
+    };
+    const ciDone: WorkflowRunRecord = { ...ciQueued, status: 'completed', conclusion: 'success' };
+    const workflowPolls: readonly WorkflowRunRecord[][] = [
+      [prTitle, ciQueued],
+      [prTitle, ciQueued],
+      [prTitle, ciQueued],
+      [prTitle, ciDone],
+      [prTitle, ciDone],
+    ];
+    const checkPolls: readonly CheckRunRecord[][] = [
+      [enforce],
+      [enforce],
+      [enforce],
+      [enforce, lint],
+      [enforce, lint],
+    ];
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const queued: GitHubApi = {
+      ...api,
+      async readWorkflowRuns() {
+        return workflowPolls[Math.min(reads, workflowPolls.length - 1)] ?? [];
+      },
+      async readCheckRuns() {
+        const answer = checkPolls[Math.min(reads, checkPolls.length - 1)] ?? [];
+        reads += 1;
+        return answer;
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: queued,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 2,
+      completionAttempts: 10,
+      sleep: async () => {},
+    });
+    // Five, not two: polls one and two agree on the check runs and would have settled the old
+    // rule. The queued workflow run holds the wait open until the fourth poll shows everything
+    // finished and the fifth repeats it.
+    expect(reads).toBe(5);
+    expect(wait.stop).toBe('completed');
+    expect(wait.checkRuns.map((check) => check.name)).toEqual(['enforce', 'lint']);
+    expect(wait.workflowRuns.map((run) => run.name)).toEqual(['pr-title', 'ci']);
+  });
+
+  /**
+   * The same scenario with a workflow run that never leaves `queued` is a CI run that never
+   * finished, and is reported as one — not as a set that settled on the checks that did run.
+   */
+  test('reports a workflow run that never starts as an unfinished run', async () => {
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const stuck: GitHubApi = {
+      ...api,
+      async readWorkflowRuns() {
+        return [
+          {
+            id: 11,
+            name: 'ci',
+            status: 'queued',
+            conclusion: null,
+            htmlUrl: 'https://github.com/example/actions/runs/11',
+          },
+        ];
+      },
+      async readCheckRuns() {
+        reads += 1;
+        return [{ name: 'enforce', status: 'completed', conclusion: 'success' }];
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: stuck,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 2,
+      completionAttempts: 4,
+      sleep: async () => {},
+    });
+    expect(reads).toBe(4);
+    expect(wait.stop).toBe('never-completed');
+  });
+
+  /**
+   * Check runs alone can never say the run is whole, so a poll that sees check runs but no
+   * workflow run at all has not seen CI, and keeps waiting rather than settling.
+   */
+  test('does not settle without at least one workflow run', async () => {
+    let reads = 0;
+    const { api } = fakeGitHub();
+    const runless: GitHubApi = {
+      ...api,
+      async readWorkflowRuns() {
+        return [];
+      },
+      async readCheckRuns() {
+        reads += 1;
+        return [{ name: 'build', status: 'completed', conclusion: 'success' }];
+      },
+    };
+    const wait = await waitForCheckRuns({
+      api: runless,
+      scratchRepository: validName,
+      ref: 'c0ffee',
+      appearanceAttempts: 2,
+      completionAttempts: 3,
+      sleep: async () => {},
+    });
+    expect(reads).toBe(3);
+    expect(wait.stop).toBe('never-completed');
   });
 });
 
