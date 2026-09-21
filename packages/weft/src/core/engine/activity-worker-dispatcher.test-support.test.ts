@@ -7,7 +7,10 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import type { ActivityExecutionRequest, ActivityExecutionResult } from '../../types.ts';
+import type {
+  ActivityExecutionRequest,
+  ActivityExecutionResult,
+} from '../../workers/activity-runner.ts';
 import type { ActivityWorkerDispatcher } from '../../workers/activity-worker-dispatcher.ts';
 import { Engine } from '../engine.ts';
 import { setActivityWorkerDispatcherForTesting } from './activity-worker-dispatcher.test-support.ts';
