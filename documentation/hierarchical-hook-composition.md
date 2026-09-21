@@ -46,22 +46,19 @@ A catalog-dispatched run (`bureau.run(name, …)`) resolves its provider, toolbo
 
 The whole Bureau tier cannot travel there: `bureau:memory-recall`, `bureau:memory-persist` and `bureau:skill-record-snapshot` close over a session, a memory and a skill session a catalog run does not have. The three registrations that close over composition-level configuration only — `bureau:identity` and both guardrails — do travel, through `RuntimeComposition.createBureauInvariantHooks()`, merged in front of the agent's own tier.
 
-Which paths that reaches:
+Which paths that reaches — and the axis is the resolver, not durability. `bureau-catalog-dispatch.ts` composes the invariants for any agent satisfying `hasDefinitionResolver`, whether or not the bureau was built durable, by resolving the agent's own `RunOptions` and merging into that bag. An agent exposing no resolver builds its options entirely inside `run()`, so there is nothing to merge into:
 
-`bureau-catalog-dispatch.ts` takes the invariant-merging branch only when `runtime.durable && hasDefinitionResolver(agent)`. Everything else falls through to `agent.run()`:
+| Catalog path                                          | Bureau invariants |
+| ----------------------------------------------------- | ----------------- |
+| Dispatch of an agent that resolves run options        | Yes               |
+| Recovery of a durably dispatched catalog run          | Yes               |
+| Dispatch of an agent exposing no run-options resolver | **No**            |
 
-| Catalog path                                                  | Bureau invariants |
-| ------------------------------------------------------------- | ----------------- |
-| Durable dispatch of an agent that resolves run options        | Yes               |
-| Recovery of a durably dispatched catalog run                  | Yes               |
-| **Any** dispatch by a bureau with `durableExecution` off      | **No**            |
-| Durable dispatch of an agent exposing no run-options resolver | **No**            |
-
-> [!WARNING] The last two rows are a real gap, and a wide one
+> [!WARNING] The last row is a real gap
 >
-> Both call `agent.run(input, context)` directly, so no `RunOptions` exists outside the agent for anything to augment. The only remaining injection point would be a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines.
+> It calls `agent.run(input, context)` directly, so no `RunOptions` exists outside the agent for anything to augment. The only remaining injection point would be a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines, and COR-1276 accepted the gap rather than taking that.
 >
-> Read the third row carefully: it is not an edge case. A bureau constructed without `durableExecution: true` dispatches **every** agent this way, including an ordinary `createAgent` result that does expose a resolver — the `&&` means one missing condition is enough. So the common non-durable configuration is outside Bureau's hook authority entirely, not merely some unusual agent shape. Tests pin both rows; if either starts failing, that gap closed and this section is stale.
+> It applies to a hand-written `RunnableAgent` placed in a catalog — a deliberate act by whoever wrote the agent, not a configuration anybody falls into. `durableExecution` has nothing to do with it: tests pin the same outcome on both sides of that flag, so a future change that reintroduces a durability dependency fails rather than quietly narrowing this row.
 
 ## Child runs
 
