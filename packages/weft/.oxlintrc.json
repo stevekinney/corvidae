@@ -71,7 +71,9 @@
     ".playwright/**",
     "node_modules/**",
     "**/*.generated.d.ts",
-    "*.lock"
+    "*.lock",
+    ".claude/worktrees/**",
+    "tests/**/*.test-d.ts"
   ],
   "overrides": [
     {
