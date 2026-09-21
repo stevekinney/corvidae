@@ -515,6 +515,98 @@ describe('handleTaskResultRequest', () => {
     expect(response?.status).toBe(200);
     expect(context.deadlineTracker.size).toBe(0);
   });
+
+  it('returns 403 and logs when the ledger commit fails outright (not dead-lettered)', async () => {
+    // Unlike FailingTerminalCommitStorage (which only blocks the terminal
+    // write and so still succeeds via dead-lettering), this fails every
+    // conditionalBatch — including beginCompletion's own CAS, before any
+    // dead-letter attempt is even reachable — so applyTaskResult's
+    // {ok: false} propagates all the way to a bare 403.
+    class LosesCasStorage extends MemoryStorage {
+      override async conditionalBatch(): Promise<boolean> {
+        return false;
+      }
+    }
+    const storage = new LosesCasStorage();
+    const context = createMinimalContext();
+    const options = createMinimalOptions(storage);
+    await writeLeasedRecord(storage, { operationId: 'op-begin-completion-cas-loss' });
+
+    using errorSpy = spyOn(console, 'error').mockImplementation(() => {});
+
+    const response = await handleTaskResultRequest(
+      context,
+      options,
+      makePostRequest({
+        operationId: 'op-begin-completion-cas-loss',
+        workerId: 'longpoll-worker',
+        attemptToken: 'attempt-token',
+        status: 'completed',
+        value: 'ok',
+      }),
+      makeUrl('/v1/tasks/default/result'),
+      WORKER_PRINCIPAL,
+    );
+
+    expect(response?.status).toBe(403);
+    expect(await response?.json()).toEqual({ error: 'Forbidden' });
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Failed to commit task result for "op-begin-completion-cas-loss" through the durable ledger:',
+      ),
+      expect.any(String),
+    );
+    const record = decodeRemoteTaskRecord(
+      await storage.get(taskLedgerKey('op-begin-completion-cas-loss')),
+    );
+    expect(record?.state).toBe('leased');
+  });
+
+  it('logs and still reports the oversize rejection when persisting the substitute failure result fails outright', async () => {
+    // Same LosesCasStorage technique as above, but for the oversized-value
+    // branch: the substitute "failed" result's own beginCompletion CAS
+    // loses (never reaches dead-lettering), so applyWorkerTaskResult itself
+    // returns {ok: false} and the caller-facing 413 comes from a path that
+    // logged a persistence failure rather than one that dead-lettered.
+    class LosesCasStorage extends MemoryStorage {
+      override async conditionalBatch(): Promise<boolean> {
+        return false;
+      }
+    }
+    const storage = new LosesCasStorage();
+    const context = createMinimalContext();
+    setPayloadSizeLimit(context, 64);
+    const options = createMinimalOptions(storage);
+    await writeLeasedRecord(storage, { operationId: 'op-oversize-rejection-cas-loss' });
+
+    using errorSpy = spyOn(console, 'error').mockImplementation(() => {});
+
+    const response = await handleTaskResultRequest(
+      context,
+      options,
+      makePostRequest({
+        operationId: 'op-oversize-rejection-cas-loss',
+        workerId: 'longpoll-worker',
+        attemptToken: 'attempt-token',
+        status: 'completed',
+        value: { blob: 'x'.repeat(200) },
+      }),
+      makeUrl('/v1/tasks/default/result'),
+      WORKER_PRINCIPAL,
+    );
+
+    expect(response?.status).toBe(413);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Failed to persist oversized task result rejection for task "op-oversize-rejection-cas-loss":',
+      ),
+      expect.any(String),
+    );
+    const record = decodeRemoteTaskRecord(
+      await storage.get(taskLedgerKey('op-oversize-rejection-cas-loss')),
+    );
+    expect(record?.state).toBe('leased');
+  });
 });
 
 // ---------------------------------------------------------------------------
