@@ -206,6 +206,26 @@ function buildWorkerRegistrationRejectionsOperationForRegistry(
   });
 }
 
+/**
+ * Build the registry of every operation this build serves, wiring the ones
+ * that need live collaborators — task diagnostics, system metrics, the worker
+ * registry — to the instances you pass, and falling back to standalone
+ * versions for anything you omit.
+ *
+ * `serve()` calls this for you. Call it directly when you need the operation
+ * surface without a running server: {@link createCatalogSnapshot} uses it as
+ * its default source, which is how `weft codegen` describes a build it never
+ * starts.
+ *
+ * @example
+ * ```ts
+ * import { createLiveOperationRegistry } from '@corvidae/weft';
+ *
+ * const operations = createLiveOperationRegistry().list();
+ *
+ * console.log(operations.length, 'operations registered');
+ * ```
+ */
 export function createLiveOperationRegistry(
   options?: LiveOperationRegistryOptions,
 ): OperationRegistry {

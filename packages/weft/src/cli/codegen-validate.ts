@@ -14,16 +14,16 @@
 
 import { z } from 'zod';
 
+import { MAX_REGISTRY_WORKFLOW_COUNT } from '../core/registry-limits.ts';
 import {
-  isPlainRecord,
   MAX_CONTRACT_IDENTIFIER_BYTES,
-  MAX_REGISTRY_WORKFLOW_COUNT,
   parseWorkflowRevisionManifest,
   REGISTRY_VERSION,
-  utf8ByteLength,
   type RegistryActivityEntry,
   type WorkflowRevisionManifest,
 } from '../index.ts';
+import { isPlainRecord } from '../worker/manifest/is-plain-record.ts';
+import { utf8ByteLength } from '../worker/manifest/utf8.ts';
 import type { CodegenWorkflowEntry } from './codegen-emit-registry.ts';
 
 /**

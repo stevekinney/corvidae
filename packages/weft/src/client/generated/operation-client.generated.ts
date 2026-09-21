@@ -27,6 +27,23 @@ import {
   type WeftClientConnection,
 } from '../operation-client-runtime.ts';
 
+/**
+ * Every unary operation this server exposes over JSON-RPC, sorted by name.
+ *
+ * This is exactly the set {@link createWeftClient} turns into client methods,
+ * so it also answers "can I call this over JSON-RPC?" at runtime — worth
+ * checking when the name arrived as a string from a CLI argument or a queued
+ * job, before you hand it to the client.
+ *
+ * @example
+ * ```ts
+ * import { CATALOG_OPERATION_NAMES } from '@corvidae/weft';
+ *
+ * const requested = 'weft.activities.complete';
+ * const callable = CATALOG_OPERATION_NAMES.some((name) => name === requested);
+ * console.log(callable); // true
+ * ```
+ */
 export const CATALOG_OPERATION_NAMES = [
   'weft.activities.complete',
   'weft.activities.fail',
@@ -102,8 +119,43 @@ export const CATALOG_OPERATION_NAMES = [
   'weft.workflows.update',
 ] as const;
 
+/**
+ * The name of any operation callable over JSON-RPC — the union behind
+ * {@link CATALOG_OPERATION_NAMES}.
+ *
+ * Annotate with this when an operation name reaches you from somewhere
+ * untyped and you would rather the compiler reject a name this server does
+ * not serve than discover it on the first round trip.
+ *
+ * @example
+ * ```ts
+ * import type { CatalogOperationName } from '@corvidae/weft';
+ *
+ * const operation: CatalogOperationName = 'weft.alerts.list';
+ * console.log(operation);
+ * ```
+ */
 export type CatalogOperationName = (typeof CATALOG_OPERATION_NAMES)[number];
 
+/**
+ * Every operation the generated client can reach, sorted by name: the JSON-RPC
+ * catalog in {@link CATALOG_OPERATION_NAMES} plus those served only over REST.
+ *
+ * Reach for this when you want the client's whole surface — building a
+ * permission table, generating documentation, checking coverage — and for
+ * {@link CATALOG_OPERATION_NAMES} when you specifically need the JSON-RPC
+ * subset.
+ *
+ * @example
+ * ```ts
+ * import { CATALOG_OPERATION_NAMES, CLIENT_OPERATION_NAMES } from '@corvidae/weft';
+ *
+ * const restOnly = CLIENT_OPERATION_NAMES.filter(
+ *   (name) => !CATALOG_OPERATION_NAMES.some((catalogName) => catalogName === name),
+ * );
+ * console.log(restOnly.length);
+ * ```
+ */
 export const CLIENT_OPERATION_NAMES = [
   'weft.activities.complete',
   'weft.activities.fail',
@@ -180,8 +232,41 @@ export const CLIENT_OPERATION_NAMES = [
   'weft.workflows.update',
 ] as const;
 
+/**
+ * The name of any operation the generated client can reach — the union behind
+ * {@link CLIENT_OPERATION_NAMES}.
+ *
+ * Wider than {@link CatalogOperationName}, which covers only the JSON-RPC
+ * subset. Use this one for code that handles REST-only operations too.
+ *
+ * @example
+ * ```ts
+ * import type { ClientOperationName } from '@corvidae/weft';
+ *
+ * const operation: ClientOperationName = 'weft.alerts.list';
+ * console.log(operation);
+ * ```
+ */
 export type ClientOperationName = (typeof CLIENT_OPERATION_NAMES)[number];
 
+/**
+ * HTTP method, path template and input placement for each operation the client
+ * reaches over REST rather than JSON-RPC.
+ *
+ * The generated client already uses this table to build its requests, so read
+ * it directly only when you are working outside the client — proxying Weft
+ * behind your own router, or writing a gateway that has to reproduce the same
+ * routes. Paths are client-relative: the server's `/v1` prefix is stripped.
+ *
+ * @example
+ * ```ts
+ * import { CLIENT_REST_OPERATION_BINDINGS } from '@corvidae/weft';
+ *
+ * for (const [operation, binding] of Object.entries(CLIENT_REST_OPERATION_BINDINGS)) {
+ *   console.log(binding.method + ' ' + binding.path + '  ' + operation);
+ * }
+ * ```
+ */
 export const CLIENT_REST_OPERATION_BINDINGS = {
   'weft.tasks.diagnostics.deadletters.clear': {
     method: 'DELETE',
@@ -191,6 +276,25 @@ export const CLIENT_REST_OPERATION_BINDINGS = {
   },
 } as const satisfies Readonly<Record<string, ClientRestOperationBinding>>;
 
+/**
+ * Input and output types for every operation the client can reach, keyed by
+ * operation name and assembled from the per-domain generated modules.
+ *
+ * You seldom name this directly — {@link createWeftClient} applies it for you.
+ * It earns its keep when you write code generic over operations, such as a
+ * logging or retry wrapper that has to preserve each operation's own input and
+ * output types instead of widening them to `unknown`.
+ *
+ * @example
+ * ```ts
+ * import type { ClientOperationTypes } from '@corvidae/weft';
+ *
+ * type CancelInput = ClientOperationTypes['weft.workflows.cancel']['input'];
+ *
+ * declare const input: CancelInput;
+ * console.log(input);
+ * ```
+ */
 export type ClientOperationTypes = ActivitiesOperationTypes &
   AttributesOperationTypes &
   BulkWorkflowsOperationTypes &
@@ -211,11 +315,71 @@ export type ClientOperationTypes = ActivitiesOperationTypes &
   WorkflowCatalogOperationTypes &
   WorkflowsOperationTypes;
 
+/**
+ * The {@link ClientOperationTypes} entries for operations reachable over
+ * JSON-RPC, which is the surface {@link createWeftClient} builds against.
+ *
+ * Use this rather than {@link ClientOperationTypes} when your code runs
+ * against a JSON-RPC transport and should not reference an operation that only
+ * exists over REST.
+ *
+ * @example
+ * ```ts
+ * import type { CatalogOperationTypes } from '@corvidae/weft';
+ *
+ * type AlertsOutput = CatalogOperationTypes['weft.alerts.list']['output'];
+ *
+ * declare const alerts: AlertsOutput;
+ * console.log(alerts);
+ * ```
+ */
 export type CatalogOperationTypes = Pick<ClientOperationTypes, CatalogOperationName>;
 
 export type WeftClient = CatalogWeftClient<CatalogOperationTypes>;
+
+/**
+ * A client shaped over every operation, REST included: each operation name is
+ * a method taking that operation's input and resolving to its output.
+ *
+ * {@link createWeftClient} returns the narrower JSON-RPC-only shape. Name this
+ * one when you build a client over a transport that also covers the REST-only
+ * operations.
+ *
+ * @example
+ * ```ts
+ * import type { ClientOperations } from '@corvidae/weft';
+ *
+ * declare const client: ClientOperations;
+ * const diagnostics = client['weft.catalog.diagnostics'];
+ * console.log(typeof diagnostics);
+ * ```
+ */
 export type ClientOperations = CatalogWeftClient<ClientOperationTypes>;
 
+/**
+ * Build a typed client for a remote Weft server, with one method per operation
+ * in {@link CATALOG_OPERATION_NAMES}.
+ *
+ * Calls travel as JSON-RPC over HTTP. Connection settings resolve in the usual
+ * order — explicit options, environment, named profile, then the default
+ * address — so passing nothing is right when the environment already describes
+ * the server. In library code pass `includeRunLockfile: false`, so a stray
+ * local `weft serve` lockfile cannot quietly redirect your calls.
+ *
+ * @example
+ * ```ts
+ * import { createWeftClient, type ClientOperationTypes } from '@corvidae/weft';
+ *
+ * const client = createWeftClient({
+ *   server: 'http://localhost:7233',
+ *   includeRunLockfile: false,
+ * });
+ *
+ * declare const input: ClientOperationTypes['weft.alerts.list']['input'];
+ * const alerts = await client['weft.alerts.list'](input);
+ * console.log(alerts);
+ * ```
+ */
 export function createWeftClient(connection: WeftClientConnection = {}): WeftClient {
   return createCatalogWeftClient<CatalogOperationTypes>(
     CATALOG_OPERATION_NAMES,

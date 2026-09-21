@@ -518,14 +518,14 @@ export class WorkflowHandle<TResult = unknown> extends EventTarget implements As
  *
  * @example
  * ```ts
- * import { Engine, workflow } from '@corvidae/weft';
+ * import { Engine, workflow, type PreparedWorkflowHandle } from '@corvidae/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'onboarding' }).execute(async function* () {
  *   return 'done';
  * }));
  *
- * const prepared = await engine.prepare('onboarding', null);
+ * const prepared: PreparedWorkflowHandle = await engine.prepare('onboarding', null);
  * const record = await engine.get(prepared.id);
  * console.log(record?.status); // 'pending' — committed, not yet executing
  *

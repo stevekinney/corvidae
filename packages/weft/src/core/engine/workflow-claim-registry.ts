@@ -124,6 +124,22 @@ export type WorkflowClaimAcquirePreparation = {
  * uses to decide whether a takeover attempt right now would be fenced.
  * `heldByThisProcess` is `true` only when `heldByAnyProcess` is also `true`
  * — it never claims local ownership of an expired record.
+ *
+ * Read it as a point-in-time answer, not a lock. A claim can expire between
+ * this read and whatever you do next, so use it for diagnostics and routing
+ * decisions — which process should log, which should report health — and let
+ * `takeover` itself arbitrate when correctness depends on the outcome.
+ *
+ * @example
+ * ```ts
+ * import type { WorkflowClaimHolderStatus } from '@corvidae/weft';
+ *
+ * declare const status: WorkflowClaimHolderStatus;
+ *
+ * if (status.heldByThisProcess) console.log('this process is driving it');
+ * else if (status.heldByAnyProcess) console.log('another process holds it');
+ * else console.log('unclaimed — a takeover would succeed right now');
+ * ```
  */
 export type WorkflowClaimHolderStatus = {
   /** Whether THIS engine process is the live holder. */

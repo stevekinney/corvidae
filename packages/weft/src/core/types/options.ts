@@ -559,6 +559,12 @@ export interface EngineOptions<TServices = unknown> {
  * The two modes are mutually exclusive by construction, not two independent
  * flags that could both be set — replacing the pre-COR-152
  * local-Worker-only `activityExecution` shape.
+ *
+ * @example
+ * ```ts
+ * import type { ActivityExecutionOptions } from '@corvidae/weft';
+ * const execution: ActivityExecutionOptions = { mode: 'remote', queue: 'payments' };
+ * ```
  */
 export type ActivityExecutionOptions =
   | Readonly<{

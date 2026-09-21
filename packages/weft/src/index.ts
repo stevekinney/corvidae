@@ -225,16 +225,11 @@ export { WorkerPool } from './workers/pool.ts';
 export type { WorkerPoolOptions } from './workers/pool.ts';
 
 export * from './client/generated/operation-client.generated.ts';
-export * from './client/json-rpc-request.ts';
+export type { JsonRpcCallResult, JsonRpcErrorObject } from './client/json-rpc-request.ts';
 export * from './client/operation-client-runtime.ts';
-export { compareCodepoint } from './core/compare-codepoint.ts';
-export { safeDebugStringify, sanitizeDebugValueForDisplay } from './core/debug-output.ts';
-export * from './json-schema/codegen-emit.ts';
+export { CodegenEmitError, jsonSchemaToTypeScript } from './json-schema/codegen-emit.ts';
 export * from './server/operation-catalog-snapshot.ts';
 
-export { removeRunLockfile, writeRunLockfile } from './connection.ts';
-export { isRecord } from './core/debug-output.ts';
-export { MAX_REGISTRY_WORKFLOW_COUNT } from './core/registry-limits.ts';
 export { REGISTRY_VERSION } from './core/registry-snapshot.ts';
 export type { RegistryActivityEntry } from './core/registry-snapshot.ts';
 export {
@@ -243,5 +238,3 @@ export {
   taskLedgerKey,
 } from './core/task-ledger/task-ledger.ts';
 export { createLiveOperationRegistry } from './server/rest-bindings.ts';
-export { isPlainRecord } from './worker/manifest/is-plain-record.ts';
-export { utf8ByteLength } from './worker/manifest/utf8.ts';

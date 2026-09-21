@@ -201,7 +201,7 @@ export function requireStorageCapability(
  * @example
  * ```ts
  * import { assertDurableStorageForRecovery } from '@corvidae/weft';
- * import { SQLiteStorage } from '@corvidae/weft';
+ * import { SQLiteStorage } from '@corvidae/weft/storage/sqlite';
  *
  * await using storage = new SQLiteStorage('./weft.db');
  * assertDurableStorageForRecovery(storage);

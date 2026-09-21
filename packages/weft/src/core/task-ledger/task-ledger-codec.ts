@@ -337,6 +337,30 @@ function isTerminalDisposition(value: Record<string, unknown>, disposition: stri
   return value['state'] === 'terminal' && value['disposition'] === disposition;
 }
 
+/**
+ * Narrow an unvalidated ledger record to a task that reached a terminal state
+ * on its own — it completed or it failed, and the attempt that owned it said
+ * so.
+ *
+ * Records read back from storage arrive as `unknown` because the durable
+ * ledger is hostile input: another process wrote it, possibly an older build.
+ * This validates the whole shape, not just the discriminant, so a truncated or
+ * hand-edited record is rejected rather than trusted.
+ *
+ * Pair it with {@link isRemoteTaskTerminalCancelled}: both mean "finished",
+ * but only this one means the work itself produced an outcome.
+ *
+ * @example
+ * ```ts
+ * import { isRemoteTaskTerminalResolved } from '@corvidae/weft';
+ *
+ * declare const record: unknown;
+ *
+ * if (isRemoteTaskTerminalResolved(record)) {
+ *   console.log(record.status, 'at', record.terminalAt);
+ * }
+ * ```
+ */
 export function isRemoteTaskTerminalResolved(value: unknown): value is RemoteTaskTerminalResolved {
   if (!isRecord(value) || !isTerminalDisposition(value, 'resolved')) return false;
   if (!isValidTaskBase(value) || !isValidTerminalCommon(value)) return false;
@@ -347,6 +371,29 @@ export function isRemoteTaskTerminalResolved(value: unknown): value is RemoteTas
   );
 }
 
+/**
+ * Narrow an unvalidated ledger record to a task that was cancelled rather than
+ * allowed to finish.
+ *
+ * The counterpart to {@link isRemoteTaskTerminalResolved}: both describe a
+ * task that will not run again, but this one carries a `cancellationReason`
+ * and no outcome. Watch for `uncertain` — when set, cancellation was requested
+ * but the worker never confirmed, so the activity may in fact have run. Any
+ * reconciliation or billing pass has to treat that as "unknown", not "did not
+ * happen".
+ *
+ * @example
+ * ```ts
+ * import { isRemoteTaskTerminalCancelled } from '@corvidae/weft';
+ *
+ * declare const record: unknown;
+ *
+ * if (isRemoteTaskTerminalCancelled(record)) {
+ *   console.log(record.cancellationReason);
+ *   if (record.uncertain === true) console.log('may have run anyway — verify');
+ * }
+ * ```
+ */
 export function isRemoteTaskTerminalCancelled(
   value: unknown,
 ): value is RemoteTaskTerminalCancelled {
