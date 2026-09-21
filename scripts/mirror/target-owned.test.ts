@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { mirrorTargets } from './manifests.ts';
 import {
   assertNoEmissionsIntoRetired,
   assertRetirementsCoherent,
@@ -89,9 +90,12 @@ async function withFixtureTarget(
 }
 
 describe('mirror target-owned enumeration', () => {
-  test('the committed enumeration parses, names both targets and carries no expired exception', async () => {
+  test('the committed enumeration parses, names every target and carries no expired exception', async () => {
     const policy = await loadTargetOwnedPolicy();
-    expect(policy.targets).toEqual(['weft', 'cinder']);
+    expect(policy.targets).toEqual(['weft', 'cinder', 'agent-bureau']);
+    // The enumeration's own `targets` list and the transform's are the same set or the guard is
+    // scoped to a repository the transform never plans, which no entry's `targets` would reveal.
+    expect(policy.targets.toSorted()).toEqual([...mirrorTargets].toSorted());
     expect(findExpiredExceptions(policy)).toEqual([]);
     expect(policy.paths.every((entry) => entry.reason.length > 0)).toBe(true);
   });

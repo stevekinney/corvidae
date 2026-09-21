@@ -143,12 +143,18 @@ const sharedTypeScriptConfiguration = {
 /**
  * A workspace that ships to the mirror and never to the registry.
  *
- * `@lostgradient/testing` is the real map's clearest private workspace, and it is here because a
- * private workspace is the one class the packaging checks say nothing about: nothing packs it, so
- * `typecheck` in the target is the only thing that reads the source the mirror now publishes for
- * it. Without one in the fixture that path would never run.
+ * A private workspace is the one class the packaging checks say nothing about: nothing packs it,
+ * so `typecheck` in the target is the only thing that reads the source the mirror now publishes
+ * for it. Without one in the fixture that path would never run.
+ *
+ * `@lostgradient/skills` rather than `@lostgradient/testing` since COR-1287: this harness plans
+ * the agent-bureau target, because that is where `targetFor` now routes the two published
+ * packages it has always used, and `@lostgradient/testing` ships from cinder. Skills is the same
+ * class of workspace in the target this harness now stands up — private in the map, private in
+ * the target, TypeScript source and a typecheck script.
  */
-const privateWorkspaceDirectory = 'packages/testing';
+const privateWorkspaceDirectory = 'packages/skills';
+const privateWorkspaceName = '@lostgradient/skills';
 
 /**
  * COR-1286: `renderMirrorVerifyWorkflow` reads `publint`'s and `@arethetypeswrong/cli`'s locked
@@ -187,7 +193,7 @@ function corvidaeFixture(): Record<string, unknown> {
     ...sharedTypeScriptConfiguration,
   };
   files[`${privateWorkspaceDirectory}/package.json`] = {
-    name: '@lostgradient/testing',
+    name: privateWorkspaceName,
     private: true,
     type: 'module',
     exports: { '.': './src/index.ts' },
@@ -284,7 +290,7 @@ const fixtureReleaseWorkflow = [
 
 function targetFixture(): Record<string, unknown> {
   const files: Record<string, unknown> = {
-    'README.md': '# cinder-workspace\n\nTarget-authored front page.\n',
+    'README.md': '# agent-bureau\n\nTarget-authored front page.\n',
     LICENSE: licence,
     // Only `node_modules` is ignored, deliberately. The build's `dist/` and any
     // `tsconfig.tsbuildinfo` are left visible to git so that a sync which staged after building
@@ -354,7 +360,7 @@ async function withHarness(body: (harness: Harness) => Promise<void>): Promise<v
 async function sync(harness: Harness, label: string): Promise<SyncResult> {
   return runSync({
     corvidaeRoot: harness.corvidae,
-    target: 'cinder',
+    target: 'agent-bureau',
     remote: harness.remote,
     directory: harness.runDirectory(label),
     scratchDirectory: join(harness.scratch, label),
@@ -380,17 +386,19 @@ describe('the mirror sync against a fake remote', () => {
         expect(first.decision).toBe('pushed');
         expect(first.changed.length).toBeGreaterThan(0);
         // `firstPublish` is every manifest emitted at 0.0.0, which includes the private
-        // configuration workspace. Nothing publishes that one, so the name reads wider than what
-        // it reports; pinned as observed rather than quietly filtered here.
+        // workspace. Nothing publishes that one, so the name reads wider than what it reports;
+        // pinned as observed rather than quietly filtered here. `@lostgradient/typescript` was in
+        // this list until COR-1287 and is not a regression by its absence: it ships from the
+        // cinder target, so the agent-bureau plan vendors its configuration rather than emitting
+        // a manifest for it, exactly as the weft plan always has.
         expect(first.firstPublish.toSorted()).toEqual([
           '@lostgradient/cryptography',
           '@lostgradient/lifecycle',
-          '@lostgradient/testing',
-          '@lostgradient/typescript',
+          privateWorkspaceName,
         ]);
         // The private workspace is type-checked in the target even though nothing packs it: its
         // source ships now, and `typecheck` is the only check that reads it.
-        expect(first.verification.privateTypechecks).toEqual(['@lostgradient/testing']);
+        expect(first.verification.privateTypechecks).toEqual([privateWorkspaceName]);
         expect(
           await readFile(join(first.directory, privateWorkspaceDirectory, 'src/index.ts'), 'utf8'),
         ).toContain('harness:');
@@ -533,7 +541,7 @@ describe('the foreign-commit guard', () => {
             'bun',
             new URL('./sync.ts', import.meta.url).pathname,
             '--target',
-            'cinder',
+            'agent-bureau',
             '--corvidae-root',
             harness.corvidae,
             '--remote',
@@ -577,7 +585,7 @@ describe('the build-input check', () => {
 
       const plan = await planSurface({
         corvidaeRoot: harness.corvidae,
-        target: 'cinder',
+        target: 'agent-bureau',
         targetDirectory: clone,
       });
       expect(collectMissingBuildInputs(clone, plan.published)).toEqual([
@@ -592,7 +600,10 @@ describe('the build-input check', () => {
     // build reads is now two classes rather than one: corvidae's `src/`, which the transform
     // writes, and the target's `requiredInputs`, which it never writes and never prunes.
     await withHarness(async (harness) => {
-      const plan = await planSurface({ corvidaeRoot: harness.corvidae, target: 'cinder' });
+      const plan = await planSurface({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+      });
       const sourcePaths = Object.keys(plan.files).filter((path) => path.includes('/src/'));
       expect(sourcePaths.toSorted()).toEqual([
         'packages/cryptography/src/index.ts',
