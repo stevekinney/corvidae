@@ -7,14 +7,14 @@ import {
   rewriteEmittedSource,
   rewriteInternalSpecifiers,
 } from './internal-names.ts';
-import { isInternalSpecifier } from './source-escapes.ts';
+import { internalScope, isInternalSpecifier } from './source-escapes.ts';
 
 /** The names `package-map.json` assigns the workspaces these fixtures name. */
 const publicNames: ReadonlyMap<string, string> = new Map([
-  ['armorer', '@lostgradient/armorer'],
-  ['@lostgradient/markdown', '@lostgradient/markdown'],
-  ['@lostgradient/operative', '@lostgradient/operative'],
-  ['@lostgradient/weft', '@lostgradient/weft'],
+  [`${internalScope}/armorer`, '@lostgradient/armorer'],
+  [`${internalScope}/markdown`, '@lostgradient/markdown'],
+  [`${internalScope}/operative`, '@lostgradient/operative'],
+  [`${internalScope}/weft`, '@lostgradient/weft'],
 ]);
 
 const decoder = new TextDecoder();
@@ -33,8 +33,8 @@ describe('an internal name a comment mentions', () => {
     const source = [
       '/**',
       ' * @example',
-      " * import { start } from '@lostgradient/weft';",
-      " * import { harness } from '@lostgradient/weft/storage/testing';",
+      ` * import { start } from '${internalScope}/weft';`,
+      ` * import { harness } from '${internalScope}/weft/storage/testing';`,
       ' */',
       'export const start = 1;',
       '',
@@ -44,13 +44,13 @@ describe('an internal name a comment mentions', () => {
     );
     expect(rewritten).toContain("import { start } from '@lostgradient/weft';");
     expect(rewritten).toContain("import { harness } from '@lostgradient/weft/storage/testing';");
-    expect(rewritten).not.toContain('@lostgradient/');
+    expect(rewritten).not.toContain(`${internalScope}/`);
   });
 
   test('prose outside an example is rewritten too, since hover documentation shows it', () => {
     const source = [
-      '/** Documented in `@lostgradient/weft`, and re-exported from @lostgradient/weft/client. */',
-      '// Run `bun run --filter=@lostgradient/weft test` first.',
+      `/** Documented in \`${internalScope}/weft\`, and re-exported from ${internalScope}/weft/client. */`,
+      `// Run \`bun run --filter=${internalScope}/weft test\` first.`,
       'export const value = 1;',
       '',
     ].join('\n');
@@ -69,9 +69,9 @@ describe('an internal name a comment mentions', () => {
    */
   test('a name inside a string literal is left exactly as it is', () => {
     const source = [
-      "describe('@lostgradient/weft barrel re-exports', () => {});",
-      'const message = `Failed to build @lostgradient/weft for browser`;',
-      "const symbol = Symbol.for('@lostgradient/operative/backend-descriptors');",
+      `describe('${internalScope}/weft barrel re-exports', () => {});`,
+      `const message = \`Failed to build ${internalScope}/weft for browser\`;`,
+      `const symbol = Symbol.for('${internalScope}/operative/backend-descriptors');`,
       '',
     ].join('\n');
     const rewritten = decoder.decode(
@@ -82,16 +82,16 @@ describe('an internal name a comment mentions', () => {
 
   test('a name the map does not know is left alone in prose, where a specifier throws', () => {
     const source = [
-      '/** Internal only: @lostgradient/typescript carries the shared options. */',
+      `/** Internal only: ${internalScope}/typescript carries the shared options. */`,
       '',
     ].join('\n');
     const rewritten = decoder.decode(
       rewriteEmittedSource(encoder.encode(source), 'packages/weft/src/notes.ts', publicNames),
     );
-    expect(rewritten).toContain('@lostgradient/typescript');
+    expect(rewritten).toContain(`${internalScope}/typescript`);
     expect(() =>
       rewriteInternalSpecifiers(
-        "import '@lostgradient/typescript';\n",
+        `import '${internalScope}/typescript';\n`,
         'packages/weft/src/notes.ts',
         publicNames,
       ),
@@ -99,12 +99,12 @@ describe('an internal name a comment mentions', () => {
   });
 
   test('sentence punctuation is trimmed before the map is asked, and put back after', () => {
-    expect(publicNameInProse('@lostgradient/weft', publicNames)).toBe('@lostgradient/weft');
-    expect(publicNameInProse('@lostgradient/weft.', publicNames)).toBe('@lostgradient/weft.');
-    expect(publicNameInProse('@lostgradient/weft/storage.', publicNames)).toBe(
+    expect(publicNameInProse(`${internalScope}/weft`, publicNames)).toBe('@lostgradient/weft');
+    expect(publicNameInProse(`${internalScope}/weft.`, publicNames)).toBe('@lostgradient/weft.');
+    expect(publicNameInProse(`${internalScope}/weft/storage.`, publicNames)).toBe(
       '@lostgradient/weft/storage.',
     );
-    expect(publicNameInProse('@lostgradient/absent', publicNames)).toBeUndefined();
+    expect(publicNameInProse(`${internalScope}/absent`, publicNames)).toBeUndefined();
   });
 
   /**
@@ -116,11 +116,11 @@ describe('an internal name a comment mentions', () => {
     const source = [
       '# Remote workers',
       '',
-      'The public contract is exported from `@lostgradient/weft`, and the storage harness from',
-      '`@lostgradient/weft/storage/testing`.',
+      `The public contract is exported from \`${internalScope}/weft\`, and the storage harness from`,
+      `\`${internalScope}/weft/storage/testing\`.`,
       '',
       '```ts',
-      "import { RemoteWorker } from '@lostgradient/weft';",
+      `import { RemoteWorker } from '${internalScope}/weft';`,
       '```',
       '',
     ].join('\n');
@@ -134,11 +134,11 @@ describe('an internal name a comment mentions', () => {
     expect(rewritten).toContain('`@lostgradient/weft`');
     expect(rewritten).toContain('`@lostgradient/weft/storage/testing`');
     expect(rewritten).toContain("import { RemoteWorker } from '@lostgradient/weft';");
-    expect(rewritten).not.toContain('@lostgradient/');
+    expect(rewritten).not.toContain(`${internalScope}/`);
   });
 
   test('a Markdown document naming an unmapped workspace is left exactly as it is', () => {
-    const source = '# Notes\n\nThe shared options live in `@lostgradient/typescript`.\n';
+    const source = `# Notes\n\nThe shared options live in \`${internalScope}/typescript\`.\n`;
     const rewritten = decoder.decode(
       rewriteEmittedSource(
         encoder.encode(source),
@@ -152,11 +152,11 @@ describe('an internal name a comment mentions', () => {
   test('a comment inside a Svelte script is rewritten and its markup is not', () => {
     const source = [
       '<script lang="ts">',
-      '  // Pair this with `@lostgradient/markdown` for the full pipeline.',
-      "  const label = '@lostgradient/markdown';",
+      `  // Pair this with \`${internalScope}/markdown\` for the full pipeline.`,
+      `  const label = '${internalScope}/markdown';`,
       '</script>',
       '',
-      '<p>Run <code>bun add @lostgradient/markdown</code> to install.</p>',
+      `<p>Run <code>bun add ${internalScope}/markdown</code> to install.</p>`,
       '',
     ].join('\n');
     const rewritten = decoder.decode(
@@ -167,43 +167,43 @@ describe('an internal name a comment mentions', () => {
       ),
     );
     expect(rewritten).toContain('Pair this with `@lostgradient/markdown`');
-    expect(rewritten).toContain("const label = '@lostgradient/markdown';");
-    expect(rewritten).toContain('<code>bun add @lostgradient/markdown</code>');
+    expect(rewritten).toContain(`const label = '${internalScope}/markdown';`);
+    expect(rewritten).toContain(`<code>bun add ${internalScope}/markdown</code>`);
   });
 });
 
 describe('what counts as an internal name', () => {
   test('the scope, a workspace under it, and a subpath into one', () => {
-    expect(isInternalSpecifier('@lostgradient/weft')).toBe(true);
-    expect(isInternalSpecifier('@lostgradient/weft/client')).toBe(true);
-    expect(isInternalSpecifier('@corvidae')).toBe(true);
+    expect(isInternalSpecifier(`${internalScope}/weft`)).toBe(true);
+    expect(isInternalSpecifier(`${internalScope}/weft/client`)).toBe(true);
+    expect(isInternalSpecifier(`${internalScope}`)).toBe(true);
     expect(isInternalSpecifier('@lostgradient/weft')).toBe(false);
-    expect(isInternalSpecifier('@corvidaemonium/weft')).toBe(false);
+    expect(isInternalSpecifier(`${internalScope}monium/weft`)).toBe(false);
     expect(isInternalSpecifier('./corvidae/weft.ts')).toBe(false);
   });
 
   test('a subpath is carried through to the public name unchanged', () => {
-    expect(publicSpecifierFor('@lostgradient/weft', publicNames, 'fixture.ts')).toBe(
+    expect(publicSpecifierFor(`${internalScope}/weft`, publicNames, 'fixture.ts')).toBe(
       '@lostgradient/weft',
     );
-    expect(publicSpecifierFor('@lostgradient/weft/client', publicNames, 'fixture.ts')).toBe(
+    expect(publicSpecifierFor(`${internalScope}/weft/client`, publicNames, 'fixture.ts')).toBe(
       '@lostgradient/weft/client',
     );
     expect(
-      publicSpecifierFor('@lostgradient/operative/backend/descriptors', publicNames, 'fixture.ts'),
+      publicSpecifierFor(`${internalScope}/operative/backend/descriptors`, publicNames, 'fixture.ts'),
     ).toBe('@lostgradient/operative/backend/descriptors');
   });
 
   test('a name the map does not carry fails, naming the file and the workspace', () => {
     expect(() =>
-      publicSpecifierFor('@lostgradient/ghost', publicNames, 'packages/weft/src/a.ts'),
+      publicSpecifierFor(`${internalScope}/ghost`, publicNames, 'packages/weft/src/a.ts'),
     ).toThrow(InternalNameError);
     try {
-      publicSpecifierFor('@lostgradient/ghost', publicNames, 'packages/weft/src/a.ts');
+      publicSpecifierFor(`${internalScope}/ghost`, publicNames, 'packages/weft/src/a.ts');
     } catch (error) {
       const message = (error as Error).message;
       expect(message).toContain('packages/weft/src/a.ts');
-      expect(message).toContain('@lostgradient/ghost');
+      expect(message).toContain(`${internalScope}/ghost`);
       expect(message).toContain('package-map.json');
     }
   });
@@ -218,19 +218,19 @@ describe('rewriting one file', () => {
    */
   test('every specifier form, and nothing that only looks like one', () => {
     const source = [
-      "import { a } from '@lostgradient/weft';",
-      "import type { B } from '@lostgradient/weft';",
-      "export * from 'armorer';",
-      "export type { C } from 'armorer';",
-      "const d = await import('@lostgradient/markdown');",
-      "type E = import('@lostgradient/weft').Engine;",
-      "const f = import.meta.resolve('@lostgradient/weft');",
-      "const g = require('armorer');",
-      "import h = require('@lostgradient/weft');",
-      "declare module '@lostgradient/weft' { interface WorkflowRegistry { a: 1 } }",
-      "import { sub } from '@lostgradient/weft/client';",
-      "const key = Symbol.for('@lostgradient/operative/backend-descriptors');",
-      '// See the docs for @lostgradient/weft.',
+      `import { a } from '${internalScope}/weft';`,
+      `import type { B } from '${internalScope}/weft';`,
+      `export * from '${internalScope}/armorer';`,
+      `export type { C } from '${internalScope}/armorer';`,
+      `const d = await import('${internalScope}/markdown');`,
+      `type E = import('${internalScope}/weft').Engine;`,
+      `const f = import.meta.resolve('${internalScope}/weft');`,
+      `const g = require('${internalScope}/armorer');`,
+      `import h = require('${internalScope}/weft');`,
+      `declare module '${internalScope}/weft' { interface WorkflowRegistry { a: 1 } }`,
+      `import { sub } from '${internalScope}/weft/client';`,
+      `const key = Symbol.for('${internalScope}/operative/backend-descriptors');`,
+      `// See the docs for ${internalScope}/weft.`,
     ].join('\n');
     expect(rewriteInternalSpecifiers(source, 'packages/weft/src/index.ts', publicNames)).toBe(
       [
@@ -245,8 +245,8 @@ describe('rewriting one file', () => {
         "import h = require('@lostgradient/weft');",
         "declare module '@lostgradient/weft' { interface WorkflowRegistry { a: 1 } }",
         "import { sub } from '@lostgradient/weft/client';",
-        "const key = Symbol.for('@lostgradient/operative/backend-descriptors');",
-        '// See the docs for @lostgradient/weft.',
+        `const key = Symbol.for('${internalScope}/operative/backend-descriptors');`,
+        `// See the docs for ${internalScope}/weft.`,
       ].join('\n'),
     );
   });
@@ -254,13 +254,13 @@ describe('rewriting one file', () => {
   test('a Svelte component’s script blocks and its markup are both rewritten', () => {
     const component = [
       '<script module lang="ts">',
-      "  import { registry } from 'armorer';",
+      `  import { registry } from '${internalScope}/armorer';`,
       '</script>',
       '<script lang="ts">',
-      "  import { render } from '@lostgradient/markdown';",
+      `  import { render } from '${internalScope}/markdown';`,
       "  import Child from './child.svelte';",
       '</script>',
-      "{#await import('@lostgradient/weft') then weft}{weft.version}{/await}",
+      `{#await import('${internalScope}/weft') then weft}{weft.version}{/await}`,
       '<Child {registry} {render} />',
     ].join('\n');
     expect(
@@ -290,9 +290,9 @@ describe('rewriting one file', () => {
   test('a type-position `import()` inside a Svelte script is rewritten too', () => {
     const component = [
       '<script lang="ts">',
-      "  import { render } from '@lostgradient/markdown';",
-      "  type Utilities = Pick<typeof import('@lostgradient/markdown'), 'normalize'>;",
-      "  const where = import.meta.resolve('armorer');",
+      `  import { render } from '${internalScope}/markdown';`,
+      `  type Utilities = Pick<typeof import('${internalScope}/markdown'), 'normalize'>;`,
+      `  const where = import.meta.resolve('${internalScope}/armorer');`,
       '  let utilities: Utilities | undefined;',
       '</script>',
       '<span>{render}{where}{utilities}</span>',
@@ -315,7 +315,7 @@ describe('rewriting one file', () => {
   test('a double-quoted specifier keeps its quotes; only the name between them changes', () => {
     expect(
       rewriteInternalSpecifiers(
-        'import { a } from "@lostgradient/weft";\n',
+        `import { a } from "${internalScope}/weft";\n`,
         'packages/weft/src/a.ts',
         publicNames,
       ),
@@ -325,7 +325,7 @@ describe('rewriting one file', () => {
   test('two specifiers on one line are both rewritten, longest offset first', () => {
     expect(
       rewriteInternalSpecifiers(
-        "const both = [import('@lostgradient/weft'), import('armorer')];\n",
+        `const both = [import('${internalScope}/weft'), import('${internalScope}/armorer')];\n`,
         'packages/weft/src/a.ts',
         publicNames,
       ),
@@ -335,7 +335,7 @@ describe('rewriting one file', () => {
   test('an unmapped name in a real import fails the rewrite rather than passing through', () => {
     expect(() =>
       rewriteInternalSpecifiers(
-        "import { a } from '@lostgradient/ghost';\n",
+        `import { a } from '${internalScope}/ghost';\n`,
         'packages/weft/src/a.ts',
         publicNames,
       ),
@@ -357,18 +357,18 @@ describe('rewriting one emitted file’s bytes', () => {
     // reader and to the target's markdown doctest extractor, which is what changed the ruling.
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     expect(rewriteEmittedSource(png, 'packages/testing/src/baseline.png', publicNames)).toBe(png);
-    const markdown = encoder.encode('Install `@lostgradient/weft` from the workspace.\n');
+    const markdown = encoder.encode(`Install \`${internalScope}/weft\` from the workspace.\n`);
     expect(
       decoder.decode(rewriteEmittedSource(markdown, 'packages/weft/src/README.md', publicNames)),
     ).toBe('Install `@lostgradient/weft` from the workspace.\n');
-    const untranslatable = encoder.encode('Install `@lostgradient/typescript`.\n');
+    const untranslatable = encoder.encode(`Install \`${internalScope}/typescript\`.\n`);
     expect(rewriteEmittedSource(untranslatable, 'packages/weft/src/README.md', publicNames)).toBe(
       untranslatable,
     );
   });
 
   test('a file that does carry one comes back rewritten', () => {
-    const contents = encoder.encode("import { Engine } from '@lostgradient/weft';\n");
+    const contents = encoder.encode(`import { Engine } from '${internalScope}/weft';\n`);
     expect(
       decoder.decode(rewriteEmittedSource(contents, 'packages/weft/src/a.ts', publicNames)),
     ).toBe("import { Engine } from '@lostgradient/weft';\n");

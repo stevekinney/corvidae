@@ -11,7 +11,7 @@ Read the root `AGENTS.md`, target workspace manifest, root catalog, and imports 
 
 - Declare runtime imports and types consumed by another package's public source contract in the owning workspace's `dependencies`. Put test-only and compiler tools in `devDependencies`.
 - Declare tools run by root scripts in the root manifest and tools run by workspace scripts in that workspace. Shared tool versions belong in the root catalog. This repository has no publishing, CI/CD, deployment, or Git-hook setup.
-- Internal imports use the provider's actual `@lostgradient/*` name with `workspace:*`. Do not add compatibility aliases, subpaths, or dependency cycles.
+- Internal imports use the provider's actual manifest `name` with `workspace:*` — `@lostgradient/*` for every workspace except `armorer` and `conversationalist`, which are unscoped. Do not add compatibility aliases, subpaths, or dependency cycles.
 - Reuse an existing root catalog version for external dependencies. For a new shared version, run `bun add <package> --catalog` from the owning workspace; add `--dev` for developer tooling. Run the same command from the root for root-owned tooling. Inspect the resulting manifests rather than assuming the command chose the intended owner. Upgrade a catalog entry only when required by the requested capability and validate every affected consumer. If required versions or peer contracts cannot coexist, report `needs input` with the conflict before changing them.
 
 ## Verification

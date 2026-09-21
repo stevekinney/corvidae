@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { readdirSync, readFileSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
 import { join } from 'node:path';
 import ts from 'typescript';
@@ -14,22 +15,42 @@ async function readManifest(path: string): Promise<Manifest> {
   return Bun.file(join(root, path, 'package.json')).json();
 }
 
+// COR-1284 renamed every workspace to its public name, so "internal" can no longer be recognized
+// by a scope prefix: the root catalog carries an external @lostgradient/environmentalist under
+// the very same scope as every internal workspace, and armorer and conversationalist are
+// unscoped. Membership in the actual set of workspace names, discovered from disk once at module
+// load, is the only discriminator that still distinguishes an internal edge from an external one.
+const internalWorkspaceNames = new Set<string>(
+  ['applications', 'components', 'packages', 'internal'].flatMap((directory) =>
+    readdirSync(join(root, directory), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .flatMap((entry) => {
+        const manifestPath = join(root, directory, entry.name, 'package.json');
+        try {
+          return [(JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest).name];
+        } catch {
+          return [];
+        }
+      }),
+  ),
+);
+
+/** The `@scope/name` or bare first segment a specifier names, subpath dropped. */
+function packageRootOf(specifier: string): string {
+  const parts = specifier.split('/');
+  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : (parts[0] ?? specifier);
+}
+
+// Former names from before this workspace consolidated as `@corvidae/*`, and from before
+// COR-1284 reinstated the two public unscoped names below. Bare `armorer` and `conversationalist`
+// are deliberately absent: COR-1284 made them current again, not retired.
 const formerPackageNames = [
   'bureau',
-  'armorer',
-  'conversationalist',
   'memory',
   'skills',
   'interoperability',
   '@lostgradient/interoperability',
   'lifecycle',
-  '@lostgradient/operative',
-  '@lostgradient/weft',
-  '@lostgradient/weft-ui',
-  '@lostgradient/cinder',
-  '@lostgradient/chat',
-  '@lostgradient/editor',
-  '@lostgradient/markdown',
   '@cinder/testing',
   '@cinder/chat-room-lab',
 ];
@@ -42,10 +63,10 @@ function isFormerPackageName(name: string): boolean {
 }
 
 function externalPackageName(specifier: string): string | undefined {
-  if (/^(?:[./$#]|@corvidae\/|bun(?::|$)|virtual:|file:)/.test(specifier) || isBuiltin(specifier))
+  if (/^(?:[./$#]|bun(?::|$)|virtual:|file:)/.test(specifier) || isBuiltin(specifier))
     return undefined;
-  const parts = specifier.split('/');
-  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  const root = packageRootOf(specifier);
+  return internalWorkspaceNames.has(root) ? undefined : root;
 }
 
 function assertExternalDeclaration(
@@ -214,8 +235,11 @@ describe('workspace imports', () => {
             `${directory}/${file} imports former package ${name}`,
           ).toBe(false);
           assertExternalDeclaration(name, dependencies, `${directory}/${file}`);
-          if (!name.startsWith('@lostgradient/')) continue;
-          expect(name, `${directory}/${file}`).toMatch(/^@corvidae\/[^/]+$/);
+          const importedRoot = packageRootOf(name);
+          if (!internalWorkspaceNames.has(importedRoot)) continue;
+          expect(name, `${directory}/${file} imports a subpath of ${importedRoot}`).toBe(
+            importedRoot,
+          );
           if (
             file.startsWith('src/') &&
             !/(^|\/)(?:test|tests|fixtures|__fixtures__|__test-helpers__)\/|(?:\.|-)(?:test|spec|fixture)(?:\.|-)/.test(

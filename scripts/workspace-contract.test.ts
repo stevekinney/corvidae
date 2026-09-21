@@ -26,6 +26,42 @@ const libraries = [
   'testing',
 ];
 
+/**
+ * COR-1284: every workspace's manifest `name` equals its public name — `@lostgradient/<name>` for
+ * every workspace except `armorer` and `conversationalist`, which publish unscoped and so carry
+ * their bare directory name instead. This is the single source of truth the tests below share,
+ * rather than each re-deriving the rule (and the exceptions) from a scope-prefix check.
+ */
+const unscopedWorkspaceNames = new Set(['armorer', 'conversationalist']);
+function publicWorkspaceName(directoryName: string): string {
+  return unscopedWorkspaceNames.has(directoryName)
+    ? directoryName
+    : `@lostgradient/${directoryName}`;
+}
+
+/** The complete, exact set of current workspace names, per the COR-1284 ruling. */
+const expectedWorkspaceNames = new Set([
+  '@lostgradient/weft',
+  '@lostgradient/weft-ui',
+  '@lostgradient/cinder',
+  '@lostgradient/chat',
+  '@lostgradient/editor',
+  '@lostgradient/markdown',
+  '@lostgradient/operative',
+  '@lostgradient/cryptography',
+  '@lostgradient/embeddings',
+  '@lostgradient/tool-protocol',
+  '@lostgradient/lifecycle',
+  '@lostgradient/bureau',
+  '@lostgradient/memory',
+  '@lostgradient/skills',
+  '@lostgradient/testing',
+  '@lostgradient/typescript',
+  '@lostgradient/chat-room',
+  'armorer',
+  'conversationalist',
+]);
+
 type Manifest = {
   name: string;
   private?: boolean;
@@ -292,11 +328,16 @@ describe('internal workspace architecture', () => {
     }
   });
 
+  test('the discovered workspace names are exactly the COR-1284 rule, no more and no fewer', async () => {
+    const manifests = await workspaceManifests();
+    expect(new Set(manifests.keys())).toEqual(expectedWorkspaceNames);
+  });
+
   for (const library of libraries) {
     test(`${library} exposes source without a build or publication contract`, async () => {
       const directory = `${componentLibraries.includes(library) ? 'components' : 'packages'}/${library}`;
       const manifest = await readManifest(directory);
-      expect(manifest.name).toBe(`@lostgradient/${library}`);
+      expect(manifest.name).toBe(publicWorkspaceName(library));
       expect(manifest.private).toBe(true);
       expect(manifest.type).toBe('module');
       expect(manifest.exports).toEqual({ '.': './src/index.ts' });
@@ -315,24 +356,24 @@ describe('internal workspace architecture', () => {
   }
 
   test('every internal edge resolves and uses workspace:*', async () => {
+    // The discriminator between an internal edge and an external dependency can no longer be a
+    // scope prefix: COR-1284 made the internal and public names the same string, and the root
+    // catalog carries an external @lostgradient/environmentalist alongside them, and armorer and
+    // conversationalist are unscoped. Membership in the discovered workspace map is the only
+    // discriminator that still distinguishes the two.
     const manifests = await workspaceManifests();
     for (const manifest of manifests.values()) {
-      expect(manifest.name).toStartWith('@lostgradient/');
+      if (!unscopedWorkspaceNames.has(manifest.name)) {
+        expect(manifest.name).toStartWith('@lostgradient/');
+      }
       expect(manifest.private).toBe(true);
       for (const [name, version] of Object.entries({
         ...manifest.dependencies,
         ...manifest.devDependencies,
         ...manifest.peerDependencies,
       })) {
-        const internalName = name.replace(/^@(lostgradient|cinder)\//, '@lostgradient/');
-        if (internalName !== name) {
-          expect(manifests.has(internalName), `${name} duplicates internal ${internalName}`).toBe(
-            false,
-          );
-        }
-        if (!name.startsWith('@lostgradient/')) continue;
+        if (!manifests.has(name)) continue;
         expect(version, `${manifest.name} -> ${name}`).toBe('workspace:*');
-        expect(manifests.has(name), `${manifest.name} -> missing ${name}`).toBe(true);
       }
     }
   });
@@ -350,7 +391,7 @@ describe('internal workspace architecture', () => {
         ...manifest.devDependencies,
         ...manifest.peerDependencies,
       })) {
-        if (dependency.startsWith('@lostgradient/')) visit(dependency, [...ancestors, name]);
+        if (manifests.has(dependency)) visit(dependency, [...ancestors, name]);
       }
       complete.add(name);
     }
@@ -367,7 +408,7 @@ describe('internal workspace architecture', () => {
         ...workspace.dependencies,
         ...workspace.devDependencies,
       })) {
-        if (name.startsWith('@lostgradient/')) continue;
+        if (workspaces.has(name)) continue;
         const declarations = versions.get(name) ?? [];
         declarations.push(version);
         versions.set(name, declarations);

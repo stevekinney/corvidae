@@ -97,7 +97,16 @@ const roles: Role[] = [
   'peerDependencies',
   'optionalDependencies',
 ];
-const external = (name: string) => !name.startsWith('@lostgradient/');
+// COR-1284 gave every workspace its public name, so a scope prefix no longer distinguishes an
+// internal edge from an external one: the root catalog also carries an external
+// @lostgradient/environmentalist, and armorer/conversationalist are unscoped. Membership in the
+// actual set of workspace names is the only discriminator that still works.
+const internalWorkspaceNames = new Set<string>();
+for (const path of paths) {
+  const pkg = parseObject(await readFile(resolve(root, path), 'utf8')) as PackageManifest;
+  if (typeof pkg.name === 'string') internalWorkspaceNames.add(pkg.name);
+}
+const external = (name: string) => !internalWorkspaceNames.has(name);
 const versionFromEntry = (entry: unknown): string | null => {
   if (!Array.isArray(entry) || typeof entry[0] !== 'string') return null;
   const at = entry[0].lastIndexOf('@');
@@ -397,7 +406,7 @@ const result = {
       .toSorted(),
   },
   notes: [
-    'Direct inventory excludes @lostgradient/* workspace edges from external dependency counts.',
+    'Direct inventory excludes internal workspace edges (by workspace membership, not scope) from external dependency counts.',
     `There are ${workspaceRecords.length - 1} non-root workspaces; root is included only in including-root counts and direct-edge ownership, and is excluded from both pairwise matrices.`,
     'catalogSpec is populated only when the manifest declares catalog:; declaredSpec preserves literal manifest values.',
     'lockedVersion is read from Bun lockfile packages; inferred or ambiguous status is explicit. installedVersion is read from the owning workspace node_modules package.json by walking ancestor node_modules directories.',

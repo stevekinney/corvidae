@@ -8,6 +8,7 @@ import type { MirrorTarget } from './manifests.ts';
 import {
   assertNoSourceEscapes,
   findSourceEscapes,
+  internalScope,
   moduleSpecifiers,
   SourceEscapeError,
 } from './source-escapes.ts';
@@ -35,10 +36,10 @@ async function withTree(
  * real map is what `committed-plans.ts` exercises, over the real tree.
  */
 const publicNames: ReadonlyMap<string, string> = new Map([
-  ['armorer', '@lostgradient/armorer'],
-  ['@lostgradient/editor', '@lostgradient/editor'],
-  ['@lostgradient/testing', '@lostgradient/testing'],
-  ['@lostgradient/weft', '@lostgradient/weft'],
+  [`${internalScope}/armorer`, '@lostgradient/armorer'],
+  [`${internalScope}/editor`, '@lostgradient/editor'],
+  [`${internalScope}/testing`, '@lostgradient/testing'],
+  [`${internalScope}/weft`, '@lostgradient/weft'],
 ]);
 
 describe('reading a file’s module edges', () => {
@@ -197,25 +198,25 @@ describe('an internal name in emitted source', () => {
   test('every specifier form is caught, and a string that only looks like one is not', () => {
     const files = {
       'packages/weft/src/index.ts': [
-        "import { a } from '@lostgradient/weft';",
-        "import type { B } from '@lostgradient/weft';",
-        "export * from 'armorer';",
-        "const c = await import('@lostgradient/markdown');",
-        "const d = import.meta.resolve('@lostgradient/weft');",
-        "declare module '@lostgradient/weft' { interface Registry { a: 1 } }",
-        "import { e } from '@lostgradient/weft/client';",
-        "const key = Symbol.for('@lostgradient/operative/backend-descriptors');",
+        `import { a } from '${internalScope}/weft';`,
+        `import type { B } from '${internalScope}/weft';`,
+        `export * from '${internalScope}/armorer';`,
+        `const c = await import('${internalScope}/markdown');`,
+        `const d = import.meta.resolve('${internalScope}/weft');`,
+        `declare module '${internalScope}/weft' { interface Registry { a: 1 } }`,
+        `import { e } from '${internalScope}/weft/client';`,
+        `const key = Symbol.for('${internalScope}/operative/backend-descriptors');`,
         "import { z } from 'zod';",
       ].join('\n'),
     };
     expect(findSourceEscapes(files).map((escape) => `${escape.kind} ${escape.specifier}`)).toEqual([
-      'internal-name armorer',
-      'internal-name @lostgradient/markdown',
-      'internal-name @lostgradient/weft',
-      'internal-name @lostgradient/weft',
-      'internal-name @lostgradient/weft',
-      'internal-name @lostgradient/weft',
-      'internal-name @lostgradient/weft/client',
+      `internal-name ${internalScope}/armorer`,
+      `internal-name ${internalScope}/markdown`,
+      `internal-name ${internalScope}/weft`,
+      `internal-name ${internalScope}/weft`,
+      `internal-name ${internalScope}/weft`,
+      `internal-name ${internalScope}/weft`,
+      `internal-name ${internalScope}/weft/client`,
     ]);
   });
 
@@ -224,7 +225,7 @@ describe('an internal name in emitted source', () => {
       findSourceEscapes({
         'packages/chat/src/widget.svelte': [
           '<script lang="ts">',
-          "  import { render } from '@lostgradient/markdown';",
+          `  import { render } from '${internalScope}/markdown';`,
           '</script>',
           '<span>{render}</span>',
         ].join('\n'),
@@ -232,7 +233,7 @@ describe('an internal name in emitted source', () => {
     ).toEqual([
       {
         file: 'packages/chat/src/widget.svelte',
-        specifier: '@lostgradient/markdown',
+        specifier: `${internalScope}/markdown`,
         kind: 'internal-name',
       },
     ]);
@@ -243,7 +244,7 @@ describe('an internal name in emitted source', () => {
       findSourceEscapes({
         'packages/editor/src/editor.svelte': [
           '<script lang="ts">',
-          "  type Utilities = Pick<typeof import('@lostgradient/markdown'), 'normalize'>;",
+          `  type Utilities = Pick<typeof import('${internalScope}/markdown'), 'normalize'>;`,
           '  let utilities: Utilities | undefined;',
           '</script>',
           '<span>{utilities}</span>',
@@ -252,7 +253,7 @@ describe('an internal name in emitted source', () => {
     ).toEqual([
       {
         file: 'packages/editor/src/editor.svelte',
-        specifier: '@lostgradient/markdown',
+        specifier: `${internalScope}/markdown`,
         kind: 'internal-name',
       },
     ]);
@@ -272,7 +273,7 @@ describe('an internal name in emitted source', () => {
 
   test('the message names every offender and says where the rewrite lives', () => {
     const files = {
-      'packages/weft/src/index.ts': "import { a } from '@lostgradient/weft';\n",
+      'packages/weft/src/index.ts': `import { a } from '${internalScope}/weft';\n`,
       'packages/weft/src/other.ts': "export * from '../outside.ts';\n",
     };
     try {
@@ -281,7 +282,7 @@ describe('an internal name in emitted source', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(SourceEscapeError);
       const message = (error as Error).message;
-      expect(message).toContain('packages/weft/src/index.ts: @lostgradient/weft');
+      expect(message).toContain(`packages/weft/src/index.ts: ${internalScope}/weft`);
       expect(message).toContain('packages/weft/src/other.ts: ../outside.ts');
       expect(message).toContain('internal-names.ts');
       expect(message).toContain('additionalSourceRoots');
@@ -294,12 +295,12 @@ describe('an internal name in an emitted TypeScript configuration', () => {
     expect(
       findSourceEscapes({
         'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json':
-          '{\n  // a tsconfig is JSON with comments\n  "extends": "@lostgradient/typescript/library.json"\n}\n',
+          `{\n  // a tsconfig is JSON with comments\n  "extends": "${internalScope}/typescript/library.json"\n}\n`,
       }),
     ).toEqual([
       {
         file: 'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json',
-        specifier: '@lostgradient/typescript/library.json',
+        specifier: `${internalScope}/typescript/library.json`,
         kind: 'internal-name',
       },
     ]);
@@ -310,22 +311,22 @@ describe('an internal name in an emitted TypeScript configuration', () => {
       findSourceEscapes({
         'packages/weft/src/client/__fixtures__/registry/tsconfig.json': JSON.stringify({
           compilerOptions: {
-            paths: { '@lostgradient/weft': ['../../../index.ts'], './local': ['./local.ts'] },
+            paths: { [`${internalScope}/weft`]: ['../../../index.ts'], './local': ['./local.ts'] },
           },
         }),
       }).map((escape) => escape.specifier),
-    ).toEqual(['@lostgradient/weft']);
+    ).toEqual([`${internalScope}/weft`]);
   });
 
   test('every entry of an `extends` array is read', () => {
     expect(
       findSourceEscapes({
         'packages/weft/tsconfig.json': JSON.stringify({
-          extends: ['@lostgradient/typescript/library.json', './.svelte-kit/tsconfig.json'],
+          extends: [`${internalScope}/typescript/library.json`, './.svelte-kit/tsconfig.json'],
         }),
         'packages/weft/.svelte-kit/tsconfig.json': '{}',
       }).map((escape) => escape.specifier),
-    ).toEqual(['@lostgradient/typescript/library.json']);
+    ).toEqual([`${internalScope}/typescript/library.json`]);
   });
 
   test('a configuration the transform has already rewritten is clean', () => {
@@ -349,7 +350,7 @@ describe('a declared additional source root', () => {
   } as const;
 
   /**
-   * `armorer` declares exactly one path — `test/helpers/async-assertions.ts` — so it is
+   * `@lostgradient/armorer` declares exactly one path — `test/helpers/async-assertions.ts` — so it is
    * the smallest workspace in the table that proves the mechanism end to end.
    */
   test('satisfies the gate, because the declared file is emitted beside the source', async () => {
