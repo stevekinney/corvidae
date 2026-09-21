@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FloatingAction } from '@corvidae/cinder';
+  import { FloatingAction } from '@lostgradient/cinder';
 </script>
 
 <div class="fixture-stack">

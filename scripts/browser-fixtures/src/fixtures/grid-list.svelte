@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { GridList } from '@corvidae/cinder';
+  import { GridList } from '@lostgradient/cinder';
 
   const projects = [
     { name: 'Phoenix', summary: 'Reactive runtime experiments.' },

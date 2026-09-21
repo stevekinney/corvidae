@@ -32,7 +32,7 @@
     updateStreamingMessage,
     type ToolErrorCategory,
     type ToolResult,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
   import {
     Button,
     Input,
@@ -42,7 +42,7 @@
     Textarea,
     Tooltip,
     Toggle,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { onDestroy, onMount } from 'svelte';
 
   // Out of scope for this harness (documented, not silently dropped):
@@ -91,7 +91,7 @@
 
   // --- Tool-call controls ---
   let toolName = $state('exports_check');
-  let toolArguments = $state('{ "package": "@corvidae/cinder" }');
+  let toolArguments = $state('{ "package": "@lostgradient/cinder" }');
   let toolOutcome = $state<'success' | 'error' | 'action_required'>('success');
   const parsedToolArguments = $derived.by<{ ok: boolean; value: JSONValue }>(() => {
     try {
@@ -622,8 +622,8 @@
         name: scenario === 'pending' ? 'pending_check' : 'exports_check',
         arguments:
           scenario === 'pending'
-            ? { package: '@corvidae/pending', phase: 'queued' }
-            : { package: '@corvidae/cinder', checks: ['exports', 'types'] },
+            ? { package: '@lostgradient/pending', phase: 'queued' }
+            : { package: '@lostgradient/cinder', checks: ['exports', 'types'] },
       },
     };
 
@@ -651,7 +651,7 @@
       toolResult: {
         callId: firstCallId,
         outcome: 'success' as const,
-        content: { status: 'ok', package: '@corvidae/cinder' },
+        content: { status: 'ok', package: '@lostgradient/cinder' },
       },
     };
 

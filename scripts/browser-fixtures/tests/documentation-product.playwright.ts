@@ -1,4 +1,4 @@
-import { loadManifest, runAxe, type ComponentEntry, type Viewport } from '@corvidae/testing';
+import { loadManifest, runAxe, type ComponentEntry, type Viewport } from '@lostgradient/testing';
 import type { Page } from '@playwright/test';
 import { expect, test } from './component-page-fixture.ts';
 

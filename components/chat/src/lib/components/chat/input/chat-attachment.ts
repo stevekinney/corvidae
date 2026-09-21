@@ -1,4 +1,4 @@
-import type { FileUploadStatus } from '@corvidae/cinder';
+import type { FileUploadStatus } from '@lostgradient/cinder';
 
 import type { AttachmentKind } from './attachment-kind.ts';
 

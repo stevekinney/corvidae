@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SecretValueField } from '@corvidae/cinder';
+  import { SecretValueField } from '@lostgradient/cinder';
 </script>
 
 <SecretValueField

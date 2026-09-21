@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { DiffViewer } from '@corvidae/editor';
-  import { Button } from '@corvidae/cinder';
+  import { DiffViewer } from '@lostgradient/editor';
+  import { Button } from '@lostgradient/cinder';
 
   type DiffViewerFixtureWindow = Window &
     typeof globalThis & {

@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 
 import type { JsonValue } from '../core/serialization/json';
 import type { ToolCallWithArguments } from '../is-tool';

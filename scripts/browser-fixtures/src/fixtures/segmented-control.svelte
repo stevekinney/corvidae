@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Segment, SegmentedControl } from '@corvidae/cinder';
+  import { Segment, SegmentedControl } from '@lostgradient/cinder';
 
   type View = 'source' | 'rendered' | 'diff';
   let smValue = $state<View>('rendered');

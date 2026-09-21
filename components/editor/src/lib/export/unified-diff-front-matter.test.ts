@@ -2,7 +2,7 @@
  * Tests for unified diff export functionality.
  */
 
-import { computeLineDiff, groupIntoHunks } from '@corvidae/markdown';
+import { computeLineDiff, groupIntoHunks } from '@lostgradient/markdown';
 import { describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';

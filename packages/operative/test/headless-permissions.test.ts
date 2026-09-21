@@ -1,5 +1,5 @@
-import { createHeadlessPermissionPolicyHooks, createTool, createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createHeadlessPermissionPolicyHooks, createTool, createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';

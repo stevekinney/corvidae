@@ -26,7 +26,7 @@ import type { QueryDefinition, SignalDefinition, UpdateDefinition } from './mess
  *
  * @example
  * ```ts
- * import type { ActivityObjectInput } from '@corvidae/weft';
+ * import type { ActivityObjectInput } from '@lostgradient/weft';
  *
  * const entry: ActivityObjectInput<string, string> = {
  *   execute: async (greeting) => `hello ${greeting}`,
@@ -66,7 +66,7 @@ type HasExecuteProperty<T> = T extends { execute: unknown } ? true : false;
  *
  * @example
  * ```ts
- * import type { ActivityEntryInput } from '@corvidae/weft';
+ * import type { ActivityEntryInput } from '@lostgradient/weft';
  *
  * const entry: ActivityEntryInput = async (name: string) => `hello ${name}`;
  * void entry;
@@ -82,7 +82,7 @@ export type ActivityEntryInput =
  *
  * @example
  * ```ts
- * import type { ActivityMapInput } from '@corvidae/weft';
+ * import type { ActivityMapInput } from '@lostgradient/weft';
  *
  * const map: ActivityMapInput = {
  *   greet: async (name: string) => `hello ${name}`,
@@ -109,7 +109,7 @@ export type ActivityMapInput = Record<string, ActivityEntryInput>;
  *
  * @example
  * ```ts
- * import type { NormalizedActivityEntry } from '@corvidae/weft';
+ * import type { NormalizedActivityEntry } from '@lostgradient/weft';
  *
  * type GreetEntry = NormalizedActivityEntry<{ name: string }, string>;
  * declare const entry: GreetEntry;
@@ -132,7 +132,7 @@ export interface NormalizedActivityEntry<TInput = unknown, TOutput = unknown> {
  *
  * @example
  * ```ts
- * import { workflow, type ActivityMap } from '@corvidae/weft';
+ * import { workflow, type ActivityMap } from '@lostgradient/weft';
  *
  * const built = workflow({ name: 'demo' })
  *   .activities({ greet: async (name: string) => `hello ${name}` })
@@ -159,7 +159,7 @@ export type ActivityMap = Record<string, NormalizedActivityEntry>;
  *
  * @example
  * ```ts
- * import type { NormalizeActivities } from '@corvidae/weft';
+ * import type { NormalizeActivities } from '@lostgradient/weft';
  *
  * type Greet = NormalizeActivities<{ greet: (name: string) => Promise<string> }>;
  * declare const greet: Greet['greet'];
@@ -203,7 +203,7 @@ type NormalizedInputType<T> = [T] extends [never] ? unknown : T;
  *
  * @example
  * ```ts
- * import { workflow, type ActivityArgsFor, type ActivityMap } from '@corvidae/weft';
+ * import { workflow, type ActivityArgsFor, type ActivityMap } from '@lostgradient/weft';
  *
  * const greet = workflow({ name: 'greet' })
  *   .activities({ formatGreeting: async (name: string) => `hello ${name}` })
@@ -231,7 +231,7 @@ export type ActivityArgsFor<TEntry extends NormalizedActivityEntry> =
  *
  * @example
  * ```ts
- * import { workflow, type ActivityResultFor } from '@corvidae/weft';
+ * import { workflow, type ActivityResultFor } from '@lostgradient/weft';
  *
  * const greet = workflow({ name: 'greet' })
  *   .activities({ formatGreeting: async (name: string) => `hello ${name}` })
@@ -252,7 +252,7 @@ export type ActivityResultFor<TEntry extends NormalizedActivityEntry> =
  *
  * @example
  * ```ts
- * import { signal, type SignalPayload } from '@corvidae/weft';
+ * import { signal, type SignalPayload } from '@lostgradient/weft';
  *
  * const approve = signal<{ approverId: string }>('approve');
  * type ApprovePayload = SignalPayload<typeof approve>;
@@ -269,7 +269,7 @@ export type SignalPayload<TSignal> =
  *
  * @example
  * ```ts
- * import { update, type UpdatePayload } from '@corvidae/weft';
+ * import { update, type UpdatePayload } from '@lostgradient/weft';
  *
  * const checkStatus = update<{ id: string }, { status: string }>('checkStatus');
  * type CheckPayload = UpdatePayload<typeof checkStatus>;
@@ -290,7 +290,7 @@ export type UpdatePayload<TUpdate> =
  *
  * @example
  * ```ts
- * import { query, type QueryShape } from '@corvidae/weft';
+ * import { query, type QueryShape } from '@lostgradient/weft';
  *
  * const getProgress = query<void, number>('getProgress');
  * type Shape = QueryShape<typeof getProgress>;
@@ -321,7 +321,7 @@ export type QueryShape<TQuery> =
  *
  * @example
  * ```ts
- * import { signal, type SignalMap } from '@corvidae/weft';
+ * import { signal, type SignalMap } from '@lostgradient/weft';
  *
  * const map: SignalMap = { approve: signal<{ approverId: string }>('approve') };
  * void map;
@@ -334,7 +334,7 @@ export type SignalMap = Record<string, { readonly name: string }>;
  *
  * @example
  * ```ts
- * import { update, type UpdateMap } from '@corvidae/weft';
+ * import { update, type UpdateMap } from '@lostgradient/weft';
  *
  * const map: UpdateMap = {
  *   checkStatus: update<{ id: string }, { status: string }>('checkStatus'),
@@ -349,7 +349,7 @@ export type UpdateMap = Record<string, { readonly name: string }>;
  *
  * @example
  * ```ts
- * import { query, type QueryMap } from '@corvidae/weft';
+ * import { query, type QueryMap } from '@lostgradient/weft';
  *
  * const map: QueryMap = { getProgress: query<void, number>('getProgress') };
  * void map;

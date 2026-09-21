@@ -1,4 +1,4 @@
-import { parseFrontMatter } from '@corvidae/markdown';
+import { parseFrontMatter } from '@lostgradient/markdown';
 import type { ReviewState } from '../comments/types.js';
 import { normalizeDocument } from './normalize-document.js';
 import {

@@ -7,7 +7,7 @@
     SideNavigationItem,
     SIDEBAR_MOBILE_MEDIA_QUERY,
     Sidebar,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { MediaQuery } from 'svelte/reactivity';
 
   const mobile = new MediaQuery(SIDEBAR_MOBILE_MEDIA_QUERY, false);

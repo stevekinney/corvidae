@@ -31,7 +31,7 @@ await mock.module('./server-owned-durable.ts', () => ({
   durableRuntime: async () => ({ engine: {}, checkpointStore: {} }),
 }));
 await mock.module('./toolbox.ts', () => ({ emptyToolbox: {} }));
-await mock.module('@corvidae/operative', () => ({ createSessionHandle: () => ({}) }));
+await mock.module('@lostgradient/operative', () => ({ createSessionHandle: () => ({}) }));
 await mock.module('./server-owned-unavailable.ts', () => ({
   raise: (cause: unknown) => {
     throw cause;

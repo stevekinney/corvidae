@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Textarea } from '@corvidae/cinder';
+  import { Textarea } from '@lostgradient/cinder';
 
   let bio = $state('');
 </script>

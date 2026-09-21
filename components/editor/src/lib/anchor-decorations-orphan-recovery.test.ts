@@ -27,7 +27,7 @@
  * failure the orphaning feature exists to avoid (cinder#1284).
  */
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { Schema } from '@milkdown/kit/prose/model';
 import type { Transaction } from '@milkdown/kit/prose/state';
 import { EditorState } from '@milkdown/kit/prose/state';

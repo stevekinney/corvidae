@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { StatusDot } from '@corvidae/cinder';
+  import { StatusDot } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-column">

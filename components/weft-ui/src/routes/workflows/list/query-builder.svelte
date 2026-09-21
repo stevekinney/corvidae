@@ -13,7 +13,7 @@
     JsonViewer,
     SegmentedControl,
     Segment,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
   import type { AttributeFilter, AttributeScalar } from '../../../lib/attribute-filters.ts';

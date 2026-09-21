@@ -7,9 +7,9 @@
    * wait point appear; a buffered-but-not-yet-awaited signal does not, which
    * is inherent to weft's model, not a client gap).
    */
-  import { Badge, Button, Input, JsonEditor, Skeleton } from '@corvidae/cinder';
+  import { Badge, Button, Input, JsonEditor, Skeleton } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import type { HttpClient, WorkflowState } from '@corvidae/weft';
+  import type { HttpClient, WorkflowState } from '@lostgradient/weft';
   import { Radio } from 'lucide-svelte';
 
   import { formatRelativeTime } from '../../../lib/format/index.ts';

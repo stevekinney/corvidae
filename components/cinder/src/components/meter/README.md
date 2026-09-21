@@ -8,7 +8,7 @@ Use `Meter` for static measurements with known bounds (`role="meter"`). Use `Pro
 
 ```svelte
 <script lang="ts">
-  import { Meter } from '@corvidae/cinder';
+  import { Meter } from '@lostgradient/cinder';
 </script>
 
 <Meter value={52} ariaLabel="Battery level" />

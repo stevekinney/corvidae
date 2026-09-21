@@ -1,5 +1,5 @@
-import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
-import { yieldToPortableEventLoop } from '@corvidae/weft';
+import { Conversation, createConversationHistory } from 'conversationalist';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from '../durable/run-workflow-result';

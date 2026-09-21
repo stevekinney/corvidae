@@ -1,4 +1,4 @@
-import type { PopoverPlacement } from '@corvidae/cinder';
+import type { PopoverPlacement } from '@lostgradient/cinder';
 import type { Snippet } from 'svelte';
 
 export type ChatComposerPopoverItem = {

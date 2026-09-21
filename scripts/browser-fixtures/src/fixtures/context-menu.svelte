@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, ContextMenu } from '@corvidae/cinder';
+  import { Button, ContextMenu } from '@lostgradient/cinder';
 </script>
 
 <ContextMenu>

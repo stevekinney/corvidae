@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import Ajv2020 from 'ajv/dist/2020';
 import { createRawSnippet } from 'svelte';
 import type {

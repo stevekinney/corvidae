@@ -8,7 +8,7 @@ Use the default output for a read-only summary, or provide a child snippet to re
 
 ```svelte
 <script lang="ts">
-  import { ParameterField } from '@corvidae/cinder';
+  import { ParameterField } from '@lostgradient/cinder';
 </script>
 
 <ParameterField id="timeout" label="Timeout" base={30} unit="seconds" />

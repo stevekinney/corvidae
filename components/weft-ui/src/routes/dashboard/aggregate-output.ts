@@ -5,11 +5,11 @@
  * real `string | null` (verified empirically: `client.operations['weft.
  * workflows.aggregate'](...)`'s inferred return type has `key: unknown`
  * regardless of an explicit `Awaited<ReturnType<...>>` annotation at the
- * call site) — a generation gap in `@corvidae/weft`'s typed operation
+ * call site) — a generation gap in `@lostgradient/weft`'s typed operation
  * client for this particular union-typed field, not something this module
  * can fix upstream from the console. Mirrors `aggregateWorkflowsOutput`
  * (`weft/src/server/operations/aggregate-workflows.ts`), which isn't a
- * public `@corvidae/weft` export either. Verified against real output
+ * public `@lostgradient/weft` export either. Verified against real output
  * via a `LocalClient` probe against seeded fixtures (this track's final
  * report has the transcript).
  *

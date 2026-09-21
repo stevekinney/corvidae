@@ -11,9 +11,9 @@
  * the recognized shapes falls back to `Cron · <expression>` rather than
  * guessing.
  */
-import type { ScheduleIntervalUnit, ScheduleValue } from '@corvidae/cinder';
+import type { ScheduleIntervalUnit, ScheduleValue } from '@lostgradient/cinder';
 
-import type { ScheduleSpec } from '@corvidae/weft';
+import type { ScheduleSpec } from '@lostgradient/weft';
 
 /** A schedule's persisted cadence, mutually exclusive per `ScheduleSummary`/`ScheduleState`. */
 export interface ScheduleCadence {

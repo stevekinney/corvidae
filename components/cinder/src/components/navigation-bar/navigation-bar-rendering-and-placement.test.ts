@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { textSnippet } from './navigation-bar-snippet-helpers.ts';

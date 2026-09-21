@@ -9,7 +9,7 @@
  * This avoids per-keystroke normalize() calls which are expensive for large documents.
  */
 
-import { contentEquals, contentEqualsWithFrontMatter } from '@corvidae/markdown';
+import { contentEquals, contentEqualsWithFrontMatter } from '@lostgradient/markdown';
 
 /**
  * Fast non-cryptographic hash for change detection.

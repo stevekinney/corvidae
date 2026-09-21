@@ -352,7 +352,7 @@ function isTerminalDisposition(value: Record<string, unknown>, disposition: stri
  *
  * @example
  * ```ts
- * import { isRemoteTaskTerminalResolved } from '@corvidae/weft';
+ * import { isRemoteTaskTerminalResolved } from '@lostgradient/weft';
  *
  * declare const record: unknown;
  *
@@ -384,7 +384,7 @@ export function isRemoteTaskTerminalResolved(value: unknown): value is RemoteTas
  *
  * @example
  * ```ts
- * import { isRemoteTaskTerminalCancelled } from '@corvidae/weft';
+ * import { isRemoteTaskTerminalCancelled } from '@lostgradient/weft';
  *
  * declare const record: unknown;
  *

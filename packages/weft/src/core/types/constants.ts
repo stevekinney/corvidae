@@ -5,7 +5,7 @@
  *
  * @example
  * ```ts
- * import { Engine, DEFAULT_CHECKPOINT_SIZE_WARNING_THRESHOLD } from '@corvidae/weft';
+ * import { Engine, DEFAULT_CHECKPOINT_SIZE_WARNING_THRESHOLD } from '@lostgradient/weft';
  *
  * const engine = new Engine({
  *   checkpointSizeWarningThreshold: DEFAULT_CHECKPOINT_SIZE_WARNING_THRESHOLD * 2,
@@ -22,7 +22,7 @@ export const DEFAULT_CHECKPOINT_SIZE_WARNING_THRESHOLD = 65_536; // 64KB
  *
  * @example
  * ```ts
- * import { Engine, DEFAULT_MAX_NESTING_DEPTH } from '@corvidae/weft';
+ * import { Engine, DEFAULT_MAX_NESTING_DEPTH } from '@lostgradient/weft';
  *
  * const engine = new Engine({ maxNestingDepth: DEFAULT_MAX_NESTING_DEPTH + 5 });
  * void engine;
@@ -39,7 +39,7 @@ export const DEFAULT_MAX_NESTING_DEPTH = 10;
  *
  * @example
  * ```ts
- * import { Engine, DEFAULT_POLL_INTERVAL_MS } from '@corvidae/weft';
+ * import { Engine, DEFAULT_POLL_INTERVAL_MS } from '@lostgradient/weft';
  *
  * // A test can shorten the poll cycle far below the 1000ms default.
  * const engine = new Engine({ schedulerPollIntervalMs: DEFAULT_POLL_INTERVAL_MS / 100 });
@@ -56,7 +56,7 @@ export const DEFAULT_POLL_INTERVAL_MS = 1000;
  *
  * @example
  * ```ts
- * import { Engine, DEFAULT_VISIBILITY_TIMEOUT_MS, activity } from '@corvidae/weft';
+ * import { Engine, DEFAULT_VISIBILITY_TIMEOUT_MS, activity } from '@lostgradient/weft';
  *
  * const longTask = activity({
  *   name: 'longTask',

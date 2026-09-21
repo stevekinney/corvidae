@@ -1,7 +1,7 @@
-import { createToolbox } from '@corvidae/armorer';
-import type { ManualRuntimeServices } from '@corvidae/lifecycle';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
-import type { GenerateFunction } from '@corvidae/operative';
+import { createToolbox } from 'armorer';
+import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import type { GenerateFunction } from '@lostgradient/operative';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import type { Bureau, RunSummary } from '../types';

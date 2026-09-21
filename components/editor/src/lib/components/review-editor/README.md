@@ -6,7 +6,7 @@ Markdown editor extended with inline review threads, anchored comments, and coll
 
 ```svelte
 <script lang="ts">
-  import { ReviewEditor } from '@corvidae/editor';
+  import { ReviewEditor } from '@lostgradient/editor';
 </script>
 ```
 
@@ -56,8 +56,8 @@ To restore, bind `value` and `threads` from the same saved state and run the thr
 ```svelte
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { ReviewEditor, toRuntimeThreads } from '@corvidae/editor';
-  import type { ReviewState, Thread } from '@corvidae/editor';
+  import { ReviewEditor, toRuntimeThreads } from '@lostgradient/editor';
+  import type { ReviewState, Thread } from '@lostgradient/editor';
 
   let value = $state('');
   let threads = $state<Thread[]>([]);

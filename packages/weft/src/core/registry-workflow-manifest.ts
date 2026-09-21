@@ -262,7 +262,7 @@ function buildMessageEntries(
  *
  * @example
  * ```ts
- * import { Engine } from '@corvidae/weft';
+ * import { Engine } from '@lostgradient/weft';
  *
  * declare const engine: Engine;
  * const definition = engine.getWorkflowDefinition('checkout');

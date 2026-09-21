@@ -75,18 +75,18 @@ describe('findMissingStyleMarkers', () => {
     // import goes unnoticed while the chat.css markers still pass.
     const sources = new Set(REQUIRED_STYLE_MARKERS.map(({ source }) => source));
     expect([...sources].toSorted()).toEqual([
-      '@corvidae/chat chat-composer-popover.css',
-      '@corvidae/chat chat-conversation-header.css',
-      '@corvidae/chat chat-conversation-list.css',
-      '@corvidae/chat chat-navigation-rail.css',
-      '@corvidae/chat chat-sub-session.css',
-      '@corvidae/chat chat.css',
+      '@lostgradient/chat chat-composer-popover.css',
+      '@lostgradient/chat chat-conversation-header.css',
+      '@lostgradient/chat chat-conversation-list.css',
+      '@lostgradient/chat chat-navigation-rail.css',
+      '@lostgradient/chat chat-sub-session.css',
+      '@lostgradient/chat chat.css',
     ]);
   });
 
   test('a single missing component stylesheet is reported by name', () => {
     const withoutRail = EVERY_SIDECAR.replace(
-      COMPONENT_SIDECARS['@corvidae/chat chat-navigation-rail.css'] ?? '',
+      COMPONENT_SIDECARS['@lostgradient/chat chat-navigation-rail.css'] ?? '',
       '',
     );
     expect(
@@ -94,7 +94,7 @@ describe('findMissingStyleMarkers', () => {
         new Map([['chat.hash.css', withoutRail]]),
         REQUIRED_STYLE_MARKERS,
       ).map(({ source }) => source),
-    ).toEqual(['@corvidae/chat chat-navigation-rail.css']);
+    ).toEqual(['@lostgradient/chat chat-navigation-rail.css']);
   });
 });
 

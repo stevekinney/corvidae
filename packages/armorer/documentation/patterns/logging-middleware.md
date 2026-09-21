@@ -3,7 +3,7 @@
 Add structured logging to all tool executions.
 
 ```typescript
-import { createMiddleware } from '@corvidae/armorer';
+import { createMiddleware } from 'armorer';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 

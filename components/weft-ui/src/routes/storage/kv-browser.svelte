@@ -8,7 +8,7 @@
    * `.weft-storage-results` pair independent of where the op-picker sits in
    * the tree.
    */
-  import { Segment, SegmentedControl } from '@corvidae/cinder';
+  import { Segment, SegmentedControl } from '@lostgradient/cinder';
   import type { StorageConnection } from './storage-client.ts';
 
   import BatchPanel from './batch-panel.svelte';

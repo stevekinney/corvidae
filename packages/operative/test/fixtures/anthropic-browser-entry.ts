@@ -1,5 +1,5 @@
-import { createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { createAnthropicProvider } from '../../src/providers/anthropic.ts';
 import type { AnthropicClient } from '../../src/providers/types.ts';
 

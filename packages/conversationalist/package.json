@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/conversationalist",
+  "name": "conversationalist",
   "description": "A TypeScript library for managing AI conversation state",
   "type": "module",
   "exports": {
@@ -12,8 +12,8 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@corvidae/lifecycle": "workspace:*",
-    "@corvidae/tool-protocol": "workspace:*",
+    "@lostgradient/lifecycle": "workspace:*",
+    "@lostgradient/tool-protocol": "workspace:*",
     "zod": "catalog:",
     "js-yaml": "catalog:",
     "@anthropic-ai/sdk": "catalog:"
@@ -22,7 +22,7 @@
     "@google/genai": "catalog:",
     "@types/bun": "catalog:",
     "openai": "catalog:",
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:",
     "@types/js-yaml": "catalog:"

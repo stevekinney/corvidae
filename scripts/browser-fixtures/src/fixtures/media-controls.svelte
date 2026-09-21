@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
 
-  import { MediaControls } from '@corvidae/cinder';
+  import { MediaControls } from '@lostgradient/cinder';
 
   let playing = $state(false);
   let progress = $state<number | undefined>(undefined);

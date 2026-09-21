@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FormField, FormSection, Input, Toggle } from '@corvidae/cinder';
+  import { FormField, FormSection, Input, Toggle } from '@lostgradient/cinder';
 
   let displayName = $state('');
   let email = $state('');

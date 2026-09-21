@@ -1,6 +1,6 @@
-import { createTool, createToolbox } from '@corvidae/armorer';
-import { createConversationHistory } from '@corvidae/conversationalist';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
+import { createTool, createToolbox } from 'armorer';
+import { createConversationHistory } from 'conversationalist';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

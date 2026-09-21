@@ -7,7 +7,7 @@ import type { HookPlanObservation } from '../../src/hooks/types';
 /**
  * The value Bureau pins a registration to when it must hold final narrowing
  * power on a `runLast` or waterfall dispatch — `BUREAU_PINNED_LAST_PRIORITY` in
- * `@corvidae/bureau`'s `runtime-composition.ts`. Restated as a literal here
+ * `@lostgradient/bureau`'s `runtime-composition.ts`. Restated as a literal here
  * because lifecycle has no runtime dependencies and cannot import it; the
  * bureau-side tests assert the real constant against the real registrations.
  *

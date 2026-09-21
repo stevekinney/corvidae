@@ -20,7 +20,7 @@ import type { ScheduleOverlapPolicy } from '../types/schedules.ts';
  *
  * @example
  * ```ts
- * import { workflow, Engine, ScheduleFiredEvent } from '@corvidae/weft';
+ * import { workflow, Engine, ScheduleFiredEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener('schedule:fired', (e: Event) => {
@@ -62,7 +62,7 @@ export class ScheduleFiredEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, ScheduleMissedFireEvent } from '@corvidae/weft';
+ * import { Engine, ScheduleMissedFireEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(ScheduleMissedFireEvent.type, (event) => {
@@ -104,7 +104,7 @@ export class ScheduleMissedFireEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, ScheduleAttemptedEvent } from '@corvidae/weft';
+ * import { Engine, ScheduleAttemptedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(ScheduleAttemptedEvent.type, (event) => {
@@ -146,7 +146,7 @@ export class ScheduleAttemptedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, ScheduleSkippedEvent } from '@corvidae/weft';
+ * import { Engine, ScheduleSkippedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(ScheduleSkippedEvent.type, (event) => {

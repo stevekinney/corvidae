@@ -18,7 +18,7 @@
    * fork or a restyle — PROJECT-BRIEF), needed only because this one caller
    * genuinely has no component context to call `useToast()` from.
    */
-  import type { ToastApi, ToastOptions, ToastVariant } from '@corvidae/cinder';
+  import type { ToastApi, ToastOptions, ToastVariant } from '@lostgradient/cinder';
 
   import {
     FAULT_TREATMENT_TITLE,
@@ -97,7 +97,7 @@
 </script>
 
 <script lang="ts">
-  import { ToastRegion, useToast } from '@corvidae/cinder';
+  import { ToastRegion, useToast } from '@lostgradient/cinder';
 </script>
 
 <ToastRegion position="bottom-right">

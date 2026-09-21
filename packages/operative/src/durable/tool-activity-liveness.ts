@@ -1,4 +1,4 @@
-import type { ActivityContext } from '@corvidae/weft';
+import type { ActivityContext } from '@lostgradient/weft';
 
 import { toolCallPolicy, WEFT_ACTIVITY_POLICY } from '../liveness/policies';
 import type { LivenessClockSource, StallPolicy } from '../liveness/types';

@@ -3,7 +3,7 @@ import {
   runAxe,
   type ComponentEntry,
   type ManifestFixtureEntry,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 import { expect, test } from './component-page-fixture.ts';
 
 const entriesBySlug = new Map(loadManifest().map((entry) => [entry.slug, entry] as const));

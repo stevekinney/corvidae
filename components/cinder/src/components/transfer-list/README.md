@@ -6,7 +6,7 @@ TransferList renders one compact multiselect listbox for assigning items from a 
 
 ```svelte
 <script lang="ts">
-  import { TransferList } from '@corvidae/cinder';
+  import { TransferList } from '@lostgradient/cinder';
 
   const items = [
     { id: 'read', label: 'Read' },

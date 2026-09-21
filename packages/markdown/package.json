@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/markdown",
+  "name": "@lostgradient/markdown",
   "private": true,
   "type": "module",
   "exports": {
@@ -34,7 +34,7 @@
     "unist-util-visit": "catalog:"
   },
   "devDependencies": {
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "@types/diff-match-patch": "catalog:",
     "@types/hast": "catalog:",

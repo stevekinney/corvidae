@@ -1,4 +1,4 @@
-import type { ComponentEntry, Theme, Viewport } from '@corvidae/testing';
+import type { ComponentEntry, Theme, Viewport } from '@lostgradient/testing';
 import {
   applyComponentFilter,
   applyInteractions,
@@ -7,7 +7,7 @@ import {
   parseComponentFilter,
   THEMES,
   VIEWPORTS,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 
 import { resolve } from 'node:path';
 import { environmentConfiguration } from '../environment-configuration.ts';

@@ -1,4 +1,4 @@
-import { requiredValue } from '@corvidae/testing';
+import { requiredValue } from '@lostgradient/testing';
 import { describe, expect, spyOn, test } from 'bun:test';
 import { STORAGE_KEY_PREFIX, getStorageKey, loadSession, saveSession } from './persistence.js';
 

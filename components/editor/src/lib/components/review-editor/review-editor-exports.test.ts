@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { toPersistedThreads, type ReviewState, type Thread } from '../../comments/index.ts';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

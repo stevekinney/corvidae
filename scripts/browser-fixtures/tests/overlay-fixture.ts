@@ -1,4 +1,4 @@
-import { loadManifest } from '@corvidae/testing';
+import { loadManifest } from '@lostgradient/testing';
 import type { Page } from '@playwright/test';
 
 const manifest = loadManifest();

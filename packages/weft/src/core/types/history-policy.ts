@@ -16,7 +16,7 @@
  *
  * @example
  * ```ts
- * import { Engine, type HistoryPolicy } from '@corvidae/weft';
+ * import { Engine, type HistoryPolicy } from '@lostgradient/weft';
  *
  * const history: HistoryPolicy = { maxEvents: 100_000 };
  * const engine = new Engine({ history });
@@ -83,7 +83,7 @@ export interface NormalizedHistoryPolicy {
  *
  * @example
  * ```ts
- * import { HISTORY_CIRCUIT_BREAKER_REASON, type TerminationReason } from '@corvidae/weft';
+ * import { HISTORY_CIRCUIT_BREAKER_REASON, type TerminationReason } from '@lostgradient/weft';
  *
  * const reason: TerminationReason = HISTORY_CIRCUIT_BREAKER_REASON;
  * void reason;
@@ -99,7 +99,7 @@ export type TerminationReason =
  *
  * @example
  * ```ts
- * import { Engine, HISTORY_CIRCUIT_BREAKER_REASON } from '@corvidae/weft';
+ * import { Engine, HISTORY_CIRCUIT_BREAKER_REASON } from '@lostgradient/weft';
  *
  * const engine = new Engine({ history: { maxEvents: 100_000 } });
  * const state = await engine.get('some-workflow-id');
@@ -119,7 +119,7 @@ export const HISTORY_CIRCUIT_BREAKER_REASON = 'history-circuit-breaker';
  *
  * @example
  * ```ts
- * import { Engine, PREPARED_WORKFLOW_ABANDONED_REASON } from '@corvidae/weft';
+ * import { Engine, PREPARED_WORKFLOW_ABANDONED_REASON } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * const state = await engine.get('some-workflow-id');

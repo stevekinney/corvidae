@@ -8,9 +8,9 @@ CommandPalette intentionally uses a native modal `<dialog>` for top-layer, backd
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { CommandItem } from '@corvidae/cinder';
-  import { CommandPalette } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { CommandItem } from '@lostgradient/cinder';
+  import { CommandPalette } from '@lostgradient/cinder';
 
   let open = $state(false);
   let triggerRef: HTMLElement | null = $state(null);

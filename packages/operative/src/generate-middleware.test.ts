@@ -3,8 +3,8 @@
  * AB-245, AB-288): the ordered union of every candidate's attached
  * descriptors, deduplicated by `(provider, endpoint, model)`.
  */
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgent } from './create-agent';

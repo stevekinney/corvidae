@@ -4,7 +4,7 @@
  *
  * The 21 scopes below are flat (`workflows:admin` does NOT imply
  * `workflows:read`) and mirror weft's `AUTHORIZATION_SCOPES` — a public
- * export of `@corvidae/weft` as of 0.18.0. The literal stays
+ * export of `@lostgradient/weft` as of 0.18.0. The literal stays
  * duplicated here deliberately: a value import from the server subpath
  * would pull weft's server module graph into the browser bundle, so the
  * console keeps a browser-safe copy and `scopes.svelte.test.ts` pins it
@@ -43,7 +43,7 @@
  */
 import { getContext, setContext } from 'svelte';
 
-import { HttpClientError, type HttpClient } from '@corvidae/weft';
+import { HttpClientError, type HttpClient } from '@lostgradient/weft';
 
 export const AUTHORIZATION_SCOPES = [
   'workflows:read',

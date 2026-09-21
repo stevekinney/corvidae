@@ -15,9 +15,9 @@
  *     idempotent on an unknown or already-terminal id, never propagates to
  *     a sibling
  */
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { CompletableEventTarget } from '@corvidae/lifecycle';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentRun } from './agent-run';

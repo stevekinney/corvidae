@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Breadcrumbs } from '@corvidae/cinder';
+  import { Breadcrumbs } from '@lostgradient/cinder';
 </script>
 
 <Breadcrumbs

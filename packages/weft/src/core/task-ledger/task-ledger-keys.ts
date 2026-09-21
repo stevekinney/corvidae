@@ -28,7 +28,7 @@ const TASK_LEDGER_KEY_PREFIX = 'task-ledger:';
  *
  * @example
  * ```ts
- * import { taskLedgerKey } from '@corvidae/weft';
+ * import { taskLedgerKey } from '@lostgradient/weft';
  *
  * const key = taskLedgerKey('order-4417');
  * console.log(key); // 'task-ledger:order-4417'

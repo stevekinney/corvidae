@@ -1,4 +1,4 @@
-import { captureScreenshot, loadManifest, VIEWPORTS } from '@corvidae/testing';
+import { captureScreenshot, loadManifest, VIEWPORTS } from '@lostgradient/testing';
 import { expect, test } from './component-page-fixture.ts';
 
 const desktop = VIEWPORTS.find((viewport) => viewport.name === 'desktop');

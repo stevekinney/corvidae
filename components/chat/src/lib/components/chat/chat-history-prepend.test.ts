@@ -16,7 +16,7 @@
  */
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { ConversationHistory, Message, MessageRole } from './conversation-model.ts';
 
 setupHappyDom();

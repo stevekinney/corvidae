@@ -33,7 +33,7 @@
  * endpoint before the UI's own retrying assertions would already tolerate
  * the gap.
  */
-import { AUTHORIZATION_SCOPES, Engine, RemoteWorker, serve } from '@corvidae/weft';
+import { AUTHORIZATION_SCOPES, Engine, RemoteWorker, serve } from '@lostgradient/weft';
 
 import { seedDynamicSources } from '../../../../fixtures/dynamic-sources.ts';
 import { seedWorkflowRevisions } from '../../../../fixtures/workflow-revisions.ts';
@@ -46,7 +46,7 @@ import {
 } from './e2e-constants.ts';
 
 // `AUTHORIZATION_SCOPES` became a public export of
-// `@corvidae/weft` in weft 0.18.0, so this file no longer keeps a
+// `@lostgradient/weft` in weft 0.18.0, so this file no longer keeps a
 // hand-copied list that could drift from the runtime's own vocabulary. (The
 // console's `src/lib/scopes.svelte.ts` still keeps a browser-safe copy —
 // importing the server barrel into bundled code would pull weft's server

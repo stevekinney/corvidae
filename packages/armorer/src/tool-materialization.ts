@@ -5,5 +5,5 @@ export {
   materializeToolResultAsync,
   materializeToolResults,
   materializeToolResultsAsync,
-} from '@corvidae/tool-protocol';
-export type { MaterializeToolCallOptions } from '@corvidae/tool-protocol';
+} from '@lostgradient/tool-protocol';
+export type { MaterializeToolCallOptions } from '@lostgradient/tool-protocol';

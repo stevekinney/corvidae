@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { X } from '@corvidae/cinder';
+  import { X } from '@lostgradient/cinder';
 
   let { instanceId = 'artifact', title, onclose, children }: ArtifactPanelProps = $props();
 

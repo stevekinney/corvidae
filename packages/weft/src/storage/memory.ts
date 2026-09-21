@@ -21,7 +21,7 @@ import { scopedStorage } from './scoped-storage.ts';
  *
  * @example Run an engine with in-memory storage
  * ```ts
- * import { workflow, Engine, MemoryStorage } from '@corvidae/weft';
+ * import { workflow, Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });

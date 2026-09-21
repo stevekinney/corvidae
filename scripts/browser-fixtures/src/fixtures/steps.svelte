@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Steps } from '@corvidae/cinder';
+  import { Steps } from '@lostgradient/cinder';
 
   const steps = [
     { id: 'account', label: 'Account', description: 'Set up your account', href: '#account' },

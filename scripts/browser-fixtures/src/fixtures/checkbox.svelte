@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Checkbox } from '@corvidae/cinder';
+  import { Checkbox } from '@lostgradient/cinder';
 
   let acceptTerms = $state(false);
   let subscribed = $state(true);

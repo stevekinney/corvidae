@@ -8,7 +8,7 @@ const packageRoot = resolve(import.meta.dir, '../..');
 // the timed assertion. The import assertion below still runs in a fresh process
 // so it cannot inherit browser conditions, DOM globals, or cached modules.
 const serverCompileProbe = `
-import { sveltePlugin } from '@corvidae/testing';
+import { sveltePlugin } from '@lostgradient/testing';
 import { dirname } from 'node:path';
 if (typeof document !== 'undefined' || typeof window !== 'undefined') {
   throw new Error('The SSR compilation process unexpectedly has DOM globals.');
@@ -20,7 +20,7 @@ const result = await Bun.build({
     name: 'preserve-source-dependency-ownership',
     setup(builder) {
       builder.onResolve({ filter: /^[^./]/ }, (arguments_) => {
-        if (arguments_.path.startsWith('@corvidae/')) return undefined;
+        if (arguments_.path.startsWith('@lostgradient/')) return undefined;
         if (/^(node|bun):/.test(arguments_.path)) return { path: arguments_.path, external: true };
         const directory = arguments_.importer ? dirname(arguments_.importer) : arguments_.resolveDir;
         return { path: Bun.resolveSync(arguments_.path, directory), external: true };
@@ -91,7 +91,7 @@ afterAll(async () => {
   await rm(preparedDirectory, { recursive: true });
 });
 
-describe('@corvidae/editor public source entry point', () => {
+describe('@lostgradient/editor public source entry point', () => {
   it('imports on a fresh server with the real server export conditions and no DOM', async () => {
     const result = await runServerProbe(serverImportProbe, { entryPath: preparedEntryPath });
     expect(result.status, result.errors).toBe(0);

@@ -1,6 +1,6 @@
 {
   "extends": [
-    "@corvidae/typescript/library.json",
+    "@lostgradient/typescript/library.json",
     "./.playwright/svelte-kit/tsconfig.json",
     "./.svelte-kit/tsconfig.json"
   ],

@@ -1,7 +1,7 @@
 <script lang="ts" module>
   import type { HTMLAttributes } from 'svelte/elements';
   import type { Snippet } from 'svelte';
-  import type { LineDiffStats } from '@corvidae/markdown';
+  import type { LineDiffStats } from '@lostgradient/markdown';
   import type { DiffState, DiffTier } from './diff-controller.svelte';
 
   import type { DiffViewerMode } from './diff-viewer.types.ts';
@@ -61,7 +61,7 @@
     RefreshCw,
     RotateCcw,
     Tooltip,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   let {
     id,

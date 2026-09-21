@@ -5,7 +5,7 @@
  *
  * @example
  * ```ts
- * import { Engine, UpdateReceivedEvent } from '@corvidae/weft';
+ * import { Engine, UpdateReceivedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(UpdateReceivedEvent.type, (event) => {
@@ -36,7 +36,7 @@ export class UpdateReceivedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, UpdateCompletedEvent } from '@corvidae/weft';
+ * import { Engine, UpdateCompletedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(UpdateCompletedEvent.type, (event) => {

@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 
 import { freezeToolRequestContext } from '../execution-context';
 import type { ExecutionHandle, ExecutionLifecycle } from '../execution-lifecycle';

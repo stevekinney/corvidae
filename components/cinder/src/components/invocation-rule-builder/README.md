@@ -10,12 +10,12 @@ Cinder does not execute, validate, or persist rules. The consumer provides the c
 
 ```svelte
 <script lang="ts">
-  import { InvocationRuleBuilder } from '@corvidae/cinder';
+  import { InvocationRuleBuilder } from '@lostgradient/cinder';
   import type {
     InvocationRule,
     InvocationRuleChange,
     InvocationRuleOption,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   let rules = $state<InvocationRule[]>([]);
 
@@ -92,12 +92,12 @@ Pass `mode="conditions"` to render conditions without actions — for example, a
 
 ```svelte
 <script lang="ts">
-  import { InvocationRuleBuilder } from '@corvidae/cinder';
+  import { InvocationRuleBuilder } from '@lostgradient/cinder';
   import type {
     InvocationRule,
     InvocationRuleChange,
     InvocationRuleOption,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   let rules = $state<InvocationRule[]>([]);
 

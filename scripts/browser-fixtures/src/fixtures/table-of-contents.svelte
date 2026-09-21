@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TableOfContents } from '@corvidae/cinder';
+  import { TableOfContents } from '@lostgradient/cinder';
 </script>
 
 <div style="display: grid; grid-template-columns: 16rem 1fr; gap: 1.5rem; align-items: start;">

@@ -10,7 +10,7 @@ import TableRoot from './table.svelte';
  * `Table` is the parent compound component and a namespace exposing the
  * compose-only leaves: `Table.Body`, `Table.Cell`, `Table.Header`,
  * `Table.HeaderCell`, and `Table.Row`. The leaves remain importable individually
- * via `@corvidae/cinder`, `@corvidae/cinder`, etc.
+ * via `@lostgradient/cinder`, `@lostgradient/cinder`, etc.
  */
 const Table = Object.assign(TableRoot, {
   Body: TableBody,

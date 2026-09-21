@@ -10,7 +10,7 @@
  * `created_at_{gte,gt,lte,lt}` / `updated_at_*` / `execution_deadline_*` ·
  * `include=failureCategory` (repeated) · `limit` / `offset`.
  */
-import type { FailureCategory, ListFilter, WorkflowStatus } from '@corvidae/weft';
+import type { FailureCategory, ListFilter, WorkflowStatus } from '@lostgradient/weft';
 
 import {
   appendAttributeFilter,

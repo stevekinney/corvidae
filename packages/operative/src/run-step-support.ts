@@ -1,7 +1,7 @@
-import type { ToolExecutionResult } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import type { ToolCall } from '@corvidae/tool-protocol';
+import type { ToolExecutionResult } from 'armorer';
+import { Conversation } from 'conversationalist';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { ToolCall } from '@lostgradient/tool-protocol';
 import type { ZodType } from 'zod';
 
 import { AgentRunError } from './errors';

@@ -27,8 +27,8 @@
  *   thinking is documented to support forced tool use, so that one variant is
  *   deliberately left alone.
  */
-import { createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import {

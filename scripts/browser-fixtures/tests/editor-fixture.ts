@@ -1,5 +1,5 @@
-import type { ComponentEntry } from '@corvidae/testing';
-import { loadManifest } from '@corvidae/testing';
+import type { ComponentEntry } from '@lostgradient/testing';
+import { loadManifest } from '@lostgradient/testing';
 
 export function fixtureEntry(slug: string): ComponentEntry {
   const entry = loadManifest().find((candidate) => candidate.slug === slug);

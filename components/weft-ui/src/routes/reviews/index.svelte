@@ -14,7 +14,7 @@
    * list query is scope-gated here; the decision form itself is never
    * disabled for a missing scope.
    */
-  import { EmptyState, Segment, SegmentedControl } from '@corvidae/cinder';
+  import { EmptyState, Segment, SegmentedControl } from '@lostgradient/cinder';
   import Lock from 'lucide-svelte/icons/lock';
 
   import { getClient } from '../../lib/client.ts';

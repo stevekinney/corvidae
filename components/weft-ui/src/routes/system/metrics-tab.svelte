@@ -29,7 +29,7 @@
     SegmentedControl,
     Statistic,
     StatisticGroup,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { Download } from 'lucide-svelte';
   import { createQuery } from '@tanstack/svelte-query';
   import { onDestroy } from 'svelte';

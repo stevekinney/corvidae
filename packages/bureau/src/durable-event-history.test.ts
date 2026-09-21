@@ -10,13 +10,13 @@
  * storage-fixture code — and never sleep: every ordering assertion relies
  * on `createManualRuntimeServices()`'s manual clock.
  */
-import { CompletableEventTarget, createManualRuntimeServices } from '@corvidae/lifecycle';
+import { CompletableEventTarget, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type {
   Action,
   DurableEventEnvelope,
   DurableEventOwner,
   Subscription,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   AgentScheduledEvent,
   ScheduleCancelledEvent,
@@ -27,14 +27,14 @@ import {
   SessionCreatedEvent,
   SessionDeletedEvent,
   SessionSavedEvent,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   createFleetEventFeed,
   type FleetEventFeed,
   KEYS,
   resolveStorage,
   type Storage,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -2878,7 +2878,7 @@ describe('createDurableEventProducer()', () => {
     // (the id reused and deleted again) whose deletion merely happens to
     // overlap the first incarnation's still-pending write — case (b) was
     // silently dropped as if it were a duplicate of (a). `SessionStore`
-    // (`@corvidae/operative`) now mints and carries `incarnation` on
+    // (`@lostgradient/operative`) now mints and carries `incarnation` on
     // every session, so the two dispatches below are distinguishable by
     // `(sessionId, incarnation)`, and both are expected to produce their
     // own durable record even though their writes overlap.
@@ -2955,7 +2955,7 @@ describe('createDurableEventProducer()', () => {
     // `SESSION_DURABLE_ACTION_TYPES` has listed `'session.created'`/
     // `'session.saved'` since AB-91, but — same gap `session.deleted` had
     // before AB-372 — nothing dispatched either onto the `'action'` stream
-    // this producer's `actionListener` reads. `@corvidae/operative`'s
+    // this producer's `actionListener` reads. `@lostgradient/operative`'s
     // `SessionStore` now dispatches both directly, forwarded by
     // `create-bureau.ts` onto the bureau-level emitter this producer's
     // dedicated `sessionCreatedListener`/`sessionSavedListener` subscribe

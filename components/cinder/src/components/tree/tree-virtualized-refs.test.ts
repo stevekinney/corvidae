@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { TreeDataItem } from '../../_internal/tree-data.ts';
 import type { TreeRef } from './tree.types.ts';
 

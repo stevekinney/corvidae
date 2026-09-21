@@ -1,4 +1,4 @@
-import '@corvidae/cinder';
+import '@lostgradient/cinder';
 import './lib/components/chat-composer-popover/chat-composer-popover.css';
 import './lib/components/chat-conversation-header/chat-conversation-header.css';
 import './lib/components/chat-conversation-list/chat-conversation-list.css';

@@ -6,7 +6,7 @@ On-page heading navigation for long-form content and docs layouts.
 
 ```svelte
 <script lang="ts">
-  import { TableOfContents } from '@corvidae/cinder';
+  import { TableOfContents } from '@lostgradient/cinder';
 </script>
 
 <TableOfContents target="#article-content" />

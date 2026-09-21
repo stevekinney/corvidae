@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -52,7 +52,7 @@ describe('MessageAttachments image layout contract', () => {
   });
 
   test('provides a keyboard-operable maximize affordance', () => {
-    expect(source).toContain("import { Maximize2 } from '@corvidae/cinder'");
+    expect(source).toContain("import { Maximize2 } from '@lostgradient/cinder'");
     expect(source).toContain('aria-label={`View image: ${alt}`}');
     expect(source).toContain('title="Maximize image"');
     expect(source).toContain(

@@ -76,7 +76,7 @@ describe('cinder CLI', () => {
     expect(result.exitCode, result.stderr).toBe(0);
     expect(result.stderr).toBe('');
     expect(payload['command']).toBe('search');
-    expect(isRecord(payload['package']) && payload['package']['name']).toBe('@corvidae/cinder');
+    expect(isRecord(payload['package']) && payload['package']['name']).toBe('@lostgradient/cinder');
     expect(Array.isArray(data)).toBe(true);
     expect(
       Array.isArray(data) &&

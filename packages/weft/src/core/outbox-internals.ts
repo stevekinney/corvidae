@@ -61,7 +61,7 @@ export type OutboxRuntime = {
  *
  * @example
  * ```ts
- * import { OutboxContentionError } from '@corvidae/weft';
+ * import { OutboxContentionError } from '@lostgradient/weft';
  *
  * const error = new OutboxContentionError('enqueue', null);
  * console.log(error.code); // 'OutboxContentionError'

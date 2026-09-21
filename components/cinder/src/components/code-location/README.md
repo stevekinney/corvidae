@@ -8,7 +8,7 @@
 
 ```svelte
 <script lang="ts">
-  import { CodeLocation } from '@corvidae/cinder';
+  import { CodeLocation } from '@lostgradient/cinder';
 </script>
 
 <CodeLocation file="src/routes/+page.svelte" />

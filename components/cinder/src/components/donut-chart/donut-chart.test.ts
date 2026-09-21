@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import type { DonutChartDatum } from './donut-chart.types.ts';

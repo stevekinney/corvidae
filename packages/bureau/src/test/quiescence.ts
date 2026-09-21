@@ -2,7 +2,7 @@
  * `BureauQuiescenceReport` / `assertBureauQuiescent` — AB-262's slice of
  * AB-92's Decision (2026-09-01), "Resource scope and quiescence report"
  * (AC4), narrowed to Bureau's own owned-work rows on top of AB-256's
- * `QuiescenceReport` (`@corvidae/operative`).
+ * `QuiescenceReport` (`@lostgradient/operative`).
  *
  * `assertBureauQuiescent(harness)` reads every row from a surface a
  * production caller can also read, and always calls `harness.bureau.shutdown()`
@@ -130,7 +130,7 @@
  * `quiescent`.
  */
 
-import { type LeakedResource, QuiescenceError, type QuiescenceReport } from '@corvidae/operative';
+import { type LeakedResource, QuiescenceError, type QuiescenceReport } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import type { AbortingRun, BureauShutdownOptions, BureauShutdownReport } from '../types';

@@ -3,7 +3,7 @@
   "source": "https://registry.npmjs.org",
   "packages": {
     "@lostgradient/chat": {
-      "workspace": "@corvidae/chat",
+      "workspace": "@lostgradient/chat",
       "version": "0.14.0",
       "fetchedAt": "2026-09-19",
       "subpaths": [
@@ -42,7 +42,7 @@
       ]
     },
     "@lostgradient/cinder": {
-      "workspace": "@corvidae/cinder",
+      "workspace": "@lostgradient/cinder",
       "version": "0.26.2",
       "fetchedAt": "2026-09-19",
       "subpaths": [
@@ -1041,7 +1041,7 @@
       ]
     },
     "@lostgradient/editor": {
-      "workspace": "@corvidae/editor",
+      "workspace": "@lostgradient/editor",
       "version": "0.14.0",
       "fetchedAt": "2026-09-19",
       "subpaths": [
@@ -1076,7 +1076,7 @@
       ]
     },
     "@lostgradient/markdown": {
-      "workspace": "@corvidae/markdown",
+      "workspace": "@lostgradient/markdown",
       "version": "0.5.0",
       "fetchedAt": "2026-09-19",
       "subpaths": [
@@ -1101,7 +1101,7 @@
       ]
     },
     "@lostgradient/operative": {
-      "workspace": "@corvidae/operative",
+      "workspace": "@lostgradient/operative",
       "version": "0.12.0",
       "fetchedAt": "2026-09-19",
       "subpaths": [
@@ -1139,7 +1139,7 @@
       ]
     },
     "@lostgradient/weft": {
-      "workspace": "@corvidae/weft",
+      "workspace": "@lostgradient/weft",
       "version": "0.25.0",
       "fetchedAt": "2026-09-19",
       "subpaths": [
@@ -1177,7 +1177,7 @@
       ]
     },
     "armorer": {
-      "workspace": "@corvidae/armorer",
+      "workspace": "armorer",
       "version": "2.4.0",
       "fetchedAt": "2026-09-19",
       "subpaths": [
@@ -1204,7 +1204,7 @@
       ]
     },
     "conversationalist": {
-      "workspace": "@corvidae/conversationalist",
+      "workspace": "conversationalist",
       "version": "1.2.0",
       "fetchedAt": "2026-09-19",
       "subpaths": [

@@ -27,7 +27,7 @@
 </script>
 
 <script lang="ts">
-  import { Check, CheckCheck } from '@corvidae/cinder';
+  import { Check, CheckCheck } from '@lostgradient/cinder';
 
   let { receipt }: ChatReadReceiptProps = $props();
 

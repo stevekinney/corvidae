@@ -1,6 +1,6 @@
 # Cryptography
 
-`@corvidae/cryptography` owns the cross-platform hashing, signing, and timing-safe comparison primitives shared by Corvidae packages.
+`@lostgradient/cryptography` owns the cross-platform hashing, signing, and timing-safe comparison primitives shared by Corvidae packages.
 
 ## Public API
 
@@ -18,7 +18,7 @@ The synchronous APIs fail explicitly when the host does not expose the required 
 Use the asynchronous function when code must also run in a browser. It encodes the string as UTF-8 and returns a lowercase hexadecimal digest through [Web Crypto](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API):
 
 ```typescript
-import { sha256Hex } from '@corvidae/cryptography';
+import { sha256Hex } from '@lostgradient/cryptography';
 
 const digest = await sha256Hex('hello');
 console.log(digest);
@@ -30,7 +30,7 @@ Hash the exact serialized representation you intend to identify. This package do
 On the server, the incremental API lets you feed text in chunks without concatenating the complete input first:
 
 ```typescript
-import { createIncrementalHash, sha256HexSync } from '@corvidae/cryptography';
+import { createIncrementalHash, sha256HexSync } from '@lostgradient/cryptography';
 
 const hash = createIncrementalHash(); // SHA-256 by default.
 hash.update('hel');
@@ -50,8 +50,8 @@ The synchronous helpers require the relevant Bun or Node cryptographic primitive
 
 ## Workspace usage
 
-Declare `"@corvidae/cryptography": "workspace:*"` in the consuming workspace and import from the package root. The package exports private TypeScript source; the consumer owns compilation.
+Declare `"@lostgradient/cryptography": "workspace:*"` in the consuming workspace and import from the package root. The package exports private TypeScript source; the consumer owns compilation.
 
 ## Development
 
-Run `bunx turbo run lint typecheck test --filter=@corvidae/cryptography --concurrency=1` from the repository root. Run `bun run validate` for the complete workspace.
+Run `bunx turbo run lint typecheck test --filter=@lostgradient/cryptography --concurrency=1` from the repository root. Run `bun run validate` for the complete workspace.

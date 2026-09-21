@@ -1,4 +1,4 @@
-import { runAxe, THEME_STORAGE_KEY } from '@corvidae/testing';
+import { runAxe, THEME_STORAGE_KEY } from '@lostgradient/testing';
 import { expect, test, type Page } from '@playwright/test';
 import { openFixture } from './overlay-fixture.ts';
 

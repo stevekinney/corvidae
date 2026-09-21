@@ -14,7 +14,7 @@
  * @module
  */
 
-import { normalize, sanitizeHtml } from '@corvidae/markdown';
+import { normalize, sanitizeHtml } from '@lostgradient/markdown';
 import {
   DOMParser,
   DOMSerializer,

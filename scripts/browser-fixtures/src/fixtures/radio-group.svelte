@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { RadioGroup } from '@corvidae/cinder';
+  import { RadioGroup } from '@lostgradient/cinder';
 
   let plan = $state('pro');
 </script>

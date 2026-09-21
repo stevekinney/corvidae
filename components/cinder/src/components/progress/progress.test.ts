@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

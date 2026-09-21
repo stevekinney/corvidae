@@ -1,5 +1,5 @@
 {
-  "extends": "@corvidae/typescript/library.json",
+  "extends": "@lostgradient/typescript/library.json",
   "compilerOptions": {
     "types": ["bun"],
     "allowImportingTsExtensions": true,

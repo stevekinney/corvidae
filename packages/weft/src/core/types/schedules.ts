@@ -21,7 +21,7 @@ export type ScheduleStatus = 'active' | 'paused' | 'cancelled';
  *
  * @example
  * ```ts
- * import { workflow, Engine, type ScheduleOverlapPolicy } from '@corvidae/weft';
+ * import { workflow, Engine, type ScheduleOverlapPolicy } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'hourly' }).execute(async function* () { return 'done'; }));
@@ -45,7 +45,7 @@ export type ScheduleOverlapPolicy = 'skip' | 'queue' | 'cancel-running' | 'allow
  *
  * @example
  * ```ts
- * import type { ScheduleRevisionPolicy } from '@corvidae/weft';
+ * import type { ScheduleRevisionPolicy } from '@lostgradient/weft';
  *
  * const policy: ScheduleRevisionPolicy = 'pinned';
  * void policy;
@@ -61,7 +61,7 @@ export type ScheduleRevisionPolicy = 'active-at-fire' | 'pinned';
  *
  * @example
  * ```ts
- * import type { ScheduleQueuedRun } from '@corvidae/weft';
+ * import type { ScheduleQueuedRun } from '@lostgradient/weft';
  *
  * const queuedRun: ScheduleQueuedRun = {
  *   workflowId: 'daily-report-queued-1',
@@ -88,7 +88,7 @@ export interface ScheduleQueuedRun {
  *
  * @example
  * ```ts
- * import type { ScheduleSpec } from '@corvidae/weft';
+ * import type { ScheduleSpec } from '@lostgradient/weft';
  *
  * const cronSpec: ScheduleSpec = { cron: '0 9 * * *' };
  * const intervalSpec: ScheduleSpec = { every: '1h' };
@@ -106,7 +106,7 @@ export type ScheduleSpec = { cron: string; every?: never } | { every: Duration; 
  *
  * @example
  * ```ts
- * import { workflow, Engine, type ScheduleOptions } from '@corvidae/weft';
+ * import { workflow, Engine, type ScheduleOptions } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'report' }).execute(async function* () { return 'ok'; }));
@@ -167,7 +167,7 @@ export interface ScheduleOptions {
  *
  * @example
  * ```ts
- * import { Engine, workflow, type ScheduleUpdateOptions } from '@corvidae/weft';
+ * import { Engine, workflow, type ScheduleUpdateOptions } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'report' }).execute(async function* () { return 'done'; }));
@@ -212,7 +212,7 @@ export type ScheduleUpdateOptions = Pick<
  *
  * @example
  * ```ts
- * import { Engine, workflow, type ScheduleTransitionOptions } from '@corvidae/weft';
+ * import { Engine, workflow, type ScheduleTransitionOptions } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'report' }).execute(async function* () { return 'ok'; }));
@@ -256,7 +256,7 @@ export interface ScheduleTransitionOptions {
  *
  * @example
  * ```ts
- * import { schedule, type ScheduleDefinition } from '@corvidae/weft';
+ * import { schedule, type ScheduleDefinition } from '@lostgradient/weft';
  *
  * const dailyReport: ScheduleDefinition<{ day: string }> = schedule({
  *   workflow: 'report',
@@ -290,7 +290,7 @@ export type ScheduleDefinition<TInput = unknown> = ScheduleSpec & {
  *
  * @example
  * ```ts
- * import { schedule } from '@corvidae/weft';
+ * import { schedule } from '@lostgradient/weft';
  *
  * const definition = schedule({ workflow: 'report', cron: '0 9 * * *', input: null });
  * ```

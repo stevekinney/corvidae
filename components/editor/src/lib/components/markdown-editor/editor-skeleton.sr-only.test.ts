@@ -21,7 +21,7 @@
 
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import.
 // testing-library reads `globalThis.document` / `window` at module-init.

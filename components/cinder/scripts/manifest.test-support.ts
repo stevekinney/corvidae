@@ -3,7 +3,7 @@ export const SYNTHETIC_COMPONENTS: ManifestComponent[] = [
   {
     name: 'Button',
     id: 'button',
-    import: '@corvidae/cinder',
+    import: '@lostgradient/cinder',
     exportName: 'Button',
     category: 'action',
     status: 'stable',
@@ -27,7 +27,7 @@ export const SYNTHETIC_COMPONENTS: ManifestComponent[] = [
   {
     name: 'Modal',
     id: 'modal',
-    import: '@corvidae/cinder',
+    import: '@lostgradient/cinder',
     exportName: 'Modal',
     category: 'overlay',
     status: 'stable',
@@ -48,7 +48,7 @@ export const SYNTHETIC_COMPONENTS: ManifestComponent[] = [
   {
     name: 'JsonViewer',
     id: 'json-viewer',
-    import: '@corvidae/cinder',
+    import: '@lostgradient/cinder',
     exportName: 'JsonViewer',
     category: 'feedback',
     status: 'alpha',
@@ -71,13 +71,13 @@ export function buildSyntheticManifest(): Manifest {
     $schema: './src/schemas/manifest.schema.json',
     manifestVersion: 1,
     package: {
-      name: '@corvidae/cinder',
+      name: '@lostgradient/cinder',
       framework: 'svelte',
       frameworkVersionRange: '>=5.56.0 <6',
       classPrefix: 'cinder-',
       cssVarPrefix: '--cinder-',
       tokenNamespaces: ['color', 'space', 'radius', 'ring', 'type', 'motion', 'shadow'],
-      stylesEntry: '@corvidae/cinder',
+      stylesEntry: '@lostgradient/cinder',
       schemaDialect: 'https://json-schema.org/draft/2020-12/schema',
     },
     categories: {

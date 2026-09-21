@@ -6,8 +6,8 @@ Individual selectable row within a command palette or dropdown command list.
 
 ```svelte
 <script lang="ts">
-  import { CommandItem } from '@corvidae/cinder';
-  import { CommandPalette } from '@corvidae/cinder';
+  import { CommandItem } from '@lostgradient/cinder';
+  import { CommandPalette } from '@lostgradient/cinder';
 
   let open = $state(true);
 </script>

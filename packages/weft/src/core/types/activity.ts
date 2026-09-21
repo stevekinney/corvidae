@@ -15,7 +15,7 @@ import type { Duration, RetryPolicy } from './retry-retention.ts';
  *
  * @example
  * ```ts
- * import type { ActivityFunction } from '@corvidae/weft';
+ * import type { ActivityFunction } from '@lostgradient/weft';
  *
  * const fetchUserFn: ActivityFunction<string, { id: string; name: string }> =
  *   async (input, ctx) => {
@@ -43,7 +43,7 @@ export type ActivityFunction<TInput = unknown, TOutput = unknown> = (
  *
  * @example
  * ```ts
- * import { activity, type ActivityContext } from '@corvidae/weft';
+ * import { activity, type ActivityContext } from '@lostgradient/weft';
  *
  * const processChunks = activity({
  *   name: 'processChunks',
@@ -95,7 +95,7 @@ export interface ActivityContext {
    *
    * @example
    * ```ts
-   * import { activity, type ActivityContext } from '@corvidae/weft';
+   * import { activity, type ActivityContext } from '@lostgradient/weft';
    *
    * function resumeFrom(details: unknown): number {
    *   return typeof details === 'object' && details !== null && 'done' in details &&
@@ -150,7 +150,7 @@ export interface ActivityContext {
    *
    * @example
    * ```ts
-   * import { activity, type ActivityContext } from '@corvidae/weft';
+   * import { activity, type ActivityContext } from '@lostgradient/weft';
    *
    * const awaitWebhook = activity({
    *   name: 'awaitWebhook',
@@ -169,7 +169,7 @@ export interface ActivityContext {
  * Durable metadata for one activity awaiting out-of-band completion.
  * @example
  * ```ts
- * import type { PendingAsyncActivityInfo } from '@corvidae/weft';
+ * import type { PendingAsyncActivityInfo } from '@lostgradient/weft';
  * declare const pending: PendingAsyncActivityInfo; console.log(pending.token, pending.activityName);
  * ```
  */
@@ -186,7 +186,7 @@ export interface PendingAsyncActivityInfo {
  * Bounded cursor options for listing a workflow's pending async activities.
  * @example
  * ```ts
- * import type { PendingAsyncActivityListOptions } from '@corvidae/weft';
+ * import type { PendingAsyncActivityListOptions } from '@lostgradient/weft';
  * const options: PendingAsyncActivityListOptions = { limit: 25 };
  * void options;
  * ```
@@ -202,7 +202,7 @@ export interface PendingAsyncActivityListOptions {
  * One deterministic page of pending async activities.
  * @example
  * ```ts
- * import type { PendingAsyncActivityPage } from '@corvidae/weft';
+ * import type { PendingAsyncActivityPage } from '@lostgradient/weft';
  * const page: PendingAsyncActivityPage = { items: [] };
  * void page;
  * ```
@@ -225,7 +225,7 @@ export interface PendingAsyncActivityPage {
  *
  * @example
  * ```ts
- * import { workflow, activity, Engine, type ActivityCallOptions, type WorkflowContext } from '@corvidae/weft';
+ * import { workflow, activity, Engine, type ActivityCallOptions, type WorkflowContext } from '@lostgradient/weft';
  *
  * const slowTask = activity({ name: 'slowTask', execute: async (i: unknown) => i });
  * const engine = new Engine();
@@ -285,7 +285,7 @@ export interface ActivityCallOptions {
  *
  * @example
  * ```ts
- * import { activity, type ActivityDefinition } from '@corvidae/weft';
+ * import { activity, type ActivityDefinition } from '@lostgradient/weft';
  *
  * const sendEmail: ActivityDefinition<{ to: string; body: string }, void> = activity({
  *   name: 'sendEmail',
@@ -378,7 +378,7 @@ export interface ActivityDefinition<
  *
  * @example
  * ```ts
- * import { activity, type ActivityCallable } from '@corvidae/weft';
+ * import { activity, type ActivityCallable } from '@lostgradient/weft';
  *
  * const normalizeEmail: ActivityCallable<string, string> = activity(async function normalizeEmail(
  *   input: string,
@@ -409,7 +409,7 @@ export type ActivityCallable<TInput, TOutput, TName extends string = string> = A
  *
  * @example
  * ```ts
- * import { activity } from '@corvidae/weft';
+ * import { activity } from '@lostgradient/weft';
  *
  * const fetchUser = activity({
  *   name: 'fetchUser',

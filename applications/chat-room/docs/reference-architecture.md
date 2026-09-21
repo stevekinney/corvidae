@@ -4,7 +4,7 @@ This document defines the constraints a host application must satisfy when it dr
 
 It is deliberately not a planning document. It names no package versions, no issue numbers, and no schedule. (`wireVersion` below is a constant of the protocol this document defines, not a dependency version.) What to adopt, when, and in what order is tracked in Linear; `package.json` and `bun.lock` are the only source of truth for what is installed. Anything here that can be settled by reading the lockfile has been removed on purpose, because duplicating that state is what made an earlier version of this file go stale.
 
-Where a rule names an API, confirm it against the declarations in this workspace before relying on it. Every `@corvidae/*` library exports TypeScript source directly, so the declaration this document describes and the one the application compiles are the same file.
+Where a rule names an API, confirm it against the declarations in this workspace before relying on it. Every `@lostgradient/*` library exports TypeScript source directly, so the declaration this document describes and the one the application compiles are the same file.
 
 <a id="state-model"></a>
 
@@ -317,4 +317,4 @@ The backing store is **in-memory by default and SQLite on disk when `CHAT_ROOM_S
 
 Each target-state claim elsewhere in this document says so at the point it is made rather than relying on a blanket assurance. One such assurance used to live in this section and was false: three sections still described terminal frames as unshipped after they had landed.
 
-This variant must not import `@corvidae/bureau` internals or locally recreate capabilities that belong in a shared workspace library.
+This variant must not import `@lostgradient/bureau` internals or locally recreate capabilities that belong in a shared workspace library.

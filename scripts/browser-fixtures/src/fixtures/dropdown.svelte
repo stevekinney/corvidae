@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Dropdown } from '@corvidae/cinder';
+  import { Dropdown } from '@lostgradient/cinder';
 
   let { showOmittedMiddle = false }: { showOmittedMiddle?: boolean } = $props();
 </script>

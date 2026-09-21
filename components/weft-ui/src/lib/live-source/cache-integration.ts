@@ -20,7 +20,7 @@
  * hand, which would silently drift if this module's shape ever changes.
  *
  * **Detail patching is a status-only contract.** `WorkflowSummary` (the
- * real detail/list-row shape, `@corvidae/weft`) is Track A's to fetch
+ * real detail/list-row shape, `@lostgradient/weft`) is Track A's to fetch
  * and cache; this module never invents a full one. It patches ONLY
  * `status`/`updatedAt` on whatever is already cached, and only when
  * something is already cached (`setQueryData`'s updater returning the
@@ -46,7 +46,7 @@
  * frames the alerts/warnings surface as "session-scoped" fed directly by
  * `FleetEventSource.subscribe()`, not by a cache entry this module owns.
  */
-import type { WorkflowEvent, WorkflowStatus } from '@corvidae/weft';
+import type { WorkflowEvent, WorkflowStatus } from '@lostgradient/weft';
 import type { QueryClient, QueryKey } from '@tanstack/svelte-query';
 
 import type { FleetEventFrame } from './fleet-event-source.svelte.ts';

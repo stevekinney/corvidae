@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';

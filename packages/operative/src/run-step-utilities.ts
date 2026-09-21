@@ -2,7 +2,7 @@ import type {
   HookErrorHandler,
   HookRegistrationOptions,
   RuntimeServices,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 
 import { GenerateRetryEvent } from './events';
 import { addJitter } from './retry/jitter';

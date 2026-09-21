@@ -1,4 +1,4 @@
-import type { JSONValue } from '@corvidae/armorer';
+import type { JSONValue } from 'armorer';
 
 function isJSONObject(value: unknown): value is Record<string, JSONValue> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;

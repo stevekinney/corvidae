@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ConnectionIndicator, Toggle, Tooltip } from '@corvidae/cinder';
+  import { ConnectionIndicator, Toggle, Tooltip } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';

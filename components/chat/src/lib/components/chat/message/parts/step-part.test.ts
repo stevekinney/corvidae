@@ -20,7 +20,7 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { StepMessagePart, StepStatus } from '../../utilities/types.ts';
 
 setupHappyDom();

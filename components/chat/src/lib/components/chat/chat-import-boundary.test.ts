@@ -10,12 +10,15 @@ import { describe, expect, it } from 'bun:test';
 import ts from 'typescript';
 
 const CHAT_ROOT = import.meta.dir;
-const CONVERSATIONALIST_PACKAGE = '@corvidae/conversationalist';
-const OLD_CONVERSATIONALIST_PACKAGE = 'conversationalist';
+// COR-1284 renamed the conversationalist workspace to its unscoped public npm name, so the bare
+// specifier below is the current, correct import form rather than a retired one. Before that
+// rename this file guarded the opposite direction — a scoped `@corvidae/conversationalist` import
+// was current and a bare `conversationalist` import was the retired, pre-monorepo form the ruling
+// has now reinstated. That guard is obsolete by the ruling itself, so it is gone rather than
+// inverted: there is no longer a meaningful "old bare import" to reject when bare is current.
+const CONVERSATIONALIST_PACKAGE = 'conversationalist';
 const CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN =
-  /(?:from\s*['"]@corvidae\/conversationalist['"]|import\s*['"]@corvidae\/conversationalist['"]|import\s*\(\s*['"]@corvidae\/conversationalist['"])/;
-const OLD_CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN =
-  /(?:from\s*['"]conversationalist(?:\/[^'"]*)?['"]|import\s*['"]conversationalist(?:\/[^'"]*)?['"]|import\s*\(\s*['"]conversationalist(?:\/[^'"]*)?['"])/;
+  /(?:from\s*['"]conversationalist['"]|import\s*['"]conversationalist['"]|import\s*\(\s*['"]conversationalist['"])/;
 const RUNTIME_IMPORT_ALLOWLIST = new Set([
   'builders.ts',
   'chat-import-boundary.test.ts',
@@ -119,43 +122,27 @@ describe('chat import boundary', () => {
   });
 
   it('internal module-specifier prefilter catches every root import form', () => {
-    expect(
-      CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test("import '@corvidae/conversationalist';"),
-    ).toBe(true);
-    expect(
-      CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test(
-        "import { getMessages } from '@corvidae/conversationalist';",
-      ),
-    ).toBe(true);
-    expect(
-      CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test(
-        "await import('@corvidae/conversationalist');",
-      ),
-    ).toBe(true);
-  });
-
-  it('rejects the old bare package and subpath imports', () => {
-    expect(OLD_CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test("import 'conversationalist';")).toBe(
+    expect(CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test("import 'conversationalist';")).toBe(
       true,
     );
     expect(
-      OLD_CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test(
-        "import { getMessages } from 'conversationalist/conversation';",
+      CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test(
+        "import { getMessages } from 'conversationalist';",
       ),
     ).toBe(true);
-    expect(CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test("import 'conversationalist';")).toBe(
-      false,
-    );
+    expect(
+      CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test("await import('conversationalist');"),
+    ).toBe(true);
   });
 
   it('collector recognizes per-specifier type-only imports and exports', () => {
     const specifiers = collectModuleSpecifiers(
       'inline.ts',
       `
-        import { type ConversationHistory } from '@corvidae/conversationalist';
-        import { type Message, createConversationHistory } from '@corvidae/conversationalist';
-        export { type ToolCallPair } from '@corvidae/conversationalist';
-        export { type MessageInput, appendMessages } from '@corvidae/conversationalist';
+        import { type ConversationHistory } from 'conversationalist';
+        import { type Message, createConversationHistory } from 'conversationalist';
+        export { type ToolCallPair } from 'conversationalist';
+        export { type MessageInput, appendMessages } from 'conversationalist';
       `,
     );
 
@@ -165,26 +152,6 @@ describe('chat import boundary', () => {
       { specifier: CONVERSATIONALIST_PACKAGE, typeOnly: true },
       { specifier: CONVERSATIONALIST_PACKAGE, typeOnly: false },
     ]);
-  });
-
-  it('contains no old package imports anywhere in Chat source', async () => {
-    const glob = new Bun.Glob('**/*.{ts,svelte}');
-    const relativePaths = await Array.fromAsync(glob.scan({ cwd: CHAT_ROOT }));
-    const offenders = await Promise.all(
-      relativePaths.map(async (relativePath) => {
-        const filePath = `${CHAT_ROOT}/${relativePath}`;
-        const raw = await Bun.file(filePath).text();
-        const source = filePath.endsWith('.svelte') ? extractSvelteScripts(raw) : raw;
-        const oldImports = collectModuleSpecifiers(filePath, source).filter(
-          ({ specifier }) =>
-            specifier === OLD_CONVERSATIONALIST_PACKAGE ||
-            specifier.startsWith(`${OLD_CONVERSATIONALIST_PACKAGE}/`),
-        );
-        return oldImports.length > 0 ? relativePath : undefined;
-      }),
-    );
-
-    expect(offenders.filter((path): path is string => path !== undefined)).toEqual([]);
   });
 
   it('runtime Conversationalist imports stay out of the chat package', async () => {

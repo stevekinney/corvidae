@@ -3,7 +3,7 @@
 // tst-04c slice, AB-92's testability contract). AB-334 moved the CANONICAL
 // `ReproductionArtifact` declaration down here from `bureau/src/test/
 // reproduction-artifact.ts` (AB-263): `bureau` depends on
-// `@corvidae/operative`, never the other way around, so the shared
+// `@lostgradient/operative`, never the other way around, so the shared
 // declaration has to live at the lower layer for bureau to import it.
 // AB-263's narrowness at `cleanupReport` (a real union, not `unknown`)
 // survives the move as a type parameter, `TCleanupReport`, because its
@@ -16,8 +16,8 @@
 // second one.
 // ---------------------------------------------------------------------------
 
-import type { DeferredDrainReport, RuntimeServices } from '@corvidae/lifecycle';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import type { DeferredDrainReport, RuntimeServices } from '@lostgradient/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { CleanupAcknowledgement } from '../types';
 import { createBarrierRegistry } from './barriers';
@@ -361,7 +361,7 @@ export async function runBaselineReplayCase(
 /** Fixed, non-evidentiary fields for the baseline fixture — nothing here participates in replay comparison. */
 const BASELINE_ARTIFACT_HEADER = {
   sourceRevision: 'baseline-fixture',
-  packageVersions: Object.freeze({ '@corvidae/operative': 'baseline-fixture' }),
+  packageVersions: Object.freeze({ '@lostgradient/operative': 'baseline-fixture' }),
   effectiveModel: Object.freeze({ provider: 'baseline-fixture', model: 'baseline-fixture' }),
   scriptedOutcomes: Object.freeze([]) as readonly ScriptedOutcome[],
   cleanupReport: Object.freeze({ status: 'not-required' }),

@@ -75,7 +75,7 @@ export interface CreationContext {
    * matches where the files were actually written.
    */
   relativeDirectory: string;
-  /** Import subpath consumers use: `@corvidae/cinder/<name>` or `@corvidae/cinder<name>`. */
+  /** Import subpath consumers use: `@lostgradient/cinder/<name>` or `@lostgradient/cinder<name>`. */
   importPath: string;
 }
 
@@ -104,7 +104,7 @@ export function buildContext(inputName: string): CreationContext {
   const directory = isExperimental
     ? join(COMPONENTS_DIR, 'experimental', name)
     : join(COMPONENTS_DIR, name);
-  const importPath = '@corvidae/cinder';
+  const importPath = '@lostgradient/cinder';
 
   return {
     inputName,
@@ -327,7 +327,7 @@ export function renderTest(context: CreationContext): string {
   return `/// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 // setupHappyDom() MUST run before any \`@testing-library/svelte\` import. testing-library
 // reads \`globalThis.document\` / \`window\` at module-init (top-level, not inside test bodies),
@@ -452,8 +452,8 @@ async function main(): Promise<void> {
   process.stdout.write(
     `  4. Add 'export ... from ./components/${context.relativeDirectory}/index.ts' to src/index.ts.\n`,
   );
-  process.stdout.write('  5. Run: bun run --filter=@corvidae/cinder components:generate\n');
-  process.stdout.write('  6. Verify: bun run --filter=@corvidae/cinder components:check\n');
+  process.stdout.write('  5. Run: bun run --filter=@lostgradient/cinder components:generate\n');
+  process.stdout.write('  6. Verify: bun run --filter=@lostgradient/cinder components:check\n');
 }
 
 if (import.meta.main) {

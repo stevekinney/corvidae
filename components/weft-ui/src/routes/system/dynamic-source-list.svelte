@@ -53,7 +53,7 @@
    * enough to select an exact `(name, revision)` key, never a substitute for
    * the per-key diagnostics/preload calls below it.
    */
-  import { Badge, Button, EmptyState, Table } from '@corvidae/cinder';
+  import { Badge, Button, EmptyState, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import { DatabaseZap } from 'lucide-svelte';
 

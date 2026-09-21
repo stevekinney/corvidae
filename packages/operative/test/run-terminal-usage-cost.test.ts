@@ -5,9 +5,9 @@
  * `costEstimate` is never fabricated: it stays absent when `costEstimation`
  * is omitted or its model has no resolvable pricing.
  */
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { HookRegistry } from '@corvidae/lifecycle';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { createCostBudgetMonitor } from '../src/cost-budget-monitor';

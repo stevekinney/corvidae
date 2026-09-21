@@ -1,4 +1,4 @@
-import type { PlaceholderCandidate, PlaceholderCompletionConfiguration } from '@corvidae/markdown';
+import type { PlaceholderCandidate, PlaceholderCompletionConfiguration } from '@lostgradient/markdown';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
   createCompletionHarness,

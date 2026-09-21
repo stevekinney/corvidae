@@ -67,7 +67,7 @@ export type {
  *
  * @example
  * ```ts
- * import { WorkerRegistry, type WorkerManifest } from '@corvidae/weft';
+ * import { WorkerRegistry, type WorkerManifest } from '@lostgradient/weft';
  *
  * const manifest: WorkerManifest = {
  *   manifestVersion: 1,

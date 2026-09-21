@@ -17,7 +17,7 @@
  * same activity run twice concurrently via `ctx.all`) is left unattached
  * rather than guessed at.
  */
-import type { WorkflowTimelineEntry } from '@corvidae/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 
 import { timelineStepId } from '../timeline/timeline-mapping.ts';
 import type { PendingAsyncActivityObservation } from '../timeline/workflow-live-observations.svelte.ts';

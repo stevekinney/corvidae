@@ -15,7 +15,7 @@
  */
 import { CronExpressionParser } from 'cron-parser';
 
-import type { ScheduleFire, ScheduleValue } from '@corvidae/cinder';
+import type { ScheduleFire, ScheduleValue } from '@lostgradient/cinder';
 
 const MINUTE_MS = 60_000;
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Grid, GridItem } from '@corvidae/cinder';
+  import { Grid, GridItem } from '@lostgradient/cinder';
 
   const items = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'];
 </script>

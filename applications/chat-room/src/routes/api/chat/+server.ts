@@ -1,5 +1,5 @@
-import { conversationSchema } from '@corvidae/conversationalist';
-import { createAnthropicProviderStream } from '@corvidae/operative';
+import { conversationSchema } from 'conversationalist';
+import { createAnthropicProviderStream } from '@lostgradient/operative';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { createChatAgent, startChatRun } from '../../../lib/chat-agent.ts';

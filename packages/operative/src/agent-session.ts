@@ -1,8 +1,8 @@
-import type { ConversationHistory } from '@corvidae/conversationalist';
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
-import type { JSONValue } from '@corvidae/tool-protocol';
-import type { ConditionalTextValueStore } from '@corvidae/weft';
+import type { ConversationHistory } from 'conversationalist';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import type { JSONValue } from '@lostgradient/tool-protocol';
+import type { ConditionalTextValueStore } from '@lostgradient/weft';
 
 import { createSessionStore } from './session/create-session-store';
 import type { RunOutcome } from './types';

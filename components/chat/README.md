@@ -1,14 +1,14 @@
-# @corvidae/chat
+# @lostgradient/chat
 
-`@corvidae/chat` is the [Svelte](https://svelte.dev/) conversation surface for Corvidae. It stays separate from [Cinder](../cinder/README.md) so an application that only needs domain-neutral interface primitives does not also pull in conversation state, transport adapters, and tool-call presentation.
+`@lostgradient/chat` is the [Svelte](https://svelte.dev/) conversation surface for Corvidae. It stays separate from [Cinder](../cinder/README.md) so an application that only needs domain-neutral interface primitives does not also pull in conversation state, transport adapters, and tool-call presentation.
 
 `Chat` and `ChatAdapter` own conversation state and transport. `ChatMessage` owns streaming presentation, adapter-provided metadata, and tool calls. Cinder's `Message` remains the smaller, domain-neutral primitive.
 
 ## Workspace usage
 
-Declare `"@corvidae/chat": "workspace:*"` in the consuming workspace's dependencies and run `bun install` from the Corvidae root. Shared external versions come from the root Bun catalog. This private package exports TypeScript and Svelte source; the application compiles it.
+Declare `"@lostgradient/chat": "workspace:*"` in the consuming workspace's dependencies and run `bun install` from the Corvidae root. Shared external versions come from the root Bun catalog. This private package exports TypeScript and Svelte source; the application compiles it.
 
-Chat declares its Cinder, Markdown, Conversationalist, and Svelte dependencies directly. Add an explicit dependency in your own workspace when you import one of those packages yourself. Import Chat's conversation surface and supported types from `@corvidae/chat`; import headless conversation APIs from `@corvidae/conversationalist`.
+Chat declares its Cinder, Markdown, Conversationalist, and Svelte dependencies directly. Add an explicit dependency in your own workspace when you import one of those packages yourself. Import Chat's conversation surface and supported types from `@lostgradient/chat`; import headless conversation APIs from `conversationalist`.
 
 ## Components
 
@@ -17,14 +17,14 @@ Chat declares its Cinder, Markdown, Conversationalist, and Svelte dependencies d
 - `ChatConversationHeader` provides the active-conversation title, metadata, and export controls.
 - `ChatConversationList` and `ChatNavigationRail` provide conversation summaries, unread counts, navigation, and selection.
 
-The package has one public entry point. It exports the supported components, types, schemas, variables, styles, and examples from `@corvidae/chat`; the repository-only `components.json` manifest is not a package export.
+The package has one public entry point. It exports the supported components, types, schemas, variables, styles, and examples from `@lostgradient/chat`; the repository-only `components.json` manifest is not a package export.
 
 ## Connecting artifacts to messages
 
 Store artifact data in `message.metadata['cinder:artifact']` using the exported `ChatArtifact` shape:
 
 ```ts
-import type { MessageInput } from '@corvidae/chat';
+import type { MessageInput } from '@lostgradient/chat';
 
 const result: MessageInput = {
   role: 'tool-result',
@@ -67,7 +67,7 @@ Pass a `mermaidRenderer` snippet to delegate only the Mermaid branch to an appli
 
 ```svelte
 <script lang="ts">
-  import { ArtifactViewer } from '@corvidae/chat';
+  import { ArtifactViewer } from '@lostgradient/chat';
   import MermaidDiagram from './mermaid-diagram.svelte';
 
   const content = 'graph TD; Request-->Response;';
@@ -94,4 +94,4 @@ The Mermaid snippet has type `Snippet<[content: string, type: 'mermaid']>`. `Art
 {/snippet}
 ```
 
-This is a deliberate difference from `@corvidae/editor`'s `DiffViewer`, whose `toolbar` override is total replacement with no `renderDefault`—the [Editor README](../editor/README.md#diffviewer-toolbar-override) explains why. Message-part and row rendering carry built-in behavior (streaming state, tool-call presentation, artifact resolution) that most wrappers want to keep and only augment. That is what `renderDefault` is for.
+This is a deliberate difference from `@lostgradient/editor`'s `DiffViewer`, whose `toolbar` override is total replacement with no `renderDefault`—the [Editor README](../editor/README.md#diffviewer-toolbar-override) explains why. Message-part and row rendering carry built-in behavior (streaming state, tool-call presentation, artifact resolution) that most wrappers want to keep and only augment. That is what `renderDefault` is for.

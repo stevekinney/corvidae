@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { CoordinatedUpdateResult, WorkflowState } from '@corvidae/weft';
+import type { CoordinatedUpdateResult, WorkflowState } from '@lostgradient/weft';
 
 import UpdatesTab from './updates-tab.svelte';
 

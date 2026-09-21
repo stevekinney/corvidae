@@ -1,4 +1,4 @@
-import { CompletableEventTarget } from '@corvidae/lifecycle';
+import { CompletableEventTarget } from '@lostgradient/lifecycle';
 
 import type { AnthropicConversation } from './adapters/anthropic/types';
 import type { GeminiConversation } from './adapters/gemini/types';

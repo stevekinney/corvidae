@@ -18,7 +18,7 @@
    * re-implementing SchemaForm's internal state tracking, which is out of
    * scope for this track.
    */
-  import { SchemaForm, JsonEditor, SegmentedControl, Segment } from '@corvidae/cinder';
+  import { SchemaForm, JsonEditor, SegmentedControl, Segment } from '@lostgradient/cinder';
 
   import AdvancedOptions from './advanced-options.svelte';
   import { parseRawPayload, type AdvancedStartOptionsInput } from './start-wizard-state.ts';

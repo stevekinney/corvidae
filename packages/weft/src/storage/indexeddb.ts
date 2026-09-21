@@ -184,8 +184,8 @@ async function* iterateCursor<TCursor extends IDBCursor | IDBCursorWithValue, TV
  *
  * @example
  * ```ts
- * import { IndexedDBStorage } from '@corvidae/weft';
- * import { workflow, Engine, type WorkflowContext } from '@corvidae/weft';
+ * import { IndexedDBStorage } from '@lostgradient/weft';
+ * import { workflow, Engine, type WorkflowContext } from '@lostgradient/weft';
  *
  * // Opens (or re-opens) the default 'weft' IndexedDB database
  * await using storage = new IndexedDBStorage();

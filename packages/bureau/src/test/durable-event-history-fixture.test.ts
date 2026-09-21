@@ -10,9 +10,9 @@
  * while rejecting a deliberately mismatched one exactly as
  * `UnsupportedDurableEventSchemaVersionError` specifies.
  */
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
-import type { DurableEventEnvelope } from '@corvidae/operative';
-import { resolveStorage, type Storage } from '@corvidae/weft';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import type { DurableEventEnvelope } from '@lostgradient/operative';
+import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory } from '../durable-event-history';

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button, Checkbox, Drawer, Select } from '@corvidae/cinder';
-  import type { DrawerPlacement, DrawerSize } from '@corvidae/cinder';
+  import { Button, Checkbox, Drawer, Select } from '@lostgradient/cinder';
+  import type { DrawerPlacement, DrawerSize } from '@lostgradient/cinder';
 
   let open = $state(false);
   let triggerRef: HTMLElement | null = $state(null);

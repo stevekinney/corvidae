@@ -1,4 +1,4 @@
-import { getMessages } from '@corvidae/chat';
+import { getMessages } from '@lostgradient/chat';
 import { json } from '@sveltejs/kit';
 
 import {

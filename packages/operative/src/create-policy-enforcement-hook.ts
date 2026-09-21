@@ -1,4 +1,4 @@
-import type { ToolPolicy } from '@corvidae/tool-protocol';
+import type { ToolPolicy } from '@lostgradient/tool-protocol';
 
 export type { ToolPolicy };
 

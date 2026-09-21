@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { PendingReviewEntry } from '@corvidae/weft';
+import type { PendingReviewEntry } from '@lostgradient/weft';
 
 import {
   buildDiagnosticChips,

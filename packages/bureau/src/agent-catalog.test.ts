@@ -3,7 +3,7 @@ import {
   createMockGenerate,
   createModelCatalog,
   withBackendDescriptors,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentCatalog } from './agent-catalog';

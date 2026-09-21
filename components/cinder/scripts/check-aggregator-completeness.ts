@@ -10,7 +10,7 @@ import { parse, type Root } from 'postcss';
  *
  * The aggregate `/styles` (and `/styles/all`) bundle is a single CSS file that
  * `@import`s every component's CSS partial. Consumers who opt into the bundle —
- * rather than the per-component `@corvidae/cinder/<name>` subpaths — get
+ * rather than the per-component `@lostgradient/cinder/<name>` subpaths — get
  * styling for a component ONLY if that component's CSS is reachable from
  * `components.css` through the CSS `@import` chain.
  *

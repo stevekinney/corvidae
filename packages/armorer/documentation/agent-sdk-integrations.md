@@ -5,14 +5,14 @@
 Toolbox supports the [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/) workflows through [Model Context Protocol](https://modelcontextprotocol.io/) and a direct adapter. You can either:
 
 1. Connect to a Toolbox MCP server
-2. Use the direct OpenAI Agents adapter (`@corvidae/armorer`)
+2. Use the direct OpenAI Agents adapter (`armorer`)
 
 ## OpenAI Agents SDK (`@openai/agents`)
 
 The OpenAI Agents SDK can consume Toolbox tools in two ways:
 
 1. **MCP servers** (shown below) - Run Toolbox as an MCP server that the SDK connects to
-2. **Direct adapter** - Convert tools directly using the [OpenAI Agents adapter](./openai-agents-sdk.md) (`@corvidae/armorer`)
+2. **Direct adapter** - Convert tools directly using the [OpenAI Agents adapter](./openai-agents-sdk.md) (`armorer`)
 
 The MCP approach is useful when you want to run tools in a separate process or expose them over HTTP. The direct integration is simpler for in-process usage.
 
@@ -22,8 +22,8 @@ Run a Toolbox MCP server as a local process and let the agent SDK spawn it.
 
 ```typescript
 // mcp-server.ts
-import { createToolbox, createTool } from '@corvidae/armorer';
-import { createMCP } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
+import { createMCP } from 'armorer';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 

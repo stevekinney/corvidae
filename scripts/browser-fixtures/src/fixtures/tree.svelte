@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Tree } from '@corvidae/cinder';
+  import { Tree } from '@lostgradient/cinder';
   import IndeterminateParents from './tree/indeterminate-parents.svelte';
   import Virtualized from './tree/virtualized.svelte';
 

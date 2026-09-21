@@ -42,7 +42,7 @@ Default tool events include:
 Example:
 
 ```typescript
-import { createTool } from '@corvidae/armorer';
+import { createTool } from 'armorer';
 import { z } from 'zod';
 
 const summarize = createTool({
@@ -118,7 +118,7 @@ Default execution mode is collect (`stream: false`), which materializes chunks i
 Example:
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
 
 const toolbox = createToolbox();
 

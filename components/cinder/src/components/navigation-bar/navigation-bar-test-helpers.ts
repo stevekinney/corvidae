@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { requiredInstance } from '@corvidae/testing';
+import { requiredInstance } from '@lostgradient/testing';
 import { expect } from 'bun:test';
 import { tick } from 'svelte';
 const { fireEvent } = await import('@testing-library/svelte');

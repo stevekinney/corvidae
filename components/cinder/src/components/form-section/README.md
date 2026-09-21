@@ -6,9 +6,9 @@ Groups related form fields under a heading with optional description and layout 
 
 ```svelte
 <script lang="ts">
-  import { FormField } from '@corvidae/cinder';
-  import { FormSection } from '@corvidae/cinder';
-  import { Input } from '@corvidae/cinder';
+  import { FormField } from '@lostgradient/cinder';
+  import { FormSection } from '@lostgradient/cinder';
+  import { Input } from '@lostgradient/cinder';
   let street = $state('');
   let city = $state('');
   let postalCode = $state('');

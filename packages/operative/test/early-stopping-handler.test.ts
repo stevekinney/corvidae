@@ -1,5 +1,5 @@
-import { createTestToolbox, createTool } from '@corvidae/armorer';
-import { Conversation, messageText } from '@corvidae/conversationalist';
+import { createTestToolbox, createTool } from 'armorer';
+import { Conversation, messageText } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

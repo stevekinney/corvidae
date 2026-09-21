@@ -2,7 +2,7 @@ import type {
   LivenessEvidenceEntry,
   LivenessSnapshot,
   SemanticProgress,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 
 import { toJsonSafe } from './serialization-json';
 

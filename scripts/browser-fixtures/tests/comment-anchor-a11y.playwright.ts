@@ -10,7 +10,7 @@
  * for a filed a11y fix being wrong until measured against the accessibility
  * tree rather than DOM attribute presence.
  */
-import { runAxe } from '@corvidae/testing';
+import { runAxe } from '@lostgradient/testing';
 import {
   reviewEditorCommentsRoute,
   reviewEditorReadonlyRoute,

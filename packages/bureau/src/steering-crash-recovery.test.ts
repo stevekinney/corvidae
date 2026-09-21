@@ -20,7 +20,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { resolveStorage } from '@corvidae/weft';
+import { resolveStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { PersistedSteeringCommand } from './steering-durability';

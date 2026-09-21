@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { ApprovalResolution } from '@corvidae/cinder';
+  import type { ApprovalResolution } from '@lostgradient/cinder';
   import type { ToolApprovalMessagePart } from '../../utilities/types.ts';
 
   export type ToolApprovalPartProps = {
@@ -12,8 +12,8 @@
 </script>
 
 <script lang="ts">
-  import { ApprovalCard } from '@corvidae/cinder';
-  import type { ApprovalCardProps } from '@corvidae/cinder';
+  import { ApprovalCard } from '@lostgradient/cinder';
+  import type { ApprovalCardProps } from '@lostgradient/cinder';
 
   let { part, onapprovalresolve }: ToolApprovalPartProps = $props();
 

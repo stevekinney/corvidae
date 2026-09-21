@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { JsonEditor } from '@corvidae/cinder';
+  import { JsonEditor } from '@lostgradient/cinder';
 
   let value = $state('{\n  "region": "us-west-2",\n  "dryRun": true\n}');
 </script>

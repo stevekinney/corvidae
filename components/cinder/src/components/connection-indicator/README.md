@@ -10,7 +10,7 @@ Use `ConnectionIndicator` for a compact, self-contained pill that reports transp
 
 ```svelte
 <script lang="ts">
-  import { ConnectionIndicator } from '@corvidae/cinder';
+  import { ConnectionIndicator } from '@lostgradient/cinder';
 </script>
 
 <ConnectionIndicator status="live" />
@@ -22,7 +22,7 @@ Use `ConnectionIndicator` for a compact, self-contained pill that reports transp
 
 ```svelte
 <script lang="ts">
-  import { ConnectionIndicator } from '@corvidae/cinder';
+  import { ConnectionIndicator } from '@lostgradient/cinder';
 </script>
 
 <ConnectionIndicator status="reconnecting">

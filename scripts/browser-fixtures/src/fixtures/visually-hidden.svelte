@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, VisuallyHidden } from '@corvidae/cinder';
+  import { Button, VisuallyHidden } from '@lostgradient/cinder';
 
   let element = $state<'span' | 'textarea'>('span');
 </script>

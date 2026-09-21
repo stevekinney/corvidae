@@ -6,7 +6,7 @@ Full-width announcement strip for page-level alerts, promotions, or system messa
 
 ```svelte
 <script lang="ts">
-  import { Banner } from '@corvidae/cinder';
+  import { Banner } from '@lostgradient/cinder';
 </script>
 
 <Banner>Your message here.</Banner>

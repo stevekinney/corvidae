@@ -9,9 +9,9 @@
    *     "Completed archive read-only + timeout-expired treatment").
    *   - completed → a read-only recorded-decision summary, no form at all.
    */
-  import { Alert, Badge, DescriptionList } from '@corvidae/cinder';
+  import { Alert, Badge, DescriptionList } from '@lostgradient/cinder';
   import CircleCheck from 'lucide-svelte/icons/circle-check';
-  import type { CompletedReviewEntry, PendingReviewEntry } from '@corvidae/weft';
+  import type { CompletedReviewEntry, PendingReviewEntry } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import ArtifactView from './artifact-view.svelte';

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Component } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { getDataGridColumnValue } from './_internal/column-model.svelte.ts';
 import type { DataGridColumnDef, DataGridProps } from './data-grid.types.ts';
 

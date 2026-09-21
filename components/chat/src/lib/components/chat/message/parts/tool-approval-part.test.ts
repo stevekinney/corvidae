@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import type { ApprovalCardProps, ApprovalResolution } from '@corvidae/cinder';
-import { setupHappyDom } from '@corvidae/testing';
+import type { ApprovalCardProps, ApprovalResolution } from '@lostgradient/cinder';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { ToolApprovalMessagePart } from '../../utilities/types.ts';
 
 setupHappyDom();

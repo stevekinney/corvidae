@@ -1,5 +1,5 @@
-import type { AnyToolbox, ToolboxEventMap } from '@corvidae/armorer';
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { AnyToolbox, ToolboxEventMap } from 'armorer';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 
 import type { OperativeEventEmitter } from '../events';
 import {

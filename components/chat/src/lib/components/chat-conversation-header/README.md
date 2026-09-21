@@ -6,7 +6,7 @@ Header primitive for the active Chat conversation, composed as a sibling above C
 
 ```svelte
 <script lang="ts">
-  import { ChatConversationHeader } from '@corvidae/chat';
+  import { ChatConversationHeader } from '@lostgradient/chat';
 </script>
 
 <ChatConversationHeader conversation={activeConversation} />

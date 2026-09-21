@@ -1,4 +1,4 @@
-import { captureScreenshot, THEME_STORAGE_KEY, type Theme } from '@corvidae/testing';
+import { captureScreenshot, THEME_STORAGE_KEY, type Theme } from '@lostgradient/testing';
 import { expect, test, type Page } from '@playwright/test';
 
 import { fixtureRoute } from './overlay-fixture.ts';

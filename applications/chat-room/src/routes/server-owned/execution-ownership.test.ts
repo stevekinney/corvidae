@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
  * this file pins the declaration.
  *
  * The runtime behaviour it declares is already covered where it belongs, in
- * `@corvidae/chat`'s `session-controller-execution-owner.test.ts`: a
+ * `@lostgradient/chat`'s `session-controller-execution-owner.test.ts`: a
  * server-owned controller submits exactly once after tools resolve, and one
  * without the option submits again. What no runtime test in this application
  * can observe is which of the two THIS route asked for, because the difference

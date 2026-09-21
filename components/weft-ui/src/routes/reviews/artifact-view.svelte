@@ -4,7 +4,7 @@
    * Dispatch lives in `./review-domain.ts`'s pure `classifyArtifactValue()`;
    * this component only owns the presentation per kind:
    *   - `text`   → a plain paragraph.
-   *   - `markdown` → `@corvidae/markdown`'s
+   *   - `markdown` → `@lostgradient/markdown`'s
    *     `renderMarkdown()`, which sanitizes before returning HTML — safe to
    *     `{@html}`.
    *   - `image`  → a plain `<img>`. `imageUrl` is asserted by an artifact
@@ -21,8 +21,8 @@
    *     (`humanizeKeys`) for a plain object, or the raw value otherwise
    *     (arrays/primitives have no keys to humanize).
    */
-  import { PayloadInspector } from '@corvidae/cinder';
-  import { renderMarkdown } from '@corvidae/markdown';
+  import { PayloadInspector } from '@lostgradient/cinder';
+  import { renderMarkdown } from '@lostgradient/markdown';
 
   import { classifyArtifactValue, humanizeKeys } from './review-domain.ts';
 

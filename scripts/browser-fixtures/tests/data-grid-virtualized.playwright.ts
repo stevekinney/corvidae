@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-import { loadManifest, runAxe, type AxeBuckets } from '@corvidae/testing';
+import { loadManifest, runAxe, type AxeBuckets } from '@lostgradient/testing';
 import { expect, test } from './component-page-fixture.ts';
 
 const entriesBySlug = new Map(loadManifest().map((entry) => [entry.slug, entry] as const));

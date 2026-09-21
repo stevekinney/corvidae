@@ -6,7 +6,7 @@ Shared locale and text-direction context for locale-aware descendants.
 
 ```svelte
 <script lang="ts">
-  import { LocaleProvider } from '@corvidae/cinder';
+  import { LocaleProvider } from '@lostgradient/cinder';
 </script>
 
 <LocaleProvider locale="de-DE">

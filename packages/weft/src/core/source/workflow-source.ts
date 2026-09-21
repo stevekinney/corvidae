@@ -42,10 +42,10 @@ const DEFAULT_WORKFLOW_SOURCE_KIND: WorkflowSourceKind = 'module';
  *
  * @example
  * ```ts
- * import { workflowSource } from '@corvidae/weft';
+ * import { workflowSource } from '@lostgradient/weft';
  *
  * declare const loadCheckout: () => Promise<{
- *   checkout: import('@corvidae/weft').WorkflowDefinition<{ orderId: string }, { shipped: boolean }, 'checkout'>;
+ *   checkout: import('@lostgradient/weft').WorkflowDefinition<{ orderId: string }, { shipped: boolean }, 'checkout'>;
  * }>;
  * const source = workflowSource(
  *   { name: 'checkout', location: './workflows/checkout.ts', exportName: 'checkout', revision: 'r1' },

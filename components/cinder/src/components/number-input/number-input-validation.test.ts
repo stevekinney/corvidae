@@ -1,4 +1,4 @@
-import { requiredInstance } from '@corvidae/testing';
+import { requiredInstance } from '@lostgradient/testing';
 import { render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import {

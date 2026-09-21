@@ -6,8 +6,8 @@ Wraps an input, label, and helper or error text into a cohesive accessible field
 
 ```svelte
 <script lang="ts">
-  import { FormField } from '@corvidae/cinder';
-  import { Input } from '@corvidae/cinder';
+  import { FormField } from '@lostgradient/cinder';
+  import { Input } from '@lostgradient/cinder';
 
   let name = $state('');
 </script>

@@ -8,8 +8,8 @@ See the [tabular family boundaries](https://github.com/stevekinney/cinder/blob/m
 
 ```svelte
 <script lang="ts">
-  import { DataTable } from '@corvidae/cinder';
-  import type { DataTableColumn } from '@corvidae/cinder';
+  import { DataTable } from '@lostgradient/cinder';
+  import type { DataTableColumn } from '@lostgradient/cinder';
 
   type Student = { name: string; score: number };
 

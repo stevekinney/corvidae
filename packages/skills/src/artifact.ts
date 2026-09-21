@@ -1,4 +1,4 @@
-import { sha256BytesHex, sha256Hex } from '@corvidae/cryptography';
+import { sha256BytesHex, sha256Hex } from '@lostgradient/cryptography';
 
 /**
  * The complete bounded skill artifact: every file a skill bundle carries, not just its `SKILL.md`.

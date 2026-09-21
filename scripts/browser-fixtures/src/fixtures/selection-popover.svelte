@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Button, SelectionPopover, type SelectionPopoverPosition } from '@corvidae/cinder';
+  import { Button, SelectionPopover, type SelectionPopoverPosition } from '@lostgradient/cinder';
 
   type ExistingComment = { id: string; quote: string; body: string };
   const existingComments: ExistingComment[] = [

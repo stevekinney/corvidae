@@ -27,7 +27,7 @@ type ToolListSignatureEntry = readonly [
  *
  * @example
  * ```ts
- * import { type McpSessionPhase } from '@corvidae/weft';
+ * import { type McpSessionPhase } from '@lostgradient/weft';
  *
  * const phase: McpSessionPhase = 'ready';
  * void phase;
@@ -40,8 +40,8 @@ export type McpSessionPhase = 'new' | 'initializing' | 'ready';
  *
  * @example
  * ```ts
- * import { createMcpSessionManager, type McpSessionManagerOptions } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { createMcpSessionManager, type McpSessionManagerOptions } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -87,8 +87,8 @@ const RESOURCE_EVENT_NAMES = [
  *
  * @example
  * ```ts
- * import { McpSessionManager, type McpSession } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { McpSessionManager, type McpSession } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -227,8 +227,8 @@ function asJsonRpcId(value: unknown): JsonRpcId | undefined {
  *
  * @example
  * ```ts
- * import { McpSessionManager } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { McpSessionManager } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -412,8 +412,8 @@ function toolListSignaturesEqual(
  *
  * @example
  * ```ts
- * import { createMcpSessionManager } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { createMcpSessionManager } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });

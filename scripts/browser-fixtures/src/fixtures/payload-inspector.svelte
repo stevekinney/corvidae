@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PayloadInspector } from '@corvidae/cinder';
+  import { PayloadInspector } from '@lostgradient/cinder';
 
   const payload = {
     userId: 'u_8f2a3b',

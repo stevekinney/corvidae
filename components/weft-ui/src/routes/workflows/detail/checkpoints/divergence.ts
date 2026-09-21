@@ -15,7 +15,7 @@
  * number and compares independently, so it stays correct even if a caller
  * points it at two unrelated timelines.
  */
-import type { WorkflowTimelineEntry } from '@corvidae/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 
 import { timelineStepId } from '../timeline/timeline-mapping.ts';
 

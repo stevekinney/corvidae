@@ -33,10 +33,10 @@ describe('E3: skills package graph position', () => {
     // lifecycle (the RuntimeServices seam every layer routes reads through
     // per AB-324/AB-326 — same relationship bureau has with lifecycle).
     const forbiddenWorkspaceDeps = [
-      '@corvidae/operative', // skills is ABOVE operative's layer
-      '@corvidae/memory', // same layer — no intra-layer import
-      '@corvidae/conversationalist', // skills is above conversationalist
-      '@corvidae/bureau', // bureau is above skills
+      '@lostgradient/operative', // skills is ABOVE operative's layer
+      '@lostgradient/memory', // same layer — no intra-layer import
+      'conversationalist', // skills is above conversationalist
+      '@lostgradient/bureau', // bureau is above skills
       'gateway', // gateway is above skills
       'sentinel', // unrelated
       'evaluation', // unrelated
@@ -56,12 +56,12 @@ describe('E3: skills package graph position', () => {
     const deps = Object.keys(packageJson.dependencies ?? {});
 
     // These are the ALLOWED workspace deps for this layer.
-    expect(deps).toContain('@corvidae/armorer');
-    expect(deps).toContain('@corvidae/tool-protocol');
-    expect(deps).toContain('@corvidae/cryptography');
-    expect(deps).toContain('@corvidae/lifecycle');
-    expect(deps).not.toContain('@corvidae/embeddings');
-    expect(deps).not.toContain('@corvidae/interoperability');
+    expect(deps).toContain('armorer');
+    expect(deps).toContain('@lostgradient/tool-protocol');
+    expect(deps).toContain('@lostgradient/cryptography');
+    expect(deps).toContain('@lostgradient/lifecycle');
+    expect(deps).not.toContain('@lostgradient/embeddings');
+    expect(deps).not.toContain('@lostgradient/interoperability');
   });
 });
 

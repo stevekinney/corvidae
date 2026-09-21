@@ -1,5 +1,5 @@
 {
-  "extends": "@corvidae/typescript/library.json",
+  "extends": "@lostgradient/typescript/library.json",
   "compilerOptions": {
     "lib": ["ESNext"],
     "types": ["node", "bun"],

@@ -2,7 +2,7 @@ import {
   findOneArgumentServerComponentBoundaries,
   hasAuthoredStyleBlock,
   preserveServerComponentIdentity,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 import { describe, expect, it } from 'bun:test';
 
 describe('hasAuthoredStyleBlock', () => {

@@ -6,8 +6,8 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { CompletedReviewEntry, ReviewListEntry } from '@corvidae/weft';
-import { HttpClientError } from '@corvidae/weft';
+import type { CompletedReviewEntry, ReviewListEntry } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft';
 
 import type { ReviewQuery } from './review-domain.ts';
 import ReviewsArchive from './reviews-archive.svelte';

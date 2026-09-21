@@ -11,7 +11,7 @@
  * This module has zero runtime-specific imports of its own — the `sql`
  * binding is injected by the caller — so it is bundleable for Bun, Node, and
  * the Cloudflare Workers (`workerd`) runtime alike. Import from
- * `@corvidae/weft`.
+ * `@lostgradient/weft`.
  *
  * @module storage/cloudflare
  */
@@ -55,8 +55,8 @@ type CountRow = { count: number };
  *
  * @example
  * ```ts
- * import type { CloudflareDurableObjectSQLiteStorageOptions } from '@corvidae/weft';
- * import type { Sql } from '@corvidae/weft';
+ * import type { CloudflareDurableObjectSQLiteStorageOptions } from '@lostgradient/weft';
+ * import type { Sql } from '@lostgradient/weft';
  *
  * declare const sql: Sql;
  * const options: CloudflareDurableObjectSQLiteStorageOptions = { sql, table: 'weft_kv' };
@@ -119,8 +119,8 @@ export type CloudflareDurableObjectSQLiteStorageOptions = {
  *
  * @example
  * ```ts
- * import { CloudflareDurableObjectSQLiteStorage, type Sql } from '@corvidae/weft';
- * import { Engine, workflow, type WorkflowContext } from '@corvidae/weft';
+ * import { CloudflareDurableObjectSQLiteStorage, type Sql } from '@lostgradient/weft';
+ * import { Engine, workflow, type WorkflowContext } from '@lostgradient/weft';
  *
  * // Injected by the Durable Object runtime: `ctx.storage.sql` inside a
  * // `DurableObject` subclass.

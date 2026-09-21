@@ -7,8 +7,8 @@
 // (`RunnableAgent<never, false> | RunnableAgent<any, true>`), not one
 // instantiation of `RunnableAgent<O, H>`.
 
-import type { RunnableAgent } from '@corvidae/operative';
-import { createAgent, createLazyAgent, createMockGenerate } from '@corvidae/operative';
+import type { RunnableAgent } from '@lostgradient/operative';
+import { createAgent, createLazyAgent, createMockGenerate } from '@lostgradient/operative';
 import { z } from 'zod';
 
 import type {

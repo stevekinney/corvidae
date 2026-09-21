@@ -4,7 +4,7 @@
  * Chat markdown-preview SSR-safety contract.
  *
  * The chat surface renders message bodies through `markdown-preview.svelte`,
- * which is where `@corvidae/markdown`'s rendering pipeline (shiki/rehype/katex)
+ * which is where `@lostgradient/markdown`'s rendering pipeline (shiki/rehype/katex)
  * enters the component tree. That pipeline is SSR-safe at module-evaluation
  * time (see `packages/markdown/src/ssr-import.test.ts`), so the only remaining
  * SSR concern is that the *runtime* render — which calls
@@ -20,7 +20,7 @@
  *     branch, so the server emits the message text without throwing and the
  *     client swaps in formatted HTML after hydration.
  *
- * Unlike `@corvidae/editor`'s `markdown-editor.svelte` — whose live-editor
+ * Unlike `@lostgradient/editor`'s `markdown-editor.svelte` — whose live-editor
  * branch pulls in ProseMirror runtime and so cannot be exercised by
  * `renderThenHydrate` (the recompiled SSR module resolves that import
  * against a missing "node"-conditional dist, producing `effect_orphan`) —
@@ -34,7 +34,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { prepareSvelteServerSource, renderThenHydrate } from '@corvidae/testing';
+import { prepareSvelteServerSource, renderThenHydrate } from '@lostgradient/testing';
 
 const markdownPreviewModule = await import('./markdown-preview.svelte');
 const { default: MarkdownPreview, segmentRenderedMarkdown } = markdownPreviewModule;

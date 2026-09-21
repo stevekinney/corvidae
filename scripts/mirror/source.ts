@@ -38,7 +38,7 @@ export class SourceEmissionError extends Error {}
 
 /** One workspace the transform emits, in corvidae and in the target. */
 export interface EmittedWorkspace {
-  /** The `@corvidae/*` name. */
+  /** The `@lostgradient/*` name. */
   workspace: string;
   /** Corvidae-relative directory, read from disk. */
   corvidaeDirectory: string;
@@ -85,7 +85,7 @@ export interface DeclaredSourceFiles {
 }
 
 /**
- * Source a workspace declares beyond its `src/` tree, keyed by `@corvidae/*` name.
+ * Source a workspace declares beyond its `src/` tree, keyed by `@lostgradient/*` name.
  *
  * COR-1221 ruled that source is `src/**` plus declared inputs, and that a workspace needing more
  * declares it rather than widening the rule. This is that declaration. It exists because a second,
@@ -140,7 +140,7 @@ export interface DeclaredSourceFiles {
  * whatever it links to.
  */
 export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
-  '@corvidae/cinder': [
+  '@lostgradient/cinder': [
     {
       paths: ['components.json'],
       reason:
@@ -219,7 +219,7 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         '`src/styles/tokens-doc-drift.test.ts` imports `generate.ts`, and this is its module closure. The directory holds 81 files; the 61 not declared are the generator’s own fixtures, docs sections and test, which nothing emitted imports.',
     },
   ],
-  '@corvidae/weft-ui': [
+  '@lostgradient/weft-ui': [
     {
       paths: ['tests/dom-test-support.ts'],
       reason:
@@ -244,14 +244,14 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         'Workflow fixtures reached from `src/routes/` through `fixtures/workflows.ts`, which re-exports the rest. `fixtures/dynamic-sources.ts`, its test and `fixtures/dynamic-workflows/` are not declared: nothing emitted imports them.',
     },
   ],
-  '@corvidae/armorer': [
+  'armorer': [
     {
       paths: ['test/helpers/async-assertions.ts'],
       reason:
         'Five `src/compose*.test.ts` suites import it without an extension. One file out of the 91 under `test/`, which is why this is declared as a file rather than as that directory.',
     },
   ],
-  '@corvidae/weft': [
+  '@lostgradient/weft': [
     {
       paths: ['scripts/lib/workflow-visibility-backfill.ts'],
       reason:
@@ -303,7 +303,7 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
 };
 
 /**
- * Files that check a workspace's emitted source, keyed by `@corvidae/*` name.
+ * Files that check a workspace's emitted source, keyed by `@lostgradient/*` name.
  *
  * A sibling of `additionalSourceRoots`, deliberately not part of it. That table's promise is that
  * every path in it is an edge an emitted file imports or reads, and `assertNoSourceEscapes` is
@@ -332,7 +332,7 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
  * type-checking", which these files are not the evidence for.
  */
 export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
-  '@corvidae/weft': [
+  '@lostgradient/weft': [
     {
       paths: [
         'scripts/check-catalog-completeness.ts',
@@ -456,7 +456,7 @@ function relativeTo(root: string, absolute: string): string {
  * Read one workspace's source tree, or nothing when the workspace has none.
  *
  * Every `tsconfig*.json` under the tree is left to `typescript-configuration.ts`, which is the
- * only producer that knows what an `extends` into `@corvidae/typescript` becomes in this target —
+ * only producer that knows what an `extends` into `@lostgradient/typescript` becomes in this target —
  * a public specifier where the target holds the package, a relative path into a vendored copy
  * where it cannot. Emitting them here as opaque bytes is what shipped
  * `src/cli/__fixtures__/codegen/typecheck/tsconfig.json` still extending a package name that
@@ -487,7 +487,7 @@ async function readSourceTree(
  *
  * The rewrite is here rather than at any of the three call sites because this is the one funnel
  * every emitted source file passes through — the `src/` tree, the declared roots and the declared
- * build inputs alike — and a file that named `@corvidae/*` downstream would be equally broken
+ * build inputs alike — and a file that named `@lostgradient/*` downstream would be equally broken
  * whichever of them read it.
  *
  * The executable bit is preserved because corvidae's two `bin` entry points are executable in the

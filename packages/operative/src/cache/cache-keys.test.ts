@@ -1,5 +1,5 @@
-import { createTestToolbox, createTool } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createTestToolbox, createTool } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import type { GenerateContext } from '../types';

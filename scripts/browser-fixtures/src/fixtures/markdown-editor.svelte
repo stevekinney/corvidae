@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Card } from '@corvidae/cinder';
-  import { MarkdownEditor, type EditorMode } from '@corvidae/editor';
+  import { Card } from '@lostgradient/cinder';
+  import { MarkdownEditor, type EditorMode } from '@lostgradient/editor';
 
   let basicValue = $state('# Release notes\n\nThis editor supports **rich markdown editing**.');
   let emptyValue = $state('');

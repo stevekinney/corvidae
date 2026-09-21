@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { StatisticGroup } from '@corvidae/cinder';
+  import { StatisticGroup } from '@lostgradient/cinder';
 </script>
 
 <StatisticGroup label="Workspace usage" columns="auto">

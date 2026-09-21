@@ -16,7 +16,7 @@
 // general-purpose barrier, not only a scripted double's own `block` step.
 // ---------------------------------------------------------------------------
 
-import { TypedEventTarget } from '@corvidae/lifecycle';
+import { TypedEventTarget } from '@lostgradient/lifecycle';
 
 import type { EventRecorder } from './event-recorder';
 

@@ -1,6 +1,6 @@
-import { createTestToolbox, createTool } from '@corvidae/armorer';
-import { Conversation, SessionForkedEvent } from '@corvidae/conversationalist';
-import { HookRegistry } from '@corvidae/lifecycle';
+import { createTestToolbox, createTool } from 'armorer';
+import { Conversation, SessionForkedEvent } from 'conversationalist';
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

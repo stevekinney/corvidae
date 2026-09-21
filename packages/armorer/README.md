@@ -1,10 +1,10 @@
 # Armorer
 
-`@corvidae/armorer` is Corvidae's tool layer. It provides type-safe tool definitions, validated execution, toolbox registries, provider adapters, middleware, [Model Context Protocol](https://modelcontextprotocol.io/) integration, and testing utilities.
+`armorer` is Corvidae's tool layer. It provides type-safe tool definitions, validated execution, toolbox registries, provider adapters, middleware, [Model Context Protocol](https://modelcontextprotocol.io/) integration, and testing utilities.
 
 ## Workspace usage
 
-Declare `"@corvidae/armorer": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@corvidae/armorer`; it exports TypeScript source directly and has no library build or publication step.
+Declare `"armorer": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `armorer`; it exports TypeScript source directly and has no library build or publication step.
 
 ## Table of Contents
 
@@ -35,11 +35,11 @@ Toolbox turns tool calling into a structured, observable, and searchable workflo
 
 ## How It Works
 
-A tool combines metadata, an input schema, and an execute function. A toolbox registers one or more tools, validates incoming calls, runs middleware and policy hooks, executes the matching tool, and emits typed lifecycle events. Provider adapters materialize the same toolbox into provider-specific tool declarations and parse provider tool calls back into the shared `@corvidae/tool-protocol` contract.
+A tool combines metadata, an input schema, and an execute function. A toolbox registers one or more tools, validates incoming calls, runs middleware and policy hooks, executes the matching tool, and emits typed lifecycle events. Provider adapters materialize the same toolbox into provider-specific tool declarations and parse provider tool calls back into the shared `@lostgradient/tool-protocol` contract.
 
 ## Project Role
 
-`armorer` is Corvidae's action layer. `@corvidae/operative` uses it to execute tool calls during an agent run and to send tool declarations to providers. `@corvidae/skills` and `@corvidae/memory` expose their capabilities as toolboxes, while host applications decide how to surface the composed tool set through an API or interface.
+`armorer` is Corvidae's action layer. `@lostgradient/operative` uses it to execute tool calls during an agent run and to send tool declarations to providers. `@lostgradient/skills` and `@lostgradient/memory` expose their capabilities as toolboxes, while host applications decide how to surface the composed tool set through an API or interface.
 
 ## Features
 
@@ -59,7 +59,7 @@ A tool combines metadata, an input schema, and an execute function. A toolbox re
 
 ## Runtime and export support
 
-Armorer is a private ESM workspace whose only export points to `src/index.ts`. Import tools, composition helpers, provider integrations, instrumentation, and test utilities from `@corvidae/armorer`. The consuming application compiles the source. Filesystem tools and server SDK integrations still require their underlying server capabilities; consolidation does not make those operations available in a browser.
+Armorer is a private ESM workspace whose only export points to `src/index.ts`. Import tools, composition helpers, provider integrations, instrumentation, and test utilities from `armorer`. The consuming application compiles the source. Filesystem tools and server SDK integrations still require their underlying server capabilities; consolidation does not make those operations available in a browser.
 
 Required runtime integrations are direct catalog-backed dependencies. Run this package's `lint`, `typecheck`, and `test` scripts against source; there is no package archive, generated declaration output, or library build to validate.
 
@@ -74,7 +74,7 @@ The root API groups the following capabilities:
 The primary API for creating and managing tools:
 
 ```typescript
-import { createToolbox, createTool, isTool } from '@corvidae/armorer';
+import { createToolbox, createTool, isTool } from 'armorer';
 ```
 
 **Exports:** `createToolbox`, `createTool`, `createToolCall`, `combineToolboxes`, `lazy`, `withContext`, `isTool`, `isToolbox`, `createMiddleware`, provider import helpers on `createToolbox`, and all core types.
@@ -84,7 +84,7 @@ import { createToolbox, createTool, isTool } from '@corvidae/armorer';
 Composition and utility functions:
 
 ```typescript
-import { pipe, parallel, retry, when } from '@corvidae/armorer';
+import { pipe, parallel, retry, when } from 'armorer';
 ```
 
 **Exports:** Everything from main entry point **plus** `pipe`, `bind`, `parallel`, `retry`, `when`, `tap`, `preprocess`, `postprocess`, `PipelineError`, error utilities, and composition types.
@@ -94,7 +94,7 @@ import { pipe, parallel, retry, when } from '@corvidae/armorer';
 Query helpers and predicates for filtering tools:
 
 ```typescript
-import { queryTools, textMatches, tagsMatchAll, schemaMatches } from '@corvidae/armorer';
+import { queryTools, textMatches, tagsMatchAll, schemaMatches } from 'armorer';
 ```
 
 **Exports:** `queryTools`, `reindexSearchIndex`, `textMatches`, `tagsMatchAll`, `tagsMatchAny`, `tagsMatchNone`, `schemaMatches`, `schemaHasKeys`, and related types.
@@ -104,7 +104,7 @@ import { queryTools, textMatches, tagsMatchAll, schemaMatches } from '@corvidae/
 Tool and registry inspection utilities:
 
 ```typescript
-import { inspectTool, inspectRegistry } from '@corvidae/armorer';
+import { inspectTool, inspectRegistry } from 'armorer';
 ```
 
 **Exports:** `inspectTool`, `inspectRegistry`, `extractSchemaSummary`, `extractMetadataFlags`, and Zod schemas for inspection results.
@@ -122,7 +122,7 @@ import {
   fromOpenAITools,
   parseOpenAIToolCalls,
   toOpenAITools,
-} from '@corvidae/armorer';
+} from 'armorer';
 ```
 
 ### Anthropic conversion
@@ -135,7 +135,7 @@ import {
   fromAnthropicTools,
   parseAnthropicToolCalls,
   toAnthropicTools,
-} from '@corvidae/armorer';
+} from 'armorer';
 ```
 
 ### Gemini conversion
@@ -148,7 +148,7 @@ import {
   fromGeminiTools,
   parseGeminiToolCalls,
   toGeminiTools,
-} from '@corvidae/armorer';
+} from 'armorer';
 ```
 
 Toolboxes also expose lazy provider exporters, and `createToolbox` exposes matching lazy provider import helpers:
@@ -171,7 +171,7 @@ Use the toolbox methods when your tools define runtime availability hooks. `tool
 Truncation utilities for tool results:
 
 ```typescript
-import { truncateToolResultContent, containsBase64Data } from '@corvidae/armorer';
+import { truncateToolResultContent, containsBase64Data } from 'armorer';
 ```
 
 **Exports:** `truncateToolResultContent`, `truncateToolResultContentStructured`, `truncateText`, `safeSlice`, `createTruncatingAsyncIterable`, `containsBase64Data`, `stripBase64Data`, `isHighSurrogate`, `isLowSurrogate`, `DEFAULT_MAX_CHARACTERS`, `DEFAULT_ERROR_MAX_CHARACTERS`, and types `TruncationOptions`, `ToolResultTruncationOptions`, `StructuredToolResultTruncationOptions`, and `StructuredToolResultTruncation`.
@@ -181,7 +181,7 @@ import { truncateToolResultContent, containsBase64Data } from '@corvidae/armorer
 Persistent idempotency helpers for at-least-once executors:
 
 ```typescript
-import { createToolResultCache, fullInputKey, withToolboxIdempotency } from '@corvidae/armorer';
+import { createToolResultCache, fullInputKey, withToolboxIdempotency } from 'armorer';
 ```
 
 **Exports:** `createToolResultCache`, `withIdempotency`, `withToolboxIdempotency`, `fullInputKey`, `fieldKey`, `compositeKey`, `namespacedKey`, and idempotency cache/result types.
@@ -193,7 +193,7 @@ import { createToolResultCache, fullInputKey, withToolboxIdempotency } from '@co
 OpenTelemetry tracing:
 
 ```typescript
-import { instrument } from '@corvidae/armorer';
+import { instrument } from 'armorer';
 ```
 
 ### Middleware
@@ -206,7 +206,7 @@ import {
   createRateLimitMiddleware,
   createTimeoutMiddleware,
   createTruncationMiddleware,
-} from '@corvidae/armorer';
+} from 'armorer';
 ```
 
 ### Test utilities
@@ -214,7 +214,7 @@ import {
 Testing utilities:
 
 ```typescript
-import { createMockTool, createTestRegistry } from '@corvidae/armorer';
+import { createMockTool, createTestRegistry } from 'armorer';
 ```
 
 ### Integrations
@@ -224,7 +224,7 @@ import { createMockTool, createTestRegistry } from '@corvidae/armorer';
 Model Context Protocol server integration:
 
 ```typescript
-import { createMCP, toMcpTools, fromMcpTools } from '@corvidae/armorer';
+import { createMCP, toMcpTools, fromMcpTools } from 'armorer';
 ```
 
 ### OpenAI Agents
@@ -232,7 +232,7 @@ import { createMCP, toMcpTools, fromMcpTools } from '@corvidae/armorer';
 OpenAI Agents SDK integration with tool gating:
 
 ```typescript
-import { toOpenAIAgentTools, createOpenAIToolGate } from '@corvidae/armorer';
+import { toOpenAIAgentTools, createOpenAIToolGate } from 'armorer';
 ```
 
 ### Other Utilities
@@ -242,21 +242,21 @@ import { toOpenAIAgentTools, createOpenAIToolGate } from '@corvidae/armorer';
 Pre-built tools (search, etc.):
 
 ```typescript
-import { createSearchTool } from '@corvidae/armorer';
+import { createSearchTool } from 'armorer';
 ```
 
 ### Composition utilities
 
-Composition utilities are exported from `@corvidae/armorer`:
+Composition utilities are exported from `armorer`:
 
 ```typescript
-import { pipe, bind, parallel } from '@corvidae/armorer';
+import { pipe, bind, parallel } from 'armorer';
 ```
 
 ## Quick Start
 
 ```typescript
-import { createToolbox, createTool } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
 import { z } from 'zod';
 
 const addNumbers = createTool({
@@ -288,7 +288,7 @@ console.log(toolCall.result); // 8
 Compose toolboxes without mutating existing instances.
 
 ```typescript
-import { createToolbox, combineToolboxes } from '@corvidae/armorer';
+import { createToolbox, combineToolboxes } from 'armorer';
 
 const base = createToolbox([mathTool], {
   context: { region: 'us-east-1' },
@@ -419,7 +419,7 @@ import {
   signGrant,
   verifyGrantSignature,
   type ReusableApprovalGrant,
-} from '@corvidae/armorer';
+} from 'armorer';
 
 const grantStore = createProcessLocalGrantStateStore();
 // Reuses the same secret configured as the toolbox's `approvalSecret` (see
@@ -526,7 +526,7 @@ import {
   formatOpenAIToolResultsAsync,
   parseOpenAIToolCalls,
   toOpenAITools,
-} from '@corvidae/armorer';
+} from 'armorer';
 
 // 1. Export tools
 const tools = toOpenAITools(toolbox);
@@ -566,10 +566,10 @@ import {
   appendToolResultsAsync,
   appendUserMessage,
   createConversationHistory,
-} from '@corvidae/conversationalist';
-import { toOpenAIMessagesGrouped } from '@corvidae/conversationalist';
-import { createToolbox } from '@corvidae/armorer';
-import { parseOpenAIToolCalls, toOpenAITools } from '@corvidae/armorer';
+} from 'conversationalist';
+import { toOpenAIMessagesGrouped } from 'conversationalist';
+import { createToolbox } from 'armorer';
+import { parseOpenAIToolCalls, toOpenAITools } from 'armorer';
 
 let conversation = createConversationHistory({ title: 'Weather' });
 conversation = appendUserMessage(conversation, 'What is the weather in Denver?');
@@ -592,8 +592,8 @@ See [Using `armorer` with `conversationalist`](documentation/conversationalist-i
 Native instrumentation for distributed tracing.
 
 ```ts
-import { createToolbox } from '@corvidae/armorer';
-import { instrument } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
+import { instrument } from 'armorer';
 import { context, trace } from '@opentelemetry/api';
 
 const toolbox = createToolbox();
@@ -639,13 +639,13 @@ Non-standard fields (duration, digests, internal status) are namespaced under `a
 Batteries-included middleware for production needs.
 
 ```ts
-import { createToolbox } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
 import {
   createCacheMiddleware,
   createRateLimitMiddleware,
   createTruncationMiddleware,
   createUntrustedOutputFencingMiddleware,
-} from '@corvidae/armorer';
+} from 'armorer';
 
 const toolbox = createToolbox([], {
   middleware: [
@@ -662,8 +662,8 @@ const toolbox = createToolbox([], {
 Prevent oversized tool results from blowing up context windows. The truncation utilities safely handle UTF-16 surrogate pairs and strip base64 data. When a tool returns a streaming result (an object with `stream` or `result` fields containing an `AsyncIterable`), the middleware wraps the streams so chunks are yielded until the character limit is reached, then a truncation marker is emitted and iteration stops.
 
 ```ts
-import { truncateToolResultContent } from '@corvidae/armorer';
-import { createTruncationMiddleware } from '@corvidae/armorer';
+import { truncateToolResultContent } from 'armorer';
+import { createTruncationMiddleware } from 'armorer';
 
 // Standalone usage
 const truncated = truncateToolResultContent(longResult, {
@@ -680,7 +680,7 @@ const toolbox = createToolbox(tools, {
 For large tool outputs that are stored separately, use the structured head-and-tail helper:
 
 ```ts
-import { truncateToolResultContentStructured } from '@corvidae/armorer';
+import { truncateToolResultContentStructured } from 'armorer';
 
 const excerpt = truncateToolResultContentStructured(toolOutput, {
   maxBytes: 8000,
@@ -698,9 +698,9 @@ The structured result is `{ head, tail, originalSize, omittedBytes, truncated }`
 Tools that return third-party text can carry prompt-injection instructions inside otherwise useful data. Mark those tools with `risk.untrustedOutput: true`, then add the fencing middleware before truncation so the model receives a clear data boundary.
 
 ```ts
-import { createToolbox, createTool } from '@corvidae/armorer';
-import { createUntrustedOutputFencingMiddleware } from '@corvidae/armorer';
-import { queryTools } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
+import { createUntrustedOutputFencingMiddleware } from 'armorer';
+import { queryTools } from 'armorer';
 import { z } from 'zod';
 
 const fetchPage = createTool({
@@ -734,8 +734,8 @@ Use the idempotency helpers when a tool might be retried by an at-least-once exe
 - `authorization-required`: a completed result exists, but it was recorded under another policy revision and must not be returned without reauthorization.
 
 ```ts
-import { createToolbox } from '@corvidae/armorer';
-import { createToolResultCache, withToolboxIdempotency } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
+import { createToolResultCache, withToolboxIdempotency } from 'armorer';
 
 // This adapter is atomic only among instances sharing this store object in one process.
 const cache = createToolResultCache({ store: processLocalKeyValueStore });
@@ -892,7 +892,7 @@ Detectors: simple repeat (same call N times) and ping-pong (alternating between 
 Utilities for testing tools and agent logic.
 
 ```ts
-import { createMockTool, createTestRegistry } from '@corvidae/armorer';
+import { createMockTool, createTestRegistry } from 'armorer';
 
 const mock = createMockTool({ name: 'weather' });
 mock.mockResolve({ temp: 72 });
@@ -909,7 +909,7 @@ console.log(toolbox.history[0].call.name); // 'weather'
 Toolbox supports registry-level policy hooks and per-tool policy for centralized guardrails. You can also tag tools as mutating or read-only and enforce those tags at the registry. See the [Registry documentation](documentation/registry.md) for details on querying, searching, and middleware.
 
 ```ts
-import { createToolbox, createTool } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
 import { z } from 'zod';
 
 const toolbox = createToolbox([], {
@@ -1033,7 +1033,7 @@ Availability is not secrets configuration. A tool with an optional API key can s
 You can use `isTool(obj)` to check if an object is a tool:
 
 ```typescript
-import { isTool, createTool } from '@corvidae/armorer';
+import { isTool, createTool } from 'armorer';
 
 const tool = createTool({ ... });
 if (isTool(tool)) {
@@ -1128,7 +1128,7 @@ const userTool = createToolWithContext({
 You can supply `execute` as a promise that resolves to a function. To avoid `import()` starting immediately, wrap the dynamic import with `lazy` so it only loads on first execution:
 
 ```typescript
-import { lazy } from '@corvidae/armorer';
+import { lazy } from 'armorer';
 
 const heavyTool = createTool({
   name: 'heavy-tool',
@@ -1297,8 +1297,8 @@ longTask.addEventListener('progress', (event) => {
 Toolbox includes a pre-configured search tool that lets agents discover available tools dynamically. This is useful when you have many tools and want the large language model to find the right one for a task.
 
 ```typescript
-import { createToolbox, createTool } from '@corvidae/armorer';
-import { createSearchTool } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
+import { createSearchTool } from 'armorer';
 import { z } from 'zod';
 
 const toolbox = createToolbox();
@@ -1344,8 +1344,8 @@ See [Search Tool documentation](documentation/search-tool.md) for filtering by t
 The coding toolbox is a first-party, read-only tool set for inspecting a codebase: `read-file`, `grep`, and `glob`, all constrained to a single root directory by a path jail.
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
-import { createCodingTools } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
+import { createCodingTools } from 'armorer';
 
 const { readFile, grep, glob, jail } = createCodingTools({ root: process.cwd() });
 const toolbox = createToolbox([readFile, grep, glob]);

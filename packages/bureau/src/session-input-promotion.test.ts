@@ -1,5 +1,5 @@
-import { createConversationHistory } from '@corvidae/conversationalist';
-import { createAgentSession, createSessionStore, type SessionStore } from '@corvidae/operative';
+import { createConversationHistory } from 'conversationalist';
+import { createAgentSession, createSessionStore, type SessionStore } from '@lostgradient/operative';
 import {
   resolveStorage,
   textValueStore,
@@ -7,7 +7,7 @@ import {
   type Storage,
   type TextValueStoreBatchOperation,
   type TextValueStoreCondition,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import {

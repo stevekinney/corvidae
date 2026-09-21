@@ -1,4 +1,4 @@
-import type { JSONValue } from '@corvidae/operative';
+import type { JSONValue } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { recoveredRequestContextFromMetadata } from './session-request-context';

@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 /** Options for controlling jitter behavior. */
 export interface JitterOptions {

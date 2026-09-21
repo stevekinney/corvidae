@@ -12,8 +12,8 @@ Expose a Toolbox registry as a [Model Context Protocol](https://modelcontextprot
 ## Quick start (stdio transport)
 
 ```typescript
-import { createToolbox, createTool } from '@corvidae/armorer';
-import { createMCP } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
+import { createMCP } from 'armorer';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
@@ -39,7 +39,7 @@ await mcp.connect(new StdioServerTransport());
 
 ## Conversion helpers
 
-`@corvidae/armorer` also exposes conversion helpers for MCP tool interoperability:
+`armorer` also exposes conversion helpers for MCP tool interoperability:
 
 - `toMcpTools(input, options?)`: convert Toolbox tools to MCP tool definitions with handlers.
 - `fromMcpTools(tools, options?)`: convert MCP tool definitions back into executable Toolbox tools.
@@ -49,7 +49,7 @@ await mcp.connect(new StdioServerTransport());
 Use the Streamable HTTP server transport to expose MCP over HTTP.
 
 ```typescript
-import { createMCP } from '@corvidae/armorer';
+import { createMCP } from 'armorer';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 const mcp = createMCP(toolbox, {
@@ -176,7 +176,7 @@ When tools are re-registered in the Toolbox registry, the MCP server refreshes t
 
 ## OAuth client support
 
-When connecting to an MCP server that requires authorization, `@corvidae/armorer` provides an `OAuthClientProvider` implementation and thin connection orchestration on top of `@modelcontextprotocol/client` (PKCE, RFC 9728/8414 discovery, dynamic client registration, token refresh, and `StreamableHTTPClientTransport`). This module never persists anything itself—you supply a `McpOAuthTokenStorage` hook (in-memory, a database row, an encrypted session, and so on) and it reads/writes exclusively through that interface.
+When connecting to an MCP server that requires authorization, `armorer` provides an `OAuthClientProvider` implementation and thin connection orchestration on top of `@modelcontextprotocol/client` (PKCE, RFC 9728/8414 discovery, dynamic client registration, token refresh, and `StreamableHTTPClientTransport`). This module never persists anything itself—you supply a `McpOAuthTokenStorage` hook (in-memory, a database row, an encrypted session, and so on) and it reads/writes exclusively through that interface.
 
 ```typescript
 import {
@@ -186,7 +186,7 @@ import {
   createMcpOAuthProvider,
   fromMcpClientTools,
   isMcpUnauthorizedError,
-} from '@corvidae/armorer';
+} from 'armorer';
 
 const tokenStorage = createInMemoryMcpOAuthTokenStorage(); // swap for durable storage in production
 
@@ -237,7 +237,7 @@ Agent SDK integration examples are documented in [Agent SDK Integrations](./agen
 
 ## No dependence on MCP sampling or roots
 
-`createMCP` only exposes Toolbox tools (and, optionally, resources/prompts) as an MCP server — it never establishes an MCP client session against a host and never requests `sampling/createMessage` or `roots/list`. `fromMcpTools` does interoperate with MCP tool definitions (turning them into executable Toolbox tools via a caller-supplied `callTool`), but that's a one-shot `tools/call` invocation, not a client session that could negotiate sampling or roots capabilities — those two capabilities are never used anywhere in `@corvidae/armorer`. This is intentional, not an oversight:
+`createMCP` only exposes Toolbox tools (and, optionally, resources/prompts) as an MCP server — it never establishes an MCP client session against a host and never requests `sampling/createMessage` or `roots/list`. `fromMcpTools` does interoperate with MCP tool definitions (turning them into executable Toolbox tools via a caller-supplied `callTool`), but that's a one-shot `tools/call` invocation, not a client session that could negotiate sampling or roots capabilities — those two capabilities are never used anywhere in `armorer`. This is intentional, not an oversight:
 
 - **Sampling** (`sampling/createMessage`) lets an MCP server ask the connected client's host to run an LLM completion on its behalf. Armorer's tools call out to LLM providers directly (via `conversationalist`/provider adapters) rather than routing through a host's sampling capability — there's no reason for a tool to depend on whether the MCP client it's connected to happens to support sampling.
 - **Roots** (`roots/list`) lets a server ask the client which filesystem/workspace roots it should operate within. Armorer's filesystem-touching tools (e.g. the coding toolbox) take paths as explicit tool input or configuration, validated by the tool itself, instead of discovering them through an MCP root negotiation.

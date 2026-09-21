@@ -3,8 +3,8 @@
  * The tracing behavior itself has no pre-existing tests in this package;
  * these cover only the descriptor-attachment contract AB-288 adds.
  */
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgent } from '../../create-agent';

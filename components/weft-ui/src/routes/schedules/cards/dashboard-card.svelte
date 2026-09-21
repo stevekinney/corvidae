@@ -18,7 +18,7 @@
    * (dozens, not thousands); a full census would need pagination this
    * summary card doesn't need.
    */
-  import { Card, Skeleton, StatusDot } from '@corvidae/cinder';
+  import { Card, Skeleton, StatusDot } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../../lib/client.ts';

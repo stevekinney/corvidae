@@ -1,12 +1,12 @@
 # Conversationalist
 
-`@corvidae/conversationalist` manages immutable conversation state for large language model applications. It gives you a JSON-safe `ConversationHistory` data type, a mutable `Conversation` runtime for undo and redo, provider adapters for [OpenAI](https://platform.openai.com/docs/), [Anthropic](https://docs.anthropic.com/), and [Gemini](https://ai.google.dev/gemini-api/docs), and serialization utilities for storage and testing.
+`conversationalist` manages immutable conversation state for large language model applications. It gives you a JSON-safe `ConversationHistory` data type, a mutable `Conversation` runtime for undo and redo, provider adapters for [OpenAI](https://platform.openai.com/docs/), [Anthropic](https://docs.anthropic.com/), and [Gemini](https://ai.google.dev/gemini-api/docs), and serialization utilities for storage and testing.
 
 ## What It Does
 
 - Represents conversation state as immutable, JSON-safe `ConversationHistory` values.
 - Provides a mutable `Conversation` runtime for undo, redo, branching, events, and provider import/export.
-- Materializes tool calls and tool results through the shared `@corvidae/tool-protocol` contracts.
+- Materializes tool calls and tool results through the shared `@lostgradient/tool-protocol` contracts.
 - Converts conversations to and from OpenAI, Anthropic, and Gemini message formats.
 - Supports streaming messages, compaction, redaction, Markdown export, templates, and deterministic test helpers.
 
@@ -20,11 +20,11 @@ Public conversation values are deeply frozen when they enter the runtime. `curre
 
 ## Project role
 
-`@corvidae/conversationalist` owns conversation state in Corvidae. `@corvidae/operative` consumes it for agent loops and provider payloads; `@corvidae/chat` uses it for transcript state. Tool-call and result contracts are shared through `@corvidae/tool-protocol`.
+`conversationalist` owns conversation state in Corvidae. `@lostgradient/operative` consumes it for agent loops and provider payloads; `@lostgradient/chat` uses it for transcript state. Tool-call and result contracts are shared through `@lostgradient/tool-protocol`.
 
 ## Workspace usage
 
-Declare `"@corvidae/conversationalist": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@corvidae/conversationalist`; the consumer compiles it. Shared external versions come from the root Bun catalog.
+Declare `"conversationalist": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `conversationalist`; the consumer compiles it. Shared external versions come from the root Bun catalog.
 
 ## Host Support
 
@@ -33,7 +33,7 @@ The root entry includes conversation state, streaming, schemas, provider convers
 Use `createPublicConversationProjection()` before serializing a transcript into an SSR response or browser payload. It intentionally removes hidden messages, internal instruction roles, metadata, provider-private reasoning, tool input and results, token usage, citations, document and image references, container identifiers, and managed-asset grants. It retains only user and assistant text and always applies the package's default personal-data and credential redaction rules. Supply `redactText` to apply stricter domain-specific redaction after those defaults.
 
 ```typescript
-import { createPublicConversationProjection } from '@corvidae/conversationalist';
+import { createPublicConversationProjection } from 'conversationalist';
 
 const browserHistory = createPublicConversationProjection(authoritativeConversation.current);
 const serialized = JSON.stringify(browserHistory);
@@ -47,7 +47,7 @@ import {
   appendAssistantMessage,
   appendUserMessage,
   createConversationHistory,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 let history = createConversationHistory({
   title: 'Order Support',
@@ -66,7 +66,7 @@ const openAIRequest = await conversation.toProvider('openai');
 - **`ConversationHistory`**: immutable, JSON-safe conversation data.
 - **`Conversation`**: runtime history manager with undo, redo, branching, event emission, provider import/export helpers, and convenience wrappers around the immutable helpers.
 - **`Message`**: ordered conversation entry with roles such as `user`, `assistant`, `system`, `developer`, `tool-call`, `tool-result`, and `snapshot`.
-- **`ToolCall`** and **`ToolResult`**: canonical, JSON-safe tool interaction payloads shared with `armorer` through `@corvidae/tool-protocol`.
+- **`ToolCall`** and **`ToolResult`**: canonical, JSON-safe tool interaction payloads shared with `armorer` through `@lostgradient/tool-protocol`.
 
 ### State integrity and restoration
 
@@ -79,8 +79,8 @@ Conversation state is revisioned, deeply frozen, and owned by the `Conversation`
 Every function that mints a conversation id or timestamp—`createConversationHistory`, `createConversationHistoryUnsafe`, `buildMessage`, and the `Conversation` class—reads them through a `ConversationEnvironment`. By default, that environment reads through `runtime`, an injectable `RuntimeServices` seam (`lifecycle`'s AB-92/AB-252 contract, exposing `clock` and `identifiers`) that defaults to a real-globals implementation. Pass a manual runtime—for example `lifecycle`'s `createManualRuntimeServices()`—to make a conversation's id and timestamps reproducible across two identically-seeded runs:
 
 ```typescript
-import { createConversationHistory } from '@corvidae/conversationalist';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createConversationHistory } from 'conversationalist';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 
 const runtime = createManualRuntimeServices({ origin: '2030-01-01T00:00:00.000Z' });
 const conversation = createConversationHistory(undefined, { runtime });
@@ -102,7 +102,7 @@ import {
   replaceToolResult,
   setMessageHidden,
   updateMessage,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 let history = appendMessages(
   createConversationHistory(),
@@ -153,7 +153,7 @@ import {
   type AppendableToolResult,
   type ConversationHistory,
   type JSONValue,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 type TranscriptEventRow =
   | {
@@ -283,12 +283,12 @@ import {
   createConversationHistory,
   createProjection,
   type ConversationHistory,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 import {
   appendUnsafeStreamingMessage,
   finalizeUnsafeStreamingMessage,
   updateUnsafeStreamingMessage,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 type StreamEvent =
   | { id: string; kind: 'user.message'; content: string }
@@ -373,7 +373,7 @@ import {
   updateMessage,
   validateConversationHistoryIntegrity,
   withConversationHistory,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 ```
 
 **Key exports:**
@@ -396,11 +396,11 @@ import {
 - Composition exports: `createInstructionComposer`, `createInstructionTemplate`, `createConditionalInstructionComposer`, `whenStep`, `whenToolsAvailable`, `whenAnyToolAvailable`, `whenMetadata`, `whenMetadataPresent`.
 - Event classes: `ConversationChangeEvent`, `ConversationPushEvent`, `MessagesAppendedEvent`, `StreamStartedEvent`, `StreamFinalizedEvent`, and others.
 
-**AB-70 portable content and modality vocabulary (type-only):** `Modality`, `MimeFamily`, `MediaLimitScope`, `MediaLimits`, `ContentSource`, and `ModalityMatrix`, defined in `src/multi-modal.ts` and re-exported from the root. These are additive names for other packages (notably `@corvidae/operative`'s `BackendDescriptor`) to cite, and do not replace `MultiModalContent`, `ImageContent`, `DocumentContent`, or `DocumentSource`, which stay as they are.
+**AB-70 portable content and modality vocabulary (type-only):** `Modality`, `MimeFamily`, `MediaLimitScope`, `MediaLimits`, `ContentSource`, and `ModalityMatrix`, defined in `src/multi-modal.ts` and re-exported from the root. These are additive names for other packages (notably `@lostgradient/operative`'s `BackendDescriptor`) to cite, and do not replace `MultiModalContent`, `ImageContent`, `DocumentContent`, or `DocumentSource`, which stay as they are.
 
 ### Immutable conversation helpers
 
-Pure immutable conversation helpers with no `Conversation` class dependency. Import these named functions from `@corvidae/conversationalist` when you want functional transforms over data.
+Pure immutable conversation helpers with no `Conversation` class dependency. Import these named functions from `conversationalist` when you want functional transforms over data.
 
 ```typescript
 import {
@@ -416,7 +416,7 @@ import {
   setMessageHidden,
   updateMessage,
   validateConversationHistoryIntegrity,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 ```
 
 **Key exports:** `createConversationHistory`, `createConversationHistoryUnsafe`, `appendMessages`, `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendUnsafeMessage`, `updateMessage`, `removeMessage`, `setMessageHidden`, `replaceToolResult`, `getMessages`, `getMessageById`, `getMessageAtPosition`, `getMessageIds`, `getStatistics`, `searchConversationMessages`, `getSystemMessages`, `getFirstSystemMessage`, `hasSystemMessage`, `prependSystemMessage`, `replaceSystemMessage`, `collapseSystemMessages`, `redactMessageAtPosition`, `deserializeConversationHistory`, `validateConversationHistoryIntegrity`, `assertConversationHistoryIntegrity`, `toChatMessages`, `appendToolCall`, `appendToolCalls`, `appendToolResult`, `appendToolResultAsync`, `appendToolResults`, `appendToolResultsAsync`, `getPendingToolCalls`, `getToolInteractions`, `materializeToolCall`, `materializeToolCalls`, `materializeToolResult`, `materializeToolResultAsync`, `materializeToolResults`, `materializeToolResultsAsync`, `withEnvironment`.
@@ -426,12 +426,12 @@ import {
 The `Conversation` runtime class and its event types.
 
 ```typescript
-import { Conversation } from '@corvidae/conversationalist';
+import { Conversation } from 'conversationalist';
 import type {
   ConversationActionType,
   ConversationEvent,
   ConversationEventType,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 const conversation = new Conversation();
 conversation.appendUserMessage('Hello');
@@ -461,7 +461,7 @@ import {
   simpleTokenEstimator,
   truncateFromPosition,
   truncateToTokenLimit,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 // Estimate total tokens in a conversation
 const tokens = estimateConversationTokens(history);
@@ -528,7 +528,7 @@ import {
   isStreamingMessage,
   updateUnsafeStreamingMessage,
   updateStreamingMessage,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 // Start a streaming placeholder
 let { conversation, messageId } = appendStreamingMessage(history, 'assistant');
@@ -556,7 +556,7 @@ Streaming messages (those with `metadata.__streaming === true`) are automaticall
 Incremental projection helpers for turning cumulative append-only event logs into render-ready conversation snapshots.
 
 ```typescript
-import { createProjection, isProjectionPrefixExtension } from '@corvidae/conversationalist';
+import { createProjection, isProjectionPrefixExtension } from 'conversationalist';
 ```
 
 **Key exports:** `createProjection`, `isProjectionPrefixExtension`. Also exports `Projection`, `ProjectionEventIdentity`, `ProjectionOptions`, `ProjectionReducer`, `ProjectionReducerContext`, and `ProjectionReducerResult` types.
@@ -575,7 +575,7 @@ import {
   messageParts,
   messageText,
   messageToString,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 const text = messageText(message);
 const parts = messageParts(message); // ReadonlyArray<MultiModalContent>
@@ -594,7 +594,7 @@ import {
   pairToolCallsWithResults,
   stripTransientMetadata,
   toMultiModalArray,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 ```
 
 **Key exports:** `normalizeContent`, `toMultiModalArray`, `pairToolCallsWithResults`, `stripTransientMetadata`, `isTransientKey`, `stripTransientFromRecord`, `hasOwnProperty`, `toReadonly`. Also re-exports materializer helpers and `MaterializeToolCallOptions` type.
@@ -610,7 +610,7 @@ import {
   fromMarkdown,
   getRoleLabel,
   toMarkdown,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 // From a Conversation instance
 const md = conversationToMarkdown(conversation);
@@ -629,7 +629,7 @@ const rawHistory = fromMarkdown(md2);
 // (AB-92/AB-252's `RuntimeServices` clock/identifiers seam; defaults to the real
 // implementation). `conversationFromMarkdown` forwards `environment?.runtime` into it,
 // so a manual runtime supplied for the returned `Conversation` also controls the parse.
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 const runtime = createManualRuntimeServices({ identifierSeed: 'demo' });
 const deterministic = fromMarkdown(md2, runtime);
 ```
@@ -641,7 +641,7 @@ const deterministic = fromMarkdown(md2, runtime);
 Export helpers that normalize line endings for cross-platform file output.
 
 ```typescript
-import { exportMarkdown, normalizeLineEndings } from '@corvidae/conversationalist';
+import { exportMarkdown, normalizeLineEndings } from 'conversationalist';
 
 const file = exportMarkdown(history, { includeMetadata: true });
 await Bun.write('transcript.md', file);
@@ -659,7 +659,7 @@ import {
   messageSchema,
   toolCallSchema,
   toolResultSchema,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 const result = conversationSchema.safeParse(rawData);
 if (!result.success) {
@@ -679,7 +679,7 @@ import {
   createPIIRedactionPlugin,
   DEFAULT_PII_RULES,
   redactPii,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 // Use the pre-built default plugin (redacts emails, phone numbers, and API keys/secrets)
 const conversation = new Conversation(history, {
@@ -704,7 +704,7 @@ const clean = redact('Call me at 555-123-4567');
 Schema version constant for serialization compatibility checks.
 
 ```typescript
-import { CURRENT_SCHEMA_VERSION } from '@corvidae/conversationalist';
+import { CURRENT_SCHEMA_VERSION } from 'conversationalist';
 
 console.log(CURRENT_SCHEMA_VERSION); // e.g. 1
 ```
@@ -716,7 +716,7 @@ console.log(CURRENT_SCHEMA_VERSION); // e.g. 1
 Deterministic sort helpers for consistent ordering and snapshot comparisons.
 
 ```typescript
-import { sortMessagesByPosition, sortObjectKeys } from '@corvidae/conversationalist';
+import { sortMessagesByPosition, sortObjectKeys } from 'conversationalist';
 
 const ordered = sortMessagesByPosition([...messages]);
 const stable = sortObjectKeys(obj); // alphabetically sorted copy
@@ -739,7 +739,7 @@ import {
   whenMetadata,
   whenStep,
   whenToolsAvailable,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 // Static instruction composer
 const composer = createInstructionComposer([
@@ -778,8 +778,8 @@ import {
   openAIConversationAdapter,
   toOpenAIMessages,
   toOpenAIMessagesGrouped,
-} from '@corvidae/conversationalist';
-import type { OpenAIMessage } from '@corvidae/conversationalist';
+} from 'conversationalist';
+import type { OpenAIMessage } from 'conversationalist';
 
 // Export to OpenAI format
 const messages = toOpenAIMessages(history);
@@ -811,8 +811,8 @@ import {
   anthropicConversationAdapter,
   fromAnthropicMessages,
   toAnthropicMessages,
-} from '@corvidae/conversationalist';
-import type { AnthropicConversation } from '@corvidae/conversationalist';
+} from 'conversationalist';
+import type { AnthropicConversation } from 'conversationalist';
 
 const payload = toAnthropicMessages(history);
 // payload.system: string, payload.messages: AnthropicMessage[]
@@ -833,8 +833,8 @@ import {
   fromGeminiMessages,
   geminiConversationAdapter,
   toGeminiMessages,
-} from '@corvidae/conversationalist';
-import type { GeminiConversation } from '@corvidae/conversationalist';
+} from 'conversationalist';
+import type { GeminiConversation } from 'conversationalist';
 
 const payload = toGeminiMessages(history);
 // payload.contents: GeminiContent[]
@@ -855,7 +855,7 @@ import {
   createTestConversation,
   createTestConversationEnvironment,
   createTestInstructionContext,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 // Deterministic clock + ID generator—no random values in snapshots.
 // `now` returns an ISO string; `identifiers` supplies the deterministic id sequence.
@@ -889,7 +889,7 @@ Also exports `createTestInstructionContext`.
 ### Generic provider helpers
 
 ```typescript
-import { Conversation } from '@corvidae/conversationalist';
+import { Conversation } from 'conversationalist';
 
 const conversation = new Conversation();
 
@@ -920,9 +920,9 @@ const restored = await Conversation.fromProvider('gemini', {
 `conversationalist` is designed to pair naturally with `armorer`.
 
 ```typescript
-import { appendToolCalls, appendToolResultsAsync } from '@corvidae/conversationalist';
-import { createToolbox } from '@corvidae/armorer';
-import { parseOpenAIToolCalls, toOpenAITools } from '@corvidae/armorer';
+import { appendToolCalls, appendToolResultsAsync } from 'conversationalist';
+import { createToolbox } from 'armorer';
+import { parseOpenAIToolCalls, toOpenAITools } from 'armorer';
 
 const toolbox = createToolbox();
 const tools = await toolbox.toProvider('openai');
@@ -934,7 +934,7 @@ const results = await toolbox.execute(toolCalls, { stream: true });
 conversationHistory = await appendToolResultsAsync(conversationHistory, results);
 ```
 
-Shared tool types and materializers are provided by `@corvidae/tool-protocol` and re-exported by both packages.
+Shared tool types and materializers are provided by `@lostgradient/tool-protocol` and re-exported by both packages.
 
 ## Events
 
@@ -1018,7 +1018,7 @@ Streaming messages (those with `metadata.__streaming === true`) are automaticall
 Reclaim context window space by summarizing older messages. The summarization function is caller-provided—no large language model dependency in the library.
 
 ```typescript
-import { Conversation } from '@corvidae/conversationalist';
+import { Conversation } from 'conversationalist';
 
 const conversation = new Conversation(existingHistory);
 
@@ -1053,4 +1053,4 @@ bun run typecheck
 bun run test
 ```
 
-From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@corvidae/conversationalist` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.
+From the Corvidae root, run `bunx turbo run lint typecheck test --filter=conversationalist` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.

@@ -1,11 +1,11 @@
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type {
   ScheduleFilter,
   ScheduleOptions,
   ScheduleSpec,
   ScheduleSummary,
-} from '@corvidae/weft';
-import { ScheduleHandle } from '@corvidae/weft';
+} from '@lostgradient/weft';
+import { ScheduleHandle } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentScheduledEvent, SchedulePausedEvent } from '../events';

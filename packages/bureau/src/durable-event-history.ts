@@ -37,7 +37,7 @@
  * `schedule.completed`/`schedule.failed`, which never traverse the
  * `'action'` stream — see that function's own doc comment for exactly why).
  * `DurableEventOwnerKind` is now `'run' | 'session' | 'schedule'`
- * (`@corvidae/operative`, AB-320): a schedule's four DEFINITION events
+ * (`@lostgradient/operative`, AB-320): a schedule's four DEFINITION events
  * (`schedule.created`/`paused`/`resumed`/`cancelled`, AB-298/AB-223) are
  * recorded under `{ kind: 'schedule', id: scheduleId }`, from their own
  * bureau-level listeners (they too never traverse the `'action'` stream —
@@ -86,7 +86,7 @@
  * same shape of gap `SessionDeletedEvent` closed above.
  * `SESSION_DURABLE_ACTION_TYPES` has listed `'session.created'`/
  * `'session.saved'` since AB-91, but nothing ever dispatched either onto the
- * `'action'` stream. `@corvidae/operative`'s `SessionStore` now
+ * `'action'` stream. `@lostgradient/operative`'s `SessionStore` now
  * dispatches both directly on its own `events` target as `save()`/`update()`
  * commits succeed, forwarded by `create-bureau.ts` onto this bureau-level
  * emitter; the dedicated `sessionCreatedListener`/`sessionSavedListener`
@@ -101,7 +101,7 @@
  * that closes its previously KNOWN, ACCEPTED overlapping-incarnations
  * limitation.
  */
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type {
   AgentScheduledEvent,
   DurableEventEnvelope,
@@ -115,7 +115,7 @@ import type {
   SessionDeletedEvent,
   SessionSavedEvent,
   Subscription,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   createFleetEventFeed,
   encode,
@@ -123,7 +123,7 @@ import {
   type FleetEventEnvelope,
   type FleetEventFeed,
   type Storage,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { EventTimestampResolver } from './event-timestamp';
@@ -701,7 +701,7 @@ function toDurableEventEnvelope(
  * Decodes a `since`/cursor string to its numeric sequence position for the
  * retention-floor comparison, mirroring Weft's own cursor format (an
  * unsigned decimal, or the `-1` sentinel for "before the first event") —
- * `@corvidae/weft` does not export its `decodeCursor`/`encodeCursor`
+ * `@lostgradient/weft` does not export its `decodeCursor`/`encodeCursor`
  * codec publicly, so this is a narrow, LOCAL re-implementation used only
  * for this one comparison; the cursor value itself is always round-
  * tripped verbatim from `FleetEventEnvelope.cursor`, never re-encoded by
@@ -1369,7 +1369,7 @@ export const RUN_DURABLE_EVENT_TYPES: ReadonlySet<string> = new Set(RUN_DURABLE_
  * `session.deleted` are listed here for completeness (an `'action'`-stream
  * dispatch of any of the three, if one ever existed, would be forwarded the
  * same way every other entry is), but no production code dispatches any of
- * them onto the `'action'` stream: `@corvidae/operative`'s `SessionStore`
+ * them onto the `'action'` stream: `@lostgradient/operative`'s `SessionStore`
  * dispatches `SessionCreatedEvent`/`SessionSavedEvent` on its own `events`
  * target, forwarded by `create-bureau.ts` onto the bureau-level emitter
  * (AB-384), and `deleteSession` dispatches a real `SessionDeletedEvent`
@@ -1391,7 +1391,7 @@ const SESSION_DURABLE_ACTION_TYPES = new Set<string>([
 
 /**
  * Narrows an action's `detail` to a `sessionId` string field — every
- * `session.*` event class in `@corvidae/operative.ts` carries
+ * `session.*` event class in `@lostgradient/operative.ts` carries
  * one, but `Action.detail` is `unknown` by the time it reaches the bureau
  * action stream (`store.ts` copies the event's own enumerable properties
  * verbatim), so this is a runtime type guard, not a cast.
@@ -1539,7 +1539,7 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
   // `sessionDeletedListener`'s own doc comment. That branch was DEAD CODE
   // in production at the time (Codex review finding, PR #580, "Clear the
   // guard from the actual session creation path"): `SessionCreatedEvent`
-  // was defined and type-mapped in `@corvidae/operative` but never
+  // was defined and type-mapped in `@lostgradient/operative` but never
   // constructed anywhere — no production code path dispatched a
   // `'session.created'` action onto the bureau's `'action'` stream, so the
   // clearing branch could only ever fire from a test that synthesized the

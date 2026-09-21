@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { stripCinderComponentsLayer } from '../../test/css.ts';
 
 setupHappyDom();

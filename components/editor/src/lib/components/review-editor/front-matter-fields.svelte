@@ -20,7 +20,7 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { parseFrontMatter, validateFrontMatter } from '@corvidae/markdown';
+  import { parseFrontMatter, validateFrontMatter } from '@lostgradient/markdown';
   import {
     Checkbox,
     FormField,
@@ -30,7 +30,7 @@
     PayloadInspector,
     TagInput,
     Textarea,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   let { id, data, raw, readonly = false, onchange }: FrontMatterFieldsProps = $props();
 

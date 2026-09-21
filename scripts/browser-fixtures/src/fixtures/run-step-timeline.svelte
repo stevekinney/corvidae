@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { RunStepTimeline } from '@corvidae/cinder';
-  import type { RunStep } from '@corvidae/cinder';
+  import { RunStepTimeline } from '@lostgradient/cinder';
+  import type { RunStep } from '@lostgradient/cinder';
 
   const steps: RunStep[] = [
     {

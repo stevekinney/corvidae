@@ -1,6 +1,6 @@
 <script lang="ts">
   /** Test-only composition of `<DashboardTestHarness>` + `<CriticalAlertsBand>`. */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   import type { AuthorizationScope } from '../../lib/scopes.svelte.ts';

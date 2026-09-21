@@ -3,8 +3,8 @@
 Implement graceful degradation with fallback tools.
 
 ```typescript
-import { createTool, createMiddleware } from '@corvidae/armorer';
-import { when } from '@corvidae/armorer';
+import { createTool, createMiddleware } from 'armorer';
+import { when } from 'armorer';
 import { z } from 'zod';
 
 // Create a fallback middleware
@@ -69,7 +69,7 @@ const toolbox = createToolbox([fetchFromApi.configuration, fetchFromCache.config
 ## Fallback Chain with `when`
 
 ```typescript
-import { when } from '@corvidae/armorer';
+import { when } from 'armorer';
 
 // Create a tool that tries primary, falls back to secondary
 const resilientFetch = when(

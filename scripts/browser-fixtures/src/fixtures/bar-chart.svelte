@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BarChart } from '@corvidae/cinder';
+  import { BarChart } from '@lostgradient/cinder';
 
   const planData = [
     { plan: 'Starter', active: 120, invited: 42 },

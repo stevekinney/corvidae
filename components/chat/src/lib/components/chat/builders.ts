@@ -25,14 +25,14 @@ export {
   isTokenUsage,
   isToolResult,
   prependMessages,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 // Branch-rewind builders — the operation Chat's own `editMessage` adapter
 // command asks consumers to perform ("rewind to just before the edited
 // message, discard the superseded branch, re-send"). `rewindBeforeMessage` is
 // the form edit flows usually want, since the adapter hands them a message id.
-export { rewindBeforeMessage, rewindBeforePosition } from '@corvidae/conversationalist';
-export type { RewindOptions } from '@corvidae/conversationalist';
+export { rewindBeforeMessage, rewindBeforePosition } from 'conversationalist';
+export type { RewindOptions } from 'conversationalist';
 
 // Streaming transcript helpers — canonical placeholder lifecycle for content
 // that is still arriving from a transport.
@@ -41,7 +41,7 @@ export {
   cancelStreamingMessage,
   finalizeStreamingMessage,
   updateStreamingMessage,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 // Transcript mutation helpers—canonical in-place edits (update, remove,
 // hide/show, replace a tool result) that keep message identity, role, order,
@@ -52,8 +52,8 @@ export {
   replaceToolResult,
   setMessageHidden,
   updateMessage,
-} from '@corvidae/conversationalist';
-export type { MessageUpdate } from '@corvidae/conversationalist';
+} from 'conversationalist';
+export type { MessageUpdate } from 'conversationalist';
 
 const DELIVERY_STATUS_METADATA_KEY = '_deliveryStatus';
 
@@ -101,4 +101,4 @@ export function clearMessageDeliveryStatus(
  * @deprecated Use {@link createConversationHistory}. This alias is retained
  * as the explicit migration path for consumers upgrading to Conversationalist 0.5.
  */
-export { createConversationHistory as createConversation } from '@corvidae/conversationalist';
+export { createConversationHistory as createConversation } from 'conversationalist';

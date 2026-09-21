@@ -3,7 +3,7 @@ import {
   serializeYaml,
   stringifyFrontMatter,
   validateFrontMatter,
-} from '@corvidae/markdown';
+} from '@lostgradient/markdown';
 import type {
   AnchorUpdate,
   CommentAnchor,
@@ -17,7 +17,7 @@ export type ReviewEditorFrontMatterState = {
    * Whether a `---`...`---` fenced span exists at the start of the
    * document at all, regardless of whether its content is valid front
    * matter -- see `FrontMatterParseResult.fencePresent`
-   * (`@corvidae/markdown`). `reviewStateToMarkdown` checks
+   * (`@lostgradient/markdown`). `reviewStateToMarkdown` checks
    * this, not `hasFrontMatter`, before deciding it's safe to prepend a new
    * front-matter block: `hasFrontMatter === false` doesn't mean "no fence
    * to collide with," it can also mean "a fence is there, it just isn't

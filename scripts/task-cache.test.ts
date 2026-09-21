@@ -55,7 +55,7 @@ test('application hosts and tests receive only their owned configuration', async
       await Bun.write(
         join(directory, 'packages', name, 'package.json'),
         JSON.stringify({
-          name: `@corvidae/${name}`,
+          name: `@lostgradient/${name}`,
           private: true,
           scripts: { [task]: 'bun check.ts' },
         }),
@@ -63,7 +63,7 @@ test('application hosts and tests receive only their owned configuration', async
       await run(directory, [process.execPath, 'install']);
       const output = await run(
         directory,
-        [join(root, 'node_modules/.bin/turbo'), 'run', task, `--filter=@corvidae/${name}`],
+        [join(root, 'node_modules/.bin/turbo'), 'run', task, `--filter=@lostgradient/${name}`],
         { ...process.env, [variable]: 'configuration-test', CORVIDAE_UNRELATED_TEST: 'excluded' },
       );
       expect(output).toContain('configuration received');
@@ -310,7 +310,7 @@ test('application check caches restore generated inputs without restoring build 
       await Bun.write(
         join(applicationDirectory, 'package.json'),
         JSON.stringify({
-          name: `@corvidae/${application.name}`,
+          name: `@lostgradient/${application.name}`,
           private: true,
           scripts: Object.fromEntries(application.tasks.map((task) => [task, 'bun generate.ts'])),
         }),
@@ -332,7 +332,7 @@ for (const output of ${JSON.stringify(application.outputs)}) await Bun.write(out
           join(root, 'node_modules/.bin/turbo'),
           'run',
           task,
-          `--filter=@corvidae/${application.name}`,
+          `--filter=@lostgradient/${application.name}`,
         ];
         const unrelatedBuildOutput = join(
           applicationDirectory,
@@ -431,7 +431,7 @@ test('every cacheable turbo task reaches the install preflight', async () => {
   // turbo hashes the lockfile but never the installed tree. A package-specific
   // override replaces the generic task definition rather than merging with it,
   // so adding an `env` key to `<package>#test` silently drops the inherited
-  // `dependsOn` — which is exactly how `@corvidae/weft#test` lost it.
+  // `dependsOn` — which is exactly how `@lostgradient/weft#test` lost it.
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const tasks: Record<string, { cache?: boolean; dependsOn?: string[] }> = configuration.tasks;
   const uncovered = Object.keys(tasks).filter(

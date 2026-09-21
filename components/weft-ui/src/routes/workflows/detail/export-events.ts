@@ -5,7 +5,7 @@
  * `GET …/timeline`) — no upstream work, no server round-trip beyond the
  * fetches the tab already performs.
  */
-import type { WorkflowEvent, WorkflowTimelineEntry } from '@corvidae/weft';
+import type { WorkflowEvent, WorkflowTimelineEntry } from '@lostgradient/weft';
 
 export interface EventHistoryExport {
   readonly workflowId: string;

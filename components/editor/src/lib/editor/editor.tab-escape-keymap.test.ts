@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { Node as ProseMirrorNode } from '@milkdown/prose/model';
 import { Selection, TextSelection } from '@milkdown/prose/state';
 import { afterEach, describe, expect, test } from 'bun:test';

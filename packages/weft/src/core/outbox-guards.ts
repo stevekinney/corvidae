@@ -52,7 +52,7 @@ export const MAX_DELIVERY_CANCELLATION_REASON_BYTES = 1024;
  *
  * @example
  * ```ts
- * import { ApplicationDeliveryValidationError } from '@corvidae/weft';
+ * import { ApplicationDeliveryValidationError } from '@lostgradient/weft';
  *
  * const error = new ApplicationDeliveryValidationError('destinationRef must be a non-empty string.');
  * console.log(error.code); // 'ApplicationDeliveryValidationError'

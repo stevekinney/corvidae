@@ -1,4 +1,4 @@
-import { createTool, createToolbox, createToolCall } from '@corvidae/armorer';
+import { createTool, createToolbox, createToolCall } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

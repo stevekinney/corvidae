@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ReviewEditor } from '@corvidae/editor';
+  import { ReviewEditor } from '@lostgradient/editor';
 
   const original = `# Release Plan
 

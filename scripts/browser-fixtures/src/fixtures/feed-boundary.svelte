@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FeedBoundary } from '@corvidae/cinder';
+  import { FeedBoundary } from '@lostgradient/cinder';
 </script>
 
 <ul

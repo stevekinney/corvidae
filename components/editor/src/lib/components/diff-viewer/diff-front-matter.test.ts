@@ -1,12 +1,12 @@
 /// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { render } = await import('@testing-library/svelte');
-const { computeLineDiff } = await import('@corvidae/markdown');
+const { computeLineDiff } = await import('@lostgradient/markdown');
 const { default: DiffFrontMatter } = await import('./diff-front-matter.svelte');
 
 describe('DiffViewer: front-matter section', () => {

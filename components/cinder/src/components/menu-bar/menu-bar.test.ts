@@ -2,7 +2,7 @@ import { fileEditViewMenus } from './menu-bar-test-data.ts';
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, jest, mock, spyOn, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -29,7 +29,7 @@ mock.module('@floating-ui/dom', () => ({
 }));
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
-const { prepareSvelteServerSource, renderSvelteOnServer } = await import('@corvidae/testing');
+const { prepareSvelteServerSource, renderSvelteOnServer } = await import('@lostgradient/testing');
 const { tick } = await import('svelte');
 const { default: MenuBar } = await import('./menu-bar.svelte');
 const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');

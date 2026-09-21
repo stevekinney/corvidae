@@ -4,7 +4,7 @@ import type {
   GuardrailProvenance,
   GuardrailTriggeredEvent,
   InputDetector,
-} from '@corvidae/armorer';
+} from 'armorer';
 
 import type { PrepareStepHook, ValidateResponseHook } from '../types';
 

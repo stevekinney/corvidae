@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { FilterBar } from '@corvidae/cinder';
-  import type { AppliedFilter, FacetDefinition } from '@corvidae/cinder';
+  import { FilterBar } from '@lostgradient/cinder';
+  import type { AppliedFilter, FacetDefinition } from '@lostgradient/cinder';
 
   const facets: FacetDefinition[] = [
     {

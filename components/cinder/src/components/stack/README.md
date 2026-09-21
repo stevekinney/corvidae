@@ -6,7 +6,7 @@ One-dimensional layout primitive for arranging direct children with flexbox.
 
 ```svelte
 <script lang="ts">
-  import { Stack } from '@corvidae/cinder';
+  import { Stack } from '@lostgradient/cinder';
 </script>
 
 <Stack gap="var(--cinder-space-3)">

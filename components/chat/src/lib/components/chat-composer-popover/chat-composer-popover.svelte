@@ -41,7 +41,7 @@
     CommandMenu,
     detectTrigger as detectCommandTrigger,
     CommandItem,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { onDestroy, tick } from 'svelte';
   import { filterFuzzySubsequence } from './chat-composer-popover-filter.ts';
   import type {

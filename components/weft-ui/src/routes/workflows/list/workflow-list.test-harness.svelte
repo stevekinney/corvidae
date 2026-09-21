@@ -6,7 +6,7 @@
    * file, so this fixed composition is the render target for
    * `workflow-list.test.ts` instead of passing `children` dynamically.
    */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   import type { Principal } from '../../../lib/scopes.svelte.ts';

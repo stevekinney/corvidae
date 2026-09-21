@@ -2,14 +2,14 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createTool, createToolbox } from '@corvidae/armorer';
-import { getMessages } from '@corvidae/conversationalist';
+import { createTool, createToolbox } from 'armorer';
+import { getMessages } from 'conversationalist';
 import type {
   GenerateContext,
   GenerateFunction,
   GenerateResponse,
   Toolbox,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   AgentScheduledEvent,
   ScheduleCancelledEvent,
@@ -18,7 +18,7 @@ import {
   SchedulePausedEvent,
   ScheduleResumedEvent,
   stopWhen,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

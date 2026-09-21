@@ -6,8 +6,8 @@ Accessible group boundary that clusters related dropdown-item rows inside a drop
 
 ```svelte
 <script lang="ts">
-  import { DropdownGroup } from '@corvidae/cinder';
-  import { DropdownItem } from '@corvidae/cinder';
+  import { DropdownGroup } from '@lostgradient/cinder';
+  import { DropdownItem } from '@lostgradient/cinder';
 </script>
 
 <DropdownGroup label="Actions">

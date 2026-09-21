@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { ReviewEditor } from '@corvidae/editor';
-  import type { Thread } from '@corvidae/editor';
-  import { Button } from '@corvidae/cinder';
+  import { ReviewEditor } from '@lostgradient/editor';
+  import type { Thread } from '@lostgradient/editor';
+  import { Button } from '@lostgradient/cinder';
 
   // ReviewEditor only renders its Diff/Summary tabs when `original` is
   // truthy (showDiffTabs={!!original} in review-editor-impl.svelte). Set to

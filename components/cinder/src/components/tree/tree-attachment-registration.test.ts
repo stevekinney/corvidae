@@ -1,4 +1,4 @@
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 /// <reference lib="dom" />
 
 import { describe, expect, test } from 'bun:test';

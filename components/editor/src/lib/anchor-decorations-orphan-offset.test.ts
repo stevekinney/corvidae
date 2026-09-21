@@ -19,7 +19,7 @@
  * controllable clock in place of the 300ms debounce.
  */
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import { Schema } from '@milkdown/kit/prose/model';
 import type { Transaction } from '@milkdown/kit/prose/state';

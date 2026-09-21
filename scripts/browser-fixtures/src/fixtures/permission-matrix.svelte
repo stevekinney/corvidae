@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { PermissionMatrix } from '@corvidae/cinder';
-  import type { PermissionMatrixAxisItem, PermissionMatrixCellState } from '@corvidae/cinder';
+  import { PermissionMatrix } from '@lostgradient/cinder';
+  import type { PermissionMatrixAxisItem, PermissionMatrixCellState } from '@lostgradient/cinder';
 
   const rows = [
     { id: 'workflows-admin', label: 'workflows:admin' },

@@ -6,7 +6,7 @@ Render continuously looping horizontal or vertical ticker content with pause and
 
 ```svelte
 <script lang="ts">
-  import { Marquee } from '@corvidae/cinder';
+  import { Marquee } from '@lostgradient/cinder';
 </script>
 
 <Marquee label="Announcements">

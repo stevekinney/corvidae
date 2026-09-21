@@ -1,8 +1,8 @@
-import type { ConversationHistory } from '@corvidae/conversationalist';
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
-import type { JSONValue } from '@corvidae/tool-protocol';
-import type { ConditionalTextValueStore } from '@corvidae/weft';
+import type { ConversationHistory } from 'conversationalist';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
+import type { JSONValue } from '@lostgradient/tool-protocol';
+import type { ConditionalTextValueStore } from '@lostgradient/weft';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';

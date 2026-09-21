@@ -96,7 +96,7 @@ function normalizeWorkflow(workflow: WorkerWorkflowContract): WorkerWorkflowCont
  *
  * @example
  * ```ts
- * import { normalizeWorkerManifest, WORKER_MANIFEST_VERSION } from '@corvidae/weft';
+ * import { normalizeWorkerManifest, WORKER_MANIFEST_VERSION } from '@lostgradient/weft';
  *
  * const normalized = normalizeWorkerManifest({
  *   manifestVersion: WORKER_MANIFEST_VERSION,
@@ -155,7 +155,7 @@ function canonicalWorkflowJson(workflow: WorkerWorkflowContract): string {
  *
  * @example
  * ```ts
- * import { canonicalWorkerManifestJson, WORKER_MANIFEST_VERSION } from '@corvidae/weft';
+ * import { canonicalWorkerManifestJson, WORKER_MANIFEST_VERSION } from '@lostgradient/weft';
  *
  * const base = {
  *   manifestVersion: WORKER_MANIFEST_VERSION,

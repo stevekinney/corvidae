@@ -1,6 +1,6 @@
-import { Conversation } from '@corvidae/conversationalist';
-import * as weft from '@corvidae/weft';
-import { MemoryStorage, yieldToPortableEventLoop } from '@corvidae/weft';
+import { Conversation } from 'conversationalist';
+import * as weft from '@lostgradient/weft';
+import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { assertDefined } from '../assert-defined';
 

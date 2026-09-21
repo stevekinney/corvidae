@@ -3,7 +3,7 @@ import {
   createDefaultRuntimeServices,
   type Observer,
   type Subscription,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 
 import type { ActiveRun } from '../create-run';
 import type { RunResult, StepResult, TokenUsage } from '../types';

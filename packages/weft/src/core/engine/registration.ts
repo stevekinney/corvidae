@@ -167,7 +167,7 @@ function applyOptionalRegistrationFields(
  *
  * @example
  * ```ts
- * import { workflow } from '@corvidae/weft';
+ * import { workflow } from '@lostgradient/weft';
  *
  * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
  *   return `hello ${input}`;
@@ -336,7 +336,7 @@ function hasNonNullObjectField(value: object, key: string): boolean {
  *
  * @example
  * ```ts
- * import { workflow } from '@corvidae/weft';
+ * import { workflow } from '@lostgradient/weft';
  *
  * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
  *   return `hello ${input}`;
@@ -381,7 +381,7 @@ export function isBuilderWorkflowDefinition(value: unknown): value is WorkflowDe
  *
  * @example
  * ```ts
- * import { workflow } from '@corvidae/weft';
+ * import { workflow } from '@lostgradient/weft';
  *
  * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
  *   return `hello ${input}`;

@@ -32,10 +32,10 @@ const registered = toolbox.createTool({
 });
 ```
 
-Tool configurations also support lazy execute functions (import from `@corvidae/armorer`):
+Tool configurations also support lazy execute functions (import from `armorer`):
 
 ```typescript
-import { lazy } from '@corvidae/armorer';
+import { lazy } from 'armorer';
 
 toolbox.register({
   name: 'lazy-configuration',
@@ -124,11 +124,11 @@ toolbox.addEventListener('execute-success', (event) => {
 
 ### Instrumentation (OpenTelemetry)
 
-Toolbox provides native OpenTelemetry instrumentation via the `@corvidae/armorer` module.
+Toolbox provides native OpenTelemetry instrumentation via the `armorer` module.
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
-import { instrument } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
+import { instrument } from 'armorer';
 import { context, trace } from '@opentelemetry/api';
 
 const toolbox = createToolbox();
@@ -152,8 +152,8 @@ await tracer.startActiveSpan('temporal.activity', async (activitySpan) => {
 Toolbox supports middleware to wrap tool execution logic. This is useful for cross-cutting concerns like caching, rate limiting, and timeouts.
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
-import { createCacheMiddleware, createRateLimitMiddleware } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
+import { createCacheMiddleware, createRateLimitMiddleware } from 'armorer';
 
 const toolbox = createToolbox([], {
   middleware: [
@@ -165,7 +165,7 @@ const toolbox = createToolbox([], {
 });
 ```
 
-Available middleware in `@corvidae/armorer`:
+Available middleware in `armorer`:
 
 - `createCacheMiddleware(options)`
 - `createRateLimitMiddleware(options)`
@@ -173,10 +173,10 @@ Available middleware in `@corvidae/armorer`:
 
 ### Testing
 
-Testing agentic systems is easier with mock tools and test registries from `@corvidae/armorer`.
+Testing agentic systems is easier with mock tools and test registries from `armorer`.
 
 ```typescript
-import { createMockTool, createTestRegistry } from '@corvidae/armorer';
+import { createMockTool, createTestRegistry } from 'armorer';
 
 // Create a mock tool with canned responses
 const weatherMock = createMockTool({ name: 'get_weather' });
@@ -196,7 +196,7 @@ console.log(weatherMock.calls.length); // 1
 ### Querying Tools
 
 ```typescript
-import { queryTools } from '@corvidae/armorer';
+import { queryTools } from 'armorer';
 
 // Query by tag (OR match)
 const mathTools = queryTools(toolbox, { tags: { any: ['math'] } });
@@ -288,7 +288,7 @@ const toolbox = createToolbox([], {
 ```
 
 ```typescript
-import { reindexSearchIndex } from '@corvidae/armorer';
+import { reindexSearchIndex } from 'armorer';
 
 reindexSearchIndex(toolbox);
 ```
@@ -302,7 +302,7 @@ For detailed examples including OpenAI and Pinecone integration, see the [Embedd
 You can use `isToolbox()` to check if an object is a Toolbox registry:
 
 ```typescript
-import { isToolbox, createToolbox } from '@corvidae/armorer';
+import { isToolbox, createToolbox } from 'armorer';
 
 const registry = createToolbox();
 if (isToolbox(registry)) {
@@ -319,7 +319,7 @@ This is useful when working with functions that accept multiple types and you ne
 You can transform tool configurations during registration using middleware. Middleware functions receive a tool configuration and return a (possibly modified) configuration. Middleware is applied in order before the tool is built.
 
 ```typescript
-import { createToolbox, createMiddleware } from '@corvidae/armorer';
+import { createToolbox, createMiddleware } from 'armorer';
 
 // Create middleware to add metadata
 const addSourceMetadata = createMiddleware((configuration) => ({
@@ -508,7 +508,7 @@ const restored = createToolbox(serialized);
 Use `.extend()` for immutable composition from an existing toolbox:
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
 
 const base = createToolbox([addTool, subtractTool], {
   context: { workspaceId: 'ws-1' },
@@ -529,7 +529,7 @@ const merged = base.extend(adminToolbox);
 Use `combineToolboxes(...)` when merging many toolboxes at once:
 
 ```typescript
-import { combineToolboxes } from '@corvidae/armorer';
+import { combineToolboxes } from 'armorer';
 
 const combined = combineToolboxes(mathToolbox, stringToolbox, adminToolbox);
 console.log(combined.tools()); // All tools from all inputs

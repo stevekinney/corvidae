@@ -6,7 +6,7 @@ An accessible viewport for panning and zooming images, SVGs, and Mermaid diagram
 
 ```svelte
 <script lang="ts">
-  import { ZoomPanViewer } from '@corvidae/cinder';
+  import { ZoomPanViewer } from '@lostgradient/cinder';
 </script>
 
 <ZoomPanViewer ariaLabel="Architecture diagram">

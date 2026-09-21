@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import type { ScheduleFire, ScheduleValue } from './schedule-builder.types.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library

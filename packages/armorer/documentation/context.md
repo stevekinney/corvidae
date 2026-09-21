@@ -23,7 +23,7 @@ Every tool execute function receives a `ToolContext`, including:
 Example:
 
 ```typescript
-import { createTool } from '@corvidae/armorer';
+import { createTool } from 'armorer';
 import { z } from 'zod';
 
 const echo = createTool({
@@ -49,7 +49,7 @@ const echo = createTool({
 Use `createToolbox({ context })` when values should be available to many tools:
 
 ```typescript
-import { createTool, createToolbox } from '@corvidae/armorer';
+import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 const toolbox = createToolbox([], {
@@ -79,7 +79,7 @@ toolbox.register(
 Use `withContext` when you want tool-local context injection without requiring toolbox-level context:
 
 ```typescript
-import { withContext } from '@corvidae/armorer';
+import { withContext } from 'armorer';
 import { z } from 'zod';
 
 const createAuthedTool = withContext({

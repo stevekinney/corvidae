@@ -8,7 +8,7 @@ The canonical use case is **vertical dividers between toolbar groups**—for exa
 
 ```svelte
 <script lang="ts">
-  import { Divider } from '@corvidae/cinder';
+  import { Divider } from '@lostgradient/cinder';
 </script>
 
 <!-- Horizontal rule between sections -->

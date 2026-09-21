@@ -2,7 +2,7 @@ import type {
   PlaceholderCandidate,
   PlaceholderCompletionConfiguration,
   PlaceholderValueKind,
-} from '@corvidae/markdown';
+} from '@lostgradient/markdown';
 import type { EditorState, Transaction } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
 

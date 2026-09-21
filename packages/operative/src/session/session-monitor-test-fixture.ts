@@ -1,5 +1,5 @@
-import { Conversation } from '@corvidae/conversationalist';
-import { CompletableEventTarget, type Subscription } from '@corvidae/lifecycle';
+import { Conversation } from 'conversationalist';
+import { CompletableEventTarget, type Subscription } from '@lostgradient/lifecycle';
 import { afterEach } from 'bun:test';
 
 import { createAgentRun, type AgentRun } from '../agent-run';

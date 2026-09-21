@@ -1,4 +1,4 @@
-import type { ApprovalResolution } from '@corvidae/cinder';
+import type { ApprovalResolution } from '@lostgradient/cinder';
 import type { ChatAdapter, ChatToolResult } from '../components/chat/adapter/chat-adapter.ts';
 import { removeMessage } from '../components/chat/builders.ts';
 import type { ConversationHistory, ToolResult } from '../components/chat/conversation-model.ts';

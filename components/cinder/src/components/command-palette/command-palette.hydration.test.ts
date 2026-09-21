@@ -28,7 +28,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
-import { prepareSvelteServerSource, renderThenHydrate, setupHappyDom } from '@corvidae/testing';
+import { prepareSvelteServerSource, renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

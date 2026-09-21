@@ -9,7 +9,7 @@ test('both chat routes preserve missing-key responses and private configuration 
     mock.module('$env/dynamic/private', () => ({ env: privateEnvironment }));
     const { POST: chat } = await import('./src/routes/api/chat/+server.ts');
     const { POST: stream } = await import('./src/routes/api/server-owned/conversations/[id]/stream/+server.ts');
-    const { createConversationHistory } = await import('@corvidae/conversationalist');
+    const { createConversationHistory } = await import('conversationalist');
     const { createConversation } = await import('./src/lib/server-owned-conversations.ts');
     const { disposeServerOwnedRuntime } = await import('./src/lib/server-owned-runtime.ts');
     const { readEnvironmentConfiguration } = await import('./src/lib/server/environment-configuration.ts');

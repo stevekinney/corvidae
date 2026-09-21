@@ -9,7 +9,7 @@
  * (no DOM required).
  */
 
-import type { PlaceholderCandidate } from '@corvidae/markdown';
+import type { PlaceholderCandidate } from '@lostgradient/markdown';
 import { Schema } from '@milkdown/kit/prose/model';
 import { describe, expect, it } from 'bun:test';
 

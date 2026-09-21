@@ -3,7 +3,7 @@
 Maintain conversation context and user sessions across tool executions.
 
 ```typescript
-import { createToolbox, createTool, withContext } from '@corvidae/armorer';
+import { createToolbox, createTool, withContext } from 'armorer';
 import { z } from 'zod';
 
 // Session store interface

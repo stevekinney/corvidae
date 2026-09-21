@@ -3,7 +3,7 @@
  * hand-maintained local mirror of Operative's `AgentRunErrorCode`
  * (`packages/operative/src/errors.ts`) — Chat does not depend on Operative
  * at runtime, so this type is declared structurally rather than imported.
- * A type-only `@corvidae/operative` devDependency exists solely so this
+ * A type-only `@lostgradient/operative` devDependency exists solely so this
  * file can assert the two stay in lockstep; nothing here reaches Chat's
  * shipped source (see `stream-event-codec-types.ts`'s own note on the
  * pattern this file protects).
@@ -23,9 +23,9 @@
 import { describe, expect, test } from 'bun:test';
 // Type-only: erased by `verbatimModuleSyntax`, so no Operative runtime code
 // (or its Anthropic/OpenAI/Gemini provider dependencies) ever reaches
-// Chat's bundle. `@corvidae/operative` is a devDependency for exactly this
+// Chat's bundle. `@lostgradient/operative` is a devDependency for exactly this
 // import — see components/chat/package.json.
-import type { AgentRunErrorCode as OperativeAgentRunErrorCode } from '@corvidae/operative';
+import type { AgentRunErrorCode as OperativeAgentRunErrorCode } from '@lostgradient/operative';
 import type { ChatAgentRunErrorCode, ChatAgentRunErrorKind } from './stream-event-codec-types.ts';
 import { decodeChatStreamEvent, encodeChatStreamEvent } from './stream-event-codec.ts';
 

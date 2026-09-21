@@ -28,7 +28,7 @@
  *   {@link fromMcpTools} together into a connect → (maybe authorize) →
  *   list-tools flow.
  */
-import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   auth,
   Client,

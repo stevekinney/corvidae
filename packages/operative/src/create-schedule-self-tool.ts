@@ -1,4 +1,4 @@
-import type { ScheduleSpec } from '@corvidae/weft';
+import type { ScheduleSpec } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { AgentScheduleHandle, AgentScheduleOverlapPolicy } from './durable/schedule-agent';

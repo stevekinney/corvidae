@@ -1,5 +1,5 @@
-import { createToolbox } from '@corvidae/armorer';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
+import { createToolbox } from 'armorer';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

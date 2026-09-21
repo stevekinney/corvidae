@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { CompletedReviewEntry } from '@corvidae/weft';
+import type { CompletedReviewEntry } from '@lostgradient/weft';
 
 import {
   classifyArtifactValue,

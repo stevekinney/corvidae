@@ -1,4 +1,4 @@
-import { materializeToolResult } from '@corvidae/tool-protocol';
+import { materializeToolResult } from '@lostgradient/tool-protocol';
 
 import { stableStringifyJson } from '../core/serialization/json';
 import { policyPauseTierSymbol } from '../internal/approval-resume';

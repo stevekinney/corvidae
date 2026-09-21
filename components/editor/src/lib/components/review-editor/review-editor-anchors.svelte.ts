@@ -10,7 +10,7 @@
  * @module
  */
 
-import { contentEquals } from '@corvidae/markdown';
+import { contentEquals } from '@lostgradient/markdown';
 import type { MilkdownPlugin } from '@milkdown/kit/ctx';
 import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import type { EditorView } from '@milkdown/kit/prose/view';

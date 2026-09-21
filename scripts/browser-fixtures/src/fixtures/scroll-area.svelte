@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ScrollArea } from '@corvidae/cinder';
+  import { ScrollArea } from '@lostgradient/cinder';
 </script>
 
 <ScrollArea direction="both" maxHeight="12rem" maxWidth="24rem">

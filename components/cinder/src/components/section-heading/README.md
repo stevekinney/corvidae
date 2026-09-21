@@ -6,8 +6,8 @@ Styled heading element that visually separates and titles a content section.
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { SectionHeading } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { SectionHeading } from '@lostgradient/cinder';
 </script>
 
 <SectionHeading

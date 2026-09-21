@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { ToolError, ToolErrorCategory } from './core/errors';
 import type { ToolParametersSchema } from './is-tool';
 import type { ResumeApprovalValidationResult, ToolboxExecuteOptions } from './toolbox-contracts';

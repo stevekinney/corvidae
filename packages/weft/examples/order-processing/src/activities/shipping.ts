@@ -1,4 +1,4 @@
-import { activity } from '@corvidae/weft';
+import { activity } from '@lostgradient/weft';
 
 import type { CancelStaleOrderInput, ShipmentInput, ShipmentResult } from '../model';
 

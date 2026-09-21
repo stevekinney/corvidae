@@ -1,4 +1,4 @@
-import type { PlaceholderCandidate } from '@corvidae/markdown';
+import type { PlaceholderCandidate } from '@lostgradient/markdown';
 import { TextSelection, type EditorState } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 

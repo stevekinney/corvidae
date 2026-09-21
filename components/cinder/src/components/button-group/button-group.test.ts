@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
-import { requiredInstance, requiredValue, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, requiredValue, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

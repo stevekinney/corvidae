@@ -1,5 +1,5 @@
-import type { Message } from '@corvidae/conversationalist';
-import { Conversation } from '@corvidae/conversationalist';
+import type { Message } from 'conversationalist';
+import { Conversation } from 'conversationalist';
 
 import type { GenerateContext } from '../types';
 import type { RetryMutator } from './types';

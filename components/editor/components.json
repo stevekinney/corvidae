@@ -2,7 +2,7 @@
   "$schema": "./dist/schemas/manifest.schema.json",
   "manifestVersion": 1,
   "package": {
-    "name": "@corvidae/editor",
+    "name": "@lostgradient/editor",
     "version": "0.14.0",
     "framework": "svelte",
     "frameworkVersionRange": ">=5.56.0 <6",
@@ -64,7 +64,7 @@
       "virtual-list",
       "z"
     ],
-    "stylesEntry": "@corvidae/cinder",
+    "stylesEntry": "@lostgradient/cinder",
     "schemaDialect": "https://json-schema.org/draft/2020-12/schema"
   },
   "categories": {
@@ -133,14 +133,14 @@
       ],
       "related": ["review-editor", "code-block"],
       "name": "MarkdownEditor",
-      "import": "@corvidae/editor",
+      "import": "@lostgradient/editor",
       "exportName": "MarkdownEditor",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@corvidae/editor",
-        "variables": "@corvidae/editor",
-        "examples": "@corvidae/editor"
+        "schema": "@lostgradient/editor",
+        "variables": "@lostgradient/editor",
+        "examples": "@lostgradient/editor"
       }
     },
     {
@@ -163,14 +163,14 @@
       ],
       "related": ["markdown-editor"],
       "name": "ReviewEditor",
-      "import": "@corvidae/editor",
+      "import": "@lostgradient/editor",
       "exportName": "ReviewEditor",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@corvidae/editor",
-        "variables": "@corvidae/editor",
-        "examples": "@corvidae/editor"
+        "schema": "@lostgradient/editor",
+        "variables": "@lostgradient/editor",
+        "examples": "@lostgradient/editor"
       }
     },
     {
@@ -193,14 +193,14 @@
       ],
       "related": ["diff-statistics", "code-block"],
       "name": "DiffViewer",
-      "import": "@corvidae/editor",
+      "import": "@lostgradient/editor",
       "exportName": "DiffViewer",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@corvidae/editor",
-        "variables": "@corvidae/editor",
-        "examples": "@corvidae/editor"
+        "schema": "@lostgradient/editor",
+        "variables": "@lostgradient/editor",
+        "examples": "@lostgradient/editor"
       }
     }
   ]

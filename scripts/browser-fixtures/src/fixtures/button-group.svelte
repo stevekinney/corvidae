@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, ButtonGroup } from '@corvidae/cinder';
+  import { Button, ButtonGroup } from '@lostgradient/cinder';
 </script>
 
 <ButtonGroup label="Document actions">

@@ -42,7 +42,7 @@
  * operator watching the Timeline tab in real time while a token is minted)
  * — but do not expect it to populate on a typical page load. weft ships
  * `weft.workflows.activities.pending.list` (bounded, paginated, durable
- * pending-async-activity discovery) as of `@corvidae/weft@0.15.0` —
+ * pending-async-activity discovery) as of `@lostgradient/weft@0.15.0` —
  * available but not yet adopted here; wiring the Timeline tab's
  * async-activity affordances onto it instead of this live-only heuristic is
  * a real follow-up, out of scope for this pass (see this session's report).
@@ -56,7 +56,7 @@
  *
  * Never reconstructs a token by re-deriving weft's internal
  * `async-act:v1:<workflowId>:<step>:<attempt>` format
- * (`deriveAsyncActivityToken`, unexported from `@corvidae/weft`) — that
+ * (`deriveAsyncActivityToken`, unexported from `@lostgradient/weft`) — that
  * would be fragile coupling to a private implementation detail (confirmed
  * live: its internal step numbering is 0-indexed, off by one from the
  * timeline's 1-indexed `step`), exactly the kind of magic-string special

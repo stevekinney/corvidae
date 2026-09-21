@@ -3,13 +3,13 @@ import type {
   OnElicitation,
   OperativeHookMap,
   ToolCall,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   createAnthropicProviderStream,
   createSessionHandle,
   HookRegistry,
   stopWhen,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { createChatRunOptions } from '../../../../../../lib/chat-agent.ts';

@@ -42,9 +42,15 @@ describe('mirror package map', () => {
     const map = await loadPackageMap();
     const entries = Object.entries(map.workspaces);
 
+    const unscopedWorkspaceNames = new Set(['armorer', 'conversationalist']);
     expect(entries.length).toBeGreaterThan(0);
     for (const [workspace, entry] of entries) {
-      expect(workspace, 'Workspace keys are @corvidae/* names').toStartWith('@corvidae/');
+      if (!unscopedWorkspaceNames.has(workspace)) {
+        expect(
+          workspace,
+          'Workspace keys are @lostgradient/* names, except armorer and conversationalist',
+        ).toStartWith('@lostgradient/');
+      }
       expect(['publish-as', 'private-workspace', 'exclude'], `${workspace} disposition`).toContain(
         entry.disposition,
       );
@@ -69,39 +75,39 @@ describe('mirror package map', () => {
       ...Object.fromEntries(
         onDisk.map((name, index) => [`packages/existing-${index}`, name] as const),
       ),
-      'packages/newly-added': '@corvidae/newly-added',
+      'packages/newly-added': '@lostgradient/newly-added',
     });
 
     const report = await coverageReport(fixture.root);
 
     expect(report.missing, 'An unmapped workspace is reported by name').toEqual([
-      '@corvidae/newly-added',
+      '@lostgradient/newly-added',
     ]);
     expect(report.extra).toEqual([]);
   });
 
   test('reports a mapped workspace that has been removed from disk', async () => {
     await using fixture = await fixtureWorkspaceTree({
-      'packages/weft': '@corvidae/weft',
+      'packages/weft': '@lostgradient/weft',
     });
 
     const report = await coverageReport(fixture.root);
 
     expect(report.extra, 'Every other mapped workspace is reported as extra').toContain(
-      '@corvidae/cinder',
+      '@lostgradient/cinder',
     );
     expect(report.missing).toEqual([]);
   });
 
   test('hard-errors on an unmapped workspace rather than skipping it', async () => {
-    expect(dispositionFor('@corvidae/not-a-workspace')).rejects.toThrow(PackageMapError);
-    await expect(dispositionFor('@corvidae/not-a-workspace')).rejects.toThrow(
-      /@corvidae\/not-a-workspace has no disposition/,
+    expect(dispositionFor('@lostgradient/not-a-workspace')).rejects.toThrow(PackageMapError);
+    await expect(dispositionFor('@lostgradient/not-a-workspace')).rejects.toThrow(
+      /@lostgradient\/not-a-workspace has no disposition/,
     );
   });
 
   test('resolves a known workspace to its settled published name', async () => {
-    const armorer = await dispositionFor('@corvidae/armorer');
+    const armorer = await dispositionFor('armorer');
 
     expect(armorer.disposition).toBe('publish-as');
     if (armorer.disposition !== 'publish-as') throw new Error('unreachable');

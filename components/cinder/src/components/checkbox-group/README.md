@@ -6,8 +6,8 @@ Wraps multiple checkboxes under a shared label and validation context.
 
 ```svelte
 <script lang="ts">
-  import { Checkbox } from '@corvidae/cinder';
-  import { CheckboxGroup } from '@corvidae/cinder';
+  import { Checkbox } from '@lostgradient/cinder';
+  import { CheckboxGroup } from '@lostgradient/cinder';
 
   let email = $state(true);
   let sms = $state(false);

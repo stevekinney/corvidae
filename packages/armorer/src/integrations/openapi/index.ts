@@ -106,8 +106,8 @@ const READ_ONLY_METHODS = new Set<OpenAPIHttpMethod>(['get', 'head', 'options', 
  *
  * @example
  * ```typescript
- * import { createToolboxFromOpenAPI } from '@corvidae/armorer';
- * import { createToolbox } from '@corvidae/armorer';
+ * import { createToolboxFromOpenAPI } from 'armorer';
+ * import { createToolbox } from 'armorer';
  *
  * const tools = createToolboxFromOpenAPI(spec, {
  *   auth: { type: 'bearer', token: process.env.API_TOKEN! },

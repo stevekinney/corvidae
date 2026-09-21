@@ -2,7 +2,7 @@ import {
   appendStreamingMessage,
   cancelStreamingMessage,
   finalizeStreamingMessage,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 import type { ChatPushHandlers } from '../components/chat/adapter/chat-adapter.ts';
 import { markMessageDeliveryFailed } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';

@@ -1,5 +1,5 @@
-import type { AnyToolbox, ToolboxEventMap } from '@corvidae/armorer';
-import { CompletableEventTarget, createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { AnyToolbox, ToolboxEventMap } from 'armorer';
+import { CompletableEventTarget, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { CombinedOperativeEventMap, OperativeEventEmitter } from '../events';
 import {

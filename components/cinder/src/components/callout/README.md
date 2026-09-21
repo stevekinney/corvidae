@@ -6,7 +6,7 @@ Inline highlight block for tips, warnings, or contextual notes within content fl
 
 ```svelte
 <script lang="ts">
-  import { Callout } from '@corvidae/cinder';
+  import { Callout } from '@lostgradient/cinder';
 </script>
 
 <Callout title="Note">

@@ -1,4 +1,4 @@
-import type { Conversation } from '@corvidae/conversationalist';
+import type { Conversation } from 'conversationalist';
 
 import type { Effort } from '../providers/types';
 import type {

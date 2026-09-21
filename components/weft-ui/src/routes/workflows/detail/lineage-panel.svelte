@@ -29,7 +29,7 @@
    *   restartedFrom` (`{ workflowId, workflowExecutionToken, replacedAt }`)
    *   is the immediate predecessor `onTerminalConflict: 'start-new'`
    *   displaced. It carries NO status field (verified against
-   *   `@corvidae/weft`'s `RestartLineage` type), so the "Previous run"
+   *   `@lostgradient/weft`'s `RestartLineage` type), so the "Previous run"
    *   chip renders without a status badge — the design mock's illustrative
    *   "Completed" badge on that chip isn't backable by real data, so this
    *   panel doesn't fabricate one. The chip is also deliberately NOT a link:
@@ -54,7 +54,7 @@
    * `onTerminalConflict: 'start-new'` selects whichever revision is active
    * at the moment it replaces the prior run — no pin carries over from the
    * displaced run, matching `documentation/guides/
-   * workflow-versioning.md`'s per-run pinning contract (`@corvidae/weft`).
+   * workflow-versioning.md`'s per-run pinning contract (`@lostgradient/weft`).
    * That explanation carries `FRESH_START_REVISION_HEDGE`, not
    * `EAGER_REVISION_HEDGE` (Codex review, PR #978): a start-new replacement
    * is a FRESH start, not a fork or recovery of the displaced run, so it's
@@ -75,7 +75,7 @@
    * concrete generation actually forked from. `GET /api/v1/workflows/:id`
    * always returns that id's LATEST generation (see the "Continuation
    * chain" note above), and `ForkLineage` carries no execution token or
-   * revision snapshot (`@corvidae/weft`'s `ForkLineage` type — just
+   * revision snapshot (`@lostgradient/weft`'s `ForkLineage` type — just
    * `{ workflowId, step }`) to pin down which one was actually forked. So
    * if the source id was later reused for an UNRELATED generation — either
    * tracked (`onTerminalConflict: 'start-new'` restarting it) or entirely
@@ -126,9 +126,9 @@
    * "best-effort" and names the exact gap, so an operator reading it is
    * not told a stronger guarantee than the data can support.
    */
-  import { Badge, CopyButton, Skeleton, Tooltip } from '@corvidae/cinder';
+  import { Badge, CopyButton, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { HttpClient, WorkflowState } from '@corvidae/weft';
+  import type { HttpClient, WorkflowState } from '@lostgradient/weft';
   import { ArrowRight, CalendarClock, CornerDownRight, GitBranch, GitFork } from 'lucide-svelte';
 
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';

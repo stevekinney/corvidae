@@ -1,5 +1,5 @@
-import { sha256Hex } from '@corvidae/cryptography';
-import type { TypedEventTarget } from '@corvidae/lifecycle';
+import { sha256Hex } from '@lostgradient/cryptography';
+import type { TypedEventTarget } from '@lostgradient/lifecycle';
 
 import { refusedByAdmissionPolicy, type SkillAdmissionPolicy } from '../admission';
 import type { SkillArtifact } from '../artifact';

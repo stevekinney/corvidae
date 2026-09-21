@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 import { MCPServerStdio, MCPServerStreamableHttp } from '@openai/agents';
 import { describe, expect, it } from 'bun:test';

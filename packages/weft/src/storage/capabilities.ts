@@ -54,8 +54,8 @@ import type { Storage } from './interface.ts';
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@corvidae/weft';
- * import type { StorageCapabilities } from '@corvidae/weft';
+ * import { MemoryStorage } from '@lostgradient/weft';
+ * import type { StorageCapabilities } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * const caps: StorageCapabilities = storage.capabilities();
@@ -132,9 +132,9 @@ export type StorageCapabilities = {
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@corvidae/weft';
- * import { requireStorageCapability } from '@corvidae/weft';
- * import type { GatedStorageCapabilityKey } from '@corvidae/weft';
+ * import { MemoryStorage } from '@lostgradient/weft';
+ * import { requireStorageCapability } from '@lostgradient/weft';
+ * import type { GatedStorageCapabilityKey } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * // The third argument's type is GatedStorageCapabilityKey — only the
@@ -162,8 +162,8 @@ export type GatedStorageCapabilityKey = 'conditionalBatch';
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@corvidae/weft';
- * import { requireStorageCapability } from '@corvidae/weft';
+ * import { MemoryStorage } from '@lostgradient/weft';
+ * import { requireStorageCapability } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * requireStorageCapability(storage, 'conditionalBatch', 'AtomicState compare-and-swap');
@@ -200,8 +200,8 @@ export function requireStorageCapability(
  *
  * @example
  * ```ts
- * import { assertDurableStorageForRecovery } from '@corvidae/weft';
- * import { SQLiteStorage } from '@corvidae/weft/storage/sqlite';
+ * import { assertDurableStorageForRecovery } from '@lostgradient/weft';
+ * import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
  *
  * await using storage = new SQLiteStorage('./weft.db');
  * assertDurableStorageForRecovery(storage);

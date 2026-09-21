@@ -1,6 +1,6 @@
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
-import { HookRegistry } from '@corvidae/lifecycle';
+import { createTestToolbox } from 'armorer';
+import { Conversation, createConversationHistory } from 'conversationalist';
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { assertDefined } from '../assert-defined';

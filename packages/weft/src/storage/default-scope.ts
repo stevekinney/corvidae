@@ -13,7 +13,7 @@
  *
  * @example
  * ```ts
- * import { DEFAULT_SCOPE } from '@corvidae/weft';
+ * import { DEFAULT_SCOPE } from '@lostgradient/weft';
  * console.log(DEFAULT_SCOPE); // 'default'
  * ```
  */

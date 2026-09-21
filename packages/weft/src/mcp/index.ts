@@ -2,7 +2,7 @@
  * MCP server support for Weft.
  *
  * This subpath is server/runtime-oriented. Browser-safe entry points remain
- * under `@corvidae/weft`, `@corvidae/weft`, and `@corvidae/weft`.
+ * under `@lostgradient/weft`, `@lostgradient/weft`, and `@lostgradient/weft`.
  *
  * @module mcp
  */

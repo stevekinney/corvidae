@@ -18,11 +18,11 @@
  * 'sse'` succeeds and the client is a real `HttpClient`", not a runtime
  * transport probe.
  */
-import { HttpClient } from '@corvidae/weft';
+import { HttpClient } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { createClient, readRuntimeConfig } from '@corvidae/weft-ui';
+import { createClient, readRuntimeConfig } from '@lostgradient/weft-ui';
 
 const CONFIG_ELEMENT_ID = 'weft-ui-config';
 const CONSOLE_ORIGIN = 'https://weft-ui.example.com';

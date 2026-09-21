@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Toolbar, Button } from '@corvidae/cinder';
+  import { Toolbar, Button } from '@lostgradient/cinder';
 </script>
 
 <Toolbar aria-label="Document actions">

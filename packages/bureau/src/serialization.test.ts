@@ -1,4 +1,4 @@
-import type { RunState } from '@corvidae/operative';
+import type { RunState } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 import { serializeRunDetail, serializeRunState } from './serialization';
 import {

@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/cinder",
+  "name": "@lostgradient/cinder",
   "private": true,
   "type": "module",
   "exports": {
@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@floating-ui/dom": "catalog:",
-    "@corvidae/markdown": "workspace:*",
+    "@lostgradient/markdown": "workspace:*",
     "@shikijs/engine-oniguruma": "catalog:",
     "@shikijs/types": "catalog:",
     "@tanstack/virtual-core": "catalog:",
@@ -36,8 +36,8 @@
     "@shikijs/themes": "catalog:"
   },
   "devDependencies": {
-    "@corvidae/typescript": "workspace:*",
-    "@corvidae/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
     "@playwright/test": "catalog:",
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/svelte": "catalog:",

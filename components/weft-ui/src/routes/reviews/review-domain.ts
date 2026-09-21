@@ -1,7 +1,7 @@
 /**
  * Pure review-domain logic (Track D, plan §9.5, Appendix A "Reviews"). No
  * DOM, no Svelte, no network — everything here is a plain function over
- * `@corvidae/weft`'s `ReviewListEntry`/`PendingReviewEntry`/
+ * `@lostgradient/weft`'s `ReviewListEntry`/`PendingReviewEntry`/
  * `CompletedReviewEntry` shapes so it can be `bun test`ed without a
  * component harness (plan §11.1).
  *
@@ -29,7 +29,7 @@ import type {
   PendingReviewEntry,
   ReviewDecision,
   ReviewListEntry,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import { formatDuration } from '../../lib/format/index.ts';
 
@@ -195,7 +195,7 @@ export type ArtifactRenderKind =
 
 /**
  * Classifies one artifact/section value into its rendering treatment (plan
- * §9.5: "string→text, markdown→`@corvidae/markdown`,
+ * §9.5: "string→text, markdown→`@lostgradient/markdown`,
  * imageUrl/htmlContent keys→media, else PayloadInspector with humanized
  * keys"). Dispatch is by STRUCTURE — a bare string is always plain text; a
  * `markdown`/`imageUrl`/`htmlContent` KEY on an object is what selects the

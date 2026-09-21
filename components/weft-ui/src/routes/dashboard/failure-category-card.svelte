@@ -6,7 +6,7 @@
    * proportional bar rows (not literally the Cinder `BarChart` component,
    * which has no click/deep-link affordance per its props — `ChartSharedProps`
    * has no `onClick`/interactive-callback field, verified against
-   * `@corvidae/cinder` v0.16.1's `chart.types.ts`) — this track's brief
+   * `@lostgradient/cinder` v0.16.1's `chart.types.ts`) — this track's brief
    * requires "cards deep-link to pre-filtered lists", so each row uses
    * Cinder's `Meter` (bounded proportion display, §7.1: "inline capacity/
    * utilization") for the bar, wrapped in a real link.
@@ -15,7 +15,7 @@
    * workflows with no failure category (every non-`failed` workflow) —
    * excluded here; this card is a failure breakdown, not a full census.
    */
-  import { Card, Meter, Skeleton } from '@corvidae/cinder';
+  import { Card, Meter, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { faultTreatment } from '../../lib/faults.ts';

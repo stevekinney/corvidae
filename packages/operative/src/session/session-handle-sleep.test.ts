@@ -1,7 +1,7 @@
-import type { Toolbox } from '@corvidae/armorer';
-import { createToolbox } from '@corvidae/armorer';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
-import { MemoryStorage, textValueStore } from '@corvidae/weft';
+import type { Toolbox } from 'armorer';
+import { createToolbox } from 'armorer';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { GenerateFunction } from '../types';

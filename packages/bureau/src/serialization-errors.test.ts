@@ -1,4 +1,4 @@
-import { AbortAgentRunError } from '@corvidae/operative';
+import { AbortAgentRunError } from '@lostgradient/operative';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { serializeUnknownError } from './serialization';
 

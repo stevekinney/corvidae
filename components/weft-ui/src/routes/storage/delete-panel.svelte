@@ -6,7 +6,7 @@
    * (`stOps` lists it as a selectable operation but the mock only wires up
    * get/scan/put) — built to the same visual pattern as `put-panel.svelte`.
    */
-  import { Button, ConfirmDialog, Input } from '@corvidae/cinder';
+  import { Button, ConfirmDialog, Input } from '@lostgradient/cinder';
   import type { StorageConnection } from './storage-client.ts';
   import { Trash2 } from 'lucide-svelte';
 

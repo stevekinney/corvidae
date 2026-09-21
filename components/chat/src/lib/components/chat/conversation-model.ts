@@ -8,7 +8,7 @@
  * @module
  */
 
-import type { ToMarkdownOptions as ConversationalistToMarkdownOptions } from '@corvidae/conversationalist';
+import type { ToMarkdownOptions as ConversationalistToMarkdownOptions } from 'conversationalist';
 
 export type {
   AssistantMessage,
@@ -47,7 +47,7 @@ export type {
   ToolResult,
   ToolResultInput,
   WebSearchToolResultContent,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 /** Base options shared by all transcript export operations. */
 export type ExportOptions = Omit<ConversationalistToMarkdownOptions, 'includeMetadata'>;

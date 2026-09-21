@@ -9,7 +9,7 @@
    */
   import { untrack } from 'svelte';
 
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
 
   import { provideClient } from './client.ts';
   import GetClientHarness from './get-client-harness.test-harness.svelte';

@@ -3,9 +3,9 @@ import {
   createToolbox,
   type ToolConfigurationInput,
   type ToolContext,
-} from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { HookRegistry } from '@corvidae/lifecycle';
+} from 'armorer';
+import { Conversation } from 'conversationalist';
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

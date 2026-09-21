@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AreaChart } from '@corvidae/cinder';
+  import { AreaChart } from '@lostgradient/cinder';
 
   const series = [
     {

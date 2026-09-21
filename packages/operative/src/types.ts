@@ -1,11 +1,11 @@
-import type { AnyToolbox, ToolExecuteOptions, ToolExecutionResult } from '@corvidae/armorer';
-import type { Conversation, ConversationHistory, TokenUsage } from '@corvidae/conversationalist';
+import type { AnyToolbox, ToolExecuteOptions, ToolExecutionResult } from 'armorer';
+import type { Conversation, ConversationHistory, TokenUsage } from 'conversationalist';
 import type {
   HookObservationCorrelation,
   HookRegistry,
   RuntimeServices,
-} from '@corvidae/lifecycle';
-import type { JSONValue, ToolCall, ToolCallInput } from '@corvidae/tool-protocol';
+} from '@lostgradient/lifecycle';
+import type { JSONValue, ToolCall, ToolCallInput } from '@lostgradient/tool-protocol';
 import type { ZodType } from 'zod';
 
 import type { BackpressureStrategy } from './backpressure';
@@ -26,9 +26,9 @@ export type {
   Toolbox,
   ToolExecuteOptions,
   ToolExecutionResult,
-} from '@corvidae/armorer';
-export type { Conversation, ConversationHistory, TokenUsage } from '@corvidae/conversationalist';
-export type { JSONValue, ToolCall, ToolCallInput } from '@corvidae/tool-protocol';
+} from 'armorer';
+export type { Conversation, ConversationHistory, TokenUsage } from 'conversationalist';
+export type { JSONValue, ToolCall, ToolCallInput } from '@lostgradient/tool-protocol';
 
 /**
  * Options passed to toolbox.execute() within the loop.
@@ -661,7 +661,7 @@ export interface RunOptionsBase {
    * back to a global. Unconfigured (the default), a run reads the real
    * globals via `createDefaultRuntimeServices()`; a test composes its own
    * deterministic instance with `createManualRuntimeServices()` from
-   * `@corvidae/operative`.
+   * `@lostgradient/operative`.
    */
   runtime?: RuntimeServices | undefined;
 }

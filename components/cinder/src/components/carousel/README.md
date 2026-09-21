@@ -6,7 +6,7 @@ Composable slide rotator with controls, indicators, keyboard support, and option
 
 ```svelte
 <script lang="ts">
-  import { Carousel } from '@corvidae/cinder';
+  import { Carousel } from '@lostgradient/cinder';
 
   const slides = [
     { id: 'one', label: 'Welcome', title: 'Welcome', description: 'Start here' },

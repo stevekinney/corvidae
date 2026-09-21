@@ -9,7 +9,7 @@
    * revisions panel with its Activate/compatibility flow
    * (`workflow-revisions-panel.svelte`).
    */
-  import { DescriptionList, Tree, Badge, Button, CopyButton } from '@corvidae/cinder';
+  import { DescriptionList, Tree, Badge, Button, CopyButton } from '@lostgradient/cinder';
   import { ArrowLeft, FileQuestion } from 'lucide-svelte';
 
   import { truncateId } from '../../lib/format/index.ts';

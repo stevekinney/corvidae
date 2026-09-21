@@ -9,7 +9,7 @@ import { requireElement } from '../../../tests/dom-test-support.ts';
  * query) always goes through `HttpClient`'s JSON-RPC catalog transport
  * (`${baseUrl}/jsonrpc`, verified in `weft/src/client/http-operations.ts`).
  * `live-source-test-server.test-support.ts`'s harness is a real `serve()` as
- * of `@corvidae/weft@0.12.0` and does route `/jsonrpc` now (the
+ * of `@lostgradient/weft@0.12.0` and does route `/jsonrpc` now (the
  * `handleRequest()`-only limitation this comment used to describe, tracked
  * as weft#710, is fixed) — this file simply hasn't been extended to also
  * cover the populated-Select path against the real server; that path is
@@ -35,7 +35,7 @@ import {
   normalizeWorkflowContract,
   workflow,
   workflowSource,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import type { QueryClient } from '@tanstack/svelte-query';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';

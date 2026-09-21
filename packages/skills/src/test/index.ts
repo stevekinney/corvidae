@@ -1,4 +1,4 @@
-import { MemoryStorage, textValueStore } from '@corvidae/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import type { SkillContent, SkillWriter } from '../types';
 

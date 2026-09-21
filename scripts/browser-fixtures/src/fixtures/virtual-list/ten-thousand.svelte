@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { VirtualList } from '@corvidae/cinder';
+  import { VirtualList } from '@lostgradient/cinder';
 
   type EventRow = {
     id: string;

@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it, mock } from 'bun:test';
 
 import type { IdentityProviderLike } from '../../src/self-improvement/proposals';

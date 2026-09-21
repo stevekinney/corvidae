@@ -6,9 +6,9 @@ Accessible file picker and drag-and-drop surface that validates dropped files, a
 
 ```svelte
 <script lang="ts">
-  import { FileUpload } from '@corvidae/cinder';
-  import type { FileUploadEntry } from '@corvidae/cinder';
-  import { FormField } from '@corvidae/cinder';
+  import { FileUpload } from '@lostgradient/cinder';
+  import type { FileUploadEntry } from '@lostgradient/cinder';
+  import { FormField } from '@lostgradient/cinder';
 
   let entries = $state<FileUploadEntry[]>([]);
   let uploadQueue = $state<File[]>([]);

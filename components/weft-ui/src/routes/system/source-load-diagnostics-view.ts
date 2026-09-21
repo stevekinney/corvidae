@@ -30,7 +30,7 @@
  */
 import { formatDuration } from '../../lib/format/index.ts';
 
-/** Mirrors `SourceLoadState` (`@corvidae/weft`, server-only) — the five closed-union literals, in lifecycle order. */
+/** Mirrors `SourceLoadState` (`@lostgradient/weft`, server-only) — the five closed-union literals, in lifecycle order. */
 export const KNOWN_SOURCE_LOAD_STATES = [
   'idle',
   'loading',
@@ -41,7 +41,7 @@ export const KNOWN_SOURCE_LOAD_STATES = [
 
 export type KnownSourceLoadState = (typeof KNOWN_SOURCE_LOAD_STATES)[number];
 
-/** Mirrors `FailureCategory` (`@corvidae/weft`) — the five bounded categories a load failure is classified into. */
+/** Mirrors `FailureCategory` (`@lostgradient/weft`) — the five bounded categories a load failure is classified into. */
 export const KNOWN_FAILURE_CATEGORIES = [
   'application',
   'timeout',
@@ -52,7 +52,7 @@ export const KNOWN_FAILURE_CATEGORIES = [
 
 export type KnownFailureCategory = (typeof KNOWN_FAILURE_CATEGORIES)[number];
 
-/** Structural mirror of `WorkflowRevisionDiagnostics['source']` (`@corvidae/weft`). */
+/** Structural mirror of `WorkflowRevisionDiagnostics['source']` (`@lostgradient/weft`). */
 export interface SourceLoadDiagnosticsLike {
   readonly kind: string;
   readonly requestedRevision: string;
@@ -62,7 +62,7 @@ export interface SourceLoadDiagnosticsLike {
   readonly waiterCount: number;
 }
 
-/** Structural mirror of `WorkflowRevisionDiagnostics` (`@corvidae/weft`) — only the fields this console reads. */
+/** Structural mirror of `WorkflowRevisionDiagnostics` (`@lostgradient/weft`) — only the fields this console reads. */
 export interface CatalogDiagnosticsLike {
   readonly name: string;
   readonly revision: string;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ScheduleBuilder, type ScheduleFire, type ScheduleValue } from '@corvidae/cinder';
+  import { ScheduleBuilder, type ScheduleFire, type ScheduleValue } from '@lostgradient/cinder';
 
   let value = $state<ScheduleValue>({ mode: 'interval', every: 15, unit: 'minutes' });
 

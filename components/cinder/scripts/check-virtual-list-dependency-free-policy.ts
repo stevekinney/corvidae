@@ -52,8 +52,8 @@ function isSvelteSpecifier(specifier: string): boolean {
  * The installable package name a specifier resolves to — everything up to
  * (and including) the scope segment for a scoped package (`@scope/name`), or
  * just the first path segment otherwise. This is what gets looked up against
- * `package.json`'s `dependencies` keys, so `@corvidae/markdown` and
- * `@corvidae/markdown` both resolve to the same declared dependency name.
+ * `package.json`'s `dependencies` keys, so `@lostgradient/markdown` and
+ * `@lostgradient/markdown` both resolve to the same declared dependency name.
  */
 export function packageNameFromSpecifier(specifier: string): string {
   const segments = specifier.split('/');

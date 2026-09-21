@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { PaginatedResult, WorkflowState, WorkflowSummary } from '@corvidae/weft';
+import type { PaginatedResult, WorkflowState, WorkflowSummary } from '@lostgradient/weft';
 
 import type { WorkflowCatalogActivePointerLike } from '../../../lib/workflow-revision.ts';
 import OverviewTabHarness from './overview-tab.test-harness.svelte';

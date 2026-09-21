@@ -21,7 +21,7 @@
  *    the source of truth" (plan §1.5) — a filter read back from the URL and
  *    written back out must not drift on every render.
  */
-import type { FailureCategory, WorkflowStatus } from '@corvidae/weft';
+import type { FailureCategory, WorkflowStatus } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
 import type { AttributeFilter, AttributeScalar } from './attribute-filters.ts';

@@ -23,7 +23,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './review-editor-browser-errors.ts';
 
-import { runAxe } from '@corvidae/testing';
+import { runAxe } from '@lostgradient/testing';
 
 import { reviewEditorCommentsRoute } from './review-editor-accessibility-route.ts';
 

@@ -21,7 +21,7 @@
  *
  * @example
  * ```ts
- * import type { WorkerManifestRejectionReason } from '@corvidae/weft';
+ * import type { WorkerManifestRejectionReason } from '@lostgradient/weft';
  *
  * const counts = new Map<WorkerManifestRejectionReason, number>();
  * counts.set('unsupported_manifest_version', 1);
@@ -49,7 +49,7 @@ export type WorkerManifestRejectionReason =
  *
  * @example
  * ```ts
- * import { parseWorkerManifest, type ManifestValidationFailure } from '@corvidae/weft';
+ * import { parseWorkerManifest, type ManifestValidationFailure } from '@lostgradient/weft';
  *
  * const result = parseWorkerManifest({ manifestVersion: 99 });
  * if (!result.ok) {

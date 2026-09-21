@@ -12,7 +12,7 @@
  * page"). `includeFailureCategory` is a REST projection flag with no bulk
  * equivalent and is dropped for the same reason.
  */
-import type { FailureCategory, WorkflowStatus } from '@corvidae/weft';
+import type { FailureCategory, WorkflowStatus } from '@lostgradient/weft';
 
 import type { AttributeScalar } from '../../../lib/attribute-filters.ts';
 import type { TimeRange, WorkflowListQuery } from '../../../lib/filters.ts';

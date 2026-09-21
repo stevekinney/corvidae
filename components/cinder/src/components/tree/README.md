@@ -8,7 +8,7 @@ Hierarchical tree view for navigating or selecting nested data structures.
 
 ```svelte
 <script lang="ts">
-  import { Tree } from '@corvidae/cinder';
+  import { Tree } from '@lostgradient/cinder';
 
   let expandedIds = $state<string[]>(['fruit']);
 </script>
@@ -24,7 +24,7 @@ Hierarchical tree view for navigating or selecting nested data structures.
 </Tree>
 ```
 
-The leaf remains importable individually for à-la-carte builds — see `@corvidae/cinder`.
+The leaf remains importable individually for à-la-carte builds — see `@lostgradient/cinder`.
 
 ## Props
 
@@ -74,6 +74,6 @@ The leaf remains importable individually for à-la-carte builds — see `@corvid
 <!-- generated:subcomponents:start -->
 
 - `Tree.Item` — a tree node, branch or leaf; see [`tree-item`](../tree-item/README.md).
-- `Tree.SelectAll` — the root-level select-all/none control. It reads Tree's selection context and is namespace-only: there is no standalone `@corvidae/cinder` import, because rendering it outside a Tree always throws.
+- `Tree.SelectAll` — the root-level select-all/none control. It reads Tree's selection context and is namespace-only: there is no standalone `@lostgradient/cinder` import, because rendering it outside a Tree always throws.
 
 <!-- generated:subcomponents:end -->

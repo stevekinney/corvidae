@@ -119,7 +119,7 @@
  *   compare against.
  */
 
-import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 
 import type { SteeringRequestedValue } from '../durable/types.ts';
 import type { BackendDescriptor, ModelCatalog } from './model-catalog.ts';

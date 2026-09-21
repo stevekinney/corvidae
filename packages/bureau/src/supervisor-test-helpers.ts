@@ -1,5 +1,5 @@
-import { Conversation } from '@corvidae/conversationalist';
-import type { AgentInput, AgentRun, RunResult } from '@corvidae/operative';
+import { Conversation } from 'conversationalist';
+import type { AgentInput, AgentRun, RunResult } from '@lostgradient/operative';
 
 export function makeRunResult(
   content: string,

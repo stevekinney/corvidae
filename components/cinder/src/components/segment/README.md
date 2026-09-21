@@ -6,8 +6,8 @@ Individual option inside a SegmentedControl that renders either a selection butt
 
 ```svelte
 <script lang="ts">
-  import { Segment } from '@corvidae/cinder';
-  import { SegmentedControl } from '@corvidae/cinder';
+  import { Segment } from '@lostgradient/cinder';
+  import { SegmentedControl } from '@lostgradient/cinder';
 
   let view = $state('list');
 </script>

@@ -23,8 +23,8 @@
     Skeleton,
     Toggle,
     Tooltip,
-  } from '@corvidae/cinder';
-  import type { ReviewListEntry } from '@corvidae/weft';
+  } from '@lostgradient/cinder';
+  import type { ReviewListEntry } from '@lostgradient/weft';
   import { MediaQuery } from 'svelte/reactivity';
 
   import { useQueryClient } from '@tanstack/svelte-query';

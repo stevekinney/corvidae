@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach } from 'bun:test';
 
-import { requiredValue } from '@corvidae/testing';
+import { requiredValue } from '@lostgradient/testing';
 
 export type ObserverRecord = {
   callback: IntersectionObserverCallback;

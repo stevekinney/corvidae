@@ -8,7 +8,7 @@
     Input,
     Modal,
     Toggle,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   let expandedIds = $state<string[]>(['token-accordion']);
   let modalOpen = $state(false);

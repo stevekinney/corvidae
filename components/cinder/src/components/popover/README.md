@@ -6,8 +6,8 @@ Non-blocking floating panel anchored to a trigger element for contextual content
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { Popover } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { Popover } from '@lostgradient/cinder';
 
   let open = $state(false);
   const headingId = 'my-popover-title';

@@ -1,4 +1,4 @@
-import type { DiffHunk, LineDiffStats } from '@corvidae/markdown';
+import type { DiffHunk, LineDiffStats } from '@lostgradient/markdown';
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 

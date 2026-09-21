@@ -1,4 +1,4 @@
-import { AgentRunError } from '@corvidae/operative';
+import { AgentRunError } from '@lostgradient/operative';
 
 export function safeStringify(value: unknown): string {
   if (typeof value === 'string') return value;

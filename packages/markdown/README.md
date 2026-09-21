@@ -1,17 +1,17 @@
-# @corvidae/markdown
+# @lostgradient/markdown
 
-`@corvidae/markdown` is a headless Markdown pipeline: [CommonMark](https://commonmark.org/) and [GitHub Flavored Markdown](https://github.github.com/gfm/) parsing, deterministic serialization, sanitized HTML rendering with math and syntax highlighting, word-level diffing, and placeholder templating. It has no Svelte dependency—use it from a server, a build script, or any other non-component context.
+`@lostgradient/markdown` is a headless Markdown pipeline: [CommonMark](https://commonmark.org/) and [GitHub Flavored Markdown](https://github.github.com/gfm/) parsing, deterministic serialization, sanitized HTML rendering with math and syntax highlighting, word-level diffing, and placeholder templating. It has no Svelte dependency—use it from a server, a build script, or any other non-component context.
 
 ## Workspace usage
 
-Declare `"@corvidae/markdown": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@corvidae/markdown`; the consumer compiles it. Shared external versions come from the root Bun catalog.
+Declare `"@lostgradient/markdown": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@lostgradient/markdown`; the consumer compiles it. Shared external versions come from the root Bun catalog.
 
 ## Parse and serialize
 
 Use `parse` when you want to inspect or transform a document's syntax tree. Its result distinguishes a parsed tree from a `MarkdownParseError`; `parseOrThrow` is the exception-based alternative. Serialization produces normalized Markdown, so keep the original string when exact source preservation matters.
 
 ```typescript
-import { parse, serialize } from '@corvidae/markdown';
+import { parse, serialize } from '@lostgradient/markdown';
 
 const parsed = parse('# Hello *world*');
 if (!parsed.success) throw parsed.error;
@@ -23,7 +23,7 @@ console.log(serialize(parsed.ast));
 `renderMarkdown` returns sanitized HTML alongside the original Markdown and code-block metadata. The returned `hadUnsafeContent` flag lets a host explain that content was removed without rendering the unsafe source as HTML.
 
 ```typescript
-import { renderMarkdown } from '@corvidae/markdown';
+import { renderMarkdown } from '@lostgradient/markdown';
 
 const result = renderMarkdown('# Hello\n\n[Project](https://example.com)');
 console.log(result.html);
@@ -45,7 +45,7 @@ The synchronous renderer omits math processing. Use `renderMarkdownWithMath` on 
 Diffing and templates are separate operations. `computeLineDiff` compares source strings; `renderTemplate` resolves placeholders and then returns sanitized HTML, not substituted Markdown.
 
 ```typescript
-import { computeLineDiff, renderTemplate } from '@corvidae/markdown';
+import { computeLineDiff, renderTemplate } from '@lostgradient/markdown';
 
 const diff = computeLineDiff('before\nafter', 'before\nupdated');
 const html = renderTemplate('Hello {{name}}', { name: 'World' });
@@ -56,7 +56,7 @@ Use `resolveTemplatePlaceholders` when you need the substituted source and place
 
 ## Development
 
-From the repository root, run `bunx turbo run lint typecheck test --filter=@corvidae/markdown`. Run `bun run validate` for the complete workspace.
+From the repository root, run `bunx turbo run lint typecheck test --filter=@lostgradient/markdown`. Run `bun run validate` for the complete workspace.
 
 ## Provenance
 

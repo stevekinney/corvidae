@@ -23,7 +23,7 @@ export type { WorkflowDefinition } from './workflow-definition.ts';
  *
  * @example
  * ```ts
- * import { workflow, activity, Engine, type WorkflowContext, type WorkflowFunction } from '@corvidae/weft';
+ * import { workflow, activity, Engine, type WorkflowContext, type WorkflowFunction } from '@lostgradient/weft';
  *
  * const greet = activity({ name: 'greet', execute: async (input: string) => `hello ${input}` });
  *
@@ -54,7 +54,7 @@ export type WorkflowFunction<TInput = unknown, TOutput = unknown, TServices = un
  *
  * @example
  * ```ts
- * import { workflow, Engine, compileStepWorkflow, type StepWorkflowContext } from '@corvidae/weft';
+ * import { workflow, Engine, compileStepWorkflow, type StepWorkflowContext } from '@lostgradient/weft';
  *
  * async function myStepWorkflow(ctx: StepWorkflowContext, input: unknown) {
  *   const result = await ctx.step('fetchData', async () => {
@@ -99,7 +99,7 @@ export interface StepWorkflowContext {
  *
  * @example
  * ```ts
- * import { workflow, Engine, compileStepWorkflow, type StepWorkflowFunction } from '@corvidae/weft';
+ * import { workflow, Engine, compileStepWorkflow, type StepWorkflowFunction } from '@lostgradient/weft';
  *
  * const process: StepWorkflowFunction = async (ctx, input) => {
  *   return ctx.step('transform', () => (input as string).toUpperCase());
@@ -123,7 +123,7 @@ export type StepWorkflowFunction<TInput = unknown, TOutput = unknown> = (
  *
  * @example
  * ```ts
- * import { workflow, Engine, type WorkflowOperation, type WorkflowContext } from '@corvidae/weft';
+ * import { workflow, Engine, type WorkflowOperation, type WorkflowContext } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -161,7 +161,7 @@ export type WorkflowOperation<TResult> = Generator<unknown, TResult, unknown>;
  *
  * @example
  * ```ts
- * import { workflow, Engine, type ChildWorkflowTarget, type WorkflowContext } from '@corvidae/weft';
+ * import { workflow, Engine, type ChildWorkflowTarget, type WorkflowContext } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -196,7 +196,7 @@ export type ChildWorkflowTarget<TInput = unknown, TOutput = unknown> =
  *
  * @example
  * ```ts
- * import type { ChildWorkflowParentClosePolicy } from '@corvidae/weft';
+ * import type { ChildWorkflowParentClosePolicy } from '@lostgradient/weft';
  *
  * const policy: ChildWorkflowParentClosePolicy = 'abandon';
  * void policy;
@@ -214,7 +214,7 @@ declare const childWorkflowResultType: unique symbol;
  *
  * @example
  * ```ts
- * import type { ChildWorkflowHandle } from '@corvidae/weft';
+ * import type { ChildWorkflowHandle } from '@lostgradient/weft';
  *
  * const child: ChildWorkflowHandle<{ receiptId: string }> = { id: 'payment-child' };
  * const workflowId: string = child.id;
@@ -231,7 +231,7 @@ export type ChildWorkflowHandle<TResult = unknown> = {
  *
  * @example
  * ```ts
- * import type { AwaitChildWorkflowOptions } from '@corvidae/weft';
+ * import type { AwaitChildWorkflowOptions } from '@lostgradient/weft';
  *
  * const options: AwaitChildWorkflowOptions = {
  *   id: 'payment-child',
@@ -250,7 +250,7 @@ export type AwaitChildWorkflowOptions = {
  *
  * @example
  * ```ts
- * import type { DetachedChildWorkflowOptions } from '@corvidae/weft';
+ * import type { DetachedChildWorkflowOptions } from '@lostgradient/weft';
  *
  * const options: DetachedChildWorkflowOptions = {
  *   id: 'background-payment',
@@ -279,7 +279,7 @@ export type ChildWorkflowOptions = AwaitChildWorkflowOptions | DetachedChildWork
  *
  * @example
  * ```ts
- * import { workflow, Engine, type WorkflowPipeStage, type WorkflowContext } from '@corvidae/weft';
+ * import { workflow, Engine, type WorkflowPipeStage, type WorkflowContext } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'step1' }).execute(async function* (_ctx: WorkflowContext, i: unknown) { return String(i); }));
@@ -310,7 +310,7 @@ export interface WorkflowPipeStage<TInput = unknown, TOutput = unknown> {
  *
  * @example
  * ```ts
- * import { workflow, Engine, type WorkflowPipeStageDefinition, type WorkflowContext } from '@corvidae/weft';
+ * import { workflow, Engine, type WorkflowPipeStageDefinition, type WorkflowContext } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -346,7 +346,7 @@ export type WorkflowPipeStageDefinition<TInput = unknown, TOutput = unknown> =
  *
  * @example
  * ```ts
- * import { workflow, Engine, type WorkflowMapOptions, type WorkflowContext } from '@corvidae/weft';
+ * import { workflow, Engine, type WorkflowMapOptions, type WorkflowContext } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -375,7 +375,7 @@ export interface WorkflowMapOptions {
  *
  * @example
  * ```ts
- * import { Engine, workflow, type WorkflowReduceInput, type WorkflowContext } from '@corvidae/weft';
+ * import { Engine, workflow, type WorkflowReduceInput, type WorkflowContext } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -410,7 +410,7 @@ export interface WorkflowReduceInput<TAccumulator, TItem> {
  *
  * @example
  * ```ts
- * import { Engine, workflow, type WorkflowReduceOptions, type WorkflowContext } from '@corvidae/weft';
+ * import { Engine, workflow, type WorkflowReduceOptions, type WorkflowContext } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -441,7 +441,7 @@ export interface WorkflowReduceOptions extends AwaitChildWorkflowOptions {
  *
  * @example
  * ```ts
- * import { workflow, signal } from '@corvidae/weft';
+ * import { workflow, signal } from '@lostgradient/weft';
  *
  * const welcome = workflow({ name: 'welcome' })
  *   .activities({

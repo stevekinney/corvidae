@@ -19,7 +19,7 @@
  * so every change (including the deliberately torn one) is deterministic.
  */
 
-import { createManualRuntimeServices, type ManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

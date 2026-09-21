@@ -37,10 +37,10 @@
    * future implementation (here or on the Dashboard mirror) has one shared
    * key to invalidate together the day a real endpoint exists.
    */
-  import { Button, ConfirmDialog, CodeBlock, CopyButton, DescriptionList } from '@corvidae/cinder';
+  import { Button, ConfirmDialog, CodeBlock, CopyButton, DescriptionList } from '@lostgradient/cinder';
   import { CircleAlert, Terminal } from 'lucide-svelte';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
-  import type { RetentionOverview } from '@corvidae/weft';
+  import type { RetentionOverview } from '@lostgradient/weft';
 
   import { codeHighlighter } from '../../lib/code-highlighter.ts';
   import { getClient } from '../../lib/client.ts';

@@ -7,7 +7,7 @@
  * outside the Svelte language service.
  */
 
-import type { ApprovalResolution } from '@corvidae/cinder';
+import type { ApprovalResolution } from '@lostgradient/cinder';
 import type { Snippet } from 'svelte';
 
 import type {

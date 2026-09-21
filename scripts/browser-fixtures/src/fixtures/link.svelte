@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Link } from '@corvidae/cinder';
+  import { Link } from '@lostgradient/cinder';
 </script>
 
 <!-- Links inside a text block must stay distinguishable without relying on color

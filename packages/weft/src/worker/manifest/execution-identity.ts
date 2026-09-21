@@ -28,7 +28,7 @@ import type {
  *
  * @example
  * ```ts
- * import { buildWorkerExecutionIdentity, WORKER_MANIFEST_VERSION } from '@corvidae/weft';
+ * import { buildWorkerExecutionIdentity, WORKER_MANIFEST_VERSION } from '@lostgradient/weft';
  *
  * const identity = buildWorkerExecutionIdentity({
  *   manifest: {
@@ -98,7 +98,7 @@ export function buildWorkerExecutionIdentity(
  *
  * @example
  * ```ts
- * import { executionIdentitySatisfies, type WorkerExecutionIdentity } from '@corvidae/weft';
+ * import { executionIdentitySatisfies, type WorkerExecutionIdentity } from '@lostgradient/weft';
  *
  * const identity: WorkerExecutionIdentity = {
  *   workerId: 'worker-1',

@@ -84,7 +84,7 @@ export type GetCatalogDiagnosticsOutput = z.infer<typeof getCatalogDiagnosticsOu
  *
  * @example
  * ```ts
- * import { HttpClient } from '@corvidae/weft';
+ * import { HttpClient } from '@lostgradient/weft';
  *
  * const client = new HttpClient({ baseUrl: 'https://weft.example.com' });
  * const diagnostics = await client.operations['weft.catalog.diagnostics']({

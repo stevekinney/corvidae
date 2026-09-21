@@ -20,7 +20,7 @@
    * separate non-committing "check" control, and never a local
    * reimplementation of `checkWorkflowCompatibility` (that function is
    * server-only; see `../../lib/faults.ts`'s module doc for why only
-   * `@corvidae/weft` is browser-safe to import as a VALUE).
+   * `@lostgradient/weft` is browser-safe to import as a VALUE).
    *
    * `weft.workflows.active.get` faults `NotFound` for a workflow that has
    * never been activated — a legitimate state (an eagerly-registered
@@ -41,11 +41,11 @@
    * (`policy.requireExactRevision: false`) is a deliberate omission from
    * this batch, not an oversight — see the PR body.
    */
-  import { Badge, Button, ConfirmDialog, CopyButton } from '@corvidae/cinder';
+  import { Badge, Button, ConfirmDialog, CopyButton } from '@lostgradient/cinder';
   import { AlertTriangle } from 'lucide-svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { HttpClientError } from '@corvidae/weft';
+  import { HttpClientError } from '@lostgradient/weft';
 
   import { getClient } from '../../lib/client.ts';
   import { truncateId } from '../../lib/format/index.ts';

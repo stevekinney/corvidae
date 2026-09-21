@@ -47,7 +47,7 @@
     UserCheck,
   } from 'lucide-svelte';
 
-  import { ConnectionIndicator, Card, Feed, FeedEvent, Skeleton } from '@corvidae/cinder';
+  import { ConnectionIndicator, Card, Feed, FeedEvent, Skeleton } from '@lostgradient/cinder';
 
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
   import { classifyFleetEvent } from '../../app/notifications.svelte.ts';

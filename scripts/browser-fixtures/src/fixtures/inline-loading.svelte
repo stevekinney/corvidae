@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { Button, InlineLoading } from '@corvidae/cinder';
+  import { Button, InlineLoading } from '@lostgradient/cinder';
 
   let status = $state<'inactive' | 'active' | 'finished' | 'error'>('active');
   let message = $state('Saved');

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Surface } from '@corvidae/cinder';
+  import { Surface } from '@lostgradient/cinder';
 </script>
 
 <div style="display: grid; gap: 0.75rem;">

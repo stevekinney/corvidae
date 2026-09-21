@@ -15,7 +15,7 @@
     Segment,
     SegmentedControl,
     Table,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { ChevronDown, SearchX } from 'lucide-svelte';
 
   import { createMutation } from '@tanstack/svelte-query';

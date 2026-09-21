@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FindBar } from '@corvidae/cinder';
+  import { FindBar } from '@lostgradient/cinder';
 </script>
 
 <FindBar value="terminal" activeIndex={1} matchCount={4} />

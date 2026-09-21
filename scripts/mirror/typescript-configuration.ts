@@ -12,7 +12,7 @@ import { sourceTree, type EmittedWorkspace } from './source.ts';
 import { keysFor, loadTargetOwnedPolicy, type TargetOwnedPolicy } from './target-owned.ts';
 
 /**
- * How `@corvidae/typescript` reaches each target.
+ * How `@lostgradient/typescript` reaches each target.
  *
  * Every workspace's tsconfig extends it by specifier, and what it carries is load-bearing:
  * `exactOptionalPropertyTypes` alone is why weft's source differs from upstream's in hundreds of
@@ -21,10 +21,10 @@ import { keysFor, loadTargetOwnedPolicy, type TargetOwnedPolicy } from './target
  * The two targets need different answers because they are shaped differently.
  *
  * - The cinder target is a workspace, so it can hold the package. Only the scope in the `extends`
- *   specifier is rewritten, from `@corvidae/typescript` to the public name the map derives.
+ *   specifier is rewritten, from `@lostgradient/typescript` to the public name the map derives.
  * - The weft target is a single package with no sibling to install from, so the configuration is
  *   vendored to a path inside that package and the `extends` specifier becomes relative. COR-1188
- *   drops weft's `devDependencies` edge to `@corvidae/typescript` and reports it as dropped;
+ *   drops weft's `devDependencies` edge to `@lostgradient/typescript` and reports it as dropped;
  *   vendoring is what closes it, and `assertTypeScriptEdgeClosed` checks that it did.
  *
  * All three files are vendored, not just the reachable ones. `library.json` extends `./base.json`,
@@ -34,9 +34,9 @@ import { keysFor, loadTargetOwnedPolicy, type TargetOwnedPolicy } from './target
 export class TypeScriptConfigurationError extends Error {}
 
 /** The corvidae workspace holding the shared configuration. */
-export const configurationWorkspace = '@corvidae/typescript';
+export const configurationWorkspace = '@lostgradient/typescript';
 
-/** The files `@corvidae/typescript` is made of. `base.json` is private composition. */
+/** The files `@lostgradient/typescript` is made of. `base.json` is private composition. */
 export const configurationFiles = ['base.json', 'library.json', 'browser.json'] as const;
 
 /** Where the weft target keeps its vendored copy, relative to the package that extends it. */
@@ -44,7 +44,7 @@ export const vendoredDirectory = 'typescript';
 
 type JsonObject = Record<string, unknown>;
 
-/** Whether the target can hold `@corvidae/typescript` as a workspace of its own. */
+/** Whether the target can hold `@lostgradient/typescript` as a workspace of its own. */
 export function vendorsConfiguration(target: MirrorTarget): boolean {
   return targetFor(configurationWorkspace) !== target;
 }
@@ -104,7 +104,7 @@ function rewriteExtendsField(
  * Rewrite the internal workspace names a configuration's `compilerOptions.paths` maps.
  *
  * A `paths` key is a module specifier the target's `tsc` matches an import against, so a key that
- * still said `@corvidae/weft` beside emitted source that now says `@lostgradient/weft` would map
+ * still said `@lostgradient/weft` beside emitted source that now says `@lostgradient/weft` would map
  * nothing. `src/client/__fixtures__/no-workflow-registry/tsconfig.json` is the case that proves
  * this field needs its own pass: it carries no `extends` at all, so an `extends`-only rewrite
  * leaves it silently broken. The values are left exactly as they are — they are relative paths
@@ -140,7 +140,7 @@ function isJsonObject(value: unknown): value is JsonObject {
  * `src/` is what `source.ts` calls source. Walking the whole workspace instead would start
  * emitting configurations out of `examples/` and `test/` — directories nobody has ruled on and
  * whose siblings are not emitted — and walking only the root is what shipped
- * `src/cli/__fixtures__/codegen/typecheck/tsconfig.json` extending `@corvidae/typescript/\
+ * `src/cli/__fixtures__/codegen/typecheck/tsconfig.json` extending `@lostgradient/typescript/\
  * library.json`, a package name that exists in no target.
  */
 export async function discoverConfigurations(workspaceDirectory: string): Promise<string[]> {
@@ -185,7 +185,7 @@ export interface TypeScriptPlanOptions {
    */
   workspaces: readonly Pick<EmittedWorkspace, 'corvidaeDirectory' | 'targetDirectory'>[];
   /**
-   * Public names, keyed by `@corvidae/*` name, for every workspace this tree carries. A nested
+   * Public names, keyed by `@lostgradient/*` name, for every workspace this tree carries. A nested
    * configuration's `compilerOptions.paths` maps specifiers, and those are renamed from the same
    * authority the manifests and the emitted source use.
    */
@@ -323,7 +323,7 @@ export async function planTypeScriptConfiguration({
 }
 
 /**
- * COR-1188 drops the `@corvidae/weft -> @corvidae/typescript` devDependencies edge, because the
+ * COR-1188 drops the `@lostgradient/weft -> @lostgradient/typescript` devDependencies edge, because the
  * configuration package is private and ships from the other target. That is only acceptable while
  * something replaces it. This asserts that every dropped edge into the configuration package was
  * replaced by a vendored copy, and that no other edge was dropped silently.

@@ -1,4 +1,4 @@
-import { createToolbox } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
 
 import type { GenerateContext } from '../types';
 import type { RetryMutator } from './types';

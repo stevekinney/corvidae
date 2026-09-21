@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -10,7 +10,7 @@ setupHappyDom();
 // export map. Keep the component on its public subpath while mapping that entry
 // to the source implementation for this focused test process.
 const inputModule = await import('../input/index.ts');
-mock.module('@corvidae/cinder', () => inputModule);
+mock.module('@lostgradient/cinder', () => inputModule);
 
 const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
 const { default: Autocomplete } = await import('./autocomplete.svelte');

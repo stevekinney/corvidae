@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Tooltip } from '@corvidae/cinder';
+  import { Button, Tooltip } from '@lostgradient/cinder';
 </script>
 
 <section aria-label="Overview preview">

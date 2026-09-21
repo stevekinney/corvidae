@@ -2,7 +2,7 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 
-import type { WorkflowSummary } from '@corvidae/weft';
+import type { WorkflowSummary } from '@lostgradient/weft';
 
 import { router } from '../../../lib/router.svelte.ts';
 import WorkflowTable from './workflow-table.svelte';

@@ -25,7 +25,7 @@
  *
  * @example
  * ```ts
- * import { compareCodepoint } from '@corvidae/weft';
+ * import { compareCodepoint } from '@lostgradient/weft';
  *
  * const workflowNames = ['send-invoice', 'Archive', 'reconcile'];
  * const deterministic = [...workflowNames].sort(compareCodepoint);

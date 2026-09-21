@@ -8,8 +8,8 @@ See the [chronological display boundary decision](https://github.com/stevekinney
 
 ```svelte
 <script lang="ts">
-  import { Timeline } from '@corvidae/cinder';
-  import type { TimelineEntry } from '@corvidae/cinder';
+  import { Timeline } from '@lostgradient/cinder';
+  import type { TimelineEntry } from '@lostgradient/cinder';
 
   const entries: TimelineEntry[] = [
     {

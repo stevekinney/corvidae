@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { loadManifest, VIEWPORTS } from '@corvidae/testing';
+import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
 
 import { expect, test } from './component-page-fixture.ts';
 

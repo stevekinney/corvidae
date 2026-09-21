@@ -1,4 +1,4 @@
-import { importSvelteOnServer, prepareSvelteServerSource } from '@corvidae/testing';
+import { importSvelteOnServer, prepareSvelteServerSource } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';

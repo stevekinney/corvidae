@@ -6,7 +6,7 @@
    * around the child components built for this track.
    */
   import { ChartBar, GitBranch, Plus } from 'lucide-svelte';
-  import { Button, ConnectionIndicator, EmptyState, Skeleton } from '@corvidae/cinder';
+  import { Button, ConnectionIndicator, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 

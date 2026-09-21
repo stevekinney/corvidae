@@ -8,8 +8,8 @@ Reach for DataList when you have a vertical list of like records. For key–valu
 
 ```svelte
 <script lang="ts">
-  import { DataList } from '@corvidae/cinder';
-  import { StackedListItem } from '@corvidae/cinder';
+  import { DataList } from '@lostgradient/cinder';
+  import { StackedListItem } from '@lostgradient/cinder';
 
   const members = [
     { id: 'a', name: 'Alice Chen', role: 'Engineer' },

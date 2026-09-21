@@ -2,7 +2,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { ConversationSummary } from '../chat-conversation-list/conversation-summary.ts';
 import type { ConversationHistory, Message } from '../chat/conversation-model.ts';
 

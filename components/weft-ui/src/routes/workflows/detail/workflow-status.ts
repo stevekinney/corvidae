@@ -23,9 +23,9 @@
  * from the same real field, instead of each independently inferring it from
  * session-scoped live events the way the console used to.
  */
-import type { WorkflowFinalizerStatus, WorkflowStatus } from '@corvidae/weft';
+import type { WorkflowFinalizerStatus, WorkflowStatus } from '@lostgradient/weft';
 
-import type { BadgeVariant } from '@corvidae/cinder';
+import type { BadgeVariant } from '@lostgradient/cinder';
 
 export type WorkflowStatusIcon =
   | 'clock'

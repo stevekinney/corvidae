@@ -11,7 +11,7 @@ Opinionated conversation surface bundling message list, composer, attachments, a
     appendAssistantMessage,
     appendUserMessage,
     createConversation,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
 
   const conversation = appendAssistantMessage(
     appendUserMessage(createConversation({ id: 'demo' }), 'Can you summarize this plan?'),
@@ -43,7 +43,7 @@ Opinionated conversation surface bundling message list, composer, attachments, a
     updateStreamingMessage,
     type ChatAdapter,
     type ConversationHistory,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
 
   let chat: ReturnType<typeof Chat> | undefined;
   let conversation = $state<ConversationHistory>(createConversation({ id: 'streaming' }));
@@ -100,7 +100,7 @@ import {
   appendUserMessage,
   clearMessageDeliveryStatus,
   markMessageDeliveryFailed,
-} from '@corvidae/chat';
+} from '@lostgradient/chat';
 
 // Inside your ChatAdapter implementation:
 async sendMessage(message, attachments) {
@@ -123,7 +123,7 @@ The helpers immutably set or clear the transient `_deliveryStatus` metadata used
 `ChatAdapter.editMessage` hands you the edited message's ID and new content; the superseded branch (the old reply, any tool calls after it) should be discarded before the edited content is re-sent. `rewindBeforeMessage` performs exactly that cut — it drops the named message and everything after it in the transcript, keeps tool-call/tool-result pairs atomic, and renumbers positions — so an edit flow never assembles `ids`/`messages`/`updatedAt` by hand:
 
 ```ts
-import { appendUserMessage, rewindBeforeMessage } from '@corvidae/chat';
+import { appendUserMessage, rewindBeforeMessage } from '@lostgradient/chat';
 
 // Inside your ChatAdapter implementation:
 async editMessage({ messageId, content }) {
@@ -136,7 +136,7 @@ async editMessage({ messageId, content }) {
 
 ### Transcript mutation and query helpers
 
-`@corvidae/chat` re-exports Conversationalist's canonical transcript mutation and query helpers so consumers never hand-walk `conversation.ids` / `conversation.messages` or import `conversationalist` directly:
+`@lostgradient/chat` re-exports Conversationalist's canonical transcript mutation and query helpers so consumers never hand-walk `conversation.ids` / `conversation.messages` or import `conversationalist` directly:
 
 ```ts
 import {
@@ -147,7 +147,7 @@ import {
   replaceToolResult,
   setMessageHidden,
   updateMessage,
-} from '@corvidae/chat';
+} from '@lostgradient/chat';
 
 // Edit a message's content in place, keeping identity, role, order, and
 // creation time intact.
@@ -176,9 +176,9 @@ conversation = replaceToolResult(conversation, toolCallId, {
 
 ## Conversation data contract
 
-Chat declares `@corvidae/cinder` and `svelte` as peer dependencies — host applications install those alongside `@corvidae/chat`. `conversationalist` (and its own `zod` dependency) is an implementation detail Chat owns: it ships as a regular dependency of `@corvidae/chat` and installs automatically, so using Chat never requires a host application to add or version-pick it. Import the conversation types, builders, `CURRENT_SCHEMA_VERSION`, and `isJSONValue` from `@corvidae/chat` rather than importing `conversationalist` yourself. An application that uses `conversationalist` APIs beyond what Chat re-exports may still depend on it directly — that is supported, it just is not something Chat requires.
+Chat declares `@lostgradient/cinder` and `svelte` as peer dependencies — host applications install those alongside `@lostgradient/chat`. `conversationalist` (and its own `zod` dependency) is an implementation detail Chat owns: it ships as a regular dependency of `@lostgradient/chat` and installs automatically, so using Chat never requires a host application to add or version-pick it. Import the conversation types, builders, `CURRENT_SCHEMA_VERSION`, and `isJSONValue` from `@lostgradient/chat` rather than importing `conversationalist` yourself. An application that uses `conversationalist` APIs beyond what Chat re-exports may still depend on it directly — that is supported, it just is not something Chat requires.
 
-The exported schema version comes from the `conversationalist` version Chat depends on. Histories produced by an older compatible schema can render as-is; a newer schema causes Chat to emit a console warning and requires upgrading `@corvidae/chat` before relying on that history.
+The exported schema version comes from the `conversationalist` version Chat depends on. Histories produced by an older compatible schema can render as-is; a newer schema causes Chat to emit a console warning and requires upgrading `@lostgradient/chat` before relying on that history.
 
 ## Layout and sizing
 
@@ -244,7 +244,7 @@ Use `bind:this` to read or control the composer:
 
 ```svelte
 <script lang="ts">
-  import { Chat } from '@corvidae/chat';
+  import { Chat } from '@lostgradient/chat';
 
   let chat: ReturnType<typeof Chat> | undefined;
 </script>
@@ -289,7 +289,7 @@ Chat owns always-rendered polite and assertive live regions outside the `role="l
 
 ```svelte
 <script lang="ts">
-  import { Chat } from '@corvidae/chat';
+  import { Chat } from '@lostgradient/chat';
 
   let chat: ReturnType<typeof Chat> | undefined;
 
@@ -315,8 +315,8 @@ Consumer announcements clear after a short interval so Chat's own history, unrea
 
 ```svelte
 <script lang="ts">
-  import { Chat, type ChatRowContext, type ResolvedChatArtifact } from '@corvidae/chat';
-  import { Button } from '@corvidae/cinder';
+  import { Chat, type ChatRowContext, type ResolvedChatArtifact } from '@lostgradient/chat';
+  import { Button } from '@lostgradient/cinder';
 
   let selectedArtifact = $state<ResolvedChatArtifact | undefined>();
 </script>
@@ -370,10 +370,10 @@ A paired `tool-result` message does not render a second visible row and does not
 
 ## Attachment serialization
 
-When `capabilities.attachments` is enabled, `onsubmit` receives ready `ChatAttachment[]` values. Use `serializeChatAttachment()` or `serializeChatAttachments()` from `@corvidae/chat` to convert those files into transportable base64 payloads without spreading the full byte array onto the JavaScript stack.
+When `capabilities.attachments` is enabled, `onsubmit` receives ready `ChatAttachment[]` values. Use `serializeChatAttachment()` or `serializeChatAttachments()` from `@lostgradient/chat` to convert those files into transportable base64 payloads without spreading the full byte array onto the JavaScript stack.
 
 ```ts
-import { serializeChatAttachments } from '@corvidae/chat';
+import { serializeChatAttachments } from '@lostgradient/chat';
 
 const attachments = await serializeChatAttachments(chatAttachments);
 ```

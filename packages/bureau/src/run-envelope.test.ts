@@ -1,6 +1,6 @@
-import { createTestToolbox, createTool, createToolbox, type Tool } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { TypedEventTarget } from '@corvidae/lifecycle';
+import { createTestToolbox, createTool, createToolbox, type Tool } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { TypedEventTarget } from '@lostgradient/lifecycle';
 import {
   type ActiveRun,
   BudgetExceededEvent,
@@ -14,7 +14,7 @@ import {
   runFrameSchema,
   StreamCustomEvent,
   type StreamEventMap,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -15,32 +15,32 @@ This inventory records the consolidation boundaries and validation evidence. The
 
 | Source repository and path | Destination | Old name | New name | Classification |
 | --- | --- | --- | --- | --- |
-| `/Users/stevekinney/Developer/agent-bureau/packages/bureau` | `packages/bureau` | `bureau` | `@corvidae/bureau` | Library |
-| `/Users/stevekinney/Developer/agent-bureau/packages/operative` | `packages/operative` | `@lostgradient/operative` | `@corvidae/operative` | Library |
-| `/Users/stevekinney/Developer/agent-bureau/packages/armorer` | `packages/armorer` | `armorer` | `@corvidae/armorer` | Library |
-| `/Users/stevekinney/Developer/agent-bureau/packages/conversationalist` | `packages/conversationalist` | `conversationalist` | `@corvidae/conversationalist` | Library |
-| `/Users/stevekinney/Developer/agent-bureau/packages/memory` | `packages/memory` | `memory` | `@corvidae/memory` | Library |
-| `/Users/stevekinney/Developer/agent-bureau/packages/skills` | `packages/skills` | `skills` | `@corvidae/skills` | Library |
-| `/Users/stevekinney/Developer/agent-bureau/packages/interoperability` | `packages/tool-protocol` | `interoperability` | `@corvidae/tool-protocol` | Library |
-| `/Users/stevekinney/Developer/agent-bureau/packages/interoperability` | `packages/embeddings` | `interoperability` | `@corvidae/embeddings` | Library |
-| `/Users/stevekinney/Developer/agent-bureau/packages/interoperability` | `packages/cryptography` | `interoperability` | `@corvidae/cryptography` | Library |
-| `/Users/stevekinney/Developer/agent-bureau/packages/lifecycle` | `packages/lifecycle` | `lifecycle` | `@corvidae/lifecycle` | Library |
-| `/Users/stevekinney/Developer/weft/packages/weft` | `packages/weft` | `@lostgradient/weft` | `@corvidae/weft` | Library |
-| `/Users/stevekinney/Developer/weft/packages/weft-ui` | `components/weft-ui` | `@lostgradient/weft-ui` | `@corvidae/weft-ui` | Browser component library |
-| `/Users/stevekinney/Developer/cinder/packages/components` | `components/cinder` | `@lostgradient/cinder` | `@corvidae/cinder` | Browser component library |
-| `/Users/stevekinney/Developer/cinder/packages/chat` | `components/chat` | `@lostgradient/chat` | `@corvidae/chat` | Browser component library |
-| `/Users/stevekinney/Developer/cinder/packages/editor` | `components/editor` | `@lostgradient/editor` | `@corvidae/editor` | Browser component library |
-| `/Users/stevekinney/Developer/cinder/packages/markdown` | `packages/markdown` | `@lostgradient/markdown` | `@corvidae/markdown` | Library |
-| `/Users/stevekinney/Developer/cinder/packages/testing` | `packages/testing` | `@cinder/testing` | `@corvidae/testing` | Library |
-| `/Users/stevekinney/Developer/cinder/labs/chat-room` | `applications/chat-room` | `@cinder/chat-room-lab` | `@corvidae/chat-room` | Application |
+| `/Users/stevekinney/Developer/agent-bureau/packages/bureau` | `packages/bureau` | `bureau` | `@lostgradient/bureau` | Library |
+| `/Users/stevekinney/Developer/agent-bureau/packages/operative` | `packages/operative` | `@lostgradient/operative` | `@lostgradient/operative` | Library |
+| `/Users/stevekinney/Developer/agent-bureau/packages/armorer` | `packages/armorer` | `armorer` | `armorer` | Library |
+| `/Users/stevekinney/Developer/agent-bureau/packages/conversationalist` | `packages/conversationalist` | `conversationalist` | `conversationalist` | Library |
+| `/Users/stevekinney/Developer/agent-bureau/packages/memory` | `packages/memory` | `memory` | `@lostgradient/memory` | Library |
+| `/Users/stevekinney/Developer/agent-bureau/packages/skills` | `packages/skills` | `skills` | `@lostgradient/skills` | Library |
+| `/Users/stevekinney/Developer/agent-bureau/packages/interoperability` | `packages/tool-protocol` | `interoperability` | `@lostgradient/tool-protocol` | Library |
+| `/Users/stevekinney/Developer/agent-bureau/packages/interoperability` | `packages/embeddings` | `interoperability` | `@lostgradient/embeddings` | Library |
+| `/Users/stevekinney/Developer/agent-bureau/packages/interoperability` | `packages/cryptography` | `interoperability` | `@lostgradient/cryptography` | Library |
+| `/Users/stevekinney/Developer/agent-bureau/packages/lifecycle` | `packages/lifecycle` | `lifecycle` | `@lostgradient/lifecycle` | Library |
+| `/Users/stevekinney/Developer/weft/packages/weft` | `packages/weft` | `@lostgradient/weft` | `@lostgradient/weft` | Library |
+| `/Users/stevekinney/Developer/weft/packages/weft-ui` | `components/weft-ui` | `@lostgradient/weft-ui` | `@lostgradient/weft-ui` | Browser component library |
+| `/Users/stevekinney/Developer/cinder/packages/components` | `components/cinder` | `@lostgradient/cinder` | `@lostgradient/cinder` | Browser component library |
+| `/Users/stevekinney/Developer/cinder/packages/chat` | `components/chat` | `@lostgradient/chat` | `@lostgradient/chat` | Browser component library |
+| `/Users/stevekinney/Developer/cinder/packages/editor` | `components/editor` | `@lostgradient/editor` | `@lostgradient/editor` | Browser component library |
+| `/Users/stevekinney/Developer/cinder/packages/markdown` | `packages/markdown` | `@lostgradient/markdown` | `@lostgradient/markdown` | Library |
+| `/Users/stevekinney/Developer/cinder/packages/testing` | `packages/testing` | `@cinder/testing` | `@lostgradient/testing` | Library |
+| `/Users/stevekinney/Developer/cinder/labs/chat-room` | `applications/chat-room` | `@cinder/chat-room-lab` | `@lostgradient/chat-room` | Application |
 
 ## Architecture
 
-Browser component libraries Cinder, Chat, Editor, and Weft UI live under `components/`; other shared libraries remain under `packages/`. Repository configuration lives under `internal/`. Every workspace uses `@corvidae/*`.
+Browser component libraries Cinder, Chat, Editor, and Weft UI live under `components/`; other shared libraries remain under `packages/`. Repository configuration lives under `internal/`. Every workspace uses `@lostgradient/*`.
 
-All source libraries are private ESM packages with the sole export `{ ".": "./src/index.ts" }`. Consumers compile source. Internal dependencies use `workspace:*`; external versions are centralized in the root Bun catalog. The configuration-only `@corvidae/typescript` workspace lives at `internal/typescript` and exports only `library.json` and `browser.json`. Both compose a private `base.json`; the unused server preset has been removed.
+All source libraries are private ESM packages with the sole export `{ ".": "./src/index.ts" }`. Consumers compile source. Internal dependencies use `workspace:*`; external versions are centralized in the root Bun catalog. The configuration-only `@lostgradient/typescript` workspace lives at `internal/typescript` and exports only `library.json` and `browser.json`. Both compose a private `base.json`; the unused server preset has been removed.
 
-Shared tool and JSON contracts belong to `@corvidae/tool-protocol`. Embedding contracts and vector mathematics belong to `@corvidae/embeddings`. Hashing, signing, and timing-safe comparison belong to `@corvidae/cryptography`. Armorer owns its Standard Schema detection and declares `@standard-schema/spec` directly.
+Shared tool and JSON contracts belong to `@lostgradient/tool-protocol`. Embedding contracts and vector mathematics belong to `@lostgradient/embeddings`. Hashing, signing, and timing-safe comparison belong to `@lostgradient/cryptography`. Armorer owns its Standard Schema detection and declares `@standard-schema/spec` directly.
 
 Chat-room is the only application and owns its SvelteKit/Vite toolchain. The `weft` package owns the `weft` and `weft-mcp` source executables. Weft UI owns its Bun browser test host in `components/weft-ui/scripts/browser`. Cross-component browser tests and their Bun host belong to root `scripts/browser-fixtures`; neither test host has a workspace identity. The unused starter server and greeting library have been removed. Libraries have no build or upstream-build dependency.
 
@@ -54,26 +54,26 @@ Arrows run from consumer to provider. Every manifest edge appears below, includi
 
 | Consumer | Runtime or source-contract providers | Development providers |
 | --- | --- | --- |
-| `@corvidae/chat-room` | `@corvidae/armorer`, `@corvidae/chat`, `@corvidae/cinder`, `@corvidae/conversationalist`, `@corvidae/editor`, `@corvidae/markdown`, `@corvidae/operative`, `@corvidae/weft` | `@corvidae/testing`, `@corvidae/typescript` |
-| `@corvidae/chat` | `@corvidae/cinder`, `@corvidae/conversationalist`, `@corvidae/markdown` | `@corvidae/testing`, `@corvidae/typescript` |
-| `@corvidae/cinder` | `@corvidae/markdown` | `@corvidae/testing`, `@corvidae/typescript` |
-| `@corvidae/editor` | `@corvidae/cinder`, `@corvidae/markdown` | `@corvidae/testing`, `@corvidae/typescript` |
-| `@corvidae/weft-ui` | `@corvidae/cinder`, `@corvidae/markdown`, `@corvidae/weft` | `@corvidae/testing`, `@corvidae/typescript` |
-| `@corvidae/armorer` | `@corvidae/cryptography`, `@corvidae/embeddings`, `@corvidae/lifecycle`, `@corvidae/tool-protocol` | `@corvidae/typescript` |
-| `@corvidae/bureau` | `@corvidae/armorer`, `@corvidae/conversationalist`, `@corvidae/lifecycle`, `@corvidae/memory`, `@corvidae/operative`, `@corvidae/skills`, `@corvidae/tool-protocol`, `@corvidae/weft` | `@corvidae/typescript` |
-| `@corvidae/conversationalist` | `@corvidae/lifecycle`, `@corvidae/tool-protocol` | `@corvidae/typescript` |
-| `@corvidae/cryptography` | None | `@corvidae/typescript` |
-| `@corvidae/embeddings` | None | `@corvidae/typescript` |
-| `@corvidae/lifecycle` | None | `@corvidae/typescript` |
-| `@corvidae/markdown` | None | `@corvidae/typescript` |
-| `@corvidae/memory` | `@corvidae/armorer`, `@corvidae/cryptography`, `@corvidae/embeddings`, `@corvidae/lifecycle`, `@corvidae/weft` | `@corvidae/typescript` |
-| `@corvidae/operative` | `@corvidae/armorer`, `@corvidae/conversationalist`, `@corvidae/cryptography`, `@corvidae/embeddings`, `@corvidae/lifecycle`, `@corvidae/tool-protocol`, `@corvidae/weft` | `@corvidae/typescript` |
-| `@corvidae/skills` | `@corvidae/armorer`, `@corvidae/cryptography`, `@corvidae/lifecycle`, `@corvidae/tool-protocol`, `@corvidae/weft` | `@corvidae/typescript` |
-| `@corvidae/testing` | None | `@corvidae/typescript` |
-| `@corvidae/tool-protocol` | `@corvidae/lifecycle` | `@corvidae/typescript` |
-| `@corvidae/typescript` | None | None |
-| `@corvidae/weft` | None | `@corvidae/typescript` |
-| Repository root | None | `@corvidae/chat`, `@corvidae/cinder`, `@corvidae/conversationalist`, `@corvidae/editor`, `@corvidae/testing`, `@corvidae/typescript` |
+| `@lostgradient/chat-room` | `armorer`, `@lostgradient/chat`, `@lostgradient/cinder`, `conversationalist`, `@lostgradient/editor`, `@lostgradient/markdown`, `@lostgradient/operative`, `@lostgradient/weft` | `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/chat` | `@lostgradient/cinder`, `conversationalist`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/cinder` | `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/editor` | `@lostgradient/cinder`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/weft-ui` | `@lostgradient/cinder`, `@lostgradient/markdown`, `@lostgradient/weft` | `@lostgradient/testing`, `@lostgradient/typescript` |
+| `armorer` | `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/tool-protocol` | `@lostgradient/typescript` |
+| `@lostgradient/bureau` | `armorer`, `conversationalist`, `@lostgradient/lifecycle`, `@lostgradient/memory`, `@lostgradient/operative`, `@lostgradient/skills`, `@lostgradient/tool-protocol`, `@lostgradient/weft` | `@lostgradient/typescript` |
+| `conversationalist` | `@lostgradient/lifecycle`, `@lostgradient/tool-protocol` | `@lostgradient/typescript` |
+| `@lostgradient/cryptography` | None | `@lostgradient/typescript` |
+| `@lostgradient/embeddings` | None | `@lostgradient/typescript` |
+| `@lostgradient/lifecycle` | None | `@lostgradient/typescript` |
+| `@lostgradient/markdown` | None | `@lostgradient/typescript` |
+| `@lostgradient/memory` | `armorer`, `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/weft` | `@lostgradient/typescript` |
+| `@lostgradient/operative` | `armorer`, `conversationalist`, `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/tool-protocol`, `@lostgradient/weft` | `@lostgradient/typescript` |
+| `@lostgradient/skills` | `armorer`, `@lostgradient/cryptography`, `@lostgradient/lifecycle`, `@lostgradient/tool-protocol`, `@lostgradient/weft` | `@lostgradient/typescript` |
+| `@lostgradient/testing` | None | `@lostgradient/typescript` |
+| `@lostgradient/tool-protocol` | `@lostgradient/lifecycle` | `@lostgradient/typescript` |
+| `@lostgradient/typescript` | None | None |
+| `@lostgradient/weft` | None | `@lostgradient/typescript` |
+| Repository root | None | `@lostgradient/chat`, `@lostgradient/cinder`, `conversationalist`, `@lostgradient/editor`, `@lostgradient/testing`, `@lostgradient/typescript` |
 
 ## Direct external dependencies
 
@@ -83,29 +83,29 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 
 | Workspace | Direct external dependencies |
 | --- | --- |
-| `@corvidae/chat-room` | `@lasercat/homogenaize`, `@milkdown/ctx`, `@milkdown/kit`, `@sveltejs/kit`, `lucide-svelte`, `prosemirror-state`, `prosemirror-view`, `svelte`, `zod` |
-| `@corvidae/armorer` | `@modelcontextprotocol/client`, `@modelcontextprotocol/core`, `@modelcontextprotocol/server`, `@openai/agents`, `@opentelemetry/api`, `@standard-schema/spec`, `zod` |
-| `@corvidae/bureau` | `zod` |
-| `@corvidae/chat` | `decode-named-character-reference`, `micromark-util-decode-numeric-character-reference`, `svelte`, `zod` |
-| `@corvidae/cinder` | `@floating-ui/dom`, `@shikijs/engine-oniguruma`, `@shikijs/langs`, `@shikijs/themes`, `@shikijs/types`, `@tanstack/virtual-core`, `ajv`, `ajv-formats`, `culori`, `esm-env`, `libphonenumber-js`, `lucide-svelte`, `qrcode`, `shiki`, `svelte`, `zod` |
-| `@corvidae/conversationalist` | `@anthropic-ai/sdk`, `js-yaml`, `zod` |
-| `@corvidae/editor` | `@floating-ui/dom`, `@milkdown/ctx`, `@milkdown/kit`, `@milkdown/prose`, `esm-env`, `prosemirror-inputrules`, `prosemirror-model`, `prosemirror-state`, `prosemirror-view`, `svelte` |
-| `@corvidae/markdown` | `@shikijs/engine-oniguruma`, `@shikijs/langs`, `@shikijs/types`, `@types/mdast`, `@types/unist`, `comlink`, `diff-match-patch`, `hast-util-sanitize`, `js-yaml`, `rehype-katex`, `rehype-sanitize`, `rehype-stringify`, `remark-gfm`, `remark-math`, `remark-parse`, `remark-rehype`, `remark-stringify`, `shiki`, `unified`, `unist-util-visit` |
-| `@corvidae/memory` | `zod` |
-| `@corvidae/operative` | `@anthropic-ai/sdk`, `@google/genai`, `@opentelemetry/api`, `openai`, `zod` |
-| `@corvidae/skills` | `gray-matter`, `zod` |
-| `@corvidae/testing` | `@axe-core/playwright`, `@playwright/test`, `@testing-library/svelte`, `happy-dom`, `postcss-value-parser`, `svelte`, `typescript`, `zod` |
-| `@corvidae/weft` | `@electric-sql/pglite`, `@libsql/client`, `@msgpack/msgpack`, `@neondatabase/serverless`, `@valibot/to-json-schema`, `better-sqlite3`, `lmdb`, `pg`, `valibot`, `zod` |
-| `@corvidae/weft-ui` | `@shikijs/langs`, `@shikijs/themes`, `@tanstack/svelte-query`, `cron-parser`, `lucide-svelte`, `svelte` |
+| `@lostgradient/chat-room` | `@lasercat/homogenaize`, `@milkdown/ctx`, `@milkdown/kit`, `@sveltejs/kit`, `lucide-svelte`, `prosemirror-state`, `prosemirror-view`, `svelte`, `zod` |
+| `armorer` | `@modelcontextprotocol/client`, `@modelcontextprotocol/core`, `@modelcontextprotocol/server`, `@openai/agents`, `@opentelemetry/api`, `@standard-schema/spec`, `zod` |
+| `@lostgradient/bureau` | `zod` |
+| `@lostgradient/chat` | `decode-named-character-reference`, `micromark-util-decode-numeric-character-reference`, `svelte`, `zod` |
+| `@lostgradient/cinder` | `@floating-ui/dom`, `@shikijs/engine-oniguruma`, `@shikijs/langs`, `@shikijs/themes`, `@shikijs/types`, `@tanstack/virtual-core`, `ajv`, `ajv-formats`, `culori`, `esm-env`, `libphonenumber-js`, `lucide-svelte`, `qrcode`, `shiki`, `svelte`, `zod` |
+| `conversationalist` | `@anthropic-ai/sdk`, `js-yaml`, `zod` |
+| `@lostgradient/editor` | `@floating-ui/dom`, `@milkdown/ctx`, `@milkdown/kit`, `@milkdown/prose`, `esm-env`, `prosemirror-inputrules`, `prosemirror-model`, `prosemirror-state`, `prosemirror-view`, `svelte` |
+| `@lostgradient/markdown` | `@shikijs/engine-oniguruma`, `@shikijs/langs`, `@shikijs/types`, `@types/mdast`, `@types/unist`, `comlink`, `diff-match-patch`, `hast-util-sanitize`, `js-yaml`, `rehype-katex`, `rehype-sanitize`, `rehype-stringify`, `remark-gfm`, `remark-math`, `remark-parse`, `remark-rehype`, `remark-stringify`, `shiki`, `unified`, `unist-util-visit` |
+| `@lostgradient/memory` | `zod` |
+| `@lostgradient/operative` | `@anthropic-ai/sdk`, `@google/genai`, `@opentelemetry/api`, `openai`, `zod` |
+| `@lostgradient/skills` | `gray-matter`, `zod` |
+| `@lostgradient/testing` | `@axe-core/playwright`, `@playwright/test`, `@testing-library/svelte`, `happy-dom`, `postcss-value-parser`, `svelte`, `typescript`, `zod` |
+| `@lostgradient/weft` | `@electric-sql/pglite`, `@libsql/client`, `@msgpack/msgpack`, `@neondatabase/serverless`, `@valibot/to-json-schema`, `better-sqlite3`, `lmdb`, `pg`, `valibot`, `zod` |
+| `@lostgradient/weft-ui` | `@shikijs/langs`, `@shikijs/themes`, `@tanstack/svelte-query`, `cron-parser`, `lucide-svelte`, `svelte` |
 
 ## Public API and ownership changes
 
-- Every former library subpath is consolidated into its supported source root. Consumers use `@corvidae/*`; no old-name packages, aliases, or compatibility entrypoints remain.
+- Every former library subpath is consolidated into its supported source root. Consumers use `@lostgradient/*`; no old-name packages, aliases, or compatibility entrypoints remain.
 - Operative owns agent runtime, providers, sessions, scheduling, and test fixtures. Runtime and generation tracing use their actual distinct names (`instrumentRun`, `instrumentGenerate`); scheduler events use `SchedulerTaskCompletedEvent` and `SchedulerTaskFailedEvent`. Identical provider response-format/tool-choice definitions share their existing type owner.
 - Armorer exports MCP and OAuth directly from their source owners, removing the internal barrel cycle. Its runtime-service types remain intentional constituents of the public execution contract; their implementation is owned by Lifecycle.
 - Bureau exposes its supported harness and quiescence APIs without forwarding unrelated Operative constants. Interoperability owns shared JSON/tool contracts; Lifecycle owns event and runtime primitives.
 - Chat exposes the named `Chat` component. Cinder, Chat, and Editor root entries load their required styles. Editor's placeholder contracts are imported directly from Markdown. Markdown exposes its parser, serializer, renderer, highlighter, worker, diff, and templating APIs at the root.
-- Weft owns durable execution and storage. Its CLI lives beside the engine, while Weft UI consumes its public API; Weft has no reverse dependency on Weft UI. Generated workflow declaration fixtures augment `@corvidae/weft` and remain exact product-code-generation contracts, not library declaration output.
+- Weft owns durable execution and storage. Its CLI lives beside the engine, while Weft UI consumes its public API; Weft has no reverse dependency on Weft UI. Generated workflow declaration fixtures augment `@lostgradient/weft` and remain exact product-code-generation contracts, not library declaration output.
 - Workflow-file loading and CLI validation belong to `packages/weft/src/cli`. Their accidental library-root exports were removed after verifying that every caller is a CLI caller and that the source library never exposed them. Native module loading and all validation tests moved with their owner.
 - Cinder's supported component types and runtime helpers are available from its source root. Its Bun knowledge command remains package-local tooling. Browser applications consume public components and explicit fixture hosts; they do not copy component implementations or recreate the omitted playground application.
 
@@ -113,9 +113,9 @@ The Editor import-boundary suite retains its real browser/server import checks a
 
 ## Shared configuration and infrastructure
 
-- Root Prettier, Oxlint, Stylelint, editor settings, ignores, catalog, and lockfile govern the workspace. Repository source-inclusion rules prevent personal Git ignore patterns from hiding required source while preserving explicit environment, credential, dependency, and generated-output exclusions. `@corvidae/typescript` owns strict compiler policy. Local configurations remain only where their tool requires a workspace boundary.
-- `@corvidae/testing` owns Happy DOM setup, Svelte cleanup, real server rendering/hydration, fixture extraction, accessibility, browser interactions, and screenshot utilities. Owning test suites keep browser servers and Playwright projects under `scripts/`; applications own their application-specific browser tests.
-- `scripts/build-browser.ts` shares native Bun compilation settings between the two browser test hosts, using the existing `@corvidae/testing` Svelte compiler. Chat-room owns its Vite-specific grammar plugin under `applications/chat-room/scripts`; its tested grammar parsing helpers remain at the root. Asset identity, imports, grammar immutability, and production loading retain regression coverage.
+- Root Prettier, Oxlint, Stylelint, editor settings, ignores, catalog, and lockfile govern the workspace. Repository source-inclusion rules prevent personal Git ignore patterns from hiding required source while preserving explicit environment, credential, dependency, and generated-output exclusions. `@lostgradient/typescript` owns strict compiler policy. Local configurations remain only where their tool requires a workspace boundary.
+- `@lostgradient/testing` owns Happy DOM setup, Svelte cleanup, real server rendering/hydration, fixture extraction, accessibility, browser interactions, and screenshot utilities. Owning test suites keep browser servers and Playwright projects under `scripts/`; applications own their application-specific browser tests.
+- `scripts/build-browser.ts` shares native Bun compilation settings between the two browser test hosts, using the existing `@lostgradient/testing` Svelte compiler. Chat-room owns its Vite-specific grammar plugin under `applications/chat-room/scripts`; its tested grammar parsing helpers remain at the root. Asset identity, imports, grammar immutability, and production loading retain regression coverage.
 - Root architecture checks require locked workspace executable metadata to match manifests and point to existing files; this catches the stale Weft CLI entrypoint found during the lockfile refresh. They also reject internal dependency cycles, undeclared imports, old package imports, subpaths, library builds, publishing setup, and hook installation. They also verify canonical project-skill ownership and native uncached Turbo watch dispatch in the editor. A real Turbo fixture verifies that upstream source changes invalidate downstream tasks and that the existing `CODEX_CI` benchmark profile is passed through strict mode and included in the cache hash.
 
 ## Removed systems
@@ -199,22 +199,22 @@ All commands below run from the repository root and have recorded exit-zero evid
 
 | Workspace | Exact command | Exit | Evidence |
 | --- | --- | --- | --- |
-| `@corvidae/armorer` | `bunx turbo run lint typecheck test --filter=@corvidae/armorer --concurrency=1` | 0 | `/tmp/corvidae-focused-agent-graph-final/1.log` |
-| `@corvidae/bureau` | `bunx turbo run lint typecheck test --filter=@corvidae/bureau --concurrency=1` | 0 | `/tmp/corvidae-focused-agent-graph-final/2.log` |
-| `@corvidae/chat` | `bunx turbo run lint typecheck test --filter=@corvidae/chat --concurrency=1` | 0 | `/tmp/corvidae-focused-interface-graph-final/1.log` |
-| `@corvidae/cinder` | `bunx turbo run lint typecheck test --filter=@corvidae/cinder --concurrency=1` | 0 | 11,814 tests; `/tmp/corvidae-cinder-after-focus-and-toast-final/1.log` |
-| `@corvidae/conversationalist` | `bunx turbo run lint typecheck test --filter=@corvidae/conversationalist --concurrency=1` | 0 | `/tmp/corvidae-focused-agent-graph-final/3.log` |
-| `@corvidae/editor` | `bunx turbo run lint typecheck test --filter=@corvidae/editor --concurrency=1` | 0 | `/tmp/corvidae-focused-interface-repair-final/1.log` |
-| `@corvidae/interoperability` | `bunx turbo run lint typecheck test --filter=@corvidae/interoperability --concurrency=1` | 0 | `/tmp/corvidae-focused-light-graph-final/1.log` |
-| `@corvidae/lifecycle` | `bunx turbo run lint typecheck test --filter=@corvidae/lifecycle --concurrency=1` | 0 | `/tmp/corvidae-focused-light-graph-final/2.log` |
-| `@corvidae/markdown` | `bunx turbo run lint typecheck test --filter=@corvidae/markdown --concurrency=1` | 0 | `/tmp/corvidae-focused-markdown-weft-final/1.log` |
-| `@corvidae/memory` | `bunx turbo run lint typecheck test --filter=@corvidae/memory --concurrency=1` | 0 | `/tmp/corvidae-focused-light-graph-final/3.log` |
-| `@corvidae/operative` | `bunx turbo run lint typecheck test --filter=@corvidae/operative --concurrency=1` | 0 | `/tmp/corvidae-focused-agent-graph-final/4.log` |
-| `@corvidae/skills` | `bunx turbo run lint typecheck test --filter=@corvidae/skills --concurrency=1` | 0 | `/tmp/corvidae-focused-light-graph-final/4.log` |
-| `@corvidae/testing` | `bunx turbo run lint typecheck test --filter=@corvidae/testing --concurrency=1` | 0 | `/tmp/corvidae-focused-interface-repair-final/2.log` |
-| `@corvidae/weft` | `bunx turbo run lint typecheck test --filter=@corvidae/weft --concurrency=1` | 0 | `/tmp/corvidae-native-node-cinder-final/2.log` |
-| `@corvidae/weft-ui` | `bunx turbo run lint typecheck test --filter=@corvidae/weft-ui --concurrency=1` | 0 | `/tmp/corvidae-focused-interface-repair-final/3.log` |
-| `@corvidae/chat-room` | `bunx turbo run lint typecheck test build --filter=@corvidae/chat-room --concurrency=1` | 0 | Final dependency state; `/tmp/corvidae-cookie-focused/2.log` |
+| `armorer` | `bunx turbo run lint typecheck test --filter=armorer --concurrency=1` | 0 | `/tmp/corvidae-focused-agent-graph-final/1.log` |
+| `@lostgradient/bureau` | `bunx turbo run lint typecheck test --filter=@lostgradient/bureau --concurrency=1` | 0 | `/tmp/corvidae-focused-agent-graph-final/2.log` |
+| `@lostgradient/chat` | `bunx turbo run lint typecheck test --filter=@lostgradient/chat --concurrency=1` | 0 | `/tmp/corvidae-focused-interface-graph-final/1.log` |
+| `@lostgradient/cinder` | `bunx turbo run lint typecheck test --filter=@lostgradient/cinder --concurrency=1` | 0 | 11,814 tests; `/tmp/corvidae-cinder-after-focus-and-toast-final/1.log` |
+| `conversationalist` | `bunx turbo run lint typecheck test --filter=conversationalist --concurrency=1` | 0 | `/tmp/corvidae-focused-agent-graph-final/3.log` |
+| `@lostgradient/editor` | `bunx turbo run lint typecheck test --filter=@lostgradient/editor --concurrency=1` | 0 | `/tmp/corvidae-focused-interface-repair-final/1.log` |
+| `@lostgradient/interoperability` | `bunx turbo run lint typecheck test --filter=@lostgradient/interoperability --concurrency=1` | 0 | `/tmp/corvidae-focused-light-graph-final/1.log` |
+| `@lostgradient/lifecycle` | `bunx turbo run lint typecheck test --filter=@lostgradient/lifecycle --concurrency=1` | 0 | `/tmp/corvidae-focused-light-graph-final/2.log` |
+| `@lostgradient/markdown` | `bunx turbo run lint typecheck test --filter=@lostgradient/markdown --concurrency=1` | 0 | `/tmp/corvidae-focused-markdown-weft-final/1.log` |
+| `@lostgradient/memory` | `bunx turbo run lint typecheck test --filter=@lostgradient/memory --concurrency=1` | 0 | `/tmp/corvidae-focused-light-graph-final/3.log` |
+| `@lostgradient/operative` | `bunx turbo run lint typecheck test --filter=@lostgradient/operative --concurrency=1` | 0 | `/tmp/corvidae-focused-agent-graph-final/4.log` |
+| `@lostgradient/skills` | `bunx turbo run lint typecheck test --filter=@lostgradient/skills --concurrency=1` | 0 | `/tmp/corvidae-focused-light-graph-final/4.log` |
+| `@lostgradient/testing` | `bunx turbo run lint typecheck test --filter=@lostgradient/testing --concurrency=1` | 0 | `/tmp/corvidae-focused-interface-repair-final/2.log` |
+| `@lostgradient/weft` | `bunx turbo run lint typecheck test --filter=@lostgradient/weft --concurrency=1` | 0 | `/tmp/corvidae-native-node-cinder-final/2.log` |
+| `@lostgradient/weft-ui` | `bunx turbo run lint typecheck test --filter=@lostgradient/weft-ui --concurrency=1` | 0 | `/tmp/corvidae-focused-interface-repair-final/3.log` |
+| `@lostgradient/chat-room` | `bunx turbo run lint typecheck test build --filter=@lostgradient/chat-room --concurrency=1` | 0 | Final dependency state; `/tmp/corvidae-cookie-focused/2.log` |
 
 Required ordered commands, completed against the final lockfile (`/tmp/corvidae-final-required-lock-verified/status.json`):
 
@@ -303,7 +303,7 @@ The final `validate` run verifies the source and fixture edits found during stag
 
 ## Component workspace follow-on
 
-This section records component relocation before starter removal. Cinder, Chat, Editor, and Weft UI moved from `packages/` to `components/`, and every workspace was renamed to `@corvidae/*`. Runtime dependency direction and the then-current 22-workspace graph were unchanged by that relocation. Markdown remains an isomorphic processing library under `packages/`.
+This section records component relocation before starter removal. Cinder, Chat, Editor, and Weft UI moved from `packages/` to `components/`, and every workspace was renamed to `@lostgradient/*`. Runtime dependency direction and the then-current 22-workspace graph were unchanged by that relocation. Markdown remains an isomorphic processing library under `packages/`.
 
 Shared `browser.json` supplies DOM types, browser/Svelte export conditions, and production-source selection without ambient Bun or Node types. Each component runs browser source and inclusive test/tooling checks. Root lint rejects server globals and imports in component source; the default inclusive `tsconfig.json` preserves Oxlint’s automatic type-aware project discovery. Moved Cinder’s local knowledge command from `src/cli` into `scripts/knowledge`, marked filesystem-only test helpers explicitly, and removed its unused alternate TypeScript configuration. Updated fixture discovery, metadata, styles, local commands, skills, and Turbo/cache/import contracts for the new roots.
 
@@ -330,14 +330,14 @@ Focused checks passed all 48 tasks with this command; the final root run supplie
 
 ```bash
 bunx turbo run lint typecheck test \
-  --filter=@corvidae/bureau --filter=@corvidae/operative \
-  --filter=@corvidae/armorer --filter=@corvidae/conversationalist \
-  --filter=@corvidae/memory --filter=@corvidae/skills \
-  --filter=@corvidae/interoperability --filter=@corvidae/lifecycle \
-  --filter=@corvidae/weft --filter=@corvidae/weft-ui \
-  --filter=@corvidae/cinder --filter=@corvidae/chat \
-  --filter=@corvidae/editor --filter=@corvidae/markdown \
-  --filter=@corvidae/testing --filter=@corvidae/chat-room --concurrency=1
+  --filter=@lostgradient/bureau --filter=@lostgradient/operative \
+  --filter=armorer --filter=conversationalist \
+  --filter=@lostgradient/memory --filter=@lostgradient/skills \
+  --filter=@lostgradient/interoperability --filter=@lostgradient/lifecycle \
+  --filter=@lostgradient/weft --filter=@lostgradient/weft-ui \
+  --filter=@lostgradient/cinder --filter=@lostgradient/chat \
+  --filter=@lostgradient/editor --filter=@lostgradient/markdown \
+  --filter=@lostgradient/testing --filter=@lostgradient/chat-room --concurrency=1
 ```
 
 Application probes passed 134 browser tests. These commands start the supported Vite development and production-preview servers through the existing Playwright configuration. The Weft CLI and relocated Cinder knowledge command also resolve their source dependencies and exit successfully. Evidence: `/tmp/corvidae-components-runtime/status.json` and its numbered logs.
@@ -458,22 +458,22 @@ All fifteen migrated libraries and Chat-room also passed their focused commands.
 
 | Exact focused command                                                                     | Exit |
 | ----------------------------------------------------------------------------------------- | ---- |
-| `bunx turbo run lint typecheck test --filter=@corvidae/armorer --concurrency=1`           | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/bureau --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/chat --concurrency=1`              | 0    |
-| `bunx turbo run lint typecheck test build --filter=@corvidae/chat-room --concurrency=1`   | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/cinder --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/conversationalist --concurrency=1` | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/editor --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/interoperability --concurrency=1`  | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/lifecycle --concurrency=1`         | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/markdown --concurrency=1`          | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/memory --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/operative --concurrency=1`         | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/skills --concurrency=1`            | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/testing --concurrency=1`           | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/weft --concurrency=1`              | 0    |
-| `bunx turbo run lint typecheck test --filter=@corvidae/weft-ui --concurrency=1`           | 0    |
+| `bunx turbo run lint typecheck test --filter=armorer --concurrency=1`           | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/bureau --concurrency=1`            | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/chat --concurrency=1`              | 0    |
+| `bunx turbo run lint typecheck test build --filter=@lostgradient/chat-room --concurrency=1`   | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/cinder --concurrency=1`            | 0    |
+| `bunx turbo run lint typecheck test --filter=conversationalist --concurrency=1` | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/editor --concurrency=1`            | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/interoperability --concurrency=1`  | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/lifecycle --concurrency=1`         | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/markdown --concurrency=1`          | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/memory --concurrency=1`            | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/operative --concurrency=1`         | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/skills --concurrency=1`            | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/testing --concurrency=1`           | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/weft --concurrency=1`              | 0    |
+| `bunx turbo run lint typecheck test --filter=@lostgradient/weft-ui --concurrency=1`           | 0    |
 
 The final Weft UI browser rerun passed all 17 tests; its status is in `weft-ui-browser-accepted.status.json`. The final watcher regression passes both in the complete package suite and through root validation. Removing startup cleanup in the disposable copy makes the new process-exit regression fail at the unchanged test timeout; restoring it passes. The control is retained in `startup-cleanup-control.json` and does not modify the live checkout.
 
@@ -483,7 +483,7 @@ Final boundary verification accounts for every moved or removed worker-owned fil
 
 The generated `documentation/reports/codebase-baseline` snapshot has been removed: 27 untracked files, approximately 20 MiB. The report collectors remain under `scripts/` and write to `/tmp` by default. The durable root contracts are `documentation/operative-type-safe-api.md` and `documentation/workflow-versioning.md`; current Bureau and Operative source and README references resolve to those files. The stale numeric lifecycle reference in Bureau now names the required-capabilities section.
 
-`@corvidae/typescript` now lives under `internal/typescript`. Its entire authored surface is four JSON files: the package manifest, private `base.json`, and public `library.json` and `browser.json` presets. The unused server preset is removed. This configuration workspace has no source-library entry point or task scripts. All consumers, the root Bun workspace pattern, lockfile, inventory collectors, import checks, and graph checks use the new owner. Chat-room composes the public library preset with its generated SvelteKit configuration; its parsed effective compiler options are unchanged.
+`@lostgradient/typescript` now lives under `internal/typescript`. Its entire authored surface is four JSON files: the package manifest, private `base.json`, and public `library.json` and `browser.json` presets. The unused server preset is removed. This configuration workspace has no source-library entry point or task scripts. All consumers, the root Bun workspace pattern, lockfile, inventory collectors, import checks, and graph checks use the new owner. Chat-room composes the public library preset with its generated SvelteKit configuration; its parsed effective compiler options are unchanged.
 
 The dependency graph above includes the renamed configuration provider. No new dependency direction or runtime dependency was introduced. The Turbo regression proves that changing the internal preset invalidates downstream application checks through the existing transit graph. The architecture regression verifies the two public exports and rejects direct imports of the private base and removed server preset. Root documentation, canonical project skills, and agent instructions describe the new boundary; provider instruction and skill links retain their shared owner.
 

@@ -1,7 +1,7 @@
 import { fireEvent, render, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowFinalizerStatus, WorkflowState } from '@corvidae/weft';
+import type { WorkflowFinalizerStatus, WorkflowState } from '@lostgradient/weft';
 
 import type { WorkflowCatalogActivePointerLike } from '../../../lib/workflow-revision.ts';
 import Header from './header.svelte';

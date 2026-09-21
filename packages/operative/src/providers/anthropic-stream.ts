@@ -1,5 +1,5 @@
-import { toAnthropicMessages } from '@corvidae/conversationalist';
-import type { ToolCallInput } from '@corvidae/tool-protocol';
+import { toAnthropicMessages } from 'conversationalist';
+import type { ToolCallInput } from '@lostgradient/tool-protocol';
 
 import { createAnthropicSdkClient, isAnthropicStreamingClient } from './anthropic-sdk.ts';
 import {

@@ -18,7 +18,7 @@
 
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { ChevronLeft, ChevronRight, X, Modal } from '@corvidae/cinder';
+  import { ChevronLeft, ChevronRight, X, Modal } from '@lostgradient/cinder';
 
   let { images, initialIndex = 0, open = $bindable(false), onClose }: ImageLightboxProps = $props();
 

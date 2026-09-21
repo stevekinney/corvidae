@@ -5,7 +5,7 @@
  * `<script type="application/json" id="weft-ui-config">` block
  * `index.html` injects, instead of baking a base URL in at build time.
  */
-import type { WorkflowEventTransport } from '@corvidae/weft';
+import type { WorkflowEventTransport } from '@lostgradient/weft';
 
 const CONFIG_ELEMENT_ID = 'weft-ui-config';
 

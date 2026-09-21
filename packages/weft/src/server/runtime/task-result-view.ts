@@ -44,8 +44,8 @@ import { sha256Hex } from '../../worker/manifest/content-digest.ts';
  *
  * @example
  * ```ts
- * import { serve, type TaskResultView } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { serve, type TaskResultView } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * await using server = serve({ engine, port: 0 });

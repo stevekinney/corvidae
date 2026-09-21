@@ -18,7 +18,7 @@ import { getOrderedMessages } from '../src/utilities/message-store';
  *
  * @example
  * ```ts
- * import { appendMessages, createConversationHistory } from '@corvidae/conversationalist';
+ * import { appendMessages, createConversationHistory } from 'conversationalist';
  *
  * // Rows loaded from external storage in insertion order
  * const rows: MessageInput[] = await db.query(

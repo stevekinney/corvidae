@@ -1,4 +1,4 @@
-import { requiredValue } from '@corvidae/testing';
+import { requiredValue } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import type { CommentAnchor } from '../comments/types.js';
 import type { DraftComment, ReviewSession } from './types.js';

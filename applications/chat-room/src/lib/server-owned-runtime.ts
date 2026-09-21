@@ -1,7 +1,7 @@
-import type { SessionStore } from '@corvidae/operative';
-import { createSessionStore } from '@corvidae/operative';
-import type { ConditionalTextValueStore, Storage } from '@corvidae/weft';
-import { textValueStore } from '@corvidae/weft';
+import type { SessionStore } from '@lostgradient/operative';
+import { createSessionStore } from '@lostgradient/operative';
+import type { ConditionalTextValueStore, Storage } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/weft';
 import { writeSync } from 'node:fs';
 import { settleRuntimeOwnedPendingApprovals } from './server-owned-elicitation.ts';
 import type { Durability } from './server-owned-storage.ts';

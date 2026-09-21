@@ -6,7 +6,7 @@
  * A caller asks Bureau what an Agent would use — `planSelection(request)` —
  * and gets a full `SelectionPlan` back without starting a run or refreshing
  * a catalog. `createSelectionGateFor(request)` wraps the same planning
- * logic into a `SelectionGate` (`@corvidae/operative`), seeded with an
+ * logic into a `SelectionGate` (`@lostgradient/operative`), seeded with an
  * initial plan and wired to revalidate against Bureau's LIVE
  * `ModelCatalogService` and policy configuration on demand — the value
  * `RunOptions.selection` consumes at the `runStep` boundary.
@@ -38,8 +38,8 @@ import type {
   SteeringRequestedValue,
   TaskClassification,
   UserModelConfiguration,
-} from '@corvidae/operative';
-import { createSelectionGate, readGenerationProfile, select } from '@corvidae/operative';
+} from '@lostgradient/operative';
+import { createSelectionGate, readGenerationProfile, select } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { ModelCatalogService } from './model-catalog-refresh';
@@ -114,7 +114,7 @@ export interface ModelPolicyPlanner {
    * Builds a `SelectionGate` seeded with `planSelection(request)`'s plan
    * and wired to revalidate against Bureau's LIVE catalog/policy on every
    * `revalidate()` call — the value `RunOptions.selection` consumes at the
-   * `runStep` boundary (`@corvidae/operative`).
+   * `runStep` boundary (`@lostgradient/operative`).
    */
   createSelectionGateFor(request: PlanSelectionRequest): SelectionGate;
 }

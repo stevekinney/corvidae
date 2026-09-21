@@ -6,7 +6,7 @@ An accessible read-only keyboard shortcut recorder. Focus the field, press a com
 
 ```svelte
 <script lang="ts">
-  import { ShortcutField } from '@corvidae/cinder';
+  import { ShortcutField } from '@lostgradient/cinder';
 </script>
 
 <ShortcutField label="Open command palette" value={['Meta', 'K']} />

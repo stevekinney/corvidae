@@ -6,7 +6,7 @@ Button that copies a given text value to the clipboard with visual feedback.
 
 ```svelte
 <script lang="ts">
-  import { CopyButton } from '@corvidae/cinder';
+  import { CopyButton } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; align-items: center; gap: 0.5rem;">

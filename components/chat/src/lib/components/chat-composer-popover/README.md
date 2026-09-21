@@ -6,8 +6,8 @@ Chat composer-bound slash-command and mention listbox primitive.
 
 ```svelte
 <script lang="ts">
-  import { ChatComposerPopover } from '@corvidae/chat';
-  import { ChatInput } from '@corvidae/chat';
+  import { ChatComposerPopover } from '@lostgradient/chat';
+  import { ChatInput } from '@lostgradient/chat';
 
   const commands = [
     { value: 'help', label: 'Help', description: 'Show available commands' },
@@ -42,8 +42,8 @@ When the composer is the full `Chat` surface, commit a selection with the public
 
 ```svelte
 <script lang="ts">
-  import { Chat, createConversation } from '@corvidae/chat';
-  import { ChatComposerPopover } from '@corvidae/chat';
+  import { Chat, createConversation } from '@lostgradient/chat';
+  import { ChatComposerPopover } from '@lostgradient/chat';
 
   const conversation = createConversation({ id: 'assistant' });
   const commands = [
@@ -75,7 +75,7 @@ import {
   parseChatComposerMentions,
   serializeChatComposerMention,
   type ChatComposerPopoverSelection,
-} from '@corvidae/chat';
+} from '@lostgradient/chat';
 
 type MentionItem = {
   value: string;
@@ -97,7 +97,7 @@ function submitComposer(value: string): void {
 }
 ```
 
-Only absolute non-web URI schemes such as `person:` and `linear:` become mentions. Ordinary `https:`, `mailto:`, relative, image, and malformed links remain literal textarea text. The helpers are also available from the `@corvidae/chat` package root.
+Only absolute non-web URI schemes such as `person:` and `linear:` become mentions. Ordinary `https:`, `mailto:`, relative, image, and malformed links remain literal textarea text. The helpers are also available from the `@lostgradient/chat` package root.
 
 ## Related
 

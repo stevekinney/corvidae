@@ -13,14 +13,14 @@ This document describes the versioned worker transports Weft uses to dispatch ac
 - **Frame limit**: every server WebSocket endpoint is capped at a fixed 4 MiB raw frame size before JSON parsing. This transport ceiling is separate from `payloadSize.maxBytes`, which applies to codec-encoded workflow values at admission time.
 - **Fatal close codes**: unsupported or invalid registration receives `registerError`, then WebSocket close code `1008`. Malformed protocol frames receive `protocolError`, then WebSocket close code `1002`.
 
-The public schema contract is exported from `@corvidae/weft`:
+The public schema contract is exported from `@lostgradient/weft`:
 
 ```ts
 import {
   REMOTE_WORKER_PROTOCOL_JSON_SCHEMA,
   REMOTE_WORKER_MESSAGE_SCHEMAS,
   REMOTE_WORKER_PROTOCOL_VERSION,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 ```
 
 ## Connecting
@@ -37,7 +37,7 @@ wss://server.example.com/api/v1/tasks/:queue/stream
 The TypeScript `RemoteWorker` accepts the full URL via its `serverUrl` option:
 
 ```ts partial
-import { RemoteWorker } from '@corvidae/weft';
+import { RemoteWorker } from '@lostgradient/weft';
 
 using worker = new RemoteWorker({
   serverUrl: 'ws://localhost:7233/api/v1/tasks/default/stream',

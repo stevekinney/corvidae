@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { ToolErrorCategory } from '../core/errors';
 import type { ToolExecutionIdentity } from '../event-types';
 import type {

@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 
 import { errorString, normalizeError } from '../errors';
 import type { MinimalAbortSignal, ToolExecuteOptions } from '../is-tool';

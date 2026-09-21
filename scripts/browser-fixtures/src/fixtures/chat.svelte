@@ -14,9 +14,9 @@
     type ChatSubmitEvent,
     type ChatAdapter,
     type ResolvedChatArtifact,
-  } from '@corvidae/chat';
-  import { Button } from '@corvidae/cinder';
-  import type { ApprovalResolution } from '@corvidae/cinder';
+  } from '@lostgradient/chat';
+  import { Button } from '@lostgradient/cinder';
+  import type { ApprovalResolution } from '@lostgradient/cinder';
 
   const adapter: ChatAdapter = {
     sendMessage: async () => {},
@@ -96,7 +96,7 @@
       toolCall: {
         id: 'call-exports-check',
         name: 'exports_check',
-        arguments: { package: '@corvidae/cinder' },
+        arguments: { package: '@lostgradient/cinder' },
       },
     },
     {

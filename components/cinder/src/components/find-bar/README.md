@@ -6,7 +6,7 @@ Docked find-in-document controls for a host-provided search backend.
 
 ```svelte
 <script lang="ts">
-  import { FindBar } from '@corvidae/cinder';
+  import { FindBar } from '@lostgradient/cinder';
 
   const documents = ['Terminal output', 'Terminal settings', 'Build logs', 'Command history'];
   let open = $state(true);

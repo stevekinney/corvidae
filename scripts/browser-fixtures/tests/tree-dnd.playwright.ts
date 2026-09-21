@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { functionalResidualRoute } from './functional-residual-route.ts';
 
-import { runAxe, type AxeBuckets } from '@corvidae/testing';
+import { runAxe, type AxeBuckets } from '@lostgradient/testing';
 
 const TREE_ROUTE = functionalResidualRoute;
 const EXAMPLE = '#example-mount-reorder';

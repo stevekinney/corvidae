@@ -2,9 +2,9 @@
  * Revision-policy vocabulary (WFT-20), mirroring `overlap-policy.ts`'s
  * value/label/consequence descriptor shape. Values/labels use the engine's
  * actual `ScheduleRevisionPolicy` vocabulary (`active-at-fire | pinned`,
- * `@corvidae/weft`).
+ * `@lostgradient/weft`).
  */
-import type { ScheduleRevisionPolicy } from '@corvidae/weft';
+import type { ScheduleRevisionPolicy } from '@lostgradient/weft';
 
 import { FRESH_START_REVISION_HEDGE } from '../../lib/workflow-revision.ts';
 

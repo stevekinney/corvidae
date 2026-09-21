@@ -41,8 +41,8 @@ export type {
  *
  * @example
  * ```ts
- * import { createFetchHandler, type ServiceWorkerOptions } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { createFetchHandler, type ServiceWorkerOptions } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * const storage = new MemoryStorage();
  * const engine = new Engine({ storage });
@@ -89,8 +89,8 @@ export interface ServiceWorkerOptions {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@corvidae/weft';
- * import { createFetchHandler } from '@corvidae/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { createFetchHandler } from '@lostgradient/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const handler = createFetchHandler({ engine, pathPrefix: '/weft/' });
@@ -128,8 +128,8 @@ export function createFetchHandler(
  *
  * @example
  * ```ts
- * import { ServiceWorkerScheduler, createPeriodicSyncHandler } from '@corvidae/weft';
- * import { MemoryStorage } from '@corvidae/weft';
+ * import { ServiceWorkerScheduler, createPeriodicSyncHandler } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/weft';
  *
  * const storage = new MemoryStorage();
  *
@@ -174,7 +174,7 @@ export function createPeriodicSyncHandler(
  *
  * @example
  * ```ts
- * import { createLifecycleHandlers } from '@corvidae/weft';
+ * import { createLifecycleHandlers } from '@lostgradient/weft';
  *
  * const { install, activate } = createLifecycleHandlers();
  *

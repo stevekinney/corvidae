@@ -1,4 +1,4 @@
-import { loadManifest } from '@corvidae/testing';
+import { loadManifest } from '@lostgradient/testing';
 import { expect, test } from '@playwright/test';
 const manifest = loadManifest();
 const route = (slug: string) => {

@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { Snippet } from 'svelte';
 import { createRawSnippet, mount, tick, unmount } from 'svelte';
 

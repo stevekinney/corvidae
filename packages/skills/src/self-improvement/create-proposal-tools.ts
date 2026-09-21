@@ -1,5 +1,5 @@
-import { createTool } from '@corvidae/armorer';
-import type { TextValueStore } from '@corvidae/weft';
+import { createTool } from 'armorer';
+import type { TextValueStore } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { SkillWriter } from '../types';

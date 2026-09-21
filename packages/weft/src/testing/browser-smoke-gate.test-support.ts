@@ -16,7 +16,7 @@
  * which is the defect itself. Run them with:
  *
  * ```sh
- * bun run --filter=@corvidae/weft test:browser
+ * bun run --filter=@lostgradient/weft test:browser
  * ```
  *
  * Browser provisioning is `bunx playwright install chromium` (once).

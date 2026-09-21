@@ -3,7 +3,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import type { Component } from 'svelte';
 import { flushSync, mount, unmount } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { TypingParticipant } from '../chat.types.ts';
 import type { ConversationHistory, Message } from '../conversation-model.ts';
 import type { ChatAdapter, ChatPushHandlers, ChatReadReceiptEvent } from './chat-adapter.ts';

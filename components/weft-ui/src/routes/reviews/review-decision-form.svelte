@@ -52,7 +52,7 @@
    * overall decision (and feedback when rejecting/requesting changes) gate
    * the submit button.
    */
-  import type { ReviewDecision } from '@corvidae/weft';
+  import type { ReviewDecision } from '@lostgradient/weft';
 
   import {
     Badge,
@@ -62,7 +62,7 @@
     Segment,
     SegmentedControl,
     Textarea,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   import { humanizeKey, suggestOverallDecision, type SectionDecision } from './review-domain.ts';
 

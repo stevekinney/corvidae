@@ -21,7 +21,7 @@ const formerPackageNames = [
   'memory',
   'skills',
   'interoperability',
-  '@corvidae/interoperability',
+  '@lostgradient/interoperability',
   'lifecycle',
   '@lostgradient/operative',
   '@lostgradient/weft',
@@ -150,8 +150,8 @@ describe('workspace imports', () => {
       const workflow = require('@lostgradient/weft');
       const lifecycle = require.resolve('lifecycle');
       const editor = import.meta.resolve('@lostgradient/editor');
-      const editorSource = Bun.resolveSync('@corvidae/editor', import.meta.dir);
-      const chatSource = await Bun.resolve('@corvidae/chat', import.meta.dir);
+      const editorSource = Bun.resolveSync('@lostgradient/editor', import.meta.dir);
+      const chatSource = await Bun.resolve('@lostgradient/chat', import.meta.dir);
       const ignored = "require('bureau')";
     `;
     expect(importedPackageNames(source, 'consumer.ts')).toEqual(
@@ -161,33 +161,33 @@ describe('workspace imports', () => {
         '@lostgradient/weft',
         'lifecycle',
         '@lostgradient/editor',
-        '@corvidae/editor',
-        '@corvidae/chat',
+        '@lostgradient/editor',
+        '@lostgradient/chat',
       ]),
     );
   });
   test('finds namespace exports and escaped require names without scanning examples or AMD calls', () => {
     const source = `
-      export * as workflow from '@corvidae/weft';
-      const runtime = req\\u0075ire.resolve('@corvidae/lifecycle');
-      const example = "import('@corvidae/bureau')";
-      // require('@corvidae/memory');
-      define(['@corvidae/skills'], () => {});
+      export * as workflow from '@lostgradient/weft';
+      const runtime = req\\u0075ire.resolve('@lostgradient/lifecycle');
+      const example = "import('@lostgradient/bureau')";
+      // require('@lostgradient/memory');
+      define(['@lostgradient/skills'], () => {});
       const load = require;
-      load('@corvidae/armorer');
+      load('armorer');
     `;
     expect(importedPackageNames(source, 'consumer.ts')).toEqual(
-      new Set(['@corvidae/weft', '@corvidae/lifecycle']),
+      new Set(['@lostgradient/weft', '@lostgradient/lifecycle']),
     );
   });
   test('scans each Svelte script block without treating markup as an import', () => {
     const source = `
-      <script module>export * as library from '@corvidae/cinder';</script>
-      <script lang="ts">import type { Message } from '@corvidae/chat';</script>
-      <p>require('@corvidae/bureau')</p>
+      <script module>export * as library from '@lostgradient/cinder';</script>
+      <script lang="ts">import type { Message } from '@lostgradient/chat';</script>
+      <p>require('@lostgradient/bureau')</p>
     `;
     expect(importedPackageNames(source, 'consumer.svelte')).toEqual(
-      new Set(['@corvidae/cinder', '@corvidae/chat']),
+      new Set(['@lostgradient/cinder', '@lostgradient/chat']),
     );
   });
   test.each([
@@ -214,7 +214,7 @@ describe('workspace imports', () => {
             `${directory}/${file} imports former package ${name}`,
           ).toBe(false);
           assertExternalDeclaration(name, dependencies, `${directory}/${file}`);
-          if (!name.startsWith('@corvidae/')) continue;
+          if (!name.startsWith('@lostgradient/')) continue;
           expect(name, `${directory}/${file}`).toMatch(/^@corvidae\/[^/]+$/);
           if (
             file.startsWith('src/') &&

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FormField, TagInput } from '@corvidae/cinder';
+  import { FormField, TagInput } from '@lostgradient/cinder';
 </script>
 
 <FormField

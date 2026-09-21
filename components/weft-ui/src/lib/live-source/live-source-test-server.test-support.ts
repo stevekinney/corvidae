@@ -1,12 +1,12 @@
 /**
  * Test-only support module (never imported by production code). Boots a
  * REAL in-process weft server for `LiveSource` integration tests — no mock
- * server, and (as of `@corvidae/weft@0.12.0`) no app-local composition
+ * server, and (as of `@lostgradient/weft@0.12.0`) no app-local composition
  * either: a plain `serve({ engine, port: 0, auth: {...} })`.
  *
  * **Why this is `serve()` now, not `handleRequest()`.** Earlier revisions of
  * this module built a hand-rolled `Bun.serve()` delegating to
- * `@corvidae/weft`'s `handleRequest()`, with a synthetic
+ * `@lostgradient/weft`'s `handleRequest()`, with a synthetic
  * per-workflow event feed reimplementing what weft's own (then-unexported)
  * production wiring did — worked around
  * https://github.com/stevekinney/weft/issues/710 (`serve()` threw "Engine
@@ -14,7 +14,7 @@
  * https://github.com/stevekinney/weft/issues/714 (the per-workflow feed
  * constructor wasn't exported from any public subpath). Both shipped in
  * 0.12.0 (#716, #718) — confirmed empirically (`bun add
- * @corvidae/weft@0.12.0` + a real `serve({ engine, port: 0 })` call
+ * @lostgradient/weft@0.12.0` + a real `serve({ engine, port: 0 })` call
  * here, no cast, no synthetic feed, WebSocket upgrades included).
  *
  * **`bridgeWorkflowEvents()` is gone, not just renamed.** The old per-workflow
@@ -46,7 +46,7 @@
  * Reuses `src/lib/scopes.svelte.ts`'s `AUTHORIZATION_SCOPES` rather than a
  * second hand-copy of weft's (not-yet-publicly-exported) scope vocabulary.
  */
-import { Engine, serve } from '@corvidae/weft';
+import { Engine, serve } from '@lostgradient/weft';
 
 import { workflows } from '../../../fixtures/workflows.ts';
 import { AUTHORIZATION_SCOPES } from '../scopes.svelte.ts';

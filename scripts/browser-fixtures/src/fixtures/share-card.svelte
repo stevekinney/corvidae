@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ShareCard } from '@corvidae/cinder';
+  import { ShareCard } from '@lostgradient/cinder';
 </script>
 
 <div style="max-width: 22rem;">

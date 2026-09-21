@@ -1,4 +1,4 @@
-import type { VisualFixture } from '@corvidae/testing';
+import type { VisualFixture } from '@lostgradient/testing';
 import type { Component } from 'svelte';
 import { declaredAppFixtureNames } from './app-fixture-declarations.ts';
 

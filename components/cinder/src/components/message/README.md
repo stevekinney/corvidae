@@ -8,7 +8,7 @@ See the [editor/chat/Cinder surface boundary](https://github.com/stevekinney/cin
 
 ```svelte
 <script lang="ts">
-  import { Message } from '@corvidae/cinder';
+  import { Message } from '@lostgradient/cinder';
 </script>
 
 <Message role="assistant" timestamp="10:00">How can I help?</Message>

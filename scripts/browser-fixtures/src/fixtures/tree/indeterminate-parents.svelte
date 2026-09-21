@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Tree } from '@corvidae/cinder';
+  import { Tree } from '@lostgradient/cinder';
 
   let selectedIds = $state<string[]>(['february']);
   let expandedIds = $state<string[]>(['archive']);

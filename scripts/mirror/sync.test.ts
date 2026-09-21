@@ -87,13 +87,13 @@ const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
  */
 const fixturePackages = {
   'packages/cryptography': {
-    workspace: '@corvidae/cryptography',
+    workspace: '@lostgradient/cryptography',
     publicName: '@lostgradient/cryptography',
     source: 'export const digest = (value: string): string => `sha256:${value}`;\n',
     staleSource: 'export const digest = (value: string): string => `stale:${value}`;\n',
   },
   'packages/lifecycle': {
-    workspace: '@corvidae/lifecycle',
+    workspace: '@lostgradient/lifecycle',
     publicName: '@lostgradient/lifecycle',
     source: 'export const phases = ["start", "stop"] as const;\n',
     staleSource: 'export const phases = ["stale"] as const;\n',
@@ -108,7 +108,7 @@ const unknownTargetFile = 'packages/lifecycle/notes/handover.md';
 
 const sharedTypeScriptConfiguration = {
   'internal/typescript/package.json': {
-    name: '@corvidae/typescript',
+    name: '@lostgradient/typescript',
     private: true,
     type: 'module',
     exports: { './library.json': './library.json', './browser.json': './browser.json' },
@@ -143,7 +143,7 @@ const sharedTypeScriptConfiguration = {
 /**
  * A workspace that ships to the mirror and never to the registry.
  *
- * `@corvidae/testing` is the real map's clearest private workspace, and it is here because a
+ * `@lostgradient/testing` is the real map's clearest private workspace, and it is here because a
  * private workspace is the one class the packaging checks say nothing about: nothing packs it, so
  * `typecheck` in the target is the only thing that reads the source the mirror now publishes for
  * it. Without one in the fixture that path would never run.
@@ -167,19 +167,19 @@ function corvidaeFixture(): Record<string, unknown> {
     ...sharedTypeScriptConfiguration,
   };
   files[`${privateWorkspaceDirectory}/package.json`] = {
-    name: '@corvidae/testing',
+    name: '@lostgradient/testing',
     private: true,
     type: 'module',
     exports: { '.': './src/index.ts' },
     scripts: { typecheck: 'tsc --noEmit' },
     devDependencies: {
-      '@corvidae/typescript': 'workspace:*',
+      '@lostgradient/typescript': 'workspace:*',
       '@types/bun': 'catalog:',
       typescript: 'catalog:',
     },
   };
   files[`${privateWorkspaceDirectory}/tsconfig.json`] = {
-    extends: '@corvidae/typescript/library.json',
+    extends: '@lostgradient/typescript/library.json',
     include: ['src'],
     exclude: ['node_modules', 'dist'],
   };
@@ -193,13 +193,13 @@ function corvidaeFixture(): Record<string, unknown> {
       exports: { '.': './src/index.ts' },
       scripts: { typecheck: 'tsc --noEmit' },
       devDependencies: {
-        '@corvidae/typescript': 'workspace:*',
+        '@lostgradient/typescript': 'workspace:*',
         '@types/bun': 'catalog:',
         typescript: 'catalog:',
       },
     };
     files[`${directory}/tsconfig.json`] = {
-      extends: '@corvidae/typescript/library.json',
+      extends: '@lostgradient/typescript/library.json',
       include: ['src'],
       exclude: ['node_modules', 'dist'],
     };
@@ -614,7 +614,7 @@ describe('the private-workspace check', () => {
     expect(() =>
       assertPrivateWorkspacesCheckable([
         {
-          workspace: '@corvidae/testing',
+          workspace: '@lostgradient/testing',
           directory: 'packages/testing',
           publicName: '@lostgradient/testing',
           typechecks: false,
@@ -628,7 +628,7 @@ describe('the private-workspace check', () => {
     expect(() =>
       assertPrivateWorkspacesCheckable([
         {
-          workspace: '@corvidae/typescript',
+          workspace: '@lostgradient/typescript',
           directory: 'internal/typescript',
           publicName: '@lostgradient/typescript',
           typechecks: false,

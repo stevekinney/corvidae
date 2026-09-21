@@ -33,8 +33,8 @@
  *
  * @example
  * ```ts
- * import { serve, type CorsOptions } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { serve, type CorsOptions } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * const cors: CorsOptions = {
  *   allowedOrigins: ['https://dashboard.example.com'],

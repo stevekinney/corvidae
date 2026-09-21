@@ -6,8 +6,8 @@ Single row within a stacked list, typically pairing a label with metadata or an 
 
 ```svelte
 <script lang="ts">
-  import { DataList } from '@corvidae/cinder';
-  import { StackedListItem } from '@corvidae/cinder';
+  import { DataList } from '@lostgradient/cinder';
+  import { StackedListItem } from '@lostgradient/cinder';
 
   const members = [{ id: 'alice', name: 'Alice Chen', role: 'Engineer' }];
 </script>

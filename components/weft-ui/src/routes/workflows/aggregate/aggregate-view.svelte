@@ -19,7 +19,7 @@
     SegmentedControl,
     Segment,
     Skeleton,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../../lib/client.ts';

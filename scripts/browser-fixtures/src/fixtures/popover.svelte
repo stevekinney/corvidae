@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Popover } from '@corvidae/cinder';
+  import { Button, Popover } from '@lostgradient/cinder';
   let accountOpen = $state(false);
   let transformedOpen = $state(false);
   let transformedTrigger: HTMLButtonElement | null = $state(null);

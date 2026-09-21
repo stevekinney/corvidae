@@ -43,7 +43,7 @@ The documentation follows the reader-oriented structure in `packages/weft/docume
 
 ## Historical and operational boundaries
 
-The Operative publication pilot established an earlier public-package delivery path. This repository now consumes private `@corvidae/*` source packages through `workspace:*`, as described in the [workspace guide](../README.md). Historical publication does not change the current installation contract.
+The Operative publication pilot established an earlier public-package delivery path. This repository now consumes private `@lostgradient/*` source packages through `workspace:*`, as described in the [workspace guide](../README.md). Historical publication does not change the current installation contract.
 
 The control-plane rollout's authoritative document is `/Users/stevekinney/Vaults/Lost Gradient/Linear Plan.md`. It documents team routing, issue and project readiness, native dependencies, coordinator ownership, verification, reconciliation, and the recorded decision to leave hosted delegation disabled. Its rollout checklist is historical; use the live project and issue state for completion dates. This audit does not rewrite shared agent policy or change Linear configuration.
 

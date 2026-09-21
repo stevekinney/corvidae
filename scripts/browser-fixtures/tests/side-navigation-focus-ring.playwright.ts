@@ -31,8 +31,8 @@
  * strings, never authored token text against computed values.
  */
 
-import type { ComponentEntry, Theme, Viewport } from '@corvidae/testing';
-import { loadManifest, VIEWPORTS } from '@corvidae/testing';
+import type { ComponentEntry, Theme, Viewport } from '@lostgradient/testing';
+import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
 import type { Page } from '@playwright/test';
 import { expect, test } from './component-page-fixture.ts';
 

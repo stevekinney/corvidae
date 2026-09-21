@@ -8,7 +8,7 @@ import { COMPONENT_LAYER_NAME, isSingleComponentLayer } from '../../scripts/chec
 /**
  * Every component CSS file that reaches the cascade must carry its own
  * `@layer cinder.components { … }` wrapper so the layer assignment is intrinsic
- * to the file and survives a direct subpath import (`@corvidae/cinder/<name>/styles`),
+ * to the file and survives a direct subpath import (`@lostgradient/cinder/<name>/styles`),
  * rather than depending on the aggregator's `@import … layer(cinder.components)`.
  *
  * Without an intrinsic wrapper, a consumer importing a component's CSS directly
@@ -60,13 +60,13 @@ async function scanGlob(pattern: string): Promise<string[]> {
 
 /**
  * CSS files imported DIRECTLY by component source (`import './foo.css'` in a
- * `.svelte` or `.ts`) rather than through the `@corvidae/cinder` aggregator. These
+ * `.svelte` or `.ts`) rather than through the `@lostgradient/cinder` aggregator. These
  * still reach a consumer's cascade, so they are subject to the same invariant.
  *
  * `markdown-editor.svelte` used to import `prosemirror.css` this way — a
  * non-sidecar CSS file living under a component's own directory rather than
  * matching the `<name>/<name>.css` convention. That component (and
- * `prosemirror.css` with it) moved to `@corvidae/editor` — see
+ * `prosemirror.css` with it) moved to `@lostgradient/editor` — see
  * `documentation/decisions/package-boundaries.md` — so cinder currently has no
  * component with a non-sidecar direct CSS import. The scan still runs (and
  * still feeds `wrappedCssFiles()` below) so it keeps catching the pattern the
@@ -147,7 +147,7 @@ describe('component CSS @layer invariant', () => {
     // Codex flagged that CSS imported by a component's source — not via the
     // aggregator — could be a coverage hole. cinder has no non-sidecar direct
     // CSS import today (the one example, prosemirror.css, moved to
-    // @corvidae/editor with markdown-editor.svelte), so this asserts the
+    // @lostgradient/editor with markdown-editor.svelte), so this asserts the
     // discovery mechanism is still sound rather than pinning a specific file:
     // every path it finds exists and carries the wrapper.
     const directImports = await directlyImportedComponentCss();
@@ -174,8 +174,8 @@ describe('component CSS @layer invariant', () => {
  * Layer-membership regression for direct subpath imports.
  *
  * This is the structural precondition for the documented override behavior: a
- * consumer that imports a component's CSS file DIRECTLY (e.g. `@corvidae/cinder`,
- * NOT `@corvidae/cinder`) and declares its own `@layer app` override after
+ * consumer that imports a component's CSS file DIRECTLY (e.g. `@lostgradient/cinder`,
+ * NOT `@lostgradient/cinder`) and declares its own `@layer app` override after
  * `@layer cinder.components, app;` expects `@layer app` to win. That only holds
  * if the directly-imported file's rules are INSIDE `@layer cinder.components`.
  * Before this fix, `badge.css` held bare rules: a direct import dropped them

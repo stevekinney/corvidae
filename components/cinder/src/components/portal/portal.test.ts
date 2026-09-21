@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { renderThenHydrate } from '@corvidae/testing';
+import { renderThenHydrate } from '@lostgradient/testing';
 
 import PortalHydrationTest from './_portal-hydration-test.svelte';
 import { childSnippet, Portal, render, restorePortalGlobalState } from './portal-test-helpers.ts';

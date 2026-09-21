@@ -93,7 +93,7 @@ export function applyReducedMotionPreference(
  * @example
  * ```svelte
  * <script lang="ts">
- *   import { useReducedMotion } from '@corvidae/cinder';
+ *   import { useReducedMotion } from '@lostgradient/cinder';
  *
  *   const motion = useReducedMotion();
  *   let viewport: HTMLDivElement;

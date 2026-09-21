@@ -7,7 +7,7 @@
  * `z.record()` schema would silently drop `__proto__`-named entries). This
  * module narrows that `unknown` back into the real, documented shape
  * (`RegistrySnapshot`, `weft/src/core/registry-snapshot.ts` — not exported
- * from `@corvidae/weft`'s public surface) with a runtime type guard
+ * from `@lostgradient/weft`'s public surface) with a runtime type guard
  * rather than a bare cast, per this repo's "prefer type guards over
  * assertions" convention, then resolves each name's *active* manifest —
  * `activeRevisions[name] === manifest.revision` — the same resolution rule

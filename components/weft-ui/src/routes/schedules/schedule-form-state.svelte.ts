@@ -7,9 +7,9 @@
  * `src/app/notifications.svelte.ts`'s / `src/lib/scopes.svelte.ts`'s class
  * store pattern.
  */
-import type { ScheduleValue } from '@corvidae/cinder';
+import type { ScheduleValue } from '@lostgradient/cinder';
 
-import type { ScheduleOverlapPolicy, ScheduleRevisionPolicy } from '@corvidae/weft';
+import type { ScheduleOverlapPolicy, ScheduleRevisionPolicy } from '@lostgradient/weft';
 
 import { scheduleValueToWireSpec } from './cadence.ts';
 import type { CreateScheduleArgs } from './schedule-queries.ts';
@@ -181,7 +181,7 @@ export class ScheduleFormState {
    * The `revisionPolicy` an edit submission should send, or `undefined` to
    * omit it entirely (preserving the schedule's current policy AND its
    * captured pin unchanged — `ScheduleUpdateOptions`'s own doc,
-   * `@corvidae/weft`). Only returns a value when the draft's live
+   * `@lostgradient/weft`). Only returns a value when the draft's live
    * `revisionPolicy` differs from {@link initialRevisionPolicy}: sending
    * `revisionPolicy: 'pinned'` unconditionally on every unrelated cadence
    * edit would silently RE-capture the pin against whatever happens to be

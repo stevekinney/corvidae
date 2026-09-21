@@ -33,7 +33,7 @@
  *     reference appears. `--update-baseline` rewrites it after an intentional
  *     change (a stale name fixed → the baseline shrinks).
  *
- * Run via `bun run --filter=@corvidae/cinder tokens:audit` (report) / `tokens:audit
+ * Run via `bun run --filter=@lostgradient/cinder tokens:audit` (report) / `tokens:audit
  * --strict` (gate; wired into `validate` once report output is clean).
  */
 

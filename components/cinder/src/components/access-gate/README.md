@@ -6,8 +6,8 @@ Authorization presentation gate for controls and sections that stay visible when
 
 ```svelte
 <script lang="ts">
-  import { AccessGate } from '@corvidae/cinder';
-  import { Button } from '@corvidae/cinder';
+  import { AccessGate } from '@lostgradient/cinder';
+  import { Button } from '@lostgradient/cinder';
 </script>
 
 <AccessGate granted={false} reason="Requires scope: workflows:cancel">

@@ -21,7 +21,7 @@
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
   import { formatRelativeTime } from '../../utilities/format-date.ts';
-  import { Button, Pencil, Trash2 } from '@corvidae/cinder';
+  import { Button, Pencil, Trash2 } from '@lostgradient/cinder';
 
   let {
     comments,

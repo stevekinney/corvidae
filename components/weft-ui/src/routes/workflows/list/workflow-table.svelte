@@ -40,8 +40,8 @@
    * comparison was scoped out rather than folded in silently.
    */
   import { Copy } from 'lucide-svelte';
-  import { Badge, CopyButton, Table, Tooltip } from '@corvidae/cinder';
-  import type { WorkflowSummary } from '@corvidae/weft';
+  import { Badge, CopyButton, Table, Tooltip } from '@lostgradient/cinder';
+  import type { WorkflowSummary } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';

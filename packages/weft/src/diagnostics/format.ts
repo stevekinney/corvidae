@@ -38,7 +38,7 @@ const color = {
  *
  * @example
  * ```ts
- * import { formatBytes } from '@corvidae/weft';
+ * import { formatBytes } from '@lostgradient/weft';
  *
  * console.log(formatBytes(0));         // '0 B'
  * console.log(formatBytes(1024));      // '1.0 KB'
@@ -64,7 +64,7 @@ export function formatBytes(bytes: number): string {
  *
  * @example
  * ```ts
- * import { formatDuration } from '@corvidae/weft';
+ * import { formatDuration } from '@lostgradient/weft';
  *
  * console.log(formatDuration(500));      // '500ms'
  * console.log(formatDuration(90000));    // '2 minutes'
@@ -168,7 +168,7 @@ function appendRecommendationsSection(
  *
  * @example
  * ```ts
- * import { MemoryStorage, collectDiagnostics, formatDiagnosticReport } from '@corvidae/weft';
+ * import { MemoryStorage, collectDiagnostics, formatDiagnosticReport } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * const report = await collectDiagnostics(storage, ':memory:');
@@ -193,8 +193,8 @@ export function formatDiagnosticReport(report: DiagnosticReport): string {
  *
  * @example
  * ```ts
- * import type { VersionCheckReport } from '@corvidae/weft';
- * import { formatVersionCheckReport } from '@corvidae/weft';
+ * import type { VersionCheckReport } from '@lostgradient/weft';
+ * import { formatVersionCheckReport } from '@lostgradient/weft';
  *
  * const report: VersionCheckReport = {
  *   workflowTypes: [],

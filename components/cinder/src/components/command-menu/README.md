@@ -6,9 +6,9 @@ Inline caret-anchored slash-command list for textareas and single-line text inpu
 
 ```svelte
 <script lang="ts">
-  import { CommandItem } from '@corvidae/cinder';
-  import { CommandMenu, detectTrigger, type CommandMenuCompletion } from '@corvidae/cinder';
-  import { Textarea } from '@corvidae/cinder';
+  import { CommandItem } from '@lostgradient/cinder';
+  import { CommandMenu, detectTrigger, type CommandMenuCompletion } from '@lostgradient/cinder';
+  import { Textarea } from '@lostgradient/cinder';
 
   type Command = {
     value: string;

@@ -21,7 +21,7 @@ import type {
 const minimalComponent: ManifestComponent = {
   name: 'Empty Guidance',
   id: 'empty-guidance',
-  import: '@corvidae/cinder',
+  import: '@lostgradient/cinder',
   exportName: 'EmptyGuidance',
   category: 'test',
   status: 'stable',
@@ -41,7 +41,7 @@ const minimalComponent: ManifestComponent = {
 describe('CLI text formatting', () => {
   it('prints deterministic JSON envelopes and errors', () => {
     const packageSummary: PackageSummary = {
-      name: '@corvidae/cinder',
+      name: '@lostgradient/cinder',
     };
 
     expect(JSON.parse(jsonEnvelope(packageSummary, 'list', [{ id: 'button' }]))).toEqual({
@@ -60,7 +60,7 @@ describe('CLI text formatting', () => {
 
   it('renders copyable import statements in list output', () => {
     expect(formatList([{ ...minimalComponent, overlapFamilies: [] }])).toContain(
-      "import { EmptyGuidance } from '@corvidae/cinder';",
+      "import { EmptyGuidance } from '@lostgradient/cinder';",
     );
     expect(formatList([])).toBe('No Cinder components matched.');
   });

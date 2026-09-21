@@ -13,8 +13,8 @@
  *   - The effective model and effort actually used are reported on
  *     `GenerateResponse.metadata`.
  */
-import { createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { createAnthropicProvider } from '../src/providers/anthropic.ts';

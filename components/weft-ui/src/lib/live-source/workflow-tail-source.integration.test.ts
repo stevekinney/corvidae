@@ -27,8 +27,8 @@
  * mechanism a reconnect's fresh `client.tail()` call relies on) delivers
  * everything exactly once, in order.
  */
-import type { WorkflowEvent } from '@corvidae/weft';
-import { HttpClient } from '@corvidae/weft';
+import type { WorkflowEvent } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft';
 import { waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 

@@ -1,5 +1,5 @@
-import type { ConversationSnapshot } from '@corvidae/conversationalist';
-import type { ObservableLike, RuntimeServices, Subscription } from '@corvidae/lifecycle';
+import type { ConversationSnapshot } from 'conversationalist';
+import type { ObservableLike, RuntimeServices, Subscription } from '@lostgradient/lifecycle';
 
 import type { ActiveRun } from '../create-run';
 import type { FinishReason, StepResult, TokenUsage } from '../types';

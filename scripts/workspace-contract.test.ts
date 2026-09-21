@@ -99,7 +99,7 @@ describe('internal workspace architecture', () => {
 
   test('compiler configuration has a dedicated internal owner and two public presets', async () => {
     const configuration = await readManifest('internal/typescript');
-    expect(configuration.name).toBe('@corvidae/typescript');
+    expect(configuration.name).toBe('@lostgradient/typescript');
     expect(configuration.private).toBe(true);
     expect(configuration.exports).toEqual({
       './library.json': './library.json',
@@ -111,10 +111,10 @@ describe('internal workspace architecture', () => {
     for (const preset of ['library.json', 'browser.json']) {
       const contents = await Bun.file(join(root, 'internal/typescript', preset)).json();
       expect(contents.extends).toBe('./base.json');
-      expect(import.meta.resolve(`@corvidae/typescript/${preset}`)).toEndWith(preset);
+      expect(import.meta.resolve(`@lostgradient/typescript/${preset}`)).toEndWith(preset);
     }
     for (const privatePreset of ['base.json', 'server.json']) {
-      expect(() => import.meta.resolve(`@corvidae/typescript/${privatePreset}`)).toThrow();
+      expect(() => import.meta.resolve(`@lostgradient/typescript/${privatePreset}`)).toThrow();
     }
   });
 
@@ -163,16 +163,16 @@ describe('internal workspace architecture', () => {
   test('browser test hosts have no application identity or Vite dependency', async () => {
     const manifests = await workspaceManifests();
     for (const name of ['weft-cli', 'weft-console', 'cinder-browser-fixtures']) {
-      expect(manifests.has(`@corvidae/${name}`)).toBe(false);
+      expect(manifests.has(`@lostgradient/${name}`)).toBe(false);
     }
     manifests.set('root', await readManifest('.'));
     for (const [name, manifest] of manifests) {
-      if (name === '@corvidae/chat-room') continue;
+      if (name === '@lostgradient/chat-room') continue;
       const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
       expect(dependencies['vite'], name).toBeUndefined();
       expect(dependencies['@sveltejs/vite-plugin-svelte'], name).toBeUndefined();
     }
-    const weft = manifests.get('@corvidae/weft');
+    const weft = manifests.get('@lostgradient/weft');
     expect(weft?.bin).toEqual({ weft: 'src/cli-main.ts', 'weft-mcp': 'src/cli-mcp.ts' });
   });
   test('component workspaces enforce browser source and separately check Bun tooling', async () => {
@@ -296,7 +296,7 @@ describe('internal workspace architecture', () => {
     test(`${library} exposes source without a build or publication contract`, async () => {
       const directory = `${componentLibraries.includes(library) ? 'components' : 'packages'}/${library}`;
       const manifest = await readManifest(directory);
-      expect(manifest.name).toBe(`@corvidae/${library}`);
+      expect(manifest.name).toBe(`@lostgradient/${library}`);
       expect(manifest.private).toBe(true);
       expect(manifest.type).toBe('module');
       expect(manifest.exports).toEqual({ '.': './src/index.ts' });
@@ -317,20 +317,20 @@ describe('internal workspace architecture', () => {
   test('every internal edge resolves and uses workspace:*', async () => {
     const manifests = await workspaceManifests();
     for (const manifest of manifests.values()) {
-      expect(manifest.name).toStartWith('@corvidae/');
+      expect(manifest.name).toStartWith('@lostgradient/');
       expect(manifest.private).toBe(true);
       for (const [name, version] of Object.entries({
         ...manifest.dependencies,
         ...manifest.devDependencies,
         ...manifest.peerDependencies,
       })) {
-        const internalName = name.replace(/^@(lostgradient|cinder)\//, '@corvidae/');
+        const internalName = name.replace(/^@(lostgradient|cinder)\//, '@lostgradient/');
         if (internalName !== name) {
           expect(manifests.has(internalName), `${name} duplicates internal ${internalName}`).toBe(
             false,
           );
         }
-        if (!name.startsWith('@corvidae/')) continue;
+        if (!name.startsWith('@lostgradient/')) continue;
         expect(version, `${manifest.name} -> ${name}`).toBe('workspace:*');
         expect(manifests.has(name), `${manifest.name} -> missing ${name}`).toBe(true);
       }
@@ -350,7 +350,7 @@ describe('internal workspace architecture', () => {
         ...manifest.devDependencies,
         ...manifest.peerDependencies,
       })) {
-        if (dependency.startsWith('@corvidae/')) visit(dependency, [...ancestors, name]);
+        if (dependency.startsWith('@lostgradient/')) visit(dependency, [...ancestors, name]);
       }
       complete.add(name);
     }
@@ -367,7 +367,7 @@ describe('internal workspace architecture', () => {
         ...workspace.dependencies,
         ...workspace.devDependencies,
       })) {
-        if (name.startsWith('@corvidae/')) continue;
+        if (name.startsWith('@lostgradient/')) continue;
         const declarations = versions.get(name) ?? [];
         declarations.push(version);
         versions.set(name, declarations);

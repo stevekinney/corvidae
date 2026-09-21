@@ -1,4 +1,4 @@
-import { Heading1, Heading2, Heading3, Pilcrow, Quote } from '@corvidae/cinder';
+import { Heading1, Heading2, Heading3, Pilcrow, Quote } from '@lostgradient/cinder';
 import type { Ctx } from '@milkdown/kit/ctx';
 
 import type { ActiveBlockType } from '../../../editor/index.ts';

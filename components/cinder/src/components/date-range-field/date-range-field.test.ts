@@ -3,7 +3,7 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import type { DateRangeDatePreset, DateRangeValue } from './date-range-field.types.ts';
 
 expect.extend(matchers as Parameters<typeof expect.extend>[0]);

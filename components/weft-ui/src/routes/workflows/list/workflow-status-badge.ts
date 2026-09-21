@@ -8,7 +8,7 @@
  * **Scope note on `finalizing` / `cancelled — cleanup failed`.** The design
  * mock's status-badge section also shows these two sub-states (plan's
  * "status badges … incl. finalizing + cancelled-cleanup-failed"), but
- * `WorkflowSummary`/`WorkflowState` (`@corvidae/weft` v0.11.0,
+ * `WorkflowSummary`/`WorkflowState` (`@lostgradient/weft` v0.11.0,
  * `core/types/state.ts` and `core/types/identity.ts`) expose no field that
  * distinguishes "cancelled, finalizer still running" or "cancelled,
  * finalizer failed" from plain `'cancelled'` — `WorkflowStatus` is a flat
@@ -20,7 +20,7 @@
  * `WorkflowStatus` values; the Timeline track owns the finalizer sub-states
  * against its own richer per-run data.
  */
-import type { WorkflowStatus } from '@corvidae/weft';
+import type { WorkflowStatus } from '@lostgradient/weft';
 
 /** Cinder `Badge`/`StatusDot` tone (plan §10.1's 5-tone semantics). */
 export type WorkflowStatusBadgeTone = 'success' | 'info' | 'warning' | 'danger' | 'neutral';

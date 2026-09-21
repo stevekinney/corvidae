@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 afterEach(() => {

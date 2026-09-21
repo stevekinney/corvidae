@@ -3,7 +3,7 @@ import {
   Engine,
   WorkflowAlreadyExistsError,
   type WorkflowHandle,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { resolveExampleEnvironment } from '../../environment-configuration.ts';
 
 import { addItemUpdate, cancelOrderSignal, orderStatusQuery } from './messages';

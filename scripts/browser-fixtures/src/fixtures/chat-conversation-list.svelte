@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChatConversationList, type ConversationSummary } from '@corvidae/chat';
+  import { ChatConversationList, type ConversationSummary } from '@lostgradient/chat';
 
   const conversations: ConversationSummary[] = [
     {

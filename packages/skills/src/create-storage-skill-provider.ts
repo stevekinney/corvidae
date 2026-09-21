@@ -1,4 +1,4 @@
-import type { TextValueStore } from '@corvidae/weft';
+import type { TextValueStore } from '@lostgradient/weft';
 
 import { isValidSkillName, SkillParseError } from './parse-skill-markdown';
 import type { SkillContent, SkillWriter } from './types';

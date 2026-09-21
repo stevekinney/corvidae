@@ -1,5 +1,5 @@
-import { appendUserMessage, getMessages, type ChatSerializedRunError } from '@corvidae/chat';
-import type { AgentSession } from '@corvidae/operative';
+import { appendUserMessage, getMessages, type ChatSerializedRunError } from '@lostgradient/chat';
+import type { AgentSession } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 import {
   appendUserTurn,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SelectableRow } from '@corvidae/cinder';
+  import { SelectableRow } from '@lostgradient/cinder';
 
   let opened = $state(0);
   let renamed = $state(0);

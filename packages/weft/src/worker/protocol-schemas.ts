@@ -2,7 +2,7 @@
  * JSON Schema declarations for the RemoteWorker WebSocket protocol contract.
  *
  * These schemas are the canonical wire-shape description for every protocol
- * message. They are re-exported from `@corvidae/weft` so the public
+ * message. They are re-exported from `@lostgradient/weft` so the public
  * surface remains a single import path. The runtime parser guards in
  * `protocol.ts` mirror these schemas field-by-field; any drift here must be
  * reflected there as well.
@@ -39,7 +39,7 @@ const protocolVersionSchema: JsonSchemaObject = {
  *
  * @example
  * ```ts
- * import { REMOTE_WORKER_MESSAGE_SCHEMAS } from '@corvidae/weft';
+ * import { REMOTE_WORKER_MESSAGE_SCHEMAS } from '@lostgradient/weft';
  *
  * const registerSchema = REMOTE_WORKER_MESSAGE_SCHEMAS.register;
  * ```
@@ -240,7 +240,7 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
  *
  * @example
  * ```ts
- * import { REMOTE_WORKER_PROTOCOL_JSON_SCHEMA } from '@corvidae/weft';
+ * import { REMOTE_WORKER_PROTOCOL_JSON_SCHEMA } from '@lostgradient/weft';
  *
  * const schemaId = REMOTE_WORKER_PROTOCOL_JSON_SCHEMA.$id;
  * ```

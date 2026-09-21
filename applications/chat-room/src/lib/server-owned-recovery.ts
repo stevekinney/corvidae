@@ -1,4 +1,4 @@
-import type { AgentRun, SessionHandle } from '@corvidae/operative';
+import type { AgentRun, SessionHandle } from '@lostgradient/operative';
 
 /**
  * What a re-attach attempt actually found.

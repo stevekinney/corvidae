@@ -5,7 +5,7 @@
  *
  * @example
  * ```ts
- * import { Engine, ActivityStartedEvent } from '@corvidae/weft';
+ * import { Engine, ActivityStartedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(ActivityStartedEvent.type, (event) => {
@@ -36,7 +36,7 @@ export class ActivityStartedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, ActivityCompletedEvent } from '@corvidae/weft';
+ * import { Engine, ActivityCompletedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(ActivityCompletedEvent.type, (event) => {
@@ -72,7 +72,7 @@ export class ActivityCompletedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, ActivityAsyncPendingEvent } from '@corvidae/weft';
+ * import { Engine, ActivityAsyncPendingEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(ActivityAsyncPendingEvent.type, (event) => {
@@ -112,7 +112,7 @@ export class ActivityAsyncPendingEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, ActivityFailedEvent } from '@corvidae/weft';
+ * import { Engine, ActivityFailedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(ActivityFailedEvent.type, (event) => {
@@ -153,7 +153,7 @@ export class ActivityFailedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, TaskResultDeadLetteredEvent } from '@corvidae/weft';
+ * import { Engine, TaskResultDeadLetteredEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(TaskResultDeadLetteredEvent.type, (event) => {
@@ -215,7 +215,7 @@ export class TaskResultDeadLetteredEvent extends Event {
  *
  * @example
  * ```ts
- * import { RemoteActivityQueuedEvent } from '@corvidae/weft';
+ * import { RemoteActivityQueuedEvent } from '@lostgradient/weft';
  *
  * const engineEvents = new EventTarget();
  *
@@ -262,7 +262,7 @@ export class RemoteActivityQueuedEvent extends Event {
  *
  * @example
  * ```ts
- * import { RemoteActivityCancellationRequestedEvent } from '@corvidae/weft';
+ * import { RemoteActivityCancellationRequestedEvent } from '@lostgradient/weft';
  *
  * const engineEvents = new EventTarget();
  *

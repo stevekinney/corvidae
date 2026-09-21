@@ -10,9 +10,9 @@
    * `providePrincipalStore()` — see its module doc for why the rebuild-on
    * -API-key-entry flow has to stay one level above it.
    */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
 
-  import { Skeleton } from '@corvidae/cinder';
+  import { Skeleton } from '@lostgradient/cinder';
   import { QueryClientProvider } from '@tanstack/svelte-query';
 
   import { createClient, setApiKey } from '../lib/client.ts';

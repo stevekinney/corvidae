@@ -3,7 +3,7 @@ import type {
   Conversation,
   Message,
   Summarizer,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 import type { StepContext } from './types';
 

@@ -13,13 +13,13 @@
  * per-scenario control over that response (aggregate shapes, error bodies,
  * malformed payloads) that a real engine can't be coaxed into producing on
  * demand. `live-source-test-server.test-support.ts`'s real `serve()`
- * instance does route `/jsonrpc` as of `@corvidae/weft@0.12.0` (fixed
+ * instance does route `/jsonrpc` as of `@lostgradient/weft@0.12.0` (fixed
  * upstream: weft#710), so this module is a deliberate choice for
  * determinism, not a workaround for a missing route. Scripting `fetch`
  * against a REAL `HttpClient` instance exercises the real JSON-RPC
  * request/response encoding either way.
  */
-import { HttpClient } from '@corvidae/weft';
+import { HttpClient } from '@lostgradient/weft';
 
 import { installFetchImplementation } from '../../lib/live-source/fetch-test-support.ts';
 

@@ -9,7 +9,7 @@
    * `fault-boundary.svelte`'s classes (`.weft-fault-boundary*`, already
    * global via `src/styles/foundation.css`) rather than duplicating the CSS.
    */
-  import { Badge, Button } from '@corvidae/cinder';
+  import { Badge, Button } from '@lostgradient/cinder';
   import {
     CircleSlash,
     CircleX,

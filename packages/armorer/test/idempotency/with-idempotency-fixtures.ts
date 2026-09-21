@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { DirectIdempotencyExecuteOptions } from '../../src/idempotency/with-idempotency';
 

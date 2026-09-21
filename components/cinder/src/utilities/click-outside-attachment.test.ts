@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { setupAttachmentTests } from './attachments-test-support.ts';
 import { createClickOutside } from './attachments.ts';

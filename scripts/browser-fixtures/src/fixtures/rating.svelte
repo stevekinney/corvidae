@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Rating } from '@corvidae/cinder';
+  import { Rating } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

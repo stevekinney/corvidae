@@ -1,4 +1,4 @@
-import { THEME_STORAGE_KEY } from '@corvidae/testing';
+import { THEME_STORAGE_KEY } from '@lostgradient/testing';
 import type { Browser, Page } from '@playwright/test';
 import { environmentConfiguration } from '../environment-configuration.ts';
 

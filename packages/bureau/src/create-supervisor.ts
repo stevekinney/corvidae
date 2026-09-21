@@ -5,8 +5,8 @@
  * a pluggable `RoutingStrategy<D>`, and synthesizes their results.
  */
 
-import { CompletableEventTarget } from '@corvidae/lifecycle';
-import type { AgentRunContext, RunResult } from '@corvidae/operative';
+import { CompletableEventTarget } from '@lostgradient/lifecycle';
+import type { AgentRunContext, RunResult } from '@lostgradient/operative';
 
 import type { AgentDefinitions, AgentNames, BureauAgentCatalog } from './agent-catalog';
 import type {

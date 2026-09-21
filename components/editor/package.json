@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/editor",
+  "name": "@lostgradient/editor",
   "private": true,
   "type": "module",
   "exports": {
@@ -17,8 +17,8 @@
     "@milkdown/prose": "catalog:",
     "@floating-ui/dom": "catalog:",
     "esm-env": "catalog:",
-    "@corvidae/cinder": "workspace:*",
-    "@corvidae/markdown": "workspace:*",
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/markdown": "workspace:*",
     "prosemirror-inputrules": "catalog:",
     "prosemirror-model": "catalog:",
     "prosemirror-state": "catalog:",
@@ -26,8 +26,8 @@
     "svelte": "catalog:"
   },
   "devDependencies": {
-    "@corvidae/testing": "workspace:*",
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
     "ajv": "catalog:",

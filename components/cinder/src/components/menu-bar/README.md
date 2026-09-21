@@ -6,8 +6,8 @@ Command menubar for application chrome such as File, Edit, and View menus.
 
 ```svelte
 <script lang="ts">
-  import { MenuBar } from '@corvidae/cinder';
-  import type { MenuBarMenu } from '@corvidae/cinder';
+  import { MenuBar } from '@lostgradient/cinder';
+  import type { MenuBarMenu } from '@lostgradient/cinder';
 
   const menus: MenuBarMenu[] = [
     {

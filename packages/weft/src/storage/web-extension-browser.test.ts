@@ -11,7 +11,7 @@
  * Gate: `WEFT_BROWSER_SMOKE=1` must be set (the same flag the sibling IndexedDB
  * and Service Worker smokes use, via `browserSmokeEnabled`). Otherwise the suite
  * skips and does not run in the default `bun test` pass. Run it with
- * `bun run --filter=@corvidae/weft test:browser`.
+ * `bun run --filter=@lostgradient/weft test:browser`.
  *
  * Browser provisioning: `bunx playwright install --with-deps chromium`. The
  * pinned binary is resolved by Playwright — no manual discovery.

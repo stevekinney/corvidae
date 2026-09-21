@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PinInput } from '@corvidae/cinder';
+  import { PinInput } from '@lostgradient/cinder';
   let value = $state('');
 </script>
 

@@ -6,7 +6,7 @@ Primary navigation with wide multi-column content panels, optional hover activat
 
 ```svelte
 <script lang="ts">
-  import { MegaMenu } from '@corvidae/cinder';
+  import { MegaMenu } from '@lostgradient/cinder';
 
   const items = [
     {

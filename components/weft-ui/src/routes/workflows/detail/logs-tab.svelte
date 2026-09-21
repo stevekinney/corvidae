@@ -10,7 +10,7 @@
    * time — an in-process hook. This was filed as weft#732 item 5, asking
    * either for a `getLogs(workflowId)` operation OR "confirmation that logs
    * are intentionally host-only and the console should stop trying."
-   * `@corvidae/weft@0.15.0` (PR #760, closing #732) answered with the
+   * `@lostgradient/weft@0.15.0` (PR #760, closing #732) answered with the
    * latter: its own summary states the boundary explicitly — "`ctx.log`
    * remains host-owned through `EngineOptions.onLog`" — and ships regression
    * tests locking that in rather than a retrieval operation. Re-verified
@@ -23,7 +23,7 @@
    * never populate — not refiled, since the maintainers already chose
    * between the two outcomes the original issue offered.
    */
-  import { EmptyState } from '@corvidae/cinder';
+  import { EmptyState } from '@lostgradient/cinder';
 </script>
 
 <EmptyState

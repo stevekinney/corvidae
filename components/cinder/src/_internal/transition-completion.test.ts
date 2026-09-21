@@ -1,4 +1,4 @@
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { createTransitionEndEvent } from './transition-completion-test-events.ts';
 import { waitForTransitionCompletion } from './transition-completion.ts';

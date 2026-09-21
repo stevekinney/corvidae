@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Carousel } from '@corvidae/cinder';
+  import { Carousel } from '@lostgradient/cinder';
 
   const placeholder = (hue: number) =>
     `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='600'%3E%3Crect width='1200' height='600' fill='hsl(${hue}%2C40%25%2C60%25)'/%3E%3C/svg%3E`;

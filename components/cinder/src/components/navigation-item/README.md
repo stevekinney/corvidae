@@ -6,7 +6,7 @@ Individual link or button within a navigation bar, supporting active and disable
 
 ```svelte
 <script lang="ts">
-  import { NavigationItem } from '@corvidae/cinder';
+  import { NavigationItem } from '@lostgradient/cinder';
 </script>
 
 <NavigationItem href="/dashboard">Dashboard</NavigationItem>

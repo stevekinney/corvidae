@@ -6,7 +6,7 @@ Native-style dropdown select for choosing a single option from a predefined list
 
 ```svelte
 <script lang="ts">
-  import { Select } from '@corvidae/cinder';
+  import { Select } from '@lostgradient/cinder';
   const options = [
     { value: 'free', label: 'Free' },
     { value: 'pro', label: 'Pro' },

@@ -1,4 +1,4 @@
-import { createToolbox } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
 
 import type { GenerateFunction, RunOptions, StepContext } from './types';
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, EmptyState, Table } from '@corvidae/cinder';
+  import { Badge, EmptyState, Table } from '@lostgradient/cinder';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';

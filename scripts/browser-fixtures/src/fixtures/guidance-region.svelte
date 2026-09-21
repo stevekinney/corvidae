@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, GuidanceRegion, type GuidanceClaim, useGuidance } from '@corvidae/cinder';
+  import { Button, GuidanceRegion, type GuidanceClaim, useGuidance } from '@lostgradient/cinder';
 
   const claims = [
     { id: 'welcome', anchor: 'workspace-start', content: 'Start by exploring the workspace.' },

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Chip } from '@corvidae/cinder';
+  import { Chip } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row">

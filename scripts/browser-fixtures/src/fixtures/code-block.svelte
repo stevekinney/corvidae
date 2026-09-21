@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CodeBlock } from '@corvidae/cinder';
+  import { CodeBlock } from '@lostgradient/cinder';
   const code = `function greet(name: string): string {
   return \`Hello, \${name}!\`;
 }

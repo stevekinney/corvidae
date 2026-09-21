@@ -29,8 +29,8 @@
  * detection once a per-evaluation deadline exists, without reopening this
  * module later to add it.
  */
-import { Conversation } from '@corvidae/conversationalist';
-import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
+import { Conversation } from 'conversationalist';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   BACKGROUND_EVALUATION_POLICY,
   createStallWatchdog,
@@ -45,7 +45,7 @@ import {
   type StallWatchdog,
   type StallWatchdogClock,
   type Subscription,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { AuditTrail } from './audit-trail';
@@ -133,7 +133,7 @@ const AGGREGATE_EVALUATION_ID = 'online-eval-sampler';
  * (`packages/operative/src/liveness/active-run-liveness.ts`), duplicated at
  * module-local scope rather than imported: this issue's delivery boundary
  * restricts its edit to `online-evals.ts`/`webhook-notifier.ts` and their
- * tests, and the source ordering is not part of `@corvidae/operative`'s
+ * tests, and the source ordering is not part of `@lostgradient/operative`'s
  * public `liveness` subpath export.
  */
 const ASSESSMENT_SEVERITY: readonly Exclude<LivenessAssessment, 'terminal'>[] = [

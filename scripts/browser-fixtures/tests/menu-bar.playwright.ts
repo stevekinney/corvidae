@@ -1,4 +1,4 @@
-import { loadManifest, VIEWPORTS, type Theme } from '@corvidae/testing';
+import { loadManifest, VIEWPORTS, type Theme } from '@lostgradient/testing';
 import { expect, test } from './component-page-fixture.ts';
 
 const themes: Theme[] = ['light', 'dark'];

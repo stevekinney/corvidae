@@ -1,12 +1,12 @@
 # Skills
 
-`@corvidae/skills` supplies procedural knowledge to Corvidae agent runtimes. It lets the runtime keep a small catalog of available capabilities in context, load full instructions only when an agent chooses a relevant skill, and then fetch larger bundled resources on demand.
+`@lostgradient/skills` supplies procedural knowledge to Corvidae agent runtimes. It lets the runtime keep a small catalog of available capabilities in context, load full instructions only when an agent chooses a relevant skill, and then fetch larger bundled resources on demand.
 
 Persistent sessions, memory, tools, schedulers, and durable workflows can share repeatable operating knowledge through skills instead of hard-coding every procedure into system prompts or runtime code.
 
 ## Workspace usage
 
-Declare `"@corvidae/skills": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@corvidae/skills`; it exports TypeScript source directly and has no library build or publication step.
+Declare `"@lostgradient/skills": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@lostgradient/skills`; it exports TypeScript source directly and has no library build or publication step.
 
 ## Mental Model
 
@@ -20,7 +20,7 @@ This keeps normal runs cheap and focused while still making specialized procedur
 
 ## Runtime composition
 
-Corvidae has several extension points: `@corvidae/armorer` tools, `@corvidae/operative` hooks, `@corvidae/memory` recall, and application-owned runtime composition. Skills connect those extension points into one workflow:
+Corvidae has several extension points: `armorer` tools, `@lostgradient/operative` hooks, `@lostgradient/memory` recall, and application-owned runtime composition. Skills connect those extension points into one workflow:
 
 - Applications can inject the skill catalog on the first step of a run and add skill management tools to the active toolbox.
 - `operative` can consume skill hooks and enforce the tool policy from active skills.
@@ -120,7 +120,7 @@ import {
   createSkillClientToolbox,
   discoverSkills,
   renderClientCatalog,
-} from '@corvidae/skills';
+} from '@lostgradient/skills';
 
 const catalog = await discoverSkills({
   sources: [{ id: 'user', kind: 'user', location: '/path/to/skills', precedence: 20 }],
@@ -160,7 +160,7 @@ import {
   defaultSkillSources,
   admitSources,
   generalCatalogProjection,
-} from '@corvidae/skills';
+} from '@lostgradient/skills';
 
 const service = createSkillCatalogService({
   sources: defaultSkillSources({ projectRoot: process.cwd() }),
@@ -232,7 +232,7 @@ Because this transport carries only `SKILL.md`, a remote entry is `bundleSupport
 A skill does not have to live on a filesystem: the self-improvement flow writes an accepted proposal straight into a key-value store. Pass that store as `storage` and its skills are catalogued, digested, trust-decided and activated by exactly the same path as a filesystem one.
 
 ```typescript
-import { discoverSkills } from '@corvidae/skills';
+import { discoverSkills } from '@lostgradient/skills';
 
 const catalog = await discoverSkills({
   sources: [{ id: 'storage', kind: 'storage', location: 'kv://skills', precedence: 25 }],
@@ -256,7 +256,7 @@ A skill-enabled run follows this sequence:
 - If the skill ships resources, the agent can call `load_skill_resource`.
 - An active skill's `allowed-tools` narrows the run's tool set. It can only remove tools, never add one the run did not already have.
 
-`@corvidae/bureau` composes exactly this, and adds what the client cannot see: run and session correlation on every lifecycle event, the deployment's admission policy, the guardrail pipeline skill content is scanned through, and a durable snapshot of the activation records so a recovered run can re-validate what it had rather than losing it.
+`@lostgradient/bureau` composes exactly this, and adds what the client cannot see: run and session correlation on every lifecycle event, the deployment's admission policy, the guardrail pipeline skill content is scanned through, and a durable snapshot of the activation records so a recovered run can re-validate what it had rather than losing it.
 
 ## Lifecycle events
 
@@ -276,13 +276,13 @@ Pass an `events` target and a `correlation` to `createSkillClient` and it dispat
 | `skill.resource-loaded` | a bundled resource was read for an active skill |
 
 ```typescript
-import { TypedEventTarget } from '@corvidae/lifecycle';
+import { TypedEventTarget } from '@lostgradient/lifecycle';
 import {
   createSkillArtifactLoader,
   createSkillClient,
   createSkillClientToolbox,
   type SkillEventMap,
-} from '@corvidae/skills';
+} from '@lostgradient/skills';
 
 const events = new TypedEventTarget<SkillEventMap>();
 
@@ -331,7 +331,7 @@ Accepting a skill proposal parses its content as `SKILL.md` and saves it through
 
 ## Package Structure
 
-### `@corvidae/skills` (root)
+### `@lostgradient/skills` (root)
 
 The primary API covering conformance, artifacts, discovery, clients, storage writes, memory, proposals, and all public types.
 
@@ -355,7 +355,7 @@ import {
   acceptProposal,
   rejectProposal,
   listProposals,
-} from '@corvidae/skills';
+} from '@lostgradient/skills';
 ```
 
 **Parsing:**
@@ -432,8 +432,8 @@ import {
 Testing utilities for code that writes skills. Neither requires filesystem or network access, but their methods are async (Promise-returning)—`await` store and writer calls as the examples below do.
 
 ```typescript
-import { createMockKeyValueStore, createMockSkillProvider } from '@corvidae/skills';
-import { parseSkillMarkdown } from '@corvidae/skills';
+import { createMockKeyValueStore, createMockSkillProvider } from '@lostgradient/skills';
+import { parseSkillMarkdown } from '@lostgradient/skills';
 
 // In-memory TextValueStore backed by Weft MemoryStorage—
 // drop-in replacement for production stores in unit tests.
@@ -478,7 +478,7 @@ bun run typecheck
 bun run test
 ```
 
-From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@corvidae/skills` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.
+From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@lostgradient/skills` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.
 
 ### Conformance cross-check
 

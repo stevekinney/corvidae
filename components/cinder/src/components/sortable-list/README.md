@@ -6,8 +6,8 @@ Drag-and-drop reorderable list that emits the new order on each change.
 
 ```svelte
 <script lang="ts">
-  import { SortableList } from '@corvidae/cinder';
-  import type { SortableListProps } from '@corvidae/cinder';
+  import { SortableList } from '@lostgradient/cinder';
+  import type { SortableListProps } from '@lostgradient/cinder';
 
   type Task = { id: string; label: string };
 

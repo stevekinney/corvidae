@@ -6,7 +6,7 @@
  * function differs: the route wraps `createAnthropicProviderStream`, the
  * tests wrap a local fixture with no network or model calls.
  *
- * The wire is `@corvidae/chat`'s `ChatStreamEvent` vocabulary, encoded by
+ * The wire is `@lostgradient/chat`'s `ChatStreamEvent` vocabulary, encoded by
  * its own `encodeChatStreamEvent` so this side can never emit a frame the
  * published decoder rejects. Every frame carries the `wireVersion: 2` +
  * `sequence` envelope, assigned by {@link createChatStreamWriter}; the three
@@ -14,7 +14,7 @@
  * pre-Operative shape underneath it, so a client that renders only those
  * (today's `session-controller.ts`) is unaffected by the wider vocabulary.
  */
-import { encodeChatStreamEvent, type ChatStreamEvent } from '@corvidae/chat';
+import { encodeChatStreamEvent, type ChatStreamEvent } from '@lostgradient/chat';
 import {
   AgentRunError,
   classifyError,
@@ -33,9 +33,9 @@ import {
   type StreamBlock,
   type StreamEvent,
   type StreamingGenerateFunction,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 
-import type { JSONValue, ToolRequestContext } from '@corvidae/armorer';
+import type { JSONValue, ToolRequestContext } from 'armorer';
 import { toJSONValue } from './json-value.ts';
 
 /**
@@ -55,7 +55,7 @@ export type ChatSerializedRunError = Extract<ChatStreamEvent, { type: 'run.error
  * The wire version every frame this lab writes carries.
  *
  * TWO, because this lab emits the vocabulary version 2 introduced:
- * `assistant.step.*` and `elicitation.*`. `@corvidae/chat` gates those members
+ * `assistant.step.*` and `elicitation.*`. `@lostgradient/chat` gates those members
  * behind a version 2 envelope on purpose — a version 1 producer cannot
  * construct one at all — so emitting them means speaking version 2.
  *
@@ -133,7 +133,7 @@ export type ChatRunEnvelope =
     };
 
 /**
- * Every error code `@corvidae/chat`'s wire contract admits, as a total
+ * Every error code `@lostgradient/chat`'s wire contract admits, as a total
  * record so this list cannot silently fall behind that union: adding a member
  * to it makes this object fail to typecheck for the missing key.
  *
@@ -501,7 +501,7 @@ function withRetryability(error: unknown): { retryable?: boolean } {
  * provider response) straight onto the wire.
  *
  * Exported so `chat-agent.test.ts` can pin the `AgentRunError` shapes
- * `@corvidae/operative` documents directly — most usefully
+ * `@lostgradient/operative` documents directly — most usefully
  * `OutputValidationError` (`kind: 'output'`, `code: 'INVALID_OUTPUT'`; it replaced
  * `StandardSchemaValidationError`, which 0.10.0 removed with no alias),
  * which this route never triggers live: `createChatAgent` sets no `output`

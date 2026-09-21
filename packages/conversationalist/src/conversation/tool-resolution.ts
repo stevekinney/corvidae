@@ -1,4 +1,4 @@
-import { materializeToolResult, materializeToolResultAsync } from '@corvidae/tool-protocol';
+import { materializeToolResult, materializeToolResultAsync } from '@lostgradient/tool-protocol';
 import {
   type ConversationEnvironment,
   isConversationEnvironmentParameter,

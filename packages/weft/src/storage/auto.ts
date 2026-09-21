@@ -6,7 +6,7 @@ import { WebExtensionStorage } from './web-extension.ts';
 /**
  * Runtime-detected default storage backend.
  *
- * Imported via `@corvidae/weft`. Resolves a persistent
+ * Imported via `@lostgradient/weft`. Resolves a persistent
  * storage adapter appropriate for the current runtime:
  *
  *   1. Bun -> `BunSQLiteStorage`
@@ -26,7 +26,7 @@ import { WebExtensionStorage } from './web-extension.ts';
  * deployments should pick an explicit adapter and pass it to
  * `new Engine({ storage })`.
  *
- * @module @corvidae/weft
+ * @module @lostgradient/weft
  */
 
 import type { Storage as WeftStorage } from './interface.ts';
@@ -141,8 +141,8 @@ function describeIndexedDbSupport(runtimeGlobals: RuntimeGlobalsLike): string {
  *
  * @example
  * ```ts
- * import { Engine } from '@corvidae/weft';
- * import { resolveDefaultStorage } from '@corvidae/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { resolveDefaultStorage } from '@lostgradient/weft';
  *
  * await using storage = await resolveDefaultStorage();
  * await using engine = new Engine({ storage });

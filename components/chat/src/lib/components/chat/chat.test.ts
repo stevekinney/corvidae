@@ -26,7 +26,7 @@
 import { afterAll, afterEach, describe, expect, jest, test } from 'bun:test';
 import { createRawSnippet, mount, tick, unmount } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { importWithoutDomGlobals } from '../../test/import-without-dom-globals.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import.
@@ -282,8 +282,8 @@ describe('Chat — basic render', () => {
 
       expect(warnings).toHaveLength(2);
       expect(warnings.map((warning) => warning[0])).toEqual([
-        '[Chat] Conversation schema version 6 is newer than the supported version 5. Upgrade @corvidae/chat before relying on this history.',
-        '[Chat] Conversation schema version 7 is newer than the supported version 5. Upgrade @corvidae/chat before relying on this history.',
+        '[Chat] Conversation schema version 6 is newer than the supported version 5. Upgrade @lostgradient/chat before relying on this history.',
+        '[Chat] Conversation schema version 7 is newer than the supported version 5. Upgrade @lostgradient/chat before relying on this history.',
       ]);
     } finally {
       console.warn = originalWarn;
@@ -660,7 +660,7 @@ describe('Chat — slot composition', () => {
     const toolCall: NonNullable<TestMessage['toolCall']> = {
       id: 'call-exports-check',
       name: 'exports_check',
-      arguments: { package: '@corvidae/cinder' },
+      arguments: { package: '@lostgradient/cinder' },
     };
     const toolResult: TestToolResult = {
       callId: toolCall.id,
@@ -1007,7 +1007,7 @@ describe('Chat — public wrapper forwards bind:atBottom/unreadCount/newMessageI
   // read of a bindable prop, independent of Chat entirely (reproduced with a
   // two-line throwaway parent/child pair). That is a pre-existing harness
   // limitation, not something this fix introduces, so the runtime contract is
-  // instead covered by `bun run --filter=@corvidae/chat validate:consumer`,
+  // instead covered by `bun run --filter=@lostgradient/chat validate:consumer`,
   // which runs `svelte-check` against the *packed, installed* artifact with a
   // real `bind:atBottom` / `bind:unreadCount` / `bind:newMessageIndicatorVisible`
   // consumer file — the exact failure mode from the issue. The compiler-output

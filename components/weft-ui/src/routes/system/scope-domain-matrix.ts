@@ -23,7 +23,7 @@
  * matched state "Same domain" (never "Granted"/"Required") so it can't be
  * mistaken for a per-operation authorization answer.
  */
-import type { PermissionMatrixAxisItem, PermissionMatrixCellState } from '@corvidae/cinder';
+import type { PermissionMatrixAxisItem, PermissionMatrixCellState } from '@lostgradient/cinder';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 
 /** Scope rows for the matrix, in `AUTHORIZATION_SCOPES` declaration order. */

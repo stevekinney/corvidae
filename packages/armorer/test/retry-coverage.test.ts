@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { expectPromiseToReject } from './helpers/async-assertions';

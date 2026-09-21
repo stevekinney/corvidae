@@ -1,18 +1,18 @@
-# @corvidae/cinder
+# @lostgradient/cinder
 
 Private [Svelte](https://svelte.dev/) components for Corvidae: accessible primitives, design tokens, component styles, generated prop schemas, and examples for people and local tooling.
 
 ## Workspace usage
 
-Declare `"@corvidae/cinder": "workspace:*"` in the consuming workspace's dependencies, then run `bun install --frozen-lockfile` from the Corvidae root. Svelte and other external dependency versions come from the root Bun catalog.
+Declare `"@lostgradient/cinder": "workspace:*"` in the consuming workspace's dependencies, then run `bun install --frozen-lockfile` from the Corvidae root. Svelte and other external dependency versions come from the root Bun catalog.
 
-The package exports its TypeScript source through `@corvidae/cinder`. Your application compiles the Svelte components and includes their styles. The root entry imports the base stylesheet, which establishes the cascade-layer order, tokens, foundation rules, and shared component styles.
+The package exports its TypeScript source through `@lostgradient/cinder`. Your application compiles the Svelte components and includes their styles. The root entry imports the base stylesheet, which establishes the cascade-layer order, tokens, foundation rules, and shared component styles.
 
 The [interface patterns guide](./documentation/interface-guide.md) collects the ownership, composition, accessibility, and failure-state rules that span multiple components. Use the leaf README beside a component for its generated API table.
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
 </script>
 
 <Button id="save-project" variant="primary" label="Save changes" />
@@ -33,7 +33,7 @@ import {
   buttonVariables,
   buttonConstraints,
   buttonExamples,
-} from '@corvidae/cinder';
+} from '@lostgradient/cinder';
 ```
 
 You can inspect a component's props, CSS variables, cross-prop constraints, and examples from the package root. `manifest.components` ties those artifacts to each public component and records its identifier, category, tags, purpose, usage guidance, and related components. Its artifact paths point to files in this workspace—not package import subpaths.
@@ -56,7 +56,7 @@ bun run knowledge show button --json
 bun run knowledge best-practices styles --json
 ```
 
-The CLI reads the manifest and source artifacts from this workspace. Its filesystem-backed knowledge service stays internal to developer tooling. Applications import `manifest` and named metadata from `@corvidae/cinder`; the library root supports browser and server rendering.
+The CLI reads the manifest and source artifacts from this workspace. Its filesystem-backed knowledge service stays internal to developer tooling. Applications import `manifest` and named metadata from `@lostgradient/cinder`; the library root supports browser and server rendering.
 
 ## Token data
 
@@ -119,7 +119,7 @@ bun run tokens:check
 
 After editing component source under `src/components/<component-id>/`, run `bun run components:generate` to refresh schemas, variables, examples, the manifest, and metadata exports. Token corpus changes use `bun run tokens:generate`.
 
-From the Corvidae root, `bunx turbo run lint typecheck test --filter=@corvidae/cinder` checks this workspace and `bun run validate` checks the complete repository. Browser fixtures and interaction tests live in `scripts/browser-fixtures`. Cinder has no library build or publishing step.
+From the Corvidae root, `bunx turbo run lint typecheck test --filter=@lostgradient/cinder` checks this workspace and `bun run validate` checks the complete repository. Browser fixtures and interaction tests live in `scripts/browser-fixtures`. Cinder has no library build or publishing step.
 
 ### Component authoring checklist
 

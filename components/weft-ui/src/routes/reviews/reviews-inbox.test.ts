@@ -16,7 +16,7 @@ import {
   HttpClientError,
   type PendingReviewEntry,
   type ReviewListEntry,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import type { ReviewQuery } from './review-domain.ts';
 import ReviewsInboxTestHarness from './reviews-inbox-test-harness.test-harness.svelte';

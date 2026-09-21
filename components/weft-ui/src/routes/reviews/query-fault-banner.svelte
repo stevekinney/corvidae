@@ -11,7 +11,7 @@
    * so a non-403 query failure (401, 500, network) never renders as a false
    * "all caught up" / "no decisions yet" empty state.
    */
-  import { Badge, Button } from '@corvidae/cinder';
+  import { Badge, Button } from '@lostgradient/cinder';
   import {
     CircleSlash,
     CircleX,

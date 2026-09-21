@@ -8,7 +8,7 @@
    * page-level empty-state gate) and passed in as a query result — this
    * component only presents it.
    */
-  import { Card, Skeleton, StatusDot } from '@corvidae/cinder';
+  import { Card, Skeleton, StatusDot } from '@lostgradient/cinder';
   import type { CreateQueryResult } from '@tanstack/svelte-query';
 
   import { router } from '../../lib/router.svelte.ts';

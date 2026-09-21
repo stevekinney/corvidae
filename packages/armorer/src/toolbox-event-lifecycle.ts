@@ -1,4 +1,4 @@
-import { CompletableEventTarget } from '@corvidae/lifecycle';
+import { CompletableEventTarget } from '@lostgradient/lifecycle';
 
 import type { LoopDetector } from './core/loop-detection';
 import type { ToolboxEventMap } from './event-types';

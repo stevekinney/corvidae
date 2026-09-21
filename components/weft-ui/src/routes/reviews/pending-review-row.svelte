@@ -3,8 +3,8 @@
    * One row in the pending-review list (plan §9.5: "pending list (countdown,
    * red when <20% of the review window remains)").
    */
-  import { Badge } from '@corvidae/cinder';
-  import type { PendingReviewEntry } from '@corvidae/weft';
+  import { Badge } from '@lostgradient/cinder';
+  import type { PendingReviewEntry } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { formatReviewCountdown, reviewDeadline } from './review-domain.ts';

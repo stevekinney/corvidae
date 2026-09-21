@@ -6,7 +6,7 @@
  * for this tool to search or return.
  */
 
-import { createTool } from '@corvidae/armorer';
+import { createTool } from 'armorer';
 import { z } from 'zod';
 
 import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';

@@ -3,7 +3,7 @@
 Maintain persistent state across tool executions.
 
 ```typescript
-import { createToolbox, createTool } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
 import { z } from 'zod';
 
 // State store

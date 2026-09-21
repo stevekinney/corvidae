@@ -22,8 +22,8 @@
     SIDEBAR_MOBILE_MEDIA_QUERY,
     SideNavigation,
     SideNavigationItem,
-  } from '@corvidae/cinder';
-  import type { HttpClient } from '@corvidae/weft';
+  } from '@lostgradient/cinder';
+  import type { HttpClient } from '@lostgradient/weft';
   import {
     Building2,
     CalendarClock,

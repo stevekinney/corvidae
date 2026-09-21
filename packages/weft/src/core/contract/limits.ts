@@ -17,7 +17,7 @@
  *
  * @example
  * ```ts
- * import { MAX_CONTRACT_IDENTIFIER_BYTES } from '@corvidae/weft';
+ * import { MAX_CONTRACT_IDENTIFIER_BYTES } from '@lostgradient/weft';
  *
  * const name = 'checkout';
  * const fits = new TextEncoder().encode(name).byteLength <= MAX_CONTRACT_IDENTIFIER_BYTES;
@@ -32,7 +32,7 @@ export const MAX_CONTRACT_IDENTIFIER_BYTES = 512;
  *
  * @example
  * ```ts
- * import { MAX_CONTRACT_MESSAGE_COUNT } from '@corvidae/weft';
+ * import { MAX_CONTRACT_MESSAGE_COUNT } from '@lostgradient/weft';
  *
  * const signals = ['approved', 'rejected'];
  * console.log(signals.length <= MAX_CONTRACT_MESSAGE_COUNT); // true
@@ -51,7 +51,7 @@ export const MAX_CONTRACT_MESSAGE_COUNT = 512;
  *
  * @example
  * ```ts
- * import { MAX_CONTRACT_SCHEMA_DEPTH } from '@corvidae/weft';
+ * import { MAX_CONTRACT_SCHEMA_DEPTH } from '@lostgradient/weft';
  *
  * console.log(MAX_CONTRACT_SCHEMA_DEPTH >= 16); // true
  * ```
@@ -67,7 +67,7 @@ export const MAX_CONTRACT_SCHEMA_DEPTH = 64;
  *
  * @example
  * ```ts
- * import { buildWorkflowContract, canonicalWorkflowContractJson, MAX_NORMALIZED_CONTRACT_BYTES } from '@corvidae/weft';
+ * import { buildWorkflowContract, canonicalWorkflowContractJson, MAX_NORMALIZED_CONTRACT_BYTES } from '@lostgradient/weft';
  *
  * const canonical = canonicalWorkflowContractJson(
  *   buildWorkflowContract({ name: 'checkout', version: '2.1.0' }),

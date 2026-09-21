@@ -6,7 +6,7 @@ Footer layout primitive for brand text, grouped links, and a legal row.
 
 ```svelte
 <script lang="ts">
-  import { Footer } from '@corvidae/cinder';
+  import { Footer } from '@lostgradient/cinder';
 
   const groups = [
     { id: 'product', title: 'Product', links: [{ id: 'docs', label: 'Docs', href: '/docs' }] },

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Feed } from '@corvidae/cinder';
+  import { Feed } from '@lostgradient/cinder';
 </script>
 
 <Feed aria-label="Project activity">

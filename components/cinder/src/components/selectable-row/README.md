@@ -10,8 +10,8 @@ Choose `ActionRow` when the entire row is one button and its trailing content is
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { SelectableRow } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { SelectableRow } from '@lostgradient/cinder';
 
   let opened = $state(0);
   let renamed = $state(0);

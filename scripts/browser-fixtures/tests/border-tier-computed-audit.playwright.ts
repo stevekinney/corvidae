@@ -53,7 +53,7 @@ import {
   tierNameIn,
   tierUses,
   type MatchedDeclaration,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 
 const ROUTE_BUTTON = tokenFixtureRoute;
 const ROUTE_TOGGLE = tokenFixtureRoute;

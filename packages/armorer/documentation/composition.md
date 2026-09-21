@@ -4,7 +4,7 @@
 
 Compose tools with pipelines and branching utilities.
 
-Chain and specialize tools with `pipe()`, `bind()`, `tap()`, `when()`, `parallel()`, and `retry()`. The output of each tool flows as input to the next, with full TypeScript type inference preserved across the chain. Composition helpers are exported from the `@corvidae/armorer` entry point.
+Chain and specialize tools with `pipe()`, `bind()`, `tap()`, `when()`, `parallel()`, and `retry()`. The output of each tool flows as input to the next, with full TypeScript type inference preserved across the chain. Composition helpers are exported from the `armorer` entry point.
 
 Pipelines are first-class tools. The result of `pipe()` is an `Tool`, so you can register it, query it via registry helpers, serialize it, and export it to provider adapters just like any other tool.
 
@@ -13,8 +13,8 @@ Pipelines are first-class tools. The result of `pipe()` is an `Tool`, so you can
 Chains tools left-to-right (data flows forward):
 
 ```typescript
-import { createTool } from '@corvidae/armorer';
-import { pipe } from '@corvidae/armorer';
+import { createTool } from 'armorer';
+import { pipe } from 'armorer';
 import { z } from 'zod';
 
 const parseNumber = createTool({
@@ -54,8 +54,8 @@ Bind some or all parameters of a tool and get back a new tool that only needs th
 Optional third argument: `{ name?: string; description?: string }`.
 
 ```typescript
-import { createTool } from '@corvidae/armorer';
-import { bind } from '@corvidae/armorer';
+import { createTool } from 'armorer';
+import { bind } from 'armorer';
 
 const sendEmail = createTool({
   name: 'send-email',
@@ -82,7 +82,7 @@ await sendAlert({ subject: 'Outage', body: 'Investigating' });
 Run a side effect after a tool and pass through its output unchanged.
 
 ```typescript
-import { tap } from '@corvidae/armorer';
+import { tap } from 'armorer';
 
 const loggedFetch = tap(fetchUser, (user) => {
   console.log('Fetched user', user.id);
@@ -96,7 +96,7 @@ const user = await loggedFetch({ id: 'user-123' });
 Branch between tools based on a predicate. If no else tool is provided, the input is returned unchanged.
 
 ```typescript
-import { when } from '@corvidae/armorer';
+import { when } from 'armorer';
 
 const route = when(({ severity }) => severity === 'high', sendAlert, logTicket);
 
@@ -108,7 +108,7 @@ await route({ severity: 'high' });
 Run multiple tools with the same input concurrently and return their outputs in order.
 
 ```typescript
-import { parallel } from '@corvidae/armorer';
+import { parallel } from 'armorer';
 
 const fanout = parallel(fetchUser, fetchOrders, fetchUsage);
 const [user, orders, usage] = await fanout({ id: 'user-123' });
@@ -119,7 +119,7 @@ const [user, orders, usage] = await fanout({ id: 'user-123' });
 Retry a tool on failure with configurable attempts and backoff.
 
 ```typescript
-import { retry } from '@corvidae/armorer';
+import { retry } from 'armorer';
 
 const reliableFetch = retry(fetchUser, {
   attempts: 3,
@@ -135,7 +135,7 @@ const user = await reliableFetch({ id: 'user-123' });
 Transform inputs before they're passed to a tool. Useful for normalizing, validating, or enriching input data.
 
 ```typescript
-import { preprocess } from '@corvidae/armorer';
+import { preprocess } from 'armorer';
 
 const addNumbers = createTool({
   name: 'add-numbers',
@@ -163,7 +163,7 @@ console.log(result); // 8
 Transform outputs after a tool executes. Useful for formatting, enriching, or normalizing output data.
 
 ```typescript
-import { postprocess } from '@corvidae/armorer';
+import { postprocess } from 'armorer';
 
 const fetchUser = createTool({
   name: 'fetch-user',
@@ -187,8 +187,8 @@ const result = await fetchUserFormatted({ id: '123' });
 Pipelines created with `pipe()`, as well as tools created with `bind()`, `tap()`, `when()`, `parallel()`, `retry()`, `preprocess()`, and `postprocess()`, are valid tools in their own right. They implement the full `Tool` interface (and pass `isTool()`), so you can register, query via registry helpers, serialize, and adapt them just like any other tool.
 
 ```typescript
-import { isTool } from '@corvidae/armorer';
-import { pipe } from '@corvidae/armorer';
+import { isTool } from 'armorer';
+import { pipe } from 'armorer';
 
 const pipeline = pipe(parseNumber, double);
 console.log(isTool(pipeline)); // true
@@ -217,7 +217,7 @@ const extendedPipeline = pipe(pipeline, stringify);
 Errors are wrapped with step context for debugging:
 
 ```typescript
-import { PipelineError } from '@corvidae/armorer';
+import { PipelineError } from 'armorer';
 
 try {
   await pipeline({ str: 'invalid' });

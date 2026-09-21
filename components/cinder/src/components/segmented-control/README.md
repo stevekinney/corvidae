@@ -6,8 +6,8 @@ Compact segmented selector for a small fixed set of options, including bindable 
 
 ```svelte
 <script lang="ts">
-  import { Segment } from '@corvidae/cinder';
-  import { SegmentedControl } from '@corvidae/cinder';
+  import { Segment } from '@lostgradient/cinder';
+  import { SegmentedControl } from '@lostgradient/cinder';
 </script>
 
 <SegmentedControl id="view-filter" label="View filter" variant="navigation">

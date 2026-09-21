@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SkipLink } from '@corvidae/cinder';
+  import { SkipLink } from '@lostgradient/cinder';
 </script>
 
 <div

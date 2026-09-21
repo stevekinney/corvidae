@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { ReviewEditor } from '@corvidae/editor';
-  import type { Thread, ThreadDeleteEvent } from '@corvidae/editor';
+  import { Button } from '@lostgradient/cinder';
+  import { ReviewEditor } from '@lostgradient/editor';
+  import type { Thread, ThreadDeleteEvent } from '@lostgradient/editor';
   const original = `# Architecture Notes
 
 This document describes the review workflow for collaborative editing.

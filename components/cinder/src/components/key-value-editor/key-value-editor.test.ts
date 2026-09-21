@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { tick } from 'svelte';
@@ -8,9 +8,9 @@ setupHappyDom();
 const buttonModule = await import('../button/index.ts');
 const gridModule = await import('../grid/index.ts');
 const inputModule = await import('../input/index.ts');
-mock.module('@corvidae/cinder', () => buttonModule);
-mock.module('@corvidae/cinder', () => gridModule);
-mock.module('@corvidae/cinder', () => inputModule);
+mock.module('@lostgradient/cinder', () => buttonModule);
+mock.module('@lostgradient/cinder', () => gridModule);
+mock.module('@lostgradient/cinder', () => inputModule);
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: KeyValueEditor } = await import('./key-value-editor.svelte');
 afterEach(cleanup);

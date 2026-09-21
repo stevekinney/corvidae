@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { hasButtonLabelled } from './diff-viewer-test-helpers.ts';
 
 /**
@@ -34,7 +34,7 @@ setupHappyDom();
 
 const { render, fireEvent } = await import('@testing-library/svelte');
 const { computeLineDiff, computeWordChanges, getDiffStats, groupIntoHunks } =
-  await import('@corvidae/markdown');
+  await import('@lostgradient/markdown');
 const { default: DiffLine } = await import('./diff-line.svelte');
 const { default: DiffToolbar } = await import('./diff-toolbar.svelte');
 

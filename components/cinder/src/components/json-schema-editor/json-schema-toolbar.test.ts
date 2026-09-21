@@ -5,7 +5,7 @@ import { tick } from 'svelte';
 import type { EditorState } from './json-schema-editor-state.types.ts';
 import type { JsonSchemaDraft, JsonSchemaValidationResult } from './json-schema-editor-types.ts';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

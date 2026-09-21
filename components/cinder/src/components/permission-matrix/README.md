@@ -8,7 +8,7 @@ Use PermissionMatrix when each cell is an enumerated access state. Use MatrixCha
 
 ```svelte
 <script lang="ts">
-  import { PermissionMatrix } from '@corvidae/cinder';
+  import { PermissionMatrix } from '@lostgradient/cinder';
 
   const rows = [{ id: 'workflows-admin', label: 'workflows:admin' }];
   const columns = [{ id: 'cancel', label: 'cancel' }];

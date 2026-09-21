@@ -21,7 +21,7 @@
  * per plan §5's ≤3-connection budget: "one fleet SSE … never per-row/
  * per-surface connections".
  */
-import type { HttpClient } from '@corvidae/weft';
+import type { HttpClient } from '@lostgradient/weft';
 
 import {
   createMutation,

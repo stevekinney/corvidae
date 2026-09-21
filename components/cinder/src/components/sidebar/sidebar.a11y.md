@@ -43,7 +43,7 @@ The mobile drawer has no built-in opener — by design, since the trigger typica
 
 ```svelte
 <script lang="ts">
-  import { SIDEBAR_MOBILE_MEDIA_QUERY, Sidebar } from '@corvidae/cinder';
+  import { SIDEBAR_MOBILE_MEDIA_QUERY, Sidebar } from '@lostgradient/cinder';
   import { MediaQuery } from 'svelte/reactivity';
 
   const mobile = new MediaQuery(SIDEBAR_MOBILE_MEDIA_QUERY, false);

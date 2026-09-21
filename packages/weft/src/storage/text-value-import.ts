@@ -16,7 +16,7 @@ import {
  *
  * @example
  * ```ts
- * import { type TextKeyValueRow } from '@corvidae/weft';
+ * import { type TextKeyValueRow } from '@lostgradient/weft';
  *
  * const row: TextKeyValueRow = {
  *   key: 'session:1',
@@ -35,7 +35,7 @@ export type TextKeyValueRow = {
  *
  * @example
  * ```ts
- * import { MemoryStorage, type CopyTextKeyValueRowsToStorageOptions } from '@corvidae/weft';
+ * import { MemoryStorage, type CopyTextKeyValueRowsToStorageOptions } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * const options: CopyTextKeyValueRowsToStorageOptions = {
@@ -64,7 +64,7 @@ export type CopyTextKeyValueRowsToStorageOptions = {
  *
  * @example
  * ```ts
- * import { type CopyTextKeyValueRowsToStorageResult } from '@corvidae/weft';
+ * import { type CopyTextKeyValueRowsToStorageResult } from '@lostgradient/weft';
  *
  * const result: CopyTextKeyValueRowsToStorageResult = { copied: 3 };
  * console.log(result.copied); // 3
@@ -132,7 +132,7 @@ async function collectRows(
  *
  * @example
  * ```ts
- * import { MemoryStorage, copyTextKeyValueRowsToStorage } from '@corvidae/weft';
+ * import { MemoryStorage, copyTextKeyValueRowsToStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * const result = await copyTextKeyValueRowsToStorage({

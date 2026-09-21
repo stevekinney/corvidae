@@ -32,8 +32,8 @@ import {
  *
  * @example
  * ```ts
- * import { CompressedStorage } from '@corvidae/weft';
- * import { workflow, Engine, MemoryStorage } from '@corvidae/weft';
+ * import { CompressedStorage } from '@lostgradient/weft';
+ * import { workflow, Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using inner = new MemoryStorage();
  * await using storage = new CompressedStorage(inner, {

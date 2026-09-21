@@ -1,4 +1,4 @@
-import type { Message } from '@corvidae/conversationalist';
+import type { Message } from 'conversationalist';
 
 /**
  * Returns the set of tool-call IDs that have no corresponding result.

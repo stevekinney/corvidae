@@ -4,8 +4,8 @@
  * Pure and synchronous: no sleeps, no timers, no provider call. Epoch ids
  * are injected so every assertion names the exact chain it is about.
  */
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -339,7 +339,7 @@ describe('provider-retry mutation (COR-581 gap closure)', () => {
     // epoch, so the recorded context described something the model was
     // never sent on the retried attempt.
     const { callGenerateWithRetry } = await import('./run-step-utilities.ts');
-    const { createDefaultRuntimeServices } = await import('@corvidae/lifecycle');
+    const { createDefaultRuntimeServices } = await import('@lostgradient/lifecycle');
 
     const conversation = conversationWith([['user', 'original']]);
     const sealer = createContextEpochSealer({ newEpochId: sequentialEpochIds() });
@@ -385,7 +385,7 @@ describe('provider-retry mutation (COR-581 gap closure)', () => {
     // consumes the epoch sealed before `generate.started`. Minting a
     // successor would claim a context change that did not happen.
     const { callGenerateWithRetry } = await import('./run-step-utilities.ts');
-    const { createDefaultRuntimeServices } = await import('@corvidae/lifecycle');
+    const { createDefaultRuntimeServices } = await import('@lostgradient/lifecycle');
 
     const conversation = conversationWith([['user', 'original']]);
     const sealed: string[] = [];

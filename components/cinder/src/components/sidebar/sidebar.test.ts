@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet, mount, unmount } from 'svelte';
 
-import { renderSvelteOnServer, setupHappyDom } from '@corvidae/testing';
+import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

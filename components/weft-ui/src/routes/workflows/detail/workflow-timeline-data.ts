@@ -34,7 +34,7 @@
  * real links, no timeline coupling. See those two components' module docs
  * for the live verification.
  */
-import type { WorkflowTimelineEntry, WorkflowTimelineStatus } from '@corvidae/weft';
+import type { WorkflowTimelineEntry, WorkflowTimelineStatus } from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
 
 /** Shared `getTimeline(id)` query key — used by the Signals tab (history), the Timeline tab, and the Events tab's linked selection, so all readers share the same TanStack Query cache entry instead of drifting into separately-keyed duplicate fetches. */

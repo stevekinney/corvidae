@@ -1,6 +1,6 @@
-import type { AnyToolbox, ToolExecutionResult } from '@corvidae/armorer';
-import { Conversation, materializeToolCalls } from '@corvidae/conversationalist';
-import type { ToolCall } from '@corvidae/tool-protocol';
+import type { AnyToolbox, ToolExecutionResult } from 'armorer';
+import { Conversation, materializeToolCalls } from 'conversationalist';
+import type { ToolCall } from '@lostgradient/tool-protocol';
 
 import { reclassifyToolError } from './errors';
 import {

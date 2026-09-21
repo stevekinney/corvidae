@@ -36,9 +36,9 @@
    * over-restrictive relative to the wire contract, never under.
    */
   import { RotateCw, Tags, Trash2, XCircle } from 'lucide-svelte';
-  import { Button, Checkbox, Input, Select, Textarea, Tooltip } from '@corvidae/cinder';
-  import type { SelectOption } from '@corvidae/cinder';
-  import type { HttpClient } from '@corvidae/weft';
+  import { Button, Checkbox, Input, Select, Textarea, Tooltip } from '@lostgradient/cinder';
+  import type { SelectOption } from '@lostgradient/cinder';
+  import type { HttpClient } from '@lostgradient/weft';
 
   import type { WorkflowListQuery } from '../../../lib/filters.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';

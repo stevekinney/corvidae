@@ -6,7 +6,7 @@ Moves content into `document.body` or another host element while keeping inline 
 
 ```svelte
 <script lang="ts">
-  import { Portal } from '@corvidae/cinder';
+  import { Portal } from '@lostgradient/cinder';
 </script>
 
 <Portal>

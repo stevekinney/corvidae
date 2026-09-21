@@ -7,8 +7,8 @@
  * kill — the durability being tested is the storage backend's, and
  * reopening it is exactly what a restart does to it.
  */
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
-import { resolveStorage } from '@corvidae/weft';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { resolveStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { ImplementedSteeringCommand } from './steering';

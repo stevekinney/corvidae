@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { ReviewEditor } from '@corvidae/editor';
-  import type { Thread } from '@corvidae/editor';
+  import { ReviewEditor } from '@lostgradient/editor';
+  import type { Thread } from '@lostgradient/editor';
   const original = `# Architecture Notes
 
 This document describes the review workflow for collaborative editing.

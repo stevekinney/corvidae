@@ -1,7 +1,7 @@
 /**
  * Converts each bulk operation's own raw commit result
  * (`BulkCancelResult`/`BulkRetryFailedResult`/`BulkSignalResult`/
- * `BulkDeleteResult`/`BulkTagResult`/`PurgeResult`, all `@corvidae/weft`)
+ * `BulkDeleteResult`/`BulkTagResult`/`PurgeResult`, all `@lostgradient/weft`)
  * into the one generic `BulkCommitSummary` shape `bulk-action-dialog.svelte`
  * and `bulk-purge-dialog.svelte` render — plan §9.2/§13 T8.1.
  *
@@ -19,7 +19,7 @@ import type {
   BulkSignalResult,
   BulkTagResult,
   PurgeResult,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 export interface BulkCommitSummary {
   readonly headline: string;

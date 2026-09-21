@@ -11,7 +11,7 @@
    * `getFleetEventSource()` call (this track's own card, plan §9.1's
    * "recent-activity feed" band) the same way it backs Schedule Detail's.
    */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
 
   import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';

@@ -38,7 +38,7 @@ import {
   buildWorkflowRevisionManifest,
   type DefinitionSchema,
   type WorkflowRevisionManifest,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 /** Opaque revision id the e2e suite asserts against directly. */
 export const ORDER_PROCESSING_CANDIDATE_REVISION = 'order-processing-candidate-2';

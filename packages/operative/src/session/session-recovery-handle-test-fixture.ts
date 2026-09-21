@@ -2,7 +2,7 @@ import {
   WorkflowHandle,
   type Engine,
   type WorkflowHandle as WorkflowHandleType,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 const activeRecoveryHandles = new Set<WorkflowHandle>();
 

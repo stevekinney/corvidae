@@ -64,7 +64,7 @@ export type ParallelOperationCacheEntry = {
  *
  * @example
  * ```ts
- * import { BranchTopologyChangedError } from '@corvidae/weft';
+ * import { BranchTopologyChangedError } from '@lostgradient/weft';
  *
  * function isBranchTopologyChange(error: unknown): boolean {
  *   return error instanceof BranchTopologyChangedError;

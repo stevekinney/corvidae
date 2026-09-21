@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Tabs } from '@corvidae/cinder';
+  import { Tabs } from '@lostgradient/cinder';
 
   const tabItems = [
     { value: 'design', label: 'Design' },

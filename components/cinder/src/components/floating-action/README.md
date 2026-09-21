@@ -6,7 +6,7 @@ Circular button representing the single most important action on a screen.
 
 ```svelte
 <script lang="ts">
-  import { FloatingAction } from '@corvidae/cinder';
+  import { FloatingAction } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">

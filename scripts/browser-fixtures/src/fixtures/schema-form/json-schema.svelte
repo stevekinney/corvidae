@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SchemaForm } from '@corvidae/cinder';
+  import { SchemaForm } from '@lostgradient/cinder';
 
   const schema = {
     type: 'object',

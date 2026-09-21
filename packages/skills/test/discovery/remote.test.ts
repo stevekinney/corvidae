@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { sha256BytesHex, sha256Hex } from '@corvidae/cryptography';
+import { sha256BytesHex, sha256Hex } from '@lostgradient/cryptography';
 
 import { findRecord } from '../../src/discovery/catalog';
 import { discoverSkills } from '../../src/discovery/discover';

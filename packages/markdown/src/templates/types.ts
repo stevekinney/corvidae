@@ -5,7 +5,7 @@
  * the headless, DOM-free placeholder surface used by
  * `template-placeholders.ts` and `template-render.ts`. Types for the
  * ProseMirror/Milkdown editor integration itself live in
- * `@corvidae/editor`'s `editor/types.ts`.
+ * `@lostgradient/editor`'s `editor/types.ts`.
  */
 
 /** Value kind inferred from JSON Schema type field */

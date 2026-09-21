@@ -54,7 +54,7 @@
    * the retention line's copy is qualified below to say so honestly rather
    * than promise more than this snapshot can guarantee.
    */
-  import { Badge, Button, Input, Select, Skeleton, Tooltip } from '@corvidae/cinder';
+  import { Badge, Button, Input, Select, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
   import { ChevronDown, ChevronRight, GitFork } from 'lucide-svelte';
 

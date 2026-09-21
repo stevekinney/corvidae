@@ -1,15 +1,15 @@
 /**
  * Types for this track derived from the generated operation catalog itself
  * (plan §4: "no hand-maintained API types … drift is caught by bumping the
- * `@corvidae/weft` dependency and type-checking"), rather than
+ * `@lostgradient/weft` dependency and type-checking"), rather than
  * hand-copied from `weft/src/worker/registry.ts` /
  * `weft/src/server/task-queue-types.ts` / `weft/src/server/operations/
  * get-task-diagnostics.ts` — none of which are exported as values or types
- * from any public `@corvidae/weft` subpath. Deriving from
+ * from any public `@lostgradient/weft` subpath. Deriving from
  * `HttpClient['operations'][...]`'s own return type means a future catalog
  * change surfaces here as a type error, not a silent shape mismatch.
  */
-import type { HttpClient } from '@corvidae/weft';
+import type { HttpClient } from '@lostgradient/weft';
 
 type Operations = HttpClient['operations'];
 

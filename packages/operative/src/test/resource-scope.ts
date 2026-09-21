@@ -51,7 +51,7 @@ import type {
   RuntimeServices,
   RuntimeTimeoutHandle,
   Subscription,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 
 import type { ChildRunRegistry } from '../child-run';
 import type { CleanupAcknowledgement, ClosedOptions } from '../types';

@@ -12,7 +12,7 @@
  * A scoped `fetch()`, not `HttpClient`, for the same reason as
  * `discovery-client.ts`: `/mcp` is outside `HttpClient`'s modeled surface.
  */
-import type { HttpClient } from '@corvidae/weft';
+import type { HttpClient } from '@lostgradient/weft';
 
 import { discoveryOrigin } from './discovery-client.ts';
 

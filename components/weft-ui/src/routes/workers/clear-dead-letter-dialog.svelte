@@ -11,7 +11,7 @@
    * cannot host this flow (see `drain-dialog.svelte`'s doc comment for the
    * same distinction).
    */
-  import { ConfirmDialog } from '@corvidae/cinder';
+  import { ConfirmDialog } from '@lostgradient/cinder';
   import type { TaskLedgerDetail } from './worker-catalog-types.ts';
 
   interface ClearDeadLetterDialogProps {

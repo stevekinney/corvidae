@@ -8,17 +8,17 @@ Toolbox uses `queryTools(...)` for programmatic tool discovery.
 - Works with a toolbox, a single tool, or any iterable of tools.
 - Supports semantic text matching when the toolbox has an `embed` function.
 
-Import from `@corvidae/armorer`:
+Import from `armorer`:
 
 ```typescript
-import { queryTools } from '@corvidae/armorer';
+import { queryTools } from 'armorer';
 ```
 
 ## Quick Start
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
-import { queryTools } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
+import { queryTools } from 'armorer';
 
 const toolbox = createToolbox();
 
@@ -34,7 +34,7 @@ const nonDangerous = queryTools(toolbox, {
 ## Query Criteria
 
 ```typescript
-import { queryTools } from '@corvidae/armorer';
+import { queryTools } from 'armorer';
 import { z } from 'zod';
 
 const byText = queryTools(toolbox, {
@@ -65,8 +65,8 @@ const booleanGroups = queryTools(toolbox, {
 When `createToolbox` is configured with `embed`, `queryTools` can match semantically through `text` queries.
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
-import { queryTools } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
+import { queryTools } from 'armorer';
 
 const toolbox = createToolbox([], {
   embed: async (texts) => embeddingClient.embed(texts),

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ActionRow } from '@corvidae/cinder';
+  import { ActionRow } from '@lostgradient/cinder';
 
   let selectedRun = $state('run-2');
 

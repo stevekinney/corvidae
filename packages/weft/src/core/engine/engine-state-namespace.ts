@@ -7,7 +7,7 @@ import type { AtomicState, AtomicStateOptions } from '../atomic-state.ts';
  *
  * @example
  * ```ts
- * import { Engine, type EngineStateNamespace } from '@corvidae/weft';
+ * import { Engine, type EngineStateNamespace } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * const state: EngineStateNamespace = engine.state;

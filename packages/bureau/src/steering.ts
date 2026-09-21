@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices, type RuntimeClock } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeClock } from '@lostgradient/lifecycle';
 import type {
   Effort,
   SteeringCommand,
@@ -6,7 +6,7 @@ import type {
   SteeringCommandState,
   SteeringGate,
   SteeringRequestedValue,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 
 /**
  * AB-199 — the caller-facing admission request for {@link Bureau.submitSteeringCommand}.

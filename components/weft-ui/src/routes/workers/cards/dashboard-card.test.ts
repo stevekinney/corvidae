@@ -10,14 +10,14 @@
  * `weft.workers.list`/`weft.tasks.diagnostics` (neither has an `HttpClient`
  * ergonomic method) — is JSON-RPC-over-HTTP-only, which
  * `startLiveSourceTestServer()`'s harness does serve as of
- * `@corvidae/weft@0.12.0` (a real `serve()`, fixing the #710 gap this
+ * `@lostgradient/weft@0.12.0` (a real `serve()`, fixing the #710 gap this
  * comment used to describe). A stubbed transport stays the better choice
  * for THIS card specifically — it exercises deterministic aggregate shapes
  * and error bodies a real registry can't be coaxed into producing on
  * demand — but a real-server variant is now a viable follow-up, unlike
  * before.
  */
-import { HttpClient, HttpClientError } from '@corvidae/weft';
+import { HttpClient, HttpClientError } from '@lostgradient/weft';
 import { render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

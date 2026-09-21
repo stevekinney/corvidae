@@ -4,7 +4,7 @@
  * mapping, split out of `workflow-list-filters.svelte` so the value
  * conversions are unit-testable without mounting `FacetedFilterBar`.
  */
-import type { WorkflowStatus } from '@corvidae/weft';
+import type { WorkflowStatus } from '@lostgradient/weft';
 
 import type { TimeRange } from '../../../lib/filters.ts';
 

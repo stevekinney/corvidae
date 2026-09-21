@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, DescriptionList, EmptyState, Skeleton, Table } from '@corvidae/cinder';
+  import { Badge, DescriptionList, EmptyState, Skeleton, Table } from '@lostgradient/cinder';
 
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
   import {

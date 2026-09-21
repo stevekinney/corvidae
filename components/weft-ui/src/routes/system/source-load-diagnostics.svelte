@@ -23,7 +23,7 @@
    * The shared load can continue and install the revision after that state
    * transition; `cancelled` does not establish that the work stopped.
    */
-  import { Badge } from '@corvidae/cinder';
+  import { Badge } from '@lostgradient/cinder';
   import { AlertTriangle, CircleDashed, CheckCircle2, Loader, XCircle } from 'lucide-svelte';
   import { createQuery } from '@tanstack/svelte-query';
 

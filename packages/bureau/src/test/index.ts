@@ -1,4 +1,4 @@
-export { waitForCondition, waitForRunState } from '@corvidae/operative';
+export { waitForCondition, waitForRunState } from '@lostgradient/operative';
 export { createBureau } from '../create-bureau';
 export type { Bureau, BureauOptions } from '../types';
 export {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DataList, StackedListItem } from '@corvidae/cinder';
+  import { DataList, StackedListItem } from '@lostgradient/cinder';
 
   const docs = [
     { id: 'getting-started', name: 'Getting started', href: '#getting-started' },

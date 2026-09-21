@@ -6,7 +6,7 @@ Filled SVG area chart for showing magnitude and cumulative trends across an orde
 
 ```svelte
 <script lang="ts">
-  import { AreaChart } from '@corvidae/cinder';
+  import { AreaChart } from '@lostgradient/cinder';
 </script>
 
 <AreaChart label="No retention data" series={[]} dataTableVisibility="hidden" />

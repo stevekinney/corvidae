@@ -1,4 +1,4 @@
-import type { ChatSerializedRunError, ConversationHistory } from '@corvidae/chat';
+import type { ChatSerializedRunError, ConversationHistory } from '@lostgradient/chat';
 /** The browser-safe projection persisted by the server-owned conversation route. */
 export type ServerOwnedConversationSnapshot = {
   id: string;

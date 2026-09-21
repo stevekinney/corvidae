@@ -1,4 +1,4 @@
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import type { Message } from '../chat/conversation-model.ts';

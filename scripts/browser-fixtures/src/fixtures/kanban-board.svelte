@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, KanbanBoard, type KanbanBoardColumn } from '@corvidae/cinder';
+  import { Badge, KanbanBoard, type KanbanBoardColumn } from '@lostgradient/cinder';
 
   type WorkItem = {
     id: string;

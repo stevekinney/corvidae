@@ -1,6 +1,6 @@
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { createManualRuntimeServices, eventObservable } from '@corvidae/lifecycle';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { createManualRuntimeServices, eventObservable } from '@lostgradient/lifecycle';
 import { file } from 'bun';
 import { describe, expect, it } from 'bun:test';
 
@@ -361,7 +361,7 @@ describe('createResourceScope', () => {
 
     expect(specifiers.length).toBeGreaterThan(0);
     for (const specifier of specifiers) {
-      const allowed = specifier === '@corvidae/lifecycle' || specifier.startsWith('.');
+      const allowed = specifier === '@lostgradient/lifecycle' || specifier.startsWith('.');
       expect(allowed).toBe(true);
     }
   });

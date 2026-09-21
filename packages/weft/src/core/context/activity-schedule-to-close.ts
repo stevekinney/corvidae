@@ -20,7 +20,7 @@ import { WeftError } from '../weft-error.ts';
  *
  * @example
  * ```ts
- * import { ActivityScheduleToCloseTimeoutError } from '@corvidae/weft';
+ * import { ActivityScheduleToCloseTimeoutError } from '@lostgradient/weft';
  *
  * function exceededRetryBudget(error: unknown): boolean {
  *   return error instanceof ActivityScheduleToCloseTimeoutError;
@@ -83,7 +83,7 @@ export class ActivityScheduleToCloseTimeoutError extends WeftError<'ActivitySche
  *
  * @example
  * ```ts
- * import { ActivityPerAttemptTimeoutError } from '@corvidae/weft';
+ * import { ActivityPerAttemptTimeoutError } from '@lostgradient/weft';
  *
  * function overranAttempt(error: unknown): boolean {
  *   return error instanceof ActivityPerAttemptTimeoutError;

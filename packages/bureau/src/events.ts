@@ -1,4 +1,4 @@
-import type { EventMap } from '@corvidae/lifecycle';
+import type { EventMap } from '@lostgradient/lifecycle';
 import type {
   Action,
   AgentScheduledEvent,
@@ -14,14 +14,14 @@ import type {
   SessionDeletedEvent,
   SessionSavedEvent,
   SteeringAcceptedEvent,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import type {
   SkillActivatedEvent,
   SkillDeactivatedEvent,
   SkillFailedEvent,
   SkillLoadedEvent,
   SkillRejectedEvent,
-} from '@corvidae/skills';
+} from '@lostgradient/skills';
 
 /**
  * Fired when the store records an action from a run.
@@ -316,7 +316,7 @@ export class ReviewSupersededEvent extends ReviewLifecycleEvent {
  * Maps event type strings to their corresponding Event subclasses.
  *
  * `schedule.created`/`paused`/`resumed`/`cancelled`/`failed`/`completed`
- * (AB-223/AB-298) are defined in `@corvidae/operative` (alongside
+ * (AB-223/AB-298) are defined in `@lostgradient/operative` (alongside
  * `schedule.wakeup`) rather than here, but dispatched on THIS bureau-level
  * emitter — not a per-run operative emitter — because a schedule
  * create/pause/resume/cancel and a scheduled fire's terminal outcome are
@@ -337,7 +337,7 @@ export class ReviewSupersededEvent extends ReviewLifecycleEvent {
  *
  * `session.created`/`session.saved` (`SessionCreatedEvent`/
  * `SessionSavedEvent`, AB-384) reach this emitter differently again:
- * `@corvidae/operative`'s `SessionStore` dispatches them on its OWN
+ * `@lostgradient/operative`'s `SessionStore` dispatches them on its OWN
  * `events` target as `save()`/`update()` commits succeed, and
  * `create-bureau.ts` forwards each onto this bureau-level emitter (fresh
  * instances, the same forwarding shape `scheduleFireEvents` above uses) —
@@ -360,7 +360,7 @@ export interface BureauEventMap extends EventMap {
   'schedule.completed': ScheduleCompletedEvent;
   'schedule.attempted': ScheduleAttemptedEvent;
   'schedule.skipped': ScheduleSkippedEvent;
-  // Skill lifecycle (COR-767), dispatched by the `@corvidae/skills` tools and
+  // Skill lifecycle (COR-767), dispatched by the `@lostgradient/skills` tools and
   // forwarded onto this emitter by `create-bureau.ts`.
   'skill.loaded': SkillLoadedEvent;
   'skill.activated': SkillActivatedEvent;

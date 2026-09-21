@@ -66,7 +66,7 @@ import type { KnownWorkflowName, UnknownNameWhenRegistryEmpty } from './workflow
  *
  * @example
  * ```ts
- * import type { ClientStartOptions } from '@corvidae/weft';
+ * import type { ClientStartOptions } from '@lostgradient/weft';
  *
  * const options: ClientStartOptions = {
  *   id: 'welcome-ada',
@@ -84,7 +84,7 @@ export type ClientStartOptions = Omit<StartOptions, 'defer' | 'services'> & {
  * Remote-capable start-or-signal options, including terminal restart policy.
  * @example
  * ```ts
- * import type { ClientStartOrSignalOptions } from '@corvidae/weft';
+ * import type { ClientStartOrSignalOptions } from '@lostgradient/weft';
  * const options: ClientStartOrSignalOptions = {
  *   id: 'github:installations:42:sync',
  *   onTerminalConflict: 'start-new',
@@ -104,7 +104,7 @@ export type ClientStartOrSignalOptions = ClientStartOptions &
  *
  * @example
  * ```ts
- * import type { StartOrSignalOutcome } from '@corvidae/weft';
+ * import type { StartOrSignalOutcome } from '@lostgradient/weft';
  *
  * const outcome: StartOrSignalOutcome = 'started';
  * void outcome;
@@ -122,8 +122,8 @@ export type StartOrSignalOutcome = EngineStartOrSignalOutcome;
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, LocalClient, type WorkflowCompletedEvent } from '@corvidae/weft';
- * import type { ClientHandle } from '@corvidae/weft';
+ * import { workflow, Engine, MemoryStorage, LocalClient, type WorkflowCompletedEvent } from '@lostgradient/weft';
+ * import type { ClientHandle } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * engine.register(workflow({ name: 'ping' }).execute(async function* () { return 'pong'; }));
@@ -249,8 +249,8 @@ export interface ClientHandle<TResult = unknown>
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, LocalClient } from '@corvidae/weft';
- * import type { ClientScheduleHandle } from '@corvidae/weft';
+ * import { workflow, Engine, MemoryStorage, LocalClient } from '@lostgradient/weft';
+ * import type { ClientScheduleHandle } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * engine.register(workflow({ name: 'report' }).execute(async function* () { return 'sent'; }));
@@ -299,7 +299,7 @@ export type UpdateResult = {
  *
  * @example
  * ```ts
- * import type { WeftClientActivity } from '@corvidae/weft';
+ * import type { WeftClientActivity } from '@lostgradient/weft';
  * declare const activity: WeftClientActivity;
  * void activity.listPending('order-1');
  * ```
@@ -321,7 +321,7 @@ export interface WeftClientActivity {
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, LocalClient, type WeftClient } from '@corvidae/weft';
+ * import { workflow, Engine, MemoryStorage, LocalClient, type WeftClient } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * engine.register(workflow({ name: 'my-workflow' }).execute(async function* () { return 42; }));
@@ -622,7 +622,7 @@ export interface WeftClient {
    *
    * @example
    * ```ts
-   * import { workflow, Engine, MemoryStorage, LocalClient } from '@corvidae/weft';
+   * import { workflow, Engine, MemoryStorage, LocalClient } from '@lostgradient/weft';
    *
    * await using engine = new Engine({ storage: new MemoryStorage() });
    * engine.register(workflow({ name: 'noop' }).execute(async function* () {}));

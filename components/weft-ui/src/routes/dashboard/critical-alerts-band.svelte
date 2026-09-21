@@ -13,7 +13,7 @@
    * scope stops refetching. Missing-scope sections render a lock notice
    * (disable-with-reason for VIEWING, plan §6/§10) rather than hiding.
    */
-  import type { HttpClient, PendingReviewEntry, ReviewListEntry } from '@corvidae/weft';
+  import type { HttpClient, PendingReviewEntry, ReviewListEntry } from '@lostgradient/weft';
 
   import { Lock } from 'lucide-svelte';
   import { createQuery } from '@tanstack/svelte-query';

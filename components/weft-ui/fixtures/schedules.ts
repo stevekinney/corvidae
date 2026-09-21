@@ -11,7 +11,7 @@ import {
   type ScheduleDefinition,
   type ScheduleHandle,
   type WorkflowHandle,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 interface InventorySyncInput {
   warehouseId: string;

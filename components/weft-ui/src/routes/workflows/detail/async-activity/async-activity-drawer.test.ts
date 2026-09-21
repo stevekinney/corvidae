@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@corvidae/weft';
+import { HttpClientError } from '@lostgradient/weft';
 
 import AsyncActivityDrawerHarness from './async-activity-drawer.test-harness.svelte';
 import type { AttachedPendingActivity } from './async-activity-matching.ts';

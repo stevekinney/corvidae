@@ -1,6 +1,6 @@
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { HookRegistry } from '@corvidae/lifecycle';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { noToolCalls } from '../src/conditions/predicates';

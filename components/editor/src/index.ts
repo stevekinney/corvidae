@@ -1,4 +1,4 @@
-import * as cinder from '@corvidae/cinder';
+import * as cinder from '@lostgradient/cinder';
 import './lib/components/markdown-editor/prosemirror.css';
 import './lib/components/review-editor/review-editor.css';
 

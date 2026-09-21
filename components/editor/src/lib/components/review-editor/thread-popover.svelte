@@ -70,7 +70,7 @@
   import type { Placement, VirtualElement } from '@floating-ui/dom';
   import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
-  import { createFocusTrap, Button, FileText, Trash2, X } from '@corvidae/cinder';
+  import { createFocusTrap, Button, FileText, Trash2, X } from '@lostgradient/cinder';
   import { createClickOutside } from '../../utilities/attachments.ts';
   import { isDocumentAnchor } from '../../comments/index.ts';
   import CommentList from './comment-list.svelte';

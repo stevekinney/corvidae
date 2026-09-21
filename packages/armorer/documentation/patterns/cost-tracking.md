@@ -3,7 +3,7 @@
 Monitor API costs and usage quotas.
 
 ```typescript
-import { createToolbox, createMiddleware } from '@corvidae/armorer';
+import { createToolbox, createMiddleware } from 'armorer';
 
 interface CostEntry {
   toolName: string;

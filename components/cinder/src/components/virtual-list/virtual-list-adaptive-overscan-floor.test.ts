@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { makeItems, renderedRows, rowSnippet } from './virtual-list-test-helpers.ts';
 
 setupHappyDom();

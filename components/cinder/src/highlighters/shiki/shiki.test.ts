@@ -4,7 +4,7 @@ import { resolve as resolvePath } from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import ts from 'typescript';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { stripRootPreTabIndex } from './strip-root-pre-tab-index.ts';
 
 setupHappyDom();

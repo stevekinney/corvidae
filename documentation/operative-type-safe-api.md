@@ -1,13 +1,13 @@
 # The typed Operative and Bureau API
 
-This document describes the public TypeScript contracts implemented by `@corvidae/operative` and `@corvidae/bureau`. The source exports are the authoritative definition; this document explains the relationships that are easy to miss when reading the individual modules.
+This document describes the public TypeScript contracts implemented by `@lostgradient/operative` and `@lostgradient/bureau`. The source exports are the authoritative definition; this document explains the relationships that are easy to miss when reading the individual modules.
 
 ## Agent input and run context
 
 Every runnable agent accepts the same input and context shapes (supporting types are defined in the linked source):
 
 ```ts
-import type { ConversationHistory } from '@corvidae/conversationalist';
+import type { ConversationHistory } from 'conversationalist';
 
 export type AgentInput = string | { conversation: ConversationHistory };
 
@@ -74,8 +74,8 @@ Standalone runs use a permanently `redacted` liveness projection. Their liveness
 `createAgent` requires a `generate` function because there is no Bureau to provide one. `output` is a Zod schema when typed structured output is desired; the validated value is available through `RunResult.output` and `AgentRun.output()` after successful validation. The factory also accepts instructions, tools or a toolbox, guardrails, stop conditions, maximum steps, retry and context-management settings, permissions, and an optional `RuntimeServices` instance.
 
 ```ts
-import { createAgent } from '@corvidae/operative';
-import type { GenerateFunction } from '@corvidae/operative';
+import { createAgent } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
 import { z } from 'zod';
 
 declare const generate: GenerateFunction;
@@ -96,7 +96,7 @@ The returned standalone agent is bureau-less and in-memory. Its name defaults to
 
 ## Durable execution
 
-Import durable workflow helpers from the `@corvidae/operative` package root. `createRunWorkflow(checkpointStore, options)` builds the `agentRun` workflow. Its `version` option is stamped into each new run's `RunCursor.workflowVersion`.
+Import durable workflow helpers from the `@lostgradient/operative` package root. `createRunWorkflow(checkpointStore, options)` builds the `agentRun` workflow. Its `version` option is stamped into each new run's `RunCursor.workflowVersion`.
 
 A durable checkpoint contains only cloneable state:
 
@@ -197,9 +197,9 @@ COR-750 (2026-09-19) ratified the memory lifecycle and ownership contract withou
 ## Compile-ready example
 
 ```ts
-import { createBureau } from '@corvidae/bureau';
-import { createAgent } from '@corvidae/operative';
-import type { GenerateFunction } from '@corvidae/operative';
+import { createBureau } from '@lostgradient/bureau';
+import { createAgent } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
 import { z } from 'zod';
 
 export async function runExample(generate: GenerateFunction) {
@@ -230,8 +230,8 @@ The catalog is built from the literal `agents` object, so `structured` is typed 
 When the module path is only known at runtime, the loader must narrow the module's shape and preserve the unresolved output capability as `boolean`:
 
 ```ts
-import { createLazyAgent } from '@corvidae/operative';
-import type { RunnableAgent } from '@corvidae/operative';
+import { createLazyAgent } from '@lostgradient/operative';
+import type { RunnableAgent } from '@lostgradient/operative';
 
 export async function runWidenedPlugin(pluginPath: string): Promise<string> {
   const plugin: RunnableAgent<unknown, boolean> = createLazyAgent<unknown, boolean>(

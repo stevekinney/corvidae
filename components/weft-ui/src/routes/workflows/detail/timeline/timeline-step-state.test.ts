@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowTimelineStatus } from '@corvidae/weft';
+import type { WorkflowTimelineStatus } from '@lostgradient/weft';
 
-import type { RunStepStatus } from '@corvidae/cinder';
+import type { RunStepStatus } from '@lostgradient/cinder';
 
 import { isTimelineStatusTerminal, timelineStepStatus } from './timeline-step-state.ts';
 

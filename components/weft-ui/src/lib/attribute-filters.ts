@@ -17,7 +17,7 @@ export type AttributeScalar = string | number | boolean | Date;
 
 /**
  * Mirrors `weft`'s internal string-keyed `AttributeFilter<string>` shape.
- * Not exported from `@corvidae/weft` (only used inside `ListFilter`'s
+ * Not exported from `@lostgradient/weft` (only used inside `ListFilter`'s
  * field type there), so this module names its own copy — structurally
  * identical, so it is still assignable to `ListFilter.attributes` entries.
  */

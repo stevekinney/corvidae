@@ -4,7 +4,7 @@
     appendAssistantMessage,
     appendUserMessage,
     createConversation,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
 
   const conversation = appendAssistantMessage(
     appendUserMessage(createConversation({ id: 'sub-session' }), 'Inspect the delegated task'),

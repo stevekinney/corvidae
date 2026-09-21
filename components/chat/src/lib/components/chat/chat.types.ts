@@ -1,4 +1,4 @@
-import type { ApprovalResolution } from '@corvidae/cinder';
+import type { ApprovalResolution } from '@lostgradient/cinder';
 import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { HTMLAttributes } from 'svelte/elements';

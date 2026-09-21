@@ -13,7 +13,7 @@
  * REST/JSON-RPC-over-HTTP request encoding) can be exercised in a
  * component test without booting an actual weft server.
  */
-import { HttpClient } from '@corvidae/weft';
+import { HttpClient } from '@lostgradient/weft';
 
 import { installFetchImplementation } from '../../../lib/live-source/fetch-test-support.ts';
 

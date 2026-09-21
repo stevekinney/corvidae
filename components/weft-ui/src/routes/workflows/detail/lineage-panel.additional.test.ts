@@ -6,7 +6,7 @@ import type {
   WorkflowScheduleProvenance,
   WorkflowState,
   WorkflowSummary,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import LineagePanelHarness from './lineage-panel.test-harness.svelte';
 

@@ -7,12 +7,12 @@
  *
  * Scoped to this route rather than `src/lib/**` (frozen for the parallel
  * phase, PROJECT-BRIEF) — a small, dashboard-local mapping over the 7 real
- * `WorkflowStatus` values (`@corvidae/weft`, verified against
+ * `WorkflowStatus` values (`@lostgradient/weft`, verified against
  * `weft/src/core/types/identity.ts`), not a shared design-system module.
  */
-import type { WorkflowStatus } from '@corvidae/weft';
+import type { WorkflowStatus } from '@lostgradient/weft';
 
-import type { StatusDotStatus } from '@corvidae/cinder';
+import type { StatusDotStatus } from '@lostgradient/cinder';
 
 export interface StatusToneInfo {
   readonly label: string;
@@ -22,7 +22,7 @@ export interface StatusToneInfo {
 /**
  * Every `WorkflowStatus` mapped to its label + tone. `satisfies
  * Record<WorkflowStatus, StatusToneInfo>` forces a compile error if
- * `@corvidae/weft` adds a new status this map doesn't account for (same
+ * `@lostgradient/weft` adds a new status this map doesn't account for (same
  * pattern as `faults.ts`'s `FAULT_CODE_TREATMENT_KIND`).
  */
 const STATUS_TONE = {

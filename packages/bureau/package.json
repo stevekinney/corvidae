@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/bureau",
+  "name": "@lostgradient/bureau",
   "private": true,
   "description": "The agent fleet brain: createBureau, runtime composition, durability, recovery, and agent assembly",
   "type": "module",
@@ -14,19 +14,19 @@
   },
   "dependencies": {
     "zod": "catalog:",
-    "@corvidae/weft": "workspace:*",
-    "@corvidae/armorer": "workspace:*",
-    "@corvidae/conversationalist": "workspace:*",
-    "@corvidae/lifecycle": "workspace:*",
-    "@corvidae/memory": "workspace:*",
-    "@corvidae/operative": "workspace:*",
-    "@corvidae/skills": "workspace:*",
-    "@corvidae/tool-protocol": "workspace:*"
+    "@lostgradient/weft": "workspace:*",
+    "armorer": "workspace:*",
+    "conversationalist": "workspace:*",
+    "@lostgradient/lifecycle": "workspace:*",
+    "@lostgradient/memory": "workspace:*",
+    "@lostgradient/operative": "workspace:*",
+    "@lostgradient/skills": "workspace:*",
+    "@lostgradient/tool-protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
     "typescript": "catalog:",
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:"
   }
 }

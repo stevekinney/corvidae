@@ -37,7 +37,7 @@ export type VersionCompatibility = 'compatible' | 'incompatible';
  *
  * @example
  * ```ts
- * import { checkVersionCompatibility } from '@corvidae/weft';
+ * import { checkVersionCompatibility } from '@lostgradient/weft';
  *
  * console.log(checkVersionCompatibility('1.0.0', '1.0.0')); // 'compatible'
  * console.log(checkVersionCompatibility('1.0.0', '2.0.0')); // 'incompatible'
@@ -74,7 +74,7 @@ export type ShapeDescriptor = Record<string, string>;
  *
  * @example
  * ```ts
- * import { diffCheckpointShapes } from '@corvidae/weft';
+ * import { diffCheckpointShapes } from '@lostgradient/weft';
  *
  * const diffs = diffCheckpointShapes(
  *   { userId: 'string', count: 'number' },
@@ -119,7 +119,7 @@ export function diffCheckpointShapes(
  *
  * @example
  * ```ts
- * import { inferShape } from '@corvidae/weft';
+ * import { inferShape } from '@lostgradient/weft';
  *
  * const shape = inferShape({ userId: 'abc', count: 42, active: true });
  * console.log(shape['userId']); // 'string'
@@ -218,7 +218,7 @@ export type ShapeDiffOptions = {
  *
  * @example
  * ```ts
- * import { VersionMismatchError } from '@corvidae/weft';
+ * import { VersionMismatchError } from '@lostgradient/weft';
  *
  * try {
  *   throw new VersionMismatchError(

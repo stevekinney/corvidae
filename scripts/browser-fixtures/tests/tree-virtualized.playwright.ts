@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { expect, test, type Page } from '@playwright/test';
 
-import { runAxe, type AxeBuckets } from '@corvidae/testing';
+import { runAxe, type AxeBuckets } from '@lostgradient/testing';
 
 import { fixtureRoute } from './overlay-fixture.ts';
 

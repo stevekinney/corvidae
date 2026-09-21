@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ApprovalCard, Card } from '@corvidae/cinder';
+  import { ApprovalCard, Card } from '@lostgradient/cinder';
 
   const tool = { name: 'Shell', risk: 'low' as const };
   const sandbox = { provider: 'Local', name: 'Default', workingDir: '/workspace' };

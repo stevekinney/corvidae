@@ -6,8 +6,8 @@ Placeholder layout for zero-data views, with optional illustration, heading, and
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { EmptyState } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { EmptyState } from '@lostgradient/cinder';
 </script>
 
 <EmptyState title="No results found" description="Try adjusting your filters or search query.">

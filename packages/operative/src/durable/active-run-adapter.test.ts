@@ -1,4 +1,4 @@
-import type { AnyToolbox } from '@corvidae/armorer';
+import type { AnyToolbox } from 'armorer';
 import {
   createTestToolbox,
   createTool,
@@ -9,14 +9,14 @@ import {
   ToolboxPolicyDeniedEvent,
   ToolboxProgressEvent,
   ToolboxSettledEvent,
-} from '@corvidae/armorer';
-import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
+} from 'armorer';
+import { Conversation, createConversationHistory } from 'conversationalist';
 import {
   CompletableEventTarget,
   createManualRuntimeServices,
   HookRegistry,
-} from '@corvidae/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
+} from '@lostgradient/lifecycle';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

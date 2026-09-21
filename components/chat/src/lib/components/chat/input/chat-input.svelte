@@ -113,7 +113,7 @@
   import { classNames } from '../../../utilities/class-names.ts';
   import { useAnnouncer } from '../../../utilities/use-announcer.svelte.ts';
   import { createIdFactory, useStableId } from '../../../utilities/id-factory.ts';
-  import { ArrowUp, Paperclip, Square, Tooltip, X, Button } from '@corvidae/cinder';
+  import { ArrowUp, Paperclip, Square, Tooltip, X, Button } from '@lostgradient/cinder';
   import { deriveAttachmentKind } from './attachment-kind.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
 

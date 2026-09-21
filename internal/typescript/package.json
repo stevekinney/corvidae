@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/typescript",
+  "name": "@lostgradient/typescript",
   "private": true,
   "exports": {
     "./library.json": "./library.json",

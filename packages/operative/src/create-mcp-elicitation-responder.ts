@@ -2,10 +2,10 @@ import type {
   ToolElicitationRequest,
   ToolElicitationRequester,
   ToolElicitationResult,
-} from '@corvidae/armorer';
-import { jsonSchemaToZod } from '@corvidae/armorer';
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+} from 'armorer';
+import { jsonSchemaToZod } from 'armorer';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { z } from 'zod';
 
 import type { EventDispatcher } from './loop';
@@ -44,8 +44,8 @@ export interface CreateMcpElicitationResponderOptions {
  *
  * @example
  * ```ts
- * import { createMcpElicitationHandler } from '@corvidae/armorer';
- * import { createMcpElicitationResponder } from '@corvidae/operative';
+ * import { createMcpElicitationHandler } from 'armorer';
+ * import { createMcpElicitationResponder } from '@lostgradient/operative';
  *
  * let currentContext: StepContext = { conversation, step: 0 };
  *

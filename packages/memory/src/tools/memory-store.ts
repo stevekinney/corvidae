@@ -1,4 +1,4 @@
-import { createTool } from '@corvidae/armorer';
+import { createTool } from 'armorer';
 import { z } from 'zod';
 
 import type { Memory } from '../types';

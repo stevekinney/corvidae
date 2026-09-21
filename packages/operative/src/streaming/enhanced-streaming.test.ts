@@ -1,6 +1,6 @@
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { TypedEventTarget } from '@corvidae/lifecycle';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { TypedEventTarget } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgent } from '../create-agent';

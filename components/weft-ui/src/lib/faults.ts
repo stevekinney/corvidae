@@ -2,7 +2,7 @@
  * Fault → UI treatment mapping (plan §10.4, T1.5). Frozen after the Phase 1
  * Foundation gate — see PROJECT-BRIEF "Shared contracts".
  *
- * Weft's wire `FaultCode` (13 values, `@corvidae/weft`) is more granular
+ * Weft's wire `FaultCode` (13 values, `@lostgradient/weft`) is more granular
  * than the console's UI treatment vocabulary. The plan's "one FaultDisplay
  * treatment, six codes" (§10.4) is that coarser bucket, derived here from
  * `FaultCode` and its documented REST HTTP status
@@ -11,12 +11,12 @@
  * wire contract.
  *
  * ## What `HttpClientError` does and doesn't carry (verified against the
- * installed `@corvidae/weft@0.12.0`, `dist/client/http-request.d.ts`)
+ * installed `@lostgradient/weft@0.12.0`, `dist/client/http-request.d.ts`)
  *
  * `HttpClientError` exposes `status`, `message`, an optional coarse
  * `faultCode` (`FaultCode`), an optional fine-grained `weftCode`
  * (`WeftErrorCode`, e.g. `IdempotencyKeyPurgedError`), and — as of
- * `@corvidae/weft@0.12.0` — an optional `data?: Readonly<Record<string,
+ * `@lostgradient/weft@0.12.0` — an optional `data?: Readonly<Record<string,
  * unknown>>` carrying the wire fault's typed payload (field-level `issues`,
  * the conflicting `resource`/`identifier`, …). That closed the
  * JSON-RPC-over-HTTP half of https://github.com/stevekinney/weft/issues/711
@@ -44,12 +44,12 @@
  * try to recover it.
  */
 // `isWeftFault` (and the rest of the `isWeftError*` family) is exported from
-// `@corvidae/weft` as of `@corvidae/weft@0.12.0`
+// `@lostgradient/weft` as of `@lostgradient/weft@0.12.0`
 // (https://github.com/stevekinney/weft/issues/722, fixed upstream #733) —
 // importing it from there, rather than the package root (whose barrel also
 // re-exports server-only code reaching `node:crypto`), is what actually
 // keeps this module's dependency graph browser-only end to end.
-import { HttpClientError, isWeftFault, type FaultCode, type WeftErrorCode } from '@corvidae/weft';
+import { HttpClientError, isWeftFault, type FaultCode, type WeftErrorCode } from '@lostgradient/weft';
 
 /** The six `FaultDisplay` UI treatment buckets (plan §10.4). */
 export type FaultTreatmentKind =
@@ -125,7 +125,7 @@ export type FaultTreatment =
 /**
  * Every `FaultCode` mapped to its treatment kind. `satisfies` over
  * `Record<FaultCode, FaultTreatmentKind>` forces a compile error if
- * `@corvidae/weft` adds a new `FaultCode` this map doesn't account for.
+ * `@lostgradient/weft` adds a new `FaultCode` this map doesn't account for.
  */
 const FAULT_CODE_TREATMENT_KIND = {
   NotFound: 'not-found',

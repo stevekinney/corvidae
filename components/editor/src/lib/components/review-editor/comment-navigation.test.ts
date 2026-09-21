@@ -8,7 +8,7 @@ import { nextCommentThread, orderedTextThreads } from './comment-navigation.ts';
  * tested only through the full component) because mounting
  * review-editor-impl.svelte pulls in ReviewEditorControls' formatting
  * toolbar, which does not render in this package's happy-dom harness for
- * reasons unrelated to this fix (a pre-existing @corvidae/cinder
+ * reasons unrelated to this fix (a pre-existing @lostgradient/cinder
  * Dropdown/DropdownTrigger incompatibility, reproduced with zero threads and
  * no interaction at all — not something this change touches or introduces).
  * The DOM-touching half this logic feeds (moving the ProseMirror selection,

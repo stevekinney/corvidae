@@ -6,7 +6,7 @@
    * survives the Form/JSON mode toggle.
    */
   import { Plus, X } from 'lucide-svelte';
-  import { Collapsible, Input, TagInput } from '@corvidae/cinder';
+  import { Collapsible, Input, TagInput } from '@lostgradient/cinder';
 
   import type { AdvancedStartOptionsInput } from './start-wizard-state.ts';
 

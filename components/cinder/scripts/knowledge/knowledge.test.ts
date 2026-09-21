@@ -22,10 +22,10 @@ function manifestFixture(): CinderManifest {
   return {
     manifestVersion: 1,
     package: {
-      name: '@corvidae/cinder',
+      name: '@lostgradient/cinder',
       framework: 'svelte',
       frameworkVersionRange: '>=5.56.0 <6',
-      stylesEntry: '@corvidae/cinder',
+      stylesEntry: '@lostgradient/cinder',
       schemaDialect: 'https://json-schema.org/draft/2020-12/schema',
     },
     categories: {
@@ -41,7 +41,7 @@ function manifestFixture(): CinderManifest {
       {
         id: 'navigation-bar',
         name: 'NavigationBar',
-        import: '@corvidae/cinder',
+        import: '@lostgradient/cinder',
         exportName: 'NavigationBar',
         category: 'navigation',
         status: 'stable',
@@ -157,10 +157,10 @@ describe('CinderKnowledge', () => {
         {
           manifestVersion: 1,
           package: {
-            name: '@corvidae/cinder',
+            name: '@lostgradient/cinder',
             framework: 'svelte',
             frameworkVersionRange: '>=5.56.0 <6',
-            stylesEntry: '@corvidae/cinder',
+            stylesEntry: '@lostgradient/cinder',
             schemaDialect: 'https://json-schema.org/draft/2020-12/schema',
           },
           categories: {
@@ -174,7 +174,7 @@ describe('CinderKnowledge', () => {
             {
               id: 'fake-widget',
               name: 'Fake Widget',
-              import: '@corvidae/cinder',
+              import: '@lostgradient/cinder',
               exportName: 'FakeWidget',
               category: 'action',
               status: 'alpha',
@@ -251,7 +251,7 @@ describe('CinderKnowledge', () => {
     );
 
     expect(guidance).toContain(
-      'The @corvidae/cinder root entry loads the aggregate component CSS automatically and declares cascade layer order, tokens, foundation rules, utilities, and shared internal chrome.',
+      'The @lostgradient/cinder root entry loads the aggregate component CSS automatically and declares cascade layer order, tokens, foundation rules, utilities, and shared internal chrome.',
     );
     expect(guidance).toContain(
       'Override public --cinder-* tokens and component root classes; do not redefine private --_cinder-* variables.',

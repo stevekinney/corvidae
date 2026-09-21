@@ -43,7 +43,7 @@ async function main(): Promise<boolean> {
   }
 
   // In the monorepo, Bun's coverage instrumentation also reports files it
-  // reached through the @corvidae/weft workspace symlink as `../weft/…`
+  // reached through the @lostgradient/weft workspace symlink as `../weft/…`
   // records. Those belong to the weft package's own coverage gate, not this
   // one, so keep only package-local files.
   const records = parseLcov(lcovContent).filter(isPackageLocalFile);

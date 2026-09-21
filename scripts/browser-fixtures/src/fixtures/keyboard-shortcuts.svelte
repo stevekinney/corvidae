@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { KeyboardShortcuts } from '@corvidae/cinder';
+  import { KeyboardShortcuts } from '@lostgradient/cinder';
   const groups = [
     {
       label: 'General',

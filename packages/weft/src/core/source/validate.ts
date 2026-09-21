@@ -147,7 +147,7 @@ export function buildExpectedManifest(
  *
  * @example
  * ```ts
- * import type { WorkflowSourceDescriptor } from '@corvidae/weft';
+ * import type { WorkflowSourceDescriptor } from '@lostgradient/weft';
  *
  * const descriptor: WorkflowSourceDescriptor = {
  *   kind: 'module',

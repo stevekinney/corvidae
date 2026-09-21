@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FormField, Input } from '@corvidae/cinder';
+  import { FormField, Input } from '@lostgradient/cinder';
 
   let name = $state('');
 </script>

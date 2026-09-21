@@ -8,7 +8,7 @@ Composite tabs root that coordinates tab list, tab triggers, and their content p
 
 ```svelte
 <script lang="ts">
-  import { Tabs } from '@corvidae/cinder';
+  import { Tabs } from '@lostgradient/cinder';
 
   let active = $state('overview');
 </script>
@@ -26,7 +26,7 @@ Composite tabs root that coordinates tab list, tab triggers, and their content p
 </Tabs>
 ```
 
-The leaves remain importable individually for à-la-carte builds — see `@corvidae/cinder`, `@corvidae/cinder`, and `@corvidae/cinder`.
+The leaves remain importable individually for à-la-carte builds — see `@lostgradient/cinder`, `@lostgradient/cinder`, and `@lostgradient/cinder`.
 
 ## Caller-owned panels
 
@@ -34,7 +34,7 @@ Use `Tabs.Panel` for ordinary tabs where each trigger owns one rendered panel. W
 
 ```svelte
 <script lang="ts">
-  import { Tabs } from '@corvidae/cinder';
+  import { Tabs } from '@lostgradient/cinder';
 
   let active = $state('index.ts');
   const tabIds: Record<string, string> = {
@@ -67,7 +67,7 @@ Each `Tabs.Trigger` accepts a `trailing` snippet for badges, counts, or status d
 
 ```svelte
 <script lang="ts">
-  import { Badge } from '@corvidae/cinder';
+  import { Badge } from '@lostgradient/cinder';
 </script>
 
 <Tabs.Trigger value="inbox">

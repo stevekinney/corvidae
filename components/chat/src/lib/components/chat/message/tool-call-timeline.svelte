@@ -10,7 +10,7 @@
     Terminal,
     type RunStep,
     type RunStepDetail,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { stringify } from '../../../utilities/stringify.ts';
   import type { ToolCallPair } from '../conversation-model.ts';
   import type { ToolCallPresentation } from '../utilities/types.ts';

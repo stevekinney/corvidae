@@ -18,7 +18,7 @@
  *   6. Replace the .svelte module script with `export type` re-exports.
  *   7. Rewrite instance-script imports of `../utilities/` → `../../utilities/`
  *      and `../_internal/` → `../../_internal/`.
- *   8. Update legacy local `happy-dom.ts` imports to `@corvidae/testing` and any
+ *   8. Update legacy local `happy-dom.ts` imports to `@lostgradient/testing` and any
  *      `new URL('../styles/...')` → `new URL('../../styles/...')`.
  *   9. Write a minimal README.md with the marker template.
  *  10. Write a minimal <name>.types.test.ts type-equality test (forward and
@@ -303,10 +303,10 @@ function rewriteTestImports(
   // After moving to src/components/experimental/<name>/<name>.test.ts, similarly one
   // extra `..`.
   let next = source;
-  next = next.replace(/from ['"](?:\.\.\/)+test\/happy-dom\.ts['"]/g, "from '@corvidae/testing'");
+  next = next.replace(/from ['"](?:\.\.\/)+test\/happy-dom\.ts['"]/g, "from '@lostgradient/testing'");
   next = next.replace(
     /await import\(['"](?:\.\.\/)+test\/happy-dom\.ts['"]\)/g,
-    "await import('@corvidae/testing')",
+    "await import('@lostgradient/testing')",
   );
   const extra = isExperimental
     ? { from2: '../../../', from1: '../../../' }
@@ -502,7 +502,7 @@ ${isExperimental ? `> **EXPERIMENTAL** — this component's API may change betwe
 
 \`\`\`svelte
 <script lang="ts">
-  import ${pascalName} from '@corvidae/cinder';
+  import ${pascalName} from '@lostgradient/cinder';
 </script>
 
 <${pascalName} />

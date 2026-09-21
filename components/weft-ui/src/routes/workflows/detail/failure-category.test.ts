@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { FailureCategory } from '@corvidae/weft';
+import type { FailureCategory } from '@lostgradient/weft';
 
 import { failureCategoryExplanation, failureCategoryLabel } from './failure-category.ts';
 

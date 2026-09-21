@@ -1,5 +1,5 @@
-import type { JSONValue, SessionInputPromotion, SessionStore } from '@corvidae/operative';
-import type { Mailbox } from '@corvidae/weft';
+import type { JSONValue, SessionInputPromotion, SessionStore } from '@lostgradient/operative';
+import type { Mailbox } from '@lostgradient/weft';
 
 /**
  * COR-435 AC6/AC7 — promotes an admitted session-input (`accepted`/`queued`)
@@ -31,7 +31,7 @@ import type { Mailbox } from '@corvidae/weft';
  * derived effect downstream idempotently" — for review-transition audit
  * records (see its AB-391 comment block, "review-transition audit records
  * ride the session outbox"). `SessionStore.update()`'s public
- * `options.outbox` (`@corvidae/operative`) appends a `SessionOutboxEntry`
+ * `options.outbox` (`@lostgradient/operative`) appends a `SessionOutboxEntry`
  * in the SAME `conditionalBatch` as the session's own metadata commit.
  * `SessionStore` and the session-input `Mailbox` share one underlying
  * `Storage` instance whenever a bureau is durably configured with a single

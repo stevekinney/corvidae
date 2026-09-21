@@ -8,7 +8,7 @@ See the [editor/Cinder surface boundary](https://github.com/stevekinney/cinder/b
 
 ```svelte
 <script lang="ts">
-  import { DiffViewer } from '@corvidae/editor';
+  import { DiffViewer } from '@lostgradient/editor';
 </script>
 ```
 

@@ -6,7 +6,7 @@ Inline async-action status indicator that transitions from loading to success or
 
 ```svelte
 <script lang="ts">
-  import { InlineLoading } from '@corvidae/cinder';
+  import { InlineLoading } from '@lostgradient/cinder';
 
   let status = $state<'inactive' | 'active' | 'finished' | 'error'>('inactive');
 </script>

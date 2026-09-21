@@ -1,5 +1,5 @@
-import type { Tool, ToolCall, ToolContext } from '@corvidae/armorer';
-import { createTool } from '@corvidae/armorer';
+import type { Tool, ToolCall, ToolContext } from 'armorer';
+import { createTool } from 'armorer';
 import { z } from 'zod';
 
 import type { AfterGenerateContext, BeforeGenerateContext } from '../hooks/types';

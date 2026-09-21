@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 
-import { renderSvelteOnServer } from '@corvidae/testing';
+import { renderSvelteOnServer } from '@lostgradient/testing';
 
 describe('ChatConversationList SSR safety', () => {
   test('server compilation renders with no DOM globals', async () => {

@@ -13,7 +13,7 @@ import { z } from 'zod';
  *
  * The table is explicit rather than derived. `package-surface.json` carries a `provenance.path`
  * that looks like it would answer this and does not: it records where a published surface was
- * vendored from, it points `@corvidae/operative` at the retired agent-bureau repository, and it is
+ * vendored from, it points `@lostgradient/operative` at the retired agent-bureau repository, and it is
  * `null` for the four packages that have never been published.
  */
 

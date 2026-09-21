@@ -19,7 +19,7 @@ bun add @pinecone-database/pinecone openai
 Here's a minimal example using Pinecone as vector storage for Toolbox tool embeddings:
 
 ```typescript
-import { createToolbox, createTool } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import { z } from 'zod';
@@ -113,7 +113,7 @@ const tools = toolNames.map((name) => toolbox.getTool(name)).filter(Boolean);
 For more precise results, combine Pinecone retrieval with Toolbox filtering:
 
 ```typescript
-import { queryTools, type Tool } from '@corvidae/armorer';
+import { queryTools, type Tool } from 'armorer';
 
 async function hybridToolSearch(
   query: string,
@@ -157,7 +157,7 @@ const tools = await hybridToolSearch('notify user', {
 ## Full Example: Pinecone-backed Tool Registry
 
 ```typescript
-import { createToolbox, createTool, type Tool } from '@corvidae/armorer';
+import { createToolbox, createTool, type Tool } from 'armorer';
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import { z } from 'zod';

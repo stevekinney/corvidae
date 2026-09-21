@@ -1,4 +1,4 @@
-import type { RuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
+import type { RuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
 
 import type { AgentRun } from '../agent-run';
 import type { AgentSession } from '../agent-session';
@@ -320,10 +320,10 @@ export interface SessionHandleContext {
    * tracking. Resolved exactly once at construction — omitted, this handle
    * reads the real globals via `createDefaultRuntimeServices()`; a test
    * composes its own deterministic instance with
-   * `createManualRuntimeServices()` from `@corvidae/operative` so
+   * `createManualRuntimeServices()` from `@lostgradient/operative` so
    * `sleep()`/`monitor()`'s inter-tick delay and every id/timestamp this
    * handle mints are fully time-controlled. The helper is exported from the
-   * `@corvidae/operative` root API.
+   * `@lostgradient/operative` root API.
    */
   runtime?: RuntimeServices | undefined;
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ResizablePanels, type ResizablePanelDefinition } from '@corvidae/cinder';
+  import { ResizablePanels, type ResizablePanelDefinition } from '@lostgradient/cinder';
 
   const panes = [
     {

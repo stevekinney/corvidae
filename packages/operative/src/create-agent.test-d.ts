@@ -16,8 +16,8 @@
 // structurally satisfies — this pins that a real `createToolbox([...])`
 // result assigns to both with no cast and no `any`.
 
-import type { HeadlessPermissionPolicyConfiguration } from '@corvidae/armorer';
-import { createTool, createToolbox } from '@corvidae/armorer';
+import type { HeadlessPermissionPolicyConfiguration } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import type { CreateAgentOptions } from './create-agent';

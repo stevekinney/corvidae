@@ -3,7 +3,7 @@ import type {
   ObservableLike,
   Observer,
   Subscription,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 import { z } from 'zod';
 import type { AnthropicTool } from './adapters/anthropic/types';
 import type { GeminiTool } from './adapters/gemini/types';
@@ -388,7 +388,7 @@ interface LoopStatistics {
  *
  * @example
  * ```typescript
- * import { createToolbox, createTool } from '@corvidae/armorer';
+ * import { createToolbox, createTool } from 'armorer';
  * import { z } from 'zod';
  *
  * // Create a toolbox with tools up front

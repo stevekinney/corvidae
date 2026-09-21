@@ -1,5 +1,5 @@
-import { createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 
 import type { RunResult } from '../types';
 import type { Scheduler } from './create-scheduler';

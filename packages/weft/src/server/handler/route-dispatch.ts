@@ -54,7 +54,7 @@ import {
  *
  * @example
  * ```ts
- * import { type HandlerOptions } from '@corvidae/weft';
+ * import { type HandlerOptions } from '@lostgradient/weft';
  *
  * const options: HandlerOptions = {
  *   authContext: { method: 'public' },
@@ -401,7 +401,7 @@ function readFaultProperties(
  *
  * @example Catch an unknown error and surface as a fault when it qualifies
  * ```ts
- * import { isOperationFaultLike } from '@corvidae/weft';
+ * import { isOperationFaultLike } from '@lostgradient/weft';
  *
  * try {
  *   // operation handler runs here

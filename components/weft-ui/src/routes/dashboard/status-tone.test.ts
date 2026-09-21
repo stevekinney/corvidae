@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowStatus } from '@corvidae/weft';
+import type { WorkflowStatus } from '@lostgradient/weft';
 
 import { STATUS_DISPLAY_ORDER, statusToneInfo } from './status-tone.ts';
 

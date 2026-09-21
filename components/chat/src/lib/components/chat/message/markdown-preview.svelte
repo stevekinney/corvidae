@@ -73,7 +73,7 @@
 
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
-  import { CodeBlock } from '@corvidae/cinder';
+  import { CodeBlock } from '@lostgradient/cinder';
   import { preloadMarkdownPipeline } from './markdown-pipeline.ts';
 
   let { content, markdownNode, class: className, ...rest }: ChatMarkdownPreviewProps = $props();

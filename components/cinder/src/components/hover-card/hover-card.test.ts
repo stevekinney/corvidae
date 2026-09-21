@@ -11,7 +11,7 @@ import {
   requiredInstance,
   setupHappyDom,
   trackTimers,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -116,7 +116,7 @@ describe('HoverCard', () => {
         description: 'Shows repository metadata',
         openDelay: 0,
         trigger: triggerSnippet,
-        children: textSnippet('@corvidae/cinder'),
+        children: textSnippet('@lostgradient/cinder'),
       },
     });
     const wrapper = requiredInstance(

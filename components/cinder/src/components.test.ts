@@ -1,4 +1,4 @@
-import { sveltePlugin } from '@corvidae/testing';
+import { sveltePlugin } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
 import Button from './components/button/button.svelte';

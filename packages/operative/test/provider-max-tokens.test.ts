@@ -4,8 +4,8 @@
  * Spec: context.maximumTokens takes precedence over the construction-time
  * maximumTokens option when building the provider request params.
  */
-import { type AnyToolbox, createTool, createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { type AnyToolbox, createTool, createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

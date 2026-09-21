@@ -2,7 +2,7 @@
   "$schema": "./src/schemas/manifest.schema.json",
   "manifestVersion": 1,
   "package": {
-    "name": "@corvidae/cinder",
+    "name": "@lostgradient/cinder",
     "framework": "svelte",
     "frameworkVersionRange": "^5.56.7",
     "classPrefix": "cinder-",
@@ -63,7 +63,7 @@
       "virtual-list",
       "z"
     ],
-    "stylesEntry": "@corvidae/cinder",
+    "stylesEntry": "@lostgradient/cinder",
     "schemaDialect": "https://json-schema.org/draft/2020-12/schema"
   },
   "categories": {
@@ -122,7 +122,7 @@
     {
       "name": "AccessGate",
       "id": "access-gate",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "AccessGate",
       "category": "feedback",
       "status": "alpha",
@@ -157,7 +157,7 @@
     {
       "name": "Accordion",
       "id": "accordion",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Accordion",
       "category": "data-display",
       "status": "stable",
@@ -211,7 +211,7 @@
     {
       "name": "AccordionItem",
       "id": "accordion-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "AccordionItem",
       "category": "data-display",
       "status": "stable",
@@ -237,7 +237,7 @@
     {
       "name": "ActionRow",
       "id": "action-row",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ActionRow",
       "category": "action",
       "status": "beta",
@@ -267,7 +267,7 @@
     {
       "name": "Alert",
       "id": "alert",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Alert",
       "category": "feedback",
       "status": "stable",
@@ -297,7 +297,7 @@
     {
       "name": "AlertDialog",
       "id": "alert-dialog",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "AlertDialog",
       "category": "overlay",
       "status": "stable",
@@ -327,7 +327,7 @@
     {
       "name": "ApprovalCard",
       "id": "approval-card",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ApprovalCard",
       "category": "domain",
       "status": "alpha",
@@ -363,7 +363,7 @@
     {
       "name": "AreaChart",
       "id": "area-chart",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "AreaChart",
       "category": "data-display",
       "status": "stable",
@@ -393,7 +393,7 @@
     {
       "name": "AspectRatio",
       "id": "aspect-ratio",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "AspectRatio",
       "category": "layout",
       "status": "stable",
@@ -423,7 +423,7 @@
     {
       "name": "Autocomplete",
       "id": "autocomplete",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Autocomplete",
       "category": "form",
       "status": "stable",
@@ -450,7 +450,7 @@
     {
       "name": "Avatar",
       "id": "avatar",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Avatar",
       "category": "data-display",
       "status": "stable",
@@ -477,7 +477,7 @@
     {
       "name": "AvatarGroup",
       "id": "avatar-group",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "AvatarGroup",
       "category": "data-display",
       "status": "stable",
@@ -507,7 +507,7 @@
     {
       "name": "Backdrop",
       "id": "backdrop",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Backdrop",
       "category": "overlay",
       "status": "beta",
@@ -540,7 +540,7 @@
     {
       "name": "Badge",
       "id": "badge",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Badge",
       "category": "data-display",
       "status": "stable",
@@ -572,7 +572,7 @@
     {
       "name": "Banner",
       "id": "banner",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Banner",
       "category": "feedback",
       "status": "stable",
@@ -602,7 +602,7 @@
     {
       "name": "BarChart",
       "id": "bar-chart",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "BarChart",
       "category": "data-display",
       "status": "stable",
@@ -632,7 +632,7 @@
     {
       "name": "Breadcrumbs",
       "id": "breadcrumbs",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Breadcrumbs",
       "category": "navigation",
       "status": "stable",
@@ -662,7 +662,7 @@
     {
       "name": "Button",
       "id": "button",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Button",
       "category": "action",
       "status": "stable",
@@ -693,7 +693,7 @@
     {
       "name": "ButtonGroup",
       "id": "button-group",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ButtonGroup",
       "category": "action",
       "status": "stable",
@@ -723,7 +723,7 @@
     {
       "name": "Calendar",
       "id": "calendar",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Calendar",
       "category": "form",
       "status": "alpha",
@@ -750,7 +750,7 @@
     {
       "name": "Callout",
       "id": "callout",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Callout",
       "category": "feedback",
       "status": "stable",
@@ -780,7 +780,7 @@
     {
       "name": "CapabilityGate",
       "id": "capability-gate",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "CapabilityGate",
       "category": "feedback",
       "status": "alpha",
@@ -810,7 +810,7 @@
     {
       "name": "Card",
       "id": "card",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Card",
       "category": "layout",
       "status": "stable",
@@ -840,7 +840,7 @@
     {
       "name": "Carousel",
       "id": "carousel",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Carousel",
       "category": "navigation",
       "status": "beta",
@@ -881,7 +881,7 @@
     {
       "name": "Checkbox",
       "id": "checkbox",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Checkbox",
       "category": "form",
       "status": "stable",
@@ -911,7 +911,7 @@
     {
       "name": "CheckboxGroup",
       "id": "checkbox-group",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "CheckboxGroup",
       "category": "form",
       "status": "stable",
@@ -938,7 +938,7 @@
     {
       "name": "Chip",
       "id": "chip",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Chip",
       "category": "data-display",
       "status": "stable",
@@ -968,7 +968,7 @@
     {
       "name": "ChoiceGrid",
       "id": "choice-grid",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ChoiceGrid",
       "category": "form",
       "status": "alpha",
@@ -998,7 +998,7 @@
     {
       "name": "ChoiceGridItem",
       "id": "choice-grid-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ChoiceGridItem",
       "category": "form",
       "status": "alpha",
@@ -1021,7 +1021,7 @@
     {
       "name": "Citation",
       "id": "citation",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Citation",
       "category": "data-display",
       "status": "beta",
@@ -1045,7 +1045,7 @@
     {
       "name": "ClickAwayListener",
       "id": "click-away-listener",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ClickAwayListener",
       "category": "overlay",
       "status": "beta",
@@ -1071,7 +1071,7 @@
     {
       "name": "CodeBlock",
       "id": "code-block",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "CodeBlock",
       "category": "data-display",
       "status": "stable",
@@ -1101,7 +1101,7 @@
     {
       "name": "CodeLocation",
       "id": "code-location",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "CodeLocation",
       "category": "data-display",
       "status": "beta",
@@ -1125,7 +1125,7 @@
     {
       "name": "Collapsible",
       "id": "collapsible",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Collapsible",
       "category": "data-display",
       "status": "stable",
@@ -1152,7 +1152,7 @@
     {
       "name": "ColorField",
       "id": "color-field",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ColorField",
       "category": "form",
       "status": "stable",
@@ -1182,7 +1182,7 @@
     {
       "name": "ColorPicker",
       "id": "color-picker",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ColorPicker",
       "category": "form",
       "status": "stable",
@@ -1209,7 +1209,7 @@
     {
       "name": "ColorSwatchPicker",
       "id": "color-swatch-picker",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ColorSwatchPicker",
       "category": "form",
       "status": "stable",
@@ -1236,7 +1236,7 @@
     {
       "name": "Combobox",
       "id": "combobox",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Combobox",
       "category": "form",
       "status": "stable",
@@ -1266,7 +1266,7 @@
     {
       "name": "CommandItem",
       "id": "command-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "CommandItem",
       "category": "action",
       "status": "stable",
@@ -1295,7 +1295,7 @@
     {
       "name": "CommandMenu",
       "id": "command-menu",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "CommandMenu",
       "category": "overlay",
       "status": "stable",
@@ -1325,7 +1325,7 @@
     {
       "name": "CommandPalette",
       "id": "command-palette",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "CommandPalette",
       "category": "overlay",
       "status": "stable",
@@ -1355,7 +1355,7 @@
     {
       "name": "ConfirmDialog",
       "id": "confirm-dialog",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ConfirmDialog",
       "category": "overlay",
       "status": "stable",
@@ -1385,7 +1385,7 @@
     {
       "name": "ConnectionIndicator",
       "id": "connection-indicator",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ConnectionIndicator",
       "category": "feedback",
       "status": "beta",
@@ -1423,7 +1423,7 @@
     {
       "name": "Container",
       "id": "container",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Container",
       "category": "layout",
       "status": "stable",
@@ -1450,7 +1450,7 @@
     {
       "name": "ContextMenu",
       "id": "context-menu",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ContextMenu",
       "category": "overlay",
       "status": "stable",
@@ -1480,7 +1480,7 @@
     {
       "name": "ContextMenuTrigger",
       "id": "context-menu-trigger",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ContextMenuTrigger",
       "category": "overlay",
       "status": "stable",
@@ -1509,7 +1509,7 @@
     {
       "name": "CopyButton",
       "id": "copy-button",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "CopyButton",
       "category": "action",
       "status": "stable",
@@ -1539,7 +1539,7 @@
     {
       "name": "DataGrid",
       "id": "data-grid",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DataGrid",
       "category": "data-display",
       "status": "alpha",
@@ -1569,7 +1569,7 @@
     {
       "name": "DataList",
       "id": "data-list",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DataList",
       "category": "data-display",
       "status": "stable",
@@ -1600,7 +1600,7 @@
     {
       "name": "DataTable",
       "id": "data-table",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DataTable",
       "category": "data-display",
       "status": "alpha",
@@ -1638,7 +1638,7 @@
     {
       "name": "DatePicker",
       "id": "date-picker",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DatePicker",
       "category": "form",
       "status": "alpha",
@@ -1665,7 +1665,7 @@
     {
       "name": "DateRangeField",
       "id": "date-range-field",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DateRangeField",
       "category": "form",
       "status": "stable",
@@ -1695,7 +1695,7 @@
     {
       "name": "DescriptionList",
       "id": "description-list",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DescriptionList",
       "category": "data-display",
       "status": "stable",
@@ -1722,7 +1722,7 @@
     {
       "name": "DiffStatistics",
       "id": "diff-statistics",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DiffStatistics",
       "category": "domain",
       "status": "domain-suite",
@@ -1734,7 +1734,7 @@
       ],
       "avoidWhen": [
         {
-          "reason": "Rendering the actual hunked diff content — pair with `DiffViewer` from `@corvidae/editor` for the full document comparison."
+          "reason": "Rendering the actual hunked diff content — pair with `DiffViewer` from `@lostgradient/editor` for the full document comparison."
         },
         {
           "reason": "Generic numeric badges that have nothing to do with diffs — reach for stat or badge instead."
@@ -1752,7 +1752,7 @@
     {
       "name": "Divider",
       "id": "divider",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Divider",
       "category": "layout",
       "status": "stable",
@@ -1782,7 +1782,7 @@
     {
       "name": "DonutChart",
       "id": "donut-chart",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DonutChart",
       "category": "data-display",
       "status": "beta",
@@ -1806,7 +1806,7 @@
     {
       "name": "Drawer",
       "id": "drawer",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Drawer",
       "category": "overlay",
       "status": "stable",
@@ -1837,7 +1837,7 @@
     {
       "name": "Dropdown",
       "id": "dropdown",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Dropdown",
       "category": "overlay",
       "status": "stable",
@@ -1873,7 +1873,7 @@
     {
       "name": "DropdownGroup",
       "id": "dropdown-group",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DropdownGroup",
       "category": "overlay",
       "status": "stable",
@@ -1908,7 +1908,7 @@
     {
       "name": "DropdownItem",
       "id": "dropdown-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DropdownItem",
       "category": "overlay",
       "status": "stable",
@@ -1937,7 +1937,7 @@
     {
       "name": "DropdownLabel",
       "id": "dropdown-label",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DropdownLabel",
       "category": "overlay",
       "status": "stable",
@@ -1966,7 +1966,7 @@
     {
       "name": "DropdownMenu",
       "id": "dropdown-menu",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DropdownMenu",
       "category": "overlay",
       "status": "stable",
@@ -2001,7 +2001,7 @@
     {
       "name": "DropdownSeparator",
       "id": "dropdown-separator",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DropdownSeparator",
       "category": "overlay",
       "status": "stable",
@@ -2030,7 +2030,7 @@
     {
       "name": "DropdownTrigger",
       "id": "dropdown-trigger",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "DropdownTrigger",
       "category": "form",
       "status": "stable",
@@ -2056,7 +2056,7 @@
     {
       "name": "EmptyState",
       "id": "empty-state",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "EmptyState",
       "category": "feedback",
       "status": "stable",
@@ -2086,7 +2086,7 @@
     {
       "name": "Feed",
       "id": "feed",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Feed",
       "category": "data-display",
       "status": "stable",
@@ -2117,7 +2117,7 @@
     {
       "name": "FeedBoundary",
       "id": "feed-boundary",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "FeedBoundary",
       "category": "data-display",
       "status": "stable",
@@ -2146,7 +2146,7 @@
     {
       "name": "FeedEvent",
       "id": "feed-event",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "FeedEvent",
       "category": "data-display",
       "status": "stable",
@@ -2172,7 +2172,7 @@
     {
       "name": "FileUpload",
       "id": "file-upload",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "FileUpload",
       "category": "form",
       "status": "stable",
@@ -2199,7 +2199,7 @@
     {
       "name": "FilterBar",
       "id": "filter-bar",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "FilterBar",
       "category": "form",
       "status": "beta",
@@ -2229,7 +2229,7 @@
     {
       "name": "FindBar",
       "id": "find-bar",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "FindBar",
       "category": "navigation",
       "status": "beta",
@@ -2253,7 +2253,7 @@
     {
       "name": "FloatingAction",
       "id": "floating-action",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "FloatingAction",
       "category": "action",
       "status": "beta",
@@ -2280,7 +2280,7 @@
     {
       "name": "FocusTrap",
       "id": "focus-trap",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "FocusTrap",
       "category": "overlay",
       "status": "stable",
@@ -2307,7 +2307,7 @@
     {
       "name": "Footer",
       "id": "footer",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Footer",
       "category": "layout",
       "status": "beta",
@@ -2338,7 +2338,7 @@
     {
       "name": "Form",
       "id": "form",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Form",
       "category": "form",
       "status": "beta",
@@ -2362,7 +2362,7 @@
     {
       "name": "FormField",
       "id": "form-field",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "FormField",
       "category": "form",
       "status": "stable",
@@ -2389,7 +2389,7 @@
     {
       "name": "FormSection",
       "id": "form-section",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "FormSection",
       "category": "form",
       "status": "stable",
@@ -2416,7 +2416,7 @@
     {
       "name": "Grid",
       "id": "grid",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Grid",
       "category": "layout",
       "status": "beta",
@@ -2448,7 +2448,7 @@
     {
       "name": "GridItem",
       "id": "grid-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "GridItem",
       "category": "layout",
       "status": "beta",
@@ -2472,7 +2472,7 @@
     {
       "name": "GridList",
       "id": "grid-list",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "GridList",
       "category": "data-display",
       "status": "stable",
@@ -2502,7 +2502,7 @@
     {
       "name": "GridListItem",
       "id": "grid-list-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "GridListItem",
       "category": "data-display",
       "status": "stable",
@@ -2528,7 +2528,7 @@
     {
       "name": "GuidanceRegion",
       "id": "guidance-region",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "GuidanceRegion",
       "category": "data-display",
       "status": "beta",
@@ -2554,7 +2554,7 @@
     {
       "name": "HostProvider",
       "id": "host-provider",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "HostProvider",
       "category": "layout",
       "status": "beta",
@@ -2580,7 +2580,7 @@
     {
       "name": "HoverCard",
       "id": "hover-card",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "HoverCard",
       "category": "overlay",
       "status": "stable",
@@ -2610,7 +2610,7 @@
     {
       "name": "Image",
       "id": "image",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Image",
       "category": "data-display",
       "status": "stable",
@@ -2640,7 +2640,7 @@
     {
       "name": "InlineConfirm",
       "id": "inline-confirm",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "InlineConfirm",
       "category": "feedback",
       "status": "stable",
@@ -2664,7 +2664,7 @@
     {
       "name": "InlineLoading",
       "id": "inline-loading",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "InlineLoading",
       "category": "feedback",
       "status": "alpha",
@@ -2694,7 +2694,7 @@
     {
       "name": "Input",
       "id": "input",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Input",
       "category": "form",
       "status": "stable",
@@ -2725,7 +2725,7 @@
     {
       "name": "InvocationRuleBuilder",
       "id": "invocation-rule-builder",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "InvocationRuleBuilder",
       "category": "form",
       "status": "beta",
@@ -2753,7 +2753,7 @@
     {
       "name": "JsonEditor",
       "id": "json-editor",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "JsonEditor",
       "category": "form",
       "status": "stable",
@@ -2795,7 +2795,7 @@
     {
       "name": "JsonSchemaEditor",
       "id": "json-schema-editor",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "JsonSchemaEditor",
       "category": "form",
       "status": "stable",
@@ -2822,7 +2822,7 @@
     {
       "name": "JsonViewer",
       "id": "json-viewer",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "JsonViewer",
       "category": "data-display",
       "status": "stable",
@@ -2852,7 +2852,7 @@
     {
       "name": "KanbanBoard",
       "id": "kanban-board",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "KanbanBoard",
       "category": "data-display",
       "status": "stable",
@@ -2882,7 +2882,7 @@
     {
       "name": "Kbd",
       "id": "kbd",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Kbd",
       "category": "typography",
       "status": "stable",
@@ -2909,7 +2909,7 @@
     {
       "name": "KeyValueEditor",
       "id": "key-value-editor",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "KeyValueEditor",
       "category": "data-display",
       "status": "beta",
@@ -2933,7 +2933,7 @@
     {
       "name": "KeyboardShortcuts",
       "id": "keyboard-shortcuts",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "KeyboardShortcuts",
       "category": "typography",
       "status": "alpha",
@@ -2960,7 +2960,7 @@
     {
       "name": "Label",
       "id": "label",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Label",
       "category": "form",
       "status": "stable",
@@ -2986,7 +2986,7 @@
     {
       "name": "LineChart",
       "id": "line-chart",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "LineChart",
       "category": "data-display",
       "status": "stable",
@@ -3016,7 +3016,7 @@
     {
       "name": "Link",
       "id": "link",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Link",
       "category": "typography",
       "status": "beta",
@@ -3040,7 +3040,7 @@
     {
       "name": "LoadMore",
       "id": "load-more",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "LoadMore",
       "category": "navigation",
       "status": "stable",
@@ -3066,7 +3066,7 @@
     {
       "name": "LocaleProvider",
       "id": "locale-provider",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "LocaleProvider",
       "category": "layout",
       "status": "stable",
@@ -3092,7 +3092,7 @@
     {
       "name": "Marquee",
       "id": "marquee",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Marquee",
       "category": "layout",
       "status": "beta",
@@ -3123,7 +3123,7 @@
     {
       "name": "Masonry",
       "id": "masonry",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Masonry",
       "category": "layout",
       "status": "beta",
@@ -3154,7 +3154,7 @@
     {
       "name": "MatrixChart",
       "id": "matrix-chart",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "MatrixChart",
       "category": "data-display",
       "status": "alpha",
@@ -3184,7 +3184,7 @@
     {
       "name": "MediaControls",
       "id": "media-controls",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "MediaControls",
       "category": "action",
       "status": "alpha",
@@ -3214,7 +3214,7 @@
     {
       "name": "MegaMenu",
       "id": "mega-menu",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "MegaMenu",
       "category": "navigation",
       "status": "beta",
@@ -3258,7 +3258,7 @@
     {
       "name": "MenuBar",
       "id": "menu-bar",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "MenuBar",
       "category": "navigation",
       "status": "stable",
@@ -3288,7 +3288,7 @@
     {
       "name": "Message",
       "id": "message",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Message",
       "category": "data-display",
       "status": "stable",
@@ -3318,7 +3318,7 @@
     {
       "name": "Meter",
       "id": "meter",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Meter",
       "category": "feedback",
       "status": "alpha",
@@ -3349,7 +3349,7 @@
     {
       "name": "Modal",
       "id": "modal",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Modal",
       "category": "overlay",
       "status": "stable",
@@ -3386,7 +3386,7 @@
     {
       "name": "ModalRegion",
       "id": "modal-region",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ModalRegion",
       "category": "overlay",
       "status": "beta",
@@ -3412,7 +3412,7 @@
     {
       "name": "MultiSelect",
       "id": "multi-select",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "MultiSelect",
       "category": "form",
       "status": "alpha",
@@ -3442,7 +3442,7 @@
     {
       "name": "NavigationBar",
       "id": "navigation-bar",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "NavigationBar",
       "category": "navigation",
       "status": "stable",
@@ -3472,7 +3472,7 @@
     {
       "name": "NavigationItem",
       "id": "navigation-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "NavigationItem",
       "category": "navigation",
       "status": "stable",
@@ -3501,7 +3501,7 @@
     {
       "name": "NumberInput",
       "id": "number-input",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "NumberInput",
       "category": "form",
       "status": "stable",
@@ -3531,7 +3531,7 @@
     {
       "name": "PageHeader",
       "id": "page-header",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "PageHeader",
       "category": "layout",
       "status": "stable",
@@ -3561,7 +3561,7 @@
     {
       "name": "Pagination",
       "id": "pagination",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Pagination",
       "category": "navigation",
       "status": "stable",
@@ -3591,7 +3591,7 @@
     {
       "name": "ParameterField",
       "id": "parameter-field",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ParameterField",
       "category": "form",
       "status": "beta",
@@ -3617,7 +3617,7 @@
     {
       "name": "PayloadInspector",
       "id": "payload-inspector",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "PayloadInspector",
       "category": "data-display",
       "status": "stable",
@@ -3647,7 +3647,7 @@
     {
       "name": "PermissionMatrix",
       "id": "permission-matrix",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "PermissionMatrix",
       "category": "data-display",
       "status": "alpha",
@@ -3677,7 +3677,7 @@
     {
       "name": "PhoneInput",
       "id": "phone-input",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "PhoneInput",
       "category": "form",
       "status": "stable",
@@ -3707,7 +3707,7 @@
     {
       "name": "PinInput",
       "id": "pin-input",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "PinInput",
       "category": "form",
       "status": "stable",
@@ -3737,7 +3737,7 @@
     {
       "name": "PolicyLock",
       "id": "policy-lock",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "PolicyLock",
       "category": "form",
       "status": "beta",
@@ -3763,7 +3763,7 @@
     {
       "name": "Popover",
       "id": "popover",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Popover",
       "category": "overlay",
       "status": "stable",
@@ -3793,7 +3793,7 @@
     {
       "name": "Portal",
       "id": "portal",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Portal",
       "category": "overlay",
       "status": "stable",
@@ -3820,7 +3820,7 @@
     {
       "name": "PreviewPanel",
       "id": "preview-panel",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "PreviewPanel",
       "category": "layout",
       "status": "alpha",
@@ -3850,7 +3850,7 @@
     {
       "name": "PricingCard",
       "id": "pricing-card",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "PricingCard",
       "category": "data-display",
       "status": "alpha",
@@ -3881,7 +3881,7 @@
     {
       "name": "Progress",
       "id": "progress",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Progress",
       "category": "feedback",
       "status": "stable",
@@ -3915,7 +3915,7 @@
     {
       "name": "QrCode",
       "id": "qr-code",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "QrCode",
       "category": "data-display",
       "status": "beta",
@@ -3946,7 +3946,7 @@
     {
       "name": "QuotaMeter",
       "id": "quota-meter",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "QuotaMeter",
       "category": "data-display",
       "status": "beta",
@@ -3970,7 +3970,7 @@
     {
       "name": "RadioGroup",
       "id": "radio-group",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "RadioGroup",
       "category": "form",
       "status": "stable",
@@ -3997,7 +3997,7 @@
     {
       "name": "Rating",
       "id": "rating",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Rating",
       "category": "form",
       "status": "stable",
@@ -4027,7 +4027,7 @@
     {
       "name": "RelativeTime",
       "id": "relative-time",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "RelativeTime",
       "category": "data-display",
       "status": "beta",
@@ -4051,7 +4051,7 @@
     {
       "name": "ResizablePanels",
       "id": "resizable-panels",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ResizablePanels",
       "category": "layout",
       "status": "stable",
@@ -4081,7 +4081,7 @@
     {
       "name": "RunStepTimeline",
       "id": "run-step-timeline",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "RunStepTimeline",
       "category": "data-display",
       "status": "stable",
@@ -4117,7 +4117,7 @@
     {
       "name": "ScheduleBuilder",
       "id": "schedule-builder",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ScheduleBuilder",
       "category": "form",
       "status": "beta",
@@ -4155,7 +4155,7 @@
     {
       "name": "SchemaForm",
       "id": "schema-form",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SchemaForm",
       "category": "form",
       "status": "beta",
@@ -4197,7 +4197,7 @@
     {
       "name": "ScrollArea",
       "id": "scroll-area",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ScrollArea",
       "category": "layout",
       "status": "stable",
@@ -4227,7 +4227,7 @@
     {
       "name": "SearchField",
       "id": "search-field",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SearchField",
       "category": "form",
       "status": "stable",
@@ -4254,7 +4254,7 @@
     {
       "name": "SecretValueField",
       "id": "secret-value-field",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SecretValueField",
       "category": "data-display",
       "status": "stable",
@@ -4284,7 +4284,7 @@
     {
       "name": "SectionHeading",
       "id": "section-heading",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SectionHeading",
       "category": "typography",
       "status": "stable",
@@ -4314,7 +4314,7 @@
     {
       "name": "Segment",
       "id": "segment",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Segment",
       "category": "form",
       "status": "stable",
@@ -4344,7 +4344,7 @@
     {
       "name": "SegmentedControl",
       "id": "segmented-control",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SegmentedControl",
       "category": "form",
       "status": "stable",
@@ -4375,7 +4375,7 @@
     {
       "name": "Select",
       "id": "select",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Select",
       "category": "form",
       "status": "stable",
@@ -4405,7 +4405,7 @@
     {
       "name": "SelectableRow",
       "id": "selectable-row",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SelectableRow",
       "category": "action",
       "status": "beta",
@@ -4453,7 +4453,7 @@
     {
       "name": "SelectionPopover",
       "id": "selection-popover",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SelectionPopover",
       "category": "overlay",
       "status": "stable",
@@ -4483,7 +4483,7 @@
     {
       "name": "SettingRow",
       "id": "setting-row",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SettingRow",
       "category": "form",
       "status": "beta",
@@ -4507,7 +4507,7 @@
     {
       "name": "ShareCard",
       "id": "share-card",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ShareCard",
       "category": "action",
       "status": "alpha",
@@ -4537,7 +4537,7 @@
     {
       "name": "ShortcutField",
       "id": "shortcut-field",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ShortcutField",
       "category": "form",
       "status": "beta",
@@ -4561,7 +4561,7 @@
     {
       "name": "ShortcutHint",
       "id": "shortcut-hint",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ShortcutHint",
       "category": "typography",
       "status": "alpha",
@@ -4588,7 +4588,7 @@
     {
       "name": "SideNavigation",
       "id": "side-navigation",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SideNavigation",
       "category": "navigation",
       "status": "stable",
@@ -4639,7 +4639,7 @@
     {
       "name": "SideNavigationGroup",
       "id": "side-navigation-group",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SideNavigationGroup",
       "category": "navigation",
       "status": "stable",
@@ -4668,7 +4668,7 @@
     {
       "name": "SideNavigationItem",
       "id": "side-navigation-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SideNavigationItem",
       "category": "navigation",
       "status": "stable",
@@ -4697,7 +4697,7 @@
     {
       "name": "Sidebar",
       "id": "sidebar",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Sidebar",
       "category": "layout",
       "status": "stable",
@@ -4731,7 +4731,7 @@
     {
       "name": "Skeleton",
       "id": "skeleton",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Skeleton",
       "category": "feedback",
       "status": "stable",
@@ -4761,7 +4761,7 @@
     {
       "name": "SkipLink",
       "id": "skip-link",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SkipLink",
       "category": "navigation",
       "status": "stable",
@@ -4791,7 +4791,7 @@
     {
       "name": "Slider",
       "id": "slider",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Slider",
       "category": "form",
       "status": "stable",
@@ -4821,7 +4821,7 @@
     {
       "name": "SortableList",
       "id": "sortable-list",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SortableList",
       "category": "data-display",
       "status": "stable",
@@ -4851,7 +4851,7 @@
     {
       "name": "SourceDiffViewer",
       "id": "source-diff-viewer",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SourceDiffViewer",
       "category": "data-display",
       "status": "beta",
@@ -4863,7 +4863,7 @@
       ],
       "avoidWhen": [
         {
-          "reason": "Comparing two Markdown documents with normalization, front-matter, and revert affordances — use `DiffViewer` from `@corvidae/editor`."
+          "reason": "Comparing two Markdown documents with normalization, front-matter, and revert affordances — use `DiffViewer` from `@lostgradient/editor`."
         },
         {
           "reason": "Showing syntax-highlighted code samples rather than patch output.",
@@ -4882,7 +4882,7 @@
     {
       "name": "Sparkbar",
       "id": "sparkbar",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Sparkbar",
       "category": "data-display",
       "status": "stable",
@@ -4913,7 +4913,7 @@
     {
       "name": "Spectrogram",
       "id": "spectrogram",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Spectrogram",
       "category": "data-display",
       "status": "alpha",
@@ -4946,7 +4946,7 @@
     {
       "name": "SpectrumChart",
       "id": "spectrum-chart",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SpectrumChart",
       "category": "data-display",
       "status": "alpha",
@@ -4979,7 +4979,7 @@
     {
       "name": "SpeedDial",
       "id": "speed-dial",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SpeedDial",
       "category": "action",
       "status": "beta",
@@ -5010,7 +5010,7 @@
     {
       "name": "SpeedDialAction",
       "id": "speed-dial-action",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "SpeedDialAction",
       "category": "action",
       "status": "beta",
@@ -5034,7 +5034,7 @@
     {
       "name": "Spinner",
       "id": "spinner",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Spinner",
       "category": "feedback",
       "status": "stable",
@@ -5064,7 +5064,7 @@
     {
       "name": "Stack",
       "id": "stack",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Stack",
       "category": "layout",
       "status": "alpha",
@@ -5091,7 +5091,7 @@
     {
       "name": "StackedListItem",
       "id": "stacked-list-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "StackedListItem",
       "category": "data-display",
       "status": "stable",
@@ -5121,7 +5121,7 @@
     {
       "name": "Statistic",
       "id": "statistic",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Statistic",
       "category": "data-display",
       "status": "stable",
@@ -5150,7 +5150,7 @@
     {
       "name": "StatisticGroup",
       "id": "statistic-group",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "StatisticGroup",
       "category": "data-display",
       "status": "stable",
@@ -5180,7 +5180,7 @@
     {
       "name": "StatusDot",
       "id": "status-dot",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "StatusDot",
       "category": "feedback",
       "status": "stable",
@@ -5212,7 +5212,7 @@
     {
       "name": "Steps",
       "id": "steps",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Steps",
       "category": "navigation",
       "status": "stable",
@@ -5242,7 +5242,7 @@
     {
       "name": "Surface",
       "id": "surface",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Surface",
       "category": "layout",
       "status": "stable",
@@ -5272,7 +5272,7 @@
     {
       "name": "Tab",
       "id": "tab",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Tab",
       "category": "navigation",
       "status": "stable",
@@ -5302,7 +5302,7 @@
     {
       "name": "TabList",
       "id": "tab-list",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TabList",
       "category": "navigation",
       "status": "stable",
@@ -5331,7 +5331,7 @@
     {
       "name": "TabPanel",
       "id": "tab-panel",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TabPanel",
       "category": "navigation",
       "status": "stable",
@@ -5360,7 +5360,7 @@
     {
       "name": "Table",
       "id": "table",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Table",
       "category": "data-display",
       "status": "stable",
@@ -5398,7 +5398,7 @@
     {
       "name": "TableBody",
       "id": "table-body",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TableBody",
       "category": "data-display",
       "status": "stable",
@@ -5421,7 +5421,7 @@
     {
       "name": "TableCell",
       "id": "table-cell",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TableCell",
       "category": "data-display",
       "status": "stable",
@@ -5447,7 +5447,7 @@
     {
       "name": "TableHeader",
       "id": "table-header",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TableHeader",
       "category": "data-display",
       "status": "stable",
@@ -5470,7 +5470,7 @@
     {
       "name": "TableHeaderCell",
       "id": "table-header-cell",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TableHeaderCell",
       "category": "data-display",
       "status": "stable",
@@ -5496,7 +5496,7 @@
     {
       "name": "TableOfContents",
       "id": "table-of-contents",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TableOfContents",
       "category": "navigation",
       "status": "beta",
@@ -5533,7 +5533,7 @@
     {
       "name": "TableRow",
       "id": "table-row",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TableRow",
       "category": "data-display",
       "status": "stable",
@@ -5559,7 +5559,7 @@
     {
       "name": "Tabs",
       "id": "tabs",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Tabs",
       "category": "navigation",
       "status": "stable",
@@ -5589,7 +5589,7 @@
     {
       "name": "TagInput",
       "id": "tag-input",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TagInput",
       "category": "form",
       "status": "stable",
@@ -5619,7 +5619,7 @@
     {
       "name": "TerminalFrame",
       "id": "terminal-frame",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TerminalFrame",
       "category": "feedback",
       "status": "alpha",
@@ -5645,7 +5645,7 @@
     {
       "name": "TerminalOutput",
       "id": "terminal-output",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TerminalOutput",
       "category": "feedback",
       "status": "alpha",
@@ -5671,7 +5671,7 @@
     {
       "name": "Textarea",
       "id": "textarea",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Textarea",
       "category": "form",
       "status": "stable",
@@ -5698,7 +5698,7 @@
     {
       "name": "TimeField",
       "id": "time-field",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TimeField",
       "category": "form",
       "status": "stable",
@@ -5725,7 +5725,7 @@
     {
       "name": "Timeline",
       "id": "timeline",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Timeline",
       "category": "data-display",
       "status": "stable",
@@ -5760,7 +5760,7 @@
     {
       "name": "ToastRegion",
       "id": "toast-region",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ToastRegion",
       "category": "feedback",
       "status": "stable",
@@ -5790,7 +5790,7 @@
     {
       "name": "Toggle",
       "id": "toggle",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Toggle",
       "category": "form",
       "status": "stable",
@@ -5819,7 +5819,7 @@
     {
       "name": "Toolbar",
       "id": "toolbar",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Toolbar",
       "category": "action",
       "status": "stable",
@@ -5846,7 +5846,7 @@
     {
       "name": "Tooltip",
       "id": "tooltip",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Tooltip",
       "category": "overlay",
       "status": "stable",
@@ -5876,7 +5876,7 @@
     {
       "name": "TransferList",
       "id": "transfer-list",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TransferList",
       "category": "form",
       "status": "beta",
@@ -5904,7 +5904,7 @@
     {
       "name": "Tree",
       "id": "tree",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Tree",
       "category": "data-display",
       "status": "stable",
@@ -5942,7 +5942,7 @@
     {
       "name": "TreeItem",
       "id": "tree-item",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "TreeItem",
       "category": "data-display",
       "status": "stable",
@@ -5968,7 +5968,7 @@
     {
       "name": "VirtualList",
       "id": "virtual-list",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "VirtualList",
       "category": "data-display",
       "status": "beta",
@@ -6004,7 +6004,7 @@
     {
       "name": "VisuallyHidden",
       "id": "visually-hidden",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "VisuallyHidden",
       "category": "typography",
       "status": "stable",
@@ -6034,7 +6034,7 @@
     {
       "name": "Waveform",
       "id": "waveform",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "Waveform",
       "category": "data-display",
       "status": "alpha",
@@ -6064,7 +6064,7 @@
     {
       "name": "ZoomPanViewer",
       "id": "zoom-pan-viewer",
-      "import": "@corvidae/cinder",
+      "import": "@lostgradient/cinder",
       "exportName": "ZoomPanViewer",
       "category": "data-display",
       "status": "beta",

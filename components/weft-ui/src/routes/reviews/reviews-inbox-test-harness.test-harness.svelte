@@ -10,7 +10,7 @@
    */
   import { onDestroy, untrack } from 'svelte';
 
-  import type { ReviewListEntry, HttpClient } from '@corvidae/weft';
+  import type { ReviewListEntry, HttpClient } from '@lostgradient/weft';
 
   import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 

@@ -1,6 +1,6 @@
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { MemoryStorage, type TextValueStore, textValueStore } from '@corvidae/weft';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { MemoryStorage, type TextValueStore, textValueStore } from '@lostgradient/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { createAgent } from '../create-agent';

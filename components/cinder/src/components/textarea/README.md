@@ -6,7 +6,7 @@ Multi-line text input for longer freeform content with optional resize control.
 
 ```svelte
 <script lang="ts">
-  import { Textarea } from '@corvidae/cinder';
+  import { Textarea } from '@lostgradient/cinder';
 </script>
 
 <Textarea id="notes" label="Notes" />

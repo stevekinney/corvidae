@@ -8,7 +8,7 @@ DatePicker owns the picker UI (decision B): it uses a text input and Cinder's Ca
 
 ```svelte
 <script lang="ts">
-  import { DatePicker } from '@corvidae/cinder';
+  import { DatePicker } from '@lostgradient/cinder';
 
   let value = $state<string | undefined>('2026-06-29');
 </script>

@@ -14,7 +14,7 @@
    * `Dropdown` supplies focus/Escape/click-outside/positioning behavior —
    * an app-local composition over the primitive, not a fork (PROJECT-BRIEF).
    */
-  import { Badge, ConnectionIndicator, Dropdown } from '@corvidae/cinder';
+  import { Badge, ConnectionIndicator, Dropdown } from '@lostgradient/cinder';
   import type { ComponentType, SvelteComponent } from 'svelte';
   import type { IconProps } from 'lucide-svelte';
   import {

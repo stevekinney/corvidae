@@ -3,7 +3,7 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 import { describe, expect, mock, test } from 'bun:test';
 import type { Component } from 'svelte';
 
-import { renderThenHydrate, setupHappyDom } from '@corvidae/testing';
+import { renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
 import type { DataGridColumnDef, DataGridProps } from './data-grid.types.ts';
 
 // Extend Bun's expect with @testing-library/jest-dom matchers (e.g. toHaveAttribute).

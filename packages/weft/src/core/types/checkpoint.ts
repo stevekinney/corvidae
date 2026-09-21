@@ -17,7 +17,7 @@ export const WORKER_REPLAY_SIGNATURE_FORMAT = 'weft-worker-operation-signature-v
  *
  * @example
  * ```ts
- * import type { WorkerReplayOperationSignature } from '@corvidae/weft';
+ * import type { WorkerReplayOperationSignature } from '@lostgradient/weft';
  *
  * const signature: WorkerReplayOperationSignature = {
  *   format: 'weft-worker-operation-signature-v1',
@@ -49,7 +49,7 @@ export interface WorkerReplayOperationSignature {
  *
  * @example
  * ```ts
- * import type { WorkerReplayOperationFailure } from '@corvidae/weft';
+ * import type { WorkerReplayOperationFailure } from '@lostgradient/weft';
  *
  * const failure: WorkerReplayOperationFailure = {
  *   status: 'failed',
@@ -84,7 +84,7 @@ export interface WorkerReplayOperationFailure {
  *
  * @example
  * ```ts
- * import { workflow, Engine, type Checkpoint } from '@corvidae/weft';
+ * import { workflow, Engine, type Checkpoint } from '@lostgradient/weft';
  *
  * const engine = new Engine({ checkpointHistory: 5 });
  * engine.register(workflow({ name: 'counter' }).execute(async function* () { return 42; }));
@@ -207,7 +207,7 @@ export type CheckpointState = Pick<
  *
  * @example
  * ```ts
- * import { workflow, Engine, type PruneCheckpointsOptions } from '@corvidae/weft';
+ * import { workflow, Engine, type PruneCheckpointsOptions } from '@lostgradient/weft';
  *
  * const engine = new Engine({ checkpointHistory: 10 });
  * engine.register(workflow({ name: 'process' }).execute(async function* () { return 'done'; }));
@@ -283,7 +283,7 @@ export type OperationOutcome =
  *
  * @example
  * ```ts
- * import { Engine, type TimerEntry } from '@corvidae/weft';
+ * import { Engine, type TimerEntry } from '@lostgradient/weft';
  * declare const engine: Engine;
  * declare const entry: TimerEntry;
  * await engine.fireTimer(entry);

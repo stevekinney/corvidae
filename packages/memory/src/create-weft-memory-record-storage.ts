@@ -1,11 +1,11 @@
-import { cosineSimilarity, type EmbeddingVectorLike } from '@corvidae/embeddings';
-import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
+import { cosineSimilarity, type EmbeddingVectorLike } from '@lostgradient/embeddings';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type Storage,
   storageConditionalBatch,
   storageDeletePrefix,
   storageKeys,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { z } from 'zod';
 
 import {

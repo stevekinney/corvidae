@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowTimelineEntry } from '@corvidae/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 
 import {
   alignTimelinesForDivergence,

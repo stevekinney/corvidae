@@ -11,7 +11,7 @@ A `RemoteWorker` connects to the server, registers its available activities and 
 A worker advertises its activities through a `workflows` map: each entry pairs a workflow type with that workflow's activity implementations. The SDK builds the qualified `${workflowType}.${activityName}` names the protocol expects (so the `media` workflow's `transcribe` activity is advertised as `media.transcribe`) and validates that each map key matches the inner `workflow.name`.
 
 ```typescript
-import { RemoteWorker } from '@corvidae/weft';
+import { RemoteWorker } from '@lostgradient/weft';
 
 const worker = new RemoteWorker({
   serverUrl: 'wss://weft-server:7233',
@@ -43,7 +43,7 @@ Use `wss://` for deployed workers. Plain `ws://` is only appropriate for localho
 The following subset shows the required identity and common execution options. The [worker API reference](../reference/api-workers.md#remoteworkeroptions) also covers complete manifests, artifact digests, authentication headers, and runtime metadata:
 
 ```typescript
-import type { ActivityInterceptor } from '@corvidae/weft';
+import type { ActivityInterceptor } from '@lostgradient/weft';
 
 interface RemoteWorkerOptions {
   serverUrl: string;
@@ -68,7 +68,7 @@ On connection, the worker sends a v6 `register` message carrying its worker ID, 
 A workflow reaches a `RemoteWorker` the same way it reaches any other activity: through `ctx.run()`. Configure the engine with `activityExecution: { mode: 'remote' }` and every `ctx.run()` call durably enqueues its activity onto the engine's own task ledger for a connected worker to claim, instead of running on the main thread or a local Worker pool.
 
 ```typescript
-import { Engine, activity, workflow } from '@corvidae/weft';
+import { Engine, activity, workflow } from '@lostgradient/weft';
 
 const formatGreeting = activity({
   name: 'formatGreeting',
@@ -130,8 +130,8 @@ You want to trace every remote activity with [OpenTelemetry](https://opentelemet
 Pass an array of `ActivityInterceptor` objects to `RemoteWorker`, and they wrap every task execution on this worker. The chain runs _after_ the task arrives off the WebSocket but _before_ your activity function sees the input, which means interceptors can read propagated headers, transform inputs, observe failures, and record timing without your activities knowing anything about them.
 
 ```typescript
-import { RemoteWorker } from '@corvidae/weft';
-import type { ActivityInterceptor } from '@corvidae/weft';
+import { RemoteWorker } from '@lostgradient/weft';
+import type { ActivityInterceptor } from '@lostgradient/weft';
 
 const loggingInterceptor: ActivityInterceptor = {
   async execute(interception, next) {
@@ -185,7 +185,7 @@ The `headers` Map is the important piece for remote workers. When a workflow int
 The most common use case is observability. The built-in `createObservabilityInterceptors()` factory returns a unified interceptor whose workflow and activity hooks share trace context across the boundary. Pass the same interceptor to every remote worker that should show up in your traces:
 
 ```typescript partial
-import { createObservabilityInterceptors } from '@corvidae/weft';
+import { createObservabilityInterceptors } from '@lostgradient/weft';
 
 const { interceptor } = createObservabilityInterceptors();
 
@@ -288,7 +288,7 @@ The `checkExpiredTasks()` method returns tasks that have exceeded their visibili
 Not every environment supports WebSockets. The `LongPollWorker` provides the same functionality over plain HTTP requests.
 
 ```typescript
-import { LongPollWorker } from '@corvidae/weft';
+import { LongPollWorker } from '@lostgradient/weft';
 
 const worker = new LongPollWorker({
   serverUrl: 'http://weft-server:7233',

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MenuBar, type MenuBarMenu } from '@corvidae/cinder';
+  import { MenuBar, type MenuBarMenu } from '@lostgradient/cinder';
 
   const menus: MenuBarMenu[] = [
     {

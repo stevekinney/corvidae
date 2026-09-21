@@ -1,4 +1,4 @@
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, expect, mock, test } from 'bun:test';
 
 setupHappyDom();

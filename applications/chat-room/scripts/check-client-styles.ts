@@ -3,7 +3,7 @@
  * Fails when a workspace package's global stylesheet is missing from the
  * production CLIENT output.
  *
- * `@corvidae/chat` ships `chat.css` as a sidecar that its component barrel
+ * `@lostgradient/chat` ships `chat.css` as a sidecar that its component barrel
  * imports for its side effect. A bundler that honours only the package's
  * `sideEffects` glob for `.css` files may still drop the barrel itself as a
  * side-effect-free re-export module — taking the stylesheet import with it —
@@ -14,7 +14,7 @@
  * below is a rule that only the sidecar defines, so a client build that lacks
  * it is a client build that lost the file.
  */
-import { findMissingStyleMarkers, type StyleMarker } from '@corvidae/testing';
+import { findMissingStyleMarkers, type StyleMarker } from '@lostgradient/testing';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildOutputDirectory } from './build-output.ts';
@@ -22,22 +22,22 @@ import { buildOutputDirectory } from './build-output.ts';
 export { findMissingStyleMarkers };
 
 export const REQUIRED_STYLE_MARKERS: readonly StyleMarker[] = [
-  { marker: '.cinder-chat .message-content-preview', source: '@corvidae/chat chat.css' },
-  { marker: '@property --cinder-chat-message-max-width', source: '@corvidae/chat chat.css' },
+  { marker: '.cinder-chat .message-content-preview', source: '@lostgradient/chat chat.css' },
+  { marker: '@property --cinder-chat-message-max-width', source: '@lostgradient/chat chat.css' },
   {
     marker: '.cinder-command-menu.chat-composer-popover',
-    source: '@corvidae/chat chat-composer-popover.css',
+    source: '@lostgradient/chat chat-composer-popover.css',
   },
   {
     marker: '.cinder-chat-conversation-header__main',
-    source: '@corvidae/chat chat-conversation-header.css',
+    source: '@lostgradient/chat chat-conversation-header.css',
   },
   {
     marker: '.cinder-chat-conversation-list__items',
-    source: '@corvidae/chat chat-conversation-list.css',
+    source: '@lostgradient/chat chat-conversation-list.css',
   },
-  { marker: '.chat-navigation-rail-row', source: '@corvidae/chat chat-navigation-rail.css' },
-  { marker: '.chat-sub-session-viewport', source: '@corvidae/chat chat-sub-session.css' },
+  { marker: '.chat-navigation-rail-row', source: '@lostgradient/chat chat-navigation-rail.css' },
+  { marker: '.chat-sub-session-viewport', source: '@lostgradient/chat chat-sub-session.css' },
 ];
 
 export const CLIENT_ASSETS_DIRECTORY = join(

@@ -23,7 +23,7 @@
 // overload against a call carrying explicit type arguments when that
 // overload itself declares matching-arity type parameters.
 
-import type { HttpClient, LocalClient, WeftClient } from '@corvidae/weft';
+import type { HttpClient, LocalClient, WeftClient } from '@lostgradient/weft';
 
 declare const client: WeftClient;
 void client.start<'my-workflow'>('my-workflow', null);

@@ -23,10 +23,10 @@ export default defineConfig({
       build: {
         rolldownOptions: {
           external: [
-            '@corvidae/armorer',
-            '@corvidae/conversationalist',
-            '@corvidae/operative',
-            '@corvidae/weft',
+            'armorer',
+            'conversationalist',
+            '@lostgradient/operative',
+            '@lostgradient/weft',
           ],
         },
       },

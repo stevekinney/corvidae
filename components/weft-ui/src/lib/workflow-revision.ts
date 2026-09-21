@@ -31,9 +31,9 @@
  * "unknown" state immediately instead of stalling on pointless retries of a
  * response that will never change shape on refetch.
  */
-import { HttpClientError } from '@corvidae/weft';
+import { HttpClientError } from '@lostgradient/weft';
 
-/** Mirrors `WorkflowCatalogActivePointer` (`@corvidae/weft`) structurally. */
+/** Mirrors `WorkflowCatalogActivePointer` (`@lostgradient/weft`) structurally. */
 export interface WorkflowCatalogActivePointerLike {
   readonly revision: string;
   readonly generation: number;
@@ -123,7 +123,7 @@ export function classifyRevisionAgainstActive(
  * everywhere this console shows a revision as something a run "will retain"
  * or "will select" (fork default, recovery, `onTerminalConflict: 'start-new'`)
  * so the caveat wording cannot drift between call sites. See
- * `WorkflowReplay.revision`'s own doc (`@corvidae/weft`) for the
+ * `WorkflowReplay.revision`'s own doc (`@lostgradient/weft`) for the
  * authoritative description of the underlying behavior this hedges: a
  * default fork or recovery of an EAGER-registered type always runs whatever
  * this process currently has loaded, even when that differs from the

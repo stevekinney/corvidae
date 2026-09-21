@@ -7,7 +7,7 @@ import {
   type WorkerExecutionRequirement,
   type WorkerManifest,
   type WorkerManifestRejectionReason,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 const manifest: WorkerManifest = {
   manifestVersion: WORKER_MANIFEST_VERSION,

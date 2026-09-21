@@ -1,5 +1,5 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type {
   PaginatedResult,
   ScheduleFilter,
@@ -7,8 +7,8 @@ import type {
   ScheduleOverlapPolicy,
   ScheduleSpec,
   ScheduleSummary,
-} from '@corvidae/weft';
-import { parseDuration, ScheduleHandle } from '@corvidae/weft';
+} from '@lostgradient/weft';
+import { parseDuration, ScheduleHandle } from '@lostgradient/weft';
 
 import type { ClosedFunction } from '../closed-acknowledgement';
 import { createClosedAcknowledgement } from '../closed-acknowledgement';

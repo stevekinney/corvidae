@@ -10,14 +10,14 @@
  * already has that credential available as an environment variable — this
  * script reads it but never logs, prints, or otherwise echoes its value.
  */
-import { createToolbox } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
 import {
   appendUserMessage,
   createConversationHistory,
   decodeChatStreamEvent,
   type ChatStreamEvent,
-} from '@corvidae/chat';
-import { createAnthropicProviderStream } from '@corvidae/operative';
+} from '@lostgradient/chat';
+import { createAnthropicProviderStream } from '@lostgradient/operative';
 import { readLiveEnvironmentConfiguration } from './environment-configuration.ts';
 
 import { createChatAgent, createChatStreamWriter, startChatRun } from '../src/lib/chat-agent.ts';

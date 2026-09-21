@@ -34,7 +34,7 @@ export function resetValibotConverterCacheForTesting(): void {
  *
  * @example
  * ```ts
- * import type { DefinitionSchemaDirection } from '@corvidae/weft';
+ * import type { DefinitionSchemaDirection } from '@lostgradient/weft';
  *
  * const direction: DefinitionSchemaDirection = 'input';
  * void direction;
@@ -58,7 +58,7 @@ export type DefinitionSchemaDirection = 'input' | 'output';
  *
  * @example
  * ```ts
- * import { definitionSchemaToJsonSchema } from '@corvidae/weft';
+ * import { definitionSchemaToJsonSchema } from '@lostgradient/weft';
  * import { z } from 'zod';
  *
  * const schema = z.object({ email: z.string() });
@@ -153,7 +153,7 @@ export function loadValibotConverter(
   // Weft is installed as a dependency. `node:module` is loaded through
   // `tryLoadNodeBuiltin` (process.getBuiltinModule) rather than a static
   // `import { createRequire } from 'node:module'`, so this module — reachable
-  // from the browser-facing `@corvidae/weft` bundle via the
+  // from the browser-facing `@lostgradient/weft` bundle via the
   // catalog's Valibot schema adapter — carries no static Node built-in import.
   const resolver = requireModule ?? loadNodeRequire();
   if (resolver === undefined) {

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { DescriptionList } from '@corvidae/cinder';
-  import type { DescriptionListItem } from '@corvidae/cinder';
+  import { DescriptionList } from '@lostgradient/cinder';
+  import type { DescriptionListItem } from '@lostgradient/cinder';
 
   const items: DescriptionListItem[] = [
     { term: 'Component', definition: 'DescriptionList' },

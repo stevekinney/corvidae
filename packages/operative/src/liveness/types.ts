@@ -1,4 +1,4 @@
-import type { Subscription } from '@corvidae/lifecycle';
+import type { Subscription } from '@lostgradient/lifecycle';
 
 export type { Subscription };
 

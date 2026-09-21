@@ -17,7 +17,7 @@ Both lease modes require a storage adapter with `conditionalBatch`: an atomic op
 For a shared database, each process creates its own connection to the same store and uses the same ownership mode. This minimal local example uses [Bun](https://bun.sh/)'s SQLite adapter; choose storage appropriate to your deployment topology before distributing engines across hosts.
 
 ```typescript
-import { BunSQLiteStorage, Engine, workflow } from '@corvidae/weft';
+import { BunSQLiteStorage, Engine, workflow } from '@lostgradient/weft';
 
 const greeting = workflow({ name: 'greeting' }).execute(async function* (_context, name: string) {
   return `Hello, ${name}!`;

@@ -1,4 +1,4 @@
-import { loadManifest, type ComponentEntry, type Theme, type Viewport } from '@corvidae/testing';
+import { loadManifest, type ComponentEntry, type Theme, type Viewport } from '@lostgradient/testing';
 import type { Page } from '@playwright/test';
 import { expect, test } from './component-page-fixture.ts';
 import { productOracles, type ProductOracle } from './remaining-public-mount-oracles.ts';

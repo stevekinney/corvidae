@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { createRawSnippet, tick } from 'svelte';
 
-import { requiredInstance, requiredValue, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, requiredValue, setupHappyDom } from '@lostgradient/testing';
 import {
   findNextVisibleColumn,
   moveKanbanCard,
@@ -1566,6 +1566,6 @@ describe('KanbanBoard icon sourcing', () => {
   test('imports ChevronDown via the lucide-svelte deep-import path, not the public icons barrel', async () => {
     const source = await Bun.file(new URL('./kanban-board.svelte', import.meta.url)).text();
     expect(source).toContain("import ChevronDown from 'lucide-svelte/icons/chevron-down';");
-    expect(source).not.toContain('@corvidae/cinder');
+    expect(source).not.toContain('@lostgradient/cinder');
   });
 });

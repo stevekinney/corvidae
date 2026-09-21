@@ -6,7 +6,7 @@ Layout shell for bounded previews with consistent header, status, optional tabs,
 
 ```svelte
 <script lang="ts">
-  import { PreviewPanel } from '@corvidae/cinder';
+  import { PreviewPanel } from '@lostgradient/cinder';
 </script>
 
 <PreviewPanel title="Artifact preview" status="ready">

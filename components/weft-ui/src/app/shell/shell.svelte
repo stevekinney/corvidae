@@ -14,8 +14,8 @@
    * already Cinder's own contract for `CommandPalette` and `Dropdown` (both
    * close on Escape internally) — nothing extra to wire here.
    */
-  import { SIDEBAR_MOBILE_MEDIA_QUERY } from '@corvidae/cinder';
-  import type { HttpClient } from '@corvidae/weft';
+  import { SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
+  import type { HttpClient } from '@lostgradient/weft';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
 

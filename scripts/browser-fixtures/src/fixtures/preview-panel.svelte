@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PreviewPanel } from '@corvidae/cinder';
+  import { PreviewPanel } from '@lostgradient/cinder';
 </script>
 
 <PreviewPanel title="Artifact preview" status="ready">

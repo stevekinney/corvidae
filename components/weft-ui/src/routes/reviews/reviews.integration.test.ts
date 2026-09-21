@@ -9,7 +9,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient } from '@corvidae/weft';
+import { HttpClient } from '@lostgradient/weft';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import { completedEntriesOnly, pendingEntriesOnly } from './review-domain.ts';
@@ -85,7 +85,7 @@ describe('Reviews data layer (integration, real server)', () => {
       expect(completed?.reviewer).toBe('ops@example.com');
       expect(completed?.feedback).toBe('Tighten the CTA.');
 
-      // Fixed upstream in @corvidae/weft@0.12.0
+      // Fixed upstream in @lostgradient/weft@0.12.0
       // (github.com/stevekinney/weft/issues/724, #731):
       // `submitReviewDecisionOperation` now reads `sectionDecisions` off the
       // wire and passes it through to `engine.submitReview()`.

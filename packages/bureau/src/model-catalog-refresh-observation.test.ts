@@ -1,4 +1,4 @@
-import type { BackendDescriptor } from '@corvidae/operative';
+import type { BackendDescriptor } from '@lostgradient/operative';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { createModelCatalogService } from './model-catalog-refresh';
 

@@ -11,13 +11,13 @@
    * rather than failing the whole palette — a search-as-you-type surface
    * degrading one section to "no results" beats it going blank.
    */
-  import { CommandItem, CommandPalette, EmptyState } from '@corvidae/cinder';
+  import { CommandItem, CommandPalette, EmptyState } from '@lostgradient/cinder';
   import type {
     ReviewListEntry,
     ScheduleSummary,
     WorkflowSummary,
     HttpClient,
-  } from '@corvidae/weft';
+  } from '@lostgradient/weft';
 
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
 
@@ -44,14 +44,14 @@
   /**
    * `client.list({ idPrefix })` is server-side filtering per its documented
    * `ListFilter.idPrefix` contract — but `HttpClient`'s own query-string
-   * builder (`@corvidae/weft`,
+   * builder (`@lostgradient/weft`,
    * `buildWorkflowListSearchParams`) never serializes `idPrefix` into the
    * request at all, so the server always receives an unfiltered `limit`-only
    * query and the prefix is silently dropped. Confirmed by direct request:
    * `client.list({ idPrefix: 'order', limit: 5 })` sends `GET /v1/workflows?
    * limit=5` (no `id_prefix` param), while `GET /v1/workflows?id_prefix=order`
    * hit directly correctly returns zero matches. This is an upstream
-   * `@corvidae/weft` bug — flagged for filing (blocked in this
+   * `@lostgradient/weft` bug — flagged for filing (blocked in this
    * environment: `gh auth status` reports an invalid `GITHUB_TOKEN`, so the
    * issue could not be filed from here; report this to the user/orchestrator
    * to file against `stevekinney/weft`). Workaround, not a weft fork: still

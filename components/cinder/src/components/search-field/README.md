@@ -6,7 +6,7 @@ Dedicated text input with a clear button and search icon for filtering or queryi
 
 ```svelte
 <script lang="ts">
-  import { SearchField } from '@corvidae/cinder';
+  import { SearchField } from '@lostgradient/cinder';
 </script>
 
 <SearchField />

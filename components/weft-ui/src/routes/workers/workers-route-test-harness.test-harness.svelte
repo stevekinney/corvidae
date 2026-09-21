@@ -9,7 +9,7 @@
    * identical shape for the same reason: `index.svelte` reads all four via
    * context, not props.
    */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import { QueryClientProvider, type QueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack, type Component } from 'svelte';
 

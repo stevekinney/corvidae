@@ -2,7 +2,7 @@ import type {
   WorkflowServicesResolverInfo,
   WorkflowServicesResolverLaunchOptions,
   WorkflowServicesResolverScheduleInfo,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 const launchOptions: WorkflowServicesResolverLaunchOptions = {
   id: 'workflow-1',

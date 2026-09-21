@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { ScheduleSummary } from '@corvidae/weft';
+import type { ScheduleSummary } from '@lostgradient/weft';
 
 import {
   cancelSchedule,

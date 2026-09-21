@@ -30,7 +30,7 @@ chroma run --path ./chroma-data
 Here's a simple example using Chroma's embedded mode:
 
 ```typescript
-import { createToolbox, createTool, type Tool } from '@corvidae/armorer';
+import { createToolbox, createTool, type Tool } from 'armorer';
 import { ChromaClient } from 'chromadb';
 import OpenAI from 'openai';
 import { z } from 'zod';
@@ -167,8 +167,8 @@ async function searchTools(query: string, limit = 5): Promise<Tool[]> {
 Here's a complete, production-ready example:
 
 ```typescript
-import { createToolbox, createTool, type Tool } from '@corvidae/armorer';
-import { queryTools } from '@corvidae/armorer';
+import { createToolbox, createTool, type Tool } from 'armorer';
+import { queryTools } from 'armorer';
 import { ChromaClient, type Collection } from 'chromadb';
 import OpenAI from 'openai';
 import { z } from 'zod';

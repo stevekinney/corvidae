@@ -6,7 +6,7 @@
  * storage layer to run on Node.js 22+.
  *
  * `better-sqlite3` is a peer dependency — it must be installed separately by
- * consumers who import `@corvidae/weft`.
+ * consumers who import `@lostgradient/weft`.
  *
  * @module storage/node-sqlite
  */
@@ -49,7 +49,7 @@ export { NodeSQLiteStorage as SQLiteStorage };
 
 /**
  * Runtime-neutral alias for the Node SQLite adapter. Consumers that import
- * from `@corvidae/weft` get this class under Node.
+ * from `@lostgradient/weft` get this class under Node.
  */
 
 /**
@@ -59,20 +59,20 @@ export { NodeSQLiteStorage as SQLiteStorage };
  * Implements the same WAL-mode schema as {@link BunSQLiteStorage}
  * but resolves the `better-sqlite3` peer dependency lazily at construction time,
  * so the module compiles without it installed.  Import from
- * `@corvidae/weft` to use this adapter.
+ * `@lostgradient/weft` to use this adapter.
  *
  * Unlike BunSQLiteStorage, this adapter currently implements only the required
  * Storage methods (`get`, `put`, `delete`, `scan`, `batch`, and
  * `conditionalBatch`). The optional `has`, `keys`, `count`, `deletePrefix`, and
  * `scoped` helpers fall back to the generic implementations in
- * `@corvidae/weft`; `deleteRange` falls back to `storageDeleteRange`
- * (exported from `@corvidae/weft` / `@corvidae/weft`). There is no SQL passthrough
+ * `@lostgradient/weft`; `deleteRange` falls back to `storageDeleteRange`
+ * (exported from `@lostgradient/weft` / `@lostgradient/weft`). There is no SQL passthrough
  * `query()` method.
  *
  * @example
  * ```ts
- * import { NodeSQLiteStorage } from '@corvidae/weft';
- * import { workflow, Engine } from '@corvidae/weft';
+ * import { NodeSQLiteStorage } from '@lostgradient/weft';
+ * import { workflow, Engine } from '@lostgradient/weft';
  *
  * // Requires: bun add better-sqlite3
  * await using storage = new NodeSQLiteStorage('./weft.db');

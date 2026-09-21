@@ -16,7 +16,7 @@ const METHOD_NOT_FOUND_CODE = -32601;
  *   CatalogClientError,
  *   createWeftClient,
  *   type ClientOperationTypes,
- * } from '@corvidae/weft';
+ * } from '@lostgradient/weft';
  *
  * const client = createWeftClient({ includeRunLockfile: false });
  * declare const input: ClientOperationTypes['weft.alerts.list']['input'];
@@ -68,7 +68,7 @@ type CatalogOperationTypes = Record<
  *
  * @example
  * ```ts
- * import type { CatalogWeftClient, CatalogOperationTypes } from '@corvidae/weft';
+ * import type { CatalogWeftClient, CatalogOperationTypes } from '@lostgradient/weft';
  *
  * declare const client: CatalogWeftClient<CatalogOperationTypes>;
  * const listAlerts = client['weft.alerts.list'];
@@ -92,7 +92,7 @@ export type CatalogWeftClient<Operations extends CatalogOperationTypes> = {
  *
  * @example
  * ```ts
- * import { createWeftClient, type WeftClientConnection } from '@corvidae/weft';
+ * import { createWeftClient, type WeftClientConnection } from '@lostgradient/weft';
  *
  * const connection: WeftClientConnection = {
  *   server: 'https://weft.internal:7233',
@@ -124,7 +124,7 @@ export type WeftClientConnection = ConnectionOptions;
  *   createCatalogWeftClient,
  *   type CatalogOperationTypes,
  *   type CatalogTransport,
- * } from '@corvidae/weft';
+ * } from '@lostgradient/weft';
  *
  * const recording: CatalogTransport = async (operationName, input) => {
  *   console.log('calling', operationName, input);
@@ -154,7 +154,7 @@ export type CatalogTransport = (operationName: string, input: unknown) => Promis
  * import {
  *   CLIENT_REST_OPERATION_BINDINGS,
  *   type ClientRestOperationBinding,
- * } from '@corvidae/weft';
+ * } from '@lostgradient/weft';
  *
  * const bindings: Readonly<Record<string, ClientRestOperationBinding>> =
  *   CLIENT_REST_OPERATION_BINDINGS;
@@ -200,7 +200,7 @@ export type ClientRestOperationBinding = {
  *   createCatalogWeftClient,
  *   httpJsonRpcTransport,
  *   type CatalogOperationTypes,
- * } from '@corvidae/weft';
+ * } from '@lostgradient/weft';
  *
  * const client = createCatalogWeftClient<CatalogOperationTypes>(
  *   ['weft.alerts.list'],
@@ -231,7 +231,7 @@ export function createCatalogWeftClient<Operations extends CatalogOperationTypes
  *
  * @example
  * ```ts
- * import { httpJsonRpcTransport } from '@corvidae/weft';
+ * import { httpJsonRpcTransport } from '@lostgradient/weft';
  *
  * const transport = httpJsonRpcTransport({
  *   server: 'http://localhost:7233',

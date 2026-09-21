@@ -36,7 +36,7 @@ import type { JSONValue } from '../../core/json.ts';
  *
  * @example
  * ```ts
- * import { WORKER_MANIFEST_VERSION } from '@corvidae/weft';
+ * import { WORKER_MANIFEST_VERSION } from '@lostgradient/weft';
  *
  * const canParse = (received: number): boolean => received === WORKER_MANIFEST_VERSION;
  * console.log(canParse(1));
@@ -53,7 +53,7 @@ export const WORKER_MANIFEST_VERSION = 1;
  *
  * @example
  * ```ts
- * import type { WorkerActivityContract } from '@corvidae/weft';
+ * import type { WorkerActivityContract } from '@lostgradient/weft';
  *
  * const charge: WorkerActivityContract = {
  *   contractHash: 'sha256:2b1f0c9d',
@@ -80,7 +80,7 @@ export type WorkerActivityContract = Readonly<{
  *
  * @example
  * ```ts
- * import type { WorkerWorkflowContract } from '@corvidae/weft';
+ * import type { WorkerWorkflowContract } from '@lostgradient/weft';
  *
  * const checkout: WorkerWorkflowContract = {
  *   workflowVersion: '2.1.0',
@@ -111,7 +111,7 @@ export type WorkerWorkflowContract = Readonly<{
  *
  * @example
  * ```ts
- * import type { WorkerDeploymentIdentity } from '@corvidae/weft';
+ * import type { WorkerDeploymentIdentity } from '@lostgradient/weft';
  *
  * const deployment: WorkerDeploymentIdentity = {
  *   name: 'billing',
@@ -138,7 +138,7 @@ export type WorkerDeploymentIdentity = Readonly<{
  *
  * @example
  * ```ts
- * import type { WorkerRuntimeIdentity } from '@corvidae/weft';
+ * import type { WorkerRuntimeIdentity } from '@lostgradient/weft';
  *
  * const runtime: WorkerRuntimeIdentity = { name: 'bun', version: '1.3.14' };
  * console.log(`${runtime.name} ${runtime.version}`);
@@ -162,7 +162,7 @@ export type WorkerRuntimeIdentity = Readonly<{
  *
  * @example
  * ```ts
- * import { WORKER_MANIFEST_VERSION, type WorkerManifest } from '@corvidae/weft';
+ * import { WORKER_MANIFEST_VERSION, type WorkerManifest } from '@lostgradient/weft';
  *
  * const manifest: WorkerManifest = {
  *   manifestVersion: WORKER_MANIFEST_VERSION,
@@ -204,7 +204,7 @@ export type WorkerManifest = Readonly<{
  *
  * @example
  * ```ts
- * import type { WorkerExecutionRequirement } from '@corvidae/weft';
+ * import type { WorkerExecutionRequirement } from '@lostgradient/weft';
  *
  * // Pin the deployment, let policy pick any eligible build within it.
  * const requirement: WorkerExecutionRequirement = { deploymentName: 'billing' };
@@ -234,7 +234,7 @@ export type WorkerExecutionRequirement = Readonly<{
  *
  * @example
  * ```ts
- * import type { WorkerExecutionIdentity } from '@corvidae/weft';
+ * import type { WorkerExecutionIdentity } from '@lostgradient/weft';
  *
  * function describe(identity: WorkerExecutionIdentity): string {
  *   return `${identity.deploymentName}@${identity.buildId} (${identity.workerId})`;

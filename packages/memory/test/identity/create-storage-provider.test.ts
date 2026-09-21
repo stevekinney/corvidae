@@ -1,5 +1,5 @@
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
-import { MemoryStorage, textValueStore } from '@corvidae/weft';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createStorageIdentityProvider } from '../../src/identity/create-storage-provider';

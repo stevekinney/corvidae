@@ -81,9 +81,9 @@ const rejectedHandlerOptions: HandlerOptions = { metricsCollector: new MetricsCo
 void rejectedHandlerOptions;
 
 // Every option/handle TYPE named in ServeOptions / WeftServer / TaskDispatch is
-// importable from the '@corvidae/weft' entry point — a consumer never
+// importable from the '@lostgradient/weft' entry point — a consumer never
 // reaches into a deep internal path to name one. The `Engine` instance passed to
-// `serve()` is the exception: it comes from the root '@corvidae/weft' (its
+// `serve()` is the exception: it comes from the root '@lostgradient/weft' (its
 // canonical home, imported above), by design.
 const routingPolicy: RoutingPolicy = 'round-robin';
 const schedulingPolicy: SchedulingPolicy = 'priority';
@@ -92,7 +92,7 @@ const reexportedExporter: PrometheusExporter = prometheusExporter;
 const auth: AuthConfig = { apiKeys: ['secret'] };
 
 // WorkerAdmissionRequest and WorkerAdmissionDecision are nameable from the
-// same '@corvidae/weft' entry as WorkerAdmissionPolicy, so a
+// same '@lostgradient/weft' entry as WorkerAdmissionPolicy, so a
 // consumer can type its own policy function without reaching into internals.
 const workerAdmissionPolicy: WorkerAdmissionPolicy = (request: WorkerAdmissionRequest) => {
   const decision: WorkerAdmissionDecision =

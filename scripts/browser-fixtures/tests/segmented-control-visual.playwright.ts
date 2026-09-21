@@ -20,7 +20,7 @@
  *      contract: `data-cinder-size="sm"`, `data-cinder-density="toolbar"`.
  */
 
-import { loadManifest } from '@corvidae/testing';
+import { loadManifest } from '@lostgradient/testing';
 import { expect, test, type Page } from '@playwright/test';
 
 const manifest = loadManifest();

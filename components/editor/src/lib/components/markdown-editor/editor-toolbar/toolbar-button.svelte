@@ -20,7 +20,7 @@
 
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
-  import { Tooltip } from '@corvidae/cinder';
+  import { Tooltip } from '@lostgradient/cinder';
 
   let {
     icon: Icon,

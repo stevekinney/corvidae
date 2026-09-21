@@ -3,7 +3,7 @@ import type {
   ObservableLike,
   Observer,
   Subscription,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 import type { AnthropicTool } from './adapters/anthropic/types';
 import type { GeminiTool } from './adapters/gemini/types';
 import type { OpenAITool } from './adapters/openai/types';

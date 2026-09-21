@@ -1,4 +1,4 @@
-import { normalize, parseOrThrow } from '@corvidae/markdown';
+import { normalize, parseOrThrow } from '@lostgradient/markdown';
 import { describe, expect, test } from 'bun:test';
 import { buildSourceLineMap } from './source-line-map';
 

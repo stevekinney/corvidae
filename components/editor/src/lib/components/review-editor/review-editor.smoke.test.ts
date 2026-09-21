@@ -6,7 +6,7 @@ import {
   ReviewEditor as ExportedReviewEditor,
   toPersistedThreads,
   toRuntimeThreads,
-} from '@corvidae/editor';
+} from '@lostgradient/editor';
 import ReviewEditor from './review-editor.svelte';
 
 const implementationSource = await Bun.file(

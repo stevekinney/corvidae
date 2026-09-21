@@ -6,8 +6,8 @@ Right-click and long-press menu positioned at the user's pointer while reusing d
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { ContextMenu } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { ContextMenu } from '@lostgradient/cinder';
 </script>
 
 <ContextMenu>

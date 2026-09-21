@@ -1,5 +1,5 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import { CompletableEventTarget, createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { CompletableEventTarget, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { ChildRunRegistry } from '../child-run';
 import { createClosedAcknowledgement, foldTerminalCleanup } from '../closed-acknowledgement';

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { JsonSchemaEditor, type JsonSchemaValue } from '@corvidae/cinder';
+  import { JsonSchemaEditor, type JsonSchemaValue } from '@lostgradient/cinder';
 
   let schema = $state<JsonSchemaValue>({
     type: 'object',

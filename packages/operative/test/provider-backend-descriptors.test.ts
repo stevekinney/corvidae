@@ -5,8 +5,8 @@
  * construction time. No network call and no credential — the local mocked
  * clients `packages/operative/test/provider-*.test.ts` already use.
  */
-import { createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import {

@@ -16,7 +16,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { flushSync, mount, unmount } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { ChatAdapter, ChatPushHandlers } from './adapter/chat-adapter.ts';
 import type { ReadReceipt } from './chat.types.ts';
 import type { ConversationHistory } from './conversation-model.ts';

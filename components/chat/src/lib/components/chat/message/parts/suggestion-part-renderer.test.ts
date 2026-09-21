@@ -4,7 +4,7 @@
 import { afterEach, expect, mock, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { SuggestionMessagePart } from '../../utilities/types.ts';
 
 setupHappyDom();

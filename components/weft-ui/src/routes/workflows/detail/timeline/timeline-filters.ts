@@ -2,7 +2,7 @@
  * Quick filters + step-range pagination for the Timeline tab (plan T3.1).
  * Pure functions, no DOM/Svelte — the tab component owns the `$state`.
  */
-import type { WorkflowTimelineEntry } from '@corvidae/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 
 /** Quick-filter facets a step can be checked against (plan T3.1 "quick filters"). */
 export type TimelineQuickFilter = 'all' | 'failed' | 'running' | 'coordination' | 'saga';

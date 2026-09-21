@@ -1,7 +1,7 @@
 /**
  * Unit tests for createSanitizeSchema.
  *
- * DEP-565: Coverage hardening for @corvidae/markdown.
+ * DEP-565: Coverage hardening for @lostgradient/markdown.
  */
 
 import { describe, expect, it } from 'bun:test';

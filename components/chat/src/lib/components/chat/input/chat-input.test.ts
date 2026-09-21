@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { mount, tick, unmount } from 'svelte';
 import { compile } from 'svelte/compiler';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { MessageInput } from '../conversation-model.ts';
 
 setupHappyDom();

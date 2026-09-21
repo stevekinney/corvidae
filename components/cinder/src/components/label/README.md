@@ -6,7 +6,7 @@ Accessible form label that associates descriptive text with its input element.
 
 ```svelte
 <script lang="ts">
-  import { Label } from '@corvidae/cinder';
+  import { Label } from '@lostgradient/cinder';
 </script>
 
 <Label for="my-input">Email address</Label>

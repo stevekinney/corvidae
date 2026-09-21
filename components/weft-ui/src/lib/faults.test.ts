@@ -6,8 +6,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { FaultCode, WeftErrorCode } from '@corvidae/weft';
-import { HttpClientError } from '@corvidae/weft';
+import type { FaultCode, WeftErrorCode } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft';
 
 import {
   classifyFault,
@@ -88,7 +88,7 @@ describe('classifyFault — six-code truth table', () => {
     });
   }
 
-  test('every FaultCode is accounted for (no gaps if @corvidae/weft adds one)', () => {
+  test('every FaultCode is accounted for (no gaps if @lostgradient/weft adds one)', () => {
     const faultCodes = Object.keys(EXPECTED_KIND_FOR_FAULT_CODE);
     expect(new Set(faultCodes).size).toBe(faultCodes.length);
     expect(faultCodes).toHaveLength(13);

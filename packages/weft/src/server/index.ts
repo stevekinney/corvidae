@@ -86,10 +86,10 @@ export {
 } from './authentication.ts';
 
 // Re-export every option/handle *type* named in ServeOptions / WeftServer /
-// TaskDispatch so a consumer of `@corvidae/weft` can name them all
+// TaskDispatch so a consumer of `@lostgradient/weft` can name them all
 // from this entry point. (AuthConfig/RateLimitConfig ship from the auth block
 // above; CorsOptions from its own export above.) The `Engine` instance you pass
-// to `serve()` comes from the root `@corvidae/weft` — its canonical home —
+// to `serve()` comes from the root `@lostgradient/weft` — its canonical home —
 // not from here. WorkerRegistry stays a value to match the root export, and
 // TaskQueue is a value so direct `handleRequest()` hosts can construct the live
 // worker infrastructure exposed through HandlerOptions.
@@ -115,7 +115,7 @@ export { TaskQueue } from './task-queue.ts';
  *
  * @example
  * ```ts
- * import { DASHBOARD_PAGE_ROUTES } from '@corvidae/weft';
+ * import { DASHBOARD_PAGE_ROUTES } from '@lostgradient/weft';
  *
  * // A mounted dashboard shell owns these specific page routes.
  * console.log(DASHBOARD_PAGE_ROUTES[0]); // '/'
@@ -141,7 +141,7 @@ export const DASHBOARD_PAGE_ROUTES = [
  *
  * @example
  * ```ts
- * import type { DashboardPageRoute } from '@corvidae/weft';
+ * import type { DashboardPageRoute } from '@lostgradient/weft';
  *
  * const workflowRoute: DashboardPageRoute = '/workflows/*';
  * void workflowRoute;
@@ -157,7 +157,7 @@ export type DashboardPageRoute = (typeof DASHBOARD_PAGE_ROUTES)[number];
  *
  * @example
  * ```ts
- * import type { DashboardRouteTarget } from '@corvidae/weft';
+ * import type { DashboardRouteTarget } from '@lostgradient/weft';
  *
  * const dashboard: DashboardRouteTarget = new Response('<!doctype html><div id="app"></div>', {
  *   headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -172,7 +172,7 @@ export type DashboardRouteTarget = Bun.Serve.Routes<unknown, string>[string];
  *
  * @example
  * ```ts
- * import type { UnauthenticatedAccessPolicy } from '@corvidae/weft';
+ * import type { UnauthenticatedAccessPolicy } from '@lostgradient/weft';
  *
  * const unauthenticatedAccess: UnauthenticatedAccessPolicy = 'reject';
  * void unauthenticatedAccess;
@@ -189,8 +189,8 @@ export type UnauthenticatedAccessPolicy = 'warn' | 'allow' | 'reject';
  *
  * @example
  * ```ts
- * import { serve, type ServeOptions } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { serve, type ServeOptions } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -387,7 +387,7 @@ export interface ServeOptions {
  *
  * @example
  * ```ts
- * import { type TaskDispatch } from '@corvidae/weft';
+ * import { type TaskDispatch } from '@lostgradient/weft';
  *
  * const task: TaskDispatch = {
  *   operationId: crypto.randomUUID(),
@@ -458,15 +458,15 @@ export interface TaskDispatch {
  * block exits.
  *
  * Both `registry` ({@link WorkerRegistry}) and `taskQueue` ({@link TaskQueue})
- * are re-exported from `'@corvidae/weft'`, so you can name these
+ * are re-exported from `'@lostgradient/weft'`, so you can name these
  * types without a second import. Still prefer `WeftServer` methods
  * (`dispatchTask`, `shutdownWorker`, etc.) over reaching into `taskQueue`
  * directly — it is exposed for inspection, not as a stable mutation surface.
  *
  * @example
  * ```ts
- * import { serve, type WeftServer } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { serve, type WeftServer } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -561,13 +561,13 @@ export interface WeftServer extends AsyncDisposable {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage, workflow } from '@corvidae/weft';
- * import { serve } from '@corvidae/weft';
+ * import { Engine, MemoryStorage, workflow } from '@lostgradient/weft';
+ * import { serve } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * engine.register(
  *   workflow({ name: 'greet' }).execute(async function* (
- *     _ctx: import('@corvidae/weft').WorkflowContext,
+ *     _ctx: import('@lostgradient/weft').WorkflowContext,
  *     input: { name: string },
  *   ) {
  *     return `Hello, ${input.name}!`;

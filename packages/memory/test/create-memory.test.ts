@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { createMemory } from '../src/create-memory';

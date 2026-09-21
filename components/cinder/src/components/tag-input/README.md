@@ -6,8 +6,8 @@ Free-form token entry field that turns committed text into removable tags while 
 
 ```svelte
 <script lang="ts">
-  import { FormField } from '@corvidae/cinder';
-  import { TagInput } from '@corvidae/cinder';
+  import { FormField } from '@lostgradient/cinder';
+  import { TagInput } from '@lostgradient/cinder';
 </script>
 
 <FormField

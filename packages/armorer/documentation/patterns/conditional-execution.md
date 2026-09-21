@@ -3,8 +3,8 @@
 Execute tools based on runtime conditions.
 
 ```typescript
-import { when } from '@corvidae/armorer';
-import { createTool } from '@corvidae/armorer';
+import { when } from 'armorer';
+import { createTool } from 'armorer';
 import { z } from 'zod';
 
 // Conditional execution with `when`

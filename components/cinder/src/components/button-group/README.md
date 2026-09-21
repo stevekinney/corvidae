@@ -6,8 +6,8 @@ Clusters related action buttons into a unified visual group with shared borders.
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { ButtonGroup } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { ButtonGroup } from '@lostgradient/cinder';
 </script>
 
 <ButtonGroup label="Document actions">

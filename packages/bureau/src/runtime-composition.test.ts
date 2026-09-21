@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createTool, createToolbox, type ToolRequestContext } from '@corvidae/armorer';
-import { Conversation, createConversationHistory, getMessages } from '@corvidae/conversationalist';
-import { createManualRuntimeServices, HookRegistry, TypedEventTarget } from '@corvidae/lifecycle';
-import type { Memory } from '@corvidae/memory';
+import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
+import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
+import { createManualRuntimeServices, HookRegistry, TypedEventTarget } from '@lostgradient/lifecycle';
+import type { Memory } from '@lostgradient/memory';
 import {
   createAgentSession,
   createDurableActiveRun,
@@ -22,15 +22,15 @@ import {
   type StepRecord,
   stopWhen,
   type StreamEventMap,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
   createSkillClient,
   discoverSkills,
   type SkillActivationRecord,
   type SkillCatalogRevision,
-} from '@corvidae/skills';
-import type { JSONValue } from '@corvidae/tool-protocol';
+} from '@lostgradient/skills';
+import type { JSONValue } from '@lostgradient/tool-protocol';
 import {
   createCheckpoint,
   encode,
@@ -42,7 +42,7 @@ import {
   WorkflowCompletedEvent,
   WorkflowFailedEvent,
   yieldToPortableEventLoop,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -615,7 +615,7 @@ describe('createRuntimeComposition', () => {
   });
 
   it('maps configured toolbox tools into public tool summaries', async () => {
-    const { createTool } = await import('@corvidae/armorer');
+    const { createTool } = await import('armorer');
     const { z } = await import('zod');
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
@@ -6036,7 +6036,7 @@ describe('createRunRuntime toolbox isolation', () => {
   });
 
   it('does not deliver tool events from one run to another concurrent run', async () => {
-    const { createTool, createToolbox: makeToolbox } = await import('@corvidae/armorer');
+    const { createTool, createToolbox: makeToolbox } = await import('armorer');
     const { z } = await import('zod');
 
     // Deferred resolve so we can keep run A's tool call in-flight while run B

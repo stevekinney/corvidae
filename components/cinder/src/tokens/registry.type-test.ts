@@ -1,5 +1,5 @@
 /**
- * Type-level contract for `@corvidae/cinder`.
+ * Type-level contract for `@lostgradient/cinder`.
  *
  * This file is never executed and exports nothing meaningful — it exists so
  * `typecheck` fails if the generated module stops supporting a lookup style a

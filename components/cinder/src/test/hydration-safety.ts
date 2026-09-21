@@ -10,7 +10,7 @@
  * it does not validate bindings, actions, event attachment, lifecycle order,
  * or DOM mutation during hydration.
  */
-import { renderSvelteOnServer } from '@corvidae/testing';
+import { renderSvelteOnServer } from '@lostgradient/testing';
 
 /** Result of a build-flag hydration-safety check. */
 export type HydrationSafetyResult = {

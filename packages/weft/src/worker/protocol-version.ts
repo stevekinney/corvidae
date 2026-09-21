@@ -77,7 +77,7 @@
  *
  * @example
  * ```ts
- * import { REMOTE_WORKER_PROTOCOL_VERSION } from '@corvidae/weft';
+ * import { REMOTE_WORKER_PROTOCOL_VERSION } from '@lostgradient/weft';
  *
  * const registration = { type: 'register', protocolVersion: REMOTE_WORKER_PROTOCOL_VERSION };
  * ```
@@ -89,7 +89,7 @@ export const REMOTE_WORKER_PROTOCOL_VERSION = 6;
  *
  * @example
  * ```ts
- * import { REMOTE_WORKER_MIN_PROTOCOL_VERSION } from '@corvidae/weft';
+ * import { REMOTE_WORKER_MIN_PROTOCOL_VERSION } from '@lostgradient/weft';
  *
  * const supportsCurrentVersion = REMOTE_WORKER_MIN_PROTOCOL_VERSION === 6;
  * ```
@@ -101,7 +101,7 @@ export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 6;
  *
  * @example
  * ```ts
- * import { REMOTE_WORKER_MAX_PROTOCOL_VERSION } from '@corvidae/weft';
+ * import { REMOTE_WORKER_MAX_PROTOCOL_VERSION } from '@lostgradient/weft';
  *
  * const canUseRequestedVersion = 6 <= REMOTE_WORKER_MAX_PROTOCOL_VERSION;
  * ```
@@ -113,7 +113,7 @@ export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 6;
  *
  * @example
  * ```ts
- * import { REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS } from '@corvidae/weft';
+ * import { REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS } from '@lostgradient/weft';
  *
  * const supported = REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS.includes(6);
  * ```
@@ -125,7 +125,7 @@ export const REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS = [REMOTE_WORKER_PROTOCOL
  *
  * @example
  * ```ts
- * import type { RemoteWorkerProtocolVersion } from '@corvidae/weft';
+ * import type { RemoteWorkerProtocolVersion } from '@lostgradient/weft';
  *
  * const version: RemoteWorkerProtocolVersion = 6;
  * ```

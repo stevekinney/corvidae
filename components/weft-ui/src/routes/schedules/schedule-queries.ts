@@ -25,7 +25,7 @@ import type {
   ScheduleSummary,
   ScheduleUpdateOptions,
   WorkflowSummary,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import type { QueryKey } from '@tanstack/svelte-query';
 
@@ -154,8 +154,8 @@ export async function createSchedule(
  * **Correction (WFT-117):** an earlier version of this doc claimed
  * `updateSchedule` was cadence-only and could not change `overlap`/`jitter`/
  * `backfill`/`description` after creation. That was true of an old server
- * version but is stale against the installed `@corvidae/weft` —
- * `ScheduleUpdateOptions` (`@corvidae/weft`) picks exactly `description
+ * version but is stale against the installed `@lostgradient/weft` —
+ * `ScheduleUpdateOptions` (`@lostgradient/weft`) picks exactly `description
  * | overlap | backfill | jitter | revisionPolicy` off `ScheduleOptions`, and
  * `client.updateSchedule(id, spec, options)` forwards them all. This console
  * still only wires up `revisionPolicy` through this function today — the

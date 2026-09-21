@@ -2,12 +2,12 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { fireEvent, render, cleanup } = await import('@testing-library/svelte');
-const { renderSvelteOnServer } = await import('@corvidae/testing');
+const { renderSvelteOnServer } = await import('@lostgradient/testing');
 const { tick } = await import('svelte');
 const { default: Slider } = await import('./slider.svelte');
 const { default: SliderDirectionFixture } =

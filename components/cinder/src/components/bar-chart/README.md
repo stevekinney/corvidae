@@ -6,7 +6,7 @@ Responsive SVG bar chart for grouped or stacked category comparisons.
 
 ```svelte
 <script lang="ts">
-  import { BarChart } from '@corvidae/cinder';
+  import { BarChart } from '@lostgradient/cinder';
 
   const data = [
     { week: 'Week 1', open: 34, resolved: 70 },

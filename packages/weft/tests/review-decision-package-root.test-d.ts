@@ -1,4 +1,4 @@
-import type { ReviewDecision, ReviewDecisionRecord, SubmitReviewOptions } from '@corvidae/weft';
+import type { ReviewDecision, ReviewDecisionRecord, SubmitReviewOptions } from '@lostgradient/weft';
 
 const decision: ReviewDecision = 'needs-changes';
 const options: SubmitReviewOptions = {

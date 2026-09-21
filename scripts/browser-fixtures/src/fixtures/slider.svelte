@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Slider } from '@corvidae/cinder';
+  import { Slider } from '@lostgradient/cinder';
   let value = $state(40);
 </script>
 

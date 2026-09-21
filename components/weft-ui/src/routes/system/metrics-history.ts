@@ -3,7 +3,7 @@
  * (plan §9.7 T7.2: "StatGroup + LineChart sparklines from
  * GET /api/v1/metrics/json … ~15s PollingSource").
  *
- * `weft.system.metrics` (`@corvidae/weft`'s
+ * `weft.system.metrics` (`@lostgradient/weft`'s
  * `MetricsSnapshot`) is a POINT-IN-TIME snapshot — counters/gauges/histogram
  * summaries, no history of their own. The sparklines are built by keeping a
  * bounded client-side buffer of successive polls, exactly like a `top`-style
@@ -13,7 +13,7 @@
  * durability claim (matches the plan's "session-scoped" framing elsewhere,
  * e.g. the Alerts view).
  */
-import type { CounterMetric, GaugeMetric, HistogramMetric } from '@corvidae/weft';
+import type { CounterMetric, GaugeMetric, HistogramMetric } from '@lostgradient/weft';
 
 export type MetricEntryLike = CounterMetric | GaugeMetric | HistogramMetric;
 export type MetricsSnapshotLike = Readonly<Record<string, MetricEntryLike>>;

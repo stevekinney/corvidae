@@ -14,17 +14,17 @@
  * of `HttpClient.operations[name]`'s return type) reads that zod schema, not
  * the operation's TS `Output` generic — so every one of these calls is really
  * typed `Promise<unknown>`. The real shapes (`BulkCancelResult`,
- * `BulkOperationDryRunResult`, etc. — all exported from `@corvidae/weft`)
+ * `BulkOperationDryRunResult`, etc. — all exported from `@lostgradient/weft`)
  * are validated structurally at the boundary here, mirroring
  * `../detail/checkpoints/checkpoints-data.ts`'s identical pattern for the
  * same reason.
  *
  * Every INPUT type below is derived from `HttpClient['operations']` itself
  * via `Parameters<...>[0]` rather than hand-copied, so a future
- * `@corvidae/weft` bump that reshapes an operation's input is a
+ * `@lostgradient/weft` bump that reshapes an operation's input is a
  * type-check failure here, not a silent drift.
  *
- * `import type` only for every `@corvidae/weft` (root) symbol — never a
+ * `import type` only for every `@lostgradient/weft` (root) symbol — never a
  * value import from the root barrel, which also re-exports server-only code
  * reaching `node:crypto` (see `../../../lib/faults.ts`'s module doc for the
  * same discipline). `BulkOperationConfirmationError` (the stale-token signal)
@@ -42,7 +42,7 @@ import type {
   BulkTagResult,
   HttpClient,
   PurgeResult,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import type { BulkListFilterInput } from './bulk-list-filter.ts';
 

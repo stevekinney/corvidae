@@ -1,10 +1,10 @@
-import type { GeminiPart } from '@corvidae/armorer';
-import { parseGeminiToolCalls } from '@corvidae/armorer';
-import type { ConversationHistory } from '@corvidae/conversationalist';
-import { toGeminiMessages } from '@corvidae/conversationalist';
-import { sha256HexSync } from '@corvidae/cryptography';
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { GeminiPart } from 'armorer';
+import { parseGeminiToolCalls } from 'armorer';
+import type { ConversationHistory } from 'conversationalist';
+import { toGeminiMessages } from 'conversationalist';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { ProviderError } from './errors.ts';

@@ -1,6 +1,6 @@
-import type { ConversationHistory } from '@corvidae/conversationalist';
-import { createConversationHistory } from '@corvidae/conversationalist';
-import { createDefaultRuntimeServices, TypedEventTarget } from '@corvidae/lifecycle';
+import type { ConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist';
+import { createDefaultRuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
 
 import type { AgentSession } from '../agent-session';
 import { createAgentSession } from '../agent-session';

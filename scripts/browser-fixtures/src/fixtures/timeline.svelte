@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Timeline } from '@corvidae/cinder';
+  import { Timeline } from '@lostgradient/cinder';
 
   const entries = [
     {

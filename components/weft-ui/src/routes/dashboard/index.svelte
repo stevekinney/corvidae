@@ -12,7 +12,7 @@
    * are disposed with the component.
    */
   import { ArrowRight, Rocket, WifiOff } from 'lucide-svelte';
-  import { Button, CodeBlock, EmptyState, Skeleton } from '@corvidae/cinder';
+  import { Button, CodeBlock, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';
@@ -50,7 +50,7 @@
   const isUnreachable = $derived(healthQuery.isError);
   const isEmpty = $derived(statusQuery.isSuccess && statusQuery.data.total === 0);
 
-  const registrySnippet = `import { Engine, workflow } from '@corvidae/weft';
+  const registrySnippet = `import { Engine, workflow } from '@lostgradient/weft';
 
 const myWorkflow = workflow({ name: 'my-workflow' }).execute(async function* (ctx, input) {
   // ...

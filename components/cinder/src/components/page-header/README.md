@@ -6,7 +6,7 @@ Page-level heading with named title, description, breadcrumb, and action regions
 
 ```svelte
 <script lang="ts">
-  import { PageHeader } from '@corvidae/cinder';
+  import { PageHeader } from '@lostgradient/cinder';
 </script>
 
 <PageHeader title="Approvals" />

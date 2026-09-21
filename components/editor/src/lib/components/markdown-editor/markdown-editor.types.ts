@@ -1,7 +1,7 @@
 import type {
   PlaceholderCompletionConfiguration,
   PlaceholderDecorationConfiguration,
-} from '@corvidae/markdown';
+} from '@lostgradient/markdown';
 import type { MilkdownPlugin } from '@milkdown/ctx';
 import type { Ctx } from '@milkdown/kit/ctx';
 import type { Snippet } from 'svelte';

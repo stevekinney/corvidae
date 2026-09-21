@@ -1,6 +1,6 @@
-import type { ToolContext } from '@corvidae/armorer';
-import { createTool } from '@corvidae/armorer';
-import type { TypedEventTarget } from '@corvidae/lifecycle';
+import type { ToolContext } from 'armorer';
+import { createTool } from 'armorer';
+import type { TypedEventTarget } from '@lostgradient/lifecycle';
 import type { ZodType } from 'zod';
 
 import type { SuccessfulRunResult } from './agent-run';

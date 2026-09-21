@@ -1,4 +1,4 @@
-import { requiredInstance } from '@corvidae/testing';
+import { requiredInstance } from '@lostgradient/testing';
 import { cleanup, fireEvent } from '@testing-library/svelte';
 export function cleanupNumberInput() {
   // Tear down any standalone <form> elements appended to body by form tests

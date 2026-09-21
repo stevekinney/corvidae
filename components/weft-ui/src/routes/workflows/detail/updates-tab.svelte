@@ -24,8 +24,8 @@
    * 30s" directly above completed rows with no separate fetch), plausibly
    * the intended behavior rather than a compromise.
    */
-  import { Badge, Button, Input, JsonEditor } from '@corvidae/cinder';
-  import type { HttpClient, WorkflowState } from '@corvidae/weft';
+  import { Badge, Button, Input, JsonEditor } from '@lostgradient/cinder';
+  import type { HttpClient, WorkflowState } from '@lostgradient/weft';
   import { CircleCheck, CircleX } from 'lucide-svelte';
   import { onDestroy } from 'svelte';
 

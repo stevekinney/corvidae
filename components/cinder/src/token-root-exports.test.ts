@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 
-import * as cinder from '@corvidae/cinder';
+import * as cinder from '@lostgradient/cinder';
 
 const tokenExports = {
   tokenIndex: 'index.json',
@@ -31,7 +31,7 @@ test.each(Object.entries(tokenExports))(
 );
 
 test('the token index identifies supported root exports without package subpaths', () => {
-  expect(cinder.tokenIndex.package).toBe('@corvidae/cinder');
+  expect(cinder.tokenIndex.package).toBe('@lostgradient/cinder');
   expect(cinder.tokenIndex.resolver).toBe('tokenResolver');
   expect(cinder.tokenIndex.registry).toBe('TOKEN_REGISTRY');
   expect(cinder.tokenIndex.sources).toHaveLength(9);

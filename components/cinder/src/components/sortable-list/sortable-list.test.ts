@@ -3,7 +3,7 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createRawSnippet, tick } from 'svelte';
 
-import { requiredInstance, requiredValue, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, requiredValue, setupHappyDom } from '@lostgradient/testing';
 import { SortableController, reorder } from '../../utilities/sortable-controller.svelte.ts';
 
 setupHappyDom();

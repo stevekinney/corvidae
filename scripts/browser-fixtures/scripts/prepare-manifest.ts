@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 
-import { extractFixtures } from '@corvidae/testing';
+import { extractFixtures } from '@lostgradient/testing';
 
 import { appFixtureDeclarations } from '../src/app-fixture-declarations.ts';
 import { assertUniqueFixtureNames } from '../src/manifest.ts';

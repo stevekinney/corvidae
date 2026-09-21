@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Form, Input } from '@corvidae/cinder';
+  import { Button, Form, Input } from '@lostgradient/cinder';
 </script>
 
 <Form onSubmit={() => undefined}>

@@ -65,7 +65,7 @@ type JsonObject = Record<string, unknown>;
  * than recovered by a second pass over the workspaces.
  */
 export interface PublishedPackage {
-  /** The `@corvidae/*` workspace name. */
+  /** The `@lostgradient/*` workspace name. */
   workspace: string;
   /** Target-relative directory, the same one the manifest was written to. */
   directory: string;

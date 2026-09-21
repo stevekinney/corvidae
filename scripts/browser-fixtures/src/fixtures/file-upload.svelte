@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { FileUpload, FormField } from '@corvidae/cinder';
-  import type { FileUploadEntry } from '@corvidae/cinder';
+  import { FileUpload, FormField } from '@lostgradient/cinder';
+  import type { FileUploadEntry } from '@lostgradient/cinder';
 
   let acceptedNames = $state<string[]>([]);
   let rejectedMessages = $state<string[]>([]);

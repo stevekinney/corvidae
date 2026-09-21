@@ -1,4 +1,4 @@
-import { createIncrementalHash } from '@corvidae/cryptography';
+import { createIncrementalHash } from '@lostgradient/cryptography';
 
 import type { ToolErrorCategory } from '../core/errors';
 import type { ToolExecutionIdentity } from '../event-types';

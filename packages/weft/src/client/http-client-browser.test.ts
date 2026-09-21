@@ -2,7 +2,7 @@
  * Real-browser `HttpClient` construction smoke test — regression coverage for
  * #713.
  *
- * `@corvidae/weft` is documented and positioned as the browser
+ * `@lostgradient/weft` is documented and positioned as the browser
  * client for `weft-ui`-style SPAs, but `new HttpClient({ baseUrl, token })`
  * used to throw unconditionally in any real browser: the constructor
  * synchronously called through to `resolveConnection`, which read
@@ -35,7 +35,7 @@
  * Gate: WEFT_BROWSER_SMOKE=1 must be set (the shared flag for all real-browser
  * smokes, via `browserSmokeEnabled`). Otherwise all tests skip. This test does
  * NOT run in the default `bun test` pass. Run it with
- * `bun run --filter=@corvidae/weft test:browser`.
+ * `bun run --filter=@lostgradient/weft test:browser`.
  *
  * It used to run in the default pass, deliberately, because it is regression
  * coverage for a crash that shipped (#713). That is a real reason and it is
@@ -64,7 +64,7 @@ import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.
 const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));
 
 /**
- * Build the real `@corvidae/weft` entry point as a browser-target
+ * Build the real `@lostgradient/weft` entry point as a browser-target
  * ES module and return its source so it can be served as a static asset. Writes a
  * temporary build entry (re-exporting `HttpClient` onto `globalThis`) and
  * bundles it with the `bun build` CLI — see the module docstring for why this
@@ -90,7 +90,7 @@ async function buildClientScript(): Promise<string> {
     );
     const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
     if (exitCode !== 0) {
-      throw new Error(`Failed to build @corvidae/weft for browser: ${stderr}`);
+      throw new Error(`Failed to build @lostgradient/weft for browser: ${stderr}`);
     }
     return await Bun.file(outfilePath).text();
   } finally {

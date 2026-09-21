@@ -6,7 +6,7 @@ Presentational human-in-the-loop approval surface for reviewing a tool operation
 
 ```svelte
 <script lang="ts">
-  import { ApprovalCard } from '@corvidae/cinder';
+  import { ApprovalCard } from '@lostgradient/cinder';
 </script>
 
 <ApprovalCard
@@ -18,8 +18,8 @@ Presentational human-in-the-loop approval surface for reviewing a tool operation
   }}
   operation={{
     kind: 'command',
-    command: 'bun run --filter=@corvidae/cinder validate',
-    argsPreview: { package: '@corvidae/cinder' },
+    command: 'bun run --filter=@lostgradient/cinder validate',
+    argsPreview: { package: '@lostgradient/cinder' },
   }}
   env={['DATABASE_URL', 'OPENAI_API_KEY']}
   policyVersion="policy-2026-06"

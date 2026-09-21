@@ -89,7 +89,7 @@ async function main(): Promise<void> {
       `tokens:privacy — the generated token registry advertises properties whose ` +
         `privacy and prefix disagree:\n${detail}\n\n` +
         `The generated registry disagrees with the corpus it describes. Run ` +
-        `\`bun run --filter=@corvidae/cinder tokens:generate\` and inspect the diff.\n`,
+        `\`bun run --filter=@lostgradient/cinder tokens:generate\` and inspect the diff.\n`,
     );
     process.exitCode = 1;
     return;

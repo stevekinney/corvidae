@@ -1,8 +1,8 @@
 import { lstat, readdir, realpath, stat } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 
-import { sha256Hex } from '@corvidae/cryptography';
-import type { TextValueStore } from '@corvidae/weft';
+import { sha256Hex } from '@lostgradient/cryptography';
+import type { TextValueStore } from '@lostgradient/weft';
 
 import {
   decodeArtifactText,

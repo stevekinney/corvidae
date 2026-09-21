@@ -22,7 +22,7 @@
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 
-import { prepareSvelteServerSource, renderThenHydrate, setupHappyDom } from '@corvidae/testing';
+import { prepareSvelteServerSource, renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
 import { createConversation } from './builders.ts';
 import type { ConversationHistory } from './conversation-model.ts';
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DataTable } from '@corvidae/cinder';
+  import { DataTable } from '@lostgradient/cinder';
 
   type LogRow = {
     event: string;

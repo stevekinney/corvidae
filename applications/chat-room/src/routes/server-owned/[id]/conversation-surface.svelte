@@ -9,7 +9,7 @@
     type ChatRowContext,
     type ChatAdapterErrorEvent,
     type ConversationHistory,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
   import { onDestroy, onMount, untrack } from 'svelte';
 
   import { toBannerFailure, type BannerFailure } from '../../../lib/chat-failure.ts';

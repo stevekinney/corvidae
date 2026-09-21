@@ -29,7 +29,7 @@
    * refreshed diagnostics is the only classified account of why the load
    * failed (`preload-workflow-revision.ts`'s own catch says so explicitly).
    */
-  import { Badge, Button, Checkbox, Input } from '@corvidae/cinder';
+  import { Badge, Button, Checkbox, Input } from '@lostgradient/cinder';
   import { AlertTriangle, Ban, CheckCircle2 } from 'lucide-svelte';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 

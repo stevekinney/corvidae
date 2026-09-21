@@ -10,8 +10,8 @@
  * full functionality for typical document sizes.
  */
 
-import type { LineDiff } from '@corvidae/markdown';
-import { computeLineDiff } from '@corvidae/markdown';
+import type { LineDiff } from '@lostgradient/markdown';
+import { computeLineDiff } from '@lostgradient/markdown';
 import { formatBytes } from '../../utilities/format-bytes.ts';
 
 export type DiffTier = 'realtime' | 'debounced' | 'manual';

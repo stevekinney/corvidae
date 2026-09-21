@@ -8,7 +8,7 @@ See the [editor/Cinder surface boundary](https://github.com/stevekinney/cinder/b
 
 ```svelte
 <script lang="ts">
-  import { SourceDiffViewer } from '@corvidae/cinder';
+  import { SourceDiffViewer } from '@lostgradient/cinder';
 
   const patch = `diff --git a/src/generated.txt b/src/generated.txt
 --- a/src/generated.txt
@@ -26,7 +26,7 @@ See the [editor/Cinder surface boundary](https://github.com/stevekinney/cinder/b
 <SourceDiffViewer {patch} maxLines={4} />
 ```
 
-Use SourceDiffViewer for source-code patches, agent workspace patches, Git output, and other operational unified diffs. Use `DiffViewer` from `@corvidae/editor` for Markdown document review, front-matter handling, Markdown normalization, and prose-oriented word-level changes.
+Use SourceDiffViewer for source-code patches, agent workspace patches, Git output, and other operational unified diffs. Use `DiffViewer` from `@lostgradient/editor` for Markdown document review, front-matter handling, Markdown normalization, and prose-oriented word-level changes.
 
 ## Guidance
 
@@ -37,7 +37,7 @@ Use SourceDiffViewer for source-code patches, agent workspace patches, Git outpu
 
 ### Avoid When
 
-- Comparing two Markdown documents with normalization, front-matter, and revert affordances — use `DiffViewer` from `@corvidae/editor`.
+- Comparing two Markdown documents with normalization, front-matter, and revert affordances — use `DiffViewer` from `@lostgradient/editor`.
 - Showing syntax-highlighted code samples rather than patch output — use code-block instead.
 
 ## Props

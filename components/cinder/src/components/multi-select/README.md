@@ -6,7 +6,7 @@ Multi-value dropdown that presents checkbox options inside an anchored floating 
 
 ```svelte
 <script lang="ts">
-  import { MultiSelect } from '@corvidae/cinder';
+  import { MultiSelect } from '@lostgradient/cinder';
 
   const items = [
     { id: 'apple', label: 'Apple' },

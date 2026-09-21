@@ -1,5 +1,5 @@
-import type { TokenUsage } from '@corvidae/conversationalist';
-import type { TypedEventTarget } from '@corvidae/lifecycle';
+import type { TokenUsage } from 'conversationalist';
+import type { TypedEventTarget } from '@lostgradient/lifecycle';
 
 /** Discriminator for blocks within a stream. */
 export type BlockType = 'text' | 'tool-call' | 'thinking' | 'metadata';

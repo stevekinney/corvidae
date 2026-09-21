@@ -8,7 +8,7 @@
    * built into the production bundle (`.test-harness.svelte` is a
    * build-excluded pattern per `weft`'s conventions this repo mirrors).
    */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
 
   import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';

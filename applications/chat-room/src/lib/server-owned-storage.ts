@@ -1,5 +1,5 @@
-import type { Storage } from '@corvidae/weft';
-import { BunSQLiteStorage, MemoryStorage } from '@corvidae/weft';
+import type { Storage } from '@lostgradient/weft';
+import { BunSQLiteStorage, MemoryStorage } from '@lostgradient/weft';
 import { readServerOwnedStorageEnvironment } from './environment-configuration.ts';
 
 /**

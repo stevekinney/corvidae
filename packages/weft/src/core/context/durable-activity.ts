@@ -37,7 +37,7 @@ export interface DurableActivityScope {
  *
  * @example
  * ```ts
- * import { durableActivity, DurableActivityScopeError } from '@corvidae/weft';
+ * import { durableActivity, DurableActivityScopeError } from '@lostgradient/weft';
  *
  * async function sendOutsideWorkflow(): Promise<void> {
  *   try {
@@ -68,7 +68,7 @@ export class DurableActivityScopeError extends WeftError<'DurableActivityScopeEr
  *
  * @example
  * ```ts
- * import { durableActivity, DurableActivityUnsupportedError, workflow } from '@corvidae/weft';
+ * import { durableActivity, DurableActivityUnsupportedError, workflow } from '@lostgradient/weft';
  *
  * export const completionWorkflow = workflow({ name: 'manual-completion' }).execute(async function* (
  *   ctx,
@@ -210,7 +210,7 @@ function hasFinally<TResult>(
  *
  * @example
  * ```ts
- * import { durableActivity, workflow } from '@corvidae/weft';
+ * import { durableActivity, workflow } from '@lostgradient/weft';
  *
  * async function reserveInventory(input: { orderId: string }): Promise<{ reservationId: string }> {
  *   return { reservationId: input.orderId };

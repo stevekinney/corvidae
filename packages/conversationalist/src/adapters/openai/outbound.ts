@@ -192,7 +192,7 @@ function stringifyToolResult(result: ToolResult): string {
  *
  * @example
  * ```ts
- * import { toOpenAIMessages } from '@corvidae/conversationalist';
+ * import { toOpenAIMessages } from 'conversationalist';
  *
  * const messages = toOpenAIMessages(conversation);
  * const response = await openai.chat.completions.create({

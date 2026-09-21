@@ -41,8 +41,8 @@
     CopyButton,
     Input,
     Tooltip,
-  } from '@corvidae/cinder';
-  import type { WorkflowFinalizerStatus, WorkflowState } from '@corvidae/weft';
+  } from '@lostgradient/cinder';
+  import type { WorkflowFinalizerStatus, WorkflowState } from '@lostgradient/weft';
   import {
     ArrowLeftRight,
     Ban,

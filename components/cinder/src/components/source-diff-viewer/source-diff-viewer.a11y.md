@@ -13,7 +13,7 @@ Purpose: Lightweight unified-patch viewer for source-code and operational diffs 
 
 ## Avoid when
 
-- Comparing two Markdown documents with normalization, front-matter, and revert affordances — use `DiffViewer` from `@corvidae/editor`.
+- Comparing two Markdown documents with normalization, front-matter, and revert affordances — use `DiffViewer` from `@lostgradient/editor`.
 - Showing syntax-highlighted code samples rather than patch output — use code-block instead.
 
 ## Keyboard and focus

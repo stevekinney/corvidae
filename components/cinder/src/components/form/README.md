@@ -8,9 +8,9 @@ Use native validation and form controls as usual. The component owns only submit
 
 ```svelte
 <script lang="ts">
-  import { Form } from '@corvidae/cinder';
-  import { Input } from '@corvidae/cinder';
-  import { Button } from '@corvidae/cinder';
+  import { Form } from '@lostgradient/cinder';
+  import { Input } from '@lostgradient/cinder';
+  import { Button } from '@lostgradient/cinder';
 </script>
 
 <Form onSubmit={() => undefined}>

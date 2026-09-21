@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-column">

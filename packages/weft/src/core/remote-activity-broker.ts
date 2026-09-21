@@ -47,7 +47,7 @@ import type { RetryPolicy } from './types.ts';
  *
  * @example
  * ```ts
- * import type { RemoteActivityTaskRequest } from '@corvidae/weft';
+ * import type { RemoteActivityTaskRequest } from '@lostgradient/weft';
  *
  * declare const request: RemoteActivityTaskRequest;
  *
@@ -93,7 +93,7 @@ export type RemoteActivityTaskRequest = Readonly<{
  *
  * @example
  * ```ts
- * import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '@corvidae/weft';
+ * import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '@lostgradient/weft';
  *
  * const dispatched: RemoteActivityTaskRequest[] = [];
  *

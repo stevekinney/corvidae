@@ -45,7 +45,7 @@ export type ManifestComponent = {
   /** Kebab-case canonical identifier, matching the component directory name. */
   id: string;
   /**
-   * Import specifier consumers use. E.g. `"@corvidae/cinder"`.
+   * Import specifier consumers use. E.g. `"@lostgradient/cinder"`.
    */
   import: string;
   /** PascalCase named export the component ships under. */
@@ -282,7 +282,7 @@ export async function buildManifest(): Promise<Manifest> {
       return {
         name: exportName,
         id: meta.id,
-        import: '@corvidae/cinder',
+        import: '@lostgradient/cinder',
         exportName,
         category: meta.category,
         status: meta.status,
@@ -317,7 +317,7 @@ export async function buildManifest(): Promise<Manifest> {
     $schema: './src/schemas/manifest.schema.json',
     manifestVersion: 1,
     package: {
-      name: '@corvidae/cinder',
+      name: '@lostgradient/cinder',
       framework: 'svelte',
       frameworkVersionRange,
       classPrefix: 'cinder-',
@@ -327,7 +327,7 @@ export async function buildManifest(): Promise<Manifest> {
       // `color` -- a namespace CIN-33 deleted -- alongside names that had
       // drifted from the corpus.
       tokenNamespaces: readTokenNamespaces(),
-      stylesEntry: '@corvidae/cinder',
+      stylesEntry: '@lostgradient/cinder',
       schemaDialect: 'https://json-schema.org/draft/2020-12/schema',
     },
     categories,

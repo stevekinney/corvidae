@@ -46,7 +46,7 @@ export type SegmentedControlContextValue = {
 
 const [getSegmentedControlContext, setSegmentedControlContext] =
   strictStableContext<SegmentedControlContextValue>(
-    '@corvidae/cinder',
+    '@lostgradient/cinder',
     'Segment must be rendered inside a SegmentedControl',
   );
 

@@ -3,7 +3,7 @@
  *
  * These helpers register `bun:test` suites for this package's adapter tests.
  * Import them relatively from storage tests. Runtime consumers use the storage
- * interfaces and implementations exported by `@corvidae/weft`; suite registration
+ * interfaces and implementations exported by `@lostgradient/weft`; suite registration
  * is deliberately excluded from that root so it works outside the test runner.
  */
 
@@ -23,8 +23,8 @@ import {
  *
  * @example
  * ```ts
- * import type { CapabilityConformanceOptions } from '@corvidae/weft/storage/testing';
- * import { MemoryStorage, type StorageCapabilities } from '@corvidae/weft';
+ * import type { CapabilityConformanceOptions } from '@lostgradient/weft/storage/testing';
+ * import { MemoryStorage, type StorageCapabilities } from '@lostgradient/weft';
  *
  * const expected = {
  *   persistence: 'ephemeral',
@@ -53,8 +53,8 @@ export type CapabilityConformanceOptions = {
  *
  * @example
  * ```ts
- * import type { ConcurrentConditionalBatchConformanceOptions } from '@corvidae/weft/storage/testing';
- * import { BunSQLiteStorage } from '@corvidae/weft';
+ * import type { ConcurrentConditionalBatchConformanceOptions } from '@lostgradient/weft/storage/testing';
+ * import { BunSQLiteStorage } from '@lostgradient/weft';
  *
  * const options: ConcurrentConditionalBatchConformanceOptions = {
  *   create: () => new BunSQLiteStorage(':memory:'),
@@ -71,8 +71,8 @@ export type ConcurrentConditionalBatchConformanceOptions = {
  *
  * @example
  * ```ts
- * import type { BinaryAndLargeScanConformanceOptions } from '@corvidae/weft/storage/testing';
- * import { MemoryStorage } from '@corvidae/weft';
+ * import type { BinaryAndLargeScanConformanceOptions } from '@lostgradient/weft/storage/testing';
+ * import { MemoryStorage } from '@lostgradient/weft';
  *
  * const options: BinaryAndLargeScanConformanceOptions = {
  *   create: () => new MemoryStorage(),
@@ -91,8 +91,8 @@ export type BinaryAndLargeScanConformanceOptions = {
  *
  * @example
  * ```ts
- * import type { BasicStorageContractOptions } from '@corvidae/weft/storage/testing';
- * import { MemoryStorage } from '@corvidae/weft';
+ * import type { BasicStorageContractOptions } from '@lostgradient/weft/storage/testing';
+ * import { MemoryStorage } from '@lostgradient/weft';
  *
  * const options: BasicStorageContractOptions = {
  *   create: () => new MemoryStorage(),
@@ -110,8 +110,8 @@ export type BasicStorageContractOptions = {
  *
  * @example
  * ```ts
- * import { runBinaryAndLargeScanStorageConformance } from '@corvidae/weft/storage/testing';
- * import { MemoryStorage } from '@corvidae/weft';
+ * import { runBinaryAndLargeScanStorageConformance } from '@lostgradient/weft/storage/testing';
+ * import { MemoryStorage } from '@lostgradient/weft';
  *
  * runBinaryAndLargeScanStorageConformance('MemoryStorage', {
  *   create: () => new MemoryStorage(),
@@ -171,8 +171,8 @@ export function runBinaryAndLargeScanStorageConformance(
  *
  * @example
  * ```ts
- * import { runStorageCapabilityConformance } from '@corvidae/weft/storage/testing';
- * import { MemoryStorage, type StorageCapabilities } from '@corvidae/weft';
+ * import { runStorageCapabilityConformance } from '@lostgradient/weft/storage/testing';
+ * import { MemoryStorage, type StorageCapabilities } from '@lostgradient/weft';
  *
  * const expected = {
  *   persistence: 'ephemeral',
@@ -269,8 +269,8 @@ export function runStorageCapabilityConformance(
  *
  * @example
  * ```ts
- * import { runConcurrentConditionalBatchConformance } from '@corvidae/weft/storage/testing';
- * import { BunSQLiteStorage } from '@corvidae/weft';
+ * import { runConcurrentConditionalBatchConformance } from '@lostgradient/weft/storage/testing';
+ * import { BunSQLiteStorage } from '@lostgradient/weft';
  *
  * runConcurrentConditionalBatchConformance('BunSQLiteStorage', {
  *   create: () => new BunSQLiteStorage(':memory:'),
@@ -312,8 +312,8 @@ export function runConcurrentConditionalBatchConformance(
  *
  * @example
  * ```ts
- * import { runBasicStorageContract } from '@corvidae/weft/storage/testing';
- * import { MemoryStorage } from '@corvidae/weft';
+ * import { runBasicStorageContract } from '@lostgradient/weft/storage/testing';
+ * import { MemoryStorage } from '@lostgradient/weft';
  *
  * runBasicStorageContract('MemoryStorage', {
  *   create: () => new MemoryStorage(),

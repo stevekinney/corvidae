@@ -23,9 +23,9 @@ Edge-anchored overlay panel for supplementary content without leaving the curren
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { Checkbox } from '@corvidae/cinder';
-  import { Drawer } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { Checkbox } from '@lostgradient/cinder';
+  import { Drawer } from '@lostgradient/cinder';
 
   let open = $state(false);
   let triggerRef: HTMLElement | null = $state(null);

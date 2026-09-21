@@ -6,7 +6,7 @@ Segmented one-time-code input with auto-advance, paste distribution, and optiona
 
 ```svelte
 <script lang="ts">
-  import { PinInput } from '@corvidae/cinder';
+  import { PinInput } from '@lostgradient/cinder';
   let code = $state('');
 </script>
 

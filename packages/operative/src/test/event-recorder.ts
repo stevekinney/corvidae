@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 
 import type { RunEvent } from '../agent-run';
 import type { CombinedOperativeEventType } from '../events';

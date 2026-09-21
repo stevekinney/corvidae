@@ -1,7 +1,7 @@
 import type {
   ToolError as SharedToolError,
   ToolErrorCategory as SharedToolErrorCategory,
-} from '@corvidae/tool-protocol';
+} from '@lostgradient/tool-protocol';
 
 export type ToolErrorCategory = SharedToolErrorCategory;
 export type ToolError = SharedToolError;

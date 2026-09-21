@@ -71,7 +71,7 @@ y=19  rgb(141,144,148)   the border.control border, 48% ink
 
 A stacked pair would have produced a single row at their combined weight. The edge is 2px of two different weights, which is what it was before the tiers were composed — both layers simply track the surface now.
 
-Fourteen sites are a real area rather than a hairline. All fourteen now carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. Two of the fourteen are outside `@corvidae/cinder` (Chat's busy dot, the playground's stage dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet.
+Fourteen sites are a real area rather than a hairline. All fourteen now carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. Two of the fourteen are outside `@lostgradient/cinder` (Chat's busy dot, the playground's stage dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet.
 
 | site | tier | how it is painted |
 | --- | --- | --- |
@@ -238,7 +238,7 @@ The `color` source is `--_cinder-chart-muted` — the same chart-local custom pr
 
 This is a transient trough rather than a resting value: the animation spends most of its cycle nearer `opacity: 1`, where the undiluted StatusDot row in the area table applies. Recorded so that row is not read as covering every state of the component.
 
-**Chat's rollback preview** — the faintest of the compounded states, and an ancestor/child pair in the Chat workspace rather than in `@corvidae/cinder`. When a rollback confirmation marks later messages as discarded, `chat-message.svelte:501-504` puts `opacity: 0.32` (and `saturate(0.35)`) on the wrapper, while the assistant bubble inside it draws `border: 1px solid var(--cinder-border-muted)`. That is 19% × 0.32 ≈ 6% ink — dark `surface-inset` 1.158 → 1.085; the light arm improves slightly, 1.079 → 1.129.
+**Chat's rollback preview** — the faintest of the compounded states, and an ancestor/child pair in the Chat workspace rather than in `@lostgradient/cinder`. When a rollback confirmation marks later messages as discarded, `chat-message.svelte:501-504` puts `opacity: 0.32` (and `saturate(0.35)`) on the wrapper, while the assistant bubble inside it draws `border: 1px solid var(--cinder-border-muted)`. That is 19% × 0.32 ≈ 6% ink — dark `surface-inset` 1.158 → 1.085; the light arm improves slightly, 1.079 → 1.129.
 
 Recorded rather than flagged. This state exists to show content that is about to be thrown away: it is deliberately ghosted, desaturated, and `pointer-events: none`, so it is neither an interactive control nor an indicator carrying information the user must read. Its boundary was already ~1.16:1 at best before composition. Of every state in this section it has the strongest claim to being decorative by intent.
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Marquee } from '@corvidae/cinder';
+  import { Marquee } from '@lostgradient/cinder';
 
   let label = $state('Announcements');
 </script>

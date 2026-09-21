@@ -14,7 +14,7 @@ import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
  * animation durations (JS timers are untouched), which makes the deterministic
  * streaming cadence reliably observable.
  */
-import { loadManifest, runAxe, THEME_STORAGE_KEY } from '@corvidae/testing';
+import { loadManifest, runAxe, THEME_STORAGE_KEY } from '@lostgradient/testing';
 import {
   expect,
   test,
@@ -1344,9 +1344,9 @@ test.describe('chat harness — tool calls', () => {
             {
               outcome: 'success',
               argumentsText:
-                '{"package":"@corvidae/cinder","checks":["exports","types"],"long":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
+                '{"package":"@lostgradient/cinder","checks":["exports","types"],"long":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
               status: 'succeeded',
-              expectedText: '@corvidae/cinder',
+              expectedText: '@lostgradient/cinder',
             },
             {
               outcome: 'error',
@@ -1541,7 +1541,7 @@ test.describe('chat harness — tool calls', () => {
       await page.keyboard.press('Enter');
       const argumentsPanel = activity.getByRole('region', { name: 'Arguments' });
       await expect(argumentsPanel).toBeVisible();
-      await expect(argumentsPanel).toContainText('@corvidae/cinder');
+      await expect(argumentsPanel).toContainText('@lostgradient/cinder');
       await page.keyboard.press('Enter');
       await expect(argumentsPanel).toHaveCount(0);
     } finally {

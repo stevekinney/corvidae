@@ -3,7 +3,7 @@
     appendAssistantMessage,
     createConversation,
     ChatConversationHeader,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
 
   let conversation = createConversation({
     id: 'launch-support',

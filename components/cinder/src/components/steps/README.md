@@ -6,8 +6,8 @@ Horizontal or vertical step indicator for multi-step wizards and onboarding flow
 
 ```svelte
 <script lang="ts">
-  import { Steps } from '@corvidae/cinder';
-  import type { StepItem } from '@corvidae/cinder';
+  import { Steps } from '@lostgradient/cinder';
+  import type { StepItem } from '@lostgradient/cinder';
 
   const steps: StepItem[] = [
     { id: 'account', label: 'Account' },

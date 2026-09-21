@@ -1,4 +1,4 @@
-import { Conversation } from '@corvidae/conversationalist';
+import { Conversation } from 'conversationalist';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { assertDefined } from './assert-defined';
 

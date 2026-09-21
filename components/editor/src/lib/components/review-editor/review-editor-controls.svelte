@@ -74,7 +74,7 @@
     Pencil,
     Popover,
     RotateCcw,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   let {
     id,
@@ -235,7 +235,7 @@
         already carry a roving tabindex (only the active one is tabbable), so
         `<Toolbar>` sees a single focusable item here and defers arrow-key
         handling to the radiogroup's own handler — matching how
-        `@corvidae/cinder`'s own "Toolbar with groups" example
+        `@lostgradient/cinder`'s own "Toolbar with groups" example
         wraps a SegmentedControl.
       -->
       <div class="controls-diff-mode controls-diff-mode-inline">

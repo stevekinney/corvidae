@@ -177,7 +177,7 @@ async function authenticateViaJwt(
  *
  * @example
  * ```ts
- * import { validateAuthConfig } from '@corvidae/weft';
+ * import { validateAuthConfig } from '@lostgradient/weft';
  *
  * // Throws if config is invalid (e.g. missing secret for HS256)
  * validateAuthConfig({
@@ -203,7 +203,7 @@ export function validateAuthConfig(config: AuthConfig): void {
  *
  * @example
  * ```ts
- * import { createAuthenticator } from '@corvidae/weft';
+ * import { createAuthenticator } from '@lostgradient/weft';
  *
  * const authenticate = await createAuthenticator({
  *   apiKeys: ['my-secret-key'],

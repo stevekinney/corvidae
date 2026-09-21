@@ -63,9 +63,9 @@ This conditional requirement is expressed in the generated JSON Schema below via
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { Input } from '@corvidae/cinder';
-  import { Modal } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { Input } from '@lostgradient/cinder';
+  import { Modal } from '@lostgradient/cinder';
   let open = $state(false);
   let name = $state('');
   let triggerRef: HTMLElement | null = $state(null);

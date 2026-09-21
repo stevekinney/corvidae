@@ -19,7 +19,7 @@
  * @module
  */
 
-import type { ApprovalResolution } from '@corvidae/cinder';
+import type { ApprovalResolution } from '@lostgradient/cinder';
 import type { TypingParticipant } from '../chat.types.ts';
 import type {
   JSONValue,

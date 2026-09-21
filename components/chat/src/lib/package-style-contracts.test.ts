@@ -19,7 +19,7 @@ describe('Chat package style contracts', () => {
       ).text();
       expect(source).toMatch(
         new RegExp(
-          `import\\s*\\{[^}]*\\b${dependency}\\b[^}]*\\}\\s*from\\s*['"]@corvidae/cinder['"]`,
+          `import\\s*\\{[^}]*\\b${dependency}\\b[^}]*\\}\\s*from\\s*['"]@lostgradient/cinder['"]`,
         ),
       );
       const dependencyEntry = await Bun.file(

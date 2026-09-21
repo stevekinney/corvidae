@@ -55,8 +55,8 @@ import { resolveWorkflowSource, type ResolveWorkflowSourceOptions } from './sour
  *
  * @example
  * ```ts
- * import { Engine } from '@corvidae/weft';
- * import type { ActivateWorkflowRevisionOptions } from '@corvidae/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import type { ActivateWorkflowRevisionOptions } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * const active = await engine.workflows.getActive('checkout');
@@ -90,9 +90,9 @@ export type ActivateWorkflowRevisionOptions = {
  *
  * @example
  * ```ts
- * import { Engine, buildWorkflowContract, buildWorkflowRevisionManifest } from '@corvidae/weft';
- * import { workflow, type WorkflowContext } from '@corvidae/weft';
- * import type { EngineWorkflowsNamespace } from '@corvidae/weft';
+ * import { Engine, buildWorkflowContract, buildWorkflowRevisionManifest } from '@lostgradient/weft';
+ * import { workflow, type WorkflowContext } from '@lostgradient/weft';
+ * import type { EngineWorkflowsNamespace } from '@lostgradient/weft';
  *
  * const checkout = workflow({ name: 'checkout', version: '1.0.0' }).execute(
  *   async function* (_ctx: WorkflowContext, input: string) {

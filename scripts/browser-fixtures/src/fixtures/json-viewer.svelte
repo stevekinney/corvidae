@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { JsonViewer } from '@corvidae/cinder';
+  import { JsonViewer } from '@lostgradient/cinder';
 
   const payload = {
     id: 'wf_3c4fce',

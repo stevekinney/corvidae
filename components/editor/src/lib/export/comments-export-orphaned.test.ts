@@ -1,4 +1,4 @@
-import { requiredValue } from '@corvidae/testing';
+import { requiredValue } from '@lostgradient/testing';
 /**
  * Tests for LLM-optimized comments export functionality.
  */

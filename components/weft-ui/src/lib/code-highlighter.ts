@@ -1,4 +1,4 @@
-import { shikiHighlighter } from '@corvidae/cinder';
+import { shikiHighlighter } from '@lostgradient/cinder';
 
 /** Shared curated highlighter for the console's syntax-highlighted CodeBlocks. */
 export const codeHighlighter = shikiHighlighter({

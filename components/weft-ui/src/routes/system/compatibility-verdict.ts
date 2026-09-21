@@ -11,7 +11,7 @@
  * `activationRefusalToFault`) carries the full bounded reason list or the
  * stale-generation signal. This module never calls
  * `checkWorkflowCompatibility` itself — see that function's own module doc
- * (`@corvidae/weft`'s `core/contract/compatibility.ts`) for the five
+ * (`@lostgradient/weft`'s `core/contract/compatibility.ts`) for the five
  * reasons it can report; `KNOWN_COMPATIBILITY_REASONS` below is a hand-
  * declared mirror of that closed union (a VALUE import from the package
  * root would pull server-only code into the browser bundle — see
@@ -19,16 +19,16 @@
  *
  * `client.operations[...]` for the workflow-catalog operation family
  * dispatches over JSON-RPC only (verified against
- * `@corvidae/weft`'s `CLIENT_REST_OPERATION_BINDINGS`, which lists a
+ * `@lostgradient/weft`'s `CLIENT_REST_OPERATION_BINDINGS`, which lists a
  * single unrelated operation) — `HttpClientError.data` is therefore the
  * JSON-RPC envelope's `error.data` verbatim
  * (`httpClientCatalogTransport`), carrying `compatibilityReasons` and/or
  * `currentGeneration` whenever the refusal reason produced them
  * (`fault-to-json-rpc.ts`'s `dataForConflict`).
  */
-import { HttpClientError } from '@corvidae/weft';
+import { HttpClientError } from '@lostgradient/weft';
 
-/** Mirrors `WorkflowCompatibilityReason` (`@corvidae/weft`) — the five closed-union literals, in the same fixed evaluation order. */
+/** Mirrors `WorkflowCompatibilityReason` (`@lostgradient/weft`) — the five closed-union literals, in the same fixed evaluation order. */
 export const KNOWN_COMPATIBILITY_REASONS = [
   'name-mismatch',
   'manifest-version-unsupported',
@@ -103,7 +103,7 @@ export function readActivationConflictData(error: unknown): ActivationConflictDa
     : result;
 }
 
-/** The `{ revision, generation, activatedAt }` pointer an applied activation returns — mirrors `WorkflowCatalogActivePointer` (`@corvidae/weft`) structurally. */
+/** The `{ revision, generation, activatedAt }` pointer an applied activation returns — mirrors `WorkflowCatalogActivePointer` (`@lostgradient/weft`) structurally. */
 export interface AppliedActivationPointer {
   readonly revision: string;
   readonly generation: number;

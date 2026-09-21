@@ -8,8 +8,8 @@ See the [tabular family boundaries](https://github.com/stevekinney/cinder/blob/m
 
 ```svelte
 <script lang="ts">
-  import { DataGrid } from '@corvidae/cinder';
-  import type { DataGridColumnDef } from '@corvidae/cinder';
+  import { DataGrid } from '@lostgradient/cinder';
+  import type { DataGridColumnDef } from '@lostgradient/cinder';
 
   type Order = { id: string; customer: string; status: string };
 

@@ -1,13 +1,13 @@
 /// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { render } = await import('@testing-library/svelte');
 const { default: Steps } = await import('./steps.svelte');
-const { Steps: ExportedSteps } = await import('@corvidae/cinder');
+const { Steps: ExportedSteps } = await import('@lostgradient/cinder');
 
 // Read once at module load — `describe` callbacks are synchronous, so the
 // CSS-contract tests below reference this constant instead of awaiting inside them.

@@ -36,7 +36,7 @@ export const MAILBOX_RECORD_VERSION = 1;
  *
  * @example
  * ```ts
- * import type { ApplicationCommandInlinePayload } from '@corvidae/weft';
+ * import type { ApplicationCommandInlinePayload } from '@lostgradient/weft';
  *
  * const payload: ApplicationCommandInlinePayload = {
  *   form: 'inline',
@@ -61,7 +61,7 @@ export type ApplicationCommandInlinePayload = Readonly<{
  *
  * @example
  * ```ts
- * import type { ApplicationCommandReferencePayload } from '@corvidae/weft';
+ * import type { ApplicationCommandReferencePayload } from '@lostgradient/weft';
  *
  * const payload: ApplicationCommandReferencePayload = {
  *   form: 'reference',
@@ -83,7 +83,7 @@ export type ApplicationCommandReferencePayload = Readonly<{
  *
  * @example
  * ```ts
- * import type { ApplicationCommandPayload } from '@corvidae/weft';
+ * import type { ApplicationCommandPayload } from '@lostgradient/weft';
  *
  * const payload: ApplicationCommandPayload = { form: 'inline', value: { ok: true } };
  * console.log(payload.form === 'inline'); // true
@@ -97,7 +97,7 @@ export type ApplicationCommandPayload =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandCausation } from '@corvidae/weft';
+ * import type { ApplicationCommandCausation } from '@lostgradient/weft';
  *
  * const causation: ApplicationCommandCausation = { correlationId: 'conv-7' };
  * console.log(causation.correlationId); // 'conv-7'
@@ -122,7 +122,7 @@ export type ApplicationCommandCausation = Readonly<{
  *
  * @example
  * ```ts
- * import type { ApplicationCommandState } from '@corvidae/weft';
+ * import type { ApplicationCommandState } from '@lostgradient/weft';
  *
  * const state: ApplicationCommandState = 'available';
  * console.log(state); // 'available'
@@ -151,7 +151,7 @@ export const APPLICATION_COMMAND_TERMINAL_STATES = [
  *
  * @example
  * ```ts
- * import type { ApplicationCommandTerminalState } from '@corvidae/weft';
+ * import type { ApplicationCommandTerminalState } from '@lostgradient/weft';
  *
  * const state: ApplicationCommandTerminalState = 'applied';
  * console.log(state); // 'applied'
@@ -165,7 +165,7 @@ export type ApplicationCommandTerminalState = (typeof APPLICATION_COMMAND_TERMIN
  *
  * @example
  * ```ts
- * import type { ApplicationCommandFailureReason } from '@corvidae/weft';
+ * import type { ApplicationCommandFailureReason } from '@lostgradient/weft';
  *
  * const reason: ApplicationCommandFailureReason = 'deadline-exceeded';
  * console.log(reason); // 'deadline-exceeded'
@@ -180,7 +180,7 @@ export type ApplicationCommandFailureReason =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandFailure } from '@corvidae/weft';
+ * import type { ApplicationCommandFailure } from '@lostgradient/weft';
  *
  * const failure: ApplicationCommandFailure = { reason: 'application', message: 'unsupported kind' };
  * console.log(failure.reason); // 'application'
@@ -244,7 +244,7 @@ export type ApplicationCommandAttemptFields = Readonly<{
  *
  * @example
  * ```ts
- * import type { ApplicationCommandAccepted } from '@corvidae/weft';
+ * import type { ApplicationCommandAccepted } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandAccepted;
  * console.log(record.state, record.availableAt); // 'accepted', when it is released
@@ -261,7 +261,7 @@ export type ApplicationCommandAccepted = ApplicationCommandBase &
  *
  * @example
  * ```ts
- * import type { ApplicationCommandAvailable } from '@corvidae/weft';
+ * import type { ApplicationCommandAvailable } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandAvailable;
  * console.log(record.state); // 'available'
@@ -291,7 +291,7 @@ export type ApplicationCommandLeaseFields = Readonly<{
  *
  * @example
  * ```ts
- * import type { ApplicationCommandClaimed } from '@corvidae/weft';
+ * import type { ApplicationCommandClaimed } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandClaimed;
  * console.log(record.attemptToken, record.visibilityExpiresAt);
@@ -312,7 +312,7 @@ export type ApplicationCommandClaimed = ApplicationCommandBase &
  *
  * @example
  * ```ts
- * import type { ApplicationCommandCancelling } from '@corvidae/weft';
+ * import type { ApplicationCommandCancelling } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandCancelling;
  * console.log(record.cancellationRequestedAt);
@@ -341,7 +341,7 @@ export type ApplicationCommandCancelling = ApplicationCommandBase &
  *
  * @example
  * ```ts
- * import type { ApplicationCommandTerminalRecord } from '@corvidae/weft';
+ * import type { ApplicationCommandTerminalRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandTerminalRecord;
  * console.log(record.state, record.terminalAt);
@@ -368,7 +368,7 @@ export type ApplicationCommandTerminalRecord = ApplicationCommandBase &
  *
  * @example
  * ```ts
- * import type { ApplicationCommandRecord } from '@corvidae/weft';
+ * import type { ApplicationCommandRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandRecord;
  * console.log(record.commandId, record.state);
@@ -385,7 +385,7 @@ export type ApplicationCommandRecord =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandLeasedRecord } from '@corvidae/weft';
+ * import type { ApplicationCommandLeasedRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandLeasedRecord;
  * console.log(record.attemptToken);
@@ -398,7 +398,7 @@ export type ApplicationCommandLeasedRecord =
  *
  * @example
  * ```ts
- * import type { ApplicationCommandWaitingRecord } from '@corvidae/weft';
+ * import type { ApplicationCommandWaitingRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandWaitingRecord;
  * console.log(record.availableAt);
@@ -413,7 +413,7 @@ export type ApplicationCommandWaitingRecord =
  *
  * @example
  * ```ts
- * import type { MailboxRecord } from '@corvidae/weft';
+ * import type { MailboxRecord } from '@lostgradient/weft';
  *
  * declare const header: MailboxRecord;
  * console.log(header.nextSequence, header.openCount);
@@ -450,7 +450,7 @@ const TERMINAL_STATE_SET: ReadonlySet<string> = new Set(APPLICATION_COMMAND_TERM
  *
  * @example
  * ```ts
- * import { isApplicationCommandTerminalState } from '@corvidae/weft';
+ * import { isApplicationCommandTerminalState } from '@lostgradient/weft';
  *
  * console.log(isApplicationCommandTerminalState('applied')); // true
  * console.log(isApplicationCommandTerminalState('claimed')); // false
@@ -467,7 +467,7 @@ export function isApplicationCommandTerminalState(
  *
  * @example
  * ```ts
- * import { isApplicationCommandLeased, type ApplicationCommandRecord } from '@corvidae/weft';
+ * import { isApplicationCommandLeased, type ApplicationCommandRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandRecord;
  * if (isApplicationCommandLeased(record)) console.log(record.attemptToken);
@@ -484,7 +484,7 @@ export function isApplicationCommandLeased(
  *
  * @example
  * ```ts
- * import { isApplicationCommandWaiting, type ApplicationCommandRecord } from '@corvidae/weft';
+ * import { isApplicationCommandWaiting, type ApplicationCommandRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationCommandRecord;
  * if (isApplicationCommandWaiting(record)) console.log(record.availableAt);

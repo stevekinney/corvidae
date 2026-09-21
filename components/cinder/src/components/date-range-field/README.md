@@ -12,8 +12,8 @@ Values are ISO-8601 local strings. `granularity="day"` emits `YYYY-MM-DD`; time 
 
 ```svelte
 <script lang="ts">
-  import { DateRangeField } from '@corvidae/cinder';
-  import type { DateRangeValue } from '@corvidae/cinder';
+  import { DateRangeField } from '@lostgradient/cinder';
+  import type { DateRangeValue } from '@lostgradient/cinder';
 
   let range: DateRangeValue = $state({ start: undefined, end: undefined });
 </script>
@@ -32,8 +32,8 @@ Values are ISO-8601 local strings. `granularity="day"` emits `YYYY-MM-DD`; time 
 
 ```svelte
 <script lang="ts">
-  import { DateRangeField } from '@corvidae/cinder';
-  import type { DateRangeDatePreset, DateRangeValue } from '@corvidae/cinder';
+  import { DateRangeField } from '@lostgradient/cinder';
+  import type { DateRangeDatePreset, DateRangeValue } from '@lostgradient/cinder';
 
   let range: DateRangeValue = $state({ start: undefined, end: undefined });
 
@@ -73,8 +73,8 @@ Values are ISO-8601 local strings. `granularity="day"` emits `YYYY-MM-DD`; time 
 
 ```svelte
 <script lang="ts">
-  import { DateRangeField } from '@corvidae/cinder';
-  import type { DateRangeValue } from '@corvidae/cinder';
+  import { DateRangeField } from '@lostgradient/cinder';
+  import type { DateRangeValue } from '@lostgradient/cinder';
 
   let range: DateRangeValue = $state({ start: undefined, end: undefined });
 

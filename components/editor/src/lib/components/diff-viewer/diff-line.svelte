@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { LineDiff } from '@corvidae/markdown';
+  import type { LineDiff } from '@lostgradient/markdown';
 
   import type { DiffViewerMode } from './diff-viewer.types.ts';
 

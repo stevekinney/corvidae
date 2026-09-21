@@ -137,16 +137,16 @@ export * from './generation-profile';
 export * from './runnable-agent';
 export * from './selection-gate';
 // RuntimeServices is part of this package's public execution contract.
-// Its implementation and types have one source owner: @corvidae/lifecycle.
+// Its implementation and types have one source owner: @lostgradient/lifecycle.
 // Deterministic callers can use createManualRuntimeServices from that workspace.
-export { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+export { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 // COR-1268 — `HookRegistry` is the ONLY way to configure hooks on a run, so
 // it has to be reachable from this package. Before the legacy `RunOptions`
 // hook arrays were removed a consumer could configure hooks without ever
 // naming the registry; now it cannot, and re-exporting here spares every
-// caller a direct dependency on @corvidae/lifecycle for the one type the
+// caller a direct dependency on @lostgradient/lifecycle for the one type the
 // operative run contract requires. Source owner is still lifecycle.
-export { HookRegistry, mergeHookRegistries } from '@corvidae/lifecycle';
+export { HookRegistry, mergeHookRegistries } from '@lostgradient/lifecycle';
 export type {
   DeferredDrainReport,
   HookErrorHandler,
@@ -165,7 +165,7 @@ export type {
   RuntimeServices,
   RuntimeTimeoutHandle,
   RuntimeTimers,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 // C3 — curated tool.* bubble events
 export {
   ToolErrorBubbleEvent,

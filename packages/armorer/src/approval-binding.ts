@@ -1,5 +1,5 @@
-import { hmacSha256HexSync, timingSafeEqualHex } from '@corvidae/cryptography';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import { hmacSha256HexSync, timingSafeEqualHex } from '@lostgradient/cryptography';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { JsonValue } from './core/serialization/json';
 import { stableStringifyJson } from './core/serialization/json';

@@ -19,9 +19,9 @@
  * lease/health), and worker fleet counts are the Workers card-slot's own
  * data to surface.
  */
-import type { PendingReviewEntry } from '@corvidae/weft';
+import type { PendingReviewEntry } from '@lostgradient/weft';
 
-/** Mirrors `TaskDiagnosticsSummary` (`weft/src/server/operations/get-task-diagnostics.ts`) — named locally since it isn't a public `@corvidae/weft` export. */
+/** Mirrors `TaskDiagnosticsSummary` (`weft/src/server/operations/get-task-diagnostics.ts`) — named locally since it isn't a public `@lostgradient/weft` export. */
 export interface TaskDiagnosticsSummary {
   readonly stuckQueued: number;
   readonly staleInflight: number;

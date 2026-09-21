@@ -2,7 +2,7 @@
  * GENERATED FILE. Do not edit by hand.
  *
  * Source: the DTCG token corpus under components/cinder/src/tokens/.
- * Regenerate: bun run --filter=@corvidae/cinder tokens:generate
+ * Regenerate: bun run --filter=@lostgradient/cinder tokens:generate
  */
 
 import registry from './registry.generated.json' with { type: 'json' };

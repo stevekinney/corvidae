@@ -3,7 +3,7 @@
    * Fleet overview (plan §9.4 T5.1): stat cards + deployment groups, each
    * with drain/resume (plan §9.4 T5.2: "per worker and per deployment").
    */
-  import { Badge, Button, EmptyState, StatusDot, Tooltip } from '@corvidae/cinder';
+  import { Badge, Button, EmptyState, StatusDot, Tooltip } from '@lostgradient/cinder';
 
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import type { WorkerDeploymentSummary, WorkerSummary } from './worker-catalog-types.ts';

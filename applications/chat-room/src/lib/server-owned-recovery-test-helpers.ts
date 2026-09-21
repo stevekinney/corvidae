@@ -1,5 +1,5 @@
-import type { AgentRun } from '@corvidae/operative';
-import { createAgent, SessionRecoverEvent } from '@corvidae/operative';
+import type { AgentRun } from '@lostgradient/operative';
+import { createAgent, SessionRecoverEvent } from '@lostgradient/operative';
 import { expect, spyOn } from 'bun:test';
 import {
   classifyRecovery,

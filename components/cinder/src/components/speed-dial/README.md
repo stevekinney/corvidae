@@ -6,7 +6,7 @@ SpeedDial composes a `FloatingAction` trigger with a directional cluster of quic
 
 ```svelte
 <script lang="ts">
-  import { SpeedDial } from '@corvidae/cinder';
+  import { SpeedDial } from '@lostgradient/cinder';
 </script>
 
 <SpeedDial aria-label="Quick actions">

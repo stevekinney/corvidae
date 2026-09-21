@@ -6,8 +6,8 @@ Top-level navigation bar for primary site or app destinations. Use `placement="t
 
 ```svelte
 <script lang="ts">
-  import { NavigationBar } from '@corvidae/cinder';
-  import { NavigationItem } from '@corvidae/cinder';
+  import { NavigationBar } from '@lostgradient/cinder';
+  import { NavigationItem } from '@lostgradient/cinder';
 </script>
 
 <NavigationBar>

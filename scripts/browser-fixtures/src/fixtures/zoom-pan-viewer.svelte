@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ZoomPanViewer } from '@corvidae/cinder';
+  import { ZoomPanViewer } from '@lostgradient/cinder';
 </script>
 
 <ZoomPanViewer ariaLabel="Architecture diagram">

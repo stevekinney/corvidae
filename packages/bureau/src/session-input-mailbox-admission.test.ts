@@ -1,6 +1,6 @@
-import { createToolbox, type Toolbox } from '@corvidae/armorer';
-import type { GenerateFunction, SessionInputAdmissionOutcome } from '@corvidae/operative';
-import { yieldToPortableEventLoop } from '@corvidae/weft';
+import { createToolbox, type Toolbox } from 'armorer';
+import type { GenerateFunction, SessionInputAdmissionOutcome } from '@lostgradient/operative';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

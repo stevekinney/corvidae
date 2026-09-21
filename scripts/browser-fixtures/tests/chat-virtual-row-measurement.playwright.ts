@@ -28,7 +28,7 @@
  * intentionally left untouched here, and is being edited concurrently in
  * another session.
  */
-import { THEME_STORAGE_KEY } from '@corvidae/testing';
+import { THEME_STORAGE_KEY } from '@lostgradient/testing';
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import { fixtureRoute } from './overlay-fixture.ts';
 

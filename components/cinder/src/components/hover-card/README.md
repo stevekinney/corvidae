@@ -6,8 +6,8 @@ Hover-and-focus triggered rich preview card for non-interactive contextual conte
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { HoverCard } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { HoverCard } from '@lostgradient/cinder';
 </script>
 
 <HoverCard>

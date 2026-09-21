@@ -1,7 +1,7 @@
-import { sha256HexSync } from '@corvidae/cryptography';
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
-import type { TextValueStore } from '@corvidae/weft';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import type { TextValueStore } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { parseSkillMarkdown } from '../parse-skill-markdown';

@@ -56,7 +56,7 @@
  * offers selectable source rows, while exact diagnostics/preload calls still
  * answer for one `(name, revision)` key at a time.
  */
-import { workflowSource, type WorkflowSourceHandle } from '@corvidae/weft';
+import { workflowSource, type WorkflowSourceHandle } from '@lostgradient/weft';
 
 /** The one dynamic workflow name in the dev harness — never eagerly registered. */
 export const DYNAMIC_SOURCE_WORKFLOW_NAME = 'invoice-reconciliation';

@@ -43,8 +43,8 @@ export type {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@corvidae/weft';
- * import { createFleetEventFeed, type FleetEventFeed } from '@corvidae/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { createFleetEventFeed, type FleetEventFeed } from '@lostgradient/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const fleetEventFeed: FleetEventFeed = createFleetEventFeed(engine.storage);
@@ -84,8 +84,8 @@ const REPLAY_PAGE_SIZE = 128;
  * `engine.storage` and share it across every fleet transport.
  * @example
  * ```ts
- * import { MemoryStorage } from '@corvidae/weft';
- * import { createFleetEventFeed } from '@corvidae/weft';
+ * import { MemoryStorage } from '@lostgradient/weft';
+ * import { createFleetEventFeed } from '@lostgradient/weft';
  * const feed = createFleetEventFeed(new MemoryStorage());
  * ```
  */

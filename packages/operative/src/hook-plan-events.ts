@@ -1,4 +1,4 @@
-import type { HookObservationContext, HookRegistry } from '@corvidae/lifecycle';
+import type { HookObservationContext, HookRegistry } from '@lostgradient/lifecycle';
 
 import {
   HookPlanFailedEvent,

@@ -13,10 +13,10 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 
 ## Workspace and dependencies
 
-- `applications/*` contains deployable applications; `components/*` contains browser component libraries; `packages/*` contains other shared libraries; `internal/*` contains repository configuration. Every workspace is named `@corvidae/*`.
+- `applications/*` contains deployable applications; `components/*` contains browser component libraries; `packages/*` contains other shared libraries; `internal/*` contains repository configuration. Every workspace is named `@lostgradient/*`, except `armorer` and `conversationalist`, which carry their unscoped npm names.
 - Internal dependencies always use `workspace:*`. Shared external tool versions belong in the root Bun `catalog`; add runtime dependencies to the workspace that imports them.
 - Component source uses the shared browser TypeScript configuration and root browser lint policy. Keep Bun and Node APIs in tests or scripts. Run both the browser source check and the inclusive tooling/test check.
-- The `@corvidae/typescript` configuration package under `internal/typescript` exports only `library.json` and `browser.json`; `base.json` is private composition.
+- The `@lostgradient/typescript` configuration package under `internal/typescript` exports only `library.json` and `browser.json`; `base.json` is private composition.
 - Shared source libraries export TypeScript source directly. Consumers compile it, so do not add a build step to a just-in-time package without a packaging need.
 - Use Bun commands only. `bun.lock` is authoritative, and dependency changes must update it with `bun install`.
 - Keep `typescript` explicit at the root. Do not rely on a transitive or peer dependency to supply `tsc`.
@@ -25,7 +25,7 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 
 - Only applications have `build` tasks. Cache their declared application outputs. Lint, type-check, test, and development tasks consume library source directly and must not depend on upstream library builds.
 - Declare an environment variable in `turbo.json` only when it changes that task's result. Add task outputs whenever a task writes reusable artifacts; keep watchers and mutation tasks uncached.
-- Use `--filter` for focused work, for example `bunx turbo run test --filter=@corvidae/operative`. Run `bun run validate` for the complete graph.
+- Use `--filter` for focused work, for example `bunx turbo run test --filter=@lostgradient/operative`. Run `bun run validate` for the complete graph.
 - Every turbo task runs the uncached root `//#preflight` task (`bun install --frozen-lockfile`) first, by way of `transit`, so a `package.json` edit without a matching `bun install` fails every turbo command rather than running against a stale tree. Turbo hashes `bun.lock` but never `node_modules`, so a drifted install would otherwise cache a result under a key describing a toolchain it was not built with. A package-specific `<package>#<task>` entry replaces the generic task definition instead of merging with it, so any new override must restate `"dependsOn": ["transit"]`; `scripts/task-cache.test.ts` enforces that every cacheable task still reaches the preflight.
 
 ## Worktrees and agents
@@ -48,9 +48,9 @@ bun run format:check
 bun run test:self
 bun run validate
 bun audit --audit-level=high
-bun run --filter=@corvidae/weft test:benchmarks
+bun run --filter=@lostgradient/weft test:benchmarks
 ```
 
 Run local quality commands explicitly. This repository has no Git hooks or automated release pipeline.
 
-Weft's throughput, latency, and memory benchmarks are the one workspace-scoped entry in that list, because they belong to `@corvidae/weft` alone and `bun run --filter` is how the root invokes a single workspace's script. `bun run test` excludes them: their measurements swing far enough between runs on the same machine that they cannot assert a target, so they record numbers on demand instead of gating validation. Their targets are unchanged, and the benchmark directory's unit tests still run in the default suite.
+Weft's throughput, latency, and memory benchmarks are the one workspace-scoped entry in that list, because they belong to `@lostgradient/weft` alone and `bun run --filter` is how the root invokes a single workspace's script. `bun run test` excludes them: their measurements swing far enough between runs on the same machine that they cannot assert a target, so they record numbers on demand instead of gating validation. Their targets are unchanged, and the benchmark directory's unit tests still run in the default suite.

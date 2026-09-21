@@ -13,7 +13,7 @@
    * local component state — never `localStorage`, never a cookie — and hands
    * it to the caller on submit.
    */
-  import { Button, Card, Input } from '@corvidae/cinder';
+  import { Button, Card, Input } from '@lostgradient/cinder';
 
   interface ApiKeyEntryProps {
     /**

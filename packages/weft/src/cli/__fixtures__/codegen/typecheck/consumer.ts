@@ -1,4 +1,4 @@
-// This fixture verifies generated declarations augment the actual @corvidae/weft source entry point.
+// This fixture verifies generated declarations augment the actual @lostgradient/weft source entry point.
 //
 // `Engine` is imported as a TYPE (`import type` + `declare const`) rather than
 // constructed (`new Engine()`). This test verifies *types* — that the augmented
@@ -16,7 +16,7 @@
 // the alias syntax actually type-checks and narrows both call sites, not
 // just that its string content looks right.
 
-import type { Engine, WeftClient, WorkflowRegistry } from '@corvidae/weft';
+import type { Engine, WeftClient, WorkflowRegistry } from '@lostgradient/weft';
 
 declare const engine: Engine;
 

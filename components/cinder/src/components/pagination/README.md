@@ -6,7 +6,7 @@ Page-navigation control for stepping through multi-page result sets.
 
 ```svelte
 <script lang="ts">
-  import { Pagination } from '@corvidae/cinder';
+  import { Pagination } from '@lostgradient/cinder';
 
   let currentPage = $state(1);
 </script>
@@ -18,7 +18,7 @@ When the total page count is unknown, omit `totalPages` and pass the direction a
 
 ```svelte
 <script lang="ts">
-  import { Pagination } from '@corvidae/cinder';
+  import { Pagination } from '@lostgradient/cinder';
 
   let currentPage = $state(1);
   let hasNextPage = $state(false);
@@ -33,7 +33,7 @@ This renders the current page and previous/next controls without implying a fake
 
 ```svelte
 <script lang="ts">
-  import { Pagination } from '@corvidae/cinder';
+  import { Pagination } from '@lostgradient/cinder';
 
   let currentPage = $state(1);
   let links = $state<{ prev?: string; next?: string }>({});
@@ -50,7 +50,7 @@ This renders the current page and previous/next controls without implying a fake
 
 ```svelte
 <script lang="ts">
-  import { Pagination } from '@corvidae/cinder';
+  import { Pagination } from '@lostgradient/cinder';
 
   let currentPage = $state(1);
   let cursors = $state<{ previous?: string; next?: string }>({});

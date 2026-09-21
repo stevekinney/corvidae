@@ -2,7 +2,7 @@
 import * as matchers from '@testing-library/jest-dom/matchers';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 expect.extend(matchers as Parameters<typeof expect.extend>[0]);
 setupHappyDom();
@@ -68,7 +68,7 @@ describe('MultiSelect', () => {
   test('owns checkbox box styles so a standalone import stays visible', async () => {
     const css = await Bun.file(new URL('./multi-select.css', import.meta.url)).text();
 
-    // A consumer importing only `@corvidae/cinder` never loads
+    // A consumer importing only `@lostgradient/cinder` never loads
     // checkbox.css, so the box shape and checked/disabled backgrounds must live
     // on MultiSelect's own `__checkbox-box` class here too -- not just the
     // floating checkmark indicator, and not by redefining Checkbox's own

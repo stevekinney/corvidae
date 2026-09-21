@@ -6,8 +6,8 @@ SettingRow arranges settings-page guidance and a control while publishing FormFi
 
 ```svelte
 <script lang="ts">
-  import { Input } from '@corvidae/cinder';
-  import { SettingRow } from '@corvidae/cinder';
+  import { Input } from '@lostgradient/cinder';
+  import { SettingRow } from '@lostgradient/cinder';
 </script>
 
 <SettingRow id="display-name" label="Display name" description="Shown to collaborators.">

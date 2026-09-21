@@ -50,7 +50,7 @@ import { alignNormalizedToSourceByAst } from './source-line-map-alignment.js';
  * than the LCS table the old approach also paid for, and {@link
  * buildSourceLineMapCached} (used by both `unified-diff.ts` and
  * `markdown-summary.ts`) memoizes per distinct `(source, normalized)` pair
- * the same way `@corvidae/markdown`'s own `normalizeWithCache` does, so
+ * the same way `@lostgradient/markdown`'s own `normalizeWithCache` does, so
  * repeated calls against an unchanged `original` -- the common case, since
  * only `current` changes per keystroke -- are free after the first.
  *
@@ -116,7 +116,7 @@ export function buildSourceLineMap(source: string, normalized: string): SourceLi
 
 /**
  * Small LRU cache in front of {@link buildSourceLineMap}, mirroring
- * `@corvidae/markdown`'s own `normalizeWithCache` (same size, same
+ * `@lostgradient/markdown`'s own `normalizeWithCache` (same size, same
  * "first key evicted" policy). `unified-diff.ts` and `markdown-summary.ts`
  * both call this instead of the raw builder: `ReviewEditor`'s hidden
  * `formDiff`/`formSummary` inputs are `$derived`, so both exports re-run on

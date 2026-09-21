@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { ChartTarget } from '../../_internal/chart/chart-utilities.ts';
 import type { ChartMarkContext, ChartXValue } from '../chart.types.ts';
 

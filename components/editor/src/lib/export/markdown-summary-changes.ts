@@ -1,4 +1,4 @@
-import { computeLineDiff, type LineDiff } from '@corvidae/markdown';
+import { computeLineDiff, type LineDiff } from '@lostgradient/markdown';
 import { mapNormalizedLineNumber, type SourceLineMap } from './source-line-map.js';
 
 type ChangeRange = { start: number; end: number };

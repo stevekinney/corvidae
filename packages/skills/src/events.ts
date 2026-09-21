@@ -1,4 +1,4 @@
-import type { EventMap } from '@corvidae/lifecycle';
+import type { EventMap } from '@lostgradient/lifecycle';
 
 /**
  * Skill lifecycle events (COR-767). Before these, every skill transition was
@@ -6,7 +6,7 @@ import type { EventMap } from '@corvidae/lifecycle';
  * no `Event` subclass anywhere in the package.
  *
  * All five carry the skill name and the correlation the caller supplies. They
- * are dispatched from the `@corvidae/skills` tool factories, which COR-1226
+ * are dispatched from the `@lostgradient/skills` tool factories, which COR-1226
  * made the single production path — before that, Bureau ran its own inline
  * copy of these tools, so an event emitted here would never have fired.
  *
@@ -103,7 +103,7 @@ export class SkillDeactivatedEvent extends Event {
  * Why an activation attempt was refused before admission.
  *
  * A closed union rather than a free-text reason, following
- * `RecoveryRejectionReason` in `@corvidae/bureau` — and for the same purpose,
+ * `RecoveryRejectionReason` in `@lostgradient/bureau` — and for the same purpose,
  * so a consumer can branch on the cause without parsing prose. The guardrail's
  * own `category`/`detail` stay off this event for the reason
  * `ReviewRejectedEvent` keeps a decision's reason off the public event: the
@@ -385,7 +385,7 @@ export class SkillCancelledEvent extends Event {
 /**
  * Maps each event type string to its class. Deliberately does NOT extend
  * `EventMap` — the same split `FileSynchronizerEventClassMap` uses in
- * `@corvidae/memory`, because a type that extends an index signature has its
+ * `@lostgradient/memory`, because a type that extends an index signature has its
  * `keyof` collapse to `string`, which would let a typo'd literal through.
  */
 export interface SkillEventClassMap {

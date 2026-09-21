@@ -2,7 +2,7 @@ import { requireElement } from '../../../../tests/dom-test-support.ts';
 
 import { describe, expect, mock, test } from 'bun:test';
 
-import type { WorkflowEvent, WorkflowTimelineEntry } from '@corvidae/weft';
+import type { WorkflowEvent, WorkflowTimelineEntry } from '@lostgradient/weft';
 
 import {
   buildEventHistoryExport,

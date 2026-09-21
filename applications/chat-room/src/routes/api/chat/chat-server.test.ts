@@ -1,8 +1,8 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import type { SignedPendingToolApproval, ToolExecutionResult } from '@corvidae/armorer';
-import { createTool, createToolbox } from '@corvidae/armorer';
+import type { SignedPendingToolApproval, ToolExecutionResult } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 import { updatePendingApproval } from '../../../lib/pending-approval.ts';
 import { requestContext, toolbox } from '../../../lib/toolbox.ts';
@@ -182,7 +182,7 @@ describe('chat stream cancellation guard', () => {
 describe('chat approval continuation response', () => {
   test('accepts the unified resolution endpoint contract', () => {
     expect(resumeSource).toContain(
-      "import { toolActionSchema } from '@corvidae/conversationalist';",
+      "import { toolActionSchema } from 'conversationalist';",
     );
     expect(resumeSource).toContain('resolutionSchema');
     expect(resumeSource).toContain(

@@ -32,14 +32,14 @@
     SegmentedControl,
     Segment,
     Skeleton,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type {
     WeftClientActivity,
     HttpClient,
     WorkflowFinalizerStatus,
     WorkflowState,
-  } from '@corvidae/weft';
+  } from '@lostgradient/weft';
   import { Clock, Link, X } from 'lucide-svelte';
   import { untrack } from 'svelte';
 

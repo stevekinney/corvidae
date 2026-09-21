@@ -12,7 +12,7 @@
     TableHeader,
     TableHeaderCell,
     TableRow,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 </script>
 
 <main class="theme-surfaces-fixture">

@@ -100,7 +100,7 @@ const DEFAULT_DISCONNECT_TIMEOUT_MS = 30_000;
  *
  * @example
  * ```ts
- * import { LongPollWorker } from '@corvidae/weft';
+ * import { LongPollWorker } from '@lostgradient/weft';
  *
  * using worker = new LongPollWorker({
  *   serverUrl: 'http://localhost:3000',

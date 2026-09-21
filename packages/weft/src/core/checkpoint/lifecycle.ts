@@ -7,7 +7,7 @@ import { serializeCheckpoint } from './serialization.ts';
  *
  * @example
  * ```ts
- * import { createCheckpoint } from '@corvidae/weft';
+ * import { createCheckpoint } from '@lostgradient/weft';
  *
  * const checkpoint = createCheckpoint('wf-789', '1.0.0');
  * console.log(checkpoint.workflowId); // 'wf-789'
@@ -39,7 +39,7 @@ export function createCheckpoint(
  *
  * @example
  * ```ts
- * import { createCheckpoint, advanceCheckpoint } from '@corvidae/weft';
+ * import { createCheckpoint, advanceCheckpoint } from '@lostgradient/weft';
  *
  * const checkpoint = createCheckpoint('wf-abc', '1.0.0');
  * const next = advanceCheckpoint(checkpoint, { userId: 'u-1', status: 'active' });
@@ -101,7 +101,7 @@ export function advanceCheckpoint(
  *
  * @example
  * ```ts
- * import { createCheckpoint, advanceCheckpoint, checkpointSizeBytes } from '@corvidae/weft';
+ * import { createCheckpoint, advanceCheckpoint, checkpointSizeBytes } from '@lostgradient/weft';
  *
  * const cp = advanceCheckpoint(
  *   createCheckpoint('wf-size', '1.0.0'),

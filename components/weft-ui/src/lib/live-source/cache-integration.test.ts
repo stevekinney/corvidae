@@ -3,7 +3,7 @@ import {
   WorkflowStartedEvent,
   type WorkflowEvent,
   type WorkflowStatus,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 import { describe, expect, test } from 'bun:test';
 

@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/weft-ui",
+  "name": "@lostgradient/weft-ui",
   "private": true,
   "type": "module",
   "exports": {
@@ -18,9 +18,9 @@
     "check:coverage": "bun scripts/check-coverage-cli.ts"
   },
   "dependencies": {
-    "@corvidae/cinder": "workspace:*",
-    "@corvidae/markdown": "workspace:*",
-    "@corvidae/weft": "workspace:*",
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/markdown": "workspace:*",
+    "@lostgradient/weft": "workspace:*",
     "@shikijs/langs": "catalog:",
     "@shikijs/themes": "catalog:",
     "@tanstack/svelte-query": "catalog:",
@@ -29,7 +29,7 @@
     "svelte": "catalog:"
   },
   "devDependencies": {
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "@testing-library/dom": "catalog:",
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/svelte": "catalog:",
@@ -43,7 +43,7 @@
     "prettier-plugin-svelte": "catalog:",
     "svelte-check": "catalog:",
     "typescript": "catalog:",
-    "@corvidae/testing": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
     "@lostgradient/environmentalist": "catalog:",
     "zod": "catalog:"
   }

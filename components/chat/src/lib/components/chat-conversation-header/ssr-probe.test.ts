@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 
-import { prepareSvelteServerSource, renderSvelteOnServer } from '@corvidae/testing';
+import { prepareSvelteServerSource, renderSvelteOnServer } from '@lostgradient/testing';
 import type { ConversationHistory } from '../chat/conversation-model.ts';
 
 const sourcePath = resolve(import.meta.dir, 'chat-conversation-header.svelte');

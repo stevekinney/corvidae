@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Alert, Badge, DescriptionList } from '@corvidae/cinder';
+  import { Alert, Badge, DescriptionList } from '@lostgradient/cinder';
 
   import { formatDuration, formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import type { TaskLedgerDetail } from './worker-catalog-types.ts';

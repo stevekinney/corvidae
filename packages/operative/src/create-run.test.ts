@@ -3,13 +3,13 @@ import {
   createTool,
   ToolboxProgressEvent,
   ToolboxSettledEvent,
-} from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+} from 'armorer';
+import { Conversation } from 'conversationalist';
 import {
   createDefaultRuntimeServices,
   createManualRuntimeServices,
   HookRegistry,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

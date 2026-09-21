@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
 
-import { requiredInstance, requiredValue, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, requiredValue, setupHappyDom } from '@lostgradient/testing';
 import { findById, hasButtonLabelled, type DiffToolbarState } from './diff-viewer-test-helpers.ts';
 
 setupHappyDom();

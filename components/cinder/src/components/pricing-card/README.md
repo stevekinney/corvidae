@@ -6,7 +6,7 @@ Presents a single pricing plan with its name, price, feature list, an optional c
 
 ```svelte
 <script lang="ts">
-  import { PricingCard } from '@corvidae/cinder';
+  import { PricingCard } from '@lostgradient/cinder';
 </script>
 
 <div style="max-inline-size: 22rem;">

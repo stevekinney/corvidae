@@ -132,7 +132,7 @@ export type WorkflowClaimAcquirePreparation = {
  *
  * @example
  * ```ts
- * import type { WorkflowClaimHolderStatus } from '@corvidae/weft';
+ * import type { WorkflowClaimHolderStatus } from '@lostgradient/weft';
  *
  * declare const status: WorkflowClaimHolderStatus;
  *

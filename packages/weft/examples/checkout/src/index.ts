@@ -1,4 +1,4 @@
-import { BunSQLiteStorage, Engine, activity, workflow } from '@corvidae/weft';
+import { BunSQLiteStorage, Engine, activity, workflow } from '@lostgradient/weft';
 import { resolveExampleEnvironment } from '../../environment-configuration.ts';
 
 export interface CheckoutItem {

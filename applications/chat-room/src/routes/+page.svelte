@@ -6,11 +6,11 @@
     decodeChatStreamEvents,
     type ChatAdapterErrorEvent,
     type ConversationHistory,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
   import { toBannerFailure, type BannerFailure } from '../lib/chat-failure.ts';
   import { SvelteMap } from 'svelte/reactivity';
   import { updatePendingApproval, type PendingApprovalResult } from '../lib/pending-approval.ts';
-  import type { SignedPendingToolApproval } from '@corvidae/armorer';
+  import type { SignedPendingToolApproval } from 'armorer';
   let conversation = $state<ConversationHistory>(
     createConversationHistory({ id: 'chatroom-demo' }),
   );

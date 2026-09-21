@@ -1,4 +1,4 @@
-import { prepareSvelteServerSource, renderSvelteOnServer } from '@corvidae/testing';
+import { prepareSvelteServerSource, renderSvelteOnServer } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 const sourcePath = new URL('./resizable-panels.svelte', import.meta.url).pathname;
 const fixturePath = new URL('./_resizable-panels-ssr-test.svelte', import.meta.url).pathname;

@@ -5,7 +5,7 @@ import { requireElement } from '../../../tests/dom-test-support.ts';
  * batches, conditional (compare-and-swap) batch gated on
  * `conditionalBatchSupported`, Tier-2 `ConfirmDialog` before applying).
  */
-import { requiredValue } from '@corvidae/testing';
+import { requiredValue } from '@lostgradient/testing';
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { StorageConnection } from './storage-client.ts';

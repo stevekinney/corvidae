@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Label } from '@corvidae/cinder';
+  import { Label } from '@lostgradient/cinder';
 </script>
 
 <Label for="project-name" required>Project name</Label>

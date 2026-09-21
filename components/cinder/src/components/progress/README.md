@@ -6,7 +6,7 @@ Visual indicator of task completion as a filled bar or percentage readout. Use `
 
 ```svelte
 <script lang="ts">
-  import { Progress } from '@corvidae/cinder';
+  import { Progress } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 0.75rem;">

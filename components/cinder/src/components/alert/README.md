@@ -6,7 +6,7 @@ A status message that communicates contextual feedback and can optionally be dis
 
 ```svelte
 <script lang="ts">
-  import { Alert } from '@corvidae/cinder';
+  import { Alert } from '@lostgradient/cinder';
 </script>
 
 <Alert variant="success">Saved successfully.</Alert>

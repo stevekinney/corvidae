@@ -42,7 +42,7 @@ import type { AnyActivityDefinition } from './workflow-registries.ts';
  *
  * @example
  * ```ts
- * import { workflow, WorkflowBuilderError } from '@corvidae/weft';
+ * import { workflow, WorkflowBuilderError } from '@lostgradient/weft';
  *
  * const builder = workflow({ name: 'demo' }).activities({ ping: async () => 'pong' });
  * try {
@@ -73,7 +73,7 @@ export class WorkflowBuilderError extends WeftError<'WorkflowBuilderError'> {
  *
  * @example
  * ```ts
- * import { workflow, type WorkflowBuilderOptions } from '@corvidae/weft';
+ * import { workflow, type WorkflowBuilderOptions } from '@lostgradient/weft';
  *
  * const options: WorkflowBuilderOptions<'welcome'> = {
  *   name: 'welcome',

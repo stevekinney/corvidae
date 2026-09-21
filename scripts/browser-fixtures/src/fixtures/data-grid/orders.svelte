@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DataGrid, type DataGridColumnDef } from '@corvidae/cinder';
+  import { DataGrid, type DataGridColumnDef } from '@lostgradient/cinder';
 
   type Order = {
     id: string;

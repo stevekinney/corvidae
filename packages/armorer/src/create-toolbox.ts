@@ -1,4 +1,4 @@
-import { CompletableEventTarget } from '@corvidae/lifecycle';
+import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import type { ToolboxEventMap } from './event-types';
 
 import { registerRegistryEmbedder } from './core/registry/embeddings';

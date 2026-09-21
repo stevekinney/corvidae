@@ -19,7 +19,7 @@ bun add @lancedb/lancedb openai apache-arrow
 Here's a simple example using LanceDB for local vector storage:
 
 ```typescript
-import { createToolbox, createTool, type Tool } from '@corvidae/armorer';
+import { createToolbox, createTool, type Tool } from 'armorer';
 import * as lancedb from '@lancedb/lancedb';
 import OpenAI from 'openai';
 import { z } from 'zod';
@@ -138,8 +138,8 @@ async function searchTools(query: string, limit = 5): Promise<Tool[]> {
 Here's a complete, production-ready example:
 
 ```typescript
-import { createToolbox, createTool, type Tool } from '@corvidae/armorer';
-import { queryTools } from '@corvidae/armorer';
+import { createToolbox, createTool, type Tool } from 'armorer';
+import { queryTools } from 'armorer';
 import * as lancedb from '@lancedb/lancedb';
 import OpenAI from 'openai';
 import { z } from 'zod';

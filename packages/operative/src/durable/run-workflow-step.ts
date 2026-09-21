@@ -1,6 +1,6 @@
-import { Conversation } from '@corvidae/conversationalist';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
-import type { WorkflowContext, WorkflowOperation } from '@corvidae/weft';
+import { Conversation } from 'conversationalist';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import type { WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
 
 import { toAgentRunError } from '../errors';
 import { buildStepDeps, createRunState } from '../loop';

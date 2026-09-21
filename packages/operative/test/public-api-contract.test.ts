@@ -19,9 +19,9 @@ import { assertDefined } from './assert-defined';
  *      causes the in-flight step (including its tools) to re-run on recovery.
  */
 
-import { createTool, createToolbox } from '@corvidae/armorer';
-import { createConversationHistory } from '@corvidae/conversationalist';
-import { CompletableEventTarget, HookRegistry } from '@corvidae/lifecycle';
+import { createTool, createToolbox } from 'armorer';
+import { createConversationHistory } from 'conversationalist';
+import { CompletableEventTarget, HookRegistry } from '@lostgradient/lifecycle';
 import type {
   CombinedOperativeEventMap,
   DurableRunDeps,
@@ -29,7 +29,7 @@ import type {
   OperativeEventEmitter,
   OperativeHookMap,
   RunOptions,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   AbortAgentRunError,
   createActiveRun,
@@ -40,8 +40,8 @@ import {
   MaximumStepsExceededError,
   stopWhen,
   waitForCondition,
-} from '@corvidae/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
+} from '@lostgradient/operative';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 const run = (opts: Parameters<typeof createActiveRun>[0]) => createActiveRun(opts).result;

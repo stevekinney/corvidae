@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, beforeEach } from 'bun:test';
 import { resetScrollLock } from '../_internal/overlay.ts';
 setupHappyDom();

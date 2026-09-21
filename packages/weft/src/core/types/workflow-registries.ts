@@ -19,7 +19,7 @@ import type {
  *
  * @example
  * ```ts
- * import type { WorkflowRegistry } from '@corvidae/weft';
+ * import type { WorkflowRegistry } from '@lostgradient/weft';
  *
  * interface WelcomeInput {
  *   name: string;
@@ -29,7 +29,7 @@ import type {
  *   greeting: string;
  * }
  *
- * declare module '@corvidae/weft' {
+ * declare module '@lostgradient/weft' {
  *   interface WorkflowRegistry {
  *     welcome: { input: WelcomeInput; output: WelcomeOutput };
  *   }
@@ -77,7 +77,7 @@ export type IsDefaultWorkflowRegistry<TRegistry extends object> =
  *
  * @example
  * ```ts
- * import { workflow, type AnyWorkflowDefinition } from '@corvidae/weft';
+ * import { workflow, type AnyWorkflowDefinition } from '@lostgradient/weft';
  *
  * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
  *   return `Hello, ${input}`;
@@ -99,7 +99,7 @@ export type AnyWorkflowDefinition = {
  *
  * @example
  * ```ts
- * import { activity, type AnyActivityDefinition } from '@corvidae/weft';
+ * import { activity, type AnyActivityDefinition } from '@lostgradient/weft';
  *
  * const greet = activity({ name: 'greet', execute: async (name: string) => `Hello, ${name}` });
  * const definition: AnyActivityDefinition = greet;
@@ -198,7 +198,7 @@ type MergeDefinitionEntries<TUnion> = [TUnion] extends [never]
  *
  * @example
  * ```ts
- * import { workflow, type InferWorkflowEntry } from '@corvidae/weft';
+ * import { workflow, type InferWorkflowEntry } from '@lostgradient/weft';
  *
  * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
  *   return `Hello, ${input}`;
@@ -230,7 +230,7 @@ type InferWorkflowEntryForKey<TName extends string, TDefinition extends AnyWorkf
  *
  * @example
  * ```ts
- * import { workflow, type InferWorkflowEntries } from '@corvidae/weft';
+ * import { workflow, type InferWorkflowEntries } from '@lostgradient/weft';
  *
  * const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: string) {
  *   return `Hello, ${input}`;
@@ -267,7 +267,7 @@ type ActivityEntryForDefinition<TName extends string, TInput, TOutput> = Record<
  *
  * @example
  * ```ts
- * import { activity, type InferActivityEntry } from '@corvidae/weft';
+ * import { activity, type InferActivityEntry } from '@lostgradient/weft';
  *
  * const ping = activity({ name: 'ping', execute: async () => 'pong' });
  * type PingActivity = InferActivityEntry<typeof ping>;
@@ -304,7 +304,7 @@ type InferActivityEntryForKey<TName extends string, TDefinition extends AnyActiv
  *
  * @example
  * ```ts
- * import { activity, type InferActivityEntries } from '@corvidae/weft';
+ * import { activity, type InferActivityEntries } from '@lostgradient/weft';
  *
  * const greet = activity({ name: 'greet', execute: async (name: string) => `Hello, ${name}` });
  * type Activities = InferActivityEntries<{ greet: typeof greet }>;

@@ -17,7 +17,7 @@ Operative's provider surface uses progressive enhancement for native features. T
 The OpenAI-compatible case is deliberately conservative: a local server can copy the chat request shape without implementing `/v1/batches` or any of the other native surfaces. A `false` capability lets a caller choose a fallback; a `true` capability that later 404s is a broken promise. Unsupported features are absent from the relevant batch module at compile time, and dynamic callers can inspect the matrix before offering an option.
 
 ```typescript
-import { getProviderCapabilities } from '@corvidae/operative';
+import { getProviderCapabilities } from '@lostgradient/operative';
 
 const capabilities = getProviderCapabilities('openai', { baseURL: 'http://localhost:11434/v1' });
 if (!capabilities.batchInference) {
@@ -44,7 +44,7 @@ The returned `SelectionPlan` is self-contained and frozen. Its fields are:
 - `outcome` and `failure`: a discriminated success or failure result. Failure kinds include `no-candidate`, `stale-catalog`, `capability-changed`, `policy-changed`, `exact-override-rejected`, and `provider-effective-divergence`.
 
 ```typescript
-import type { SelectionPlan } from '@corvidae/operative';
+import type { SelectionPlan } from '@lostgradient/operative';
 
 function explain(plan: SelectionPlan): string {
   if (plan.outcome !== 'selected') return `No model selected: ${plan.failure.reason}`;
@@ -61,8 +61,8 @@ When a run owns a `SelectionGate`, revalidation happens at the run step boundary
 An effective context epoch records the versioned sources that produced one provider turn when the host composes `createContextEpochSealer()` into the run. The sealer runs immediately before `generate.started`, after identity, memory, guardrails, hooks, tools, conversation, steering, and selection have been resolved. The epoch includes source dispositions, revisions, permitted digests, a baseline digest, the selection plan id, policy revision, steering configuration version, and the first run/step/attempt that consumed it. Without a composed sealer, no epoch id is emitted.
 
 ```typescript
-import { Conversation } from '@corvidae/conversationalist';
-import { createContextEpochSealer } from '@corvidae/operative';
+import { Conversation } from 'conversationalist';
+import { createContextEpochSealer } from '@lostgradient/operative';
 
 const epochs = createContextEpochSealer({ agentName: 'support' });
 const epoch = epochs.seal({
@@ -80,9 +80,9 @@ The example is executable as written; `plan` and steering are optional because t
 The following complete example creates an in-memory Bureau, starts a run with a public Armorer tool, pauses at the steering boundary, resumes it, and waits for the run summary to become terminal. It uses a release gate so the first tool call gives the pause command a deterministic boundary to reach:
 
 ```typescript
-import { createBureau } from '@corvidae/bureau';
-import { createTool, createToolbox } from '@corvidae/armorer';
-import { stopWhen } from '@corvidae/operative';
+import { createBureau } from '@lostgradient/bureau';
+import { createTool, createToolbox } from 'armorer';
+import { stopWhen } from '@lostgradient/operative';
 import { z } from 'zod';
 
 const toolStarted = Promise.withResolvers<void>();

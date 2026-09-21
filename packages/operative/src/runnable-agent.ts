@@ -8,8 +8,8 @@
  * contract; `create-lazy-agent.ts` is its lazy-loading implementation.
  */
 
-import type { ConversationHistory } from '@corvidae/conversationalist';
-import type { HookObservationCorrelation, HookRegistry } from '@corvidae/lifecycle';
+import type { ConversationHistory } from 'conversationalist';
+import type { HookObservationCorrelation, HookRegistry } from '@lostgradient/lifecycle';
 
 import type { AgentRun, RunEvent } from './agent-run';
 import type { ChildRunRegistry } from './child-run';
@@ -180,7 +180,7 @@ export interface RunnableAgent<O = never, H extends boolean = false> {
  * @internal
  */
 export const OPERATIVE_RESOLVE_RUN_OPTIONS: unique symbol = Symbol.for(
-  '@corvidae/operative/resolve-run-options',
+  '@lostgradient/operative/resolve-run-options',
 );
 
 /**

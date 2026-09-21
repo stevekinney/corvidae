@@ -3,14 +3,14 @@
  *
  * `ChatProps.conversation` is the published Conversationalist
  * `ConversationHistory` snapshot. This asserts, at the type level and through
- * the PUBLIC `@corvidae/chat`-equivalent barrel, that:
+ * the PUBLIC `@lostgradient/chat`-equivalent barrel, that:
  *   1. `ConversationHistory` is publicly importable alongside `ChatProps`.
  *   2. The actual `<Chat>` component accepts a `ConversationHistory`-shaped
  *      `conversation` prop (via `ComponentProps<typeof Chat>`), not just
  *      `ChatProps` in isolation.
  *
  * Imports come from `./index.ts` — the chat public barrel that maps to
- * `@corvidae/chat` — so this tracks the real consumer surface.
+ * `@lostgradient/chat` — so this tracks the real consumer surface.
  */
 
 import { expect, test } from 'bun:test';
@@ -100,7 +100,7 @@ test('Chat indicator props explicitly accept undefined', () => {
 
 // `ChatAttachment` was previously importable only by deriving it from
 // `ChatSubmitEvent['attachments'][number]` — the public `./index.ts` barrel
-// (the `@corvidae/chat` entry) did not re-export the type on its
+// (the `@lostgradient/chat` entry) did not re-export the type on its
 // own. This asserts the two forms are the same type and that `ChatAttachment`
 // is directly importable from the public barrel.
 type SubmitEventAttachment = ChatSubmitEvent['attachments'][number];

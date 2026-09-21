@@ -6,7 +6,7 @@ A clickable button or anchor with built-in loading state, icon slots, and a disc
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
 </script>
 
 <Button variant="primary" size="md" label="Save" />

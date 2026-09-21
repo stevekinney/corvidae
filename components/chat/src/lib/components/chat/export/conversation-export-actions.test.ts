@@ -5,15 +5,15 @@
  * Same root cause as the tool activity announcer regression: the announcer previously
  * carried the bare `sr-only` class, which has no CSS rule reaching this
  * component. The fix switches the class to `cinder-sr-only`, the design
- * system's utility, which every `@corvidae/chat` consumer already
- * receives via the required `@corvidae/cinder` import (see
+ * system's utility, which every `@lostgradient/chat` consumer already
+ * receives via the required `@lostgradient/cinder` import (see
  * `components/chat/README.md`).
  */
 
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { injectStyles } from '../../../test/css.ts';
 import { createConversationHistory } from '../builders.ts';
 

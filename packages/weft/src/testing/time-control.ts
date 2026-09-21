@@ -29,7 +29,7 @@ interface ScheduledTimer {
  *
  * @example
  * ```ts
- * import { TimeControl } from '@corvidae/weft';
+ * import { TimeControl } from '@lostgradient/weft';
  *
  * const clock = new TimeControl(0);
  * let fired = false;

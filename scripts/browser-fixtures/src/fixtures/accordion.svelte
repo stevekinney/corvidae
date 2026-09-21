@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Accordion } from '@corvidae/cinder';
+  import { Accordion } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();
@@ -15,8 +15,8 @@
     Cinder is a Svelte 5 design system built for composability and accessibility.
   </Accordion.Item>
   <Accordion.Item id={item2Id} title="How do I install it?">
-    In this workspace, add <code>@corvidae/cinder</code> as a workspace dependency and import
-    components from <code>@corvidae/cinder</code>.
+    In this workspace, add <code>@lostgradient/cinder</code> as a workspace dependency and import
+    components from <code>@lostgradient/cinder</code>.
   </Accordion.Item>
   <Accordion.Item id={item3Id} title="Does it support SSR?">
     Yes — every component is SSR-safe and renders meaningful HTML before hydration.

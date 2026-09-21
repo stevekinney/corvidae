@@ -1,4 +1,4 @@
-import { MemoryStorage } from '@corvidae/weft';
+import { MemoryStorage } from '@lostgradient/weft';
 
 import { createWeftMemoryRecordStorage } from '../src/create-weft-memory-record-storage';
 import { createInMemoryMemoryRecordStorage } from '../src/index';

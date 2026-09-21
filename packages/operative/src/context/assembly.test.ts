@@ -1,6 +1,6 @@
-import type { JSONValue } from '@corvidae/conversationalist';
-import { Conversation } from '@corvidae/conversationalist';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import type { JSONValue } from 'conversationalist';
+import { Conversation } from 'conversationalist';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import { createContextAssembler } from './assembly';

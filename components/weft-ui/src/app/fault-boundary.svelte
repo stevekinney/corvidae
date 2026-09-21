@@ -24,7 +24,7 @@
    */
   import type { ComponentType, Snippet, SvelteComponent } from 'svelte';
 
-  import { Badge, Button, Collapsible } from '@corvidae/cinder';
+  import { Badge, Button, Collapsible } from '@lostgradient/cinder';
   import type { IconProps } from 'lucide-svelte';
   import {
     CircleSlash,
@@ -35,7 +35,7 @@
     ServerCrash,
   } from 'lucide-svelte';
 
-  import { HttpClientError } from '@corvidae/weft';
+  import { HttpClientError } from '@lostgradient/weft';
 
   import {
     classifyFault,

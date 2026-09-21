@@ -7,7 +7,7 @@
    * `Weft New Surfaces.dc.html` §D, not in the older shell mock's tab list
    * but a distinct T7.6 System sub-view per the plan text).
    */
-  import { Tabs } from '@corvidae/cinder';
+  import { Tabs } from '@lostgradient/cinder';
 
   import { router } from '../../lib/router.svelte.ts';
   import AlertsTab from './alerts-tab.svelte';

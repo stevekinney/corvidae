@@ -35,7 +35,7 @@ const operativeManifest = operativeManifestOf(
     readFileSync(
       // Resolve the public source entry from the application, then read the
       // owning workspace manifest without requesting an unexported subpath.
-      join(dirname(Bun.resolveSync('@corvidae/operative', LAB_ROOT)), '..', 'package.json'),
+      join(dirname(Bun.resolveSync('@lostgradient/operative', LAB_ROOT)), '..', 'package.json'),
       'utf8',
     ),
   ),
@@ -50,13 +50,13 @@ const PROVIDER_PACKAGES = ['@anthropic-ai/sdk', '@google/genai', 'openai'] as co
 
 /** Known runtime dependencies that do not provide model generation. */
 const NON_PROVIDER_DEPENDENCIES = [
-  '@corvidae/weft',
-  '@corvidae/armorer',
-  '@corvidae/conversationalist',
-  '@corvidae/cryptography',
-  '@corvidae/embeddings',
-  '@corvidae/lifecycle',
-  '@corvidae/tool-protocol',
+  '@lostgradient/weft',
+  'armorer',
+  'conversationalist',
+  '@lostgradient/cryptography',
+  '@lostgradient/embeddings',
+  '@lostgradient/lifecycle',
+  '@lostgradient/tool-protocol',
   '@lostgradient/environmentalist',
   '@opentelemetry/api',
   'zod',

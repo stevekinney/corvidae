@@ -10,7 +10,7 @@ Use [`ApprovalCard`](../src/components/approval-card/README.md) for a pending op
 
 ```svelte
 <script lang="ts">
-  import { ApprovalCard } from '@corvidae/cinder';
+  import { ApprovalCard } from '@lostgradient/cinder';
 
   let state = $state<
     'pending' | 'approved' | 'approved_with_edits' | 'denied' | 'expired' | 'cancelled'
@@ -41,7 +41,7 @@ For structured tool arguments, compose [`PayloadInspector`](../src/components/pa
 
 ```svelte
 <script lang="ts">
-  import { TerminalFrame, TerminalOutput } from '@corvidae/cinder';
+  import { TerminalFrame, TerminalOutput } from '@lostgradient/cinder';
 
   let output = $state('\u001b[32mready\u001b[0m\\n');
 </script>
@@ -61,7 +61,7 @@ Do not treat a terminal frame as a process manager. If the connection drops, upd
 
 ```svelte
 <script lang="ts">
-  import { Input, SettingRow } from '@corvidae/cinder';
+  import { Input, SettingRow } from '@lostgradient/cinder';
 </script>
 
 <SettingRow
@@ -92,7 +92,7 @@ Two shared exit-transition lifecycles govern how an overlay leaves the DOM, and 
 
 ```svelte
 <script lang="ts">
-  import { JsonSchemaEditor } from '@corvidae/cinder';
+  import { JsonSchemaEditor } from '@lostgradient/cinder';
 
   let schema = $state({ type: 'object', properties: {} });
 </script>

@@ -11,7 +11,7 @@
    * `metrics-tab.svelte`'s module doc for why `language="text"` alone still
    * triggers Shiki's "language not in bundle" warning.
    */
-  import { Button, CodeBlock, DescriptionList } from '@corvidae/cinder';
+  import { Button, CodeBlock, DescriptionList } from '@lostgradient/cinder';
   import { Plug } from 'lucide-svelte';
   import { createQuery } from '@tanstack/svelte-query';
 

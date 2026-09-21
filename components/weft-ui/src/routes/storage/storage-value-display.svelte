@@ -7,7 +7,7 @@
    * that fails UTF-8 decoding renders as an explicit binary fallback instead
    * of garbling through the inspector.
    */
-  import { PayloadInspector } from '@corvidae/cinder';
+  import { PayloadInspector } from '@lostgradient/cinder';
 
   import { formatBytes } from '../../lib/format/index.ts';
   import { previewStorageValue } from './value-preview.ts';

@@ -33,9 +33,9 @@ import type {
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@corvidae/weft';
- * import type { OutboxEventSink } from '@corvidae/weft';
- * import { createFleetEventFeed } from '@corvidae/weft';
+ * import { MemoryStorage } from '@lostgradient/weft';
+ * import type { OutboxEventSink } from '@lostgradient/weft';
+ * import { createFleetEventFeed } from '@lostgradient/weft';
  *
  * const events: OutboxEventSink = createFleetEventFeed(new MemoryStorage());
  * void events;
@@ -59,7 +59,7 @@ export type OutboxEventSink = ApplicationEventSink;
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryOutcome } from '@corvidae/weft';
+ * import type { ApplicationDeliveryOutcome } from '@lostgradient/weft';
  *
  * const outcome: ApplicationDeliveryOutcome = { status: 'acknowledged', evidence: { id: 'msg-1' } };
  * console.log(outcome.status); // 'acknowledged'
@@ -96,7 +96,7 @@ export type ApplicationDeliveryOutcome =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliverySendRequest } from '@corvidae/weft';
+ * import type { ApplicationDeliverySendRequest } from '@lostgradient/weft';
  *
  * declare const request: ApplicationDeliverySendRequest;
  * console.log(request.delivery.destinationRef, request.attemptToken);
@@ -122,7 +122,7 @@ export type ApplicationDeliverySendRequest = Readonly<{
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryAdapter } from '@corvidae/weft';
+ * import type { ApplicationDeliveryAdapter } from '@lostgradient/weft';
  *
  * const adapter: ApplicationDeliveryAdapter = {
  *   async send(request) {
@@ -146,7 +146,7 @@ export type ApplicationDeliveryAdapter = {
  *
  * @example
  * ```ts
- * import { MemoryStorage, type OutboxOptions } from '@corvidae/weft';
+ * import { MemoryStorage, type OutboxOptions } from '@lostgradient/weft';
  *
  * const options: OutboxOptions = {
  *   storage: new MemoryStorage(),
@@ -221,7 +221,7 @@ export type OutboxOptions = {
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryInput } from '@corvidae/weft';
+ * import type { ApplicationDeliveryInput } from '@lostgradient/weft';
  *
  * const input: ApplicationDeliveryInput = {
  *   destinationRef: 'webhook:orders',
@@ -259,7 +259,7 @@ export type ApplicationDeliveryInput = {
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryAdmission } from '@corvidae/weft';
+ * import type { ApplicationDeliveryAdmission } from '@lostgradient/weft';
  *
  * declare const admission: ApplicationDeliveryAdmission;
  * if (admission.status === 'enqueued') console.log(admission.receipt.deliveryId);
@@ -293,7 +293,7 @@ export type ApplicationDeliveryAdmission =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryReceipt } from '@corvidae/weft';
+ * import type { ApplicationDeliveryReceipt } from '@lostgradient/weft';
  *
  * declare const receipt: ApplicationDeliveryReceipt;
  * console.log(receipt.state, receipt.attempt);
@@ -341,7 +341,7 @@ export type ApplicationDeliveryReceipt = Readonly<{
  *
  * @example
  * ```ts
- * import type { OutboxCapacity } from '@corvidae/weft';
+ * import type { OutboxCapacity } from '@lostgradient/weft';
  *
  * declare const capacity: OutboxCapacity;
  * console.log(capacity.open, capacity.remaining, capacity.limit);
@@ -358,7 +358,7 @@ export type OutboxCapacity = Readonly<{
  *
  * @example
  * ```ts
- * import type { OutboxListOptions } from '@corvidae/weft';
+ * import type { OutboxListOptions } from '@lostgradient/weft';
  *
  * const options: OutboxListOptions = { limit: 50, states: ['unknown-outcome'] };
  * console.log(options.limit); // 50

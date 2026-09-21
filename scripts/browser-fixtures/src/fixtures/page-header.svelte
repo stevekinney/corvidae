@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Breadcrumbs, PageHeader } from '@corvidae/cinder';
+  import { Button, Breadcrumbs, PageHeader } from '@lostgradient/cinder';
 </script>
 
 <div>

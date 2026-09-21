@@ -9,7 +9,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { renderThenHydrate, setupHappyDom } from '@corvidae/testing';
+import { renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

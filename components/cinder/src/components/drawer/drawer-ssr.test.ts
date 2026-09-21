@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { renderSvelteOnServer, setupHappyDom } from '@corvidae/testing';
+import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';

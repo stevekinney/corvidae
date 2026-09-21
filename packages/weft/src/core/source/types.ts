@@ -20,7 +20,7 @@ import type { WorkflowDefinition } from '../types.ts';
  *
  * @example
  * ```ts
- * import type { WorkflowSourceKind } from '@corvidae/weft';
+ * import type { WorkflowSourceKind } from '@lostgradient/weft';
  *
  * const kind: WorkflowSourceKind = 'module';
  * console.log(kind);
@@ -49,7 +49,7 @@ export type WorkflowSourceKind = 'module';
  *
  * @example
  * ```ts
- * import type { WorkflowSourceDescriptor } from '@corvidae/weft';
+ * import type { WorkflowSourceDescriptor } from '@lostgradient/weft';
  *
  * const descriptor: WorkflowSourceDescriptor = {
  *   kind: 'module',
@@ -90,7 +90,7 @@ export interface WorkflowSourceDescriptor<TName extends string = string> {
  *
  * @example
  * ```ts
- * import type { WorkflowSourceDescriptorInput } from '@corvidae/weft';
+ * import type { WorkflowSourceDescriptorInput } from '@lostgradient/weft';
  *
  * const input: WorkflowSourceDescriptorInput<'checkout'> = {
  *   name: 'checkout',
@@ -126,11 +126,11 @@ export type WorkflowSourceDescriptorInput<TExportName extends string> = {
  *
  * @example
  * ```ts
- * import { workflowSource } from '@corvidae/weft';
- * import type { WorkflowSourceHandle } from '@corvidae/weft';
+ * import { workflowSource } from '@lostgradient/weft';
+ * import type { WorkflowSourceHandle } from '@lostgradient/weft';
  *
  * declare const loadCheckout: () => Promise<{
- *   checkout: import('@corvidae/weft').WorkflowDefinition<{ orderId: string }, { shipped: boolean }, 'checkout'>;
+ *   checkout: import('@lostgradient/weft').WorkflowDefinition<{ orderId: string }, { shipped: boolean }, 'checkout'>;
  * }>;
  * const source: WorkflowSourceHandle = workflowSource(
  *   { name: 'checkout', location: './workflows/checkout.ts', exportName: 'checkout', revision: 'r1' },
@@ -208,7 +208,7 @@ export type IsAny<T> = 0 extends 1 & T ? true : false;
  * @example
  * ```ts
  * import type { ModuleWorkflowDefinition } from './types.ts';
- * import type { WorkflowDefinition } from '@corvidae/weft';
+ * import type { WorkflowDefinition } from '@lostgradient/weft';
  *
  * type Module = { checkout: WorkflowDefinition<{ orderId: string }, { shipped: boolean }, 'checkout'> };
  * type Resolved = ModuleWorkflowDefinition<Module, 'checkout'>;

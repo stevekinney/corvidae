@@ -7,11 +7,11 @@
    * scannable table with no detail panel, matching
    * `design/Weft UI.dc.html`'s `archiveRows` grid.
    */
-  import { Badge, EmptyState, Skeleton } from '@corvidae/cinder';
+  import { Badge, EmptyState, Skeleton } from '@lostgradient/cinder';
   import CircleCheck from 'lucide-svelte/icons/circle-check';
   import CircleDot from 'lucide-svelte/icons/circle-dot';
   import CircleX from 'lucide-svelte/icons/circle-x';
-  import type { ReviewListEntry } from '@corvidae/weft';
+  import type { ReviewListEntry } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import QueryFaultBanner from './query-fault-banner.svelte';

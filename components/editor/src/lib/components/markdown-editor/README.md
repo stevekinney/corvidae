@@ -6,13 +6,13 @@ Rich Markdown editing surface bundling a Milkdown-powered ProseMirror editor, to
 
 ```svelte
 <script lang="ts">
-  import { MarkdownEditor } from '@corvidae/editor';
+  import { MarkdownEditor } from '@lostgradient/editor';
 </script>
 ```
 
 ## Workspace dependencies
 
-Declare `"@corvidae/editor": "workspace:*"` in the consuming workspace and run `bun install --frozen-lockfile` from the Corvidae root. The Editor workspace owns its Milkdown, ProseMirror, Markdown pipeline, and Cinder dependencies. Consumers import `MarkdownEditor` through `@corvidae/editor`; they do not install the internal packages from a registry or duplicate the editor's dependency list.
+Declare `"@lostgradient/editor": "workspace:*"` in the consuming workspace and run `bun install --frozen-lockfile` from the Corvidae root. The Editor workspace owns its Milkdown, ProseMirror, Markdown pipeline, and Cinder dependencies. Consumers import `MarkdownEditor` through `@lostgradient/editor`; they do not install the internal packages from a registry or duplicate the editor's dependency list.
 
 ## Guidance
 

@@ -1,7 +1,7 @@
 import { plugin } from 'bun';
 import { afterEach } from 'bun:test';
 
-import { registerGlobalCleanup, setupHappyDom, sveltePlugin } from '@corvidae/testing';
+import { registerGlobalCleanup, setupHappyDom, sveltePlugin } from '@lostgradient/testing';
 
 function allowCinderTestStyleBlock(path: string): boolean {
   const normalizedPath = path.replaceAll('\\', '/');

@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowState, WorkflowTimelineEntry } from '@corvidae/weft';
+import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 
 import SignalsTabHarness from './signals-tab.test-harness.svelte';
 

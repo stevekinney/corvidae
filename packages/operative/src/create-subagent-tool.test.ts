@@ -1,6 +1,6 @@
-import { createToolbox } from '@corvidae/armorer';
-import { Conversation, type ConversationHistory } from '@corvidae/conversationalist';
-import { CompletableEventTarget, HookRegistry } from '@corvidae/lifecycle';
+import { createToolbox } from 'armorer';
+import { Conversation, type ConversationHistory } from 'conversationalist';
+import { CompletableEventTarget, HookRegistry } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

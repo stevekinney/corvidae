@@ -47,7 +47,7 @@ Every modern feature Cinder uses falls into exactly one tier. The tier decides w
 
 ## Enforcement
 
-`bun run --filter=@corvidae/cinder platform:audit` reports current usage of every classified feature and flags hard-coded viewport breakpoints in component CSS so a reviewer can confirm each is viewport-owned (allowed) rather than a container-constraint in disguise (a Tier-1 violation). The audit is a **report**, not a hard gate: deliberate adoption is the goal, so the command surfaces usage for human judgment rather than banning features outright. It runs in the `validate` path so the inventory stays visible as the library grows.
+`bun run --filter=@lostgradient/cinder platform:audit` reports current usage of every classified feature and flags hard-coded viewport breakpoints in component CSS so a reviewer can confirm each is viewport-owned (allowed) rather than a container-constraint in disguise (a Tier-1 violation). The audit is a **report**, not a hard gate: deliberate adoption is the goal, so the command surfaces usage for human judgment rather than banning features outright. It runs in the `validate` path so the inventory stays visible as the library grows.
 
 When a new modern feature enters the codebase, add a row to the classification table above (with its tier and rule) in the same change. A feature with no row is unclassified and will be flagged in review.
 

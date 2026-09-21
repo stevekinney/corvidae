@@ -6,7 +6,7 @@
  * by consumers.
  */
 
-export { setupHappyDom } from '@corvidae/testing';
+export { setupHappyDom } from '@lostgradient/testing';
 export { expectAttribute, expectAttributes, getRelated } from './aria.ts';
 export { stripCinderComponentsLayer } from './css.ts';
 export {

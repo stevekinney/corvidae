@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 import { pushEscapeHandler, resetEscapeStack } from '../../_internal/overlay.ts';
 import { createCommandListState } from './create-command-list-state.svelte.ts';

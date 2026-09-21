@@ -1,4 +1,4 @@
-import { registerGlobalCleanup, setupHappyDom, sveltePlugin } from '@corvidae/testing';
+import { registerGlobalCleanup, setupHappyDom, sveltePlugin } from '@lostgradient/testing';
 import { plugin } from 'bun';
 import { afterEach } from 'bun:test';
 

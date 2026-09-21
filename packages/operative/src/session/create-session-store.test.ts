@@ -1,6 +1,6 @@
-import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
-import { MemoryStorage, textValueStore } from '@corvidae/weft';
+import { Conversation, createConversationHistory } from 'conversationalist';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentSession } from '../agent-session';

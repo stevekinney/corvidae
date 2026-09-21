@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ConnectionIndicator } from '@corvidae/cinder';
+  import { ConnectionIndicator } from '@lostgradient/cinder';
 </script>
 
 <ConnectionIndicator status="live" />

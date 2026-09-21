@@ -98,7 +98,7 @@ describe('virtual-list dependency-free guard — production scan against the rea
 });
 
 describe('virtual-list dependency-free guard — classifySpecifier', () => {
-  const declared = new Set(['@corvidae/markdown', 'culori']);
+  const declared = new Set(['@lostgradient/markdown', 'culori']);
 
   test('forbids @tanstack/virtual-core outright, even if it were declared as a dependency', () => {
     const declaredWithForbidden = new Set([...declared, FORBIDDEN_SPECIFIER]);
@@ -127,7 +127,7 @@ describe('virtual-list dependency-free guard — classifySpecifier', () => {
   });
 
   test('allows a declared scoped dependency reached through a deep subpath', () => {
-    expect(classifySpecifier('@corvidae/markdown', declared)).toBeUndefined();
+    expect(classifySpecifier('@lostgradient/markdown', declared)).toBeUndefined();
   });
 
   test('rejects an undeclared bare specifier, naming it in the reason', () => {

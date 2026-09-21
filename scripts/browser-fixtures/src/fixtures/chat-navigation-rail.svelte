@@ -5,7 +5,7 @@
     appendUserMessage,
     createConversation,
     getMessages,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
 
   const conversation = appendAssistantMessage(
     appendUserMessage(

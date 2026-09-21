@@ -1,4 +1,4 @@
-import { requiredValue } from '@corvidae/testing';
+import { requiredValue } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import type { Thread } from './types.ts';
 import { createTestComment, createTestThread } from './updates-test-fixtures.ts';

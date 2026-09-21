@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pagination } from '@corvidae/cinder';
+  import { Pagination } from '@lostgradient/cinder';
   let currentPage = $state(1);
 </script>
 

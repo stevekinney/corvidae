@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertDialog, Button } from '@corvidae/cinder';
+  import { AlertDialog, Button } from '@lostgradient/cinder';
 
   let open = $state(false);
 </script>

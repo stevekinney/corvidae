@@ -1,8 +1,8 @@
-import { createProcessLocalApprovalStateStore, createTool, createToolbox } from '@corvidae/armorer';
-import type { ManualRuntimeServices } from '@corvidae/lifecycle';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
-import type { GenerateFunction } from '@corvidae/operative';
-import { createAgent, stopWhen, waitForCondition, waitForRunState } from '@corvidae/operative';
+import { createProcessLocalApprovalStateStore, createTool, createToolbox } from 'armorer';
+import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import type { GenerateFunction } from '@lostgradient/operative';
+import { createAgent, stopWhen, waitForCondition, waitForRunState } from '@lostgradient/operative';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

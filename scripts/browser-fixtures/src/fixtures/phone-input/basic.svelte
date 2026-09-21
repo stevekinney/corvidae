@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PhoneInput } from '@corvidae/cinder';
+  import { PhoneInput } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

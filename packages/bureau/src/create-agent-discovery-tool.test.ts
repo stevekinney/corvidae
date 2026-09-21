@@ -1,4 +1,4 @@
-import { createAgent, createMockGenerate } from '@corvidae/operative';
+import { createAgent, createMockGenerate } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -15,7 +15,7 @@
 // asynchronous work against via `AB-266`'s `BarrierRegistry`.
 // ---------------------------------------------------------------------------
 
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { Barrier, BarrierRegistry } from './barriers';
 

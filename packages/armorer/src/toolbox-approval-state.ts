@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { ApprovalState, ApprovalStateStore } from './approval-binding';
 import type { ToolboxExecuteOptions } from './toolbox-contracts';
 import type { SignedPendingToolApproval, ToolExecutionResult } from './types';

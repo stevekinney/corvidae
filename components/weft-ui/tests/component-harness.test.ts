@@ -18,7 +18,7 @@
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { Button } from '@corvidae/cinder';
+import { Button } from '@lostgradient/cinder';
 
 describe('component test harness', () => {
   test('mounts a Cinder Button and renders its label', async () => {

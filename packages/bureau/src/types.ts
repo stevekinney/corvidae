@@ -6,8 +6,8 @@ import type {
   ReusableApprovalGrantInput,
   SignedPendingToolApproval,
   ToolRequestContext,
-} from '@corvidae/armorer';
-import type { ConversationSnapshot } from '@corvidae/conversationalist';
+} from 'armorer';
+import type { ConversationSnapshot } from 'conversationalist';
 import type {
   EventIteratorOptions,
   EventObservableOptions,
@@ -15,8 +15,8 @@ import type {
   Observer,
   RuntimeServices,
   Subscription,
-} from '@corvidae/lifecycle';
-import type { CreateMemoryOptions, Memory } from '@corvidae/memory';
+} from '@lostgradient/lifecycle';
+import type { CreateMemoryOptions, Memory } from '@lostgradient/memory';
 import type {
   AgentInput,
   AgentSession,
@@ -45,9 +45,9 @@ import type {
   StopCondition,
   Store,
   TokenUsage,
-} from '@corvidae/operative';
-import type { SkillActivationRecord, SkillCatalogRevision } from '@corvidae/skills';
-import type { ToolPolicy } from '@corvidae/tool-protocol';
+} from '@lostgradient/operative';
+import type { SkillActivationRecord, SkillCatalogRevision } from '@lostgradient/skills';
+import type { ToolPolicy } from '@lostgradient/tool-protocol';
 import type {
   ConditionalTextValueStore,
   HistoryPolicy,
@@ -63,7 +63,7 @@ import type {
   WorkflowLogRecord,
   WorkflowState,
   WorkflowSummary,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import type {
   AgentDefinitions,
@@ -600,7 +600,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * weft 0.23.1 defect makes `'workflow-lease'` incompatible with same-engine
    * `engine.suspend()`/`engine.resume()`, which Bureau's own scheduler uses
    * internally. See `CreateRunEngineOptions.ownership`'s JSDoc in
-   * `@corvidae/operative` for the full repro and root cause.
+   * `@lostgradient/operative` for the full repro and root cause.
    */
   durableOwnership?: Pick<
     CreateRunEngineOptions,
@@ -680,7 +680,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * AB-246 — the model-catalog refresh service exposed as
    * {@link Bureau.modelCatalog}. Omit to let `createBureau` construct a
-   * default `ModelCatalogService` over `@corvidae/operative`'s
+   * default `ModelCatalogService` over `@lostgradient/operative`'s
    * static `createModelCatalog()` seed; pass one explicitly to share a
    * catalog across bureaus or to supply a non-default `descriptorSource`
    * (see `model-catalog-refresh.ts`'s `CatalogDescriptorSource` — the seam a
@@ -698,8 +698,8 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * runtimes never share a clock, an identifier sequence, or a deferred
    * ledger. Omit to use the real globals (`createDefaultRuntimeServices()`),
    * exactly as before this option existed. A test composes its own via
-   * `createManualRuntimeServices` from `@corvidae/operative` (or
-   * `lifecycle`, which `@corvidae/operative` re-exports it from).
+   * `createManualRuntimeServices` from `@lostgradient/operative` (or
+   * `lifecycle`, which `@lostgradient/operative` re-exports it from).
    */
   runtime?: RuntimeServices;
 }

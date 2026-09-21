@@ -46,7 +46,7 @@
 
   import './prosemirror.css';
   import { classNames } from '../../utilities/class-names.ts';
-  import { Segment, SegmentedControl, FileCode, Pencil, Textarea } from '@corvidae/cinder';
+  import { Segment, SegmentedControl, FileCode, Pencil, Textarea } from '@lostgradient/cinder';
   import EditorSkeleton from './editor-skeleton.svelte';
   import { EditorToolbar, LinkPopover } from './editor-toolbar/index.ts';
   import type { LinkPopoverMode } from './editor-toolbar/link-popover.svelte';
@@ -58,7 +58,7 @@
   >;
 
   type MarkdownPipelineUtilities = Pick<
-    typeof import('@corvidae/markdown'),
+    typeof import('@lostgradient/markdown'),
     'normalize' | 'parseOrThrow'
   >;
 
@@ -207,7 +207,7 @@
     let cancelled = false;
     // cinder/markdown/pipeline is SSR-safe (pure remark/unified), but kept dynamic for code-splitting:
     // the parser/serializer should not load before the user actually interacts with the editor.
-    void import('@corvidae/markdown').then((module) => {
+    void import('@lostgradient/markdown').then((module) => {
       if (!cancelled) {
         pipelineUtilities = {
           normalize: module.normalize,

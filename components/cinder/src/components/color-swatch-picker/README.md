@@ -6,7 +6,7 @@ Presents a fixed palette of color swatches for constrained color selection.
 
 ```svelte
 <script lang="ts">
-  import { ColorSwatchPicker } from '@corvidae/cinder';
+  import { ColorSwatchPicker } from '@lostgradient/cinder';
 
   const palette = [
     { color: '#ef4444', name: 'Red' },

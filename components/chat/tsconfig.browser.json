@@ -1,4 +1,4 @@
 {
-  "extends": "@corvidae/typescript/browser.json",
+  "extends": "@lostgradient/typescript/browser.json",
   "include": ["src"]
 }

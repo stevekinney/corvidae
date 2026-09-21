@@ -6,7 +6,7 @@ Numeric text input with increment and decrement stepper controls.
 
 ```svelte
 <script lang="ts">
-  import { NumberInput } from '@corvidae/cinder';
+  import { NumberInput } from '@lostgradient/cinder';
 
   let quantity = $state<number | null>(1);
 

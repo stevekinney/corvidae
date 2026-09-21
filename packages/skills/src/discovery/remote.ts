@@ -1,4 +1,4 @@
-import { sha256BytesHex } from '@corvidae/cryptography';
+import { sha256BytesHex } from '@lostgradient/cryptography';
 
 import {
   createSkillArtifact,

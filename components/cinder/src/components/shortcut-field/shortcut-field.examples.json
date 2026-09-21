@@ -1,13 +1,13 @@
 {
   "$schema": "../../schemas/examples.schema.json",
   "component": "shortcut-field",
-  "import": "@corvidae/cinder",
+  "import": "@lostgradient/cinder",
   "examples": [
     {
       "id": "basic",
       "title": "Shortcut field",
       "description": "Capture a keyboard shortcut in an accessible field.",
-      "code": "<script lang=\"ts\">\n  import { ShortcutField } from '@corvidae/cinder';\n</script>\n\n<ShortcutField label=\"Open command palette\" value={['Meta', 'K']} />\n"
+      "code": "<script lang=\"ts\">\n  import { ShortcutField } from '@lostgradient/cinder';\n</script>\n\n<ShortcutField label=\"Open command palette\" value={['Meta', 'K']} />\n"
     }
   ]
 }

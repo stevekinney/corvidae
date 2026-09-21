@@ -16,13 +16,13 @@ const MANIFEST_PATH = `${PACKAGE_ROOT}/components.json`;
 const validArtifact = {
   $schema: '../../schemas/examples.schema.json',
   component: 'button',
-  import: '@corvidae/cinder',
+  import: '@lostgradient/cinder',
   examples: [
     {
       id: 'basic',
       title: 'Basic button',
       description: 'A basic button.',
-      code: '<script lang="ts">\n  import { Button } from \'@corvidae/cinder\';\n</script>',
+      code: '<script lang="ts">\n  import { Button } from \'@lostgradient/cinder\';\n</script>',
     },
   ],
 };
@@ -102,11 +102,11 @@ describe('committed component examples', () => {
     const issues = validateExampleArtifactValue(
       {
         ...validArtifact,
-        import: '@corvidae/cinder/button',
+        import: '@lostgradient/cinder/button',
         examples: [
           {
             ...validArtifact.examples[0],
-            code: "import { Button } from '@corvidae/cinder/button';",
+            code: "import { Button } from '@lostgradient/cinder/button';",
           },
         ],
       },
@@ -117,10 +117,10 @@ describe('committed component examples', () => {
       component,
     );
     expect(issues).toContain(
-      'src/components/button/button.examples.json: import must use public root "@corvidae/cinder"',
+      'src/components/button/button.examples.json: import must use public root "@lostgradient/cinder"',
     );
     expect(issues).toContain(
-      'src/components/button/button.examples.json: example code must use the public root import "@corvidae/cinder"',
+      'src/components/button/button.examples.json: example code must use the public root import "@lostgradient/cinder"',
     );
   });
 });

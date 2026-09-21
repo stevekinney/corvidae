@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Sparkbar } from '@corvidae/cinder';
+  import { Sparkbar } from '@lostgradient/cinder';
 </script>
 
 <div style="display: grid; gap: 0.75rem; max-width: 28rem;">

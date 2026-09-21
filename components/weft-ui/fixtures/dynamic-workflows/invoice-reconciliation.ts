@@ -11,7 +11,7 @@
  * serving engine never evaluates this module at all — which is exactly the
  * `idle` load state the console's diagnostics surface reports.
  */
-import { activity, workflow } from '@corvidae/weft';
+import { activity, workflow } from '@lostgradient/weft';
 
 interface InvoiceReconciliationInput {
   invoiceId: string;

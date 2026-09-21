@@ -1,5 +1,5 @@
-import type { ToolExecutionResult, ToolResult } from '@corvidae/armorer';
-import type { ChatStreamEvent } from '@corvidae/chat';
+import type { ToolExecutionResult, ToolResult } from 'armorer';
+import type { ChatStreamEvent } from '@lostgradient/chat';
 import {
   ElicitationRequestedEvent,
   ElicitationResolvedEvent,
@@ -12,7 +12,7 @@ import {
   ToolStartedBubbleEvent,
   type AgentRun,
   type ConversationHistory,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   classifyChatRunFailure,
   SAFE_CHAT_FAILURE_MESSAGE,

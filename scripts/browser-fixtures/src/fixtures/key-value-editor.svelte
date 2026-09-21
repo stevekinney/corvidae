@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { KeyValueEditor, type KeyValueEntry } from '@corvidae/cinder';
+  import { KeyValueEditor, type KeyValueEntry } from '@lostgradient/cinder';
 
   let entries = $state<KeyValueEntry[]>([
     { key: 'HOST', value: 'localhost' },

@@ -5,7 +5,7 @@
     detectTrigger,
     Textarea,
     type CommandMenuCompletion,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

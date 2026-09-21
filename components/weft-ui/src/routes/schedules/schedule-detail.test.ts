@@ -7,7 +7,7 @@ import { requireElement } from '../../../tests/dom-test-support.ts';
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient } from '@corvidae/weft';
+import { HttpClient } from '@lostgradient/weft';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import ScheduleDetailHarness from './schedule-detail-test-harness.test-harness.svelte';

@@ -4,7 +4,7 @@
  * and drill-through filter construction, all unit-testable without a
  * component tree. `aggregate-view.svelte` is the thin UI wrapper.
  */
-import type { FailureCategory, WorkflowStatus } from '@corvidae/weft';
+import type { FailureCategory, WorkflowStatus } from '@lostgradient/weft';
 
 import type { WorkflowAggregateGroupBy } from '../../../lib/query.ts';
 

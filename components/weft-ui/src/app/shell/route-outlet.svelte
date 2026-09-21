@@ -9,7 +9,7 @@
    */
   import type { Component } from 'svelte';
 
-  import { Skeleton, EmptyState } from '@corvidae/cinder';
+  import { Skeleton, EmptyState } from '@lostgradient/cinder';
 
   import { router } from '../../lib/router.svelte.ts';
   import FaultBoundary from '../fault-boundary.svelte';

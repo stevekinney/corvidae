@@ -12,7 +12,7 @@ The component owns row addition, removal, and change reporting. The consumer own
 
 ```svelte
 <script lang="ts">
-  import { KeyValueEditor } from '@corvidae/cinder';
+  import { KeyValueEditor } from '@lostgradient/cinder';
   let entries = $state([
     { key: 'HOST', value: 'localhost' },
     { key: 'PORT', value: '3000' },

@@ -101,7 +101,7 @@ export function findProseReferenceFailures(input: {
     }
   }
   for (const match of input.source.matchAll(
-    /\bimport\s+(?:type\s+)?\{([^}]+)\}\s+from\s+['"]@corvidae\/cinder['"]/g,
+    /\bimport\s+(?:type\s+)?\{([^}]+)\}\s+from\s+['"]@lostgradient\/cinder['"]/g,
   )) {
     for (const binding of (match[1] ?? '').split(',')) {
       const name = binding
@@ -112,11 +112,11 @@ export function findProseReferenceFailures(input: {
       if (name) addPackageImport(name);
     }
   }
-  if (/\bimport\s+\w+\s+from\s+['"]@corvidae\/cinder['"]/.test(input.source)) {
+  if (/\bimport\s+\w+\s+from\s+['"]@lostgradient\/cinder['"]/.test(input.source)) {
     addPackageImport('default');
   }
   for (const match of input.source.matchAll(
-    /@corvidae\/cinder\/([a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*)/g,
+    /@lostgradient\/cinder\/([a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*)/g,
   )) {
     const reference = match[0];
     failures.set(reference, { reference, filePath: input.filePath });
@@ -230,7 +230,7 @@ export function componentDocumentationProse(filePath: string, source: string): s
   const related = [...source.matchAll(/^Related components:.*$/gim)].map((match) => match[0]);
   const packageReferences = [
     ...source.matchAll(
-      /\bimport\s+(?:type\s+)?(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)?(?:\s+from)?\s+['"]@corvidae\/cinder(?:\/[^'"]+)?['"]/g,
+      /\bimport\s+(?:type\s+)?(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)?(?:\s+from)?\s+['"]@lostgradient\/cinder(?:\/[^'"]+)?['"]/g,
     ),
   ].map((match) => {
     const referenceStart = match.index ?? 0;

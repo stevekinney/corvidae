@@ -1,4 +1,4 @@
-import { sveltePlugin } from '@corvidae/testing';
+import { sveltePlugin } from '@lostgradient/testing';
 import { join } from 'node:path';
 
 // The unwasm condition exposes binary modules. Bun emits their bytes as assets;
@@ -43,7 +43,7 @@ export async function buildBrowser(options: {
       wasmPlugin,
       sveltePlugin({ generate: 'client', injectCss: true, development: options.development }),
     ],
-    optimizeImports: ['@corvidae/cinder'],
+    optimizeImports: ['@lostgradient/cinder'],
     sourcemap: 'none',
     splitting: true,
     metafile: true,

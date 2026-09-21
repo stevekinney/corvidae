@@ -12,7 +12,7 @@
  *
  * @example
  * ```ts
- * import type { SubprocessSignal } from '@corvidae/weft';
+ * import type { SubprocessSignal } from '@lostgradient/weft';
  * const signal: SubprocessSignal = 'SIGKILL';
  * ```
  */

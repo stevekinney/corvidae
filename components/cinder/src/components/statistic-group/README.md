@@ -8,7 +8,7 @@ Grid container that lays out multiple stat tiles with consistent spacing and ali
 
 ```svelte
 <script lang="ts">
-  import { StatisticGroup } from '@corvidae/cinder';
+  import { StatisticGroup } from '@lostgradient/cinder';
 </script>
 
 <StatisticGroup label="This quarter" columns={3}>
@@ -18,7 +18,7 @@ Grid container that lays out multiple stat tiles with consistent spacing and ali
 </StatisticGroup>
 ```
 
-The leaf remains importable individually for à-la-carte builds — see `@corvidae/cinder`.
+The leaf remains importable individually for à-la-carte builds — see `@lostgradient/cinder`.
 
 ## Rendering and customization
 

@@ -6,7 +6,7 @@ SpeedDialAction is the `SpeedDial.Action` leaf. It must be rendered inside a `Sp
 
 ```svelte
 <script lang="ts">
-  import { SpeedDial } from '@corvidae/cinder';
+  import { SpeedDial } from '@lostgradient/cinder';
 </script>
 
 <SpeedDial aria-label="Quick actions">

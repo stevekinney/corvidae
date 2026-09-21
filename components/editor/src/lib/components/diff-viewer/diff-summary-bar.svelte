@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { HTMLAttributes } from 'svelte/elements';
-  import type { LineDiffStats } from '@corvidae/markdown';
+  import type { LineDiffStats } from '@lostgradient/markdown';
 
   export type DiffSummaryBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
     /** Diff statistics from getDiffStats() */
@@ -28,7 +28,7 @@
    */
 
   import { classNames } from '../../utilities/class-names.ts';
-  import { Badge, Button, ChevronDown, ChevronUp, FileText } from '@corvidae/cinder';
+  import { Badge, Button, ChevronDown, ChevronUp, FileText } from '@lostgradient/cinder';
 
   let {
     stats,

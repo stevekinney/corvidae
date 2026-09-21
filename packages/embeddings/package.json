@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/embeddings",
+  "name": "@lostgradient/embeddings",
   "private": true,
   "description": "Shared embedding vector contracts, validation, and similarity utilities",
   "type": "module",
@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   }

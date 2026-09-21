@@ -6,7 +6,7 @@
  * JSON Schema documents in `./protocol-schemas.ts`, the `taskResult` variant
  * parser in `./protocol-task-result.ts`, and internal helpers in
  * `./protocol-internals.ts`. All are re-exported so the public surface
- * `@corvidae/weft` stays a single import path.
+ * `@lostgradient/weft` stays a single import path.
  *
  * @module worker/protocol
  */
@@ -93,7 +93,7 @@ export type {
  *
  * @example
  * ```ts
- * import type { WorkerToServerMessage } from '@corvidae/weft';
+ * import type { WorkerToServerMessage } from '@lostgradient/weft';
  *
  * const message: WorkerToServerMessage = { type: 'heartbeat', workerId: 'worker-1' };
  * ```
@@ -106,7 +106,7 @@ export type WorkerToServerMessage =
  *
  * @example
  * ```ts
- * import type { ServerToWorkerMessage } from '@corvidae/weft';
+ * import type { ServerToWorkerMessage } from '@lostgradient/weft';
  *
  * const message: ServerToWorkerMessage = { type: 'shutdown' };
  * ```
@@ -431,7 +431,7 @@ function parseTaskResultAckMessage(
  * Parse and validate a worker-to-server protocol message.
  * @example
  * ```ts
- * import { parseWorkerToServerMessage } from '@corvidae/weft';
+ * import { parseWorkerToServerMessage } from '@lostgradient/weft';
  * const result = parseWorkerToServerMessage({ type: 'heartbeat', workerId: 'worker-1' });
  * ```
  */
@@ -468,7 +468,7 @@ export function parseWorkerToServerMessage(
  * Parse and validate a server-to-worker protocol message.
  * @example
  * ```ts
- * import { parseServerToWorkerMessage } from '@corvidae/weft';
+ * import { parseServerToWorkerMessage } from '@lostgradient/weft';
  * const result = parseServerToWorkerMessage({ type: 'shutdown' });
  * ```
  */

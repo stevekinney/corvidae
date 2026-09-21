@@ -26,7 +26,7 @@ export const EMPTY_STORAGE_VALUE = new Uint8Array(0);
  *
  * @example
  * ```ts
- * import type { RecoveredWorkflowInfo } from '@corvidae/weft';
+ * import type { RecoveredWorkflowInfo } from '@lostgradient/weft';
  *
  * function registerSurface(info: RecoveredWorkflowInfo): void {
  *   console.log(`Recovered ${info.workflowType}/${info.workflowId}`);
@@ -52,7 +52,7 @@ export interface RecoveredWorkflowInfo {
  *
  * @example
  * ```ts
- * import { Engine, type RecoverAllOptions } from '@corvidae/weft';
+ * import { Engine, type RecoverAllOptions } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * const options: RecoverAllOptions = { acknowledgeUnknownWorkflowTypes: true };

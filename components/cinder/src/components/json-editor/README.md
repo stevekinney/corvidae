@@ -6,7 +6,7 @@ Controlled free-form JSON text editing with a native textarea, parse feedback, a
 
 ```svelte
 <script lang="ts">
-  import { JsonEditor } from '@corvidae/cinder';
+  import { JsonEditor } from '@lostgradient/cinder';
 
   let value = $state('{}');
 </script>

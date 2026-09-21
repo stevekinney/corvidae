@@ -16,6 +16,7 @@ import {
   type MirrorTarget,
 } from './manifests.ts';
 import { PackageMapError } from './package-map.ts';
+import { internalScope } from './source-escapes.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
@@ -27,44 +28,44 @@ const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
  */
 const workspaces: Record<string, Record<string, unknown>> = {
   'applications/chat-room': {
-    name: '@corvidae/chat-room',
+    name: '@lostgradient/chat-room',
     private: true,
     dependencies: {
-      '@corvidae/cinder': 'workspace:*',
-      '@corvidae/weft': 'workspace:*',
+      '@lostgradient/cinder': 'workspace:*',
+      '@lostgradient/weft': 'workspace:*',
       svelte: 'catalog:',
     },
-    devDependencies: { '@corvidae/typescript': 'workspace:*' },
+    devDependencies: { '@lostgradient/typescript': 'workspace:*' },
   },
   'components/cinder': {
-    name: '@corvidae/cinder',
+    name: '@lostgradient/cinder',
     private: true,
     exports: { '.': './src/index.ts' },
-    dependencies: { '@corvidae/markdown': 'workspace:*', svelte: 'catalog:' },
-    devDependencies: { '@corvidae/typescript': 'workspace:*' },
+    dependencies: { '@lostgradient/markdown': 'workspace:*', svelte: 'catalog:' },
+    devDependencies: { '@lostgradient/typescript': 'workspace:*' },
   },
   'components/weft-ui': {
-    name: '@corvidae/weft-ui',
+    name: '@lostgradient/weft-ui',
     private: true,
-    dependencies: { '@corvidae/cinder': 'workspace:*', '@corvidae/weft': 'workspace:*' },
+    dependencies: { '@lostgradient/cinder': 'workspace:*', '@lostgradient/weft': 'workspace:*' },
   },
-  'internal/typescript': { name: '@corvidae/typescript', private: true },
+  'internal/typescript': { name: '@lostgradient/typescript', private: true },
   'packages/markdown': {
-    name: '@corvidae/markdown',
+    name: '@lostgradient/markdown',
     private: true,
     dependencies: { zod: 'catalog:' },
   },
   'packages/operative': {
-    name: '@corvidae/operative',
+    name: '@lostgradient/operative',
     private: true,
-    dependencies: { '@corvidae/weft': 'workspace:*', zod: 'catalog:' },
+    dependencies: { '@lostgradient/weft': 'workspace:*', zod: 'catalog:' },
   },
   'packages/weft': {
-    name: '@corvidae/weft',
+    name: '@lostgradient/weft',
     private: true,
     exports: { '.': './src/index.ts' },
     dependencies: { zod: 'catalog:' },
-    devDependencies: { '@corvidae/typescript': 'workspace:*', turbo: 'catalog:' },
+    devDependencies: { '@lostgradient/typescript': 'workspace:*', turbo: 'catalog:' },
   },
 };
 
@@ -79,7 +80,7 @@ const corvidaeRoot = {
   workspaces: ['applications/*', 'components/*', 'packages/*', 'internal/*'],
   catalog,
   scripts: { validate: 'bun run lint && bun run typecheck' },
-  devDependencies: { '@corvidae/cinder': 'workspace:*', zod: 'catalog:' },
+  devDependencies: { '@lostgradient/cinder': 'workspace:*', zod: 'catalog:' },
   packageManager: 'bun@1.4.2',
   engines: { bun: '>=1.4.2' },
 };
@@ -150,17 +151,17 @@ describe('workspace discovery and target membership', () => {
   });
 
   test('only weft ships from the weft target', () => {
-    expect(targetFor('@corvidae/weft')).toBe('weft');
+    expect(targetFor('@lostgradient/weft')).toBe('weft');
     for (const manifest of Object.values(workspaces)) {
       const name = manifest['name'] as string;
-      if (name === '@corvidae/weft') continue;
+      if (name === '@lostgradient/weft') continue;
       expect(targetFor(name)).toBe('cinder');
     }
   });
 
   test('a private workspace gets a derived name rather than a published one', async () => {
     expect(
-      publicNameFor('@corvidae/typescript', {
+      publicNameFor('@lostgradient/typescript', {
         disposition: 'private-workspace',
         basis: 'development-only',
         reason: 'fixture',
@@ -170,28 +171,28 @@ describe('workspace discovery and target membership', () => {
 });
 
 describe('name mapping', () => {
-  test('no emitted manifest carries a @corvidae/ specifier, for either target', async () => {
+  test('no emitted manifest carries the retired internal scope, for either target', async () => {
     for (const target of ['weft', 'cinder'] as const) {
       const plan = await planFor(target);
       for (const [path, contents] of Object.entries(plan.files)) {
         if (!path.endsWith('package.json')) continue;
-        expect([path, contents.includes('@corvidae/')]).toEqual([path, false]);
+        expect([path, contents.includes(`${internalScope}/`)]).toEqual([path, false]);
       }
     }
   });
 
   test('a workspace absent from package-map.json fails, naming the workspace', async () => {
     const plan = planFor('cinder', {
-      extra: { 'packages/phantom/package.json': { name: '@corvidae/phantom', private: true } },
+      extra: { 'packages/phantom/package.json': { name: '@lostgradient/phantom', private: true } },
     });
     await expect(plan).rejects.toThrow(PackageMapError);
-    await expect(plan).rejects.toThrow(/@corvidae\/phantom/);
+    await expect(plan).rejects.toThrow(/@lostgradient\/phantom/);
   });
 
   test('the command line transform exits non-zero on an unmapped workspace', async () => {
     await withTree(
       corvidaeFixture({
-        'packages/phantom/package.json': { name: '@corvidae/phantom', private: true },
+        'packages/phantom/package.json': { name: '@lostgradient/phantom', private: true },
       }),
       async (root) => {
         const directory = await mkdtemp(join(tmpdir(), 'corvidae-unmapped-'));
@@ -214,7 +215,7 @@ describe('name mapping', () => {
             transform.exited,
           ]);
           expect(exitCode).not.toBe(0);
-          expect(stderr).toContain('@corvidae/phantom');
+          expect(stderr).toContain('@lostgradient/phantom');
           expect(await Bun.file(join(directory, 'package.json')).exists()).toBe(false);
         } finally {
           await rm(directory, { recursive: true, force: true });
@@ -227,14 +228,14 @@ describe('name mapping', () => {
     await withTree(
       corvidaeFixture({
         'packages/weft/package.json': {
-          name: '@corvidae/weft',
+          name: '@lostgradient/weft',
           private: true,
-          dependencies: { '@corvidae/typescript': 'workspace:*' },
+          dependencies: { '@lostgradient/typescript': 'workspace:*' },
         },
       }),
       async (root) => {
         await expect(planManifests({ corvidaeRoot: root, target: 'weft' })).rejects.toThrow(
-          /lists @corvidae\/typescript under dependencies/,
+          /lists @lostgradient\/typescript under dependencies/,
         );
       },
     );
@@ -279,7 +280,7 @@ describe('workspace and catalog resolution', () => {
 
   test('the weft target drops its development-only edge and reports it', async () => {
     const plan = await planFor('weft');
-    expect(plan.droppedEdges).toEqual(['@corvidae/weft -> @corvidae/typescript']);
+    expect(plan.droppedEdges).toEqual(['@lostgradient/weft -> @lostgradient/typescript']);
   });
 
   test('the monorepo target keeps its catalog and its internal workspace edges', async () => {
@@ -310,9 +311,9 @@ describe('workspace and catalog resolution', () => {
     await withTree(
       corvidaeFixture({
         'packages/weft/package.json': {
-          name: '@corvidae/weft',
+          name: '@lostgradient/weft',
           private: true,
-          dependencies: { '@corvidae/cinder': 'workspace:*' },
+          dependencies: { '@lostgradient/cinder': 'workspace:*' },
         },
       }),
       async (root) => {
@@ -328,9 +329,9 @@ describe('workspace and catalog resolution', () => {
     await withTree(
       corvidaeFixture({
         'packages/weft/package.json': {
-          name: '@corvidae/weft',
+          name: '@lostgradient/weft',
           private: true,
-          dependencies: { '@corvidae/weft-ui': 'workspace:*' },
+          dependencies: { '@lostgradient/weft-ui': 'workspace:*' },
         },
       }),
       async (root) => {
@@ -345,7 +346,7 @@ describe('workspace and catalog resolution', () => {
     await withTree(
       corvidaeFixture({
         'packages/weft/package.json': {
-          name: '@corvidae/weft',
+          name: '@lostgradient/weft',
           private: true,
           dependencies: { 'not-in-catalog': 'catalog:' },
         },
@@ -555,7 +556,7 @@ describe('composition against a manifest the target already carries', () => {
   });
 
   test('a never-published workspace with no target clone is seeded at 0.0.0 and reported', async () => {
-    // `@corvidae/weft-ui` carries `lastPublishedVersion: null` in the real map, so it has nothing
+    // `@lostgradient/weft-ui` carries `lastPublishedVersion: null` in the real map, so it has nothing
     // to seed from and falls back to the pre-COR-1229 behaviour.
     const plan = await planFor('cinder');
     expect(parse(plan, 'packages/weft-ui/package.json')['version']).toBe('0.0.0');
@@ -586,10 +587,10 @@ describe('composition against a manifest the target already carries', () => {
   test('only the package the target has never carried counts as a first publish', async () => {
     const versioned: Record<string, unknown> = {};
     for (const manifest of Object.values(workspaces)) {
-      if (manifest['name'] === '@corvidae/weft') continue;
-      // `@corvidae/weft-ui` is the fixture's stand-in for the four the map records as never
+      if (manifest['name'] === '@lostgradient/weft') continue;
+      // `@lostgradient/weft-ui` is the fixture's stand-in for the four the map records as never
       // published, so it is the one workspace the target clone deliberately does not carry.
-      if (manifest['name'] === '@corvidae/weft-ui') continue;
+      if (manifest['name'] === '@lostgradient/weft-ui') continue;
       const layout = await layoutFor(String(manifest['name']));
       // The clone is the target's tree, so its manifests sit at the target's own paths.
       if (layout.disposition !== 'emit') continue;
@@ -598,9 +599,9 @@ describe('composition against a manifest the target already carries', () => {
         version: '1.2.3',
         // Cinder's husky hook lives in this manifest rather than only at the root, and
         // `target-owned.json` enumerates it by the target's path. The entry could never match
-        // while `@corvidae/cinder` was emitted at corvidae's `components/cinder`; seeded here so
+        // while `@lostgradient/cinder` was emitted at corvidae's `components/cinder`; seeded here so
         // the remap and the enumeration are checked together.
-        ...(manifest['name'] === '@corvidae/cinder'
+        ...(manifest['name'] === '@lostgradient/cinder'
           ? { scripts: { prepare: 'cd ../.. && husky' } }
           : {}),
       };
@@ -640,9 +641,9 @@ describe('COR-1229: seeding a released package the target clone does not yet car
       const plan = await planFor('cinder', {
         targetDirectory,
         extra: {
-          'packages/armorer/package.json': { name: '@corvidae/armorer', private: true },
+          'packages/armorer/package.json': { name: 'armorer', private: true },
           'packages/conversationalist/package.json': {
-            name: '@corvidae/conversationalist',
+            name: 'conversationalist',
             private: true,
           },
         },
@@ -660,7 +661,7 @@ describe('COR-1229: seeding a released package the target clone does not yet car
 });
 
 /**
- * `@corvidae/chat-room` was the one deferred workspace until the repository owner excluded it
+ * `@lostgradient/chat-room` was the one deferred workspace until the repository owner excluded it
  * from the mirror outright (2026-09-21). Exclusion is decided in `package-map.json` before the
  * layout is ever consulted, so the plan carries no deferred entry and the cinder sync no longer
  * refuses on its account — while the layout entry keeps its `deferred` disposition, so lifting
@@ -675,19 +676,19 @@ describe('the excluded chat-room application', () => {
       'nothing is emitted for an excluded workspace',
     ).toEqual([]);
     expect(() => assertNothingDeferred(plan)).not.toThrow();
-    const layout = await layoutFor('@corvidae/chat-room');
+    const layout = await layoutFor('@lostgradient/chat-room');
     expect(layout.disposition).toBe('deferred');
   });
 
   test('a deferred workspace that is not excluded still refuses the sync by name', async () => {
-    const layout = await layoutFor('@corvidae/chat-room');
+    const layout = await layoutFor('@lostgradient/chat-room');
     if (layout.disposition !== 'deferred') throw new Error('the fixture entry must stay deferred');
-    const plan = { deferred: [{ workspace: '@corvidae/chat-room', layout }] };
+    const plan = { deferred: [{ workspace: '@lostgradient/chat-room', layout }] };
     expect(() => assertNothingDeferred(plan)).toThrow(DeferredWorkspaceError);
     try {
       assertNothingDeferred(plan);
     } catch (error) {
-      expect((error as Error).message).toContain('@corvidae/chat-room');
+      expect((error as Error).message).toContain('@lostgradient/chat-room');
       expect((error as Error).message).toContain('applications/chat-room');
       expect((error as Error).message).toContain('COR-1221');
     }
@@ -727,11 +728,11 @@ describe('lockfile generation', () => {
   const offline: Record<string, unknown> = {
     'package.json': { ...corvidaeRoot, catalog: {}, devDependencies: {} },
     LICENSE: licence,
-    'packages/markdown/package.json': { name: '@corvidae/markdown', private: true },
+    'packages/markdown/package.json': { name: '@lostgradient/markdown', private: true },
     'components/cinder/package.json': {
-      name: '@corvidae/cinder',
+      name: '@lostgradient/cinder',
       private: true,
-      dependencies: { '@corvidae/markdown': 'workspace:*' },
+      dependencies: { '@lostgradient/markdown': 'workspace:*' },
     },
   };
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowTimelineEntry } from '@corvidae/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 
 import type { PendingAsyncActivityObservation } from '../timeline/workflow-live-observations.svelte.ts';
 import { attachPendingActivitiesToSteps } from './async-activity-matching.ts';

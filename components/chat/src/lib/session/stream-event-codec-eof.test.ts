@@ -1,4 +1,4 @@
-import { createConversationHistory } from '@corvidae/conversationalist';
+import { createConversationHistory } from 'conversationalist';
 import { describe, test } from 'bun:test';
 import { expectRejected } from './stream-event-codec-test-helpers.ts';
 import { decodeChatStreamEvents } from './stream-event-codec.ts';

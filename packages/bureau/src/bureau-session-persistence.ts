@@ -2,9 +2,9 @@ import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
-} from '@corvidae/conversationalist';
-import type { AgentSession, JSONValue, SessionStore, Store } from '@corvidae/operative';
-import { createAgentSession } from '@corvidae/operative';
+} from 'conversationalist';
+import type { AgentSession, JSONValue, SessionStore, Store } from '@lostgradient/operative';
+import { createAgentSession } from '@lostgradient/operative';
 
 import { isPlainAuthorityRecord } from './session-authority';
 import type { DiagnosticSink } from './types';

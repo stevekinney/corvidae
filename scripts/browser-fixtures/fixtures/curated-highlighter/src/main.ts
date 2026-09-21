@@ -1,4 +1,4 @@
-import { Button, shikiHighlighter } from '@corvidae/cinder';
+import { Button, shikiHighlighter } from '@lostgradient/cinder';
 import { mount } from 'svelte';
 export const highlighter = shikiHighlighter({
   languageLoaders: { typescript: () => import('@shikijs/langs/typescript') },

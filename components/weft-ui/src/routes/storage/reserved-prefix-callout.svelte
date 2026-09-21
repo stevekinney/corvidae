@@ -5,7 +5,7 @@
    * entry — the general awareness note lives in `kv-browser.svelte`'s
    * persistent banner instead (plan's other half: "warning banner").
    */
-  import { Callout } from '@corvidae/cinder';
+  import { Callout } from '@lostgradient/cinder';
 
   import { matchedReservedPrefix } from './reserved-prefix.ts';
 

@@ -1,4 +1,4 @@
-import { appendUserMessage, createConversationHistory } from '@corvidae/conversationalist';
+import { appendUserMessage, createConversationHistory } from 'conversationalist';
 import type { Page } from '@playwright/test';
 import {
   fixtureGateHeld,

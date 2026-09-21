@@ -1,6 +1,6 @@
-import { Conversation, isConversation } from '@corvidae/conversationalist';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
-import { workflow } from '@corvidae/weft';
+import { Conversation, isConversation } from 'conversationalist';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { workflow } from '@lostgradient/weft';
 
 import { type AgentRunErrorCode, type AgentRunErrorKind, toAgentRunError } from '../errors';
 import { RunErrorEvent } from '../events';

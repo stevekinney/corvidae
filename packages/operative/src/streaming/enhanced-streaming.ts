@@ -1,4 +1,4 @@
-import type { TypedEventTarget } from '@corvidae/lifecycle';
+import type { TypedEventTarget } from '@lostgradient/lifecycle';
 
 import {
   readBackendDescriptors,

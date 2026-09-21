@@ -8,8 +8,8 @@ import {
   type LivenessProgressState,
   type LivenessReachability,
   type LivenessSnapshot,
-} from '@corvidae/operative';
-import type { EngineLeaseHealth, WeftClient } from '@corvidae/weft';
+} from '@lostgradient/operative';
+import type { EngineLeaseHealth, WeftClient } from '@lostgradient/weft';
 
 /**
  * Weft's own `weft.tasks.diagnostics`/`weft.workers.diagnostics` server
@@ -22,13 +22,13 @@ import type { EngineLeaseHealth, WeftClient } from '@corvidae/weft';
  * and the two diagnostics operations.
  *
  * `Engine.getLeaseHealth()` supplies the synchronous lease state through the
- * public @corvidae/weft Engine contract. Worker and task diagnostics are operations
+ * public @lostgradient/weft Engine contract. Worker and task diagnostics are operations
  * on WeftClient, so the projection derives their types from that same public
  * client contract instead of importing server implementation modules.
  */
 
 // ---------------------------------------------------------------------------
-// Types derived structurally from `WeftClient`, since `@corvidae/weft`
+// Types derived structurally from `WeftClient`, since `@lostgradient/weft`
 // does not re-export the underlying `GetWorkerDiagnosticsOutput`/
 // `GetTaskDiagnosticsOutput` names from any public entry point.
 // ---------------------------------------------------------------------------

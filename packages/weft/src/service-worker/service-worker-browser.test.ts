@@ -9,7 +9,7 @@
  * Gate: `WEFT_BROWSER_SMOKE=1` must be set (the shared flag for all real-browser
  * smokes, via `browserSmokeEnabled`). Otherwise the suite skips and does not run
  * in the default `bun test` pass. Run it with
- * `bun run --filter=@corvidae/weft test:browser`.
+ * `bun run --filter=@lostgradient/weft test:browser`.
  *
  * Browser provisioning: `bunx playwright install chromium` (run once).
  */

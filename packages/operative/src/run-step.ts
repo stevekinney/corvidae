@@ -1,6 +1,6 @@
-import type { AnyToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { AnyToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { ZodType } from 'zod';
 
 import type { ContextEpochSealer } from './context-epoch';

@@ -1,5 +1,5 @@
-import type { RunEngine } from '@corvidae/operative';
-import { createCheckpointStore, createRunEngine, createRunWorkflow } from '@corvidae/operative';
+import type { RunEngine } from '@lostgradient/operative';
+import { createCheckpointStore, createRunEngine, createRunWorkflow } from '@lostgradient/operative';
 import type { ServerOwnedRuntime } from './server-owned-runtime.ts';
 import { SHUTDOWN_FAILURE, serverOwnedRuntime } from './server-owned-runtime.ts';
 export type DurableRuntime = RunEngine;

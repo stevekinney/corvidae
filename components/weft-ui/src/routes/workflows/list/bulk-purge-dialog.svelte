@@ -36,7 +36,7 @@
    * confirmation-token protocol to detect that staleness the way the other
    * five actions can.
    */
-  import { Badge, Button, Input, Modal, Progress } from '@corvidae/cinder';
+  import { Badge, Button, Input, Modal, Progress } from '@lostgradient/cinder';
 
   import { faultTreatment } from '../../../lib/faults.ts';
   import { confirmPhrase, confirmPhraseMatches } from './bulk-preview-format.ts';

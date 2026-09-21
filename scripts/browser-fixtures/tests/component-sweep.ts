@@ -5,14 +5,14 @@ import type {
   Theme,
   Viewport,
   ViewportName,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 import {
   applyInteractions,
   captureScreenshot,
   evaluateAxeGate,
   runAxe,
   writeScreenshotMetadata,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 import { expect, test } from '@playwright/test';
 
 type ComponentPage = {

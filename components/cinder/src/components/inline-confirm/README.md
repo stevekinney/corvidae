@@ -6,8 +6,8 @@
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { InlineConfirm } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { InlineConfirm } from '@lostgradient/cinder';
 
   let open = $state(false);
 

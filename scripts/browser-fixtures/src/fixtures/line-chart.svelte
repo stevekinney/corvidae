@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LineChart } from '@corvidae/cinder';
+  import { LineChart } from '@lostgradient/cinder';
 
   const series = [
     {

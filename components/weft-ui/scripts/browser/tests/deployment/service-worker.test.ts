@@ -3,7 +3,7 @@
  *
  * No real browser Service Worker is needed: `setupServiceWorker()`'s fetch
  * listener is a thin wrapper that strips the path prefix and calls
- * `handleRequest(request, engine)` (`@corvidae/weft`'s
+ * `handleRequest(request, engine)` (`@lostgradient/weft`'s
  * `src/service-worker/setup.ts`) — so a hand-built fake scope satisfying only
  * `{ addEventListener }` (the one method the setup helper calls) reaches the
  * exact same code a real Service Worker would run. Storage is
@@ -40,7 +40,7 @@ import {
   workflow,
   type FleetEventFeed,
   type MinimalFetchEvent,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb';
 
@@ -117,7 +117,7 @@ function createFakeServiceWorkerScope(): {
  * the scope object's own identity (`src/service-worker/setup.ts`'s
  * `setupRegistry`), and `resetSetupServiceWorkerRegistry` — the test-only
  * helper weft's own suite uses to clear it — is not re-exported from the
- * public `@corvidae/weft` barrel. Each test below creates
+ * public `@lostgradient/weft` barrel. Each test below creates
  * its own fresh scope object via `createFakeServiceWorkerScope()`, so there is
  * no shared identity to reset in the first place.
  */

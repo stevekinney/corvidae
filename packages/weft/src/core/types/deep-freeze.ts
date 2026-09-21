@@ -18,7 +18,7 @@
  *
  * @example
  * ```ts
- * import { deepFreeze } from '@corvidae/weft';
+ * import { deepFreeze } from '@lostgradient/weft';
  *
  * const frozen = deepFreeze({ retry: { backoff: { initialInterval: 100 } } });
  * // In strict mode, the next line throws TypeError; outside strict mode it

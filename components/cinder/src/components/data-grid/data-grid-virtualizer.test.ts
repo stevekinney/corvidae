@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Component } from 'svelte';
 
-import { renderThenHydrate, setupHappyDom } from '@corvidae/testing';
+import { renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
 import { makeMetricColumns, makeRows, type LogRow } from './data-grid-hydration-data.ts';
 import type { DataGridColumnDef, DataGridProps } from './data-grid.types.ts';
 

@@ -38,7 +38,7 @@
     "transit": {
       "dependsOn": ["//#preflight", "^transit"]
     },
-    "@corvidae/chat-room#lint": {
+    "@lostgradient/chat-room#lint": {
       "dependsOn": ["sync", "transit"],
       "outputs": [
         ".svelte-kit/*.json",
@@ -47,7 +47,7 @@
         ".svelte-kit/generated/**"
       ]
     },
-    "@corvidae/chat-room#sync": {
+    "@lostgradient/chat-room#sync": {
       "dependsOn": ["transit"],
       "outputs": [
         ".svelte-kit/*.json",
@@ -60,7 +60,7 @@
         ".playwright/svelte-kit/generated/**"
       ]
     },
-    "@corvidae/chat-room#typecheck": {
+    "@lostgradient/chat-room#typecheck": {
       "dependsOn": ["sync", "transit"],
       "outputs": [
         ".svelte-kit/*.json",
@@ -69,7 +69,7 @@
         ".svelte-kit/generated/**"
       ]
     },
-    "@corvidae/chat-room#build": {
+    "@lostgradient/chat-room#build": {
       "dependsOn": ["typecheck", "transit"]
     },
     "//#test:browser-fixtures": {
@@ -92,7 +92,7 @@
       "persistent": true,
       "cache": false
     },
-    "@corvidae/chat-room#dev": {
+    "@lostgradient/chat-room#dev": {
       "persistent": true,
       "cache": false,
       "passThroughEnv": [
@@ -102,7 +102,7 @@
         "CHAT_ROOM_SERVER_OWNED_DATABASE"
       ]
     },
-    "@corvidae/chat-room#preview": {
+    "@lostgradient/chat-room#preview": {
       "persistent": true,
       "cache": false,
       "passThroughEnv": [
@@ -112,12 +112,12 @@
         "CHAT_ROOM_SERVER_OWNED_DATABASE"
       ]
     },
-    "@corvidae/weft-ui#dev:browser": {
+    "@lostgradient/weft-ui#dev:browser": {
       "persistent": true,
       "cache": false,
       "passThroughEnv": ["WEFT_UI_PORT", "WEFT_API_BASE_URL"]
     },
-    "@corvidae/weft#test": {
+    "@lostgradient/weft#test": {
       "dependsOn": ["transit"],
       "env": [
         "CODEX_CI",
@@ -135,7 +135,7 @@
         "WEFT_TEST_POSTGRES_URL"
       ]
     },
-    "@corvidae/weft#test:coverage": {
+    "@lostgradient/weft#test:coverage": {
       "outputs": ["coverage/**"],
       "dependsOn": ["transit"],
       "env": [
@@ -154,7 +154,7 @@
         "WEFT_TEST_POSTGRES_URL"
       ]
     },
-    "@corvidae/cinder#test": {
+    "@lostgradient/cinder#test": {
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"]
     }

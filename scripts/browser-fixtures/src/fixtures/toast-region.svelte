@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, ToastRegion, useToast } from '@corvidae/cinder';
+  import { Button, ToastRegion, useToast } from '@lostgradient/cinder';
   let undoCount = $state(0);
   let pauseCount = $state(0);
 </script>

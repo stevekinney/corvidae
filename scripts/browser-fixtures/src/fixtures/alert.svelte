@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Alert } from '@corvidae/cinder';
+  import { Alert } from '@lostgradient/cinder';
   let dismissed = $state(false);
 </script>
 

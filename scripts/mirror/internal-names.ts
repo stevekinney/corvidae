@@ -10,9 +10,9 @@ import {
  * Corvidae's internal workspace names, translated to the names the target publishes them under.
  *
  * The manifest half has always done this: `resolveInternalEdge` in `manifests.ts` maps every
- * `@corvidae/*` dependency to the public name `package-map.json` assigns it. The source half did
+ * `@lostgradient/*` dependency to the public name `package-map.json` assigns it. The source half did
  * not, so the transform emitted a `packages/weft/package.json` declaring `@lostgradient/weft`
- * beside 37 files importing `@corvidae/weft` — a name that exists in this workspace and in no
+ * beside 37 files importing `@lostgradient/weft` — a name that exists in this workspace and in no
  * target. That asymmetry was the whole defect: an internal name in an import statement is the
  * same fact as one in a dependency block, and `package-map.json` is the single authority for what
  * each becomes either way.
@@ -31,8 +31,8 @@ import {
  * script blocks and markup.
  *
  * **Why comments are rewritten too, and separately.** A specifier walk is blind to comments by
- * construction, and the emitted weft target carried 1,121 mentions of `@corvidae/weft` in JSDoc
- * across 271 files — 1,051 of them on `import … from '@corvidae/weft'` lines inside `@example`
+ * construction, and the emitted weft target carried 1,121 mentions of `@lostgradient/weft` in JSDoc
+ * across 271 files — 1,051 of them on `import … from '@lostgradient/weft'` lines inside `@example`
  * fences. The target's own `verify:jsdoc:doctests` compiles those examples against the package's
  * public face, so it failed 907 of 1,021 manifest entries on a name that resolves nowhere
  * downstream, while hover documentation showed every consumer the same name. A specifier and a
@@ -44,7 +44,7 @@ import {
  * trivia and code, and code cannot spell a package name.
  *
  * **Why Markdown is included.** The five documents weft's protocol suite reads ship downstream
- * and carried 19 mentions of `@corvidae/weft`, four of them `import … from '@corvidae/weft'`
+ * and carried 19 mentions of `@lostgradient/weft`, four of them `import … from '@lostgradient/weft'`
  * inside fences that the target's `verify:markdown-doctests` extracts. A reader-facing document
  * naming a package that exists on no registry is wrong in the same way an `@example` is, so a
  * Markdown file takes the prose pass over its whole text, fences included. It takes no specifier
@@ -52,8 +52,8 @@ import {
  *
  * **What it does not reach, deliberately.** An internal name inside a literal, wherever it sits:
  * a code sample stored as a JSON string,
- * `Symbol.for('@corvidae/operative/backend-descriptors')`, the `WEFT_PACKAGE_NAME` constant
- * `weft codegen` writes into the declarations it generates, a `describe('@corvidae/weft barrel
+ * `Symbol.for('@lostgradient/operative/backend-descriptors')`, the `WEFT_PACKAGE_NAME` constant
+ * `weft codegen` writes into the declarations it generates, a `describe('@lostgradient/weft barrel
  * re-exports')` test name and an error message that interpolates one. Rewriting an arbitrary
  * string because it looks like a package name is how a transform corrupts data; each of those is
  * a decision about corvidae's own source, made there rather than guessed at here. Svelte markup
@@ -127,7 +127,7 @@ export function rewriteInternalSpecifiers(
  * Every internal name a comment could be naming, longest first so a subpath wins over its root.
  *
  * Built from the scope rather than hard-coded so the two constants cannot drift. The character
- * class is npm's, which admits a dot, so a sentence-final `@corvidae/lifecycle.` matches with the
+ * class is npm's, which admits a dot, so a sentence-final `@lostgradient/lifecycle.` matches with the
  * period attached; `publicNameInProse` trims that rather than the pattern refusing it, because a
  * package name may legitimately contain a dot and only the map can tell the two apart.
  */
@@ -143,7 +143,7 @@ const sentencePunctuation = new Set(['.', ',', ';', ':', '!', '?', ')', ']', '}'
  * The public name one prose mention becomes, or `undefined` to leave it exactly as it is.
  *
  * The match is trimmed one trailing character at a time and each candidate is asked of the map,
- * so `@corvidae/weft` inside `(@corvidae/weft)` resolves, `@corvidae/weft/storage/testing` keeps
+ * so `@lostgradient/weft` inside `(@lostgradient/weft)` resolves, `@lostgradient/weft/storage/testing` keeps
  * its whole face, and a name the map does not know returns `undefined` rather than throwing.
  */
 export function publicNameInProse(

@@ -10,7 +10,7 @@ import { render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { HttpClient, HttpClientError } from '@corvidae/weft';
+import { HttpClient, HttpClientError } from '@lostgradient/weft';
 
 import CriticalAlertsBandHarness from './critical-alerts-band-test-harness.test-harness.svelte';
 

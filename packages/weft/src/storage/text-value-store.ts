@@ -12,7 +12,7 @@
  * so a string consumer never sees corrupted data masquerading as
  * valid text.
  *
- * @module @corvidae/weft
+ * @module @lostgradient/weft
  */
 import {
   storageConditionalBatch,
@@ -29,7 +29,7 @@ import {
  *
  * @example
  * ```ts
- * import { type TextValueStoreOptions } from '@corvidae/weft';
+ * import { type TextValueStoreOptions } from '@lostgradient/weft';
  *
  * const options: TextValueStoreOptions = {
  *   disposeUnderlyingStorage: false,
@@ -53,7 +53,7 @@ export type TextValueStoreOptions = {
  *
  * @example
  * ```ts
- * import { type TextValueStoreCondition } from '@corvidae/weft';
+ * import { type TextValueStoreCondition } from '@lostgradient/weft';
  *
  * const condition: TextValueStoreCondition = {
  *   key: 'api-key:1:last-used-at',
@@ -77,7 +77,7 @@ export type TextValueStoreCondition = {
  *
  * @example
  * ```ts
- * import { type TextValueStoreBatchOperation } from '@corvidae/weft';
+ * import { type TextValueStoreBatchOperation } from '@lostgradient/weft';
  *
  * const operation: TextValueStoreBatchOperation = {
  *   type: 'set',
@@ -105,8 +105,8 @@ export type TextValueStoreBatchOperation =
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@corvidae/weft';
- * import { textValueStore, type TextValueStore } from '@corvidae/weft';
+ * import { MemoryStorage } from '@lostgradient/weft';
+ * import { textValueStore, type TextValueStore } from '@lostgradient/weft';
  *
  * await using base = new MemoryStorage();
  * const store: TextValueStore = textValueStore(base);
@@ -143,8 +143,8 @@ export type TextValueStore = {
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@corvidae/weft';
- * import { type ConditionalTextValueStore, textValueStore } from '@corvidae/weft';
+ * import { MemoryStorage } from '@lostgradient/weft';
+ * import { type ConditionalTextValueStore, textValueStore } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * const store: ConditionalTextValueStore = textValueStore(storage);
@@ -182,8 +182,8 @@ const textDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
  *
  * @example
  * ```ts
- * import { MemoryStorage } from '@corvidae/weft';
- * import { textValueStore } from '@corvidae/weft';
+ * import { MemoryStorage } from '@lostgradient/weft';
+ * import { textValueStore } from '@lostgradient/weft';
  *
  * await using base = new MemoryStorage();
  * const store = textValueStore(base);

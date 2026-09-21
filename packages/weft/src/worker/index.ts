@@ -153,7 +153,7 @@ function resolveWorkerConnectUrl(
  *
  * @example
  * ```ts
- * import { RemoteWorker } from '@corvidae/weft';
+ * import { RemoteWorker } from '@lostgradient/weft';
  *
  * using worker = new RemoteWorker({
  *   serverUrl: 'ws://localhost:3000',

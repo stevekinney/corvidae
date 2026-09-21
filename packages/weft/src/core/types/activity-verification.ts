@@ -11,7 +11,7 @@
  *
  * @example
  * ```ts
- * import type { ActivityVerificationPhase } from '@corvidae/weft';
+ * import type { ActivityVerificationPhase } from '@lostgradient/weft';
  *
  * const phase: ActivityVerificationPhase = 'pre-dispatch-reconciliation';
  * console.log(phase);
@@ -24,7 +24,7 @@ export type ActivityVerificationPhase = 'post-execution-validation' | 'pre-dispa
  *
  * @example
  * ```ts
- * import type { ActivityVerificationContext } from '@corvidae/weft';
+ * import type { ActivityVerificationContext } from '@lostgradient/weft';
  *
  * function shouldQueryExternalSystem(context: ActivityVerificationContext): boolean {
  *   return context.phase === 'pre-dispatch-reconciliation';
@@ -48,7 +48,7 @@ export interface ActivityVerificationContext<TInput = unknown> {
  *
  * @example
  * ```ts
- * import type { ActivityVerificationResult } from '@corvidae/weft';
+ * import type { ActivityVerificationResult } from '@lostgradient/weft';
  *
  * const result: ActivityVerificationResult<string> = {
  *   status: 'completed-with-result',

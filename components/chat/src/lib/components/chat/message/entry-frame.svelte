@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { Collapsible } from '@corvidae/cinder';
+  import { Collapsible } from '@lostgradient/cinder';
 
   let {
     id,

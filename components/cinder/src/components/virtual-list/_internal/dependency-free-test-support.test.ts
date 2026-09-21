@@ -13,7 +13,7 @@ describe('virtual-list dependency guard test-support ownership', () => {
       await withTemporaryFileTree(
         {
           'entry.test.ts': `import './${helper}';`,
-          [helper]: "import '@corvidae/testing';",
+          [helper]: "import '@lostgradient/testing';",
         },
         async (root) => {
           const roots = [join(root, helper), join(root, 'entry.test.ts')];
@@ -30,7 +30,7 @@ describe('virtual-list dependency guard test-support ownership', () => {
       {
         'entry.test.ts': "import './setup-test-helpers.ts';",
         'entry.ts': "import './setup-test-helpers.ts';",
-        'setup-test-helpers.ts': "import '@corvidae/testing';",
+        'setup-test-helpers.ts': "import '@lostgradient/testing';",
       },
       async (root) => {
         const roots = ['entry.test.ts', 'setup-test-helpers.ts', 'entry.ts'].map((file) =>
@@ -39,7 +39,7 @@ describe('virtual-list dependency guard test-support ownership', () => {
         const result = await walkDependencyGraph(roots, new Set());
         expect(result.violations).toHaveLength(1);
         expect(result.violations[0]?.filePath).toBe(join(root, 'setup-test-helpers.ts'));
-        expect(result.violations[0]?.specifier).toBe('@corvidae/testing');
+        expect(result.violations[0]?.specifier).toBe('@lostgradient/testing');
       },
     );
   });
@@ -59,10 +59,10 @@ describe('virtual-list dependency guard test-support ownership', () => {
   });
 
   test('keeps runtime dependency rules for an unreferenced production module', async () => {
-    await withTemporaryFileTree({ 'utility.ts': "import '@corvidae/testing';" }, async (root) => {
+    await withTemporaryFileTree({ 'utility.ts': "import '@lostgradient/testing';" }, async (root) => {
       const result = await walkDependencyGraph([join(root, 'utility.ts')], new Set());
       expect(result.violations).toHaveLength(1);
-      expect(result.violations[0]?.specifier).toBe('@corvidae/testing');
+      expect(result.violations[0]?.specifier).toBe('@lostgradient/testing');
     });
   });
 });

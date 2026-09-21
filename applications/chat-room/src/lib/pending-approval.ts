@@ -1,6 +1,6 @@
-import type { SignedPendingToolApproval } from '@corvidae/armorer';
+import type { SignedPendingToolApproval } from 'armorer';
 
-import type { ChatToolResult } from '@corvidae/chat';
+import type { ChatToolResult } from '@lostgradient/chat';
 
 export type PendingApprovalResult = ChatToolResult;
 

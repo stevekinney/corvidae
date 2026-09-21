@@ -9,7 +9,7 @@
  * enumerates exhaustively from the server's own mapping
  * (`preload-workflow-revision.ts` plus `workflow-catalog-operation-helpers.ts`'s
  * `throwWorkflowCatalogOperationFault`, both verified against the published
- * `@corvidae/weft` 0.25.0 tree):
+ * `@lostgradient/weft` 0.25.0 tree):
  *
  * - `NotFound` + `data.resource: 'workflow-source'` — nothing was ever
  *   `registerSource()`-registered under this exact `(name, revision)` key.
@@ -43,7 +43,7 @@
  * Weft's server module graph into the browser bundle (see
  * `../../lib/faults.ts`'s module doc).
  */
-import { HttpClientError } from '@corvidae/weft';
+import { HttpClientError } from '@lostgradient/weft';
 
 import { KNOWN_COMPATIBILITY_REASONS } from './compatibility-verdict.ts';
 

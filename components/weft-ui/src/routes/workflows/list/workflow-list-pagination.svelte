@@ -17,7 +17,7 @@
 </script>
 
 <script lang="ts">
-  import { Pagination, Select } from '@corvidae/cinder';
+  import { Pagination, Select } from '@lostgradient/cinder';
 
   interface WorkflowListPaginationProps {
     offset: number;

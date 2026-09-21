@@ -219,7 +219,7 @@ function buildWorkerRegistrationRejectionsOperationForRegistry(
  *
  * @example
  * ```ts
- * import { createLiveOperationRegistry } from '@corvidae/weft';
+ * import { createLiveOperationRegistry } from '@lostgradient/weft';
  *
  * const operations = createLiveOperationRegistry().list();
  *

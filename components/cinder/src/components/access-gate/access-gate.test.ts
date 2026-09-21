@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import type { AccessGateProps } from './access-gate.types.ts';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),
@@ -19,7 +19,7 @@ const { default: AccessGateFocusFixture } =
 const { default: AccessGateStatefulFixture } =
   await import('../../test/fixtures/access-gate-stateful-fixture.svelte');
 const { createRawSnippet, tick } = await import('svelte');
-const { renderSvelteOnServer } = await import('@corvidae/testing');
+const { renderSvelteOnServer } = await import('@lostgradient/testing');
 
 const accessGateSsrFixturePath = new URL(
   '../../test/fixtures/access-gate-ssr-fixture.svelte',

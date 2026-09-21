@@ -1,4 +1,4 @@
-import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import type { RegistryAgnosticEngine } from '../durable/create-run-engine';

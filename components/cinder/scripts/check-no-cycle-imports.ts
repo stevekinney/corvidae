@@ -2,15 +2,15 @@
  * Cycle-prevention guard for the upstream workspace packages
  * (`markdown`, `editor`).
  *
- * `@corvidae/cinder` depends directly on `@corvidae/markdown` (see
+ * `@lostgradient/cinder` depends directly on `@lostgradient/markdown` (see
  * `src/utilities/change-tracker.svelte.ts` and
  * `src/components/json-schema-editor/diff-view.svelte`) — if markdown's own
- * source ever imported `@corvidae/cinder` or `@corvidae/cinder/<subpath>`,
+ * source ever imported `@lostgradient/cinder` or `@lostgradient/cinder/<subpath>`,
  * that would create a real runtime resolution cycle (`cinder → markdown →
  * cinder`), a type-emission cycle (the published `.d.ts` would reference an
- * unresolved `@corvidae/cinder`), and an init-order hazard.
+ * unresolved `@lostgradient/cinder`), and an init-order hazard.
  *
- * Cinder no longer depends on `@corvidae/editor` at all (Phase 5 of
+ * Cinder no longer depends on `@lostgradient/editor` at all (Phase 5 of
  * `documentation/decisions/package-boundaries.md` deleted cinder's upstream re-export
  * shims), so editor importing cinder would not create a resolution cycle
  * today — but editor's headless runtime still has no business depending on
@@ -19,7 +19,7 @@
  * below), so the guard stays in place defensively.
  *
  * This script walks `packages/{markdown,editor}/src/**` and
- * fails on any source file that imports `@corvidae/cinder` or `@corvidae/cinder`. Run as
+ * fails on any source file that imports `@lostgradient/cinder` or `@lostgradient/cinder`. Run as
  * part of `bun run validate` (and CI) so violations fail loudly on the
  * branch that introduced them.
  *
@@ -36,15 +36,15 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptDirectory, '..', '..', '..');
 
-/** Workspace packages whose `src/` must never import `@corvidae/cinder` or `@corvidae/cinder/*`. */
+/** Workspace packages whose `src/` must never import `@lostgradient/cinder` or `@lostgradient/cinder/*`. */
 const RESTRICTED_PACKAGES = ['markdown', 'editor'] as const;
 
 /**
  * Per-package glob prefixes excluded from the restriction, relative to that
  * package's `src/`. `editor`'s Svelte components (`markdown-editor`,
  * `review-editor`, `diff-viewer`) are a normal downstream consumer of
- * cinder's published primitives, exactly like `@corvidae/chat` — they
- * legitimately import `@corvidae/cinder/<component>`, so that subtree is
+ * cinder's published primitives, exactly like `@lostgradient/chat` — they
+ * legitimately import `@lostgradient/cinder/<component>`, so that subtree is
  * exempt. Cinder no longer re-exports any of editor's headless runtime (see
  * the module doc above), so this exemption is the only carve-out needed.
  */
@@ -55,14 +55,14 @@ const UNRESTRICTED_SUBTREES: Readonly<
 };
 
 /**
- * Matches `from '@corvidae/cinder'` and `from '@corvidae/cinder'` (single or double quoted),
- * dynamic `import('@corvidae/cinder')` calls, and bare-side-effect `import '@corvidae/cinder'`.
+ * Matches `from '@lostgradient/cinder'` and `from '@lostgradient/cinder'` (single or double quoted),
+ * dynamic `import('@lostgradient/cinder')` calls, and bare-side-effect `import '@lostgradient/cinder'`.
  * Deliberately does NOT match the upstream packages themselves
- * (`@corvidae/markdown`, `@corvidae/editor`) — those importing each
+ * (`@lostgradient/markdown`, `@lostgradient/editor`) — those importing each
  * other is allowed.
  */
 const FORBIDDEN_IMPORT_PATTERN =
-  /(?:from\s*|import\s*\(\s*|import\s+)(['"])@corvidae\/cinder(?:\/[^'"]*)?\1/g;
+  /(?:from\s*|import\s*\(\s*|import\s+)(['"])@lostgradient\/cinder(?:\/[^'"]*)?\1/g;
 
 type Violation = {
   filePath: string;
@@ -113,16 +113,16 @@ async function main(): Promise<void> {
   if (allViolations.length === 0) {
     process.stdout.write(
       `check-no-cycle-imports — OK (${RESTRICTED_PACKAGES.length} upstream packages, ` +
-        'no `@corvidae/cinder`/`@corvidae/cinder/*` imports).\n',
+        'no `@lostgradient/cinder`/`@lostgradient/cinder/*` imports).\n',
     );
     return;
   }
 
   process.stderr.write(
     'check-no-cycle-imports — forbidden imports detected.\n' +
-      'The upstream workspace packages must NEVER import `@corvidae/cinder` or `@corvidae/cinder/*` — ' +
+      'The upstream workspace packages must NEVER import `@lostgradient/cinder` or `@lostgradient/cinder/*` — ' +
       'doing so creates a resolution cycle (cinder → upstream package → cinder). ' +
-      'Use a relative path or a sibling upstream package (`@corvidae/markdown`, `@corvidae/editor`) instead.\n\n',
+      'Use a relative path or a sibling upstream package (`@lostgradient/markdown`, `@lostgradient/editor`) instead.\n\n',
   );
   for (const violation of allViolations) {
     process.stderr.write(

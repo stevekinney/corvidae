@@ -110,7 +110,7 @@ export interface WorkflowState {
  *
  * @example
  * ```ts
- * import type { RestartLineage } from '@corvidae/weft';
+ * import type { RestartLineage } from '@lostgradient/weft';
  *
  * const lineage: RestartLineage = {
  *   workflowId: 'nightly-reconciliation',
@@ -148,7 +148,7 @@ export type WorkflowTimelineStatus = 'running' | 'completed' | 'failed' | 'cance
  *
  * @example
  * ```ts
- * import type { WorkflowTimelineOperationDetail } from '@corvidae/weft';
+ * import type { WorkflowTimelineOperationDetail } from '@lostgradient/weft';
  *
  * const winner: WorkflowTimelineOperationDetail = {
  *   index: 0,
@@ -254,7 +254,7 @@ export interface WorkflowSessionState<T> {
  *
  * @example
  * ```ts
- * import type { WorkflowAtomicStateOptions } from '@corvidae/weft';
+ * import type { WorkflowAtomicStateOptions } from '@lostgradient/weft';
  *
  * const options: WorkflowAtomicStateOptions<number> = {
  *   initial: 0,
@@ -271,7 +271,7 @@ export type WorkflowAtomicStateOptions<T> = Pick<AtomicStateOptions<T>, 'initial
  *
  * @example
  * ```ts
- * import type { WorkflowAtomicState } from '@corvidae/weft';
+ * import type { WorkflowAtomicState } from '@lostgradient/weft';
  *
  * declare const counter: WorkflowAtomicState<number>;
  * const operation = counter.increment();
@@ -301,7 +301,7 @@ export interface WorkflowAtomicState<T> {
  *
  * @example
  * ```ts
- * import type { WorkflowStateNamespace } from '@corvidae/weft';
+ * import type { WorkflowStateNamespace } from '@lostgradient/weft';
  *
  * declare const state: WorkflowStateNamespace;
  * const session = state.session<number>('attempts', { initial: 0 });

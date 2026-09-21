@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Autocomplete } from '@corvidae/cinder';
+  import { Autocomplete } from '@lostgradient/cinder';
 
   const cities = [
     { value: 'Austin, Texas', description: 'United States' },

@@ -9,12 +9,12 @@
    * individually-confirmed clears, not one bulk action the API doesn't
    * offer).
    */
-  import { Badge, Button, DescriptionList, Tooltip } from '@corvidae/cinder';
+  import { Badge, Button, DescriptionList, Tooltip } from '@lostgradient/cinder';
 
   import { truncateId } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { DIAGNOSTIC_GUIDANCE } from './diagnostics-guidance.ts';
-  import type { RoutingPolicy } from '@corvidae/weft';
+  import type { RoutingPolicy } from '@lostgradient/weft';
   import type {
     TaskDiagnosticItem,
     TaskQueueHealth,

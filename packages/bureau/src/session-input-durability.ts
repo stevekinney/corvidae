@@ -5,14 +5,14 @@ import type {
   SessionInputPromotion,
   SessionInputReceipt,
   SessionStore,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   encodeStorageKeyComponent,
   Mailbox,
   type ApplicationCommandReceipt,
   type ConditionalTextValueStore,
   type Storage,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import { readSessionInputPromotion } from './session-input-promotion';
 

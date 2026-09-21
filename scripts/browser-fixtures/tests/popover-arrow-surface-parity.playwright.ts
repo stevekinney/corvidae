@@ -2,7 +2,7 @@
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import { fixtureRoute } from './overlay-fixture.ts';
 
-import { THEME_STORAGE_KEY } from '@corvidae/testing';
+import { THEME_STORAGE_KEY } from '@lostgradient/testing';
 
 import { readOnePixel, readPixelRegion, type Rgb } from './pixel-probe.ts';
 

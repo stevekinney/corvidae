@@ -1,5 +1,5 @@
-import type { ComponentEntry, Theme, Viewport } from '@corvidae/testing';
-import { THEME_STORAGE_KEY, themeContextOptions } from '@corvidae/testing';
+import type { ComponentEntry, Theme, Viewport } from '@lostgradient/testing';
+import { THEME_STORAGE_KEY, themeContextOptions } from '@lostgradient/testing';
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
 import { environmentConfiguration } from '../environment-configuration.ts';
 

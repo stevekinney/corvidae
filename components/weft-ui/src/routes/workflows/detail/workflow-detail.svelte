@@ -53,9 +53,9 @@
    * naming this workflow, so a `pending`/`running` finalizer that settles
    * while this page is open refreshes without a manual reload.
    */
-  import { EmptyState, Skeleton, Tabs } from '@corvidae/cinder';
+  import { EmptyState, Skeleton, Tabs } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import { SearchX } from 'lucide-svelte';
   import { onDestroy, untrack } from 'svelte';
 

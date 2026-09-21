@@ -33,13 +33,13 @@ import {
   type WorkerAdmissionRequest,
   type WorkflowEventFeed,
   type WorkflowEventFeedBackend,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 const packageRootEngine = new Engine();
 const packageRootPrometheusExporter = createMetricsCollectorExporter(undefined);
 declare const alertSnapshot: AlertStateSnapshot;
 // @ts-expect-error The mutable alert state type was removed from the public API.
-type RemovedAlertState = import('@corvidae/weft').AlertState;
+type RemovedAlertState = import('@lostgradient/weft').AlertState;
 // @ts-expect-error Alert snapshots are deeply read-only.
 alertSnapshot.rule.threshold = 10;
 // @ts-expect-error Alert snapshots are deeply read-only.
@@ -105,9 +105,9 @@ const removedMetricsCollectorHandlerOptions: HandlerOptions = { metricsCollector
 void removedMetricsCollectorHandlerOptions;
 
 // Every option/handle TYPE named in ServeOptions / WeftServer / TaskDispatch is
-// importable from the published '@corvidae/weft' subpath. The `Engine`
+// importable from the published '@lostgradient/weft' subpath. The `Engine`
 // instance passed to `serve()` is the exception: it comes from the root
-// '@corvidae/weft' (imported on line 1), its canonical home, by design.
+// '@lostgradient/weft' (imported on line 1), its canonical home, by design.
 const packageRootRoutingPolicy: RoutingPolicy = 'least-loaded';
 const packageRootSchedulingPolicy: SchedulingPolicy = 'fifo';
 const packageRootDiscoveryInfo: DiscoveryInfo = { description: 'Example API' };
@@ -212,7 +212,7 @@ void verifyPackageRootConcreteWorkflowRegistryEngineAcceptedByServe;
 
 // #714: the constructors for `HandlerOptions.workflowEventFeed` /
 // `HandlerOptions.fleetEventFeed` are constructable — not merely nameable as
-// types — from the published '@corvidae/weft' subpath.
+// types — from the published '@lostgradient/weft' subpath.
 const packageRootEventFeedBackend: WorkflowEventFeedBackend =
   createEngineEventFeedBackend(packageRootEngine);
 const packageRootWorkflowEventFeed: WorkflowEventFeed = createWorkflowEventFeed(

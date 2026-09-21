@@ -61,7 +61,7 @@ describe('check-readme-usage', () => {
 
   test('flags a usage fence that imports the component but never renders its tag', () => {
     const readme =
-      '# SettingRow\n\n## Usage\n\n```svelte\n<script lang="ts">\n  import { SettingRow } from \'@corvidae/cinder\';\n</script>\n```\n';
+      '# SettingRow\n\n## Usage\n\n```svelte\n<script lang="ts">\n  import { SettingRow } from \'@lostgradient/cinder\';\n</script>\n```\n';
     withComponentRoot({ 'setting-row': readme }, (root) => {
       expect(findReadmeUsageFailures(root).map((failure) => failure.reason)).toEqual([
         'no-matching-tag',

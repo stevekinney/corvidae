@@ -1,5 +1,5 @@
 /**
- * The Bureau-scoped extension of `@corvidae/operative`'s fault-plan
+ * The Bureau-scoped extension of `@lostgradient/operative`'s fault-plan
  * vocabulary (AB-263 / AB-94's tst-03d child).
  *
  * `packages/operative/src/test/fault-plan.ts` (AB-257) fixes `FaultBoundary`,
@@ -30,7 +30,7 @@ import type {
   FaultPlan,
   FaultPlanEntry,
   FiredFault,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 
 import type { AuditRecord } from '../audit-trail';
 import { encodeKey } from '../audit-trail';

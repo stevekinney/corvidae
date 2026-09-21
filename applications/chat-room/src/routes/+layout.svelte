@@ -1,6 +1,6 @@
 <script lang="ts">
   // The package root loads the base cascade before component styles.
-  import * as cinderCascade from '@corvidae/cinder';
+  import * as cinderCascade from '@lostgradient/cinder';
   import favicon from '../lib/assets/favicon.svg';
 
   void cinderCascade;

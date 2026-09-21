@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, SectionHeading } from '@corvidae/cinder';
+  import { Button, SectionHeading } from '@lostgradient/cinder';
 </script>
 
 <div id="example-mount-basic">

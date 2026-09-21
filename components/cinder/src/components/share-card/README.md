@@ -6,7 +6,7 @@ Compact share card with copy-link, copy-text, and native navigator.share actions
 
 ```svelte
 <script lang="ts">
-  import { ShareCard } from '@corvidae/cinder';
+  import { ShareCard } from '@lostgradient/cinder';
 </script>
 
 <div style="max-width: 22rem;">

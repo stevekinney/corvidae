@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LoadMore } from '@corvidae/cinder';
+  import { LoadMore } from '@lostgradient/cinder';
 
   let items = $state(Array.from({ length: 20 }, (_, index) => `Item ${index + 1}`));
   let loading = $state(false);

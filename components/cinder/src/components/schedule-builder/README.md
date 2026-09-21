@@ -8,8 +8,8 @@ A recurrence-definition control. Users author a schedule via friendly presets (e
 
 ```svelte
 <script lang="ts">
-  import { ScheduleBuilder } from '@corvidae/cinder';
-  import type { ScheduleFire, ScheduleValue } from '@corvidae/cinder';
+  import { ScheduleBuilder } from '@lostgradient/cinder';
+  import type { ScheduleFire, ScheduleValue } from '@lostgradient/cinder';
 
   let value = $state<ScheduleValue>({ mode: 'interval', every: 15, unit: 'minutes' });
 

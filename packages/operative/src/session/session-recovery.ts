@@ -1,5 +1,5 @@
-import type { ConversationHistory } from '@corvidae/conversationalist';
-import { CompletableEventTarget } from '@corvidae/lifecycle';
+import type { ConversationHistory } from 'conversationalist';
+import { CompletableEventTarget } from '@lostgradient/lifecycle';
 
 import type { AgentRun, RunEvent } from '../agent-run';
 import { createAgentRun } from '../agent-run';

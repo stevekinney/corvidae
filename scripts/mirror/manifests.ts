@@ -27,7 +27,7 @@ import {
  *
  * The rewrites, all of which are forced by the fact that the target is a different repository:
  *
- * - Every `@corvidae/*` name becomes the public name `package-map.json` assigns it, in the
+ * - Every `@lostgradient/*` name becomes the public name `package-map.json` assigns it, in the
  *   workspace's own `name` and in every internal dependency specifier.
  * - `workspace:*` survives only while both ends ship in the same target. An edge crossing targets
  *   has to become a published range, because the other end is a registry dependency downstream.
@@ -78,7 +78,7 @@ const targetDefinitions = {
     workspaces: ['packages/*'],
     catalog: false,
     /** The weft target is a single-package repository; every other workspace ships elsewhere. */
-    members: ['@corvidae/weft'] as readonly string[],
+    members: ['@lostgradient/weft'] as readonly string[],
   },
   cinder: {
     rootName: 'cinder-workspace',
@@ -98,7 +98,7 @@ export function targetFor(workspace: string): MirrorTarget {
 type JsonObject = Record<string, unknown>;
 
 export interface DiscoveredWorkspace {
-  /** The `@corvidae/*` name, read from the manifest rather than inferred from the directory. */
+  /** The `@lostgradient/*` name, read from the manifest rather than inferred from the directory. */
   name: string;
   /** Corvidae-relative directory, which the transform reuses as the target-relative directory. */
   directory: string;
@@ -131,9 +131,11 @@ export async function discoverWorkspaces(root: string): Promise<DiscoveredWorksp
  * The public name a workspace carries downstream.
  *
  * `publish-as` entries name themselves. `private-workspace` entries do not, because
- * `package-map.json` only records a name for something that reaches the registry — so the name is
- * derived by re-scoping, which keeps the package identifiable downstream without claiming a
- * registry name. `private: true` is preserved alongside it, so the derived name is never published.
+ * `package-map.json` only records a name for something that reaches the registry — but since
+ * COR-1284 every workspace's manifest `name` already equals its public name (`@lostgradient/*`,
+ * or the unscoped `armorer`/`conversationalist`), so a private workspace's public name is simply
+ * its own name, carried through unchanged. `private: true` is preserved alongside it by the
+ * caller, so the name is never published.
  */
 export function publicNameFor(workspace: string, disposition: WorkspaceDisposition): string {
   if (disposition.disposition === 'publish-as') return disposition.name;
@@ -142,13 +144,7 @@ export function publicNameFor(workspace: string, disposition: WorkspaceDispositi
       `${workspace} is excluded from the mirror and has no public name`,
     );
   }
-  const [scope, ...rest] = workspace.split('/');
-  if (scope !== '@corvidae' || rest.length !== 1) {
-    throw new ManifestTransformError(
-      `${workspace} is not a @corvidae/* workspace, so no public name can be derived for it`,
-    );
-  }
-  return `@lostgradient/${rest[0]}`;
+  return workspace;
 }
 
 /** The published range a cross-target edge resolves to, which only a published package has. */
@@ -177,7 +173,7 @@ interface RewriteContext {
   dropped: string[];
 }
 
-/** Resolve one internal `@corvidae/*` edge, or `undefined` when the edge cannot be carried. */
+/** Resolve one internal `@lostgradient/*` edge, or `undefined` when the edge cannot be carried. */
 function resolveInternalEdge(
   consumer: string,
   dependency: string,
@@ -202,7 +198,7 @@ function resolveInternalEdge(
     // A private workspace has no registry presence, so an edge to one cannot cross repositories.
     // Dropping is only safe where the edge is development-only in both senses: the map says the
     // workspace is tooling, and the consumer declares it as tooling. Anything an installed
-    // package would need at runtime has to fail instead. COR-1189 vendors `@corvidae/typescript`
+    // package would need at runtime has to fail instead. COR-1189 vendors `@lostgradient/typescript`
     // into the weft target to replace the one edge this removes today.
     if (disposition.basis !== 'development-only' || field !== 'devDependencies') {
       throw new ManifestTransformError(
@@ -505,7 +501,7 @@ export interface ManifestPlan {
   /** Every workspace this target receives, with the directory it lands in. */
   emitted: EmittedWorkspace[];
   /**
-   * The public name of every workspace in this tree, keyed by its `@corvidae/*` name.
+   * The public name of every workspace in this tree, keyed by its `@lostgradient/*` name.
    *
    * Recorded rather than recomputed because it is the authority the rest of the transform renames
    * by. The manifest half has always used it for dependency edges; the source half rewrites import

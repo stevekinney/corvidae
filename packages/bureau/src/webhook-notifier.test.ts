@@ -6,8 +6,8 @@
  * engine. `fetch`, `sleep`, and `now` are all injected so retry/backoff
  * behavior never touches a real timer or the network.
  */
-import type { Action, StallWatchdogClock } from '@corvidae/operative';
-import { MemoryStorage, textValueStore } from '@corvidae/weft';
+import type { Action, StallWatchdogClock } from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { AuditTrail } from './audit-trail';

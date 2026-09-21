@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, NavigationBar, NavigationItem } from '@corvidae/cinder';
+  import { Button, NavigationBar, NavigationItem } from '@lostgradient/cinder';
   let active = $state('home');
   let mobileMenuOpen = $state(false);
 </script>

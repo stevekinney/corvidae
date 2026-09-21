@@ -19,7 +19,7 @@
    * init runs, so `getPrincipalStore()` inside it always sees a resolved
    * principal on first render — never the `null` "still resolving" state.
    */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import { QueryClientProvider, type QueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack, type Component } from 'svelte';
 

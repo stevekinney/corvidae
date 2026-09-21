@@ -1,5 +1,5 @@
-import type { AnyToolbox } from '@corvidae/armorer';
-import { forwardEvents } from '@corvidae/lifecycle';
+import type { AnyToolbox } from 'armorer';
+import { forwardEvents } from '@lostgradient/lifecycle';
 
 /**
  * Attach whatever run-owned listeners a caller wants on one toolbox instance

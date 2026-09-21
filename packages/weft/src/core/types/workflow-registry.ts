@@ -8,7 +8,7 @@ import type { WorkflowConcurrencyOptions } from './workflow-concurrency.ts';
  *
  * @example
  * ```ts
- * import { Engine, type RegisteredWorkflowDefinition } from '@corvidae/weft';
+ * import { Engine, type RegisteredWorkflowDefinition } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * const definition: RegisteredWorkflowDefinition | undefined = engine.getWorkflowDefinition('greet');

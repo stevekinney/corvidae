@@ -46,8 +46,8 @@
  * Deliberately not `bureau.*`-namespaced — see the function's own docstring.
  */
 
-import type { RuntimeServices, Subscription } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices, Subscription } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { RunEvent } from './agent-run';
 import {

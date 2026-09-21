@@ -1,4 +1,4 @@
-import type { ApprovalState } from '@corvidae/cinder';
+import type { ApprovalState } from '@lostgradient/cinder';
 import type { ChatAnnounceLevel } from '../chat.types.ts';
 import type { Message } from '../conversation-model.ts';
 import type { ChatRenderRow } from './use-chat-message-groups.svelte.ts';

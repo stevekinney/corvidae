@@ -32,7 +32,7 @@
  *   Rule 3 — global cleanup registration: `scripts/preload.ts` (the file every
  *   test process loads before any test file, per `bunfig.toml`'s `[test]
  *   preload`) MUST register a package-wide `afterEach(cleanup)` for
- *   `@testing-library/svelte`, via the shared `@corvidae/testing` cleanup helper. Without
+ *   `@testing-library/svelte`, via the shared `@lostgradient/testing` cleanup helper. Without
  *   it, mounted trees from `render()` calls across the ~90 component test files
  *   accumulate for the life of the process — the multi-gigabyte RSS this guard
  *   exists to prevent recurring. This rule fails if the registration call is
@@ -337,7 +337,7 @@ async function main(): Promise<void> {
       '       globalThis.ResizeObserver = Stub;\n' +
       '       afterAll(() => { globalThis.ResizeObserver = original; });\n\n' +
       '  3. scripts/preload.ts MUST call registerGlobalCleanup() from\n' +
-      '     the @corvidae/testing cleanup helper, which MUST register\n' +
+      '     the @lostgradient/testing cleanup helper, which MUST register\n' +
       '     afterEach(cleanup) for @testing-library/svelte — the package-wide\n' +
       '     teardown that unmounts every render() across the whole suite.\n\n',
   );

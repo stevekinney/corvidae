@@ -16,7 +16,7 @@ import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bind
  *
  * @example
  * ```ts
- * import { createCatalogSnapshot, type CatalogRestBindingSnapshot } from '@corvidae/weft';
+ * import { createCatalogSnapshot, type CatalogRestBindingSnapshot } from '@lostgradient/weft';
  *
  * const routes = createCatalogSnapshot()
  *   .operations.map((operation) => operation.rest)
@@ -44,7 +44,7 @@ export type CatalogRestBindingSnapshot = {
  *
  * @example
  * ```ts
- * import type { CatalogAccessSnapshot } from '@corvidae/weft';
+ * import type { CatalogAccessSnapshot } from '@lostgradient/weft';
  *
  * declare const access: CatalogAccessSnapshot;
  *
@@ -86,7 +86,7 @@ export type CatalogAccessSnapshot =
  *
  * @example
  * ```ts
- * import { createCatalogSnapshot, type CatalogOperationSnapshot } from '@corvidae/weft';
+ * import { createCatalogSnapshot, type CatalogOperationSnapshot } from '@lostgradient/weft';
  *
  * const byName = new Map<string, CatalogOperationSnapshot>(
  *   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
@@ -134,7 +134,7 @@ export type CatalogOperationSnapshot = {
  *
  * @example
  * ```ts
- * import { createCatalogSnapshot, type CatalogSnapshot } from '@corvidae/weft';
+ * import { createCatalogSnapshot, type CatalogSnapshot } from '@lostgradient/weft';
  *
  * const snapshot: CatalogSnapshot = createCatalogSnapshot();
  * console.log(snapshot.version, snapshot.operations.length);
@@ -160,7 +160,7 @@ export type CatalogSnapshot = {
  *
  * @example
  * ```ts
- * import { createCatalogSnapshot } from '@corvidae/weft';
+ * import { createCatalogSnapshot } from '@lostgradient/weft';
  *
  * const snapshot = createCatalogSnapshot();
  * const destructive = snapshot.operations
@@ -208,7 +208,7 @@ export function createCatalogSnapshot(
  *
  * @example
  * ```ts
- * import { createCatalogSnapshot, stringifyCatalogSnapshot } from '@corvidae/weft';
+ * import { createCatalogSnapshot, stringifyCatalogSnapshot } from '@lostgradient/weft';
  *
  * const serialized = stringifyCatalogSnapshot(createCatalogSnapshot());
  *

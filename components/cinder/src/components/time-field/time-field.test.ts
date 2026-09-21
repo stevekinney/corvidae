@@ -1,14 +1,14 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { injectStrippedStyles } from '../../test/css.ts';
 import type { TimeFieldChange } from './time-field.types.ts';
 
 setupHappyDom();
 
 const inputModule = await import('../input/index.ts');
-mock.module('@corvidae/cinder', () => inputModule);
+mock.module('@lostgradient/cinder', () => inputModule);
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');

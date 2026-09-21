@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 
 import type { Memory, MemorySearchResult } from '../types';
 import type { IdentityProvider, SoulBudget, SoulItem } from './types';

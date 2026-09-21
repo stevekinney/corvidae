@@ -6,7 +6,7 @@ Free-form text input with suggestion hints.
 
 ```svelte
 <script lang="ts">
-  import { Autocomplete } from '@corvidae/cinder';
+  import { Autocomplete } from '@lostgradient/cinder';
 
   const fruits = [
     { value: 'apple', label: 'Apple', description: 'Classic pie filling' },

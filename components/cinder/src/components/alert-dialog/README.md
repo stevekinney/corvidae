@@ -35,8 +35,8 @@ The key distinction between AlertDialog and ConfirmDialog is _who initiates_ the
 
 ```svelte
 <script lang="ts">
-  import { AlertDialog } from '@corvidae/cinder';
-  import { Button } from '@corvidae/cinder';
+  import { AlertDialog } from '@lostgradient/cinder';
+  import { Button } from '@lostgradient/cinder';
 
   let open = $state(false);
 </script>

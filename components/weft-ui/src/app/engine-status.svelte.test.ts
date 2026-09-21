@@ -1,7 +1,7 @@
 /**
  * `EngineStatusController` integration tests against a REAL in-process weft
  * server (`live-source-test-server.test-support.ts`, T1.4's harness — a
- * plain `serve()` as of `@corvidae/weft@0.12.0`).
+ * plain `serve()` as of `@lostgradient/weft@0.12.0`).
  *
  * Scope: `FleetEventSource`'s own wire/reconnect behavior is exhaustively
  * covered by T1.4's own test suites; what this file proves is the

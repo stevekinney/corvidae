@@ -1,6 +1,6 @@
 /** Milkdown plugin for inline autocomplete of `{{…}}` template tokens. */
 
-import type { PlaceholderCompletionConfiguration } from '@corvidae/markdown';
+import type { PlaceholderCompletionConfiguration } from '@lostgradient/markdown';
 import { Plugin } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 

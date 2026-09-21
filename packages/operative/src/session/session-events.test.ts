@@ -1,6 +1,6 @@
-import { createConversationHistory } from '@corvidae/conversationalist';
-import { TypedEventTarget } from '@corvidae/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@corvidae/weft';
+import { createConversationHistory } from 'conversationalist';
+import { TypedEventTarget } from '@lostgradient/lifecycle';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 import { createAgentSession } from '../agent-session';

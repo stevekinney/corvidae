@@ -2,7 +2,7 @@
   "$schema": "./dist/schemas/manifest.schema.json",
   "manifestVersion": 1,
   "package": {
-    "name": "@corvidae/chat",
+    "name": "@lostgradient/chat",
     "version": "0.14.0",
     "framework": "svelte",
     "frameworkVersionRange": ">=5.56.0 <6",
@@ -64,7 +64,7 @@
       "virtual-list",
       "z"
     ],
-    "stylesEntry": "@corvidae/cinder",
+    "stylesEntry": "@lostgradient/cinder",
     "schemaDialect": "https://json-schema.org/draft/2020-12/schema"
   },
   "categories": {
@@ -134,14 +134,14 @@
       ],
       "related": ["markdown-editor"],
       "name": "Chat",
-      "import": "@corvidae/chat",
+      "import": "@lostgradient/chat",
       "exportName": "Chat",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@corvidae/chat",
-        "variables": "@corvidae/chat",
-        "examples": "@corvidae/chat"
+        "schema": "@lostgradient/chat",
+        "variables": "@lostgradient/chat",
+        "examples": "@lostgradient/chat"
       }
     },
     {
@@ -158,14 +158,14 @@
       ],
       "related": ["chat"],
       "name": "ChatNavigationRail",
-      "import": "@corvidae/chat",
+      "import": "@lostgradient/chat",
       "exportName": "ChatNavigationRail",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@corvidae/chat",
-        "variables": "@corvidae/chat",
-        "examples": "@corvidae/chat"
+        "schema": "@lostgradient/chat",
+        "variables": "@lostgradient/chat",
+        "examples": "@lostgradient/chat"
       }
     },
     {
@@ -182,14 +182,14 @@
       ],
       "related": ["chat"],
       "name": "ChatSubSession",
-      "import": "@corvidae/chat",
+      "import": "@lostgradient/chat",
       "exportName": "ChatSubSession",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@corvidae/chat",
-        "variables": "@corvidae/chat",
-        "examples": "@corvidae/chat"
+        "schema": "@lostgradient/chat",
+        "variables": "@lostgradient/chat",
+        "examples": "@lostgradient/chat"
       }
     },
     {
@@ -236,14 +236,14 @@
         ]
       },
       "name": "ChatComposerPopover",
-      "import": "@corvidae/chat",
+      "import": "@lostgradient/chat",
       "exportName": "ChatComposerPopover",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@corvidae/chat",
-        "variables": "@corvidae/chat",
-        "examples": "@corvidae/chat"
+        "schema": "@lostgradient/chat",
+        "variables": "@lostgradient/chat",
+        "examples": "@lostgradient/chat"
       }
     },
     {
@@ -266,14 +266,14 @@
       ],
       "related": ["chat", "chat-conversation-list"],
       "name": "ChatConversationHeader",
-      "import": "@corvidae/chat",
+      "import": "@lostgradient/chat",
       "exportName": "ChatConversationHeader",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@corvidae/chat",
-        "variables": "@corvidae/chat",
-        "examples": "@corvidae/chat"
+        "schema": "@lostgradient/chat",
+        "variables": "@lostgradient/chat",
+        "examples": "@lostgradient/chat"
       }
     },
     {
@@ -296,14 +296,14 @@
       ],
       "related": ["chat", "chat-conversation-header", "side-navigation"],
       "name": "ChatConversationList",
-      "import": "@corvidae/chat",
+      "import": "@lostgradient/chat",
       "exportName": "ChatConversationList",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@corvidae/chat",
-        "variables": "@corvidae/chat",
-        "examples": "@corvidae/chat"
+        "schema": "@lostgradient/chat",
+        "variables": "@lostgradient/chat",
+        "examples": "@lostgradient/chat"
       }
     }
   ]

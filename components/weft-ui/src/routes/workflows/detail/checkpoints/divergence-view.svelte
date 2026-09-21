@@ -7,9 +7,9 @@
    * `timeline/run-step-timeline-selection.ts`'s module doc for why
    * `RunStepTimeline` needs this at all.
    */
-  import { EmptyState, RunStepTimeline, Skeleton } from '@corvidae/cinder';
+  import { EmptyState, RunStepTimeline, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
 
   import { applyRunStepTimelineDivergenceHighlight } from '../timeline/run-step-timeline-selection.ts';
   import { mapTimelineToSteps } from '../timeline/timeline-mapping.ts';

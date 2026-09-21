@@ -7,7 +7,7 @@
  */
 
 // Top-level Chat wrapper — the public component consumers import as
-// `@corvidae/chat`. It composes the inner implementation in container/ with a
+// `@lostgradient/chat`. It composes the inner implementation in container/ with a
 // custom class-merge layer.
 import './chat.css';
 import Chat from './chat.svelte';
@@ -82,7 +82,7 @@ export {
 // Conversationalist runtime helper — validates that values a consumer builds
 // by hand (message content, metadata, tool call arguments) are JSON-compatible
 // before handing them to the builders above.
-export { isJSONValue } from '@corvidae/conversationalist';
+export { isJSONValue } from 'conversationalist';
 
 // Conversation data model — published Conversationalist shapes Chat renders.
 // Public so consumers can type the `conversation` prop and construct messages

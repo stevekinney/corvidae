@@ -1,4 +1,4 @@
-import { cosineSimilarity } from '@corvidae/embeddings';
+import { cosineSimilarity } from '@lostgradient/embeddings';
 import { describe, expect, it } from 'bun:test';
 
 import { applyMaximalMarginalRelevance } from '../src/maximal-marginal-relevance';
@@ -22,7 +22,7 @@ describe('cosineSimilarity', () => {
   });
 
   it('throws a RangeError when vector lengths differ', () => {
-    // cosineSimilarity comes from `@corvidae/embeddings`, whose contract throws
+    // cosineSimilarity comes from `@lostgradient/embeddings`, whose contract throws
     // RangeError on a length mismatch (previously a generic Error).
     expect(() => cosineSimilarity([1, 0], [1, 0, 0])).toThrow(RangeError);
   });

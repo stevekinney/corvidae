@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Callout } from '@corvidae/cinder';
+  import { Callout } from '@lostgradient/cinder';
 </script>
 
 <Callout title="Note">

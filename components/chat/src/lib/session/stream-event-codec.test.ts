@@ -14,7 +14,7 @@ const completeApprovalAction = {
     kind: 'command' as const,
     command: 'bun test',
     filesTouched: ['components/chat/src/lib/session/stream-event-codec.test.ts'],
-    argsPreview: { filter: '@corvidae/chat', flags: ['--conditions', 'browser'] },
+    argsPreview: { filter: '@lostgradient/chat', flags: ['--conditions', 'browser'] },
   },
   sandbox: {
     provider: 'codex',

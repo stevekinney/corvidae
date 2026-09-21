@@ -6,7 +6,7 @@ GridItem is the optional `Grid.Item` placement leaf. Use it when a grid child ne
 
 ```svelte
 <script lang="ts">
-  import { Grid } from '@corvidae/cinder';
+  import { Grid } from '@lostgradient/cinder';
 </script>
 
 <Grid columns={12}>

@@ -37,7 +37,7 @@ import {
  *
  * @example
  * ```ts
- * import { CATALOG_OPERATION_NAMES } from '@corvidae/weft';
+ * import { CATALOG_OPERATION_NAMES } from '@lostgradient/weft';
  *
  * const requested = 'weft.activities.complete';
  * const callable = CATALOG_OPERATION_NAMES.some((name) => name === requested);
@@ -129,7 +129,7 @@ export const CATALOG_OPERATION_NAMES = [
  *
  * @example
  * ```ts
- * import type { CatalogOperationName } from '@corvidae/weft';
+ * import type { CatalogOperationName } from '@lostgradient/weft';
  *
  * const operation: CatalogOperationName = 'weft.alerts.list';
  * console.log(operation);
@@ -148,7 +148,7 @@ export type CatalogOperationName = (typeof CATALOG_OPERATION_NAMES)[number];
  *
  * @example
  * ```ts
- * import { CATALOG_OPERATION_NAMES, CLIENT_OPERATION_NAMES } from '@corvidae/weft';
+ * import { CATALOG_OPERATION_NAMES, CLIENT_OPERATION_NAMES } from '@lostgradient/weft';
  *
  * const restOnly = CLIENT_OPERATION_NAMES.filter(
  *   (name) => !CATALOG_OPERATION_NAMES.some((catalogName) => catalogName === name),
@@ -241,7 +241,7 @@ export const CLIENT_OPERATION_NAMES = [
  *
  * @example
  * ```ts
- * import type { ClientOperationName } from '@corvidae/weft';
+ * import type { ClientOperationName } from '@lostgradient/weft';
  *
  * const operation: ClientOperationName = 'weft.alerts.list';
  * console.log(operation);
@@ -260,7 +260,7 @@ export type ClientOperationName = (typeof CLIENT_OPERATION_NAMES)[number];
  *
  * @example
  * ```ts
- * import { CLIENT_REST_OPERATION_BINDINGS } from '@corvidae/weft';
+ * import { CLIENT_REST_OPERATION_BINDINGS } from '@lostgradient/weft';
  *
  * for (const [operation, binding] of Object.entries(CLIENT_REST_OPERATION_BINDINGS)) {
  *   console.log(binding.method + ' ' + binding.path + '  ' + operation);
@@ -287,7 +287,7 @@ export const CLIENT_REST_OPERATION_BINDINGS = {
  *
  * @example
  * ```ts
- * import type { ClientOperationTypes } from '@corvidae/weft';
+ * import type { ClientOperationTypes } from '@lostgradient/weft';
  *
  * type CancelInput = ClientOperationTypes['weft.workflows.cancel']['input'];
  *
@@ -325,7 +325,7 @@ export type ClientOperationTypes = ActivitiesOperationTypes &
  *
  * @example
  * ```ts
- * import type { CatalogOperationTypes } from '@corvidae/weft';
+ * import type { CatalogOperationTypes } from '@lostgradient/weft';
  *
  * type AlertsOutput = CatalogOperationTypes['weft.alerts.list']['output'];
  *
@@ -347,7 +347,7 @@ export type WeftClient = CatalogWeftClient<CatalogOperationTypes>;
  *
  * @example
  * ```ts
- * import type { ClientOperations } from '@corvidae/weft';
+ * import type { ClientOperations } from '@lostgradient/weft';
  *
  * declare const client: ClientOperations;
  * const diagnostics = client['weft.catalog.diagnostics'];
@@ -368,7 +368,7 @@ export type ClientOperations = CatalogWeftClient<ClientOperationTypes>;
  *
  * @example
  * ```ts
- * import { createWeftClient, type ClientOperationTypes } from '@corvidae/weft';
+ * import { createWeftClient, type ClientOperationTypes } from '@lostgradient/weft';
  *
  * const client = createWeftClient({
  *   server: 'http://localhost:7233',

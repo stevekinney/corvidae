@@ -8,8 +8,8 @@ export const bestPracticeSections: Record<
     topic: 'imports',
     title: 'Imports',
     guidance: [
-      'Import components and metadata from @corvidae/cinder; the root entry loads the aggregate stylesheet as a side effect.',
-      'Use named exports from @corvidae/cinder; the package has no component or stylesheet subpath exports.',
+      'Import components and metadata from @lostgradient/cinder; the root entry loads the aggregate stylesheet as a side effect.',
+      'Use named exports from @lostgradient/cinder; the package has no component or stylesheet subpath exports.',
       'Use the kebab-case manifest id when cross-referencing components in tools or generated code.',
     ],
   },
@@ -17,7 +17,7 @@ export const bestPracticeSections: Record<
     topic: 'styles',
     title: 'Styles',
     guidance: [
-      'The @corvidae/cinder root entry loads the aggregate component CSS automatically and declares cascade layer order, tokens, foundation rules, utilities, and shared internal chrome.',
+      'The @lostgradient/cinder root entry loads the aggregate component CSS automatically and declares cascade layer order, tokens, foundation rules, utilities, and shared internal chrome.',
       'Override public --cinder-* tokens and component root classes; do not redefine private --_cinder-* variables.',
     ],
   },
@@ -25,7 +25,7 @@ export const bestPracticeSections: Record<
     topic: 'metadata',
     title: 'Metadata',
     guidance: [
-      'Read @corvidae/cinder first; it is the authoritative component index for agents.',
+      'Read @lostgradient/cinder first; it is the authoritative component index for agents.',
       'Use schema and variables artifacts for prop contracts and CSS custom-property names.',
       'Fetch examples only when hasExamples is true and constraints only when hasConstraints is true.',
       'Treat constraints as the source for cross-prop rules that JSON Schema cannot express cleanly.',

@@ -21,8 +21,8 @@ import {
 } from './chat-agent-test-helpers';
 import { createChatRunOptions } from './chat-agent.ts';
 
-import type { OnElicitation, OperativeHookMap } from '@corvidae/operative';
-import { HookRegistry } from '@corvidae/operative';
+import type { OnElicitation, OperativeHookMap } from '@lostgradient/operative';
+import { HookRegistry } from '@lostgradient/operative';
 
 const NOTE_TOOL = 'remember_note';
 

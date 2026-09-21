@@ -8,7 +8,7 @@
    * so this builds its own scoped `reviews.list({status:'pending'})` query
    * rather than receiving one from the dashboard route.
    */
-  import { Card, EmptyState, Skeleton, Statistic } from '@corvidae/cinder';
+  import { Card, EmptyState, Skeleton, Statistic } from '@lostgradient/cinder';
 
   import { getClient } from '../../../lib/client.ts';
   import { faultTreatment } from '../../../lib/faults.ts';

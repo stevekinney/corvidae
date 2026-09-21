@@ -6,9 +6,9 @@ Full-viewport fixed scrim primitive for custom overlay patterns such as loading 
 
 ```svelte
 <script lang="ts">
-  import { Backdrop } from '@corvidae/cinder';
-  import { Button } from '@corvidae/cinder';
-  import { Spinner } from '@corvidae/cinder';
+  import { Backdrop } from '@lostgradient/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { Spinner } from '@lostgradient/cinder';
 
   let open = $state(false);
   let invisible = $state(false);

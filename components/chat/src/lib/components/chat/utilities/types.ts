@@ -6,7 +6,7 @@
  * (`ChatMessagePart`) that sits on top of the structural `Message` mirror.
  */
 
-import type { ApprovalState } from '@corvidae/cinder';
+import type { ApprovalState } from '@lostgradient/cinder';
 import type {
   Message,
   MultiModalContent,
@@ -28,7 +28,7 @@ export type DeliveryStatus = 'draft' | 'sending' | 'sent' | 'failed';
  * Options for exporting a chat transcript. Equivalent to the published
  * {@link ToMarkdownOptions} (which already carries `includeHidden`,
  * `redactHiddenContent`, and the redaction controls); exposed under a
- * chat-specific name for the public `@corvidae/chat` surface.
+ * chat-specific name for the public `@lostgradient/chat` surface.
  */
 export type ChatExportOptions = ToMarkdownOptions;
 

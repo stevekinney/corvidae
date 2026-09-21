@@ -3,7 +3,7 @@
 Manage tool dependencies and execution order.
 
 ```typescript
-import { createToolbox, createTool } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
 import { z } from 'zod';
 
 // Dependency graph

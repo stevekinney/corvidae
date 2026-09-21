@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TerminalFrame } from '@corvidae/cinder';
+  import { TerminalFrame } from '@lostgradient/cinder';
 </script>
 
 <TerminalFrame title="Build shell" status="connected">

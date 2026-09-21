@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-deprecated -- exercises the deprecated `searchTools` on purpose, alongside `queryTools`, for the ranking/pagination/select-mode coverage block. */
-import { hmacSha256HexSync } from '@corvidae/cryptography';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { hmacSha256HexSync } from '@lostgradient/cryptography';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, expectTypeOf, it } from 'bun:test';
 import { z } from 'zod';
 import { expectPromiseToReject } from './helpers/async-assertions';

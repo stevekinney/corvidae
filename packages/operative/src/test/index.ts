@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 
 import type { ActiveRun } from '../create-run';
 import { createScratchpad, type Scratchpad } from '../create-scratchpad';
@@ -118,10 +118,10 @@ export type {
 export { createStepwiseBlockingGenerate } from './stepwise-generate';
 export { createTestStore } from './store';
 export { waitForCondition, waitForRunState, type RunLookup } from './wait';
-// Deterministic runtime services are owned by @corvidae/lifecycle and exposed
+// Deterministic runtime services are owned by @lostgradient/lifecycle and exposed
 // with these test fixtures through the package root.
-export { createManualRuntimeServices } from '@corvidae/lifecycle';
-export type { ManualRuntimeServices } from '@corvidae/lifecycle';
+export { createManualRuntimeServices } from '@lostgradient/lifecycle';
+export type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 
 /**
  * Creates a mock generate function that returns responses in sequence.

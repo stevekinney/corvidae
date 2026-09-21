@@ -44,9 +44,9 @@
    * `EngineFailure`, …) offers a same-token retry instead, since the token
    * itself is still valid.
    */
-  import { Badge, Button, Input, Modal, Progress, Skeleton } from '@corvidae/cinder';
+  import { Badge, Button, Input, Modal, Progress, Skeleton } from '@lostgradient/cinder';
   import type { Snippet } from 'svelte';
-  import type { BulkOperationDryRunResult } from '@corvidae/weft';
+  import type { BulkOperationDryRunResult } from '@lostgradient/weft';
 
   import { faultTreatment } from '../../../lib/faults.ts';
   import { confirmPhrase, confirmPhraseMatches, filterSummaryChip } from './bulk-preview-format.ts';

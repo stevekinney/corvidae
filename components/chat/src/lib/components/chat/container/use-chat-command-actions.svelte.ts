@@ -1,4 +1,4 @@
-import type { ApprovalResolution, ApprovalState } from '@corvidae/cinder';
+import type { ApprovalResolution, ApprovalState } from '@lostgradient/cinder';
 import type {
   ChatAdapter,
   ChatCommand,

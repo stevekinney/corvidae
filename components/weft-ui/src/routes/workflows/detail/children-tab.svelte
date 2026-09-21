@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Children tab (plan T2.6). Real, clickable rows as of weft#732 item 1
-   * (`@corvidae/weft@0.15.0`, PR #760).
+   * (`@lostgradient/weft@0.15.0`, PR #760).
    *
    * ## Real ids, not timeline-derived guesses
    *
@@ -27,9 +27,9 @@
    * which — unlike the single-workflow `WorkflowState` this detail page
    * fetches — never carries finalizer status).
    */
-  import { Badge, EmptyState, Skeleton, Tooltip } from '@corvidae/cinder';
+  import { Badge, EmptyState, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { HttpClient, WorkflowState } from '@corvidae/weft';
+  import type { HttpClient, WorkflowState } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
   import { queryKeys } from '../../../lib/query.ts';

@@ -60,7 +60,7 @@ import type {
  *
  * @example
  * ```ts
- * import { Engine, type WeftEventMap } from '@corvidae/weft';
+ * import { Engine, type WeftEventMap } from '@lostgradient/weft';
  *
  * function listenAll(engine: Engine) {
  *   engine.addEventListener('workflow:completed', (event) => {
@@ -129,7 +129,7 @@ export type WeftEventMap = {
  *
  * @example
  * ```ts
- * import { Engine, type TypedEventTarget, type WeftEventMap } from '@corvidae/weft';
+ * import { Engine, type TypedEventTarget, type WeftEventMap } from '@lostgradient/weft';
  *
  * function addTypedListener(target: TypedEventTarget<WeftEventMap>) {
  *   target.addEventListener('workflow:started', (e) => {

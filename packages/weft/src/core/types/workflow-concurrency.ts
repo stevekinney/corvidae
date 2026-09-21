@@ -8,7 +8,7 @@ type WorkflowConcurrencyKeyResolver<TInput> = {
  *
  * @example
  * ```ts
- * import { workflow, type WorkflowConcurrencyOptions } from '@corvidae/weft';
+ * import { workflow, type WorkflowConcurrencyOptions } from '@lostgradient/weft';
  *
  * type OrderInput = { customerId: string };
  *

@@ -2,7 +2,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { compileModule } from 'svelte/compiler';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import {
   applyAnchoredOverlayMaxBlockSize,
   getAnchoredOverlayAvailableHeightStyle,

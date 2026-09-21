@@ -1,4 +1,4 @@
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { describe, expect, mock, test } from 'bun:test';
 import { destroyEditor } from './editor-lifecycle.js';
 import { createEditor } from './editor.js';

@@ -18,7 +18,7 @@
 
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
-  import { Maximize2 } from '@corvidae/cinder';
+  import { Maximize2 } from '@lostgradient/cinder';
   import ImageLightbox from './image-lightbox.svelte';
 
   let {

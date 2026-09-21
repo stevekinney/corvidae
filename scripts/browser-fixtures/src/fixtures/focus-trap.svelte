@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, FocusTrap } from '@corvidae/cinder';
+  import { Button, FocusTrap } from '@lostgradient/cinder';
 
   let open = $state(false);
 </script>

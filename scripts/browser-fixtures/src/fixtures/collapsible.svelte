@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Collapsible } from '@corvidae/cinder';
+  import { Collapsible } from '@lostgradient/cinder';
 </script>
 
 <Collapsible trigger="Shipping details">

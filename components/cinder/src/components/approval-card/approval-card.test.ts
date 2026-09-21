@@ -9,7 +9,7 @@ import {
   requiredInstance,
   setupHappyDom,
   trackTimers,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 import {
   formatEditableArguments,
   isApprovalActionable,
@@ -44,7 +44,7 @@ function approvalCardProps(overrides: Partial<ApprovalCardProps> = {}): Approval
     },
     operation: {
       kind: 'command',
-      command: 'bun run --filter=@corvidae/cinder test',
+      command: 'bun run --filter=@lostgradient/cinder test',
       filesTouched: ['components/cinder/src/components/approval-card/approval-card.svelte'],
       argsPreview: { dryRun: false, retries: 1 },
     },
@@ -898,7 +898,7 @@ describe('ApprovalCard', () => {
         operation: {
           kind: 'command',
           command: 'bun run components:check',
-          argsPreview: { package: '@corvidae/cinder' },
+          argsPreview: { package: '@lostgradient/cinder' },
         },
       }),
     });

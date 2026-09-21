@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MultiSelect } from '@corvidae/cinder';
+  import { MultiSelect } from '@lostgradient/cinder';
   const items = ['apple', 'banana', 'cherry', 'mango', 'orange'].map((id) => ({
     id,
     label: id.charAt(0).toUpperCase() + id.slice(1),

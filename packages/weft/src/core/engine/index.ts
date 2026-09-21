@@ -475,7 +475,7 @@ export const SLEEP_RESOLVER_READY_WAIT_TIMEOUT_MS_FOR_TESTING = 3_000;
  *
  * @example
  * ```ts
- * import { ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME } from '@corvidae/weft';
+ * import { ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME } from '@lostgradient/weft';
  *
  * process.on('warning', (warning) => {
  *   if (warning.name === ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME) {
@@ -523,7 +523,7 @@ function scheduleDefinitionFromInternals(
  *
  * @example Run a workflow with an activity
  * ```ts
- * import { workflow, activity, Engine, type Context, type WorkflowContext } from '@corvidae/weft';
+ * import { workflow, activity, Engine, type Context, type WorkflowContext } from '@lostgradient/weft';
  * const fetchUser = activity({
  *   name: 'fetchUser',
  *   execute: async (input: unknown) => ({ name: 'Alice' }),
@@ -541,8 +541,8 @@ function scheduleDefinitionFromInternals(
  *
  * @example With a SQLite backend
  * ```ts
- * import { Engine } from '@corvidae/weft';
- * import { BunSQLiteStorage } from '@corvidae/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { BunSQLiteStorage } from '@lostgradient/weft';
  * await using storage = new BunSQLiteStorage('./weft.db');
  * await using engine = new Engine({ storage });
  * await engine.recoverAll();
@@ -567,7 +567,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { activity, Engine, workflow } from '@corvidae/weft';
+   * import { activity, Engine, workflow } from '@lostgradient/weft';
    *
    * const greet = activity({ name: 'greet', execute: async (name: string) => `Hi ${name}` });
    * const welcome = workflow({ name: 'welcome' }).execute(async function* (ctx, input: string) {
@@ -1545,7 +1545,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine, workflow, type WorkflowContext } from '@corvidae/weft';
+   * import { Engine, workflow, type WorkflowContext } from '@lostgradient/weft';
    *
    * const engine = new Engine();
    * engine.register(
@@ -1616,10 +1616,10 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine, workflowSource } from '@corvidae/weft';
+   * import { Engine, workflowSource } from '@lostgradient/weft';
    *
    * declare const loadCheckout: () => Promise<{
-   *   checkout: import('@corvidae/weft').WorkflowDefinition<unknown, unknown, 'checkout'>;
+   *   checkout: import('@lostgradient/weft').WorkflowDefinition<unknown, unknown, 'checkout'>;
    * }>;
    * const engine = new Engine();
    * engine.registerSource(
@@ -1642,7 +1642,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine } from '@corvidae/weft';
+   * import { Engine } from '@lostgradient/weft';
    *
    * declare const engine: Engine;
    * const record = await engine.resolveWorkflowSource('checkout', 'r1');
@@ -1667,7 +1667,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine, workflow } from '@corvidae/weft';
+   * import { Engine, workflow } from '@lostgradient/weft';
    *
    * const welcome = workflow({ name: 'welcome' })
    *   .execute(async function* (_ctx, name: string) {
@@ -2217,7 +2217,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { workflow, Engine } from '@corvidae/weft';
+   * import { workflow, Engine } from '@lostgradient/weft';
    *
    * const engine = new Engine();
    * engine.register(workflow({ name: 'sweep' }).execute(async function* () { return 'ok'; }));
@@ -2470,7 +2470,7 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine } from '@corvidae/weft';
+   * import { Engine } from '@lostgradient/weft';
    *
    * async function readReport(engine: Engine, workflowId: string): Promise<unknown> {
    *   // `null` when the workflow offloaded nothing under this key, or after a
@@ -3035,8 +3035,8 @@ export class Engine<
    *
    * @example
    * ```ts
-   * import { Engine } from '@corvidae/weft';
-   * declare const externalEntry: import('@corvidae/weft').TimerEntry;
+   * import { Engine } from '@lostgradient/weft';
+   * declare const externalEntry: import('@lostgradient/weft').TimerEntry;
    * const engine = new Engine();
    * await engine.fireTimer(externalEntry);
    * ```
@@ -3093,7 +3093,7 @@ export class Engine<
  *   MemoryStorage,
  *   workflow,
  *   type RegistryAgnosticEngine,
- * } from '@corvidae/weft';
+ * } from '@lostgradient/weft';
  *
  * const greeting = workflow({ name: 'greeting' }).execute(async function* () {
  *   return 'hello';

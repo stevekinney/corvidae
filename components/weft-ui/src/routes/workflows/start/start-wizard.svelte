@@ -7,8 +7,8 @@
    * `client.start()` (`workflows:write`).
    */
   import { X } from 'lucide-svelte';
-  import { Steps } from '@corvidae/cinder';
-  import type { StepItem } from '@corvidae/cinder';
+  import { Steps } from '@lostgradient/cinder';
+  import type { StepItem } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../../../lib/client.ts';

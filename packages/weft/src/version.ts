@@ -4,7 +4,7 @@
  *
  * @example
  * ```ts
- * import { VERSION } from '@corvidae/weft';
+ * import { VERSION } from '@lostgradient/weft';
  *
  * console.log(`Running Weft ${VERSION}`);
  * ```

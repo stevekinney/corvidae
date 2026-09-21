@@ -6,7 +6,7 @@ Responsive SVG rendering of time-domain audio amplitude data as a waveform path 
 
 ```svelte
 <script lang="ts">
-  import { Waveform } from '@corvidae/cinder';
+  import { Waveform } from '@lostgradient/cinder';
 </script>
 
 <Waveform label="Voice recording waveform" data={[]} height={80}>

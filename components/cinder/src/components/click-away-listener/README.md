@@ -6,8 +6,8 @@ Headless utility that calls a function when the user clicks or taps outside a su
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { ClickAwayListener } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { ClickAwayListener } from '@lostgradient/cinder';
 
   let open = $state(false);
 </script>

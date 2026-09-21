@@ -19,9 +19,9 @@
     SegmentedControl,
     Segment,
     Textarea,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { createMutation } from '@tanstack/svelte-query';
-  import type { WeftClientActivity } from '@corvidae/weft';
+  import type { WeftClientActivity } from '@lostgradient/weft';
   import { Clock } from 'lucide-svelte';
 
   import { faultTreatment } from '../../../../lib/faults.ts';

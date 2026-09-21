@@ -6,8 +6,8 @@ A text input that validates and normalizes hex, `rgb()`, `hsl()`, `hwb()`, and `
 
 ```svelte
 <script lang="ts">
-  import { ColorField } from '@corvidae/cinder';
-  import { FormField } from '@corvidae/cinder';
+  import { ColorField } from '@lostgradient/cinder';
+  import { FormField } from '@lostgradient/cinder';
 
   let color = $state('#3366ff');
 </script>

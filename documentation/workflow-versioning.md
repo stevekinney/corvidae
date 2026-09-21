@@ -1,6 +1,6 @@
 # Workflow versioning for in-flight durable runs
 
-`@corvidae/operative` uses a caller-supplied version stamp to make workflow drift visible during durable recovery. This is an observation mechanism. It does not migrate checkpoints, pin a run to old code, or block recovery.
+`@lostgradient/operative` uses a caller-supplied version stamp to make workflow drift visible during durable recovery. This is an observation mechanism. It does not migrate checkpoints, pin a run to old code, or block recovery.
 
 For execution routing by a persisted Weft revision, use the [workflow revision guide](../packages/weft/documentation/guides/workflow-revisions.md). Operative’s version stamp here is a separate diagnostic value; setting it does not enable that routing.
 
@@ -9,8 +9,8 @@ For execution routing by a persisted Weft revision, use the [workflow revision g
 Pass the same deploy identifier to the workflow definition and the engine:
 
 ```ts
-import { createRunEngine, createRunWorkflow } from '@corvidae/operative';
-import type { CheckpointStore, CreateRunEngineOptions } from '@corvidae/operative';
+import { createRunEngine, createRunWorkflow } from '@lostgradient/operative';
+import type { CheckpointStore, CreateRunEngineOptions } from '@lostgradient/operative';
 
 export function startVersionedEngine(
   options: Omit<CreateRunEngineOptions, 'runWorkflow' | 'runWorkflowVersion'> & {

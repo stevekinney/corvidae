@@ -30,7 +30,7 @@
    * `weft.workers.list` snapshot; nothing here ever synthesizes a
    * client-side "disconnected" row).
    */
-  import { EmptyState, Skeleton, Tab, TabList, TabPanel, Tabs } from '@corvidae/cinder';
+  import { EmptyState, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
   import Lock from 'lucide-svelte/icons/lock';
 
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';

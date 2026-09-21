@@ -1,6 +1,6 @@
 # Embeddings
 
-`@corvidae/embeddings` owns the shared embedding function contract, vector types, boundary validation, and similarity mathematics used by Armorer, Memory, and Operative.
+`@lostgradient/embeddings` owns the shared embedding function contract, vector types, boundary validation, and similarity mathematics used by Armorer, Memory, and Operative.
 
 ## Public API
 
@@ -18,7 +18,7 @@ An embedding represents text as a vector: an ordered list of numbers. Similarity
 Validate provider output before using it. The dimension check catches a changed model or malformed response before it reaches storage:
 
 ```typescript
-import { cosineSimilarity, isEmbeddingVector } from '@corvidae/embeddings';
+import { cosineSimilarity, isEmbeddingVector } from '@lostgradient/embeddings';
 
 const candidate: unknown = new Float32Array([1, 0, 0]);
 if (!isEmbeddingVector(candidate, { dimension: 3 })) {
@@ -35,8 +35,8 @@ console.log(score); // 0: the vectors are perpendicular.
 
 ## Workspace usage
 
-Declare `"@corvidae/embeddings": "workspace:*"` in the consuming workspace. Import from the package root; consumers compile the private TypeScript source directly. See [Memory](../memory/README.md) for storage and retrieval and [Armorer](../armorer/README.md) for tool discovery.
+Declare `"@lostgradient/embeddings": "workspace:*"` in the consuming workspace. Import from the package root; consumers compile the private TypeScript source directly. See [Memory](../memory/README.md) for storage and retrieval and [Armorer](../armorer/README.md) for tool discovery.
 
 ## Development
 
-Run `bunx turbo run lint typecheck test --filter=@corvidae/embeddings --concurrency=1` from the repository root. Run `bun run validate` for the complete workspace.
+Run `bunx turbo run lint typecheck test --filter=@lostgradient/embeddings --concurrency=1` from the repository root. Run `bun run validate` for the complete workspace.

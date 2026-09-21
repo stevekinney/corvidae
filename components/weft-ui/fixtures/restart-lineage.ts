@@ -1,7 +1,7 @@
 /**
  * `start-new` continuation-chain demo fixture (plan §11, Lineage panel
  * "Previous run → This run → No successor" continuation chips —
- * weft#732 item 2, shipped `@corvidae/weft@0.15.0`). Starts a run under
+ * weft#732 item 2, shipped `@lostgradient/weft@0.15.0`). Starts a run under
  * a fixed id, lets it complete, then restarts the SAME id with
  * `onTerminalConflict: 'start-new'` — so the final state's
  * `WorkflowState.restartedFrom` is populated for the console's Lineage
@@ -9,7 +9,7 @@
  * `fixtures/workflows.ts` for the append-only contract this file
  * participates in.
  */
-import { activity, workflow, type WorkflowHandle } from '@corvidae/weft';
+import { activity, workflow, type WorkflowHandle } from '@lostgradient/weft';
 
 interface NightlyReconciliationInput {
   runLabel: string;

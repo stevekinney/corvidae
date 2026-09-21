@@ -1,8 +1,8 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { CheckpointSummary, WorkflowReplay } from '@corvidae/weft';
-import { HttpClientError } from '@corvidae/weft';
+import type { CheckpointSummary, WorkflowReplay } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../../lib/scopes.svelte.ts';

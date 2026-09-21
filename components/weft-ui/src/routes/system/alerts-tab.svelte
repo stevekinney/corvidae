@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Alerts & operational warnings tab (plan §9.7 T7.6; design `Weft New
-   * Surfaces.dc.html` §D). Two sections as of `@corvidae/weft@0.16.0`:
+   * Surfaces.dc.html` §D). Two sections as of `@lostgradient/weft@0.16.0`:
    *
    * 1. **Active alerts** — authoritative and reload-safe, from the
    *    `weft.alerts.list` operation (weft#843, `GET /v1/alerts`,
@@ -30,7 +30,7 @@
    * stream down to just the alert/constraint/operational-warning kinds it
    * cares about, with no shared eviction budget.
    */
-  import { EmptyState, Badge, type BadgeVariant, Skeleton } from '@corvidae/cinder';
+  import { EmptyState, Badge, type BadgeVariant, Skeleton } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { BellOff, Info } from 'lucide-svelte';
 

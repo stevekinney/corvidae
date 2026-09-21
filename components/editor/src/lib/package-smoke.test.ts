@@ -5,7 +5,7 @@ import { extractMentions } from './comments/index.js';
 import { generateMarkdownSummary } from './export/index.js';
 import { createSession } from './session/index.js';
 
-describe('@corvidae/editor package smoke test', () => {
+describe('@lostgradient/editor package smoke test', () => {
   test('exposes the core anchoring, comment, export, and session modules', () => {
     expect(generateBlockId('paragraph', 'Hello')).toMatch(/^paragraph-[a-z0-9]+$/);
     expect(extractMentions('Hi @alice')).toEqual(['alice']);

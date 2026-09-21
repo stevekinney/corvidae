@@ -1,6 +1,6 @@
-import { createTool } from '@corvidae/armorer';
-import type { EventMap, ObservableLike, Observer, Subscription } from '@corvidae/lifecycle';
-import { CompletableEventTarget } from '@corvidae/lifecycle';
+import { createTool } from 'armorer';
+import type { EventMap, ObservableLike, Observer, Subscription } from '@lostgradient/lifecycle';
+import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import type { ZodType } from 'zod';
 import { z } from 'zod';
 

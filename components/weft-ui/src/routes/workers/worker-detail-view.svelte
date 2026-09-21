@@ -3,7 +3,7 @@
    * Worker detail (plan §9.4 T5.2): connection info, activities, drain
    * banner, drain/resume actions.
    */
-  import { Badge, Button, DescriptionList, Tooltip } from '@corvidae/cinder';
+  import { Badge, Button, DescriptionList, Tooltip } from '@lostgradient/cinder';
 
   import { formatDuration, truncateId } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';

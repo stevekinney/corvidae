@@ -6,7 +6,7 @@ Grid renders a low-chrome CSS grid container for explicit columns, intrinsic aut
 
 ```svelte
 <script lang="ts">
-  import { Grid } from '@corvidae/cinder';
+  import { Grid } from '@lostgradient/cinder';
 </script>
 
 <Grid columns={3} gap="var(--cinder-space-4)">

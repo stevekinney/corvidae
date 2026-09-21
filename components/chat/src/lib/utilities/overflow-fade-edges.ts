@@ -3,15 +3,15 @@ import type { Attachment } from 'svelte/attachments';
 /**
  * Marks a scroll container that has more content on EITHER side of the
  * block axis — the JS driver for the `.cinder-_scroll-fade` +
- * `.cinder-_scroll-fade-start` both-edges recipe in `@corvidae/cinder`'s
+ * `.cinder-_scroll-fade-start` both-edges recipe in `@lostgradient/cinder`'s
  * shared `_scroll-fade.css` partial (loaded transitively via `cinder/styles`,
  * which every Chat consumer already imports). Sets the exact same
  * `data-cinder-overflows` / `data-cinder-overflows-start` attribute names
  * that recipe reads, so no cinder-side change is needed for chat to opt in.
  *
  * This is a deliberate, minimal LOCAL duplicate of
- * `@corvidae/cinder`'s internal `overflowFadeEdges()`
- * (`utilities/attachments.ts`) rather than an import: `@corvidae/cinder`
+ * `@lostgradient/cinder`'s internal `overflowFadeEdges()`
+ * (`utilities/attachments.ts`) rather than an import: `@lostgradient/cinder`
  * is a peer dependency of this package (see `package.json`), and its
  * internal `src/utilities/*` modules are not a published API surface — only
  * `cinder/*` subpath component/style exports are. Chat already follows this

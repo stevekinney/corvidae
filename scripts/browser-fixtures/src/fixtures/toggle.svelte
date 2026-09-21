@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Toggle } from '@corvidae/cinder';
+  import { Button, Toggle } from '@lostgradient/cinder';
   let enabled = $state(false);
   let disabled = $state(false);
 </script>

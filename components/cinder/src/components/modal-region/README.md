@@ -6,8 +6,8 @@ Mount `ModalRegion` once in a context boundary and call `useModal().openModal` o
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { ModalRegion, useModal } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { ModalRegion, useModal } from '@lostgradient/cinder';
 </script>
 
 <ModalRegion>

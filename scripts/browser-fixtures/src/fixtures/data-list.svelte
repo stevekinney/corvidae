@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DataList, StackedListItem } from '@corvidae/cinder';
+  import { DataList, StackedListItem } from '@lostgradient/cinder';
 
   const members = [
     { id: 'alice', name: 'Alice Chen', role: 'Engineer', status: 'Active' },

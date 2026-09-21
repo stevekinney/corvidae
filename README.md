@@ -18,19 +18,19 @@ Weft's [PostgreSQL](https://www.postgresql.org/) integration tests start and dis
 Run one workspace through its package scripts:
 
 ```bash
-bunx turbo run lint typecheck test --filter=@corvidae/operative
-bun run --filter=@corvidae/chat-room dev
-bun run --filter=@corvidae/chat-room build
-bun run --filter=@corvidae/chat-room preview
+bunx turbo run lint typecheck test --filter=@lostgradient/operative
+bun run --filter=@lostgradient/chat-room dev
+bun run --filter=@lostgradient/chat-room build
+bun run --filter=@lostgradient/chat-room preview
 ```
 
 Chat-room uses the documented [SvelteKit Vite integration](https://svelte.dev/docs/kit/@sveltejs-kit-vite). Its `dev`, `build`, and `preview` commands invoke Vite through Bun. Application output is disposable and excluded from source control.
 
-Run the cross-component browser suite with `bun run test:browser`, or use `bun run test:browser:preview` to exercise production compilation. Run the operator suite with `bun run --filter=@corvidae/weft-ui test:browser`. Both use [Playwright](https://playwright.dev/). `bun run dev:browser-fixtures` starts the Bun fixture host for local inspection.
+Run the cross-component browser suite with `bun run test:browser`, or use `bun run test:browser:preview` to exercise production compilation. Run the operator suite with `bun run --filter=@lostgradient/weft-ui test:browser`. Both use [Playwright](https://playwright.dev/). `bun run dev:browser-fixtures` starts the Bun fixture host for local inspection.
 
 ## Workspace boundaries
 
-Browser component libraries live in `components/`: Cinder, Chat, Editor, and Weft UI. Other libraries live in `packages/`: the agent runtimes, Weft execution engine, Markdown processing, and shared test infrastructure. Repository configuration lives in `internal/`, including the `@corvidae/typescript` presets. Every workspace uses the `@corvidae/*` namespace.
+Browser component libraries live in `components/`: Cinder, Chat, Editor, and Weft UI. Other libraries live in `packages/`: the agent runtimes, Weft execution engine, Markdown processing, and shared test infrastructure. Repository configuration lives in `internal/`, including the `@lostgradient/typescript` presets. Every workspace uses the `@lostgradient/*` namespace.
 
 Chat-room is the application under `applications/`. The `weft` package owns its `weft` and `weft-mcp` source executables. Weft UI owns its browser integration host under `components/weft-ui/scripts/browser`. Tests spanning Cinder, Chat, and Editor live under `scripts/browser-fixtures`; they need a real browser page, but have no application or package identity. Both test hosts compile Svelte and serve their assets with Bun. Chat-room is the only workspace that uses Vite.
 
@@ -38,7 +38,7 @@ Every source library exposes exactly one package entry:
 
 ```json
 {
-  "name": "@corvidae/example",
+  "name": "@lostgradient/example",
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" }
@@ -59,11 +59,11 @@ Keep existing environment-variable names and empty-value behavior. Mark credenti
 
 Formatting, lint policy, editor settings, dependency versions, and task coordination live at the root. Executable repository tooling lives in the owning workspace's `scripts/` directory. [Oxlint](https://oxc.rs/docs/guide/usage/linter.html) caps classic cyclomatic complexity—the number of independent paths through a function—at 100 in implementation and tests, and 300 under `scripts/`; file length remains review guidance.
 
-Compiler options live in the configuration-only `@corvidae/typescript` workspace at `internal/typescript`. It exports `library.json` and `browser.json`; both compose the private `base.json`. Component workspaces extend `@corvidae/typescript/browser.json`, which supplies DOM types and browser/Svelte resolution conditions without ambient Bun or Node types. Their `tsconfig.browser.json` checks production source; `tsconfig.json` also checks colocated tests and Bun tooling and supports Oxlint's automatic project discovery. Both checks run through `typecheck`. Root lint rules reject Node/Bun globals and imports in component source, including Svelte scripts. Tests and scripts retain their runtime APIs. Other local TypeScript configurations select their own source files; tool-required application and test configurations remain beside their owners.
+Compiler options live in the configuration-only `@lostgradient/typescript` workspace at `internal/typescript`. It exports `library.json` and `browser.json`; both compose the private `base.json`. Component workspaces extend `@lostgradient/typescript/browser.json`, which supplies DOM types and browser/Svelte resolution conditions without ambient Bun or Node types. Their `tsconfig.browser.json` checks production source; `tsconfig.json` also checks colocated tests and Bun tooling and supports Oxlint's automatic project discovery. Both checks run through `typecheck`. Root lint rules reject Node/Bun globals and imports in component source, including Svelte scripts. Tests and scripts retain their runtime APIs. Other local TypeScript configurations select their own source files; tool-required application and test configurations remain beside their owners.
 
 Turbo hashes upstream library source through transit tasks—dependency-only tasks that affect cache keys without running a build. Changing a provider therefore invalidates its consumers' checks without building the libraries. Root tool configuration and shared scripts also participate in cache keys. Chat-room owns its [Vite](https://vite.dev/) grammar-asset plugin.
 
-The root browser fixtures and Weft UI's browser host share the build helpers in `scripts/build-browser.ts` and the Svelte compiler in `@corvidae/testing`, while each host owns its own server and routes. Chat-room checks generate and cache their SvelteKit configuration and types. Root browser fixture tests generate and cache a manifest plus the explicit list of fixture modules they can load lazily; no upstream library build is required.
+The root browser fixtures and Weft UI's browser host share the build helpers in `scripts/build-browser.ts` and the Svelte compiler in `@lostgradient/testing`, while each host owns its own server and routes. Chat-room checks generate and cache their SvelteKit configuration and types. Root browser fixture tests generate and cache a manifest plus the explicit list of fixture modules they can load lazily; no upstream library build is required.
 
 `bun run test:self` checks the workspace architecture, including source exports, dependency cycles, declared imports, catalog use, cache invalidation, build ownership, and the absence of publishing and hook installation. These checks keep the consolidation rules executable.
 

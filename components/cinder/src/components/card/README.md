@@ -6,7 +6,7 @@ Surface container for grouping related content and actions into a distinct visua
 
 ```svelte
 <script lang="ts">
-  import { Card } from '@corvidae/cinder';
+  import { Card } from '@lostgradient/cinder';
 </script>
 
 <Card>

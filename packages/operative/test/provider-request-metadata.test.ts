@@ -8,8 +8,8 @@
  * explicit no-op there — asserted below by confirming the mock never
  * receives a `metadata` key.
  */
-import { createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { createAnthropicProvider } from '../src/providers/anthropic.ts';

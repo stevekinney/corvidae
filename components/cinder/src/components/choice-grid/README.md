@@ -6,7 +6,7 @@ Responsive grid of large selectable choices with roving keyboard focus, selectio
 
 ```svelte
 <script lang="ts">
-  import { ChoiceGrid } from '@corvidae/cinder';
+  import { ChoiceGrid } from '@lostgradient/cinder';
 
   let selected = $state<string | null>(null);
 </script>

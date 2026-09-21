@@ -9,7 +9,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@corvidae/weft';
+import { HttpClientError } from '@lostgradient/weft';
 
 import type { FaultTreatment } from '../lib/faults.ts';
 import FaultBoundaryHarness from './fault-boundary.test-harness.svelte';

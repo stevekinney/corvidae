@@ -3,15 +3,15 @@
  * seeded local Weft server on port 7233 that the Bun browser host targets.
  * Run directly with `bun run dev:server`.
  *
- * Ground truth note: `serve()` is exported from `@corvidae/weft`,
+ * Ground truth note: `serve()` is exported from `@lostgradient/weft`,
  * not the package root (verified against `weft/src/server/index.ts` and
  * `weft/src/index.ts`).
  *
  * **This is a plain `serve()` call — the earlier hand-rolled workaround is
- * gone.** `@corvidae/weft@0.11.0` had `serve({ engine })` throw "Engine
+ * gone.** `@lostgradient/weft@0.11.0` had `serve({ engine })` throw "Engine
  * internals not initialized" for any root-imported `Engine`
  * (https://github.com/stevekinney/weft/issues/710), so this file used to
- * drive `@corvidae/weft/handler`'s `handleRequest()` directly
+ * drive `@lostgradient/weft/handler`'s `handleRequest()` directly
  * behind a thin `Bun.serve()`, with a synthetic fleet event feed
  * reimplementing weft's own production wiring. `0.12.0` shipped the actual
  * fix (#716: every entry point that transitively touches `Engine`'s
@@ -87,7 +87,7 @@
  * `GET /api/v1/workflows` for a non-empty result instead of trusting
  * `/v1/health` alone.
  */
-import { AUTHORIZATION_SCOPES, Engine, serve } from '@corvidae/weft';
+import { AUTHORIZATION_SCOPES, Engine, serve } from '@lostgradient/weft';
 
 import { DEV_API_KEY } from './dev-credentials.ts';
 

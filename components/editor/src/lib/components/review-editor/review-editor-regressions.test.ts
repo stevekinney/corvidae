@@ -251,7 +251,7 @@ describe('the imperative surface reaches the published entry point', () => {
    * wrapper rendered the implementation without `bind:this` and re-exported
    * nothing — so `bind:this` on <ReviewEditor> yielded a component with no
    * methods, and the entire persistence round-trip (getState/setState) was
-   * unreachable from '@corvidae/editor'.
+   * unreachable from '@lostgradient/editor'.
    */
   test('the wrapper binds the implementation instance', () => {
     expect(wrapperSource).toMatch(/bind:this=\{implementation\}/);

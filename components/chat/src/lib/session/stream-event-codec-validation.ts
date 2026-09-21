@@ -1,4 +1,4 @@
-import type { TokenUsage, ToolAction } from '@corvidae/conversationalist';
+import type { TokenUsage, ToolAction } from 'conversationalist';
 import { isTokenUsage, isToolResult } from '../components/chat/builders.ts';
 import {
   isSupportedWireVersion,

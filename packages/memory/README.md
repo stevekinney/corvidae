@@ -1,10 +1,10 @@
 # Memory
 
-`@corvidae/memory` provides persistent recall for [Bureau](../bureau/README.md) agents. It defines the memory API, storage contracts, embedding-backed retrieval, hybrid search, ingestion helpers, runtime hooks, identity primitives, and tool surfaces for storing, recalling, and forgetting memory.
+`@lostgradient/memory` provides persistent recall for [Bureau](../bureau/README.md) agents. It defines the memory API, storage contracts, embedding-backed retrieval, hybrid search, ingestion helpers, runtime hooks, identity primitives, and tool surfaces for storing, recalling, and forgetting memory.
 
 ## Workspace usage
 
-Declare `"@corvidae/memory": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@corvidae/memory`; it exports TypeScript source directly and has no library build or publication step.
+Declare `"@lostgradient/memory": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@lostgradient/memory`; it exports TypeScript source directly and has no library build or publication step.
 
 ## Table of Contents
 
@@ -40,15 +40,15 @@ The storage contract is intentionally lower-level than the public memory API. Ba
 
 ## Project Role
 
-`@corvidae/operative` uses memory through hooks and bridges during agent runs. Host applications wire configured memory into their composed runtime, and `@corvidae/skills` can use it to persist skill usage and learning context. This package is the long-term knowledge layer shared by those higher-level surfaces.
+`@lostgradient/operative` uses memory through hooks and bridges during agent runs. Host applications wire configured memory into their composed runtime, and `@lostgradient/skills` can use it to persist skill usage and learning context. This package is the long-term knowledge layer shared by those higher-level surfaces.
 
 ## Quick Start
 
 `createMemory()` needs two things: an **embedder** (an `Embedder`—`(texts: string[]) => number[][] | Promise<number[][]>`, mapping a batch of strings to one float vector each) and a **storage backend**. This Quick Start uses the deterministic test embedder and the in-memory backend exported from the package root so it runs with no provider or runtime wiring:
 
 ```typescript
-import { createMemory } from '@corvidae/memory';
-import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '@corvidae/memory';
+import { createMemory } from '@lostgradient/memory';
+import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '@lostgradient/memory';
 
 // Deterministic, unit-normalized, hash-based vectors—no network calls.
 const embedder = createMockEmbedder(128);
@@ -71,7 +71,7 @@ await memory.close();
 For production, supply a real embedder (your model provider's embedding endpoint) and the durable Weft-backed storage instead of the test doubles:
 
 ```typescript
-import { createMemory, createWeftMemoryRecordStorage } from '@corvidae/memory';
+import { createMemory, createWeftMemoryRecordStorage } from '@lostgradient/memory';
 
 // Wire this to your provider—e.g. OpenAI's text-embedding-3-small (1536 dims).
 // An `Embedder` may return vectors synchronously or as a promise; a provider
@@ -104,7 +104,7 @@ import {
   createHyDEGenerator,
   getMemoryStatus,
   createConsolidationTask,
-} from '@corvidae/memory';
+} from '@lostgradient/memory';
 ```
 
 ### `createMemory(options)`
@@ -341,7 +341,7 @@ interface CreateConsolidationOptions {
 ## Storage Backends
 
 ```typescript
-import { createWeftMemoryRecordStorage, DEFAULT_MEMORY_KEY_PREFIX } from '@corvidae/memory';
+import { createWeftMemoryRecordStorage, DEFAULT_MEMORY_KEY_PREFIX } from '@lostgradient/memory';
 ```
 
 ### `MemoryRecordStorage` (contract)
@@ -424,7 +424,7 @@ interface CreateWeftMemoryRecordStorageOptions {
 ```
 
 ```typescript
-import { createWeftMemoryRecordStorage } from '@corvidae/memory';
+import { createWeftMemoryRecordStorage } from '@lostgradient/memory';
 
 // `weftStorage` comes from the host runtime (`ctx.services` or a similar boundary).
 const storage = createWeftMemoryRecordStorage(weftStorage, {
@@ -459,7 +459,7 @@ import {
   createRunCaptureHook,
   createReflectionHook,
   summarizeRun,
-} from '@corvidae/memory';
+} from '@lostgradient/memory';
 ```
 
 ### `createMemoryHooks(options)`
@@ -482,8 +482,8 @@ interface MemoryHookOptions {
 ```
 
 ```typescript
-import { createMemoryHooks } from '@corvidae/memory';
-import { createActiveRun } from '@corvidae/operative';
+import { createMemoryHooks } from '@lostgradient/memory';
+import { createActiveRun } from '@lostgradient/operative';
 
 const hooks = createMemoryHooks({ memory, recallLimit: 10 });
 
@@ -518,8 +518,8 @@ function summarizeRun(result: StepResultLike): string;
 ```
 
 ```typescript
-import { createRunCaptureHook } from '@corvidae/memory';
-import { createActiveRun } from '@corvidae/operative';
+import { createRunCaptureHook } from '@lostgradient/memory';
+import { createActiveRun } from '@lostgradient/operative';
 
 const captureHook = createRunCaptureHook({
   memory,
@@ -554,7 +554,7 @@ interface CreateReflectionHookOptions {
 ```
 
 ```typescript
-import { createReflectionHook, summarizeRun } from '@corvidae/memory';
+import { createReflectionHook, summarizeRun } from '@lostgradient/memory';
 
 const reflectionHook = createReflectionHook({
   memory,
@@ -570,7 +570,7 @@ import {
   createMemoryStoreTool,
   createMemoryRecallTool,
   createMemoryForgetTool,
-} from '@corvidae/memory';
+} from '@lostgradient/memory';
 ```
 
 Memory tools are `armorer` `Tool` instances. Pass them to a `Toolbox` alongside your other tools so the model can self-direct its memory operations.
@@ -603,12 +603,12 @@ function createMemoryForgetTool(memory: Memory): Tool;
 ```
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
 import {
   createMemoryStoreTool,
   createMemoryRecallTool,
   createMemoryForgetTool,
-} from '@corvidae/memory';
+} from '@lostgradient/memory';
 
 const memoryToolbox = createToolbox([
   createMemoryStoreTool(memory),
@@ -628,7 +628,7 @@ import {
   createFileSynchronizer,
   SOURCE_DOCUMENT_KEY,
   CHUNK_INDEX_KEY,
-} from '@corvidae/memory';
+} from '@lostgradient/memory';
 ```
 
 Every loader below implements the same contract—`(document: string, options?: ChunkingOptions) => ContentChunk[] | Promise<ContentChunk[]>`—and produces `ContentChunk[]`. `ingest()` accepts any function matching that shape via its `chunk` option, so adding a format doesn't require changes to this package: write (or wrap) a loader, pass it to `ingest()`.
@@ -683,7 +683,7 @@ function chunkHtml(html: string, options?: ChunkingOptions): Promise<ContentChun
 ```
 
 ```typescript
-import { chunkHtml, ingest } from '@corvidae/memory';
+import { chunkHtml, ingest } from '@lostgradient/memory';
 
 const html = await Bun.file('docs/page.html').text();
 
@@ -698,7 +698,7 @@ await ingest(memory, html, {
 This package intentionally does not bundle a PDF parser—extracting PDF text pulls in a heavyweight, native-dependent library, and only some consumers need it. Extract the text yourself (e.g. with [`pdf-parse`](https://www.npmjs.com/package/pdf-parse) or [`unpdf`](https://www.npmjs.com/package/unpdf), whichever fits your runtime), and feed the result to `chunkText` with page breaks as structure hints:
 
 ```typescript
-import { chunkText, ingest } from '@corvidae/memory';
+import { chunkText, ingest } from '@lostgradient/memory';
 // bun add pdf-parse (or your extractor of choice) as a project dependency
 import pdf from 'pdf-parse';
 
@@ -749,7 +749,7 @@ interface IngestResult {
 ```
 
 ```typescript
-import { ingest } from '@corvidae/memory';
+import { ingest } from '@lostgradient/memory';
 
 const markdown = await Bun.file('docs/getting-started.md').text();
 
@@ -832,7 +832,7 @@ class PollCycleCompletedEvent extends Event {
 ```
 
 ```typescript
-import { createFileSynchronizer } from '@corvidae/memory';
+import { createFileSynchronizer } from '@lostgradient/memory';
 
 const synchronizer = createFileSynchronizer({
   memory,
@@ -872,7 +872,7 @@ import {
   applyMaximalMarginalRelevance,
   extractKeywords,
   isStopWord,
-} from '@corvidae/memory';
+} from '@lostgradient/memory';
 ```
 
 These helpers power `recall()` internally but are exported for custom retrieval pipelines.
@@ -991,7 +991,7 @@ import {
   createPersonaCreateTool,
   createPersonaUpdateTool,
   createPersonaDeleteTool,
-} from '@corvidae/memory';
+} from '@lostgradient/memory';
 ```
 
 Identity captures who an agent _is_—its soul (durable values and traits), personas (role/domain descriptors), and user context. Soul distillation promotes high-confidence experiential memories into pinned soul items over time.
@@ -1066,7 +1066,7 @@ interface CreateSoulSeedOptions {
 ```
 
 ```typescript
-import { createSoulSeed, createStaticIdentityProvider } from '@corvidae/memory';
+import { createSoulSeed, createStaticIdentityProvider } from '@lostgradient/memory';
 
 const soul = createSoulSeed({
   name: 'Aria',
@@ -1184,8 +1184,8 @@ function createIdentityToolbox(provider: IdentityProvider): {
 ```
 
 ```typescript
-import { createToolbox, combineToolboxes } from '@corvidae/armorer';
-import { createIdentityToolbox } from '@corvidae/memory';
+import { createToolbox, combineToolboxes } from 'armorer';
+import { createIdentityToolbox } from '@lostgradient/memory';
 
 const identityTools = createIdentityToolbox(identityProvider);
 
@@ -1204,7 +1204,7 @@ The root API includes deterministic test helpers and the storage contract harnes
 ### Test utilities
 
 ```typescript
-import { createMockEmbedder, createInMemoryMemoryRecordStorage } from '@corvidae/memory';
+import { createMockEmbedder, createInMemoryMemoryRecordStorage } from '@lostgradient/memory';
 ```
 
 **`createMockEmbedder(dimension?)`:** Returns a deterministic, hash-based `Embedder`. No network calls. `dimension` defaults to 128.
@@ -1212,8 +1212,8 @@ import { createMockEmbedder, createInMemoryMemoryRecordStorage } from '@corvidae
 **`createInMemoryMemoryRecordStorage(options?)`:** Full in-memory backend with the identical observable contract as the Weft local backend—including `putOnce`, `searchByVector` with cosine ranking, and `deleteNamespace`. `options.now` injects the clock used to stamp `updatedAt` on `update()` (defaults to the real `Date.now`); a deterministic test supplies a fixed or stepped clock instead of reaching a real wall clock.
 
 ```typescript
-import { createMemory } from '@corvidae/memory';
-import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '@corvidae/memory';
+import { createMemory } from '@lostgradient/memory';
+import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '@lostgradient/memory';
 
 const storage = createInMemoryMemoryRecordStorage();
 const embedder = createMockEmbedder(128);
@@ -1228,7 +1228,7 @@ expect(results[0]?.content).toBe('The sky is blue.');
 
 ### Storage contract harness
 
-The package's internal `test/contract-harness.ts` registers [Bun test suites](https://bun.sh/docs/test) for both bundled storage backends. It checks put/get round-trips, `putOnce` semantics, namespace isolation, pagination, vector search ranking and thresholds, update, delete invariants, and `deleteNamespace`. Keep backend contract tests inside this package and import the harness relatively, as `test/memory-record-storage-contract.test.ts` does. The runtime root exports the storage interfaces and factories; test registration stays internal so ordinary consumers can import `@corvidae/memory` outside the test runner.
+The package's internal `test/contract-harness.ts` registers [Bun test suites](https://bun.sh/docs/test) for both bundled storage backends. It checks put/get round-trips, `putOnce` semantics, namespace isolation, pagination, vector search ranking and thresholds, update, delete invariants, and `deleteNamespace`. Keep backend contract tests inside this package and import the harness relatively, as `test/memory-record-storage-contract.test.ts` does. The runtime root exports the storage interfaces and factories; test registration stays internal so ordinary consumers can import `@lostgradient/memory` outside the test runner.
 
 Run the shared contract suite from this package directory:
 
@@ -1246,4 +1246,4 @@ bun run typecheck
 bun run test
 ```
 
-From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@corvidae/memory` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.
+From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@lostgradient/memory` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.

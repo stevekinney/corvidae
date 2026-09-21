@@ -1,4 +1,4 @@
-import { Conversation } from '@corvidae/conversationalist';
+import { Conversation } from 'conversationalist';
 import { describe, expect, it, mock } from 'bun:test';
 
 import { GuardrailTripwireError } from '../errors';

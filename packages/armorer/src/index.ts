@@ -57,9 +57,9 @@ export type {
   ExecutionState,
 } from './execution-lifecycle';
 // RuntimeServices is part of this package's public execution contract.
-// Its implementation and types have one source owner: @corvidae/lifecycle.
+// Its implementation and types have one source owner: @lostgradient/lifecycle.
 // Deterministic callers can use createManualRuntimeServices from that workspace.
-export { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+export { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 export type {
   DeferredDrainReport,
   RuntimeClock,
@@ -70,7 +70,7 @@ export type {
   RuntimeServices,
   RuntimeTimeoutHandle,
   RuntimeTimers,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 // `ToolDefinition` is part of the public `Tool` type's structure, so downstream
 // packages must be able to name it to emit their own declarations (TS2883).
 export {

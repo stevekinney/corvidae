@@ -1,8 +1,8 @@
-import { createToolbox } from '@corvidae/armorer';
-import type { ConversationSnapshot } from '@corvidae/conversationalist';
-import { createConversationHistory } from '@corvidae/conversationalist';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
-import { activity, MemoryStorage, textValueStore, workflow } from '@corvidae/weft';
+import { createToolbox } from 'armorer';
+import type { ConversationSnapshot } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { activity, MemoryStorage, textValueStore, workflow } from '@lostgradient/weft';
 
 import { createAgentSession } from '../agent-session';
 import type { CheckpointStore } from '../durable/checkpoint-store';

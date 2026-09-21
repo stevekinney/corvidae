@@ -10,10 +10,10 @@ import type {
   StandardSchemaV1Issue,
   TraceContext,
   ValidationIssue,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
-type RootOpenTelemetryApi = import('@corvidae/weft').OpenTelemetryApi;
-type RootStandardSchemaV1 = import('@corvidae/weft').StandardSchemaV1;
+type RootOpenTelemetryApi = import('@lostgradient/weft').OpenTelemetryApi;
+type RootStandardSchemaV1 = import('@lostgradient/weft').StandardSchemaV1;
 
 const traceContext: TraceContext = {
   version: '00',

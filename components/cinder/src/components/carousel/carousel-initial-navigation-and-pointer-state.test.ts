@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
-import { renderSvelteOnServer, requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { renderSvelteOnServer, requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { requiredChildren } from './carousel-test-helpers.ts';
 
 setupHappyDom();

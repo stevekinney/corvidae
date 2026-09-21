@@ -6,7 +6,7 @@ International phone-number input pairing a country-code dropdown with an as-you-
 
 ```svelte
 <script lang="ts">
-  import { PhoneInput } from '@corvidae/cinder';
+  import { PhoneInput } from '@lostgradient/cinder';
   let phone = $state('');
 </script>
 

@@ -2,8 +2,8 @@
  * Type-level regression tests for issues #583, #585, #722, and #751.
  *
  * #583: `StartOrSignalOutcome` must be publicly exported from both the package
- * root (`@corvidae/weft`) and the `/client` barrel
- * (`@corvidae/weft`).
+ * root (`@lostgradient/weft`) and the `/client` barrel
+ * (`@lostgradient/weft`).
  *
  * #585: `LocalClient` must accept a branded engine returned by
  * `Engine.create({ workflows })` without requiring a cast.

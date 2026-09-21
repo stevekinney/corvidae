@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 
 import type { Tool } from '../is-tool';
 import { claimCacheStarted, getCacheEntry } from './cache-operations';

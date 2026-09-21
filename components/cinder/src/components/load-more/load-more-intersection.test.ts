@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { cleanup, render, waitFor } from '@testing-library/svelte';
 import {
   createEntry,

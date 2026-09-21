@@ -23,7 +23,7 @@
    * checks) all require that missing operation — the banner below says so
    * rather than guessing.
    */
-  import { Badge, Callout, DescriptionList } from '@corvidae/cinder';
+  import { Badge, Callout, DescriptionList } from '@lostgradient/cinder';
 
   interface CapabilitiesPanelProps {
     conditionalBatchSupported: boolean | undefined;

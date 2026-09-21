@@ -9,7 +9,7 @@ Toolbox supports semantic search for tools using vector embeddings. When you pro
 The `embed` option accepts a function that takes an array of strings and returns an array of numeric vectors:
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
 
 const toolbox = createToolbox([], {
   embed: async (texts: string[]): Promise<number[][]> => {
@@ -24,8 +24,8 @@ const toolbox = createToolbox([], {
 The most common approach is to use OpenAI's embedding API:
 
 ```typescript
-import { createToolbox, createTool } from '@corvidae/armorer';
-import { queryTools } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
+import { queryTools } from 'armorer';
 import OpenAI from 'openai';
 import { z } from 'zod';
 

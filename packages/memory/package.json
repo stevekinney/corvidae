@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/memory",
+  "name": "@lostgradient/memory",
   "private": true,
   "description": "Pure utility functions for agent memory: temporal decay, MMR diversity, BM25 text search, and hybrid result merging.",
   "type": "module",
@@ -14,15 +14,15 @@
   },
   "dependencies": {
     "zod": "catalog:",
-    "@corvidae/weft": "workspace:*",
-    "@corvidae/armorer": "workspace:*",
-    "@corvidae/cryptography": "workspace:*",
-    "@corvidae/embeddings": "workspace:*",
-    "@corvidae/lifecycle": "workspace:*"
+    "@lostgradient/weft": "workspace:*",
+    "armorer": "workspace:*",
+    "@lostgradient/cryptography": "workspace:*",
+    "@lostgradient/embeddings": "workspace:*",
+    "@lostgradient/lifecycle": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   }

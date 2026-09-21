@@ -39,7 +39,7 @@
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 
-import { prepareSvelteServerSource, renderSvelteOnServer } from '@corvidae/testing';
+import { prepareSvelteServerSource, renderSvelteOnServer } from '@lostgradient/testing';
 
 const sourcePath = resolve(import.meta.dir, 'image-lightbox.svelte');
 

@@ -1,7 +1,7 @@
 /**
  * Pure view-model mapping for the Registry detail view's Revisions panel
  * (WFT-115): turns `weft.workflows.revisions.list`'s output (an array of
- * `WorkflowRevisionRecord`, `@corvidae/weft`) plus
+ * `WorkflowRevisionRecord`, `@lostgradient/weft`) plus
  * `weft.workflows.active.get`'s output (a `WorkflowCatalogActivePointer`,
  * or `null` for a workflow that has never been activated) into sorted,
  * render-ready rows — mirrors `registry-view.ts`'s framework-free,
@@ -30,7 +30,7 @@ import {
 
 export { isWorkflowCatalogActivePointerLike, type WorkflowCatalogActivePointerLike };
 
-/** Mirrors `WorkflowRevisionManifest` (`@corvidae/weft`) structurally — only the identity fields this panel renders. */
+/** Mirrors `WorkflowRevisionManifest` (`@lostgradient/weft`) structurally — only the identity fields this panel renders. */
 interface WorkflowRevisionManifestLike {
   readonly manifestVersion: number;
   readonly name: string;
@@ -40,7 +40,7 @@ interface WorkflowRevisionManifestLike {
   readonly contract: unknown;
 }
 
-/** Mirrors `WorkflowRevisionRecord` (`@corvidae/weft`) structurally. */
+/** Mirrors `WorkflowRevisionRecord` (`@lostgradient/weft`) structurally. */
 export interface WorkflowRevisionRecordSource {
   readonly manifest: WorkflowRevisionManifestLike;
   readonly installedAt: number;

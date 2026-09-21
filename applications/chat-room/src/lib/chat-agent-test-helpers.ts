@@ -3,13 +3,13 @@ import {
   createToolbox,
   type AnyToolbox,
   type ToolRequestContext,
-} from '@corvidae/armorer';
-import type { ChatStreamEvent } from '@corvidae/chat';
+} from 'armorer';
+import type { ChatStreamEvent } from '@lostgradient/chat';
 import {
   appendUserMessage,
   createConversationHistory,
   decodeChatStreamEvent,
-} from '@corvidae/chat';
+} from '@lostgradient/chat';
 import {
   AbortAgentRunError,
   AgentRunError,
@@ -23,7 +23,7 @@ import {
   type EnhancedStreamingOptions,
   type OperativeHookMap,
   type StreamingGenerateFunction,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import { expect } from 'bun:test';
 import { z } from 'zod';
 import {
@@ -150,7 +150,7 @@ export function ofType<T extends ChatStreamEvent['type']>(
  * reference architecture's stream wire contract, asserted on every run.
  *
  * VERSION 2 since this lab began emitting `assistant.step.*` and
- * `elicitation.*`, which `@corvidae/chat` gates behind a version 2 envelope.
+ * `elicitation.*`, which `@lostgradient/chat` gates behind a version 2 envelope.
  * The version is asserted on EVERY frame rather than only on the new ones,
  * because a stream speaks one version for its whole length — a mixed stream
  * is rejected by `decodeChatStreamEvents`, so a producer that bumped only the

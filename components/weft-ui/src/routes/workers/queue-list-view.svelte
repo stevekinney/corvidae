@@ -3,7 +3,7 @@
    * Task queues list (plan §9.4 T5.3): backlog, in-flight, connected
    * workers, diagnostics presence per queue.
    */
-  import { Badge, EmptyState, Table } from '@corvidae/cinder';
+  import { Badge, EmptyState, Table } from '@lostgradient/cinder';
 
   import { router } from '../../lib/router.svelte.ts';
   import type { TaskDiagnosticItem, TaskQueueHealth } from './worker-catalog-types.ts';

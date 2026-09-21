@@ -16,7 +16,7 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { Engine, getWorkflowRevisionDiagnostics } from '@corvidae/weft';
+import { Engine, getWorkflowRevisionDiagnostics } from '@lostgradient/weft';
 
 import {
   DYNAMIC_SOURCE_FAILING_REVISION,

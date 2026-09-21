@@ -1,4 +1,4 @@
-import type { CompletableEventTarget, Observer, Subscription } from '@corvidae/lifecycle';
+import type { CompletableEventTarget, Observer, Subscription } from '@lostgradient/lifecycle';
 import { ConversationChangeEvent, type ConversationEventMap } from './events';
 import type { ConversationLifecycle, HistoryTransaction } from './history-transaction';
 import type { ConversationHistory } from './types';

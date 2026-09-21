@@ -71,7 +71,7 @@ export function createNameMapper(
  *
  * @example
  * ```ts
- * import { toOpenAITools } from '@corvidae/armorer';
+ * import { toOpenAITools } from 'armorer';
  *
  * // Single tool
  * const tool = toOpenAITools(myTool);

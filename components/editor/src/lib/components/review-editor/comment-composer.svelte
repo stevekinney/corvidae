@@ -58,7 +58,7 @@
    */
 
   import { classNames } from '../../utilities/class-names.ts';
-  import { Button } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
 
   let {
     id,

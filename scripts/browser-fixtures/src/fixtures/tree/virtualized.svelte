@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Tree } from '@corvidae/cinder';
+  import { Tree } from '@lostgradient/cinder';
 
   type TreeDataItem = { id: string; label: string };
 

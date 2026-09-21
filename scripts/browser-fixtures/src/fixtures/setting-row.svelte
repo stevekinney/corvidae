@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Input, SettingRow } from '@corvidae/cinder';
+  import { Input, SettingRow } from '@lostgradient/cinder';
 </script>
 
 <SettingRow id="display-name" label="Display name" description="Shown to collaborators.">

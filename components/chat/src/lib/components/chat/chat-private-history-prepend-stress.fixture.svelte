@@ -13,8 +13,8 @@
     type ChatAdapter,
     type ConversationHistory,
     type MessageRole,
-  } from '@corvidae/chat';
-  import { Button } from '@corvidae/cinder';
+  } from '@lostgradient/chat';
+  import { Button } from '@lostgradient/cinder';
 
   type ArchivedMessageInput = { role: MessageRole; content: string };
 

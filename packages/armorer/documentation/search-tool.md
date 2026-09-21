@@ -15,17 +15,17 @@ The search tool works both with and without vector embeddings:
 
 ## Installation
 
-The search tools tool is available via the `@corvidae/armorer` export:
+The search tools tool is available via the `armorer` export:
 
 ```typescript
-import { createSearchTool } from '@corvidae/armorer';
+import { createSearchTool } from 'armorer';
 ```
 
 ## Basic Usage
 
 ```typescript
-import { createToolbox, createTool } from '@corvidae/armorer';
-import { createSearchTool } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
+import { createSearchTool } from 'armorer';
 import { z } from 'zod';
 
 // Create a toolbox and register some tools
@@ -83,8 +83,8 @@ console.log(results);
 For better search results, configure your toolbox with an embedding function:
 
 ```typescript
-import { createToolbox } from '@corvidae/armorer';
-import { createSearchTool } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
+import { createSearchTool } from 'armorer';
 import OpenAI from 'openai';
 
 const openai = new OpenAI();
@@ -241,7 +241,7 @@ toolbox.register(searchTool);
 The search tool integrates seamlessly with provider adapters:
 
 ```typescript
-import { toOpenAITools } from '@corvidae/armorer';
+import { toOpenAITools } from 'armorer';
 
 // Get all tools including the search tool
 const tools = toOpenAITools(toolbox);
@@ -259,9 +259,9 @@ const response = await openai.chat.completions.create({
 Here's a complete example of using the search tool in an agentic workflow:
 
 ```typescript
-import { createToolbox, createTool } from '@corvidae/armorer';
-import { createSearchTool } from '@corvidae/armorer';
-import { toOpenAITools } from '@corvidae/armorer';
+import { createToolbox, createTool } from 'armorer';
+import { createSearchTool } from 'armorer';
+import { toOpenAITools } from 'armorer';
 import OpenAI from 'openai';
 import { z } from 'zod';
 

@@ -1,4 +1,4 @@
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { BaseContext } from '@modelcontextprotocol/client';
 import {
   McpServer,
@@ -779,7 +779,7 @@ function toElicitResult(result: ToolElicitationResult): ElicitResult {
  *
  * ```ts
  * import { Client } from '@modelcontextprotocol/client';
- * import { createMcpElicitationHandler } from '@corvidae/armorer';
+ * import { createMcpElicitationHandler } from 'armorer';
  *
  * client.setRequestHandler(
  *   'elicitation/create',

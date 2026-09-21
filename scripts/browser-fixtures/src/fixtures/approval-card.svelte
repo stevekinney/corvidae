@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ApprovalCard } from '@corvidae/cinder';
+  import { ApprovalCard } from '@lostgradient/cinder';
 </script>
 
 <ApprovalCard
@@ -11,10 +11,10 @@
   }}
   operation={{
     kind: 'command',
-    command: 'bun run --filter=@corvidae/cinder validate',
+    command: 'bun run --filter=@lostgradient/cinder validate',
     filesTouched: ['components/cinder/src/components/approval-card/approval-card.svelte'],
     argsPreview: {
-      package: '@corvidae/cinder',
+      package: '@lostgradient/cinder',
       dryRun: false,
     },
   }}

@@ -10,7 +10,7 @@ See the [SideNavigation versus Sidebar decision](https://github.com/stevekinney/
 
 ```svelte
 <script lang="ts">
-  import { SideNavigation } from '@corvidae/cinder';
+  import { SideNavigation } from '@lostgradient/cinder';
 </script>
 
 <SideNavigation ariaLabel="Workspace">
@@ -22,7 +22,7 @@ See the [SideNavigation versus Sidebar decision](https://github.com/stevekinney/
 </SideNavigation>
 ```
 
-The leaves remain importable individually for à-la-carte builds — see `@corvidae/cinder` and `@corvidae/cinder`.
+The leaves remain importable individually for à-la-carte builds — see `@lostgradient/cinder` and `@lostgradient/cinder`.
 
 ## Props
 

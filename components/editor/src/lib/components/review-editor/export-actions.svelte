@@ -30,7 +30,7 @@
     FileText,
     GitBranch,
     MessageSquare,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   let {
     id,

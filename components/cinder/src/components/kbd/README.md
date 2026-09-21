@@ -6,7 +6,7 @@ A styled keyboard key element for displaying keyboard shortcuts in help text and
 
 ```svelte
 <script lang="ts">
-  import { Kbd } from '@corvidae/cinder';
+  import { Kbd } from '@lostgradient/cinder';
 </script>
 
 <Kbd label="⌘K" />

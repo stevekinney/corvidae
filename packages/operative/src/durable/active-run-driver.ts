@@ -1,7 +1,7 @@
-import type { AnyToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import { isWeftErrorLike } from '@corvidae/weft';
+import type { AnyToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { isWeftErrorLike } from '@lostgradient/weft';
 
 import { AgentRunError, toAgentRunError } from '../errors';
 import type { OperativeEventEmitter } from '../events';

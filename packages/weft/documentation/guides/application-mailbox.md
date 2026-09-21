@@ -9,7 +9,7 @@ A `Mailbox` is a storage-backed, strictly FIFO command queue scoped to one opaqu
 Each `Mailbox` instance owns one `(namespace, resourceId)` pair and one FIFO sequence of commands admitted into it. Weft never interprets `namespace` or `resourceId`—they are opaque strings the caller chooses to partition work, for example one mailbox per agent or per workflow run.
 
 ```typescript
-import { Mailbox, MemoryStorage } from '@corvidae/weft';
+import { Mailbox, MemoryStorage } from '@lostgradient/weft';
 
 await using storage = new MemoryStorage();
 using mailbox = new Mailbox({ storage, namespace: 'bureau', resourceId: 'agent-7' });

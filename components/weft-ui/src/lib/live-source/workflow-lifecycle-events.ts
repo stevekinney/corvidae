@@ -10,17 +10,17 @@
  * built from the individual event classes' `.type` statics, which ARE
  * public exports, so this can't silently drift on the *names*, only on the
  * *set* (re-verify against `WorkflowStatus`'s terminal members on every
- * `@corvidae/weft` bump — `'suspended'` is deliberately excluded: a
+ * `@lostgradient/weft` bump — `'suspended'` is deliberately excluded: a
  * suspended workflow is resumable, not terminal, per that type's own doc
  * comment).
  *
- * `@corvidae/weft@0.15.0` shipped weft#751: the event classes
+ * `@lostgradient/weft@0.15.0` shipped weft#751: the event classes
  * themselves (`WorkflowStartedEvent` etc.) are now re-exported from
  * `/client`, not just the package root — importing them here no longer
  * forces a bundler to resolve the root barrel's server-only re-exports
  * (`handleRequest`/`createAuthenticator`, reaching `node:crypto`), the same
  * class of browser-bundle leak `isWeftFault`/`isWeftError*` had before
- * `@corvidae/weft@0.12.0` moved them to `/client` (weft#722/#733). This
+ * `@lostgradient/weft@0.12.0` moved them to `/client` (weft#722/#733). This
  * module now imports the classes as values and reads their `.type` statics
  * directly instead of hardcoding string literals — the compiler now catches
  * a typo or a renamed event type at build time instead of a silent drift.
@@ -29,7 +29,7 @@
  * imported `type`-only from the package root — types are erased at compile
  * time and never reach the bundler's module graph either way.
  */
-import type { WorkflowStatus } from '@corvidae/weft';
+import type { WorkflowStatus } from '@lostgradient/weft';
 import {
   WorkflowCancelledEvent,
   WorkflowCompletedEvent,
@@ -38,7 +38,7 @@ import {
   WorkflowStartedEvent,
   WorkflowSuspendedEvent,
   WorkflowTimedOutEvent,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 const WORKFLOW_STATUS_BY_EVENT_TYPE: ReadonlyMap<string, WorkflowStatus> = new Map([
   [WorkflowStartedEvent.type, 'running'],

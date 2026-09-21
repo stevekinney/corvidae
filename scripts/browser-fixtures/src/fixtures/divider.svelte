@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Divider } from '@corvidae/cinder';
+  import { Divider } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px;">

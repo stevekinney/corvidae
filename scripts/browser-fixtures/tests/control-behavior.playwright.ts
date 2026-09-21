@@ -1,4 +1,4 @@
-import { loadManifest } from '@corvidae/testing';
+import { loadManifest } from '@lostgradient/testing';
 import type { Browser, BrowserContext, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { environmentConfiguration } from '../environment-configuration.ts';

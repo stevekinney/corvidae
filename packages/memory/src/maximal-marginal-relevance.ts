@@ -1,4 +1,4 @@
-import { cosineSimilarity } from '@corvidae/embeddings';
+import { cosineSimilarity } from '@lostgradient/embeddings';
 
 export interface MaximalMarginalRelevanceOptions {
   /** Tradeoff between relevance (1) and diversity (0). */

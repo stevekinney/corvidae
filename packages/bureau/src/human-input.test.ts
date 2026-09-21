@@ -36,8 +36,8 @@ import {
   createTool,
   createToolbox,
   type Toolbox,
-} from '@corvidae/armorer';
-import { type GenerateFunction, stopWhen } from '@corvidae/operative';
+} from 'armorer';
+import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

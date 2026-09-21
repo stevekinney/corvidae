@@ -1,4 +1,4 @@
-import { createTool, createToolbox, type ToolRequestContext } from '@corvidae/armorer';
+import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { z } from 'zod';
 
 const rollDice = createTool({

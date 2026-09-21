@@ -36,7 +36,7 @@ const DEFAULT_DATABASE_NAME = 'weft';
  *
  * @example
  * ```ts
- * import type { ServiceWorkerHandlerOptions } from '@corvidae/weft';
+ * import type { ServiceWorkerHandlerOptions } from '@lostgradient/weft';
  *
  * const handlerOptions: ServiceWorkerHandlerOptions = {
  *   authContext: { method: 'public' },
@@ -56,8 +56,8 @@ export type ServiceWorkerHandlerOptions = Pick<
  *
  * @example
  * ```ts
- * import { workflow } from '@corvidae/weft';
- * import { setupServiceWorker, type SetupServiceWorkerOptions } from '@corvidae/weft';
+ * import { workflow } from '@lostgradient/weft';
+ * import { setupServiceWorker, type SetupServiceWorkerOptions } from '@lostgradient/weft';
  *
  * const checkout = workflow({ name: 'checkout' }).execute(async function* () {
  *   yield;
@@ -126,8 +126,8 @@ export interface SetupServiceWorkerOptions {
  *
  * @example
  * ```ts
- * import { workflow } from '@corvidae/weft';
- * import { setupServiceWorker, type SetupServiceWorkerResult } from '@corvidae/weft';
+ * import { workflow } from '@lostgradient/weft';
+ * import { setupServiceWorker, type SetupServiceWorkerResult } from '@lostgradient/weft';
  *
  * const hello = workflow({ name: 'hello' }).execute(async function* () {
  *   yield;
@@ -286,8 +286,8 @@ function attachListeners(
  * @example
  * ```ts
  * /// <reference lib="webworker" />
- * import { workflow } from '@corvidae/weft';
- * import { setupServiceWorker } from '@corvidae/weft';
+ * import { workflow } from '@lostgradient/weft';
+ * import { setupServiceWorker } from '@lostgradient/weft';
  *
  * const checkout = workflow({ name: 'checkout' }).execute(async function* () {
  *   yield;
@@ -390,7 +390,7 @@ export function setupServiceWorker(
  *
  * @example
  * ```ts
- * import { resetSetupServiceWorkerRegistry } from '@corvidae/weft';
+ * import { resetSetupServiceWorkerRegistry } from '@lostgradient/weft';
  * declare const fakeScope: object;
  * resetSetupServiceWorkerRegistry(fakeScope);
  * ```

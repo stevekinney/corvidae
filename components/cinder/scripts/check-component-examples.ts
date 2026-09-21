@@ -12,7 +12,7 @@ const PACKAGE_ROOT = join(import.meta.dir, '..');
 const COMPONENTS_ROOT = join(PACKAGE_ROOT, 'src', 'components');
 const MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
 const SCHEMA_PATH = join(PACKAGE_ROOT, 'src', 'schemas', 'examples.schema.json');
-const PUBLIC_ROOT_IMPORT = '@corvidae/cinder';
+const PUBLIC_ROOT_IMPORT = '@lostgradient/cinder';
 
 export type ExampleArtifact = {
   component: string;
@@ -140,7 +140,7 @@ function validateArtifactMetadata(
     issues.push(`${packagePath}: import must use public root "${PUBLIC_ROOT_IMPORT}"`);
   }
   if (
-    value.examples.some((example) => /(?:from|import)\s+['"]@corvidae\/cinder\//.test(example.code))
+    value.examples.some((example) => /(?:from|import)\s+['"]@lostgradient\/cinder\//.test(example.code))
   ) {
     issues.push(
       `${packagePath}: example code must use the public root import "${PUBLIC_ROOT_IMPORT}"`,

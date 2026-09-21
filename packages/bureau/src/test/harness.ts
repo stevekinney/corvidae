@@ -34,8 +34,8 @@
  * scheduler-task retrieval — AB-180) are named as unsupported through
  * `supports()` and a typed throw, never silently stubbed out.
  */
-import type { ManualRuntimeServices } from '@corvidae/lifecycle';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   type AgentInput,
   type ChildRunHandle,
@@ -46,8 +46,8 @@ import {
   type MutableChildRunRegistry,
   type ResourceScope,
   waitForCondition,
-} from '@corvidae/operative';
-import type { ScheduleSummary, WorkflowState } from '@corvidae/weft';
+} from '@lostgradient/operative';
+import type { ScheduleSummary, WorkflowState } from '@lostgradient/weft';
 
 import type { AgentDefinitions, AgentNames, AgentRunForName } from '../agent-catalog';
 import { createBureau, detachBestEffortPromise } from '../create-bureau';

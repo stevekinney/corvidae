@@ -26,8 +26,8 @@ The component marks the currently active step with `aria-current="step"`. `runni
 
 ```svelte
 <script lang="ts">
-  import { RunStepTimeline } from '@corvidae/cinder';
-  import type { RunStep } from '@corvidae/cinder';
+  import { RunStepTimeline } from '@lostgradient/cinder';
+  import type { RunStep } from '@lostgradient/cinder';
 
   const steps: RunStep[] = [
     {
@@ -76,7 +76,7 @@ The component marks the currently active step with `aria-current="step"`. `runni
 
 ```svelte
 <script lang="ts">
-  import type { RunStep } from '@corvidae/cinder';
+  import type { RunStep } from '@lostgradient/cinder';
 
   const steps: RunStep[] = [
     {
@@ -108,7 +108,7 @@ The component marks the currently active step with `aria-current="step"`. `runni
 
 ```svelte
 <script lang="ts">
-  import type { RunStep } from '@corvidae/cinder';
+  import type { RunStep } from '@lostgradient/cinder';
 
   const steps: RunStep[] = [
     {
@@ -139,7 +139,7 @@ A top-level entry can be a branch group instead of a step. A branch group fans o
 
 ```svelte
 <script lang="ts">
-  import type { RunStepTimelineEntry } from '@corvidae/cinder';
+  import type { RunStepTimelineEntry } from '@lostgradient/cinder';
 
   const steps: RunStepTimelineEntry[] = [
     { id: 'plan', label: 'Plan rollout', status: 'succeeded' },

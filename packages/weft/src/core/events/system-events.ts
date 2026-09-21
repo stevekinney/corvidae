@@ -7,7 +7,7 @@ import type { ConstraintViolation } from '../constraint.ts';
  *
  * @example
  * ```ts
- * import { Engine, CheckpointSizeWarningEvent } from '@corvidae/weft';
+ * import { Engine, CheckpointSizeWarningEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine({ checkpointSizeWarningThreshold: 32_000 });
  * engine.addEventListener(CheckpointSizeWarningEvent.type, (event) => {
@@ -37,7 +37,7 @@ export class CheckpointSizeWarningEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, DevelopmentWarningEvent } from '@corvidae/weft';
+ * import { Engine, DevelopmentWarningEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine({ development: true });
  * engine.addEventListener(DevelopmentWarningEvent.type, (event) => {
@@ -80,7 +80,7 @@ export class CleanupWarningEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, StorageSizeReportedEvent } from '@corvidae/weft';
+ * import { Engine, StorageSizeReportedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(StorageSizeReportedEvent.type, (event) => {
@@ -135,7 +135,7 @@ export class WorkerDisconnectedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, AlertFiredEvent } from '@corvidae/weft';
+ * import { Engine, AlertFiredEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(AlertFiredEvent.type, (event) => {
@@ -166,7 +166,7 @@ export class AlertFiredEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, AlertResolvedEvent } from '@corvidae/weft';
+ * import { Engine, AlertResolvedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(AlertResolvedEvent.type, (event) => {
@@ -197,7 +197,7 @@ export class AlertResolvedEvent extends Event {
  *
  * @example
  * ```ts
- * import { Engine, ConstraintViolatedEvent } from '@corvidae/weft';
+ * import { Engine, ConstraintViolatedEvent } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.addEventListener(ConstraintViolatedEvent.type, (event) => {

@@ -6,7 +6,7 @@ Encode a string payload as an inline, theme-aware SVG QR image with accessible l
 
 ```svelte
 <script lang="ts">
-  import { QrCode } from '@corvidae/cinder';
+  import { QrCode } from '@lostgradient/cinder';
 </script>
 
 <QrCode value="https://cinder.design" label="Scan to open the cinder website" />

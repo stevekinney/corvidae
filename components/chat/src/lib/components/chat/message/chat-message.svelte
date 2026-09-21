@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
-  import type { ApprovalResolution, ApprovalState } from '@corvidae/cinder';
+  import type { ApprovalResolution, ApprovalState } from '@lostgradient/cinder';
   import type { HTMLAttributes } from 'svelte/elements';
   import type { Message, ToolCallPair } from '../conversation-model.ts';
   import type { MarkdownNodeOverride, MessagePartOverride } from './chat-message-parts.ts';
@@ -113,7 +113,7 @@
     getMessageRoleLabel,
     getMessageText,
   } from '../utilities/utilities.ts';
-  import { Button, Pencil, RotateCcw, CopyButton } from '@corvidae/cinder';
+  import { Button, Pencil, RotateCcw, CopyButton } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
 

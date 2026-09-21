@@ -1,4 +1,4 @@
-import { mergeHookRegistries, type RuntimeServices } from '@corvidae/lifecycle';
+import { mergeHookRegistries, type RuntimeServices } from '@lostgradient/lifecycle';
 import type {
   ActiveRun,
   AgentInput,
@@ -8,7 +8,7 @@ import type {
   DefinitionResolvingAgentWithResolver,
   RunnableAgent,
   RunOptions,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   AgentContractError,
   createActiveRun,
@@ -17,7 +17,7 @@ import {
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   readGenerationProfile,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
 import type { RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';

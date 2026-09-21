@@ -27,7 +27,7 @@ import type { WorkerManifest } from './types.ts';
  *
  * @example
  * ```ts
- * import { WORKER_MANIFEST_DIGEST_ALGORITHM } from '@corvidae/weft';
+ * import { WORKER_MANIFEST_DIGEST_ALGORITHM } from '@lostgradient/weft';
  *
  * const digest = 'sha256:41d0e2';
  * console.log(digest.startsWith(`${WORKER_MANIFEST_DIGEST_ALGORITHM}:`)); // true
@@ -44,7 +44,7 @@ export const WORKER_MANIFEST_DIGEST_ALGORITHM = 'sha256';
  *
  * @example
  * ```ts
- * import { canonicalWorkerManifestJson, digestCanonicalWorkerManifest } from '@corvidae/weft';
+ * import { canonicalWorkerManifestJson, digestCanonicalWorkerManifest } from '@lostgradient/weft';
  *
  * const canonical = canonicalWorkerManifestJson({
  *   manifestVersion: 1,
@@ -72,7 +72,7 @@ export async function digestCanonicalWorkerManifest(canonicalJson: string): Prom
  *
  * @example
  * ```ts
- * import { computeWorkerManifestDigest, WORKER_MANIFEST_VERSION } from '@corvidae/weft';
+ * import { computeWorkerManifestDigest, WORKER_MANIFEST_VERSION } from '@lostgradient/weft';
  *
  * const digest = await computeWorkerManifestDigest({
  *   manifestVersion: WORKER_MANIFEST_VERSION,

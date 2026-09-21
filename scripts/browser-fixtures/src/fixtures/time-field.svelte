@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TimeField } from '@corvidae/cinder';
+  import { TimeField } from '@lostgradient/cinder';
 
   let time = $state('09:30');
   let timezone = $state<string | undefined>('America/Denver');

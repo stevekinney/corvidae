@@ -34,7 +34,7 @@
   import type { Placement, VirtualElement } from '@floating-ui/dom';
   import { createAnchoredOverlay } from '../../../_internal/anchored-overlay.svelte.ts';
   import { classNames } from '../../../utilities/class-names.ts';
-  import { createFocusTrap, Button, Input, LinkIcon, Unlink, X } from '@corvidae/cinder';
+  import { createFocusTrap, Button, Input, LinkIcon, Unlink, X } from '@lostgradient/cinder';
   import { createClickOutside } from '../../../utilities/attachments.ts';
 
   let {

@@ -6,7 +6,7 @@ Generic wrapper that preserves a fixed aspect ratio for arbitrary embedded conte
 
 ```svelte
 <script lang="ts">
-  import { AspectRatio } from '@corvidae/cinder';
+  import { AspectRatio } from '@lostgradient/cinder';
 </script>
 
 <AspectRatio>

@@ -24,8 +24,8 @@ import {
   Tabs,
   Tree,
   VirtualList,
-} from '@corvidae/cinder';
-import type { VisualFixture } from '@corvidae/testing';
+} from '@lostgradient/cinder';
+import type { VisualFixture } from '@lostgradient/testing';
 import type { FixtureModuleMaps } from './fixture-loader.ts';
 
 import * as generatedModules from '../.playwright/fixture-modules.ts';

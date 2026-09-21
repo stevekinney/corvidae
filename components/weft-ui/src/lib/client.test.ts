@@ -17,7 +17,7 @@
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { HttpClient } from '@corvidae/weft';
+import type { HttpClient } from '@lostgradient/weft';
 
 import { createClient, getClient, provideClient, setApiKey } from './client.ts';
 import type { WeftUiRuntimeConfig } from './config.ts';

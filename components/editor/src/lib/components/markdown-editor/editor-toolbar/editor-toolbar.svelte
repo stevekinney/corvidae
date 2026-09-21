@@ -54,7 +54,7 @@
     Popover,
     Button,
     MoreHorizontal,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   import { getShortcutDisplay } from '../../../editor/index.ts';
 

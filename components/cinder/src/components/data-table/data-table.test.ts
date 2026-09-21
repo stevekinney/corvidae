@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import type { DataTableSelectionMode as RootDataTableSelectionMode } from '../../index.ts';
 import type { DataTableRow } from './data-table.types.ts';
 import type { DataTableSelectionMode } from './index.ts';

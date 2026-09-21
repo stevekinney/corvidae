@@ -4,7 +4,7 @@
  * `ClientStartOptions` builder, all unit-testable without mounting the
  * wizard. `start-wizard.svelte` + its step components are the thin UI.
  */
-import type { ClientStartOptions, SearchAttributeValue } from '@corvidae/weft';
+import type { ClientStartOptions, SearchAttributeValue } from '@lostgradient/weft';
 
 /** The Advanced options step's raw form state — every field a plain string/string[] so it round-trips cleanly through `Input`/`TagInput`. */
 export interface AdvancedStartOptionsInput {

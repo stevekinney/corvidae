@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, EmptyState } from '@corvidae/cinder';
+  import { Button, EmptyState } from '@lostgradient/cinder';
 </script>
 
 <EmptyState title="No results found" description="Try adjusting your filters or search query.">

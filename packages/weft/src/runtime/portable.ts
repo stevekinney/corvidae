@@ -91,7 +91,7 @@ const RUNTIME_DETECTORS: readonly RuntimeDetector[] = [
  *
  * @example
  * ```ts
- * import { detectRuntime } from '@corvidae/weft';
+ * import { detectRuntime } from '@lostgradient/weft';
  *
  * const runtime = detectRuntime();
  * // Returns 'bun' | 'node' | 'browser' | 'edge'
@@ -112,7 +112,7 @@ export function detectRuntime(): RuntimeKind {
  *
  * @example
  * ```ts
- * import { detectRuntimeVersion } from '@corvidae/weft';
+ * import { detectRuntimeVersion } from '@lostgradient/weft';
  *
  * const version = detectRuntimeVersion();
  * console.log(typeof version); // 'string'
@@ -158,7 +158,7 @@ export function readEnvironmentVariable(name: string): string | undefined {
  *
  * @example
  * ```ts
- * import { sleep } from '@corvidae/weft';
+ * import { sleep } from '@lostgradient/weft';
  *
  * async function poll() {
  *   for (let i = 0; i < 3; i++) {
@@ -214,7 +214,7 @@ const textEncoder = new TextEncoder();
  *
  * @example
  * ```ts
- * import { hashBytes } from '@corvidae/weft';
+ * import { hashBytes } from '@lostgradient/weft';
  *
  * const data = new TextEncoder().encode('hello');
  * const hash = hashBytes(data);
@@ -233,7 +233,7 @@ export function hashBytes(data: Uint8Array): string {
  *
  * @example
  * ```ts
- * import { hashString } from '@corvidae/weft';
+ * import { hashString } from '@lostgradient/weft';
  *
  * const h1 = hashString('workflow-key');
  * const h2 = hashString('workflow-key');

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SearchField } from '@corvidae/cinder';
+  import { SearchField } from '@lostgradient/cinder';
 </script>
 
 <SearchField

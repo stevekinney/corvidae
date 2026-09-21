@@ -24,7 +24,7 @@
  *
  * @example
  * ```ts
- * import { MAX_MANIFEST_IDENTIFIER_BYTES } from '@corvidae/weft';
+ * import { MAX_MANIFEST_IDENTIFIER_BYTES } from '@lostgradient/weft';
  *
  * const buildId = 'release-2026.08.18';
  * const fits = new TextEncoder().encode(buildId).byteLength <= MAX_MANIFEST_IDENTIFIER_BYTES;
@@ -38,7 +38,7 @@ export const MAX_MANIFEST_IDENTIFIER_BYTES = 512;
  *
  * @example
  * ```ts
- * import { MAX_MANIFEST_WORKFLOW_COUNT } from '@corvidae/weft';
+ * import { MAX_MANIFEST_WORKFLOW_COUNT } from '@lostgradient/weft';
  *
  * const advertised = ['checkout', 'refund'];
  * console.log(advertised.length <= MAX_MANIFEST_WORKFLOW_COUNT); // true
@@ -51,7 +51,7 @@ export const MAX_MANIFEST_WORKFLOW_COUNT = 512;
  *
  * @example
  * ```ts
- * import { MAX_MANIFEST_ACTIVITY_COUNT } from '@corvidae/weft';
+ * import { MAX_MANIFEST_ACTIVITY_COUNT } from '@lostgradient/weft';
  *
  * console.log(MAX_MANIFEST_ACTIVITY_COUNT >= 1); // true
  * ```
@@ -63,7 +63,7 @@ export const MAX_MANIFEST_ACTIVITY_COUNT = 512;
  *
  * @example
  * ```ts
- * import { MAX_MANIFEST_CAPABILITY_COUNT } from '@corvidae/weft';
+ * import { MAX_MANIFEST_CAPABILITY_COUNT } from '@lostgradient/weft';
  *
  * const capabilities = { gpu: true, region: 'us-east-1' };
  * console.log(Object.keys(capabilities).length <= MAX_MANIFEST_CAPABILITY_COUNT); // true
@@ -79,7 +79,7 @@ export const MAX_MANIFEST_CAPABILITY_COUNT = 64;
  *
  * @example
  * ```ts
- * import { MAX_MANIFEST_CAPABILITY_DEPTH } from '@corvidae/weft';
+ * import { MAX_MANIFEST_CAPABILITY_DEPTH } from '@lostgradient/weft';
  *
  * // { limits: { cpu: 4 } } is depth 3: object, object, scalar.
  * console.log(3 <= MAX_MANIFEST_CAPABILITY_DEPTH); // true
@@ -92,7 +92,7 @@ export const MAX_MANIFEST_CAPABILITY_DEPTH = 8;
  *
  * @example
  * ```ts
- * import { MAX_MANIFEST_CAPABILITY_STRING_BYTES } from '@corvidae/weft';
+ * import { MAX_MANIFEST_CAPABILITY_STRING_BYTES } from '@lostgradient/weft';
  *
  * const note = 'gpu pool: a100';
  * console.log(note.length <= MAX_MANIFEST_CAPABILITY_STRING_BYTES); // true
@@ -109,7 +109,7 @@ export const MAX_MANIFEST_CAPABILITY_STRING_BYTES = 4096;
  *
  * @example
  * ```ts
- * import { canonicalWorkerManifestJson, MAX_NORMALIZED_MANIFEST_BYTES } from '@corvidae/weft';
+ * import { canonicalWorkerManifestJson, MAX_NORMALIZED_MANIFEST_BYTES } from '@lostgradient/weft';
  *
  * const canonical = canonicalWorkerManifestJson({
  *   manifestVersion: 1,
@@ -138,7 +138,7 @@ export const MAX_NORMALIZED_MANIFEST_BYTES = 262_144;
  *
  * @example
  * ```ts
- * import { MAX_JSON_SCAN_NESTING_DEPTH } from '@corvidae/weft';
+ * import { MAX_JSON_SCAN_NESTING_DEPTH } from '@lostgradient/weft';
  *
  * console.log(MAX_JSON_SCAN_NESTING_DEPTH >= 16); // true
  * ```

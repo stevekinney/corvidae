@@ -9,7 +9,7 @@
  * The real emitter (`weft/src/cli/codegen-emit.ts`, a byte-stable
  * JSON-Schema → `.d.ts` generator covering the full subset
  * `definitionSchemaToJsonSchema` produces) is CLI-internal — not exported
- * from any `@corvidae/weft` public subpath (verified against the
+ * from any `@lostgradient/weft` public subpath (verified against the
  * package's `exports` map), so this module cannot import and reuse it. Rather
  * than silently re-deriving a parallel implementation that could drift from
  * the real emitter's behavior and be mistaken for it, this generator covers

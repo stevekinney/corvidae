@@ -1,4 +1,4 @@
-import type { Conversation } from '@corvidae/conversationalist';
+import type { Conversation } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
 import type { SelectionPlan } from './providers/selection';

@@ -1,5 +1,5 @@
-import type { TypedEventTarget } from '@corvidae/lifecycle';
-import type { JSONValue } from '@corvidae/tool-protocol';
+import type { TypedEventTarget } from '@lostgradient/lifecycle';
+import type { JSONValue } from '@lostgradient/tool-protocol';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';

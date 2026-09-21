@@ -3,7 +3,7 @@ import {
   WorkflowStartedEvent,
   type WorkflowEvent,
   type WorkflowEventTail,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 

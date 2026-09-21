@@ -128,7 +128,7 @@ import type { KnownWorkflowName, UnknownNameWhenRegistryEmpty } from './workflow
  *
  * @example
  * ```ts
- * import { HttpClient } from '@corvidae/weft';
+ * import { HttpClient } from '@lostgradient/weft';
  *
  * // Explicit address and token.
  * const client = new HttpClient({

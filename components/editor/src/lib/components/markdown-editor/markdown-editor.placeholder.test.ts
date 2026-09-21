@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 import type { FakeClock } from '../../test/fake-clock.ts';
@@ -66,7 +66,7 @@ function pollUntil(condition: () => boolean, clock: FakeClock): Promise<void> {
  * usually lost, so the plugin was silently absent from the live editor.
  *
  * This mounts a REAL MarkdownEditor (`showToolbar: false` avoids an
- * unrelated @corvidae/cinder Dropdown/DropdownTrigger crash that this
+ * unrelated @lostgradient/cinder Dropdown/DropdownTrigger crash that this
  * package's happy-dom harness hits for the formatting toolbar — reproduces
  * with zero placeholder involvement, not something this fix touches) and
  * reads the actual rendered DOM: the plugin's `decorations()` return value

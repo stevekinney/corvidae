@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { NavigationItem, SideNavigation } from '@corvidae/cinder';
+  import { NavigationItem, SideNavigation } from '@lostgradient/cinder';
 
   type FixtureProps = {
     active?: string;

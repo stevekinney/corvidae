@@ -8,12 +8,12 @@
  * leading license comment is preserved above it, matching the CSS linter's
  * "first non-comment node" contract.
  *
- * Why: the build now injects `import '@corvidae/cinder/<name>/styles'` into every browser
+ * Why: the build now injects `import '@lostgradient/cinder/<name>/styles'` into every browser
  * component entry, so a component's CSS can land in the document BEFORE
- * `@corvidae/cinder` has run. Without an up-front order declaration, CSS creates
+ * `@lostgradient/cinder` has run. Without an up-front order declaration, CSS creates
  * the cascade layers in insertion order — silently inverting priority so
  * utilities can no longer override component defaults. Re-declaring the same
- * order is a spec no-op when `@corvidae/cinder` already ran, and fixes the order
+ * order is a spec no-op when `@lostgradient/cinder` already ran, and fixes the order
  * when the sidecar loads first. The prelude is enforced as line 1 by
  * `check-component-css.ts`.
  *

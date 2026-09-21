@@ -14,7 +14,7 @@
     Select,
     Skeleton,
     Table,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import {
     CalendarClock,
     Ellipsis,
@@ -26,7 +26,7 @@
     XCircle,
   } from 'lucide-svelte';
 
-  import type { ScheduleFilter, ScheduleStatus, ScheduleSummary } from '@corvidae/weft';
+  import type { ScheduleFilter, ScheduleStatus, ScheduleSummary } from '@lostgradient/weft';
 
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 

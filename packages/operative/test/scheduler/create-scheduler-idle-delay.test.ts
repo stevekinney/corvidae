@@ -1,7 +1,7 @@
-import { createTestToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
-import { yieldToPortableEventLoop } from '@corvidae/weft';
+import { createTestToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createScheduler } from '../../src/scheduler/create-scheduler';

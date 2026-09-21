@@ -1,5 +1,5 @@
-import type { ToolboxEvents, ToolExecutionResult } from '@corvidae/armorer';
-import type { Conversation, ConversationActionType } from '@corvidae/conversationalist';
+import type { ToolboxEvents, ToolExecutionResult } from 'armorer';
+import type { Conversation, ConversationActionType } from 'conversationalist';
 import type {
   EventMap,
   ForwardedEvent,
@@ -7,8 +7,8 @@ import type {
   ObservableLike,
   Observer,
   Subscription,
-} from '@corvidae/lifecycle';
-import type { ToolCall } from '@corvidae/tool-protocol';
+} from '@lostgradient/lifecycle';
+import type { ToolCall } from '@lostgradient/tool-protocol';
 
 import type { CostBudgetExceededEvent, CostBudgetThresholdEvent } from './cost-budget-monitor';
 import { estimateCacheHitRate } from './cost-estimation';

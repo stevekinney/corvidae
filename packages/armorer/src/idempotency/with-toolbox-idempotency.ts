@@ -1,5 +1,5 @@
-import { sha256HexSync } from '@corvidae/cryptography';
-import { createDefaultRuntimeServices, type RuntimeServices } from '@corvidae/lifecycle';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 
 import type { JsonValue } from '../core/serialization/json';
 import { stableStringifyJson } from '../core/serialization/json';

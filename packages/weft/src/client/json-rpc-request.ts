@@ -13,7 +13,7 @@ import { resolveConnection, type ConnectionOptions } from '../connection.ts';
  *
  * @example
  * ```ts
- * import { CatalogClientError, type JsonRpcErrorObject } from '@corvidae/weft';
+ * import { CatalogClientError, type JsonRpcErrorObject } from '@lostgradient/weft';
  *
  * const wireError: JsonRpcErrorObject = {
  *   code: -32601,
@@ -43,7 +43,7 @@ export type JsonRpcErrorObject = {
  *
  * @example
  * ```ts
- * import type { JsonRpcCallResult } from '@corvidae/weft';
+ * import type { JsonRpcCallResult } from '@lostgradient/weft';
  *
  * declare const outcome: JsonRpcCallResult;
  *

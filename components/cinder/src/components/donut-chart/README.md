@@ -8,7 +8,7 @@ Use a bar chart when precise comparison matters more than the part-to-whole rela
 
 ```svelte
 <script lang="ts">
-  import { DonutChart } from '@corvidae/cinder';
+  import { DonutChart } from '@lostgradient/cinder';
 
   const data = [
     { label: 'Build', value: 42 },

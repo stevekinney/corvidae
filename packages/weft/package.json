@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/weft",
+  "name": "@lostgradient/weft",
   "private": true,
   "type": "module",
   "bin": {
@@ -33,7 +33,7 @@
     "@lostgradient/environmentalist": "catalog:"
   },
   "devDependencies": {
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "@types/pg": "catalog:",
     "fake-indexeddb": "catalog:",

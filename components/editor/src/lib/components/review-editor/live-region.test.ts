@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 import { mount, tick, unmount } from 'svelte';
 
-import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@corvidae/testing';
+import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
 
 setupHappyDom();
 

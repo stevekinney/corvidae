@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@corvidae/conversationalist';
+import type { TokenUsage } from 'conversationalist';
 import type { ChatToolResult } from '../components/chat/adapter/chat-adapter.ts';
 import { isJSONValue, isTokenUsage, isToolResult } from '../components/chat/builders.ts';
 import type { JSONValue, ToolAction } from '../components/chat/conversation-model.ts';

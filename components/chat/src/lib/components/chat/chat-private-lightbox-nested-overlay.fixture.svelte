@@ -7,7 +7,7 @@
 </script>
 
 <script lang="ts">
-  import { Button, Drawer } from '@corvidae/cinder';
+  import { Button, Drawer } from '@lostgradient/cinder';
   import ImageLightbox from './message/image-lightbox.svelte';
 
   let drawerOpen = $state(false);

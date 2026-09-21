@@ -14,7 +14,7 @@
  * A profile token is only applied when neither an explicit `server` option nor
  * `WEFT_ADDR` redirected the request to a different destination.
  *
- * This module is imported from `@corvidae/weft` (browser-reachable),
+ * This module is imported from `@lostgradient/weft` (browser-reachable),
  * so it must stay statically free of `node:*` and Bun-only imports. Environment
  * variables go through {@link readEnvironmentVariable}; `~/.weft/config` and the
  * run lockfile are read through {@link tryLoadNodeBuiltin}, which resolves
@@ -33,7 +33,7 @@ import { isBunRuntime, readEnvironmentVariable, tryLoadNodeBuiltin } from './run
  *
  * @example
  * ```ts
- * import { resolveConnection, type ConnectionOptions } from '@corvidae/weft';
+ * import { resolveConnection, type ConnectionOptions } from '@lostgradient/weft';
  *
  * const options: ConnectionOptions = {
  *   server: 'https://weft.example.com',
@@ -61,7 +61,7 @@ export type ConnectionOptions = {
  *
  * @example
  * ```ts
- * import { resolveConnection, type ResolvedConnection } from '@corvidae/weft';
+ * import { resolveConnection, type ResolvedConnection } from '@lostgradient/weft';
  *
  * const connection: ResolvedConnection = resolveConnection({
  *   server: 'https://weft.example.com',
@@ -81,7 +81,7 @@ export type ResolvedConnection = {
  *
  * @example
  * ```ts
- * import { DEFAULT_WEFT_ADDRESS } from '@corvidae/weft';
+ * import { DEFAULT_WEFT_ADDRESS } from '@lostgradient/weft';
  *
  * console.log(DEFAULT_WEFT_ADDRESS); // "http://localhost:7233"
  * ```
@@ -99,7 +99,7 @@ export const DEFAULT_WEFT_ADDRESS = 'http://localhost:7233';
  *
  * @example
  * ```ts
- * import { ConnectionConfigurationError, resolveConnection } from '@corvidae/weft';
+ * import { ConnectionConfigurationError, resolveConnection } from '@lostgradient/weft';
  *
  * try {
  *   resolveConnection();
@@ -143,7 +143,7 @@ type WeftRunLockfile = {
  *
  * @example
  * ```ts
- * import { resolveConnection } from '@corvidae/weft';
+ * import { resolveConnection } from '@lostgradient/weft';
  *
  * const connection = resolveConnection({ server: 'https://weft.example.com' });
  * console.log(connection.server.toString()); // "https://weft.example.com/"

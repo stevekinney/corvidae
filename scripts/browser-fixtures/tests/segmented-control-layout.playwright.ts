@@ -20,7 +20,7 @@
  *      contract: `data-cinder-size="sm"`, `data-cinder-density="toolbar"`.
  */
 
-import { loadManifest, THEMES, VIEWPORTS } from '@corvidae/testing';
+import { loadManifest, THEMES, VIEWPORTS } from '@lostgradient/testing';
 import { type Locator, type Page } from '@playwright/test';
 import { expect, test } from './component-page-fixture.ts';
 import { fixtureEntry } from './editor-fixture.ts';

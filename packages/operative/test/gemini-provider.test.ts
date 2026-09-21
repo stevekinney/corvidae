@@ -16,8 +16,8 @@
  *      is tested at the type-check + build step, and Node integration tests would
  *      cover the runtime path.
  */
-import { createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { ProviderError } from '../src/providers/errors.ts';

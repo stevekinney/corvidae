@@ -6,7 +6,7 @@ import {
   requiredInstance,
   setupHappyDom,
   trackTimers,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 
 setupHappyDom();
 

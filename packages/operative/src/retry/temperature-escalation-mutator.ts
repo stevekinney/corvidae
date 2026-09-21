@@ -1,4 +1,4 @@
-import { Conversation } from '@corvidae/conversationalist';
+import { Conversation } from 'conversationalist';
 
 import type { GenerateContext } from '../types';
 import type { RetryMutator } from './types';

@@ -1,4 +1,4 @@
-import { createConversationHistory } from '@corvidae/chat';
+import { createConversationHistory } from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
 
 import type { ServerOwnedConversationSnapshot } from './server-owned-snapshot';

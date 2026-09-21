@@ -2,7 +2,7 @@
  * Unit tests for `compatibility-verdict.ts` (WFT-115): reason labels, the
  * activation-conflict data reader, and the activation-outcome combinator.
  */
-import { HttpClientError } from '@corvidae/weft';
+import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
 import {

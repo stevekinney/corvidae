@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, ModalRegion, useModal } from '@corvidae/cinder';
+  import { Button, ModalRegion, useModal } from '@lostgradient/cinder';
 </script>
 
 <ModalRegion>

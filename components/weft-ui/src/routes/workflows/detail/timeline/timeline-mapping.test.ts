@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { RunStep, RunStepBranchGroup, RunStepTimelineEntry } from '@corvidae/cinder';
-import type { WorkflowTimelineEntry } from '@corvidae/weft';
+import type { RunStep, RunStepBranchGroup, RunStepTimelineEntry } from '@lostgradient/cinder';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 
 import {
   compensatedActivityName,

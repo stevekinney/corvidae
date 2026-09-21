@@ -37,7 +37,7 @@
  *   appears in `getTimeline()`. See `workflow-live-observations.svelte.ts`
  *   for the (live-event-only) finalizer strip this track builds instead.
  */
-import type { WorkflowTimelineEntry, WorkflowTimelineOperationDetail } from '@corvidae/weft';
+import type { WorkflowTimelineEntry, WorkflowTimelineOperationDetail } from '@lostgradient/weft';
 
 import type {
   RunStep,
@@ -47,7 +47,7 @@ import type {
   RunStepDetail,
   RunStepStatus,
   RunStepTimelineEntry,
-} from '@corvidae/cinder';
+} from '@lostgradient/cinder';
 
 import { formatDuration } from '../../../../lib/format/index.ts';
 import { timelineStepStatus } from './timeline-step-state.ts';

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 const compileProgram = `
-import { sveltePlugin } from '@corvidae/testing';
+import { sveltePlugin } from '@lostgradient/testing';
 import { dirname, join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 const { sourcePath, conditions = ['svelte'] } = await Bun.stdin.json();
@@ -35,7 +35,7 @@ const result = await Bun.build({
     name: 'preserve-source-dependency-ownership',
     setup(builder) {
       builder.onResolve({ filter: /^[^./]/ }, ({ path, importer, resolveDir }) => {
-        if (path.startsWith('@corvidae/')) return undefined;
+        if (path.startsWith('@lostgradient/')) return undefined;
         if (path === 'esm-env' || path.startsWith('esm-env/')) return undefined;
         if (/^(node|bun):/.test(path)) return { path, external: true };
         const resolved = Bun.resolveSync(path, importer ? dirname(importer) : resolveDir);

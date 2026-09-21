@@ -5,7 +5,7 @@ import {
   appendUserMessage,
   type ConversationHistory,
   createConversationHistory,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import type { CostEstimate } from '../src/cost-estimation';

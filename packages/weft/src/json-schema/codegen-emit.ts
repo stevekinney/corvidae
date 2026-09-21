@@ -270,7 +270,7 @@ function jsonSchemaToTypeScriptAtDepth(schema: unknown, depth: number): string {
  *
  * @example
  * ```ts
- * import { jsonSchemaToTypeScript } from '@corvidae/weft';
+ * import { jsonSchemaToTypeScript } from '@lostgradient/weft';
  *
  * const type = jsonSchemaToTypeScript({
  *   type: 'object',

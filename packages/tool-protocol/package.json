@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/tool-protocol",
+  "name": "@lostgradient/tool-protocol",
   "private": true,
   "description": "Shared JSON-safe tool protocol types and materialization utilities",
   "type": "module",
@@ -13,11 +13,11 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@corvidae/lifecycle": "workspace:*"
+    "@lostgradient/lifecycle": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   }

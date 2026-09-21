@@ -4,7 +4,7 @@
     type InvocationRule,
     type InvocationRuleChange,
     type InvocationRuleOption,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   const fieldOptions: InvocationRuleOption[] = [
     { value: 'path', label: 'Path' },

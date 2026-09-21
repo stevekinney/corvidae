@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AccessGate, Button } from '@corvidae/cinder';
+  import { AccessGate, Button } from '@lostgradient/cinder';
   let granted = $state(false);
 </script>
 

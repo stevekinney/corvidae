@@ -28,8 +28,8 @@ The component treats that point as a Floating UI virtual anchor, not as the pane
 ```svelte
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { SelectionPopoverPosition } from '@corvidae/cinder';
-  import { SelectionPopover } from '@corvidae/cinder';
+  import type { SelectionPopoverPosition } from '@lostgradient/cinder';
+  import { SelectionPopover } from '@lostgradient/cinder';
 
   type Comment = { id: string; body: string };
 

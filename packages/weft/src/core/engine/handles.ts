@@ -124,8 +124,8 @@ export interface WorkflowHandleEngine extends EventTarget {
  *
  * @example
  * ```ts
- * import { workflow, Engine, WorkflowHandle, activity } from '@corvidae/weft';
- * import type { WorkflowContext, Context } from '@corvidae/weft';
+ * import { workflow, Engine, WorkflowHandle, activity } from '@lostgradient/weft';
+ * import type { WorkflowContext, Context } from '@lostgradient/weft';
  *
  * const greet = activity({ name: 'greet', execute: async (i: unknown) => `hi ${i}` });
  * const engine = new Engine();
@@ -144,7 +144,7 @@ export interface WorkflowHandleEngine extends EventTarget {
  *
  * @example Iterate workflow lifecycle events
  * ```ts
- * import { Engine, workflow, type WorkflowHandle } from '@corvidae/weft';
+ * import { Engine, workflow, type WorkflowHandle } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'ping' }).execute(async function* () { return 'pong'; }));
@@ -221,7 +221,7 @@ export class WorkflowHandle<TResult = unknown> extends EventTarget implements As
    *
    * @example
    * ```ts
-   * import { Engine } from '@corvidae/weft';
+   * import { Engine } from '@lostgradient/weft';
    *
    * const engine = new Engine();
    * const handles = await engine.recoverAll();
@@ -268,7 +268,7 @@ export class WorkflowHandle<TResult = unknown> extends EventTarget implements As
    *
    * @example
    * ```ts
-   * import { Engine } from '@corvidae/weft';
+   * import { Engine } from '@lostgradient/weft';
    *
    * const engine = new Engine();
    * const handles = await engine.recoverAll();
@@ -518,7 +518,7 @@ export class WorkflowHandle<TResult = unknown> extends EventTarget implements As
  *
  * @example
  * ```ts
- * import { Engine, workflow, type PreparedWorkflowHandle } from '@corvidae/weft';
+ * import { Engine, workflow, type PreparedWorkflowHandle } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'onboarding' }).execute(async function* () {

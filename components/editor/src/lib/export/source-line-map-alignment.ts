@@ -1,5 +1,5 @@
-import type { Content, Root } from '@corvidae/markdown';
-import { parseOrThrow } from '@corvidae/markdown';
+import type { Content, Root } from '@lostgradient/markdown';
+import { parseOrThrow } from '@lostgradient/markdown';
 
 type PairableNode = { type: string; ordered?: boolean | null | undefined };
 

@@ -21,7 +21,7 @@
  * `showFault`. Three distinct delivery mechanisms for the same
  * classification — not competing ones.
  */
-import type { ReviewListFilter, ScheduleFilter } from '@corvidae/weft';
+import type { ReviewListFilter, ScheduleFilter } from '@lostgradient/weft';
 
 import { keepPreviousData, QueryClient, type QueryKey } from '@tanstack/svelte-query';
 
@@ -29,7 +29,7 @@ import { showFault } from '../app/toast-host.svelte';
 import { classifyFault, faultTreatment } from './faults.ts';
 import type { WorkflowListQuery } from './filters.ts';
 
-/** `group_by` grammar for `weft.workflows.aggregate` (plan §4, Appendix A) — not a public `@corvidae/weft` export, so named here. */
+/** `group_by` grammar for `weft.workflows.aggregate` (plan §4, Appendix A) — not a public `@lostgradient/weft` export, so named here. */
 export type WorkflowAggregateGroupBy =
   'status' | 'type' | 'failureCategory' | `attribute:${string}`;
 

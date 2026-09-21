@@ -9,9 +9,9 @@ import ts from 'typescript';
  *
  * The second half was added after the first shipped, because the first half's premise had a hole
  * in it. `resolveSpecifier` skipped every bare specifier on the grounds that a package edge is the
- * emitted manifests' business, which is true of `zod` and false of `@corvidae/weft`: the manifest
+ * emitted manifests' business, which is true of `zod` and false of `@lostgradient/weft`: the manifest
  * half *renames* an internal edge to the public name `package-map.json` assigns it, so the emitted
- * manifest declared `@lostgradient/weft` while 37 emitted files still imported `@corvidae/weft`,
+ * manifest declared `@lostgradient/weft` while 37 emitted files still imported `@lostgradient/weft`,
  * and no gate compared the two halves. `internal-names.ts` now rewrites the source side from the
  * same map; this gate is what proves it reached every specifier form. A `tsconfig*.json` is read
  * for the same reason and was invisible for a narrower one: `.json` had only ever been a
@@ -61,7 +61,7 @@ export class SourceEscapeError extends Error {}
 export type SourceEscapeKind =
   /** A relative specifier landing on a path no half of the transform emits. */
   | 'unemitted-path'
-  /** A `@corvidae/*` name, which exists in this workspace and nowhere downstream. */
+  /** A `@lostgradient/*` name, which exists in this workspace and nowhere downstream. */
   | 'internal-name';
 
 /** One emitted file's module specifier that will not resolve in the target. */
@@ -230,7 +230,7 @@ function isWalkable(value: unknown): value is Record<string, unknown> {
  *
  * What that walk cannot see is every edge that is *not* an ESTree `Import*`/`Export*` node.
  * `components/editor/src/lib/components/markdown-editor/markdown-editor.svelte` writes
- * `Pick<typeof import('@corvidae/markdown'), 'normalize' | 'parseOrThrow'>` in a type position —
+ * `Pick<typeof import('@lostgradient/markdown'), 'normalize' | 'parseOrThrow'>` in a type position —
  * a `TSImportType`, which the walk skipped and which is TS2307 downstream exactly like a plain
  * import. So each `<script>` block's own text is handed to the TypeScript walk as well, at its
  * whole-component offset, which also brings `declare module`, `import.meta.resolve`, `require` and
@@ -369,7 +369,7 @@ function svelteScriptSpans(contents: string, path: string): SourceSpan[] {
  *
  * For TypeScript and JavaScript, every string, template, regular-expression and JSX-text literal
  * is protected. What remains is comment trivia and code, and code cannot spell an internal name:
- * `@corvidae/weft` is not an identifier, a keyword or any other token sequence, so a match found
+ * `@lostgradient/weft` is not an identifier, a keyword or any other token sequence, so a match found
  * outside a literal is in a comment by construction. That includes module specifiers, which are
  * string literals — the specifier rewrite above owns those and this must not touch them twice.
  *
@@ -383,7 +383,7 @@ function svelteScriptSpans(contents: string, path: string): SourceSpan[] {
  */
 export function protectedRanges(contents: string, path: string): SourceSpan[] {
   // A Markdown document protects nothing. It has no literals in the sense the rest of this
-  // function means: its fenced code is documentation too, and an `import … from '@corvidae/weft'`
+  // function means: its fenced code is documentation too, and an `import … from '@lostgradient/weft'`
   // inside a fence is exactly what the target's doctest extractor reads and compiles.
   if (path.endsWith('.md')) return [];
   if (!path.endsWith('.svelte')) return literalSpans(contents, path);
@@ -426,7 +426,7 @@ export const internalScope = '@corvidae';
 /**
  * Whether a specifier names a corvidae workspace rather than a package the target can resolve.
  *
- * A subpath counts: `@corvidae/weft/client` is the same fact as `@corvidae/weft` with a deep
+ * A subpath counts: `@lostgradient/weft/client` is the same fact as `@lostgradient/weft` with a deep
  * import hung off it, and both are unresolvable downstream for the same reason.
  */
 export function isInternalSpecifier(specifier: string): boolean {
@@ -456,9 +456,9 @@ export interface CarriedSpecifier {
  *
  * A tsconfig is a source of module edges as surely as a `.ts` file is, and both of the emitted
  * ones that carry an internal name prove it takes both fields to see them. The fixture at
- * `src/cli/__fixtures__/codegen/typecheck/tsconfig.json` extends `@corvidae/typescript/library.json`
+ * `src/cli/__fixtures__/codegen/typecheck/tsconfig.json` extends `@lostgradient/typescript/library.json`
  * and has no `paths`; the one at `src/client/__fixtures__/no-workflow-registry/tsconfig.json` has
- * no `extends` and maps `@corvidae/weft` in `paths`. A reader that looked at either field alone
+ * no `extends` and maps `@lostgradient/weft` in `paths`. A reader that looked at either field alone
  * would miss one of them.
  *
  * `paths` *values* are deliberately not read. They are relative paths into the emitted tree, not
@@ -515,11 +515,11 @@ function resolveSpecifier(file: string, specifier: string): string | undefined {
  * climbs above the target root normalizes to a `..`-prefixed string, which is in no plan and so
  * is reported like any other escape rather than needing a case of its own.
  *
- * A **`@corvidae/*`** specifier escapes by naming a workspace that exists only here. The gate
+ * A **`@lostgradient/*`** specifier escapes by naming a workspace that exists only here. The gate
  * missed this for as long as it did because of the premise in `resolveSpecifier`: a bare
  * specifier was treated as a package edge the emitted manifests declare. That is true of `zod`
- * and false of `@corvidae/weft`, because the manifest half *renames* internal edges — it emits a
- * dependency on `@lostgradient/weft` while the source still said `@corvidae/weft`, and nothing
+ * and false of `@lostgradient/weft`, because the manifest half *renames* internal edges — it emits a
+ * dependency on `@lostgradient/weft` while the source still said `@lostgradient/weft`, and nothing
  * compared the two halves. `internal-names.ts` now rewrites the source side; this is what proves
  * it did, and it deliberately flags *any* internal name rather than only an unmapped one, so the
  * claim is "no emitted edge names corvidae" rather than "the ones we looked up were fine".
@@ -529,8 +529,8 @@ function resolveSpecifier(file: string, specifier: string): string | undefined {
  * here, never a source of one.
  *
  * Still out of scope, and deliberately: an internal name in prose or in data. Corvidae emits 219
- * Markdown files and 187 JSON example payloads that mention `@corvidae/*` inside documentation
- * and inside code samples stored as strings, and `Symbol.for('@corvidae/operative/backend-\
+ * Markdown files and 187 JSON example payloads that mention `@lostgradient/*` inside documentation
+ * and inside code samples stored as strings, and `Symbol.for('@lostgradient/operative/backend-\
  * descriptors')` is a runtime registry key rather than a module edge. None of them is something
  * the target resolves, so none of them belongs to this gate.
  */

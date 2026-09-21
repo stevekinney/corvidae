@@ -13,7 +13,7 @@
 
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { prepareSvelteServerSource, renderThenHydrate } from '@corvidae/testing';
+import { prepareSvelteServerSource, renderThenHydrate } from '@lostgradient/testing';
 import MarkdownEditor from './markdown-editor.svelte';
 
 const sourcePath = new URL('./markdown-editor.svelte', import.meta.url).pathname;

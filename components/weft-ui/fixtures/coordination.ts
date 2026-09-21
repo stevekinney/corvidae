@@ -5,7 +5,7 @@
  * every coordination-branch group. See `fixtures/workflows.ts` for the
  * append-only contract this file participates in.
  */
-import { activity, workflow, type WorkflowHandle } from '@corvidae/weft';
+import { activity, workflow, type WorkflowHandle } from '@lostgradient/weft';
 
 interface CheckoutCoordinationInput {
   orderId: string;

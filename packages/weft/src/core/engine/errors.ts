@@ -9,7 +9,7 @@ import { WeftError } from '../weft-error.ts';
  *
  * @example
  * ```ts
- * import { workflow, Engine, WorkflowAlreadyExistsError } from '@corvidae/weft';
+ * import { workflow, Engine, WorkflowAlreadyExistsError } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'ping' }).execute(async function* () { return 'pong'; }));
@@ -45,7 +45,7 @@ export class WorkflowAlreadyExistsError extends WeftError<'WorkflowAlreadyExists
  *
  * @example
  * ```ts
- * import { WorkflowTeardownPendingError } from '@corvidae/weft';
+ * import { WorkflowTeardownPendingError } from '@lostgradient/weft';
  *
  * function shouldRetryRestartLater(error: unknown): boolean {
  *   return error instanceof WorkflowTeardownPendingError;
@@ -72,7 +72,7 @@ export class WorkflowTeardownPendingError extends WeftError<'WorkflowTeardownPen
  *
  * @example
  * ```ts
- * import { BulkDeleteRequiresTerminalWorkflowsError } from '@corvidae/weft';
+ * import { BulkDeleteRequiresTerminalWorkflowsError } from '@lostgradient/weft';
  *
  * function shouldShowTerminalOnlyMessage(error: unknown): boolean {
  *   return error instanceof BulkDeleteRequiresTerminalWorkflowsError;
@@ -92,7 +92,7 @@ export class BulkDeleteRequiresTerminalWorkflowsError extends WeftError<'BulkDel
  *
  * @example
  * ```ts
- * import { BulkOperationConfirmationError } from '@corvidae/weft';
+ * import { BulkOperationConfirmationError } from '@lostgradient/weft';
  *
  * function needsFreshBulkPreview(error: unknown): boolean {
  *   return error instanceof BulkOperationConfirmationError;
@@ -132,7 +132,7 @@ function summarizeMissingWorkflowTypes(missingTypes: readonly string[]): string 
  *
  * @example
  * ```ts
- * import { Engine, WorkflowTypeNotRegisteredForRecoveryError } from '@corvidae/weft';
+ * import { Engine, WorkflowTypeNotRegisteredForRecoveryError } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * try {
@@ -186,7 +186,7 @@ export class WorkflowTypeNotRegisteredForRecoveryError extends WeftError<'Workfl
  *
  * @example
  * ```ts
- * import { activity, Engine, EngineCreateNameMismatchError } from '@corvidae/weft';
+ * import { activity, Engine, EngineCreateNameMismatchError } from '@lostgradient/weft';
  *
  * const farewell = activity({ name: 'farewell', execute: async () => 'bye' });
  * try {
@@ -222,7 +222,7 @@ export class EngineCreateNameMismatchError extends WeftError<'EngineCreateNameMi
  *
  * @example
  * ```ts
- * import { EngineDisposedError } from '@corvidae/weft';
+ * import { EngineDisposedError } from '@lostgradient/weft';
  *
  * function isShutdownDuringResult(error: unknown): boolean {
  *   return error instanceof EngineDisposedError;
@@ -243,7 +243,7 @@ export class EngineDisposedError extends WeftError<'EngineDisposedError'> {
  *
  * @example
  * ```ts
- * import { EngineDisposalError } from '@corvidae/weft';
+ * import { EngineDisposalError } from '@lostgradient/weft';
  *
  * function releaseSucceeded(error: unknown): boolean {
  *   return error instanceof EngineDisposalError && error.leaseReleased;
@@ -267,7 +267,7 @@ export class EngineDisposalError extends WeftError<'EngineDisposalError'> {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowNotFoundError } from '@corvidae/weft';
+ * import { Engine, WorkflowNotFoundError } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * try {
@@ -296,7 +296,7 @@ export class WorkflowNotFoundError extends WeftError<'WorkflowNotFoundError'> {
  *
  * @example
  * ```ts
- * import { Engine, WorkflowNotRegisteredError } from '@corvidae/weft';
+ * import { Engine, WorkflowNotRegisteredError } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * try {
@@ -324,7 +324,7 @@ export class WorkflowNotRegisteredError extends WeftError<'WorkflowNotRegistered
  *
  * @example
  * ```ts
- * import { WorkflowConcurrencyLimitExceededError } from '@corvidae/weft';
+ * import { WorkflowConcurrencyLimitExceededError } from '@lostgradient/weft';
  *
  * function isCapacityRejection(error: unknown): boolean {
  *   return error instanceof WorkflowConcurrencyLimitExceededError;
@@ -356,7 +356,7 @@ export class WorkflowConcurrencyLimitExceededError extends WeftError<'WorkflowCo
  *
  * @example
  * ```ts
- * import { Engine, WorkflowSuspendNotSupportedError } from '@corvidae/weft';
+ * import { Engine, WorkflowSuspendNotSupportedError } from '@lostgradient/weft';
  *
  * async function trySuspend(engine: Engine, id: string) {
  *   try {
@@ -390,7 +390,7 @@ export class WorkflowSuspendNotSupportedError extends WeftError<'WorkflowSuspend
  *
  * @example
  * ```ts
- * import { workflow, ActivityResolutionError } from '@corvidae/weft';
+ * import { workflow, ActivityResolutionError } from '@lostgradient/weft';
  *
  * function isMissingActivity(error: unknown): boolean {
  *   return error instanceof ActivityResolutionError;
@@ -427,7 +427,7 @@ export class ActivityResolutionError extends WeftError<'ActivityResolutionError'
  *
  * @example
  * ```ts
- * import { StartOrSignalConflictError } from '@corvidae/weft';
+ * import { StartOrSignalConflictError } from '@lostgradient/weft';
  *
  * function isTerminalStartOrSignalConflict(error: unknown): boolean {
  *   return error instanceof StartOrSignalConflictError;
@@ -460,7 +460,7 @@ export class StartOrSignalConflictError extends WeftError<'StartOrSignalConflict
  *
  * @example
  * ```ts
- * import { IdempotencyKeyPurgedError } from '@corvidae/weft';
+ * import { IdempotencyKeyPurgedError } from '@lostgradient/weft';
  *
  * function isPurgedIdempotencyKey(error: unknown): boolean {
  *   return error instanceof IdempotencyKeyPurgedError;

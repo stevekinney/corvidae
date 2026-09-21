@@ -31,11 +31,11 @@
    * - >100KB: Manual trigger only, shows stale diff with "Outdated" badge
    */
 
-  import { computeLineDiff, getDiffStats, groupIntoHunks } from '@corvidae/markdown';
-  import type { DiffHunk } from '@corvidae/markdown';
+  import { computeLineDiff, getDiffStats, groupIntoHunks } from '@lostgradient/markdown';
+  import type { DiffHunk } from '@lostgradient/markdown';
 
   import { classNames } from '../../utilities/class-names.ts';
-  import { Button, RotateCcw, Surface } from '@corvidae/cinder';
+  import { Button, RotateCcw, Surface } from '@lostgradient/cinder';
   import {
     composeDisplayedDocument,
     formatComputedUnifiedDiff,

@@ -6,7 +6,7 @@
  * awaiting external completion. See `fixtures/workflows.ts` for the
  * append-only contract this file participates in.
  */
-import { activity, workflow, type ActivityContext, type WorkflowHandle } from '@corvidae/weft';
+import { activity, workflow, type ActivityContext, type WorkflowHandle } from '@lostgradient/weft';
 
 interface PrintShippingLabelInput {
   orderId: string;

@@ -1,4 +1,4 @@
-import type { ComponentEntry } from '@corvidae/testing';
+import type { ComponentEntry } from '@lostgradient/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { resolveFixtureRequest } from '../src/route-contract.ts';

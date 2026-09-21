@@ -1,6 +1,6 @@
-# @corvidae/testing
+# @lostgradient/testing
 
-Shared source-level test utilities for Corvidae's [Svelte](https://svelte.dev/) packages and browser applications. Declare `"@corvidae/testing": "workspace:*"` in a workspace's development dependencies and import helpers from `@corvidae/testing`.
+Shared source-level test utilities for Corvidae's [Svelte](https://svelte.dev/) packages and browser applications. Declare `"@lostgradient/testing": "workspace:*"` in a workspace's development dependencies and import helpers from `@lostgradient/testing`.
 
 The package provides Svelte compilation and DOM setup for [Bun tests](https://bun.sh/docs/test), server rendering and hydration helpers, timer lifecycle assertions, fixture extraction, [Playwright](https://playwright.dev/) interactions, theme and focus checks, accessibility scans, and screenshot artifact utilities. Each consuming test suite owns its browser server, routes, and Playwright configuration.
 
@@ -13,7 +13,7 @@ The helpers in this package are intentionally small building blocks. They do not
 For browser component tests, `setupHappyDom()` provides the DOM surface, `renderThenHydrate()` checks that server output and client hydration agree, and `trackTimers()` plus `expectNoLeakedTimers()` catches timers that outlive the test. The timer tracker must be created before the code under test schedules work:
 
 ```typescript
-import { expectNoLeakedTimers, trackTimers } from '@corvidae/testing';
+import { expectNoLeakedTimers, trackTimers } from '@lostgradient/testing';
 
 const timers = trackTimers();
 const handle = setTimeout(() => {}, 10);
@@ -32,7 +32,7 @@ try {
 `evaluateAxeGate()` turns the blocking `critical` and `serious` buckets from an axe scan into a binary decision. An allow-list entry may explain an intentional exception, but a new rule identifier still fails the gate. Keep the key stable so the failure identifies the same component, theme, viewport, and fixture in every run:
 
 ```typescript
-import { evaluateAxeGate } from '@corvidae/testing';
+import { evaluateAxeGate } from '@lostgradient/testing';
 
 const decision = evaluateAxeGate(
   { slug: 'button', theme: 'light', viewport: 'desktop', fixture: 'default' },
@@ -58,7 +58,7 @@ bun run typecheck
 bun run test
 ```
 
-From the Corvidae root, use `bunx turbo run lint typecheck test --filter=@corvidae/testing` or `bun run validate` for the full repository. The package has no build or publishing step.
+From the Corvidae root, use `bunx turbo run lint typecheck test --filter=@lostgradient/testing` or `bun run validate` for the full repository. The package has no build or publishing step.
 
 ## Browser fixtures
 

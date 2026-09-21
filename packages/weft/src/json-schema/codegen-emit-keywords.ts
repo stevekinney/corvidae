@@ -64,7 +64,7 @@ export const ARRAY_SUPPORTED_KEYS = ['type', 'items', 'prefixItems', 'additional
  *
  * @example
  * ```ts
- * import { CodegenEmitError, jsonSchemaToTypeScript } from '@corvidae/weft';
+ * import { CodegenEmitError, jsonSchemaToTypeScript } from '@lostgradient/weft';
  *
  * declare const schema: unknown;
  *

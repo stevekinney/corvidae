@@ -3,7 +3,7 @@ import type {
   ObservableLike,
   Observer,
   Subscription,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 import { z } from 'zod';
 
 import type { CoreToolContext } from './core/context';
@@ -31,7 +31,7 @@ export type {
   ObservableLike,
   Observer,
   Subscription,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 
 export type MinimalAbortSignal = AbortSignal;
 export type TimeoutHandle = unknown;
@@ -465,7 +465,7 @@ export type ToolExecuteWithOptions = ToolExecuteOptions & {
  *
  * @example
  * ```typescript
- * import { isTool, createTool } from '@corvidae/armorer';
+ * import { isTool, createTool } from 'armorer';
  *
  * const tool = createTool({ ... });
  * if (isTool(tool)) {

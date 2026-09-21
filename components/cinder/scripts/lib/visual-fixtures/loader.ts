@@ -10,7 +10,7 @@ import {
   type InteractionStep,
   type MaskRule,
   type VisualFixture,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 
 const DEFAULT_COMPONENTS_ROOT = resolve(import.meta.dirname, '..', '..', '..', 'src', 'components');
 

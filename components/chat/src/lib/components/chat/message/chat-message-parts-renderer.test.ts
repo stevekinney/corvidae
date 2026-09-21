@@ -15,7 +15,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { ChatMessagePart, ImageMessagePart } from '../utilities/types.ts';
 import { toRenderUnits } from './chat-message-parts.ts';
 

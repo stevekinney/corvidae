@@ -6,8 +6,8 @@
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import { GuidanceRegion, type GuidanceClaim, useGuidance } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import { GuidanceRegion, type GuidanceClaim, useGuidance } from '@lostgradient/cinder';
 
   const claims = [
     { id: 'welcome', anchor: 'workspace-start', content: 'Start by exploring the workspace.' },

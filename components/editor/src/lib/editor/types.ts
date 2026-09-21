@@ -4,7 +4,7 @@
  * This module defines the public API surface for the editor,
  * including configuration, handle interface, and selection state.
  *
- * Placeholder types (DEP-582/DEP-583) live in `@corvidae/markdown`'s
+ * Placeholder types (DEP-582/DEP-583) live in `@lostgradient/markdown`'s
  * `templates/types.ts` — split from this module when `@cinder/editor` was
  * dissolved, since they are consumed by the headless template pipeline too.
  */
@@ -13,7 +13,7 @@ import type {
   PlaceholderCompletionConfiguration,
   PlaceholderDecorationConfiguration,
   Root,
-} from '@corvidae/markdown';
+} from '@lostgradient/markdown';
 import type { MilkdownPlugin } from '@milkdown/ctx';
 import type { Editor } from '@milkdown/kit/core';
 import type { EditorView } from '@milkdown/kit/prose/view';

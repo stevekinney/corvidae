@@ -40,28 +40,28 @@ async function withTree(
  * real map is what `committed-plans.ts` exercises, over the real tree.
  */
 const publicNames: ReadonlyMap<string, string> = new Map([
-  ['@corvidae/armorer', '@lostgradient/armorer'],
-  ['@corvidae/editor', '@lostgradient/editor'],
-  ['@corvidae/testing', '@lostgradient/testing'],
-  ['@corvidae/weft', '@lostgradient/weft'],
+  ['armorer', '@lostgradient/armorer'],
+  ['@lostgradient/editor', '@lostgradient/editor'],
+  ['@lostgradient/testing', '@lostgradient/testing'],
+  ['@lostgradient/weft', '@lostgradient/weft'],
 ]);
 
 const editorWorkspace = {
-  workspace: '@corvidae/editor',
+  workspace: '@lostgradient/editor',
   corvidaeDirectory: 'components/editor',
   targetDirectory: 'packages/editor',
 } as const;
 
 /**
- * Every path `@corvidae/weft` declares, from both tables.
+ * Every path `@lostgradient/weft` declares, from both tables.
  *
  * Built from the tables rather than written out because a declared file corvidae does not carry
  * is a refusal: a fixture that hard-codes the list has to be edited every time an entry is added,
  * which it twice was, and the edit is noise in a test about something else.
  */
 const weftDeclarations: readonly string[] = [
-  ...(additionalSourceRoots['@corvidae/weft'] ?? []).flatMap((cluster) => cluster.paths),
-  ...(validationInputs['@corvidae/weft'] ?? []).flatMap((cluster) => cluster.paths),
+  ...(additionalSourceRoots['@lostgradient/weft'] ?? []).flatMap((cluster) => cluster.paths),
+  ...(validationInputs['@lostgradient/weft'] ?? []).flatMap((cluster) => cluster.paths),
 ];
 
 /** Those declarations as fixture files, minus whichever the caller wants missing. */
@@ -114,7 +114,7 @@ describe('the documents a workspace declares', () => {
 });
 
 describe('the files that check a workspace’s emitted source', () => {
-  const declared = (validationInputs['@corvidae/weft'] ?? []).flatMap((cluster) => cluster.paths);
+  const declared = (validationInputs['@lostgradient/weft'] ?? []).flatMap((cluster) => cluster.paths);
 
   test('every declared path is emitted, all thirty-one of them', () => {
     // Against the real tree rather than a fixture, because the thing that can go wrong is a path
@@ -147,7 +147,7 @@ describe('the files that check a workspace’s emitted source', () => {
           root,
           [
             {
-              workspace: '@corvidae/weft',
+              workspace: '@lostgradient/weft',
               corvidaeDirectory: 'packages/weft',
               targetDirectory: 'packages/weft',
             },
@@ -191,7 +191,7 @@ describe('what counts as source', () => {
           'packages/editor/src/lib/nested/helper.ts',
         ]);
         expect(plan.ownedPrefixes).toEqual(['packages/editor/src']);
-        expect(plan.typeScriptWorkspaces).toEqual(['@corvidae/editor']);
+        expect(plan.typeScriptWorkspaces).toEqual(['@lostgradient/editor']);
       },
     );
   });
@@ -238,7 +238,7 @@ describe('what counts as source', () => {
           root,
           [
             {
-              workspace: '@corvidae/armorer',
+              workspace: 'armorer',
               corvidaeDirectory: 'packages/armorer',
               targetDirectory: 'packages/armorer',
             },
@@ -264,7 +264,7 @@ describe('what counts as source', () => {
           root,
           [
             {
-              workspace: '@corvidae/armorer',
+              workspace: 'armorer',
               corvidaeDirectory: 'packages/armorer',
               targetDirectory: 'packages/armorer',
             },
@@ -292,7 +292,7 @@ describe('what counts as source', () => {
           root,
           [
             {
-              workspace: '@corvidae/weft',
+              workspace: '@lostgradient/weft',
               corvidaeDirectory: 'packages/weft',
               targetDirectory: 'packages/weft',
             },
@@ -313,7 +313,7 @@ describe('what counts as source', () => {
         root,
         [
           {
-            workspace: '@corvidae/testing',
+            workspace: '@lostgradient/testing',
             corvidaeDirectory: 'packages/testing',
             targetDirectory: 'packages/testing',
           },
@@ -412,7 +412,7 @@ describe('a remapped workspace on disk', () => {
           catalog: {},
         })}\n`,
         'internal/typescript/package.json': `${JSON.stringify({
-          name: '@corvidae/typescript',
+          name: '@lostgradient/typescript',
           private: true,
           type: 'module',
         })}\n`,
@@ -420,14 +420,14 @@ describe('a remapped workspace on disk', () => {
         'internal/typescript/library.json': '{"extends":"./base.json"}\n',
         'internal/typescript/browser.json': '{"extends":"./base.json"}\n',
         'components/editor/package.json': `${JSON.stringify({
-          name: '@corvidae/editor',
+          name: '@lostgradient/editor',
           private: true,
           type: 'module',
           exports: { '.': './src/index.ts' },
           scripts: { typecheck: 'tsc --noEmit' },
         })}\n`,
         'components/editor/tsconfig.json': `${JSON.stringify({
-          extends: '@corvidae/typescript/browser.json',
+          extends: '@lostgradient/typescript/browser.json',
         })}\n`,
         'components/editor/src/lib/index.ts': source,
       },

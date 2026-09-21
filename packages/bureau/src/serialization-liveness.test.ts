@@ -1,4 +1,4 @@
-import type { ActiveRun, LivenessEvidenceEntry, SemanticProgress } from '@corvidae/operative';
+import type { ActiveRun, LivenessEvidenceEntry, SemanticProgress } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { serializeRunDetail } from './serialization';

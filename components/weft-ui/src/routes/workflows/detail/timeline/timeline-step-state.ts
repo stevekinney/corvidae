@@ -39,9 +39,9 @@
  * (`pending` is never produced either, for the same "no not-started entry"
  * reason).
  */
-import type { WorkflowTimelineStatus } from '@corvidae/weft';
+import type { WorkflowTimelineStatus } from '@lostgradient/weft';
 
-import type { RunStepStatus } from '@corvidae/cinder';
+import type { RunStepStatus } from '@lostgradient/cinder';
 
 const TIMELINE_STATUS_TO_STEP_STATUS = {
   running: 'running',

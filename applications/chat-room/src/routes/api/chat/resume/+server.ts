@@ -1,10 +1,10 @@
-import { toolActionSchema } from '@corvidae/conversationalist';
+import { toolActionSchema } from 'conversationalist';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 
 import { requestContext, toolbox } from '../../../../lib/toolbox.ts';
 
-import type { SignedPendingToolApproval } from '@corvidae/armorer';
+import type { SignedPendingToolApproval } from 'armorer';
 import type { RequestHandler } from './$types';
 
 type ApprovalResolution = Parameters<typeof toolbox.resolveApproval>[1];

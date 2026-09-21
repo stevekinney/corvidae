@@ -87,7 +87,7 @@ const MAILBOX_LIST_SCAN_CEILING = 5_000;
  *
  * @example
  * ```ts
- * import { Mailbox, MemoryStorage } from '@corvidae/weft';
+ * import { Mailbox, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * using mailbox = new Mailbox({ storage, namespace: 'bureau', resourceId: 'agent-7' });

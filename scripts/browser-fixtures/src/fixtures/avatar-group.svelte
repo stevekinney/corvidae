@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AvatarGroup } from '@corvidae/cinder';
+  import { AvatarGroup } from '@lostgradient/cinder';
 
   const avatars = [
     { id: 'ada', name: 'Ada Lovelace' },

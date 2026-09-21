@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { resetScrollLock } from '../../_internal/overlay.ts';
 import { emptySnippet, fireNativeClose, installModalDialogStubs } from './modal-test-helpers.ts';

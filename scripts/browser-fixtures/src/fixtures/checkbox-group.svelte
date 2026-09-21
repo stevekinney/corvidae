@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Checkbox, CheckboxGroup } from '@corvidae/cinder';
+  import { Checkbox, CheckboxGroup } from '@lostgradient/cinder';
 </script>
 
 <div id="example-mount-disabled-fieldset">

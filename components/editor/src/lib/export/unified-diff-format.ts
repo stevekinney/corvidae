@@ -1,4 +1,4 @@
-import type { DiffHunk as MarkdownDiffHunk } from '@corvidae/markdown';
+import type { DiffHunk as MarkdownDiffHunk } from '@lostgradient/markdown';
 import type { DiffHunk } from './unified-diff-hunks.js';
 import { splitIntoLines, type SplitContent } from './unified-diff-lines.js';
 

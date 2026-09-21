@@ -16,7 +16,7 @@ import { WeftError } from './weft-error.ts';
  *
  * @example
  * ```ts
- * import { Engine, PersistedDataIncompatibleError } from '@corvidae/weft';
+ * import { Engine, PersistedDataIncompatibleError } from '@lostgradient/weft';
  *
  * try {
  *   await Engine.create({});
@@ -50,7 +50,7 @@ export class PersistedDataIncompatibleError extends WeftError<'PersistedDataInco
  *
  * @example
  * ```ts
- * import { PersistedDataCorruptError } from '@corvidae/weft';
+ * import { PersistedDataCorruptError } from '@lostgradient/weft';
  * declare const error: unknown;
  * if (error instanceof PersistedDataCorruptError) console.error(error.key);
  * ```

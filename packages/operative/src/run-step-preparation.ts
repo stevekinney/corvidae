@@ -1,5 +1,5 @@
-import type { AnyToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import type { AnyToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
 import { SelectionRevalidationError } from './errors';

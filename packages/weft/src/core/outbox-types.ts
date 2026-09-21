@@ -27,7 +27,7 @@ export const OUTBOX_RECORD_VERSION = 1;
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryPayload } from '@corvidae/weft';
+ * import type { ApplicationDeliveryPayload } from '@lostgradient/weft';
  *
  * const payload: ApplicationDeliveryPayload = { form: 'inline', value: { event: 'task.completed' } };
  * console.log(payload.form); // 'inline'
@@ -40,7 +40,7 @@ export type ApplicationDeliveryPayload = ApplicationCommandPayload;
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryCausation } from '@corvidae/weft';
+ * import type { ApplicationDeliveryCausation } from '@lostgradient/weft';
  *
  * const causation: ApplicationDeliveryCausation = { correlationId: 'run-1' };
  * console.log(causation.correlationId); // 'run-1'
@@ -65,7 +65,7 @@ export type ApplicationDeliveryCausation = ApplicationCommandCausation;
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryState } from '@corvidae/weft';
+ * import type { ApplicationDeliveryState } from '@lostgradient/weft';
  *
  * const state: ApplicationDeliveryState = 'queued';
  * console.log(state); // 'queued'
@@ -88,7 +88,7 @@ export type ApplicationDeliveryState =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryTerminalState } from '@corvidae/weft';
+ * import type { ApplicationDeliveryTerminalState } from '@lostgradient/weft';
  *
  * const state: ApplicationDeliveryTerminalState = 'acknowledged';
  * console.log(state); // 'acknowledged'
@@ -119,7 +119,7 @@ export const APPLICATION_DELIVERY_TERMINAL_STATES: readonly ApplicationDeliveryT
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryUnknownOutcomePolicy } from '@corvidae/weft';
+ * import type { ApplicationDeliveryUnknownOutcomePolicy } from '@lostgradient/weft';
  *
  * const policy: ApplicationDeliveryUnknownOutcomePolicy = 'park';
  * console.log(policy); // 'park'
@@ -134,7 +134,7 @@ export type ApplicationDeliveryUnknownOutcomePolicy =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryFailure } from '@corvidae/weft';
+ * import type { ApplicationDeliveryFailure } from '@lostgradient/weft';
  *
  * const failure: ApplicationDeliveryFailure = { reason: 'retryable', message: '503' };
  * console.log(failure.reason); // 'retryable'
@@ -199,7 +199,7 @@ export type ApplicationDeliveryAttemptFields = Readonly<{
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryQueued } from '@corvidae/weft';
+ * import type { ApplicationDeliveryQueued } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryQueued;
  * console.log(record.state, record.availableAt); // 'queued', when it is due
@@ -216,7 +216,7 @@ export type ApplicationDeliveryQueued = ApplicationDeliveryBase &
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryRetryScheduled } from '@corvidae/weft';
+ * import type { ApplicationDeliveryRetryScheduled } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryRetryScheduled;
  * console.log(record.lastFailure?.reason);
@@ -250,7 +250,7 @@ export type ApplicationDeliveryLeaseFields = Readonly<{
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryClaimed } from '@corvidae/weft';
+ * import type { ApplicationDeliveryClaimed } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryClaimed;
  * console.log(record.attemptToken, record.attemptDeadlineAt);
@@ -270,7 +270,7 @@ export type ApplicationDeliveryClaimed = ApplicationDeliveryBase &
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryAttempting } from '@corvidae/weft';
+ * import type { ApplicationDeliveryAttempting } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryAttempting;
  * console.log(record.attemptStartedAt);
@@ -292,7 +292,7 @@ export type ApplicationDeliveryAttempting = ApplicationDeliveryBase &
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryCancelling } from '@corvidae/weft';
+ * import type { ApplicationDeliveryCancelling } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryCancelling;
  * console.log(record.cancellationRequestedAt);
@@ -317,7 +317,7 @@ export type ApplicationDeliveryCancelling = ApplicationDeliveryBase &
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryTerminalRecord } from '@corvidae/weft';
+ * import type { ApplicationDeliveryTerminalRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryTerminalRecord;
  * console.log(record.state, record.terminalAt);
@@ -344,7 +344,7 @@ export type ApplicationDeliveryTerminalRecord = ApplicationDeliveryBase &
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryRecord } from '@corvidae/weft';
+ * import type { ApplicationDeliveryRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryRecord;
  * console.log(record.deliveryId, record.state);
@@ -363,7 +363,7 @@ export type ApplicationDeliveryRecord =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryLeasedRecord } from '@corvidae/weft';
+ * import type { ApplicationDeliveryLeasedRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryLeasedRecord;
  * console.log(record.attemptToken, record.attemptDeadlineAt);
@@ -377,7 +377,7 @@ export type ApplicationDeliveryLeasedRecord =
  *
  * @example
  * ```ts
- * import type { ApplicationDeliveryWaitingRecord } from '@corvidae/weft';
+ * import type { ApplicationDeliveryWaitingRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryWaitingRecord;
  * console.log(record.availableAt);
@@ -392,7 +392,7 @@ export type ApplicationDeliveryWaitingRecord =
  *
  * @example
  * ```ts
- * import type { OutboxRecord } from '@corvidae/weft';
+ * import type { OutboxRecord } from '@lostgradient/weft';
  *
  * declare const header: OutboxRecord;
  * console.log(header.nextSequence, header.openCount);
@@ -428,7 +428,7 @@ const TERMINAL_STATE_SET: ReadonlySet<string> = new Set(APPLICATION_DELIVERY_TER
  *
  * @example
  * ```ts
- * import { isApplicationDeliveryTerminalState } from '@corvidae/weft';
+ * import { isApplicationDeliveryTerminalState } from '@lostgradient/weft';
  *
  * console.log(isApplicationDeliveryTerminalState('acknowledged')); // true
  * console.log(isApplicationDeliveryTerminalState('attempting')); // false
@@ -445,7 +445,7 @@ export function isApplicationDeliveryTerminalState(
  *
  * @example
  * ```ts
- * import { isApplicationDeliveryLeased, type ApplicationDeliveryRecord } from '@corvidae/weft';
+ * import { isApplicationDeliveryLeased, type ApplicationDeliveryRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryRecord;
  * if (isApplicationDeliveryLeased(record)) console.log(record.attemptToken);
@@ -466,7 +466,7 @@ export function isApplicationDeliveryLeased(
  *
  * @example
  * ```ts
- * import { isApplicationDeliveryWaiting, type ApplicationDeliveryRecord } from '@corvidae/weft';
+ * import { isApplicationDeliveryWaiting, type ApplicationDeliveryRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryRecord;
  * if (isApplicationDeliveryWaiting(record)) console.log(record.availableAt);
@@ -484,7 +484,7 @@ export function isApplicationDeliveryWaiting(
  *
  * @example
  * ```ts
- * import { isApplicationDeliveryAttempting, type ApplicationDeliveryRecord } from '@corvidae/weft';
+ * import { isApplicationDeliveryAttempting, type ApplicationDeliveryRecord } from '@lostgradient/weft';
  *
  * declare const record: ApplicationDeliveryRecord;
  * if (isApplicationDeliveryAttempting(record)) console.log(record.attemptStartedAt);

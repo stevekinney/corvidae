@@ -6,7 +6,7 @@
  * `src/lib/live-source/fleet-event-source.test.ts` (T1.4's own convention for
  * this exact need) rather than inventing a different one.
  */
-import { HttpClient } from '@corvidae/weft';
+import { HttpClient } from '@lostgradient/weft';
 
 import { installFetchImplementation } from '../../lib/live-source/fetch-test-support.ts';
 
@@ -205,7 +205,7 @@ export class ScriptedFetch {
    * Standing route: any JSON-RPC request for `method` gets a JSON-RPC ERROR
    * envelope back, regardless of call order — the error-response sibling of
    * `routeJsonRpcMethod`. Shape mirrors what `httpClientCatalogTransport`
-   * (`@corvidae/weft`, `http-operations.ts`) actually parses:
+   * (`@lostgradient/weft`, `http-operations.ts`) actually parses:
    * `error.data.httpStatus` drives `HttpClientError.status`, `error.data.weftCode`
    * (a coarse `FaultCode`, e.g. `'Conflict'`) drives `.faultCode`, and the full
    * `error.data` object is forwarded verbatim as `.data` — so a caller wanting a

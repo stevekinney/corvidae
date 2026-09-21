@@ -4,7 +4,7 @@
    * SCOPES). Granted/not-granted scopes for the current principal, each with
    * a one-line description and what it unlocks in the console UI.
    */
-  import { Badge } from '@corvidae/cinder';
+  import { Badge } from '@lostgradient/cinder';
   import { ShieldCheck, ShieldOff } from 'lucide-svelte';
 
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';

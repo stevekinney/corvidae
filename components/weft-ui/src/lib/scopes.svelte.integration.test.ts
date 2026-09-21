@@ -23,7 +23,7 @@
  * `port: 0` gives each server an ephemeral port so these can run alongside
  * the other integration suites without collisions.
  */
-import { Engine, HttpClient, serve } from '@corvidae/weft';
+import { Engine, HttpClient, serve } from '@lostgradient/weft';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import { workflows } from '../../fixtures/workflows.ts';

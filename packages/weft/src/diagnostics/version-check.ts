@@ -118,7 +118,7 @@ function computeOverallVerdict(
  *
  * @example
  * ```ts
- * import { MemoryStorage, runVersionCheck, workflow } from '@corvidae/weft';
+ * import { MemoryStorage, runVersionCheck, workflow } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  *

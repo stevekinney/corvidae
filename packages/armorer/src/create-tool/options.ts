@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { z } from 'zod';
 

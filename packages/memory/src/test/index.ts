@@ -1,4 +1,4 @@
-import { cosineSimilarity, type EmbeddingVectorLike } from '@corvidae/embeddings';
+import { cosineSimilarity, type EmbeddingVectorLike } from '@lostgradient/embeddings';
 
 import type {
   MemoryRecord,

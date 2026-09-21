@@ -1,1 +1,1 @@
-export { CURRENT_SCHEMA_VERSION } from '@corvidae/conversationalist';
+export { CURRENT_SCHEMA_VERSION } from 'conversationalist';

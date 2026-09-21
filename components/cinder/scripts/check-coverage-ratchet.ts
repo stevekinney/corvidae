@@ -197,9 +197,9 @@ function isTransientTestArtifact(file: string, packageRoot: string): boolean {
 
 /**
  * Bun follows source maps into sibling workspaces when component tests exercise
- * sibling packages such as @corvidae/editor and @corvidae/markdown. Those
+ * sibling packages such as @lostgradient/editor and @lostgradient/markdown. Those
  * packages have their own validation scripts; this ratchet is scoped to the
- * @corvidae/cinder package directory.
+ * @lostgradient/cinder package directory.
  */
 function isOutsidePackageRootSourceMap(file: string, packageRoot: string): boolean {
   const relativeFile = toPackageRootRelativePath(file, packageRoot);

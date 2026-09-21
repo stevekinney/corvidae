@@ -1,4 +1,4 @@
-import { THEMES, VIEWPORTS } from '@corvidae/testing';
+import { THEMES, VIEWPORTS } from '@lostgradient/testing';
 import { expect, test } from './component-page-fixture.ts';
 import { fixtureEntry } from './editor-fixture.ts';
 

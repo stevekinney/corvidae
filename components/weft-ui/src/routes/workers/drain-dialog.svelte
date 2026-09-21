@@ -11,7 +11,7 @@
    * exactly Cinder's own documented escape hatch for "richer body content"
    * (`confirm-dialog/README.md`).
    */
-  import { Button, Modal, Textarea } from '@corvidae/cinder';
+  import { Button, Modal, Textarea } from '@lostgradient/cinder';
 
   export type DrainTarget =
     | { readonly kind: 'worker'; readonly id: string }

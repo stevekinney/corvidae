@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, ClickAwayListener } from '@corvidae/cinder';
+  import { Button, ClickAwayListener } from '@lostgradient/cinder';
 
   let open = $state(false);
 </script>

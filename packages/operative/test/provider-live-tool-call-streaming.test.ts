@@ -18,9 +18,9 @@
  * from the resolved `GenerateResponse`, pairing each resolved tool call with
  * the live block at the same ordinal position.
  */
-import { createTool, createToolbox } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
-import { TypedEventTarget } from '@corvidae/lifecycle';
+import { createTool, createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { TypedEventTarget } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Footer } from '@corvidae/cinder';
+  import { Footer } from '@lostgradient/cinder';
   const groups = [
     {
       id: 'product',

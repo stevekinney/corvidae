@@ -23,7 +23,7 @@
    * has-options case, where typeahead-constrained selection is the
    * intended (and Cinder-documented) UX.
    */
-  import { Combobox, Input, type ComboboxOption } from '@corvidae/cinder';
+  import { Combobox, Input, type ComboboxOption } from '@lostgradient/cinder';
 
   interface TypeStepProps {
     knownTypes: readonly string[];

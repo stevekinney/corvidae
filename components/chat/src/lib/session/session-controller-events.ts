@@ -3,7 +3,7 @@ import {
   cancelStreamingMessage,
   finalizeStreamingMessage,
   updateStreamingMessage,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 import type { ChatPushHandlers } from '../components/chat/adapter/chat-adapter.ts';
 import { appendToolCall, appendToolResult } from '../components/chat/builders.ts';
 import type { ConversationHistory, ToolResult } from '../components/chat/conversation-model.ts';

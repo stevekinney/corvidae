@@ -12,7 +12,7 @@
    * Schedules surface with a query goes through this one file rather than
    * repeating the treatment mapping per screen.
    */
-  import { Alert, Button } from '@corvidae/cinder';
+  import { Alert, Button } from '@lostgradient/cinder';
 
   import {
     FAULT_TREATMENT_TITLE,

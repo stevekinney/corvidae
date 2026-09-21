@@ -13,7 +13,7 @@
    * transport speaks JSON-RPC over the wire") — there is no REST fallback
    * to opt into from the console. This didn't work against a real `POST
    * /jsonrpc` in the dev harness at all before
-   * `@corvidae/weft@0.12.0` (weft#710's `serve({ engine })` bug forced
+   * `@lostgradient/weft@0.12.0` (weft#710's `serve({ engine })` bug forced
    * `scripts/dev-server.ts` onto a bare `handleRequest()` workaround, which
    * has no JSON-RPC-over-HTTP route — `serve()`-pipeline-only, per that
    * file's own module doc; fixed upstream #716); verified live post-bump:
@@ -25,9 +25,9 @@
    * correct for genuine faults, it just isn't the dev harness's steady
    * state anymore.
    */
-  import { Badge, Button, EmptyState, Skeleton } from '@corvidae/cinder';
+  import { Badge, Button, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
 
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../../../lib/faults.ts';
   import { formatBytes, formatRelativeTime } from '../../../../lib/format/index.ts';

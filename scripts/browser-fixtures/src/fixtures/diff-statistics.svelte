@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DiffStatistics } from '@corvidae/cinder';
+  import { DiffStatistics } from '@lostgradient/cinder';
 </script>
 
 <div style="display: grid; gap: 0.75rem;">

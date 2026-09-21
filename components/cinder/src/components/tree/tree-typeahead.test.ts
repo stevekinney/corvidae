@@ -4,7 +4,7 @@ import {
   requiredInstance,
   setupHappyDom,
   trackTimers,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { treeItem, treeItemsSnippet } from './tree-test-helpers.ts';
 

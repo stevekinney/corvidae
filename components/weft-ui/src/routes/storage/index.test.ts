@@ -4,7 +4,7 @@ import { requireElement } from '../../../tests/dom-test-support.ts';
  * Component tests for the Storage route (plan §9.6, Appendix B "denied
  * lock-states"): the `storage:admin` scope gate.
  */
-import { HttpClient } from '@corvidae/weft';
+import { HttpClient } from '@lostgradient/weft';
 import { fireEvent, render, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

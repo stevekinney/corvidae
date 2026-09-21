@@ -8,7 +8,7 @@
 
 ```svelte
 <script lang="ts">
-  import { RelativeTime } from '@corvidae/cinder';
+  import { RelativeTime } from '@lostgradient/cinder';
 </script>
 
 <RelativeTime date="2026-08-28T18:00:00Z" />

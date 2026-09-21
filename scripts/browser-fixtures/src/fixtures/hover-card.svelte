@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, HoverCard } from '@corvidae/cinder';
+  import { Button, HoverCard } from '@lostgradient/cinder';
   let arrowOpen = $state(false);
   let controlledOpen = $state(false);
 </script>

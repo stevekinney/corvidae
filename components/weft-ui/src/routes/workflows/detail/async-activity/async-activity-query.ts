@@ -1,4 +1,4 @@
-import type { PendingAsyncActivityInfo } from '@corvidae/weft';
+import type { PendingAsyncActivityInfo } from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
 
 import type { PendingAsyncActivityObservation } from '../timeline/workflow-live-observations.svelte.ts';

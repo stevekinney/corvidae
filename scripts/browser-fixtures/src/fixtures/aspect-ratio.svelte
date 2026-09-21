@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AspectRatio } from '@corvidae/cinder';
+  import { AspectRatio } from '@lostgradient/cinder';
 </script>
 
 <AspectRatio>

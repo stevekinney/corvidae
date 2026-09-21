@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { renderSvelteOnServer, setupHappyDom } from '@corvidae/testing';
+import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

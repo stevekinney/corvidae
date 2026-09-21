@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { requiredInstance } from '@corvidae/testing';
+import { requiredInstance } from '@lostgradient/testing';
 
 export function requiredChildren(parent: Element): HTMLElement[] {
   return Array.from(parent.children, (child) => requiredInstance(child, HTMLElement));

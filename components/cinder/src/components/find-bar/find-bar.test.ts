@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, jest, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 setupHappyDom();

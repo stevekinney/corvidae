@@ -1,5 +1,5 @@
-import type { Storage } from '@corvidae/weft';
-import { Mailbox } from '@corvidae/weft';
+import type { Storage } from '@lostgradient/weft';
+import { Mailbox } from '@lostgradient/weft';
 
 import type { ImplementedSteeringCommand } from './steering';
 

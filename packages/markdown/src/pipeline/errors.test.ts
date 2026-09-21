@@ -1,7 +1,7 @@
 /**
  * Unit tests for pipeline error classes.
  *
- * DEP-565: Coverage hardening for @corvidae/markdown.
+ * DEP-565: Coverage hardening for @lostgradient/markdown.
  */
 
 import { describe, expect, it } from 'bun:test';

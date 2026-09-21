@@ -68,7 +68,7 @@ describe('registry-baseline.json', () => {
 describe('checkParity', () => {
   const baseline = baselineOf({
     example: {
-      workspace: '@corvidae/example',
+      workspace: '@lostgradient/example',
       version: '1.0.0',
       fetchedAt: '2026-09-18',
       subpaths: ['.', './extra'],
@@ -128,7 +128,7 @@ describe('fetchPublishedSubpaths', () => {
 describe('describeDrift', () => {
   const committed = baselineOf({
     example: {
-      workspace: '@corvidae/example',
+      workspace: '@lostgradient/example',
       version: '1.0.0',
       fetchedAt: '2026-09-18',
       subpaths: ['.'],
@@ -142,7 +142,7 @@ describe('describeDrift', () => {
   test('reports a newer published version and a newly published subpath', () => {
     const fresh = baselineOf({
       example: {
-        workspace: '@corvidae/example',
+        workspace: '@lostgradient/example',
         version: '1.1.0',
         fetchedAt: '2026-09-19',
         subpaths: ['.', './added'],
@@ -158,7 +158,7 @@ describe('describeDrift', () => {
     const fresh = baselineOf({
       ...committed.packages,
       other: {
-        workspace: '@corvidae/other',
+        workspace: '@lostgradient/other',
         version: '0.1.0',
         fetchedAt: '2026-09-19',
         subpaths: ['.'],

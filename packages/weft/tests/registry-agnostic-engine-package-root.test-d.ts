@@ -4,7 +4,7 @@ import {
   WorkflowHandle,
   workflow,
   type RegistryAgnosticEngine,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 const packageRootWorkflow = workflow({ name: 'packageRootRegistryAgnostic' }).execute(
   async function* () {

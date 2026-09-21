@@ -6,7 +6,7 @@ Compact labeled meter with a thin horizontal fill bar for inline cost, token, bu
 
 ```svelte
 <script lang="ts">
-  import { Sparkbar } from '@corvidae/cinder';
+  import { Sparkbar } from '@lostgradient/cinder';
 </script>
 
 <Sparkbar value={0.31} label="Draft weekly changelog" trailing="$0.31" />

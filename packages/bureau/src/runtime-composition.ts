@@ -6,21 +6,21 @@ import {
   type ToolboxExecuteOptions,
   type ToolCallInput,
   type ToolRequestContext,
-} from '@corvidae/armorer';
+} from 'armorer';
 import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
-} from '@corvidae/conversationalist';
-import type { EventMap, HookReplayPolicy, RuntimeServices } from '@corvidae/lifecycle';
+} from 'conversationalist';
+import type { EventMap, HookReplayPolicy, RuntimeServices } from '@lostgradient/lifecycle';
 import {
   createDefaultRuntimeServices,
   HookRegistry,
   mergeHookRegistries,
   TypedEventTarget,
-} from '@corvidae/lifecycle';
-import type { CreateMemoryOptions, Memory } from '@corvidae/memory';
-import { createMemory } from '@corvidae/memory';
+} from '@lostgradient/lifecycle';
+import type { CreateMemoryOptions, Memory } from '@lostgradient/memory';
+import { createMemory } from '@lostgradient/memory';
 import type {
   AgentInput,
   AgentRunContext,
@@ -47,7 +47,7 @@ import type {
   SessionSummary,
   StepRecord,
   StreamEventMap,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   createAgentSession,
   createAnthropicProvider,
@@ -87,7 +87,7 @@ import {
   withEnhancedStreaming,
   withMinimumTripwireConfidence,
   WorkflowVersionMismatchEvent,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
   createSkillClient,
@@ -101,7 +101,7 @@ import {
   type SkillEventMap,
   type SkillGuardrailOptions,
   type ToolPolicy,
-} from '@corvidae/skills';
+} from '@lostgradient/skills';
 import {
   type ConditionalTextValueStore,
   decode,
@@ -118,7 +118,7 @@ import {
   WorkflowFailedEvent,
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import type {
@@ -432,11 +432,11 @@ export function createSchedulerServiceRequestContext(
  *
  * Two halves of a designed mechanism existed and were never connected:
  * `SkillSession.getActiveToolPolicy()` produced the merged policy and had no
- * consumer, and `@corvidae/operative`'s `createPolicyEnforcementHook` consumes
+ * consumer, and `@lostgradient/operative`'s `createPolicyEnforcementHook` consumes
  * exactly that shape through its `getActiveSkillToolPolicy` option and had no
  * consumer either. This wires them together.
  *
- * Deliberately a FILTER, not a per-call gate. `@corvidae/armorer`'s own
+ * Deliberately a FILTER, not a per-call gate. `armorer`'s own
  * `PermissionGate` documentation draws the line: "a filter removes a tool from
  * the array before the model ever sees it exists. A gate runs per call against
  * the actual arguments the model chose." `ToolPolicy` is named there as the
@@ -1435,7 +1435,7 @@ export interface RuntimeComposition {
    */
   scheduleFireEvents: TypedEventTarget<ScheduleFireEventMap>;
   /**
-   * Skill lifecycle events (COR-767), dispatched by the `@corvidae/skills`
+   * Skill lifecycle events (COR-767), dispatched by the `@lostgradient/skills`
    * tool factories each run's toolbox is built from. One bureau-level target
    * rather than one per run, matching `scheduleFireEvents`: each event carries
    * its own `runId`/`sessionId` correlation, so a shared target loses nothing
@@ -2443,7 +2443,7 @@ export async function createRuntimeComposition(
     if (options.skills && skillCatalog !== undefined) {
       // COR-892 — the catalog-backed path. Bureau composes policy and durability *around*
       // Agent-owned behaviour rather than reimplementing it: discovery, trust admission,
-      // digest-verified activation and the active set all live in `@corvidae/skills`, and what
+      // digest-verified activation and the active set all live in `@lostgradient/skills`, and what
       // Bureau adds here is the run and session correlation the client cannot see, plus durable
       // persistence of what the client decided.
       const skillClient = createSkillClient({

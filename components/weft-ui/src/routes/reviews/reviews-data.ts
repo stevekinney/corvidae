@@ -10,7 +10,7 @@ import type {
   ReviewListEntry,
   ReviewStatus,
   SubmitReviewOptions,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import {
   createMutation,
@@ -51,7 +51,7 @@ export interface SubmitReviewDecisionVariables {
  *
  * `SubmitReviewOptions.sectionDecisions` is included in every submission this
  * module builds (`review-decision-form.svelte` populates it). Round-trips as
- * of `@corvidae/weft@0.12.0`
+ * of `@lostgradient/weft@0.12.0`
  * (https://github.com/stevekinney/weft/issues/724, fixed upstream #731) —
  * before that, `submitReviewDecisionOperation` silently dropped the field
  * server-side for both transports. Sending the full, documented

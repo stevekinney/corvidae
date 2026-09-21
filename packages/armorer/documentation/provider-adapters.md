@@ -2,7 +2,7 @@
 
 ## Overview
 
-Export tools as static JSON Schema definitions for use with [OpenAI](https://platform.openai.com/docs/api-reference), [Anthropic](https://docs.anthropic.com/en/api/messages), and [Google Gemini](https://ai.google.dev/gemini-api/docs) SDKs. Each adapter is available from the `@corvidae/armorer` entry point.
+Export tools as static JSON Schema definitions for use with [OpenAI](https://platform.openai.com/docs/api-reference), [Anthropic](https://docs.anthropic.com/en/api/messages), and [Google Gemini](https://ai.google.dev/gemini-api/docs) SDKs. Each adapter is available from the `armorer` entry point.
 
 These adapters are **schema-only converters**. They serialize your tool definitions (name, description, and Zod schema) into the JSON format each provider expects, but they do not execute tools or handle results. You pass the output directly to the provider SDK when making API calls.
 
@@ -11,7 +11,7 @@ If tools define `availability` hooks, prefer the async toolbox exporters (`await
 ### OpenAI
 
 ```typescript
-import { toOpenAITools } from '@corvidae/armorer';
+import { toOpenAITools } from 'armorer';
 
 // Single tool
 const openAITool = toOpenAITools(myTool);
@@ -30,12 +30,12 @@ const response = await openai.chat.completions.create({
 });
 ```
 
-> **OpenAI Chat Completions vs OpenAI Agents SDK**: The `toOpenAITools()` adapter here produces static tool definitions for the [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat). If you're building with the **OpenAI Agents SDK** (`@openai/agents`), use the separate [OpenAI Agents adapter](./openai-agents-sdk.md) (`@corvidae/armorer`) instead. It produces executable tool objects with result handling and tool gating.
+> **OpenAI Chat Completions vs OpenAI Agents SDK**: The `toOpenAITools()` adapter here produces static tool definitions for the [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat). If you're building with the **OpenAI Agents SDK** (`@openai/agents`), use the separate [OpenAI Agents adapter](./openai-agents-sdk.md) (`armorer`) instead. It produces executable tool objects with result handling and tool gating.
 
 ### Anthropic
 
 ```typescript
-import { toAnthropicTools } from '@corvidae/armorer';
+import { toAnthropicTools } from 'armorer';
 
 // Single tool
 const anthropicTool = toAnthropicTools(myTool);
@@ -57,7 +57,7 @@ const response = await anthropic.messages.create({
 ### Google Gemini
 
 ```typescript
-import { toGeminiTools } from '@corvidae/armorer';
+import { toGeminiTools } from 'armorer';
 
 // Single tool
 const geminiTools = toGeminiTools(myTool);

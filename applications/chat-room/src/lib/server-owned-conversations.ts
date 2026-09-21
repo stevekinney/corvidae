@@ -1,13 +1,13 @@
-import type { ChatSerializedRunError, ConversationHistory } from '@corvidae/chat';
+import type { ChatSerializedRunError, ConversationHistory } from '@lostgradient/chat';
 import {
   appendUserMessage,
   createConversationHistory,
   decodeChatStreamEvent,
   getMessages,
   markMessageDeliveryFailed,
-} from '@corvidae/chat';
-import type { AgentSession } from '@corvidae/operative';
-import { createAgentSession } from '@corvidae/operative';
+} from '@lostgradient/chat';
+import type { AgentSession } from '@lostgradient/operative';
+import { createAgentSession } from '@lostgradient/operative';
 import { serverOwnedRuntime } from './server-owned-runtime.ts';
 import type {
   ServerOwnedConversationSnapshot,

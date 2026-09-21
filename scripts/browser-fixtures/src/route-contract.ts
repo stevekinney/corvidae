@@ -1,4 +1,4 @@
-import type { ComponentEntry, ManifestFixtureEntry } from '@corvidae/testing';
+import type { ComponentEntry, ManifestFixtureEntry } from '@lostgradient/testing';
 
 export type FixtureRequest = {
   entry: ComponentEntry;

@@ -1,6 +1,6 @@
 <script lang="ts">
   /** Test-only composition of `<SchedulesTestHarness>` + `<ScheduleList>` — a snippet can't be built from a plain `.test.ts` file, so each top-level route component gets one small `.svelte` wrapper like this. */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
 
   import type { AuthorizationScope } from '../../lib/scopes.svelte.ts';
   import ScheduleList from './schedule-list.svelte';

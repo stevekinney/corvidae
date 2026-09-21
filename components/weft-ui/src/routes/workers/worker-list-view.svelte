@@ -5,7 +5,7 @@
    * as `workflow-table.svelte` (badges, a meter, a copyable id are real cell
    * content `DataTable`'s plain `row[column.key]` interpolation can't render).
    */
-  import { Badge, EmptyState, Meter, Table } from '@corvidae/cinder';
+  import { Badge, EmptyState, Meter, Table } from '@lostgradient/cinder';
 
   import { formatDuration, truncateId } from '../../lib/format/index.ts';
   import { router } from '../../lib/router.svelte.ts';

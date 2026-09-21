@@ -6,7 +6,7 @@
  * owns real submission/conflict-handling behavior beyond markup, unlike
  * `divergence-view.svelte`'s pure rendering).
  *
- * `ForkOptions.revision` (`@corvidae/weft`) is an explicit, validated
+ * `ForkOptions.revision` (`@lostgradient/weft`) is an explicit, validated
  * opt-in: omitted (the default), a fork resolves and persists the SOURCE
  * run's own `WorkflowState.revision`; passed, the fork targets that exact
  * revision instead (diagnostic use — "does this input fail on v1 or only on
@@ -17,8 +17,8 @@
  * treating `undefined` as ambiguous between "not yet decided" and "chose
  * the default."
  */
-import type { ForkOptions } from '@corvidae/weft';
-import { isWeftFault } from '@corvidae/weft';
+import type { ForkOptions } from '@lostgradient/weft';
+import { isWeftFault } from '@lostgradient/weft';
 
 export type ForkRevisionSelection =
   { readonly mode: 'source' } | { readonly mode: 'explicit'; readonly revision: string };
@@ -35,7 +35,7 @@ export function resolveForkOptions(
  * `true` only for a `WorkflowRevisionUnavailableError`-coded rejection (an
  * explicit `revision` that this process cannot resolve — not registered,
  * not installed, or legacy-ambiguous; see that error's own doc,
- * `@corvidae/weft`). Any other error (network, a semver-incompatible
+ * `@lostgradient/weft`). Any other error (network, a semver-incompatible
  * `VersionMismatchError`, a generic 409) is NOT this — the fork dialog keeps
  * its existing generic-error paragraph for those, and reserves the
  * "pick a different revision" framing for the one error this specific
@@ -63,7 +63,7 @@ export function forkConflictGuidance(selection: ForkRevisionSelection): string {
     : 'This run’s own revision could not be resolved on this process. Use “Fork a different revision” and pick one that is currently installed.';
 }
 
-/** One installed revision, as the fork dialog's revision picker needs it — a narrow projection of `WorkflowRevisionRecord` (`@corvidae/weft`). */
+/** One installed revision, as the fork dialog's revision picker needs it — a narrow projection of `WorkflowRevisionRecord` (`@lostgradient/weft`). */
 export interface InstalledRevisionOption {
   readonly revision: string;
   readonly installedAt: number;

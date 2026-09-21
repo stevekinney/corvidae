@@ -10,7 +10,7 @@
    * `mode: 'edit'` disables the workflow type, input payload, overlap
    * policy, jitter, and backfill fields — those genuinely still can't be
    * changed after creation. `revisionPolicy` is the one exception (WFT-117):
-   * `weft.schedules.update`/`ScheduleUpdateOptions` (`@corvidae/weft`)
+   * `weft.schedules.update`/`ScheduleUpdateOptions` (`@lostgradient/weft`)
    * DOES accept `revisionPolicy` alongside `description`/`overlap`/
    * `backfill`/`jitter` — this console just hadn't adopted it until now
    * (`schedule-queries.ts`'s `updateScheduleSpec` doc has the full
@@ -25,11 +25,11 @@
     Select,
     Toggle,
     type ScheduleValue,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { TriangleAlert } from 'lucide-svelte';
   import { untrack } from 'svelte';
 
-  import type { ScheduleOverlapPolicy, ScheduleRevisionPolicy } from '@corvidae/weft';
+  import type { ScheduleOverlapPolicy, ScheduleRevisionPolicy } from '@lostgradient/weft';
 
   import { computeNextFires } from '../../lib/format/cron-preview.ts';
   import { FRESH_START_REVISION_HEDGE } from '../../lib/workflow-revision.ts';

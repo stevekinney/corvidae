@@ -3,8 +3,8 @@ import { requireElement } from '../../../../tests/dom-test-support.ts';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { BulkOperationDryRunResult } from '@corvidae/weft';
-import { HttpClientError } from '@corvidae/weft';
+import type { BulkOperationDryRunResult } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft';
 
 import BulkActionDialog from './bulk-action-dialog.svelte';
 import type { BulkCommitSummary } from './bulk-result-summary.ts';

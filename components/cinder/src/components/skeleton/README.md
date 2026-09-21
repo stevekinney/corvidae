@@ -6,7 +6,7 @@ Animated placeholder shape that fills content areas while data is loading.
 
 ```svelte
 <script lang="ts">
-  import { Skeleton } from '@corvidae/cinder';
+  import { Skeleton } from '@lostgradient/cinder';
 </script>
 
 <Skeleton />

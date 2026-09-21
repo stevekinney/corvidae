@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRawSnippet, tick } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { injectStyles } from '../../../test/css.ts';
 import type { Message, ToolCallPair } from '../conversation-model.ts';
 import type { ToolCallPresentation } from '../utilities/types.ts';

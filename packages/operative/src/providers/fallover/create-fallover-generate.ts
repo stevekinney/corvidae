@@ -1,5 +1,5 @@
-import type { RuntimeTimers } from '@corvidae/lifecycle';
-import { createDefaultRuntimeServices } from '@corvidae/lifecycle';
+import type { RuntimeTimers } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import {
   readBackendDescriptors,

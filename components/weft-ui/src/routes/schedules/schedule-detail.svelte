@@ -30,7 +30,7 @@
     EmptyState,
     Skeleton,
     StatusDot,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { Info, Pause, Pencil, Play, XCircle } from 'lucide-svelte';
 
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';

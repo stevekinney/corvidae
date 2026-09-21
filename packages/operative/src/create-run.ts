@@ -1,16 +1,16 @@
-import type { AnyToolbox, ToolboxEventMap } from '@corvidae/armorer';
-import { Conversation, isConversation } from '@corvidae/conversationalist';
+import type { AnyToolbox, ToolboxEventMap } from 'armorer';
+import { Conversation, isConversation } from 'conversationalist';
 import type {
   HookPlanDescription,
   ObservableLike,
   Observer,
   Subscription,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
   forwardEvents,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 
 import { createClosedAcknowledgement } from './closed-acknowledgement';
 import type { DurableActiveRunContext } from './durable/active-run-adapter';

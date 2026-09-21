@@ -11,7 +11,7 @@
    * empirically never populated on a typical page load (see this repo's git
    * history / the removed module doc on `workflow-live-observations.svelte.ts`
    * for the confirmed replay-ordering reason) — weft#732 item 4 asked for a
-   * durable field instead. `@corvidae/weft@0.15.0` (PR #760) shipped
+   * durable field instead. `@lostgradient/weft@0.15.0` (PR #760) shipped
    * `weft.workflows.finalizer.get`, so `status` here is the same durable
    * `WorkflowFinalizerStatus | null` `workflow-detail.svelte` fetches once and
    * passes to both this strip and the header badge (`workflow-status.ts`'s
@@ -20,8 +20,8 @@
    * heuristics). Renders nothing when the workflow recorded no finalizer work
    * (`status === null`) or the query hasn't resolved yet (`undefined`).
    */
-  import { Badge, StatusDot } from '@corvidae/cinder';
-  import type { WorkflowFinalizerStatus, WorkflowStatus } from '@corvidae/weft';
+  import { Badge, StatusDot } from '@lostgradient/cinder';
+  import type { WorkflowFinalizerStatus, WorkflowStatus } from '@lostgradient/weft';
   import { CircleX, Loader, Paintbrush, TriangleAlert } from 'lucide-svelte';
 
   import { finalizerStatusPresentation } from '../workflow-status.ts';

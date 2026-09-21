@@ -1,4 +1,4 @@
-import { AbortAgentRunError } from '@corvidae/operative';
+import { AbortAgentRunError } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 import { serializeActionDetail } from './serialization';
 import { requireRecord, requireRecords, requireString } from './serialization-test-helpers';

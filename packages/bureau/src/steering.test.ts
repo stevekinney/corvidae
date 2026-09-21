@@ -9,7 +9,7 @@
  * require but `submitSteeringCommand` itself never reaches (see
  * `ImplementedSteeringCommand`'s doc comment in `steering.ts`).
  */
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import {

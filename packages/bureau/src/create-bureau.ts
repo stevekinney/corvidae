@@ -4,12 +4,12 @@ import {
   type ReusableApprovalGrantInput,
   type SignedPendingToolApproval,
   type ToolRequestContext,
-} from '@corvidae/armorer';
+} from 'armorer';
 import {
   Conversation,
   createConversationHistory,
   isConversationHistory,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
@@ -17,7 +17,7 @@ import {
   type RuntimeServices,
   type RuntimeTimeoutHandle,
   type TypedEventTarget,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 import {
   type ActiveRun,
   type AgentInput,
@@ -92,14 +92,14 @@ import {
   TaskCancelledEvent,
   TaskDispatchedEvent,
   TaskPreemptedEvent,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
   SkillDeactivatedEvent,
   SkillFailedEvent,
   SkillLoadedEvent,
   SkillRejectedEvent,
-} from '@corvidae/skills';
+} from '@lostgradient/skills';
 import {
   decode,
   KEYS,
@@ -109,7 +109,7 @@ import {
   type RecoveredWorkflowInfo,
   type ScheduleSpec,
   type WorkflowState,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
@@ -384,7 +384,7 @@ export function detachBestEffortPromise(promise: Promise<unknown>): void {
  * `WorkflowStatus` values (Weft `core/types/identity.ts`) a workflow can
  * still be forcibly terminated from. Mirrors Weft's own internal
  * `FORCIBLY_TERMINABLE_STATUSES` (`core/engine/termination/cleanup.ts`),
- * which is not exported on the public `@corvidae/weft` barrel, and
+ * which is not exported on the public `@lostgradient/weft` barrel, and
  * operative's parallel (also module-private) `TERMINAL_WORKFLOW_STATUSES`
  * set in `durable/active-run-adapter.ts`. Kept local rather than exported
  * from either package, since neither exposes the underlying constant for
@@ -579,7 +579,7 @@ export { BureauError };
 
 /**
  * Thrown by `createSchedule` when a schedule registers successfully against
- * the engine but its {@link import('@corvidae/weft').ScheduleSummary}
+ * the engine but its {@link import('@lostgradient/weft').ScheduleSummary}
  * cannot be retrieved immediately afterward (`AgentScheduleHandle.describe()`
  * rejects). Mirrors `DurableCapabilityUnavailableError`'s shape discipline
  * (AB-41/AB-43) — `.code`, `.category`, `.retryable` — so the same
@@ -1252,7 +1252,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // the only surface it has. Fresh instances again, for the WHATWG
   // already-being-dispatched reason above.
   // COR-767 — skill lifecycle, forwarded the same way and for the same reason
-  // as the schedule families: the `@corvidae/skills` tools dispatch onto the
+  // as the schedule families: the `@lostgradient/skills` tools dispatch onto the
   // composition's target, and this bureau's emitter is the surface consumers
   // actually subscribe to. Fresh instances again, for the WHATWG
   // already-being-dispatched constraint documented above.
@@ -1286,7 +1286,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ),
     );
   });
-  // AB-389 — `SessionStore.events` (`@corvidae/operative`) now carries
+  // AB-389 — `SessionStore.events` (`@lostgradient/operative`) now carries
   // only the best-effort `SessionOutboxAppendedEvent` drain trigger, never
   // `SessionCreatedEvent`/`SessionSavedEvent`/`SessionDeletedEvent`
   // directly (that fire-and-forget dispatch is exactly the KNOWN
@@ -1319,7 +1319,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
   // AB-246 — the model-catalog refresh service. Independent of `runtime`.
   // When the caller doesn't supply one, the default `descriptorSource`
-  // re-derives `@corvidae/operative`'s static seed — this is
+  // re-derives `@lostgradient/operative`'s static seed — this is
   // the seam a future live provider probe attaches to (out of scope here).
   //
   // Constructed BEFORE `agentCatalog` below: `selectorAvailable: true`
@@ -1961,7 +1961,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // session-store commit, as a `SessionOutboxEntry` of kind
   // `'session.attachment'` (namespace `'audit-record'`) — see
   // `SessionStore.update()`'s own `options.outbox` doc comment
-  // (`@corvidae/operative`). `drainOutbox` (this file, generalized from
+  // (`@lostgradient/operative`). `drainOutbox` (this file, generalized from
   // the session-only `drainSessionOutbox`) replays it into the real audit
   // trail exactly once, in the same ordinal order as every other outbox
   // entry for that session, whether that happens promptly (this bureau is
@@ -6626,7 +6626,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * unauthorized caller learn a session exists.
    *
    * Every reachable outcome here is a pre-admission rejection: no adopted
-   * `@corvidae/weft` version exposes WFT-84's durable mailbox yet, so
+   * `@lostgradient/weft` version exposes WFT-84's durable mailbox yet, so
    * every authorized, non-terminal request unconditionally returns
    * `unsupported-capability`. No `SessionInputRecord` is created and no `id`
    * is consumed by this method today.
@@ -7819,7 +7819,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   async function createSchedule(
     definition: DurableScheduleDefinition,
-  ): Promise<import('@corvidae/weft').ScheduleSummary | undefined> {
+  ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     if (!runtime.durable) return undefined;
     // A schedule whose every fire would fail is worse than rejecting up front:
     // without a configured generate/provider, each tick's `createRunRuntime` throws
@@ -7874,15 +7874,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   async function getSchedule(
     scheduleId: string,
-  ): Promise<import('@corvidae/weft').ScheduleSummary | null | undefined> {
+  ): Promise<import('@lostgradient/weft').ScheduleSummary | null | undefined> {
     if (!runtime.durable) return undefined;
     return runtime.durable.engine.getSchedule(scheduleId);
   }
 
   async function listSchedules(
-    filter?: import('@corvidae/weft').ScheduleFilter,
+    filter?: import('@lostgradient/weft').ScheduleFilter,
   ): Promise<
-    import('@corvidae/weft').PaginatedResult<import('@corvidae/weft').ScheduleSummary> | undefined
+    import('@lostgradient/weft').PaginatedResult<import('@lostgradient/weft').ScheduleSummary> | undefined
   > {
     if (!runtime.durable) return undefined;
     return runtime.durable.engine.listSchedules(filter);

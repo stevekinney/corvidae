@@ -133,7 +133,7 @@ const contextExports: Readonly<Record<string, string>> = {
 
 function rootExportName(exports: Readonly<Record<string, string>>, key: string): string {
   const name = exports[key];
-  if (!name) throw new Error(`Token artifact ${key} needs a named @corvidae/cinder root export.`);
+  if (!name) throw new Error(`Token artifact ${key} needs a named @lostgradient/cinder root export.`);
   return name;
 }
 
@@ -149,7 +149,7 @@ async function buildTokenIndex(
   const index = {
     $comment: `GENERATED FILE. Do not edit by hand. Regenerate: ${REGENERATE_COMMAND}`,
     version: '2025.10',
-    package: '@corvidae/cinder',
+    package: '@lostgradient/cinder',
     tokenCount: registry.entries.length,
     resolver: 'tokenResolver',
     registry: 'TOKEN_REGISTRY',

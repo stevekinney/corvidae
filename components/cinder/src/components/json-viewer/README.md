@@ -6,7 +6,7 @@ Collapsible tree visualization of an arbitrary JSON value with hard depth and by
 
 ```svelte
 <script lang="ts">
-  import { JsonViewer } from '@corvidae/cinder';
+  import { JsonViewer } from '@lostgradient/cinder';
 </script>
 
 <JsonViewer value={{ status: 'ok', items: [1, 2, 3] }} />

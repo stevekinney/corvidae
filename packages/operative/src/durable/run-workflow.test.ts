@@ -1,6 +1,6 @@
-import { createTool, createToolbox } from '@corvidae/armorer';
-import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
-import { HookRegistry } from '@corvidae/lifecycle';
+import { createTool, createToolbox } from 'armorer';
+import { Conversation, createConversationHistory } from 'conversationalist';
+import { HookRegistry } from '@lostgradient/lifecycle';
 import {
   Engine,
   MemoryStorage,
@@ -9,7 +9,7 @@ import {
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
   yieldToPortableEventLoop,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

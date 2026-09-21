@@ -35,10 +35,10 @@ async function withTree(
  * real map is what `committed-plans.ts` exercises, over the real tree.
  */
 const publicNames: ReadonlyMap<string, string> = new Map([
-  ['@corvidae/armorer', '@lostgradient/armorer'],
-  ['@corvidae/editor', '@lostgradient/editor'],
-  ['@corvidae/testing', '@lostgradient/testing'],
-  ['@corvidae/weft', '@lostgradient/weft'],
+  ['armorer', '@lostgradient/armorer'],
+  ['@lostgradient/editor', '@lostgradient/editor'],
+  ['@lostgradient/testing', '@lostgradient/testing'],
+  ['@lostgradient/weft', '@lostgradient/weft'],
 ]);
 
 describe('reading a file’s module edges', () => {
@@ -197,25 +197,25 @@ describe('an internal name in emitted source', () => {
   test('every specifier form is caught, and a string that only looks like one is not', () => {
     const files = {
       'packages/weft/src/index.ts': [
-        "import { a } from '@corvidae/weft';",
-        "import type { B } from '@corvidae/weft';",
-        "export * from '@corvidae/armorer';",
-        "const c = await import('@corvidae/markdown');",
-        "const d = import.meta.resolve('@corvidae/weft');",
-        "declare module '@corvidae/weft' { interface Registry { a: 1 } }",
-        "import { e } from '@corvidae/weft/client';",
-        "const key = Symbol.for('@corvidae/operative/backend-descriptors');",
+        "import { a } from '@lostgradient/weft';",
+        "import type { B } from '@lostgradient/weft';",
+        "export * from 'armorer';",
+        "const c = await import('@lostgradient/markdown');",
+        "const d = import.meta.resolve('@lostgradient/weft');",
+        "declare module '@lostgradient/weft' { interface Registry { a: 1 } }",
+        "import { e } from '@lostgradient/weft/client';",
+        "const key = Symbol.for('@lostgradient/operative/backend-descriptors');",
         "import { z } from 'zod';",
       ].join('\n'),
     };
     expect(findSourceEscapes(files).map((escape) => `${escape.kind} ${escape.specifier}`)).toEqual([
-      'internal-name @corvidae/armorer',
-      'internal-name @corvidae/markdown',
-      'internal-name @corvidae/weft',
-      'internal-name @corvidae/weft',
-      'internal-name @corvidae/weft',
-      'internal-name @corvidae/weft',
-      'internal-name @corvidae/weft/client',
+      'internal-name armorer',
+      'internal-name @lostgradient/markdown',
+      'internal-name @lostgradient/weft',
+      'internal-name @lostgradient/weft',
+      'internal-name @lostgradient/weft',
+      'internal-name @lostgradient/weft',
+      'internal-name @lostgradient/weft/client',
     ]);
   });
 
@@ -224,7 +224,7 @@ describe('an internal name in emitted source', () => {
       findSourceEscapes({
         'packages/chat/src/widget.svelte': [
           '<script lang="ts">',
-          "  import { render } from '@corvidae/markdown';",
+          "  import { render } from '@lostgradient/markdown';",
           '</script>',
           '<span>{render}</span>',
         ].join('\n'),
@@ -232,7 +232,7 @@ describe('an internal name in emitted source', () => {
     ).toEqual([
       {
         file: 'packages/chat/src/widget.svelte',
-        specifier: '@corvidae/markdown',
+        specifier: '@lostgradient/markdown',
         kind: 'internal-name',
       },
     ]);
@@ -243,7 +243,7 @@ describe('an internal name in emitted source', () => {
       findSourceEscapes({
         'packages/editor/src/editor.svelte': [
           '<script lang="ts">',
-          "  type Utilities = Pick<typeof import('@corvidae/markdown'), 'normalize'>;",
+          "  type Utilities = Pick<typeof import('@lostgradient/markdown'), 'normalize'>;",
           '  let utilities: Utilities | undefined;',
           '</script>',
           '<span>{utilities}</span>',
@@ -252,7 +252,7 @@ describe('an internal name in emitted source', () => {
     ).toEqual([
       {
         file: 'packages/editor/src/editor.svelte',
-        specifier: '@corvidae/markdown',
+        specifier: '@lostgradient/markdown',
         kind: 'internal-name',
       },
     ]);
@@ -272,7 +272,7 @@ describe('an internal name in emitted source', () => {
 
   test('the message names every offender and says where the rewrite lives', () => {
     const files = {
-      'packages/weft/src/index.ts': "import { a } from '@corvidae/weft';\n",
+      'packages/weft/src/index.ts': "import { a } from '@lostgradient/weft';\n",
       'packages/weft/src/other.ts': "export * from '../outside.ts';\n",
     };
     try {
@@ -281,7 +281,7 @@ describe('an internal name in emitted source', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(SourceEscapeError);
       const message = (error as Error).message;
-      expect(message).toContain('packages/weft/src/index.ts: @corvidae/weft');
+      expect(message).toContain('packages/weft/src/index.ts: @lostgradient/weft');
       expect(message).toContain('packages/weft/src/other.ts: ../outside.ts');
       expect(message).toContain('internal-names.ts');
       expect(message).toContain('additionalSourceRoots');
@@ -294,12 +294,12 @@ describe('an internal name in an emitted TypeScript configuration', () => {
     expect(
       findSourceEscapes({
         'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json':
-          '{\n  // a tsconfig is JSON with comments\n  "extends": "@corvidae/typescript/library.json"\n}\n',
+          '{\n  // a tsconfig is JSON with comments\n  "extends": "@lostgradient/typescript/library.json"\n}\n',
       }),
     ).toEqual([
       {
         file: 'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json',
-        specifier: '@corvidae/typescript/library.json',
+        specifier: '@lostgradient/typescript/library.json',
         kind: 'internal-name',
       },
     ]);
@@ -310,22 +310,22 @@ describe('an internal name in an emitted TypeScript configuration', () => {
       findSourceEscapes({
         'packages/weft/src/client/__fixtures__/registry/tsconfig.json': JSON.stringify({
           compilerOptions: {
-            paths: { '@corvidae/weft': ['../../../index.ts'], './local': ['./local.ts'] },
+            paths: { '@lostgradient/weft': ['../../../index.ts'], './local': ['./local.ts'] },
           },
         }),
       }).map((escape) => escape.specifier),
-    ).toEqual(['@corvidae/weft']);
+    ).toEqual(['@lostgradient/weft']);
   });
 
   test('every entry of an `extends` array is read', () => {
     expect(
       findSourceEscapes({
         'packages/weft/tsconfig.json': JSON.stringify({
-          extends: ['@corvidae/typescript/library.json', './.svelte-kit/tsconfig.json'],
+          extends: ['@lostgradient/typescript/library.json', './.svelte-kit/tsconfig.json'],
         }),
         'packages/weft/.svelte-kit/tsconfig.json': '{}',
       }).map((escape) => escape.specifier),
-    ).toEqual(['@corvidae/typescript/library.json']);
+    ).toEqual(['@lostgradient/typescript/library.json']);
   });
 
   test('a configuration the transform has already rewritten is clean', () => {
@@ -343,13 +343,13 @@ describe('an internal name in an emitted TypeScript configuration', () => {
 
 describe('a declared additional source root', () => {
   const armorer = {
-    workspace: '@corvidae/armorer',
+    workspace: 'armorer',
     corvidaeDirectory: 'packages/armorer',
     targetDirectory: 'packages/armorer',
   } as const;
 
   /**
-   * `@corvidae/armorer` declares exactly one path — `test/helpers/async-assertions.ts` — so it is
+   * `armorer` declares exactly one path — `test/helpers/async-assertions.ts` — so it is
    * the smallest workspace in the table that proves the mechanism end to end.
    */
   test('satisfies the gate, because the declared file is emitted beside the source', async () => {
@@ -408,7 +408,7 @@ describe('a declared additional source root', () => {
           root,
           [
             {
-              workspace: '@corvidae/editor',
+              workspace: '@lostgradient/editor',
               corvidaeDirectory: 'components/editor',
               targetDirectory: 'packages/editor',
             },

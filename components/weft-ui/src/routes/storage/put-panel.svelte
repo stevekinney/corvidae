@@ -4,7 +4,7 @@
    * "stPut"): key + raw text value, Tier-2 `ConfirmDialog` before writing
    * (plan: "Tier-2 ConfirmDialog on writes/deletes").
    */
-  import { Button, ConfirmDialog, Input, JsonEditor } from '@corvidae/cinder';
+  import { Button, ConfirmDialog, Input, JsonEditor } from '@lostgradient/cinder';
   import type { StorageConnection } from './storage-client.ts';
   import { Save } from 'lucide-svelte';
 

@@ -1,5 +1,5 @@
-import type { WorkflowServicesResolution, WorkflowServicesResolverInfo } from '@corvidae/weft';
-import { workflow } from '@corvidae/weft';
+import type { WorkflowServicesResolution, WorkflowServicesResolverInfo } from '@lostgradient/weft';
+import { workflow } from '@lostgradient/weft';
 
 import type { Scheduler } from '../scheduler/create-scheduler';
 import type { SchedulerPriority, SchedulerRunOptions, SchedulerTask } from '../scheduler/types';

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { createTool } from '@corvidae/armorer';
+import { createTool } from 'armorer';
 
 import { scanSkillResource, type SkillGuardrailOptions } from '../guardrail';
 import { renderActiveSkillInstructions, renderSkillCatalog } from './render';

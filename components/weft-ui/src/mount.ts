@@ -6,7 +6,7 @@
  * `/workers`, `/schedules`, `/storage`, `/system`) and the shell's
  * content-hashed JS/CSS under `/assets/*`. It never shadows `/api/*` or the
  * root-stable discovery routes, because weft's Bun route table matches those
- * first (see `@corvidae/weft`'s own `DASHBOARD_PAGE_ROUTES` doc
+ * first (see `@lostgradient/weft`'s own `DASHBOARD_PAGE_ROUTES` doc
  * comment for why that ordering is load-bearing).
  *
  * @module mount
@@ -14,7 +14,7 @@
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { DashboardAssets, DashboardRouteTarget } from '@corvidae/weft';
+import type { DashboardAssets, DashboardRouteTarget } from '@lostgradient/weft';
 
 export interface WeftUiOptions {
   /**

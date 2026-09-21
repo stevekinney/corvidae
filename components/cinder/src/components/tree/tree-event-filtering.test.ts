@@ -1,4 +1,4 @@
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import type { Snippet } from 'svelte';
 /// <reference lib="dom" />
 

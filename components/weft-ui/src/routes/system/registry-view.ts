@@ -2,7 +2,7 @@
  * Pure view-model mapping for the Registry tab (plan §9.7, T7.2; design
  * `Weft UI.dc.html` "System" § REGISTRY). Turns the wire
  * `GET /v1/registry` snapshot (`weft.system.registry`,
- * `@corvidae/weft`'s `RegistrySnapshot`, v2 — WFT-6) into sorted,
+ * `@lostgradient/weft`'s `RegistrySnapshot`, v2 — WFT-6) into sorted,
  * render-ready rows — kept framework-free so it is unit-testable without a
  * DOM.
  *
@@ -34,18 +34,18 @@
  * — the same honesty convention this module has always used for schema
  * fragments themselves.
  */
-import type { Duration, RetryPolicy } from '@corvidae/weft';
+import type { Duration, RetryPolicy } from '@lostgradient/weft';
 
-/** One signal, update, or query contract's schema pair. Mirrors `WorkflowMessageContract` (`@corvidae/weft`) structurally. */
+/** One signal, update, or query contract's schema pair. Mirrors `WorkflowMessageContract` (`@lostgradient/weft`) structurally. */
 export interface WorkflowMessageContractSource {
   readonly inputSchema?: Record<string, unknown>;
   readonly outputSchema?: Record<string, unknown>;
 }
 
-/** One activity or finalizer contract's schema pair. Mirrors `WorkflowActivityContract` (`@corvidae/weft`) structurally — currently identical to {@link WorkflowMessageContractSource}, kept as a distinct alias since the two vocabularies (message vs. activity) are independent on the wire and may diverge. */
+/** One activity or finalizer contract's schema pair. Mirrors `WorkflowActivityContract` (`@lostgradient/weft`) structurally — currently identical to {@link WorkflowMessageContractSource}, kept as a distinct alias since the two vocabularies (message vs. activity) are independent on the wire and may diverge. */
 export type WorkflowActivityContractSource = WorkflowMessageContractSource;
 
-/** The subset of a `WorkflowRevisionManifest.contract` this module reads. Mirrors `WorkflowContract` (`@corvidae/weft`) structurally rather than importing it, so this module has no runtime dependency on the package. */
+/** The subset of a `WorkflowRevisionManifest.contract` this module reads. Mirrors `WorkflowContract` (`@lostgradient/weft`) structurally rather than importing it, so this module has no runtime dependency on the package. */
 export interface WorkflowContractSource {
   readonly name: string;
   readonly workflowVersion: string;
@@ -60,7 +60,7 @@ export interface WorkflowContractSource {
   readonly finalizer?: WorkflowActivityContractSource;
 }
 
-/** Mirrors `WorkflowRevisionManifest` (`@corvidae/weft`) structurally. */
+/** Mirrors `WorkflowRevisionManifest` (`@lostgradient/weft`) structurally. */
 export interface WorkflowRevisionManifestSource {
   readonly manifestVersion: number;
   readonly name: string;
@@ -70,7 +70,7 @@ export interface WorkflowRevisionManifestSource {
   readonly contract: WorkflowContractSource;
 }
 
-/** Mirrors `RegistryActivityEntry` (`@corvidae/weft`) structurally. `retry`/`timeout` types are imported `import type` only — erased at build time, zero bundle cost (see this module's own doc and `../../lib/faults.ts`'s identical constraint on runtime-safe imports). */
+/** Mirrors `RegistryActivityEntry` (`@lostgradient/weft`) structurally. `retry`/`timeout` types are imported `import type` only — erased at build time, zero bundle cost (see this module's own doc and `../../lib/faults.ts`'s identical constraint on runtime-safe imports). */
 export interface RegistryActivityEntrySource {
   readonly inputSchema?: Record<string, unknown>;
   readonly outputSchema?: Record<string, unknown>;
@@ -80,7 +80,7 @@ export interface RegistryActivityEntrySource {
   readonly timeout?: Duration;
 }
 
-/** Mirrors `RegistrySnapshot` (`@corvidae/weft`, v2) structurally. */
+/** Mirrors `RegistrySnapshot` (`@lostgradient/weft`, v2) structurally. */
 export interface RegistrySnapshotSource {
   readonly registryVersion: number;
   readonly generatedAt?: string;

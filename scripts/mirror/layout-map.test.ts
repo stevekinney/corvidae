@@ -38,27 +38,27 @@ describe('the layout table against the committed tree', () => {
   });
 
   test('the components become the packages the targets publish them from', async () => {
-    expect(await targetDirectoryFor('@corvidae/cinder')).toBe('packages/components');
-    expect(await targetDirectoryFor('@corvidae/chat')).toBe('packages/chat');
-    expect(await targetDirectoryFor('@corvidae/editor')).toBe('packages/editor');
-    expect(await targetDirectoryFor('@corvidae/weft-ui')).toBe('packages/weft-ui');
-    expect(await targetDirectoryFor('@corvidae/weft')).toBe('packages/weft');
+    expect(await targetDirectoryFor('@lostgradient/cinder')).toBe('packages/components');
+    expect(await targetDirectoryFor('@lostgradient/chat')).toBe('packages/chat');
+    expect(await targetDirectoryFor('@lostgradient/editor')).toBe('packages/editor');
+    expect(await targetDirectoryFor('@lostgradient/weft-ui')).toBe('packages/weft-ui');
+    expect(await targetDirectoryFor('@lostgradient/weft')).toBe('packages/weft');
   });
 
   test('a workspace with no entry stops the transform by name', async () => {
-    await expect(layoutFor('@corvidae/nonexistent')).rejects.toThrow(LayoutMapError);
+    await expect(layoutFor('@lostgradient/nonexistent')).rejects.toThrow(LayoutMapError);
   });
 });
 
 describe('the deferred workspace', () => {
   test('refuses to give a directory and names the issue that must rule on it', async () => {
-    const layout = await layoutFor('@corvidae/chat-room');
+    const layout = await layoutFor('@lostgradient/chat-room');
     expect(layout.disposition).toBe('deferred');
-    await expect(targetDirectoryFor('@corvidae/chat-room')).rejects.toThrow(DeferredWorkspaceError);
+    await expect(targetDirectoryFor('@lostgradient/chat-room')).rejects.toThrow(DeferredWorkspaceError);
     try {
-      await targetDirectoryFor('@corvidae/chat-room');
+      await targetDirectoryFor('@lostgradient/chat-room');
     } catch (error) {
-      expect((error as Error).message).toContain('@corvidae/chat-room');
+      expect((error as Error).message).toContain('@lostgradient/chat-room');
       expect((error as Error).message).toContain('COR-1221');
     }
   });
@@ -70,13 +70,13 @@ describe('the table itself', () => {
       {
         documentation: 'A fixture table.',
         workspaces: {
-          '@corvidae/one': {
+          '@lostgradient/one': {
             disposition: 'emit',
             corvidaeDirectory: 'packages/one',
             targetDirectory: 'packages/shared',
             reason: 'Fixture.',
           },
-          '@corvidae/two': {
+          '@lostgradient/two': {
             disposition: 'emit',
             corvidaeDirectory: 'packages/two',
             targetDirectory: 'packages/shared',
@@ -96,7 +96,7 @@ describe('the table itself', () => {
       {
         documentation: 'A fixture table.',
         workspaces: {
-          '@corvidae/one': {
+          '@lostgradient/one': {
             disposition: 'deferred',
             corvidaeDirectory: 'packages/one',
             reason: 'Fixture.',
@@ -115,7 +115,7 @@ describe('the manifest the remap makes reachable', () => {
   /**
    * Cinder's husky `prepare` is not at its root: `packages/components/package.json` carries
    * `"prepare": "cd ../.. && husky"`. Nothing could preserve it while the transform emitted
-   * `@corvidae/cinder` at corvidae's own `components/cinder`, because the composition never saw
+   * `@lostgradient/cinder` at corvidae's own `components/cinder`, because the composition never saw
    * the target's manifest at all. This is the pairing: the table sends the workspace to the path
    * the target keeps it at, and the target's own manifest is then what gets composed against.
    *
@@ -125,7 +125,7 @@ describe('the manifest the remap makes reachable', () => {
    */
   test('cinder’s whole scripts block survives a rewrite of packages/components/package.json', async () => {
     const policy = await loadTargetOwnedPolicy();
-    const file = `${await targetDirectoryFor('@corvidae/cinder')}/package.json`;
+    const file = `${await targetDirectoryFor('@lostgradient/cinder')}/package.json`;
     expect(file).toBe('packages/components/package.json');
 
     const scripts = { prepare: 'cd ../.. && husky', build: 'bun run scripts/build.ts' };

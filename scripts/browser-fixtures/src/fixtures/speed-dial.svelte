@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SpeedDial } from '@corvidae/cinder';
+  import { SpeedDial } from '@lostgradient/cinder';
   let lastAction = $state('None');
 </script>
 

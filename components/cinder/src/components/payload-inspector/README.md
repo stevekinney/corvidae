@@ -20,7 +20,7 @@ Edge cases handled out of the box:
 
 ```svelte
 <script lang="ts">
-  import { PayloadInspector } from '@corvidae/cinder';
+  import { PayloadInspector } from '@lostgradient/cinder';
 </script>
 
 <PayloadInspector
@@ -55,7 +55,7 @@ Redact the payload **before** passing it as `value` — the inspector renders ex
 
 ```svelte
 <script lang="ts">
-  import { PayloadInspector } from '@corvidae/cinder';
+  import { PayloadInspector } from '@lostgradient/cinder';
 
   function redact(raw: Record<string, unknown>): Record<string, unknown> {
     const { password: _, token: __, ...safe } = raw;

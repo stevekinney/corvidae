@@ -1,4 +1,4 @@
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 setupHappyDom();

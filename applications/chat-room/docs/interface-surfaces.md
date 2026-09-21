@@ -4,11 +4,11 @@ The chat-room application is the integration test for Corvidae's browser surface
 
 ## Conversation layout
 
-`@corvidae/chat` owns the transcript and composer. Give `Chat` an ancestor with a resolved height because its root fills `height: 100%`.
+`@lostgradient/chat` owns the transcript and composer. Give `Chat` an ancestor with a resolved height because its root fills `height: 100%`.
 
 ```svelte
 <script lang="ts">
-  import { Chat, createConversation } from '@corvidae/chat';
+  import { Chat, createConversation } from '@lostgradient/chat';
 
   let conversation = $state(createConversation({ id: 'demo' }));
 </script>
@@ -42,7 +42,7 @@ Create the assistant placeholder before calling `beginStreaming`, update that sa
     updateStreamingMessage,
     type ChatAdapter,
     type ConversationHistory,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
 
   let chat: ReturnType<typeof Chat> | undefined;
   let conversation = $state<ConversationHistory>(createConversation({ id: 'streaming' }));

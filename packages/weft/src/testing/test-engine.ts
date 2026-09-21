@@ -35,7 +35,7 @@ import { TimeControl } from './time-control.ts';
  *
  * @example
  * ```ts
- * import { TestEngine, type RunNOptions } from '@corvidae/weft';
+ * import { TestEngine, type RunNOptions } from '@lostgradient/weft';
  *
  * const options: RunNOptions = {
  *   runs: 50,
@@ -57,8 +57,8 @@ export interface RunNOptions {
  *
  * @example
  * ```ts
- * import { workflow } from '@corvidae/weft';
- * import { TestEngine, type RunNResult } from '@corvidae/weft';
+ * import { workflow } from '@lostgradient/weft';
+ * import { TestEngine, type RunNResult } from '@lostgradient/weft';
  *
  * const ping = workflow({ name: 'ping' }).execute(async function* () { return 'pong'; });
  * const engine = new TestEngine();
@@ -117,8 +117,8 @@ function activityRegistrationOptionsFromMetadata(
  *
  * @example
  * ```ts
- * import { workflow, type WorkflowContext } from '@corvidae/weft';
- * import { TestEngine } from '@corvidae/weft';
+ * import { workflow, type WorkflowContext } from '@lostgradient/weft';
+ * import { TestEngine } from '@lostgradient/weft';
  *
  * const engine = new TestEngine();
  *

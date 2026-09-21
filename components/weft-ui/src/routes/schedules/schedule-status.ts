@@ -2,9 +2,9 @@
  * Status badge mapping (Track B, plan §10.1 status badge system; design
  * "Schedules" screens: paused/active/cancelled badges). Pure lookup — no DOM.
  */
-import type { ScheduleStatus } from '@corvidae/weft';
+import type { ScheduleStatus } from '@lostgradient/weft';
 
-import type { BadgeVariant } from '@corvidae/cinder';
+import type { BadgeVariant } from '@lostgradient/cinder';
 
 export interface ScheduleStatusDescriptor {
   readonly variant: BadgeVariant;

@@ -8,10 +8,10 @@ import type { ToolboxEntries } from '../toolbox-contracts';
 import type { AnyToolbox } from '../toolbox-interface';
 import type { ToolExecutionResult } from '../types';
 
-// Deterministic runtime services are owned by @corvidae/lifecycle and exposed
+// Deterministic runtime services are owned by @lostgradient/lifecycle and exposed
 // with these test fixtures through the package root.
-export { createManualRuntimeServices } from '@corvidae/lifecycle';
-export type { ManualRuntimeServices } from '@corvidae/lifecycle';
+export { createManualRuntimeServices } from '@lostgradient/lifecycle';
+export type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 
 export type MockToolOptions<TInput = any, TOutput = any> = {
   name?: string;

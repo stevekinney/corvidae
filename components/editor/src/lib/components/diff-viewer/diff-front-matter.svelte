@@ -1,7 +1,7 @@
 <script lang="ts" module>
   import type { HTMLAttributes } from 'svelte/elements';
-  import type { LineDiff } from '@corvidae/markdown';
-  import type { BadgeVariant } from '@corvidae/cinder';
+  import type { LineDiff } from '@lostgradient/markdown';
+  import type { BadgeVariant } from '@lostgradient/cinder';
 
   import type { DiffViewerMode } from './diff-viewer.types.ts';
 

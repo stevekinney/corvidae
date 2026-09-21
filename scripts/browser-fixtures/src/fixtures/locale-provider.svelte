@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LocaleProvider } from '@corvidae/cinder';
+  import { LocaleProvider } from '@lostgradient/cinder';
 </script>
 
 <LocaleProvider locale="en-US" direction="ltr">

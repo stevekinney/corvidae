@@ -8,8 +8,8 @@ See the [SideNavigation versus Sidebar decision](https://github.com/stevekinney/
 
 ```svelte
 <script lang="ts">
-  import { Sidebar } from '@corvidae/cinder';
-  import { SideNavigation } from '@corvidae/cinder';
+  import { Sidebar } from '@lostgradient/cinder';
+  import { SideNavigation } from '@lostgradient/cinder';
 </script>
 
 <Sidebar label="App sidebar">

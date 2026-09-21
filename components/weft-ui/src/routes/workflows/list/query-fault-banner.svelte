@@ -11,7 +11,7 @@
    * collapsible stack trace — a query error is always either a wire fault
    * or a plain network failure, never a caught local rendering bug).
    */
-  import { Badge, Button } from '@corvidae/cinder';
+  import { Badge, Button } from '@lostgradient/cinder';
   import {
     CircleSlash,
     CircleX,

@@ -16,9 +16,9 @@
  * the bureau exists here — operative stays bureau-agnostic.
  */
 
-import type { AnyToolbox } from '@corvidae/armorer';
-import { combineToolboxes } from '@corvidae/armorer';
-import type { JSONValue } from '@corvidae/tool-protocol';
+import type { AnyToolbox } from 'armorer';
+import { combineToolboxes } from 'armorer';
+import type { JSONValue } from '@lostgradient/tool-protocol';
 
 import type { MemoryLike } from './create-memory-bridge';
 import type { GenerateFunction, PrepareStepHook } from './types';

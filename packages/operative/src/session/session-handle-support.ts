@@ -1,7 +1,7 @@
-import type { ConversationHistory } from '@corvidae/conversationalist';
-import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
-import type { RuntimeServices } from '@corvidae/lifecycle';
-import type { WorkflowState } from '@corvidae/weft';
+import type { ConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { WorkflowState } from '@lostgradient/weft';
 
 import type { RunEvent } from '../agent-run';
 import type { AgentSession, RunRef } from '../agent-session';

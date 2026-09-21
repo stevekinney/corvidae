@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import { QueryClientProvider, type QueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 

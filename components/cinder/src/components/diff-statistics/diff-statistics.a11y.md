@@ -13,7 +13,7 @@ Purpose: Compact added, removed, and modified line-count summary that accompanie
 
 ## Avoid when
 
-- Rendering the actual hunked diff content — pair with `DiffViewer` from `@corvidae/editor` for the full document comparison.
+- Rendering the actual hunked diff content — pair with `DiffViewer` from `@lostgradient/editor` for the full document comparison.
 - Generic numeric badges that have nothing to do with diffs — reach for stat or badge instead.
 
 ## Keyboard and focus

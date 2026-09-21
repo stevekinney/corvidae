@@ -26,7 +26,7 @@ export type Raced<T> =
  *
  * @example
  * ```ts
- * import { WaitBudgetElapsedError } from '@corvidae/weft';
+ * import { WaitBudgetElapsedError } from '@lostgradient/weft';
  *
  * const error = new WaitBudgetElapsedError();
  * console.log(error.code); // 'WaitBudgetElapsedError'

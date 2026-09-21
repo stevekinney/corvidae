@@ -14,7 +14,7 @@
     SegmentedControl,
     SearchField,
     Table,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { Check, Minus } from 'lucide-svelte';
   import { createQuery } from '@tanstack/svelte-query';
 

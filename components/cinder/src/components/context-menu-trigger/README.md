@@ -6,10 +6,10 @@ Compose-only trigger region that opens a context-menu on right-click or touch lo
 
 ```svelte
 <script lang="ts">
-  import { ContextMenu } from '@corvidae/cinder';
-  import { ContextMenuTrigger } from '@corvidae/cinder';
-  import { DropdownItem } from '@corvidae/cinder';
-  import { DropdownMenu } from '@corvidae/cinder';
+  import { ContextMenu } from '@lostgradient/cinder';
+  import { ContextMenuTrigger } from '@lostgradient/cinder';
+  import { DropdownItem } from '@lostgradient/cinder';
+  import { DropdownMenu } from '@lostgradient/cinder';
 </script>
 
 <ContextMenu>

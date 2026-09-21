@@ -1,6 +1,6 @@
 # Weft
 
-A private durable execution library for Corvidae. Declare `"@corvidae/weft": "workspace:*"` in the consuming workspace and install dependencies from the repository root with `bun install --frozen-lockfile`. Import the [TypeScript](https://www.typescriptlang.org/) source API from `@corvidae/weft`.
+A private durable execution library for Corvidae. Declare `"@lostgradient/weft": "workspace:*"` in the consuming workspace and install dependencies from the repository root with `bun install --frozen-lockfile`. Import the [TypeScript](https://www.typescriptlang.org/) source API from `@lostgradient/weft`.
 
 The internal command-line entry points live alongside the library source in this workspace.
 
@@ -49,8 +49,8 @@ Weft's durability promise is checkpoint-level and explicit:
 The smallest useful Weft program has four moving pieces: a storage backend, a named activity, a named workflow, and a handle that waits for the result.
 
 ```typescript
-import { Engine, workflow } from '@corvidae/weft';
-import { BunSQLiteStorage } from '@corvidae/weft';
+import { Engine, workflow } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 type WelcomeInput = {
   name: string;
@@ -98,7 +98,7 @@ When recovery also needs to rebuild live host surfaces such as progress emitters
 
 > [!NOTE] The chained builder also accepts `.signals({...})`, `.updates({...})`, `.queries({...})`, and `.searchAttributes({...})`. Each can be called at most once before `.execute(fn)`; the type system flips a phantom flag so a duplicate call fails to typecheck, and the runtime mirrors the same invariant. These maps don't introduce new runtime gating—they're type hints that thread into `ctx.run()`, `ctx.waitForSignal()`, `ctx.waitForUpdate()`, and friends so your editor autocompletes and your code typechecks. The underlying dispatch paths are unchanged.
 
-> [!NOTE] `MemoryStorage` (also exported from `@corvidae/weft`) is fine for tests and ephemeral scripts, but it lives in process memory—a crash takes the checkpoints with it. Use a persistent backend like `BunSQLiteStorage` whenever durability actually matters.
+> [!NOTE] `MemoryStorage` (also exported from `@lostgradient/weft`) is fine for tests and ephemeral scripts, but it lives in process memory—a crash takes the checkpoints with it. Use a persistent backend like `BunSQLiteStorage` whenever durability actually matters.
 
 ## How It Works
 
@@ -289,7 +289,7 @@ Never call `launch()`? Call `handle.abandon()` to discard the prepared run inste
 Signals are workflow control. When the thing receiving a command is an application _resource_ rather than a workflow run—an agent taking steering input, a resource fielding requests from a peer service—`Mailbox` gives it a durable, strictly FIFO command queue with real receipts.
 
 ```typescript
-import { Mailbox, MemoryStorage } from '@corvidae/weft';
+import { Mailbox, MemoryStorage } from '@lostgradient/weft';
 
 await using storage = new MemoryStorage();
 using mailbox = new Mailbox({ storage, namespace: 'bureau', resourceId: 'agent-7' });
@@ -321,7 +321,7 @@ Delivery intent, ordering, ownership, and disposition are durable; external side
 The mailbox is for commands coming _in_ to a resource. For work going _out_—a webhook, a notification, a message to a peer service—`Outbox` is the matching primitive: a durable, at-least-once delivery queue whose enqueue, attempt leases, transport outcomes, retry schedule, cancellation, and dead-letter state are all durable and observable, without ever confusing a transport write with an acknowledgement.
 
 ```typescript
-import { Outbox, MemoryStorage } from '@corvidae/weft';
+import { Outbox, MemoryStorage } from '@lostgradient/weft';
 
 await using storage = new MemoryStorage();
 using outbox = new Outbox({
@@ -390,8 +390,8 @@ Weft can pause a workflow at any checkpoint and surface a decision payload to a 
 As of June 12, 2026, [Temporal's public human-approval example](https://docs.temporal.io/ai-cookbook/human-in-the-loop-python) models approval with Signals, and [Inngest's TypeScript docs](https://www.inngest.com/docs/reference/typescript/v4/functions/step-wait-for-event) model approval waits with `step.waitForEvent()`. Weft makes the review itself a durable workflow operation: [`ctx.review()`](src/core/context/durable-operations.ts) creates a stored review request, exposes review list/get/decision APIs, emits review events, and resumes the workflow with the submitted decision.
 
 ```typescript
-import { Engine, workflow } from '@corvidae/weft';
-import { BunSQLiteStorage } from '@corvidae/weft';
+import { Engine, workflow } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 type PaymentRequest = {
   orderId: string;
@@ -445,7 +445,7 @@ A small `Storage` interface over string keys and `Uint8Array` values: five requi
 
 Bring your own backend by implementing the interface—five methods is enough.
 
-For demos and local-first prototypes, `resolveDefaultStorage()` from `@corvidae/weft` picks a durable default for the current runtime: SQLite under Bun or Node, `WebExtensionStorage` in extension contexts, and `IndexedDBStorage` in browsers and Service Workers. It deliberately throws instead of falling back to `MemoryStorage`, so a "default" engine does not silently lose checkpoints after a restart. Use `resolveStorage({ type: 'auto' })` only when an ephemeral fallback is acceptable.
+For demos and local-first prototypes, `resolveDefaultStorage()` from `@lostgradient/weft` picks a durable default for the current runtime: SQLite under Bun or Node, `WebExtensionStorage` in extension contexts, and `IndexedDBStorage` in browsers and Service Workers. It deliberately throws instead of falling back to `MemoryStorage`, so a "default" engine does not silently lose checkpoints after a restart. Use `resolveStorage({ type: 'auto' })` only when an ephemeral fallback is acceptable.
 
 Production recovery needs one engine process per durable store. Use a local durable adapter (`BunSQLiteStorage` or `LMDBStorage`) when the service owns its disk, or `NeonStorage` when the deployment wants managed Postgres durability and point-in-time restore. In either case, validate the store at boot with `assertDurableStorageForRecovery()` and enforce the singleton topology in infrastructure.
 
@@ -456,9 +456,9 @@ For long-running workflows, `history.retentionWindow` can compact old event-log 
 `serve()` wraps `Bun.serve()` to expose your engine over HTTP and WebSocket with a versioned REST API.
 
 ```typescript
-import { Engine } from '@corvidae/weft';
-import { serve } from '@corvidae/weft';
-import { BunSQLiteStorage } from '@corvidae/weft';
+import { Engine } from '@lostgradient/weft';
+import { serve } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 const engine = new Engine({ storage: new BunSQLiteStorage('./weft.db') });
 engine.register(checkoutWorkflow);
@@ -476,7 +476,7 @@ The durable workflow catalog records installed manifests and an active revision.
 Workers can connect to the server over WebSocket, pull tasks, execute activities, and report results back. The same activity code runs inline in development and remote in production—no API changes.
 
 ```typescript
-import { RemoteWorker } from '@corvidae/weft';
+import { RemoteWorker } from '@lostgradient/weft';
 
 const worker = new RemoteWorker({
   serverUrl: 'wss://weft.internal:7233',
@@ -497,7 +497,7 @@ await worker.connect();
 
 The core engine runs inside a Web Worker, with a Service Worker acting as the durable persistence layer over `IndexedDB`. Browser-compatible workflow logic ships across server and browser without modification—useful for offline-first apps that need durable client-side workflows. Activities, storage adapters, and other environment-bound pieces still need browser-safe implementations: use `IndexedDBStorage`, `WebExtensionStorage`, or `resolveDefaultStorage()` instead of SQLite storage, swap server-only activities for `fetch`-based equivalents, and so on.
 
-Service Worker deployments can import `ServiceWorkerScheduler` from `@corvidae/weft` and wire timer wakeups through `onTimerFired: (entry) => engine.fireTimer(entry)`.
+Service Worker deployments can import `ServiceWorkerScheduler` from `@lostgradient/weft` and wire timer wakeups through `onTimerFired: (entry) => engine.fireTimer(entry)`.
 
 ### Observability
 
@@ -506,7 +506,7 @@ Built-in event system (`EventTarget`-based, so it composes with everything), W3C
 Schedules also emit `schedule:fired` on the live engine each time a schedule actually launches a workflow run. The event carries `scheduleId`, `workflowId`, `firedAt`, and the scheduled `occurrence` when one is retained, so in-process dispatchers can react to cadence without polling schedule state.
 
 ```typescript
-import { createObservabilityInterceptors, createOpenTelemetryMetrics } from '@corvidae/weft';
+import { createObservabilityInterceptors, createOpenTelemetryMetrics } from '@lostgradient/weft';
 
 const metrics = createOpenTelemetryMetrics({/* your meter provider */});
 const interceptors = createObservabilityInterceptors({ metrics });
@@ -524,7 +524,7 @@ Inside workflow code, `ctx.log` emits structured console records with `workflowI
 `TestEngine` swaps the production engine in tests and gives you a virtual clock. `engine.advanceTime('1 hour')` jumps timers forward without waiting; `engine.mock(activity, fake)` swaps in fake activity implementations with type-checked signatures, call recording, and per-call overrides.
 
 ```typescript
-import { TestEngine } from '@corvidae/weft';
+import { TestEngine } from '@lostgradient/weft';
 import { expect, test } from 'bun:test';
 
 test('onboarding completes after a day', async () => {
@@ -546,7 +546,7 @@ test('onboarding completes after a day', async () => {
 An inline workflow's first turn (and any turn deferred behind it) is normally flushed through a `MessageChannel` `postMessage` — a real event-loop macrotask with no fake-timer injection point. Construct the engine with `inlineLaunchScheduling: 'manual'` to opt out: the engine never constructs that channel and never self-schedules a flush, so a queued start only advances when you call `engine.flushInlineLaunches()`. This drives the exact same code path the scheduled flush uses — no step execution is skipped — so a multi-step workflow can run to completion under fake timers with no real macrotask.
 
 ```typescript
-import { Engine, MemoryStorage } from '@corvidae/weft';
+import { Engine, MemoryStorage } from '@lostgradient/weft';
 
 const engine = new Engine({
   storage: new MemoryStorage(),
@@ -571,7 +571,7 @@ Weft exports source for its consuming applications to compile, and its `weft` an
 Every error Weft throws extends `WeftError`, so a single `instanceof` check catches them all, and each carries a stable string `code` equal to its class name:
 
 ```typescript
-import { isWeftError } from '@corvidae/weft';
+import { isWeftError } from '@lostgradient/weft';
 
 try {
   await engine.start('checkout', { orderId: 'order-1' }, { id: 'order-1' });
@@ -590,10 +590,10 @@ try {
 }
 ```
 
-`isWeftError` is an `instanceof` check—the right tool in the common case where the error came from the same module instance. If an error can reach you across a realm or a duplicate module load (multiple copies of `@corvidae/weft` in one process), `instanceof` is unreliable; use `isWeftErrorLike` to narrow the caught value structurally:
+`isWeftError` is an `instanceof` check—the right tool in the common case where the error came from the same module instance. If an error can reach you across a realm or a duplicate module load (multiple copies of `@lostgradient/weft` in one process), `instanceof` is unreliable; use `isWeftErrorLike` to narrow the caught value structurally:
 
 ```typescript
-import { isWeftErrorLike } from '@corvidae/weft';
+import { isWeftErrorLike } from '@lostgradient/weft';
 
 function isAlreadyRunning(error: unknown): boolean {
   return isWeftErrorLike(error) && error.code === 'WorkflowAlreadyExistsError';
@@ -603,7 +603,7 @@ function isAlreadyRunning(error: unknown): boolean {
 When the same producer might run through either `LocalClient` or `HttpClient`, use `isWeftFault(error, code)` for a specific branch. It matches same-process `WeftError` instances and HTTP-wrapped errors whose REST response carried the originating public `weftCode`.
 
 ```typescript
-import { isWeftFault } from '@corvidae/weft';
+import { isWeftFault } from '@lostgradient/weft';
 
 function isMissingWorkflow(error: unknown): boolean {
   return isWeftFault(error, 'WorkflowNotFoundError');
@@ -614,7 +614,7 @@ The exported `WeftErrorCode` union lists every code that belongs to a public, ex
 
 ## Workspace usage
 
-Declare `"@corvidae/weft": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@corvidae/weft`; the consumer compiles it. Shared external versions come from the root Bun catalog.
+Declare `"@lostgradient/weft": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@lostgradient/weft`; the consumer compiles it. Shared external versions come from the root Bun catalog.
 
 ## Step API for `async`/`await` Users
 

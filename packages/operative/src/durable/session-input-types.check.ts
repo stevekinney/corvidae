@@ -9,7 +9,7 @@
  * accidental field rename or shape drift fails `check-types` immediately.
  * There is no runtime behavior to assert here — the compiler is the test.
  */
-import type { TextContent } from '@corvidae/conversationalist';
+import type { TextContent } from 'conversationalist';
 
 import type {
   SessionInputAdmissionOutcome,

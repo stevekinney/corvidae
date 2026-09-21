@@ -41,7 +41,7 @@
 
     warnedSchemaVersions.add(schemaVersion);
     console.warn(
-      `[Chat] Conversation schema version ${schemaVersion} is newer than the supported version ${CURRENT_SCHEMA_VERSION}. Upgrade @corvidae/chat before relying on this history.`,
+      `[Chat] Conversation schema version ${schemaVersion} is newer than the supported version ${CURRENT_SCHEMA_VERSION}. Upgrade @lostgradient/chat before relying on this history.`,
     );
   }
 
@@ -70,7 +70,7 @@
   }
 
   // The inner implementation owns the imperative streaming + scroll API. The
-  // public wrapper forwards it so consumers using `@corvidae/chat` can drive
+  // public wrapper forwards it so consumers using `@lostgradient/chat` can drive
   // streaming through a `bind:this` to <Chat> (the inner component is not
   // exported).
   // Plain `let` (not `$state`): the instance ref is only read inside the

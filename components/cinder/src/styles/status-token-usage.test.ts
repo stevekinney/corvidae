@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test';
 const COMPONENTS_DIR = join(import.meta.dir, '..', 'components');
 const STYLES_DIR = join(import.meta.dir, 'components');
 
-// diff-viewer and review-editor moved to @corvidae/editor (see
+// diff-viewer and review-editor moved to @lostgradient/editor (see
 // documentation/decisions/package-boundaries.md); their audit entries moved with them
 // and are no longer part of this package's source tree.
 const auditedFiles = [

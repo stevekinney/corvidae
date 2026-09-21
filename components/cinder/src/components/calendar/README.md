@@ -6,7 +6,7 @@ Keyboard-navigable month grid for selecting a single local calendar date.
 
 ```svelte
 <script lang="ts">
-  import { Calendar } from '@corvidae/cinder';
+  import { Calendar } from '@lostgradient/cinder';
 
   let value = $state<string | undefined>('2026-06-29');
 </script>

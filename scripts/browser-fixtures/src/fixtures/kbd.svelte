@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Kbd } from '@corvidae/cinder';
+  import { Kbd } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row" style="align-items: center;">

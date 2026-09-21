@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button, Segment, SegmentedControl } from '@corvidae/cinder';
-  import { ReviewEditor } from '@corvidae/editor';
+  import { Button, Segment, SegmentedControl } from '@lostgradient/cinder';
+  import { ReviewEditor } from '@lostgradient/editor';
 
   type View = 'editor' | 'diff' | 'summary';
   let value = $state<View>('editor');

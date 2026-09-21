@@ -20,7 +20,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync, mount, unmount } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { ChatAdapter, ChatPushHandlers } from './adapter/chat-adapter.ts';
 import type { TypingParticipant } from './chat.types.ts';
 import {

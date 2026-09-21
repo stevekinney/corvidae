@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Banner } from '@corvidae/cinder';
+  import { Banner } from '@lostgradient/cinder';
   let visible = $state(true);
 </script>
 

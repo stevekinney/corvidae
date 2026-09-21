@@ -44,7 +44,7 @@ import { WORKFLOW_CONTRACT_VERSION } from './types.ts';
  *
  * @example
  * ```ts
- * import { WORKFLOW_CONTRACT_DIGEST_ALGORITHM } from '@corvidae/weft';
+ * import { WORKFLOW_CONTRACT_DIGEST_ALGORITHM } from '@lostgradient/weft';
  *
  * const hash = 'sha256:2b1f0c9d';
  * console.log(hash.startsWith(`${WORKFLOW_CONTRACT_DIGEST_ALGORITHM}:`)); // true
@@ -83,7 +83,7 @@ function canonicalWorkflowContractPayloadJson(contract: WorkflowContract): strin
  *
  * @example
  * ```ts
- * import { canonicalWorkflowContractJson, digestCanonicalWorkflowContract } from '@corvidae/weft';
+ * import { canonicalWorkflowContractJson, digestCanonicalWorkflowContract } from '@lostgradient/weft';
  *
  * const canonical = canonicalWorkflowContractJson({ name: 'checkout', workflowVersion: '2.1.0' });
  * console.log((await digestCanonicalWorkflowContract(canonical)).startsWith('sha256:'));
@@ -104,7 +104,7 @@ export async function digestCanonicalWorkflowContract(canonicalJson: string): Pr
  *
  * @example
  * ```ts
- * import { contractHash } from '@corvidae/weft';
+ * import { contractHash } from '@lostgradient/weft';
  *
  * const left = await contractHash({ name: 'checkout', workflowVersion: '1.0.0' });
  * const right = await contractHash({ name: 'checkout', workflowVersion: '2.0.0' });
@@ -121,7 +121,7 @@ export async function contractHash(contract: WorkflowContract): Promise<string> 
  *
  * @example
  * ```ts
- * import { activityContractHash } from '@corvidae/weft';
+ * import { activityContractHash } from '@lostgradient/weft';
  *
  * const hash = await activityContractHash({
  *   inputSchema: { type: 'object', properties: { amount: { type: 'number' } } },

@@ -14,7 +14,7 @@ import type {
   ToolErrorInput as SharedToolErrorInput,
   ToolResult as SharedToolResult,
   ToolResultInput as SharedToolResultInput,
-} from '@corvidae/tool-protocol';
+} from '@lostgradient/tool-protocol';
 
 import type { ApprovalBindingPayload } from './approval-binding';
 

@@ -6,10 +6,10 @@ Bounded scrolling container that constrains overflowing content within a max hei
 
 ```svelte
 <script lang="ts">
-  import { ScrollArea } from '@corvidae/cinder';
+  import { ScrollArea } from '@lostgradient/cinder';
 
   const command =
-    '$ bun run --filter=@corvidae/cinder build && bun run --filter=@corvidae/cinder test --coverage --reporter=verbose --bail';
+    '$ bun run --filter=@lostgradient/cinder build && bun run --filter=@lostgradient/cinder test --coverage --reporter=verbose --bail';
 </script>
 
 <ScrollArea as="pre" direction="horizontal" maxWidth="32rem" label="Example command"

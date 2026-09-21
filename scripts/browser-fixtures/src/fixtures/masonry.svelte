@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Masonry } from '@corvidae/cinder';
+  import { Masonry } from '@lostgradient/cinder';
 </script>
 
 <Masonry columns="3" gap="var(--cinder-space-4)" aria-label="Editorial cards">

@@ -8,7 +8,7 @@
    * ceiling; this component owns no state of its own and reads nothing
    * from a query — every prop is already resolved by the caller.
    */
-  import { Badge, Button } from '@corvidae/cinder';
+  import { Badge, Button } from '@lostgradient/cinder';
   import { Ban, CheckCircle2, RefreshCw } from 'lucide-svelte';
 
   import {

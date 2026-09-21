@@ -23,7 +23,7 @@
 </script>
 
 <script lang="ts">
-  import { ChevronDown } from '@corvidae/cinder';
+  import { ChevronDown } from '@lostgradient/cinder';
 
   let {
     showJumpButton,

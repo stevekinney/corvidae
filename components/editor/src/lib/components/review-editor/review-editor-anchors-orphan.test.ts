@@ -1,5 +1,5 @@
 /**
- * The exported `createAnchorManager` (`@corvidae/editor`) against the
+ * The exported `createAnchorManager` (`@lostgradient/editor`) against the
  * orphan-preservation contract in `shared/anchor-types.ts`.
  *
  * The component delegates its anchor lifecycle to this manager. These tests

@@ -1,4 +1,4 @@
-import type { PlaceholderCandidate } from '@corvidae/markdown';
+import type { PlaceholderCandidate } from '@lostgradient/markdown';
 import type { EditorState } from 'prosemirror-state';
 
 import { textOffsetToBlockDocumentPosition } from './template-position-utilities.js';

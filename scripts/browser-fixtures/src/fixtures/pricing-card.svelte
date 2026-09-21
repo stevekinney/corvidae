@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Container, PricingCard } from '@corvidae/cinder';
+  import { Container, PricingCard } from '@lostgradient/cinder';
 
   const plans = [
     {

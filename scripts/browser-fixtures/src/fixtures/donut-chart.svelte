@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DonutChart } from '@corvidae/cinder';
+  import { DonutChart } from '@lostgradient/cinder';
 
   const data = [
     { label: 'Build', value: 42 },

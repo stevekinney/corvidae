@@ -39,7 +39,7 @@ describe('buildContext', () => {
     expect(context.name).toBe('my-widget');
     expect(context.pascalName).toBe('MyWidget');
     expect(context.isExperimental).toBe(false);
-    expect(context.importPath).toBe('@corvidae/cinder');
+    expect(context.importPath).toBe('@lostgradient/cinder');
     // The printed scaffold location and root-barrel path use relativeDirectory;
     // for a stable component it is just the bare name.
     expect(context.relativeDirectory).toBe('my-widget');
@@ -50,7 +50,7 @@ describe('buildContext', () => {
     expect(context.name).toBe('json-viewer');
     expect(context.pascalName).toBe('JsonViewer');
     expect(context.isExperimental).toBe(true);
-    expect(context.importPath).toBe('@corvidae/cinder');
+    expect(context.importPath).toBe('@lostgradient/cinder');
     // relativeDirectory MUST keep the experimental/ segment so the printed
     // scaffold location (src/components/experimental/<name>/) and the
     // root-barrel next-step path (./components/experimental/<name>/index.ts)
@@ -177,7 +177,7 @@ describe('renderReadme', () => {
     expect(experimentalReadme).toContain(
       '[component authoring pre-flight](../../../../README.md#component-authoring-checklist)',
     );
-    expect(readme).toContain("import { MyWidget } from '@corvidae/cinder';");
+    expect(readme).toContain("import { MyWidget } from '@lostgradient/cinder';");
     expect(readme).not.toContain(renderComponentAuthoringChecklist());
     expect(experimentalReadme).not.toContain(renderComponentAuthoringChecklist());
   });
@@ -248,13 +248,13 @@ describe('renderTest', () => {
 
   it('imports happy-dom two levels up for a stable component (src/components/<name>/)', () => {
     const source = renderTest(buildContext('my-widget'));
-    expect(source).toContain("import { setupHappyDom } from '@corvidae/testing';");
+    expect(source).toContain("import { setupHappyDom } from '@lostgradient/testing';");
     expect(source).not.toContain('../../../test/happy-dom.ts');
   });
 
   it('imports happy-dom three levels up for an experimental component', () => {
     const source = renderTest(buildContext('experimental/json-viewer'));
-    expect(source).toContain("import { setupHappyDom } from '@corvidae/testing';");
+    expect(source).toContain("import { setupHappyDom } from '@lostgradient/testing';");
   });
 
   it('mounts the component and asserts on the cinder-<name> wrapper', () => {

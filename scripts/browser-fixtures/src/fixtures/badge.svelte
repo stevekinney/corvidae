@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge } from '@corvidae/cinder';
+  import { Badge } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row">

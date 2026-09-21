@@ -65,7 +65,7 @@ export { RegistrySchemaConversionError, RegistryWorkflowCountLimitError };
  *
  * @example
  * ```ts
- * import { REGISTRY_VERSION } from '@corvidae/weft';
+ * import { REGISTRY_VERSION } from '@lostgradient/weft';
  *
  * declare const snapshot: { version: number };
  *
@@ -98,7 +98,7 @@ export const REGISTRY_VERSION = 2;
  *
  * @example
  * ```ts
- * import type { RegistryActivityEntry } from '@corvidae/weft';
+ * import type { RegistryActivityEntry } from '@lostgradient/weft';
  *
  * declare const activities: Readonly<Record<string, RegistryActivityEntry>>;
  *

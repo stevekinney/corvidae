@@ -109,7 +109,7 @@ export function createPortalAttachment(
     // stay rendered in the original document position. Without this, `$effect` cleanup detaches
     // the wrapper and nothing reattaches it — content silently disappears.
     const anchor =
-      typeof document !== 'undefined' ? document.createComment('@corvidae/cinder') : null;
+      typeof document !== 'undefined' ? document.createComment('@lostgradient/cinder') : null;
     if (anchor && initialParent && element.parentNode === initialParent) {
       initialParent.insertBefore(anchor, element);
     }

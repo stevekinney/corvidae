@@ -1,4 +1,4 @@
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { expect, test } from 'bun:test';
 setupHappyDom();
 const { render } = await import('@testing-library/svelte');

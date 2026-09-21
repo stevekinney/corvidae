@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import type { SearchFieldProps } from './search-field.types.ts';
 
 setupHappyDom();
@@ -11,7 +11,7 @@ setupHappyDom();
 // export map. Keep the component on its public subpath while mapping that entry
 // to the source implementation for this focused test process.
 const { default: Input } = await import('../input/index.ts');
-mock.module('@corvidae/cinder', () => ({ default: Input }));
+mock.module('@lostgradient/cinder', () => ({ default: Input }));
 
 const { render, fireEvent, cleanup, waitFor } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');

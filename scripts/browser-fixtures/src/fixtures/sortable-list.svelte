@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { SortableList } from '@corvidae/cinder';
-  import type { SortableListProps } from '@corvidae/cinder';
+  import { SortableList } from '@lostgradient/cinder';
+  import type { SortableListProps } from '@lostgradient/cinder';
   type Task = { id: string; label: string };
   let items = $state<Task[]>([
     { id: 'task-1', label: 'Write release notes' },

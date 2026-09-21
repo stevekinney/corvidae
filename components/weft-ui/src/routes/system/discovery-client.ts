@@ -6,7 +6,7 @@
  *
  * ## Why this reads `fetch()` directly instead of going through `HttpClient`
  *
- * `HttpClient` (`@corvidae/weft`) has no method for any of these
+ * `HttpClient` (`@lostgradient/weft`) has no method for any of these
  * five documents — verified against its full public surface
  * (`weft/src/client/http-client.ts` v0.11.0): every ergonomic method and
  * `client.operations[...]`/`client.call(...)` model the *functional* API
@@ -27,7 +27,7 @@
  * `fetch('/openapi.json')` would silently hit the console's own origin
  * instead.
  */
-import type { HttpClient } from '@corvidae/weft';
+import type { HttpClient } from '@lostgradient/weft';
 
 export type DiscoveryDocumentKind = 'openapi' | 'openrpc' | 'asyncapi' | 'mcp' | 'metrics';
 

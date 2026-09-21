@@ -15,7 +15,7 @@
  * that regresses if the shared rule is removed again.
  */
 
-import { boxShadowLayerCount, resolvedTokenColor, tabUntilFocused } from '@corvidae/testing';
+import { boxShadowLayerCount, resolvedTokenColor, tabUntilFocused } from '@lostgradient/testing';
 import { expect, test } from '@playwright/test';
 import { fixtureRoute } from './overlay-fixture.ts';
 

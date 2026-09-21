@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expectTypeOf, it } from 'bun:test';
 
 import { Conversation } from '../src/history';

@@ -8,7 +8,7 @@ Use `TerminalOutput` for read-only ANSI streams. Use `TerminalFrame` when the ch
 
 ```svelte
 <script lang="ts">
-  import { TerminalFrame, type TerminalFrameDimensions } from '@corvidae/cinder';
+  import { TerminalFrame, type TerminalFrameDimensions } from '@lostgradient/cinder';
 
   let dimensions = $state<TerminalFrameDimensions>({ cols: 80, rows: 24 });
 </script>

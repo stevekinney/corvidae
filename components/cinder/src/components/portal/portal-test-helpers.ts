@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { createRawSnippet } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 export const nativeGetComputedStyle = globalThis.getComputedStyle;

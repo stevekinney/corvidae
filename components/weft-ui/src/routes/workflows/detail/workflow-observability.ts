@@ -1,6 +1,6 @@
 /**
  * Workflow-observability data access for the two operations weft#732 (items
- * 3 and 4) shipped in `@corvidae/weft@0.15.0` (PR #760):
+ * 3 and 4) shipped in `@lostgradient/weft@0.15.0` (PR #760):
  *
  * - `weft.workflows.finalizer.get` — durable post-terminal finalizer
  *   progress/outcome (`WorkflowFinalizerStatus | null`). Consumed by the
@@ -30,7 +30,7 @@
  * and `checkpoints-data.ts`'s precedent) rather than added to the frozen
  * `src/lib/query.ts`.
  */
-import type { WorkflowFinalizerStatus, WorkflowScheduleProvenance } from '@corvidae/weft';
+import type { WorkflowFinalizerStatus, WorkflowScheduleProvenance } from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
 
 function isRecord(value: unknown): value is Record<string, unknown> {

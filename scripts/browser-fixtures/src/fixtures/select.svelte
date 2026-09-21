@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Select } from '@corvidae/cinder';
+  import { Select } from '@lostgradient/cinder';
 
   const options = [
     { value: 'alpha', label: 'Alpha' },

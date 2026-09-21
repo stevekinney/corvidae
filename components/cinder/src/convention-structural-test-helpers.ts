@@ -1,6 +1,6 @@
 /** Structural and namespace convention collection for public components. */
 
-import { requiredValue } from '@corvidae/testing';
+import { requiredValue } from '@lostgradient/testing';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'svelte/compiler';

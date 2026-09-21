@@ -1,4 +1,4 @@
-import { requiredValue } from '@corvidae/testing';
+import { requiredValue } from '@lostgradient/testing';
 /**
  * Tests for the pure anchor constructors and the persistence converter pair.
  *

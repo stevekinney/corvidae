@@ -35,7 +35,7 @@ export interface ScheduleHandleEngine {
  *
  * @example
  * ```ts
- * import { workflow, Engine, ScheduleHandle } from '@corvidae/weft';
+ * import { workflow, Engine, ScheduleHandle } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'daily-report' }).execute(async function* () { return 'ok'; }));

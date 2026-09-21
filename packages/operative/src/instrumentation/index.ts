@@ -149,7 +149,7 @@ export function instrumentRun(
       // details. It is intentionally NOT labeled with `gen_ai.operation.name`
       // or a `chat`-style span name: the canonical, spec-compliant chat span
       // (with model, provider, and gen_ai.usage.*) comes from
-      // `@corvidae/operative` provider instrumentation API, wrapped around the same
+      // `@lostgradient/operative` provider instrumentation API, wrapped around the same
       // GenerateFunction. Usage here is namespaced under `operative.*` so
       // the two instrumentation points never double-report gen_ai.usage.*
       // for the same call when both are wired up.

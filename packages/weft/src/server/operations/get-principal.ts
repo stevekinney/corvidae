@@ -36,7 +36,7 @@ export type GetPrincipalInput = z.infer<typeof getPrincipalInput>;
  *
  * @example
  * ```ts
- * import { type GetPrincipalOutput } from '@corvidae/weft';
+ * import { type GetPrincipalOutput } from '@lostgradient/weft';
  *
  * const anonymous: GetPrincipalOutput = {
  *   method: 'unauthenticated',

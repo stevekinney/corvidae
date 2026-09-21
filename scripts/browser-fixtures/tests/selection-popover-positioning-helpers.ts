@@ -1,4 +1,4 @@
-import { VIEWPORTS } from '@corvidae/testing';
+import { VIEWPORTS } from '@lostgradient/testing';
 import { expect, type Page } from '@playwright/test';
 import { fixtureRoute } from './editor-fixture.ts';
 

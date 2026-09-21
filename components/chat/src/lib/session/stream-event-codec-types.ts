@@ -1,4 +1,4 @@
-import type { ConversationHistory, TokenUsage } from '@corvidae/conversationalist';
+import type { ConversationHistory, TokenUsage } from 'conversationalist';
 import type { ChatToolResult } from '../components/chat/adapter/chat-adapter.ts';
 import type { JSONValue } from '../components/chat/conversation-model.ts';
 
@@ -63,7 +63,7 @@ export function isSupportedWireVersion(value: unknown): value is 1 | 2 {
 
 // ---------------------------------------------------------------------------
 // Local, provider-neutral equivalents of Operative's `StreamEvent` vocabulary
-// (`@corvidae/operative`, `src/streaming/types.ts`). Chat does not depend on
+// (`@lostgradient/operative`, `src/streaming/types.ts`). Chat does not depend on
 // Operative at runtime — depending on it here would invert the provider-
 // neutral layering — so these shapes are declared structurally rather than
 // imported. Keep them in lockstep with Operative's `StreamEvent`,
@@ -101,7 +101,7 @@ export type ChatStreamState = {
 
 /**
  * Local equivalents of Operative's `AgentRunErrorKind` / `AgentRunErrorCode`
- * (`@corvidae/operative`, `src/errors.ts`). Declared structurally rather
+ * (`@lostgradient/operative`, `src/errors.ts`). Declared structurally rather
  * than imported at runtime — Chat must not depend on Operative at runtime,
  * since that would invert the provider-neutral layering and pull Operative's
  * Anthropic/OpenAI/Gemini provider code into the browser bundle — but

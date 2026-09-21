@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/testing",
+  "name": "@lostgradient/testing",
   "private": true,
   "type": "module",
   "exports": {
@@ -23,7 +23,7 @@
     "@lostgradient/environmentalist": "catalog:"
   },
   "devDependencies": {
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "@types/node": "catalog:",
     "@types/bun": "catalog:",
     "oxlint": "catalog:",

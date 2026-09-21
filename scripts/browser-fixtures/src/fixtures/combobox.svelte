@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Combobox } from '@corvidae/cinder';
+  import { Combobox } from '@lostgradient/cinder';
   const fruits = [
     'apple',
     'apricot',

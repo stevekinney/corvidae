@@ -4,8 +4,8 @@
    * shared context provider — `CheckpointsTab` reads `getPrincipalStore()`
    * for the replay scope gate) around `<CheckpointsTab>`.
    */
-  import { HttpClient } from '@corvidae/weft';
-  import type { WorkflowReplay, WorkflowTimelineEntry } from '@corvidae/weft';
+  import { HttpClient } from '@lostgradient/weft';
+  import type { WorkflowReplay, WorkflowTimelineEntry } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   import type { Principal } from '../../../../lib/scopes.svelte.ts';

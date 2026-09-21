@@ -1,10 +1,10 @@
 # Lifecycle
 
-`@corvidae/lifecycle` contains the shared event and hook primitives used across Agent Bureau. It has no agent-domain behavior of its own; it provides the typed infrastructure that other packages use to publish state, expose observables, and compose hooks.
+`@lostgradient/lifecycle` contains the shared event and hook primitives used across Agent Bureau. It has no agent-domain behavior of its own; it provides the typed infrastructure that other packages use to publish state, expose observables, and compose hooks.
 
 ## Workspace usage
 
-Declare `"@corvidae/lifecycle": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@corvidae/lifecycle`; it exports TypeScript source directly and has no library build or publication step.
+Declare `"@lostgradient/lifecycle": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install`. Import the private package through `@lostgradient/lifecycle`; it exports TypeScript source directly and has no library build or publication step.
 
 ## What It Does
 
@@ -22,7 +22,7 @@ Hooks are stored in registries keyed by hook maps. Packages such as `operative` 
 
 ## Project Role
 
-`lifecycle` is the shared substrate for observability and extension. `@corvidae/conversationalist`, `@corvidae/armorer`, and `@corvidae/operative` all rely on its event streams or hooks. Host applications use the same primitives when they compose those packages, which keeps lifecycle behavior consistent across the workspace.
+`lifecycle` is the shared substrate for observability and extension. `conversationalist`, `armorer`, and `@lostgradient/operative` all rely on its event streams or hooks. Host applications use the same primitives when they compose those packages, which keeps lifecycle behavior consistent across the workspace.
 
 ## Public API
 
@@ -35,7 +35,7 @@ A type-safe wrapper around the native `EventTarget`. `M` is a record mapping eve
 **`dispatch(event)`** is the primary addition over the native API—it accepts only events whose `type` key is present in `M`, so typos in event names become compile errors.
 
 ```typescript
-import { TypedEventTarget } from '@corvidae/lifecycle';
+import { TypedEventTarget } from '@lostgradient/lifecycle';
 
 class ProgressEvent extends Event {
   constructor(public readonly percent: number) {
@@ -89,7 +89,7 @@ Extends `TypedEventTarget` with lifecycle management and convenience consumption
 - **`events(type, options?)`**: Returns an `AsyncIterableIterator<M[K]>` for the given event type, terminated by the target's signal.
 
 ```typescript
-import { CompletableEventTarget } from '@corvidae/lifecycle';
+import { CompletableEventTarget } from '@lostgradient/lifecycle';
 
 type StreamEvents = {
   data: MessageEvent;
@@ -150,7 +150,7 @@ Adapts any `EventTarget` into an `AsyncIterableIterator`. Events are buffered in
 - **`bufferSize`**: `number`—maximum number of unconsumed events to buffer before dropping new ones (default `256`).
 
 ```typescript
-import { eventIterator } from '@corvidae/lifecycle';
+import { eventIterator } from '@lostgradient/lifecycle';
 
 const controller = new AbortController();
 const target = new EventTarget();
@@ -193,7 +193,7 @@ Returns a TC39-style `ObservableLike` for a single event type on any `EventTarge
 - **`signal`**: `AbortSignal`—combined with the subscription's own controller via `AbortSignal.any()`.
 
 ```typescript
-import { eventObservable } from '@corvidae/lifecycle';
+import { eventObservable } from '@lostgradient/lifecycle';
 
 const target = new EventTarget();
 const controller = new AbortController();
@@ -231,7 +231,7 @@ function allEventsObservable<E extends Event>(
 Like `eventObservable()`, but subscribes to multiple event types at once and merges them into a single stream. All event types share one subscription and one `unsubscribe()` call.
 
 ```typescript
-import { allEventsObservable } from '@corvidae/lifecycle';
+import { allEventsObservable } from '@lostgradient/lifecycle';
 
 const target = new EventTarget();
 
@@ -286,7 +286,7 @@ interface ForwardableSource {
 `CompletableEventTarget` implements `ForwardableSource` via its `toObservable()` method, making it the natural source for this function.
 
 ```typescript
-import { CompletableEventTarget, ForwardedEvent, forwardEvents } from '@corvidae/lifecycle';
+import { CompletableEventTarget, ForwardedEvent, forwardEvents } from '@lostgradient/lifecycle';
 
 type ChildEvents = { data: MessageEvent; error: ErrorEvent };
 
@@ -354,7 +354,7 @@ A priority-ordered registry for named async hooks. `M` maps hook names to their 
 **Registration identity.** `HookRegistrationOptions.id` names one registration, so an observer can correlate the same hook across invocations and across runs. Supply one when you have a meaningful name; otherwise the registry assigns `<hookName>#<n>` from a counter that never reuses a value, so an id is never recycled after an unregistration. Prefer an explicit id for a hook registered inside a conditional block — a generated number renumbers whenever an earlier block does not register, so the same hook would answer to different names depending on configuration.
 
 ```typescript
-import { HookRegistry } from '@corvidae/lifecycle';
+import { HookRegistry } from '@lostgradient/lifecycle';
 
 type BuildHooks = {
   'before-compile': (source: string) => string | undefined;
@@ -388,11 +388,11 @@ console.log(hooks.has('before-compile')); // false
 
 ### Hierarchical hook priority bands (COR-567)
 
-`@corvidae/operative` and `@corvidae/bureau` compose a Bureau/Agent/direct-run hook hierarchy on top of this registry. `mergeHookRegistries` (below) offsets each tier by `(tierCount - 1 - tierIndex) * 1000`, over the fixed tier order `[bureau, agent, direct]`—the earliest-listed tier (Bureau) receives the highest offset.
+`@lostgradient/operative` and `@lostgradient/bureau` compose a Bureau/Agent/direct-run hook hierarchy on top of this registry. `mergeHookRegistries` (below) offsets each tier by `(tierCount - 1 - tierIndex) * 1000`, over the fixed tier order `[bureau, agent, direct]`—the earliest-listed tier (Bureau) receives the highest offset.
 
 `HookRegistry` dispatches through three shapes, and which one a hook point uses decides who that offset actually protects. `runFirst` runs handlers in priority order against the same arguments and returns the first defined result, leaving the rest uninvoked—the highest band wins outright, so the default Bureau-highest offset is already enough. `runLast` and the plain `run` waterfall both run every handler; `runLast` hands every handler the same unmodified arguments and keeps the last defined result, while `run` additionally feeds each handler's defined return to the next as its first argument. Either way the lowest-priority handler runs last and answers last, so on these two shapes the lowest band—typically direct-run—has the final say by default, the opposite of `runFirst`. A Bureau invariant registered on a `runLast` or plain `run` hook point must therefore use an explicit low `priority` to remain the final word; on a `runFirst` point, the bureau band already wins without one.
 
-That explicit value is `BUREAU_PINNED_LAST_PRIORITY` in `@corvidae/bureau`, and it is `Number.MIN_SAFE_INTEGER + 2000` rather than a small negative number. The offset is what forces the size: Bureau is always the first participant, so it receives the largest one, and a pinned entry has to sit far enough below `MIN_SAFE_INTEGER` plus that offset to stay under anything another tier declared. `+2000` is the largest offset three tiers can produce, so adding it back cannot leave the safe-integer range. The limit is worth knowing: a tier that deliberately registers at or below `MIN_SAFE_INTEGER + 2000` sorts after Bureau anyway. No finite constant closes that, and `-Infinity` closes it only until a second entry carries it, at which point `b.priority - a.priority` returns `NaN` and the sort is no longer defined.
+That explicit value is `BUREAU_PINNED_LAST_PRIORITY` in `@lostgradient/bureau`, and it is `Number.MIN_SAFE_INTEGER + 2000` rather than a small negative number. The offset is what forces the size: Bureau is always the first participant, so it receives the largest one, and a pinned entry has to sit far enough below `MIN_SAFE_INTEGER` plus that offset to stay under anything another tier declared. `+2000` is the largest offset three tiers can produce, so adding it back cannot leave the safe-integer range. The limit is worth knowing: a tier that deliberately registers at or below `MIN_SAFE_INTEGER + 2000` sorts after Bureau anyway. No finite constant closes that, and `-Infinity` closes it only until a second entry carries it, at which point `b.priority - a.priority` returns `NaN` and the sort is no longer defined.
 
 Tiers are named, not inferred. A tier builds its registry with `new HookRegistry({ source: 'bureau' })`, `on()` stamps that name onto each entry, and the stamp rides in `options` through any number of merges. It lives on the entry rather than only on the registry because a merged plan is one registry holding many tiers: afterwards the registry can no longer say where an entry came from, but the entry still can. `describePlan()` reports it, which is what lets an inspector answer which hook sources applied to a run.
 
@@ -423,7 +423,7 @@ stop();
 
 `invoked` and `failed` are mutually exclusive outcomes of one invocation: exactly one fires per handler call, never both and never neither. `failed` fires for the throw itself, _before_ the error policy decides whether to continue or abort — so a handler whose `onError` returns `'continue'` is still reported rather than silently absorbed.
 
-**Past registrations are not replayed.** An observer attached to an already-populated registry sees nothing until the next thing happens. This is deliberate: replaying would make "observer attached late" indistinguishable from "entry registered late" for every subscriber. A subscriber that wants the entries already present censuses them itself through `getHookNames()` and `getHandlers()` before attaching — which is what `@corvidae/operative` does to emit `hook-plan.registered` for a plan composed before the run started.
+**Past registrations are not replayed.** An observer attached to an already-populated registry sees nothing until the next thing happens. This is deliberate: replaying would make "observer attached late" indistinguishable from "entry registered late" for every subscriber. A subscriber that wants the entries already present censuses them itself through `getHookNames()` and `getHandlers()` before attaching — which is what `@lostgradient/operative` does to emit `hook-plan.registered` for a plan composed before the run started.
 
 **An observer must not throw.** One that does is routed to the registry's `onError` when configured, and otherwise re-thrown from a microtask so it surfaces as an unhandled error. It never fails the hook invocation it observed, and one broken observer does not blind the others.
 
@@ -442,7 +442,7 @@ function mergeHookRegistries<M extends HookMap>(
 Combines multiple `HookRegistry` instances into a new registry. Registries listed earlier receive a higher priority offset (increments of 1000 per position), so handlers from the first registry run before those from later ones at equal declared priority. `undefined` entries are silently skipped, making it safe to spread optional hook sources.
 
 ```typescript
-import { HookRegistry, mergeHookRegistries } from '@corvidae/lifecycle';
+import { HookRegistry, mergeHookRegistries } from '@lostgradient/lifecycle';
 
 type AppHooks = {
   'on-request': (url: string) => string | undefined;
@@ -475,7 +475,7 @@ The cross-package ownership and cleanup matrix is collected in [Runtime contract
 This means two `ManualRuntimeServices` instances constructed with **different** `identifierSeed`s are, barring a hash collision, extremely unlikely to mint the same identifier—their prefixes almost certainly differ, so their identifier sets are practically disjoint—while two instances constructed with the **same** `identifierSeed` still mint byte-identical sequences (AB-92's reproduction guarantee is unchanged).
 
 ```typescript
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 
 const a = createManualRuntimeServices({ identifierSeed: 'runtime-a' });
 const b = createManualRuntimeServices({ identifierSeed: 'runtime-b' });
@@ -490,7 +490,7 @@ c.identifiers.next('conversation'); // identical to a's own first `conversation`
 The runtime service is also the ownership seam for cleanup. `deferred.track(promise, label)` records fire-and-forget work, and `await deferred.drain()` returns both settled outcomes and labels that remain outstanding. Use the returned `outstanding` list in a test or shutdown report; do not turn a still-running promise into a successful cleanup result merely because its abort signal fired.
 
 ```typescript
-import { createManualRuntimeServices } from '@corvidae/lifecycle';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 
 const runtime = createManualRuntimeServices({ identifierSeed: 'test' });
 runtime.deferred.track(Promise.resolve(), 'audit-write');
@@ -530,4 +530,4 @@ bun run typecheck
 bun run test
 ```
 
-From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@corvidae/lifecycle` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.
+From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@lostgradient/lifecycle` for this workspace or `bun run validate` for the complete workspace. Formatting is configured at the root. This library has no build or publishing command.

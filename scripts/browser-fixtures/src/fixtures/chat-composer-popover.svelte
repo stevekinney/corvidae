@@ -4,7 +4,7 @@
     type ChatComposerPopoverSelection,
     Chat,
     createConversation,
-  } from '@corvidae/chat';
+  } from '@lostgradient/chat';
 
   type SlashCommand = {
     value: string;

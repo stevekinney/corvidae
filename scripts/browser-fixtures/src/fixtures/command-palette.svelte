@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, CommandItem, CommandPalette } from '@corvidae/cinder';
+  import { Button, CommandItem, CommandPalette } from '@lostgradient/cinder';
 
   let open = $state(false);
   let triggerRef: HTMLElement | null = $state(null);

@@ -9,7 +9,7 @@ import {
   type ComponentEntry,
   type FixtureCategory,
   type ManifestFixtureEntry,
-} from '@corvidae/testing';
+} from '@lostgradient/testing';
 
 export type FixtureManifest = { digest: string; entries: ComponentEntry[] };
 

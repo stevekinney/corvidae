@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { TypedEventTarget } from '@corvidae/lifecycle';
+import { TypedEventTarget } from '@lostgradient/lifecycle';
 
 import type { SkillAdmissionPolicy } from '../../src/admission';
 import { createFilesystemArtifactLoader } from '../../src/client/artifact-loader';

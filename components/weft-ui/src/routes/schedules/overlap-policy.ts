@@ -11,10 +11,10 @@
  * layout/structure, not for this specific string).
  *
  * Values/labels use the engine's actual `ScheduleOverlapPolicy` vocabulary
- * (`skip | queue | cancel-running | allow`, `@corvidae/weft`), not the
+ * (`skip | queue | cancel-running | allow`, `@lostgradient/weft`), not the
  * design mock's alternate "Buffer one / Cancel other / Allow all" labels.
  */
-import type { ScheduleOverlapPolicy } from '@corvidae/weft';
+import type { ScheduleOverlapPolicy } from '@lostgradient/weft';
 
 export interface OverlapPolicyDescriptor {
   readonly value: ScheduleOverlapPolicy;

@@ -14,7 +14,7 @@
  * shows no JSON input for this builder, only a read-only equivalent).
  * `query-builder.svelte` is the thin UI wrapper.
  */
-import type { InvocationRuleCondition } from '@corvidae/cinder';
+import type { InvocationRuleCondition } from '@lostgradient/cinder';
 
 import type { AttributeFilter, AttributeScalar } from '../../../lib/attribute-filters.ts';
 

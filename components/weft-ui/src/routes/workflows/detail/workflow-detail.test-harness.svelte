@@ -8,7 +8,7 @@
    * (module doc), not a prop, so the test itself drives the id via
    * `router.navigate('/workflows/:id')` before rendering.
    */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   import type { Principal } from '../../../lib/scopes.svelte.ts';

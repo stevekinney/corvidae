@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
-import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@corvidae/testing';
+import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
 import { pushEscapeHandler, resetEscapeStack } from '../../_internal/overlay.ts';
 import type { ToastApi } from '../../_internal/toast-context.ts';
 

@@ -8,7 +8,7 @@ Place it as the first focusable element in your layout and point `target` at the
 
 ```svelte
 <script lang="ts">
-  import { SkipLink } from '@corvidae/cinder';
+  import { SkipLink } from '@lostgradient/cinder';
 </script>
 
 <SkipLink target="main-content">Skip to main content</SkipLink>

@@ -1,7 +1,7 @@
-import { createToolbox } from '@corvidae/armorer';
-import { Conversation, createConversationHistory } from '@corvidae/conversationalist';
-import { createManualRuntimeServices, HookRegistry } from '@corvidae/lifecycle';
-import { MemoryStorage, textValueStore } from '@corvidae/weft';
+import { createToolbox } from 'armorer';
+import { Conversation, createConversationHistory } from 'conversationalist';
+import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentSession } from '../agent-session';
@@ -469,7 +469,7 @@ describe("createBarrierRegistry — placement at AB-95's nine coordination point
   });
 
   it('a signal delivery, gated before createDurableMultiAgentHarness.signal()', async () => {
-    const { workflow } = await import('@corvidae/weft');
+    const { workflow } = await import('@lostgradient/weft');
     const { createDurableMultiAgentHarness } = await import('./durable-multi-agent-harness');
 
     const registry = createBarrierRegistry();

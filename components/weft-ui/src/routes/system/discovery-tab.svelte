@@ -6,7 +6,7 @@
    * "required scope" is honestly absent) + raw-JSON toggle, plus the MCP
    * sub-view (`mcp-panel.svelte`).
    */
-  import { Badge, CodeBlock, Segment, SegmentedControl, Table } from '@corvidae/cinder';
+  import { Badge, CodeBlock, Segment, SegmentedControl, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { codeHighlighter } from '../../lib/code-highlighter.ts';

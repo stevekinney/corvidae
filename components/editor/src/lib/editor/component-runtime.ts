@@ -13,7 +13,7 @@
  * Upstream drew the command names from a single `./commands.ts`; corvidae split
  * that module into `commands-blocks`, `commands-links`, `commands-marks` and
  * `commands-state`, so each name is re-exported from its new home. The
- * placeholder configuration types come from `@corvidae/markdown`'s single source
+ * placeholder configuration types come from `@lostgradient/markdown`'s single source
  * export rather than upstream's `@lostgradient/markdown/templates/types`
  * subpath, which corvidae's one-key `exports` map does not carry.
  */
@@ -21,7 +21,7 @@
 export type {
   PlaceholderCompletionConfiguration,
   PlaceholderDecorationConfiguration,
-} from '@corvidae/markdown';
+} from '@lostgradient/markdown';
 export { createEditorAttachment } from './attach.ts';
 export {
   redo,

@@ -1,4 +1,4 @@
-import { hmacSha256HexSync, timingSafeEqualHex } from '@corvidae/cryptography';
+import { hmacSha256HexSync, timingSafeEqualHex } from '@lostgradient/cryptography';
 import {
   ApprovalBindingError,
   type ApprovalStateStore,

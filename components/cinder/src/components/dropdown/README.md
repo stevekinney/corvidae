@@ -8,7 +8,7 @@ Composite dropdown root that coordinates the trigger, menu, and item subcomponen
 
 ```svelte
 <script lang="ts">
-  import { Dropdown } from '@corvidae/cinder';
+  import { Dropdown } from '@lostgradient/cinder';
 </script>
 
 <Dropdown id="dropdown-actions">
@@ -23,7 +23,7 @@ Composite dropdown root that coordinates the trigger, menu, and item subcomponen
 </Dropdown>
 ```
 
-The leaves remain importable individually for à-la-carte builds — see `@corvidae/cinder`, `@corvidae/cinder`, `@corvidae/cinder`, `@corvidae/cinder`, `@corvidae/cinder`, and `@corvidae/cinder`.
+The leaves remain importable individually for à-la-carte builds — see `@lostgradient/cinder`, `@lostgradient/cinder`, `@lostgradient/cinder`, `@lostgradient/cinder`, `@lostgradient/cinder`, and `@lostgradient/cinder`.
 
 `Dropdown` supports two mutually exclusive APIs: the compound `Dropdown.Trigger`/`Dropdown.Menu` composition shown above, and a legacy `trigger`/`open` snippet-prop API. Do not mix the two on the same instance.
 

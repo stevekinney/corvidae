@@ -4,7 +4,7 @@
  * These types mirror the JSON Schema documents in `./protocol-schemas.ts`
  * field-for-field. The runtime parser guards in `./protocol.ts` enforce the
  * shapes described here at the trust boundary. They are re-exported from
- * `@corvidae/weft` (via `./protocol.ts`) so the public surface remains
+ * `@lostgradient/weft` (via `./protocol.ts`) so the public surface remains
  * a single import path.
  *
  * @module worker/protocol-messages
@@ -17,7 +17,7 @@ import type { RemoteWorkerProtocolVersion } from './protocol-version.ts';
  *
  * @example
  * ```ts
- * import type { RemoteWorkerJsonValue } from '@corvidae/weft';
+ * import type { RemoteWorkerJsonValue } from '@lostgradient/weft';
  *
  * const payload: RemoteWorkerJsonValue = { amount: 42, memo: null };
  * ```
@@ -35,7 +35,7 @@ export type RemoteWorkerJsonValue =
  *
  * @example
  * ```ts
- * import type { RemoteWorkerCapabilities } from '@corvidae/weft';
+ * import type { RemoteWorkerCapabilities } from '@lostgradient/weft';
  *
  * const capabilities: RemoteWorkerCapabilities = { region: 'us-west', gpu: false };
  * ```
@@ -66,7 +66,7 @@ export type RemoteWorkerCapabilities = Readonly<Record<string, RemoteWorkerJsonV
  *
  * @example
  * ```ts
- * import type { RegisterMessage } from '@corvidae/weft';
+ * import type { RegisterMessage } from '@lostgradient/weft';
  *
  * const message: RegisterMessage = {
  *   type: 'register',
@@ -91,7 +91,7 @@ export type RegisterMessage = {
  *
  * @example
  * ```ts
- * import type { HeartbeatMessage } from '@corvidae/weft';
+ * import type { HeartbeatMessage } from '@lostgradient/weft';
  *
  * const message: HeartbeatMessage = { type: 'heartbeat', workerId: 'worker-1' };
  * ```
@@ -116,7 +116,7 @@ export type HeartbeatMessage = {
  *
  * @example
  * ```ts
- * import type { ActivityHeartbeatMessage } from '@corvidae/weft';
+ * import type { ActivityHeartbeatMessage } from '@lostgradient/weft';
  *
  * const message: ActivityHeartbeatMessage = {
  *   type: 'activityHeartbeat',
@@ -138,7 +138,7 @@ export type ActivityHeartbeatMessage = {
  *
  * @example
  * ```ts
- * import type { CompletedTaskResultMessage } from '@corvidae/weft';
+ * import type { CompletedTaskResultMessage } from '@lostgradient/weft';
  *
  * const message: CompletedTaskResultMessage = {
  *   type: 'taskResult',
@@ -169,7 +169,7 @@ export type CompletedTaskResultMessage = {
  *
  * @example
  * ```ts
- * import type { FailedTaskResultMessage } from '@corvidae/weft';
+ * import type { FailedTaskResultMessage } from '@lostgradient/weft';
  *
  * const message: FailedTaskResultMessage = {
  *   type: 'taskResult',
@@ -196,7 +196,7 @@ export type FailedTaskResultMessage = {
  *
  * @example
  * ```ts
- * import type { CancelledTaskResultMessage } from '@corvidae/weft';
+ * import type { CancelledTaskResultMessage } from '@lostgradient/weft';
  *
  * const message: CancelledTaskResultMessage = {
  *   type: 'taskResult',
@@ -240,7 +240,7 @@ export type CancelledTaskResultMessage = {
  *
  * @example
  * ```ts
- * import type { RegisterAckMessage } from '@corvidae/weft';
+ * import type { RegisterAckMessage } from '@lostgradient/weft';
  *
  * const message: RegisterAckMessage = {
  *   type: 'registerAck',
@@ -278,7 +278,7 @@ export type RegisterAckMessage = {
  *
  * @example
  * ```ts
- * import type { RegisterErrorMessage } from '@corvidae/weft';
+ * import type { RegisterErrorMessage } from '@lostgradient/weft';
  *
  * const message: RegisterErrorMessage = {
  *   type: 'registerError',
@@ -306,7 +306,7 @@ export type RegisterErrorMessage = {
  *
  * @example
  * ```ts
- * import type { ProtocolErrorMessage } from '@corvidae/weft';
+ * import type { ProtocolErrorMessage } from '@lostgradient/weft';
  *
  * const message: ProtocolErrorMessage = {
  *   type: 'protocolError',
@@ -327,7 +327,7 @@ export type ProtocolErrorMessage = {
  *
  * @example
  * ```ts
- * import type { TaskMessage } from '@corvidae/weft';
+ * import type { TaskMessage } from '@lostgradient/weft';
  *
  * const message: TaskMessage = {
  *   type: 'task',
@@ -369,7 +369,7 @@ export type TaskMessage = {
  *
  * @example
  * ```ts
- * import type { CancelMessage } from '@corvidae/weft';
+ * import type { CancelMessage } from '@lostgradient/weft';
  *
  * const message: CancelMessage = {
  *   type: 'cancel',
@@ -389,7 +389,7 @@ export type CancelMessage = {
  *
  * @example
  * ```ts
- * import type { ShutdownMessage } from '@corvidae/weft';
+ * import type { ShutdownMessage } from '@lostgradient/weft';
  *
  * const message: ShutdownMessage = { type: 'shutdown' };
  * ```
@@ -421,7 +421,7 @@ export type ShutdownMessage = {
  *
  * @example
  * ```ts
- * import type { TaskResultAckMessage } from '@corvidae/weft';
+ * import type { TaskResultAckMessage } from '@lostgradient/weft';
  *
  * const message: TaskResultAckMessage = {
  *   type: 'taskResultAck',

@@ -47,7 +47,7 @@ import type { WorkflowLogRecord } from './workflow-log.ts';
  *
  * @example Start a delayed workflow with tags and search attributes
  * ```ts
- * import { workflow, Engine, type StartOptions } from '@corvidae/weft';
+ * import { workflow, Engine, type StartOptions } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(
@@ -157,7 +157,7 @@ export interface StartWorkflowOptions<TServices = unknown> extends StartOptions<
  *
  * @example
  * ```ts
- * import type { StartOrSignalOptions } from '@corvidae/weft';
+ * import type { StartOrSignalOptions } from '@lostgradient/weft';
  *
  * const options: StartOrSignalOptions = {
  *   id: 'github:installations:42:sync',
@@ -190,7 +190,7 @@ export interface StartOrSignalOptions<TServices = unknown> extends StartOptions<
  *
  * @example
  * ```ts
- * import { workflow, Engine, type ForkOptions } from '@corvidae/weft';
+ * import { workflow, Engine, type ForkOptions } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * engine.register(workflow({ name: 'process' }).execute(async function* () { return 'done'; }));
@@ -239,7 +239,7 @@ export interface ForkOptions {
  *
  * @example
  * ```ts
- * import { Engine, type EngineOptions } from '@corvidae/weft';
+ * import { Engine, type EngineOptions } from '@lostgradient/weft';
  *
  * const options: EngineOptions = {
  *   development: true,
@@ -562,7 +562,7 @@ export interface EngineOptions<TServices = unknown> {
  *
  * @example
  * ```ts
- * import type { ActivityExecutionOptions } from '@corvidae/weft';
+ * import type { ActivityExecutionOptions } from '@lostgradient/weft';
  * const execution: ActivityExecutionOptions = { mode: 'remote', queue: 'payments' };
  * ```
  */

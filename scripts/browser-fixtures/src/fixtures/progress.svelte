@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Progress } from '@corvidae/cinder';
+  import { Progress } from '@lostgradient/cinder';
 </script>
 
 <div class="fixture-stack">

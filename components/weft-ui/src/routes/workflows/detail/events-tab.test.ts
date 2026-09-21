@@ -6,7 +6,7 @@ import type {
   WorkflowEventTail,
   WorkflowState,
   WorkflowTimelineEntry,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 import EventsTabHarness from './events-tab.test-harness.svelte';
 import {

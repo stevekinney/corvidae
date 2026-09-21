@@ -9,7 +9,7 @@
  * `fixtures/workflows.ts` for the append-only contract this file
  * participates in.
  */
-import { workflow, type SubmitReviewOptions, type WorkflowHandle } from '@corvidae/weft';
+import { workflow, type SubmitReviewOptions, type WorkflowHandle } from '@lostgradient/weft';
 
 interface ContentReviewInput {
   documentTitle: string;

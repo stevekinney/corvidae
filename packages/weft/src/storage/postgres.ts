@@ -17,7 +17,7 @@ export type { PostgresPool, PostgresPoolClient };
  *
  * @example
  * ```ts
- * import { PostgresStorage, type PostgresStorageOptions } from '@corvidae/weft';
+ * import { PostgresStorage, type PostgresStorageOptions } from '@lostgradient/weft';
  *
  * const options: PostgresStorageOptions = {
  *   url: 'postgresql://user:password@localhost:5432/weft',
@@ -85,8 +85,8 @@ function postgresPoolFactory(url: string): PostgresPool {
  *
  * @example
  * ```ts
- * import { PostgresStorage } from '@corvidae/weft';
- * import { Engine } from '@corvidae/weft';
+ * import { PostgresStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
  *
  * await using storage = new PostgresStorage({
  *   url: process.env['DATABASE_URL']!,

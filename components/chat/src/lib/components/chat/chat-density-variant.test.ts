@@ -21,7 +21,7 @@
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 // setupHappyDom() MUST run before any @testing-library/svelte import.
 setupHappyDom();

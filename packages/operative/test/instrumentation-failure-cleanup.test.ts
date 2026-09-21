@@ -1,5 +1,5 @@
-import { createTestToolbox, createTool } from '@corvidae/armorer';
-import { Conversation } from '@corvidae/conversationalist';
+import { createTestToolbox, createTool } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { SpanStatusCode } from '@opentelemetry/api';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

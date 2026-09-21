@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import type { Snippet } from 'svelte';
 import { createRawSnippet, mount, tick, unmount } from 'svelte';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import type { TreeItemProps } from '../tree-item/tree-item.types.ts';
 
 setupHappyDom();

@@ -5,7 +5,7 @@
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient, type PendingReviewEntry } from '@corvidae/weft';
+import { HttpClient, type PendingReviewEntry } from '@lostgradient/weft';
 
 import DashboardCardHarness from './dashboard-card-test-harness.test-harness.svelte';
 

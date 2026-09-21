@@ -114,7 +114,7 @@ describe('check-prose-component-references', () => {
   test('does not treat another Lost Gradient package export as a Cinder component', () => {
     expect(
       findProseReferenceFailures({
-        source: 'Use `DiffViewer` from `@corvidae/editor` for document review.',
+        source: 'Use `DiffViewer` from `@lostgradient/editor` for document review.',
         filePath: 'fixture.md',
         componentNames,
         exampleIds: new Set(),
@@ -126,7 +126,7 @@ describe('check-prose-component-references', () => {
   test('does not let a later external package reference exempt a dangling component', () => {
     expect(
       findProseReferenceFailures({
-        source: 'Use `missing-component` instead. Use `DiffViewer` from `@corvidae/editor`.',
+        source: 'Use `missing-component` instead. Use `DiffViewer` from `@lostgradient/editor`.',
         filePath: 'fixture.md',
         componentNames,
         exampleIds: new Set(),
@@ -234,7 +234,7 @@ describe('check-prose-component-references', () => {
     ).toEqual([{ reference: 'missing-component', filePath: 'components.json' }]);
     expect(
       findProseReferenceFailures({
-        source: "import { MissingComponent } from '@corvidae/cinder';",
+        source: "import { MissingComponent } from '@lostgradient/cinder';",
         filePath: 'fixture.svelte',
         componentNames,
         exampleIds: new Set(),
@@ -246,7 +246,7 @@ describe('check-prose-component-references', () => {
   test('allows public root exports that are not component directory names', () => {
     expect(
       findProseReferenceFailures({
-        source: "import '@corvidae/cinder'; import { Icon } from '@corvidae/cinder';",
+        source: "import '@lostgradient/cinder'; import { Icon } from '@lostgradient/cinder';",
         filePath: 'components.json',
         componentNames,
         exampleIds: new Set(),
@@ -259,16 +259,16 @@ describe('check-prose-component-references', () => {
     expect(
       componentDocumentationProse(
         'button/README.md',
-        "Button introduction.\n\n## Usage\n\n```svelte\nimport { Button } from '@corvidae/cinder';\n```",
+        "Button introduction.\n\n## Usage\n\n```svelte\nimport { Button } from '@lostgradient/cinder';\n```",
       ),
-    ).toContain('@corvidae/cinder');
+    ).toContain('@lostgradient/cinder');
   });
 
   test('does not let example ids or parent directories validate imports', () => {
     expect(
       findProseReferenceFailures({
         source:
-          "import { MissingComponent, ExperimentalMissingComponent } from '@corvidae/cinder';",
+          "import { MissingComponent, ExperimentalMissingComponent } from '@lostgradient/cinder';",
         filePath: 'fixture.svelte',
         componentNames,
         exampleIds: new Set(['missing-component']),
@@ -292,7 +292,7 @@ test('validates aliased and type-only imports against actual public names', () =
   expect(
     findProseReferenceFailures({
       source:
-        "import { Button as Action, type ButtonSchema as Schema, MissingComponent as Button } from '@corvidae/cinder';",
+        "import { Button as Action, type ButtonSchema as Schema, MissingComponent as Button } from '@lostgradient/cinder';",
       filePath: 'fixture.md',
       componentNames,
       exampleIds: new Set(),
@@ -305,7 +305,7 @@ test('rejects former subpaths even when the component exists and rejects a defau
   expect(
     findProseReferenceFailures({
       source:
-        "import Button from '@corvidae/cinder'; import { Button } from '@corvidae/cinder/button';",
+        "import Button from '@lostgradient/cinder'; import { Button } from '@lostgradient/cinder/button';",
       filePath: 'fixture.md',
       componentNames,
       exampleIds: new Set(),
@@ -313,15 +313,15 @@ test('rejects former subpaths even when the component exists and rejects a defau
     }),
   ).toEqual([
     { reference: 'default', filePath: 'fixture.md' },
-    { reference: '@corvidae/cinder/button', filePath: 'fixture.md' },
+    { reference: '@lostgradient/cinder/button', filePath: 'fixture.md' },
   ]);
 });
 
 test('retains multiline root imports from fenced usage examples', () => {
   const prose = componentDocumentationProse(
     'button/README.md',
-    "Introduction.\n\n## Usage\n\n```svelte\nimport {\n  Button,\n  type ButtonSchema,\n} from '@corvidae/cinder';\n```",
+    "Introduction.\n\n## Usage\n\n```svelte\nimport {\n  Button,\n  type ButtonSchema,\n} from '@lostgradient/cinder';\n```",
   );
   expect(prose).toContain('ButtonSchema');
-  expect(prose).toContain('@corvidae/cinder');
+  expect(prose).toContain('@lostgradient/cinder');
 });

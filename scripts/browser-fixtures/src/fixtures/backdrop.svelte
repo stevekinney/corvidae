@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Backdrop, Button, Spinner } from '@corvidae/cinder';
+  import { Backdrop, Button, Spinner } from '@lostgradient/cinder';
 
   let open = $state(false);
   let invisible = $state(false);

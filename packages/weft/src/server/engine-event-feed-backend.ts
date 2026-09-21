@@ -46,11 +46,11 @@ import {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  * import {
  *   createEngineEventFeedBackend,
  *   createWorkflowEventFeed,
- * } from '@corvidae/weft';
+ * } from '@lostgradient/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const workflowEventFeed = createWorkflowEventFeed(createEngineEventFeedBackend(engine));

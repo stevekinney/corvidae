@@ -6,7 +6,7 @@ Inline shortcut hint that renders a key combo via Kbd alongside an action label,
 
 ```svelte
 <script lang="ts">
-  import { ShortcutHint } from '@corvidae/cinder';
+  import { ShortcutHint } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">

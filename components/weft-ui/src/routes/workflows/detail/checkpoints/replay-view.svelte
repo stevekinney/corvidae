@@ -6,9 +6,9 @@
    * side-effecting READ (`weft.workflows.replay`, `workflows:read` scope),
    * never mutates the live workflow.
    */
-  import { DescriptionList, EmptyState, PayloadInspector, Skeleton } from '@corvidae/cinder';
+  import { DescriptionList, EmptyState, PayloadInspector, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import { Rewind } from 'lucide-svelte';
 
   import { getPrincipalStore, scopeGate } from '../../../../lib/scopes.svelte.ts';

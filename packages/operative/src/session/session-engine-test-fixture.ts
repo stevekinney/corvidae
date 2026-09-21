@@ -8,7 +8,7 @@ import {
   type SignalDeliveryOptions,
   type UpdateDefinition,
   type WorkflowState,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { afterEach } from 'bun:test';
 import {
   createRecoveryHandle,

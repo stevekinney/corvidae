@@ -62,7 +62,7 @@
     type SelectionAnchorPosition,
   } from './review-editor-selection-geometry.ts';
   import DiffViewer from '../diff-viewer/diff-viewer.svelte';
-  import { Button, Callout, SelectionPopover } from '@corvidae/cinder';
+  import { Button, Callout, SelectionPopover } from '@lostgradient/cinder';
   import { createReviewEditorExportActions } from './review-editor-exports.ts';
   import type {
     MarkdownSummaryOptions,

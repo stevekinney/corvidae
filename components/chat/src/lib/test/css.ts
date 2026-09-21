@@ -1,7 +1,7 @@
 /**
  * CSS test helpers. Internal — not part of the public package surface.
  *
- * Mirrors `@corvidae/cinder`'s own internal `src/test/css.ts` helper
+ * Mirrors `@lostgradient/cinder`'s own internal `src/test/css.ts` helper
  * (`injectStrippedStyles`), adapted for Chat: Chat components rely on Cinder's
  * `.cinder-sr-only` utility rather than declaring their own visually-hidden
  * recipe, so a Chat test asserting real `getComputedStyle` values on a

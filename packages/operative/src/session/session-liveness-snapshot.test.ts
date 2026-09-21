@@ -1,4 +1,4 @@
-import { yieldToPortableEventLoop } from '@corvidae/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createSessionHandleFixture } from './session-handle-test-support';

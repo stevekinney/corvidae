@@ -9,8 +9,8 @@
  * DEP-583: WYSIWYG invalid-token decoration for saved-prompt template authoring.
  */
 
-import type { PlaceholderCandidate } from '@corvidae/markdown';
-import { parsePlaceholderTokens, validatePlaceholderTokens } from '@corvidae/markdown';
+import type { PlaceholderCandidate } from '@lostgradient/markdown';
+import { parsePlaceholderTokens, validatePlaceholderTokens } from '@lostgradient/markdown';
 import type { Node as ProseMirrorNode } from 'prosemirror-model';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';

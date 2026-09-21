@@ -1,14 +1,14 @@
 /**
  * Mirrors the former `components/editor/src/ssr-import.test.ts`, migrated here
- * when `@cinder/editor` was dissolved into `@corvidae/markdown` (headless half)
- * and `@corvidae/editor` (this ProseMirror/Milkdown half). See
+ * when `@cinder/editor` was dissolved into `@lostgradient/markdown` (headless half)
+ * and `@lostgradient/editor` (this ProseMirror/Milkdown half). See
  * `docs/decisions/package-boundaries.md`.
  */
 
 import { describe, expect, it } from 'bun:test';
 import { relative, resolve } from 'node:path';
 
-describe('@corvidae/editor test isolation', () => {
+describe('@lostgradient/editor test isolation', () => {
   it('keeps process-global module mocks out of the shared test process', async () => {
     const violations: string[] = [];
     // `bun run test` discovers both src/ and scripts/, so scan the package

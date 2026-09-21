@@ -6,7 +6,7 @@ Responsive SVG time × frequency heatmap for visualizing audio spectrogram data.
 
 ```svelte
 <script lang="ts">
-  import { Spectrogram } from '@corvidae/cinder';
+  import { Spectrogram } from '@lostgradient/cinder';
 </script>
 
 <Spectrogram label="Voice spectrogram" frames={[]} height={220}>

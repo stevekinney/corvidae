@@ -8,7 +8,7 @@
    */
   import { untrack } from 'svelte';
 
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
 
   import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 

@@ -1,4 +1,4 @@
-import type { TextValueStore } from '@corvidae/weft';
+import type { TextValueStore } from '@lostgradient/weft';
 
 import {
   createSkillArtifact,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Container } from '@corvidae/cinder';
+  import { Container } from '@lostgradient/cinder';
 </script>
 
 <Container maxWidth="prose">

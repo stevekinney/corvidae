@@ -44,7 +44,7 @@
     DropdownTrigger,
     DropdownMenu,
     DropdownItem,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
 
   import { getVisibleComments, isDocumentAnchor } from '../../comments/index.ts';
   import CommentComposer from './comment-composer.svelte';

@@ -6,7 +6,7 @@ Full-featured input for selecting a color via hue, saturation, lightness, and al
 
 ```svelte
 <script lang="ts">
-  import { ColorPicker } from '@corvidae/cinder';
+  import { ColorPicker } from '@lostgradient/cinder';
 </script>
 
 <ColorPicker />

@@ -1,6 +1,6 @@
 /**
  * `WorkflowTailSource` — the per-workflow live event tail (plan §5.1, T1.4):
- * wraps `client.tail(id)` from `@corvidae/weft`.
+ * wraps `client.tail(id)` from `@lostgradient/weft`.
  *
  * **Why an outer reconnect layer on top of `client.tail()`.** The
  * underlying `WorkflowEventTail` already reconnects internally (both its
@@ -48,7 +48,7 @@
  * module-scope set; `import.meta.hot?.dispose` closes them all before Vite
  * swaps this module out.
  */
-import type { WorkflowEvent, WorkflowEventTail } from '@corvidae/weft';
+import type { WorkflowEvent, WorkflowEventTail } from '@lostgradient/weft';
 
 import { computeReconnectDelayMs } from './backoff.ts';
 import type { LiveSource, LiveSourceStatus } from './types.ts';

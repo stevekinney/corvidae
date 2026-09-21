@@ -3,7 +3,7 @@
    * Diagnostics view (plan §9.4 T5.4): all five kinds with the static
    * guidance copy retained verbatim (`diagnostics-guidance.ts`).
    */
-  import { Badge, Button, EmptyState } from '@corvidae/cinder';
+  import { Badge, Button, EmptyState } from '@lostgradient/cinder';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { DIAGNOSTIC_GUIDANCE } from './diagnostics-guidance.ts';

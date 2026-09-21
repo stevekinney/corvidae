@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/armorer",
+  "name": "armorer",
   "description": "A lightweight registry for validated AI tools. Build tools with Zod schemas and metadata, register them in a toolbox, and execute/query them with event hooks.",
   "type": "module",
   "exports": {
@@ -12,17 +12,17 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   },
   "private": true,
   "dependencies": {
-    "@corvidae/cryptography": "workspace:*",
-    "@corvidae/embeddings": "workspace:*",
-    "@corvidae/lifecycle": "workspace:*",
-    "@corvidae/tool-protocol": "workspace:*",
+    "@lostgradient/cryptography": "workspace:*",
+    "@lostgradient/embeddings": "workspace:*",
+    "@lostgradient/lifecycle": "workspace:*",
+    "@lostgradient/tool-protocol": "workspace:*",
     "@modelcontextprotocol/client": "catalog:",
     "@modelcontextprotocol/core": "catalog:",
     "@modelcontextprotocol/server": "catalog:",

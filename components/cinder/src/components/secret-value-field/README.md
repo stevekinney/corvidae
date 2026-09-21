@@ -16,7 +16,7 @@ Masked display for API keys, tokens, and webhook secrets with accessible copy ac
 
 ```svelte
 <script lang="ts">
-  import { SecretValueField } from '@corvidae/cinder';
+  import { SecretValueField } from '@lostgradient/cinder';
 </script>
 
 <!-- Newly-created API key: show once, prompt to copy -->

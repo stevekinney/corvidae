@@ -42,7 +42,7 @@ The practical consequence for you: `scrollToIndex`, `stickToBottom`, and the row
 
 ```svelte
 <script lang="ts">
-  import { VirtualList } from '@corvidae/cinder';
+  import { VirtualList } from '@lostgradient/cinder';
 
   const events = Array.from({ length: 10_000 }, (_, index) => ({
     id: `event-${index}`,
@@ -71,7 +71,7 @@ Use `stickToBottom` for live log tails: appending while the user is already at t
 
 ```svelte
 <script lang="ts">
-  import { VirtualList, type VirtualListRef } from '@corvidae/cinder';
+  import { VirtualList, type VirtualListRef } from '@lostgradient/cinder';
 
   let list = $state<VirtualListRef | undefined>();
 </script>

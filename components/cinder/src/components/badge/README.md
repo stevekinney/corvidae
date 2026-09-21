@@ -8,7 +8,7 @@ Use Badge for attached counts, statuses, and compact annotations; use `Chip mode
 
 ```svelte
 <script lang="ts">
-  import { Badge } from '@corvidae/cinder';
+  import { Badge } from '@lostgradient/cinder';
 </script>
 
 <Badge variant="success">Published</Badge>

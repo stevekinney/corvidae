@@ -64,8 +64,8 @@ interface Waiter {
  *
  * @example
  * ```ts
- * import { serve, TaskQueue } from '@corvidae/weft';
- * import { Engine, MemoryStorage } from '@corvidae/weft';
+ * import { serve, TaskQueue } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * await using server = serve({ engine });

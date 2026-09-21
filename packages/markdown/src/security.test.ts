@@ -16,7 +16,7 @@
  * - Round-trip behavior is predictable
  */
 
-import { isSafeUrl, parse, sanitizeUrl, serialize } from '@corvidae/markdown';
+import { isSafeUrl, parse, sanitizeUrl, serialize } from '@lostgradient/markdown';
 import { describe, expect, it } from 'bun:test';
 
 describe('URL Safety - Protocol Attacks', () => {

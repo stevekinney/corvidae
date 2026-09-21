@@ -277,7 +277,7 @@ describe('TypeScript configuration', () => {
 
   test('COR-1188’s dropped configuration edge is the only one, and vendoring closes it', () => {
     const weft = committedPlans.weft.plan;
-    expect(weft.droppedEdges).toEqual(['@corvidae/weft -> @corvidae/typescript']);
+    expect(weft.droppedEdges).toEqual(['@lostgradient/weft -> @lostgradient/typescript']);
     // `planSurface` runs `assertTypeScriptEdgeClosed`, so reaching here is the closure.
     expect(weft.typescript.vendoredInto).toContain('packages/weft');
     const cinder = committedPlans.cinder.plan;
@@ -292,7 +292,7 @@ describe('emitted source', () => {
       const emitted = Object.keys(plan.files).filter((path) =>
         path.startsWith(`${workspace.targetDirectory}/src/`),
       );
-      // `@corvidae/typescript` is three JSON files and no source tree, which is why this asks for
+      // `@lostgradient/typescript` is three JSON files and no source tree, which is why this asks for
       // a source tree only where corvidae has one.
       const carries = await Bun.file(
         join(corvidaeRoot, workspace.corvidaeDirectory, 'src', 'index.ts'),
@@ -323,7 +323,7 @@ describe('emitted source', () => {
   });
 
   test('the excluded chat-room application is emitted nowhere and holds nothing up', () => {
-    // `@corvidae/chat-room` is excluded from the mirror by owner ruling (2026-09-21), decided in
+    // `@lostgradient/chat-room` is excluded from the mirror by owner ruling (2026-09-21), decided in
     // `package-map.json` before the layout is consulted, so the committed cinder plan carries no
     // deferred workspace and nothing lands under the target's application or lab directories.
     const { plan } = committedPlans.cinder;

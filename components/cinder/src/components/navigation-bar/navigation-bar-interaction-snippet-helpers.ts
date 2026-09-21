@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { requiredInstance } from '@corvidae/testing';
+import { requiredInstance } from '@lostgradient/testing';
 import { createRawSnippet } from 'svelte';
 
 export function nestedFieldSnippet(onFieldEscape: (event: KeyboardEvent) => void) {

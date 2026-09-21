@@ -23,9 +23,9 @@
     DescriptionList,
     Input,
     PayloadInspector,
-  } from '@corvidae/cinder';
+  } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import type { HttpClient, WorkflowState } from '@corvidae/weft';
+  import type { HttpClient, WorkflowState } from '@lostgradient/weft';
   import { CircleX, Plus, X } from 'lucide-svelte';
 
   import { queryKeys } from '../../../lib/query.ts';

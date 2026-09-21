@@ -20,8 +20,8 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
 
-import type { ApprovalResolution } from '@corvidae/cinder';
-import { setupHappyDom } from '@corvidae/testing';
+import type { ApprovalResolution } from '@lostgradient/cinder';
+import { setupHappyDom } from '@lostgradient/testing';
 import { SubscribeEventLog } from '../../../test/subscribe-event-log.svelte.ts';
 import type { ChatRowContext, TypingParticipant } from '../chat.types.ts';
 import type { ConversationHistory, Message, MessageInput } from '../conversation-model.ts';

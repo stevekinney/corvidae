@@ -27,7 +27,7 @@
  *   - `--strict`: exit non-zero when any violation is found (no baseline — this is
  *     a zero-tolerance gate for newly introduced literals, not a burn-down).
  *
- * Run via `bun run --filter=@corvidae/cinder tokens:literals` (report) or
+ * Run via `bun run --filter=@lostgradient/cinder tokens:literals` (report) or
  * `tokens:literals --strict` (gate; wired into `lint`).
  */
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MatrixChart } from '@corvidae/cinder';
+  import { MatrixChart } from '@lostgradient/cinder';
 
   const data = [
     { actual: 'Cat', predicted: 'Cat', count: 50 },

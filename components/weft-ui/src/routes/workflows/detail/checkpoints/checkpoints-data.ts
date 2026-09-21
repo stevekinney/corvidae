@@ -39,7 +39,7 @@ import type {
   ForkOptions,
   HttpClient,
   WorkflowReplay,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
 
 /**

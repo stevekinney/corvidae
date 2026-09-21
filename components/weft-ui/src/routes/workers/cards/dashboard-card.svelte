@@ -9,7 +9,7 @@
    * carries no prop generics — so this builds its own scoped queries rather
    * than receiving them from the dashboard route.
    */
-  import { Badge, Card, EmptyState, Skeleton, Statistic } from '@corvidae/cinder';
+  import { Badge, Card, EmptyState, Skeleton, Statistic } from '@lostgradient/cinder';
 
   import { getClient } from '../../../lib/client.ts';
   import { faultTreatment } from '../../../lib/faults.ts';

@@ -9,7 +9,7 @@ Mount one `<ToastRegion />` near the root of the app — `+layout.svelte` for Sv
 ```svelte
 <!-- +layout.svelte -->
 <script lang="ts">
-  import { ToastRegion } from '@corvidae/cinder';
+  import { ToastRegion } from '@lostgradient/cinder';
   let { children } = $props();
 </script>
 
@@ -38,7 +38,7 @@ Import the hook from the toast-region subpath. Call `useToast()` from anywhere i
 
 ```svelte
 <script lang="ts">
-  import { useToast } from '@corvidae/cinder';
+  import { useToast } from '@lostgradient/cinder';
   const toast = useToast();
 </script>
 

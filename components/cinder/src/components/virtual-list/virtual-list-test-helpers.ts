@@ -2,7 +2,7 @@
 import type { Snippet } from 'svelte';
 import { createRawSnippet } from 'svelte';
 
-import { requiredInstance } from '@corvidae/testing';
+import { requiredInstance } from '@lostgradient/testing';
 import type { VirtualListRowContext } from './virtual-list.types.ts';
 
 export function makeItems(count: number): string[] {

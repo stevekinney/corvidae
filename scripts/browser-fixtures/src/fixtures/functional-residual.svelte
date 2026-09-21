@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CodeBlock, Feed, Tree } from '@corvidae/cinder';
+  import { CodeBlock, Feed, Tree } from '@lostgradient/cinder';
 
   type ReorderTarget = { id: string; position: 'before' | 'after' | 'child' };
   const treeItems = [

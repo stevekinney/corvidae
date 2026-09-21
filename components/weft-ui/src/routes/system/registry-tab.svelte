@@ -8,14 +8,14 @@
    * transport (see `discovery-client.ts`'s module doc for the same
    * observation about a different surface) — correct, sanctioned usage per
    * PROJECT-BRIEF, and exercisable end-to-end against `bun run dev:server`
-   * as of `@corvidae/weft@0.12.0` (`scripts/dev-server.ts`'s plain
+   * as of `@lostgradient/weft@0.12.0` (`scripts/dev-server.ts`'s plain
    * `serve()` now routes `/jsonrpc`).
    */
-  import { Badge, EmptyState, Table, Skeleton } from '@corvidae/cinder';
+  import { Badge, EmptyState, Table, Skeleton } from '@lostgradient/cinder';
   import { GitBranch, Zap } from 'lucide-svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import type { RetryPolicy } from '@corvidae/weft';
+  import type { RetryPolicy } from '@lostgradient/weft';
 
   import { getClient } from '../../lib/client.ts';
   import { formatDuration } from '../../lib/format/index.ts';
@@ -66,7 +66,7 @@
   let selectedType = $state<string | null>(null);
 
   /**
-   * Weft's `Duration` (`@corvidae/weft`) is `number | string` — a
+   * Weft's `Duration` (`@lostgradient/weft`) is `number | string` — a
    * numeric activity timeout is milliseconds, a string one is already
    * unit-qualified (e.g. `'30s'`). Rendering a bare number verbatim reads
    * as an ambiguous, unitless value next to string durations; the numeric
@@ -78,7 +78,7 @@
   }
 
   /**
-   * A single `retry: 3x` badge understated `RetryPolicy` (`@corvidae/weft`)
+   * A single `retry: 3x` badge understated `RetryPolicy` (`@lostgradient/weft`)
    * down to only `maxAttempts` — hiding whether retries back off over
    * seconds or hours (`initialBackoff`/`backoffMultiplier`/`maxBackoff`,
    * each also `Duration`-typed) and which failures never retry at all
@@ -142,7 +142,7 @@
     {/snippet}
   </EmptyState>
   <ol class="weft-registry-onboarding">
-    <li>Install the SDK — <code>bun add @corvidae/weft</code></li>
+    <li>Install the SDK — <code>bun add @lostgradient/weft</code></li>
     <li>Define a workflow — <code>workflow({'{'} name {'}'} ).execute(...)</code></li>
     <li>Connect a worker — start the process that registers it with this engine</li>
   </ol>

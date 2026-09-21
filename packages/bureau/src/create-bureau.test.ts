@@ -12,20 +12,20 @@ import {
   type InputDetector,
   type PendingToolApproval,
   type ToolExecutionResult,
-} from '@corvidae/armorer';
-import { Conversation, createConversationHistory, getMessages } from '@corvidae/conversationalist';
-import type { RuntimeTimeoutHandle } from '@corvidae/lifecycle';
+} from 'armorer';
+import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
+import type { RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 import {
   CompletableEventTarget,
   createManualRuntimeServices,
   TypedEventTarget,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 import {
   createInMemoryMemoryRecordStorage,
   createMemory,
   createMockEmbedder,
   type Memory,
-} from '@corvidae/memory';
+} from '@lostgradient/memory';
 import {
   AbortAgentRunError,
   type ActiveRun,
@@ -66,14 +66,14 @@ import {
   TaskDispatchedEvent,
   TaskPreemptedEvent,
   type Toolbox,
-} from '@corvidae/operative';
+} from '@lostgradient/operative';
 import {
   discoverSkills,
   SkillActivatedEvent,
   type SkillCatalogRevision,
   SkillLoadedEvent,
-} from '@corvidae/skills';
-import type { ConditionalTextValueStore } from '@corvidae/weft';
+} from '@lostgradient/skills';
+import type { ConditionalTextValueStore } from '@lostgradient/weft';
 import {
   createFleetEventFeed,
   encode,
@@ -83,7 +83,7 @@ import {
   ScheduleHandle,
   textValueStore,
   yieldToPortableEventLoop,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { z } from 'zod';
 
@@ -20837,7 +20837,7 @@ describe('createBureau schedule tick observation (COR-660)', () => {
 
 // ---------------------------------------------------------------------------
 // COR-1226 — Bureau's skill tooling must be the guardrail-scanning
-// implementation from `@corvidae/skills`, not a second inline copy that skips
+// implementation from `@lostgradient/skills`, not a second inline copy that skips
 // the scan. Skill content is untrusted instruction input.
 // ---------------------------------------------------------------------------
 describe('skill guardrail scanning (COR-1226)', () => {

@@ -2,7 +2,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { requiredInstance, setupHappyDom } from '@corvidae/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { stripCinderComponentsLayer } from '../../test/css.ts';
 import type { TableScrollContainerProps } from './table.types.ts';
 

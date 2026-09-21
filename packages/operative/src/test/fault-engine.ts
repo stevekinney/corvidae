@@ -1,6 +1,6 @@
-import type { AnyToolbox, ToolboxExecuteOptions, ToolError } from '@corvidae/armorer';
-import type { HookRegistrationOptions, RuntimeServices } from '@corvidae/lifecycle';
-import { HookRegistry } from '@corvidae/lifecycle';
+import type { AnyToolbox, ToolboxExecuteOptions, ToolError } from 'armorer';
+import type { HookRegistrationOptions, RuntimeServices } from '@lostgradient/lifecycle';
+import { HookRegistry } from '@lostgradient/lifecycle';
 
 import type { OperativeHookMap } from '../hooks';
 import type {

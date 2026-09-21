@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { resetScrollLock } from '../_internal/overlay.ts';
 import { setupAttachmentTests } from './attachments-test-support.ts';

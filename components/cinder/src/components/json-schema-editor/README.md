@@ -6,8 +6,8 @@ Multi-view editor for authoring JSON Schema documents with form, raw JSON, and d
 
 ```svelte
 <script lang="ts">
-  import { JsonSchemaEditor } from '@corvidae/cinder';
-  import type { JsonSchemaValue } from '@corvidae/cinder';
+  import { JsonSchemaEditor } from '@lostgradient/cinder';
+  import type { JsonSchemaValue } from '@lostgradient/cinder';
 
   let schema = $state<JsonSchemaValue | string>({ type: 'string' });
 </script>

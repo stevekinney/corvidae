@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-import { loadManifest } from '@corvidae/testing';
+import { loadManifest } from '@lostgradient/testing';
 import { expect, test } from './component-page-fixture.ts';
 
 const desktopViewport = { name: 'desktop', width: 1280, height: 900 } as const;

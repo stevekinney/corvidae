@@ -5,7 +5,7 @@
    * retrieves a fresh value. Other components do not subscribe to this
    * result, so it does not need a shared query-cache entry.
    */
-  import { Button, EmptyState, Input, Skeleton } from '@corvidae/cinder';
+  import { Button, EmptyState, Input, Skeleton } from '@lostgradient/cinder';
   import type { StorageConnection } from './storage-client.ts';
   import { ArrowRight, Search } from 'lucide-svelte';
 

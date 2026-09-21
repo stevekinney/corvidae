@@ -17,7 +17,7 @@
  * `*Engine` interface, and a `seed<Domain>()` function — and is merged into
  * this file's `workflows` registry and orchestrated from `seed()` below.
  */
-import { activity, workflow, type WorkflowHandle } from '@corvidae/weft';
+import { activity, workflow, type WorkflowHandle } from '@lostgradient/weft';
 
 import {
   asyncActivityWorkflows,
@@ -232,7 +232,7 @@ export const workflows = {
  * needs — a narrow structural interface rather than the full `Engine<...>`
  * type. The concrete registry type `Engine.create({ workflows })` infers
  * (`EngineCreateWorkflowRegistry<...>`) is not exported from
- * `@corvidae/weft`, and the FULL `Engine<Concrete>` class is not
+ * `@lostgradient/weft`, and the FULL `Engine<Concrete>` class is not
  * structurally assignable to a plain `Engine` parameter (its `register()`
  * method's return type varies with the registry). A single-method interface
  * naming just the four calls `seed` makes sidesteps both problems: TypeScript

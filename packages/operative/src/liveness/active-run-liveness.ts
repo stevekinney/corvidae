@@ -2,7 +2,7 @@ import {
   createDefaultRuntimeServices,
   type RuntimeServices,
   type Subscription,
-} from '@corvidae/lifecycle';
+} from '@lostgradient/lifecycle';
 
 import type { ChildRunDescriptor, ChildRunRegistry } from '../child-run';
 import {

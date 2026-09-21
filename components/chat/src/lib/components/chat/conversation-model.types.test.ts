@@ -18,7 +18,7 @@ import type {
   ToolCall as ConversationalistToolCall,
   ToolCallPair as ConversationalistToolCallPair,
   ToolResult as ConversationalistToolResult,
-} from '@corvidae/conversationalist';
+} from 'conversationalist';
 
 import type {
   ConversationHistory,
@@ -61,13 +61,13 @@ const conversationalistMessage = {
   createdAt: '2026-06-02T00:00:00.000Z',
   metadata: {},
   hidden: false,
-  toolCall: { id: 'call-1', name: 'exports_check', arguments: { package: '@corvidae/cinder' } },
+  toolCall: { id: 'call-1', name: 'exports_check', arguments: { package: '@lostgradient/cinder' } },
 } satisfies Message;
 
 const armorerToolCall = {
   id: 'call-1',
   name: 'exports_check',
-  arguments: { package: '@corvidae/cinder' },
+  arguments: { package: '@lostgradient/cinder' },
 } satisfies ToolCall;
 
 const armorerToolResult = {

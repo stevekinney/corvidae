@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import * as icons from './index.ts';
 
 setupHappyDom();
 const { render, cleanup } = await import('@testing-library/svelte');
-const { Link, LinkIcon } = await import('@corvidae/cinder');
+const { Link, LinkIcon } = await import('@lostgradient/cinder');
 
 describe('icons/index', () => {
   it('exposes the Link icon separately from the Link component through the package root', () => {

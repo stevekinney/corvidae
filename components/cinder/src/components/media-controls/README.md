@@ -6,7 +6,7 @@ Accessible playback controls for play, pause, and replay actions with optional p
 
 ```svelte
 <script lang="ts">
-  import { MediaControls } from '@corvidae/cinder';
+  import { MediaControls } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;">

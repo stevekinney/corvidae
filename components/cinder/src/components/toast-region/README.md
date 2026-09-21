@@ -6,8 +6,8 @@ ToastRegion provides live toast notifications and a `useToast()` controller for 
 
 ```svelte
 <script lang="ts">
-  import { Button } from '@corvidae/cinder';
-  import ToastRegion, { useToast } from '@corvidae/cinder';
+  import { Button } from '@lostgradient/cinder';
+  import ToastRegion, { useToast } from '@lostgradient/cinder';
 </script>
 
 <ToastRegion>

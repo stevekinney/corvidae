@@ -65,7 +65,7 @@
   import ChatReadReceipt from '../message/chat-read-receipt.svelte';
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
-  import { ConfirmDialog } from '@corvidae/cinder';
+  import { ConfirmDialog } from '@lostgradient/cinder';
   import { useChatStreamingState } from './use-chat-streaming-state.svelte.ts';
   import { useChatCommandActions } from './use-chat-command-actions.svelte.ts';
   import { useChatHistoryLifecycle } from './use-chat-history-lifecycle.svelte.ts';
@@ -1981,7 +1981,7 @@
   }
 
   /* Scroll-fade color must match the background set immediately above — the
-   * fade is an opaque overlay, never a mask (see @corvidae/cinder's
+   * fade is an opaque overlay, never a mask (see @lostgradient/cinder's
    * _scroll-fade.css). Scoped to the same [data-surface-mode='default']
    * selector so surfaceMode="transparent" (no owned background above) never
    * gets a var with no correct value to resolve to; the JS attachment is

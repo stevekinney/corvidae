@@ -6,7 +6,7 @@
    * this fixed composition exists instead of passing `children` from a
    * plain `.test.ts` file.
    */
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   import type { Principal } from '../../../lib/scopes.svelte.ts';

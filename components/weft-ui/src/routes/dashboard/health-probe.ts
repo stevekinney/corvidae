@@ -8,7 +8,7 @@
  * dashboard runs its own probe against the same anonymous liveness route
  * rather than reaching into shell internals.
  */
-import type { HttpClient } from '@corvidae/weft';
+import type { HttpClient } from '@lostgradient/weft';
 
 /**
  * Resolves `true` when `GET {baseUrl}/v1/health` responds `ok`; throws

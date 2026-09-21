@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ColorField } from '@corvidae/cinder';
+  import { ColorField } from '@lostgradient/cinder';
 
   let committed = $state('');
 </script>

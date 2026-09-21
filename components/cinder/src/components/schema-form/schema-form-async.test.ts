@@ -4,7 +4,7 @@ import { tick } from 'svelte';
 
 import Ajv2020 from 'ajv/dist/2020.js';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

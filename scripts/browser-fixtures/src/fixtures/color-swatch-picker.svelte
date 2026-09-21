@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ColorSwatchPicker } from '@corvidae/cinder';
+  import { ColorSwatchPicker } from '@lostgradient/cinder';
 
   const palette = [
     { color: '#ef4444', name: 'Red' },

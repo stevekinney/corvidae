@@ -7,8 +7,8 @@
  *
  * ```svelte
  * <script lang="ts">
- *   import { CodeBlock } from '@corvidae/cinder';
- *   import { shikiHighlighter } from '@corvidae/cinder';
+ *   import { CodeBlock } from '@lostgradient/cinder';
+ *   import { shikiHighlighter } from '@lostgradient/cinder';
  *
  *   const highlighter = shikiHighlighter({ theme: 'github-light' });
  * </script>
@@ -48,7 +48,7 @@
  * `packages/markdown` and closes the build-time regression risk above.
  *
  * Behavior contract (matches the {@link Highlighter} type in
- * `@corvidae/cinder`):
+ * `@lostgradient/cinder`):
  *
  *   - Returns a complete `<pre><code>...</code></pre>` block as a trusted
  *     HTML string. `<CodeBlock>` injects this via `{@html}` and replaces its
@@ -82,7 +82,7 @@ import { stripRootPreTabIndex } from './strip-root-pre-tab-index.ts';
 
 /**
  * Re-exported for backwards compatibility on the public
- * `@corvidae/cinder` surface. The canonical implementation lives in
+ * `@lostgradient/cinder` surface. The canonical implementation lives in
  * `utilities/retrying-loader-cache.ts` so `<CodeBlock>`'s default-highlighter
  * seam can reuse it without a static import edge to this adapter module.
  */

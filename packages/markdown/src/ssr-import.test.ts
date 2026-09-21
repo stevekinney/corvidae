@@ -14,7 +14,7 @@ const publicFunctions = [
   'renderTemplate',
 ];
 
-describe('@corvidae/markdown public source entry point', () => {
+describe('@lostgradient/markdown public source entry point', () => {
   it('exposes every supported rendering API in a fresh server process', async () => {
     const source = `
       if (typeof document !== 'undefined' || typeof window !== 'undefined') {

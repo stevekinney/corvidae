@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Meter } from '@corvidae/cinder';
+  import { Meter } from '@lostgradient/cinder';
 </script>
 
 <div class="fixture-stack">

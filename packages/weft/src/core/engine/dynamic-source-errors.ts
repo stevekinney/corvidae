@@ -33,7 +33,7 @@ import { WeftError } from '../weft-error.ts';
  *
  * @example
  * ```ts
- * import { Engine, WorkflowSourceNotRegisteredError } from '@corvidae/weft';
+ * import { Engine, WorkflowSourceNotRegisteredError } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * try {
@@ -74,7 +74,7 @@ export class WorkflowSourceNotRegisteredError extends WeftError<'WorkflowSourceN
  *
  * @example
  * ```ts
- * import { Engine, DynamicWorkflowSourceUnavailableError } from '@corvidae/weft';
+ * import { Engine, DynamicWorkflowSourceUnavailableError } from '@lostgradient/weft';
  *
  * const engine = new Engine();
  * try {

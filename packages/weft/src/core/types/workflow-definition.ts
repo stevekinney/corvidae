@@ -22,7 +22,7 @@ import type { AnyActivityDefinition } from './workflow-registries.ts';
  *
  * @example
  * ```ts
- * import { workflow, type WorkflowDefinition, type WorkflowContext } from '@corvidae/weft';
+ * import { workflow, type WorkflowDefinition, type WorkflowContext } from '@lostgradient/weft';
  *
  * const greet: WorkflowDefinition<string, string> = workflow({ name: 'greet' })
  *   .execute(async function* (_ctx: WorkflowContext, input: string) {

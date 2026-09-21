@@ -1,4 +1,4 @@
-import { CompletableEventTarget, type RuntimeServices } from '@corvidae/lifecycle';
+import { CompletableEventTarget, type RuntimeServices } from '@lostgradient/lifecycle';
 import type { z } from 'zod';
 
 import { serializeToolDefinition } from '../core/serialization';

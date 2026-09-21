@@ -6,7 +6,7 @@ import type { HookPlanObservation } from '../../src/hooks/types';
 /**
  * A hook whose return type is NOT its first parameter type — the shape that
  * `run()`'s waterfall cannot express. `prepareStep`, `selectTools`,
- * `selectToolChoice` and `beforeCompaction` in `@corvidae/operative` are all
+ * `selectToolChoice` and `beforeCompaction` in `@lostgradient/operative` are all
  * this shape: they take a step context and return something else entirely.
  */
 type ContextHooks = {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, ConfirmDialog } from '@corvidae/cinder';
+  import { Button, ConfirmDialog } from '@lostgradient/cinder';
 
   let open = $state(false);
   let triggerRef: HTMLElement | null = $state(null);

@@ -1,24 +1,24 @@
 # Tool Protocol
 
-`@corvidae/tool-protocol` owns the JSON-safe contracts shared by Corvidae's tool execution, conversation, agent, skill, and bureau packages.
+`@lostgradient/tool-protocol` owns the JSON-safe contracts shared by Corvidae's tool execution, conversation, agent, skill, and bureau packages.
 
 ## Workspace usage
 
-Declare `"@corvidae/tool-protocol": "workspace:*"` in the consuming workspace's dependencies. Import the private source package through `@corvidae/tool-protocol`; it has no build or publication step.
+Declare `"@lostgradient/tool-protocol": "workspace:*"` in the consuming workspace's dependencies. Import the private source package through `@lostgradient/tool-protocol`; it has no build or publication step.
 
 ## What it does
 
 - Defines JSON-safe primitive, object, array, tool-call, tool-result, tool-error, tool-action, and tool-policy types.
 - Materializes permissive tool inputs into canonical runtime records.
 - Rejects synchronous materialization of live streaming tool results and provides asynchronous collection variants.
-- Uses `@corvidae/lifecycle` runtime services for deterministic identifier generation.
+- Uses `@lostgradient/lifecycle` runtime services for deterministic identifier generation.
 
 ## Materializing a call and result
 
 **Materialization** turns a permissive runtime input into the protocol record that another package can store or exchange. A missing call identifier comes from the supplied generator or the Lifecycle runtime; omitted arguments become an empty object.
 
 ```typescript
-import { materializeToolCall, materializeToolResult } from '@corvidae/tool-protocol';
+import { materializeToolCall, materializeToolResult } from '@lostgradient/tool-protocol';
 
 const call = materializeToolCall(
   { name: 'lookup-order', arguments: { orderId: 'order-42' } },
@@ -42,8 +42,8 @@ The plural asynchronous helper collects results concurrently with `Promise.all`.
 
 ## Boundary
 
-This package owns only the protocol exchanged between tool-producing and tool-consuming packages. Embedding contracts belong to `@corvidae/embeddings`; hashing and signing primitives belong to `@corvidae/cryptography`; schema normalization belongs to the package that owns the schema boundary.
+This package owns only the protocol exchanged between tool-producing and tool-consuming packages. Embedding contracts belong to `@lostgradient/embeddings`; hashing and signing primitives belong to `@lostgradient/cryptography`; schema normalization belongs to the package that owns the schema boundary.
 
 ## Development
 
-Run `bunx turbo run lint typecheck test --filter=@corvidae/tool-protocol --concurrency=1` from the repository root. Run `bun run validate` for the complete workspace.
+Run `bunx turbo run lint typecheck test --filter=@lostgradient/tool-protocol --concurrency=1` from the repository root. Run `bun run validate` for the complete workspace.

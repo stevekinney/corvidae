@@ -6,7 +6,7 @@ A navigation trail that shows the current page's position in a hierarchy.
 
 ```svelte
 <script lang="ts">
-  import { Breadcrumbs } from '@corvidae/cinder';
+  import { Breadcrumbs } from '@lostgradient/cinder';
 </script>
 
 <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Docs' }]} />

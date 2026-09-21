@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@corvidae/testing';
+import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
 
 setupHappyDom();
 

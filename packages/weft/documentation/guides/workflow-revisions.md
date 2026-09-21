@@ -17,7 +17,7 @@ The default revision is derived from the normalized contract. It is not a hash o
 You can build a manifest through the public API. This example has no payload schemas, so it describes an unconstrained payload contract:
 
 ```typescript
-import { buildWorkflowContract, buildWorkflowRevisionManifest } from '@corvidae/weft';
+import { buildWorkflowContract, buildWorkflowRevisionManifest } from '@lostgradient/weft';
 
 const contract = buildWorkflowContract({ name: 'greeting', version: '1.0.0' });
 const manifest = await buildWorkflowRevisionManifest(contract);
@@ -34,7 +34,7 @@ A **workflow source** pairs serializable metadata with a host-owned loader funct
 For example, place this definition in your consuming workspace's `greeting.ts`:
 
 ```typescript
-import { workflow } from '@corvidae/weft';
+import { workflow } from '@lostgradient/weft';
 
 export const greeting = workflow({ name: 'greeting', version: '1.0.0' }).execute(async function* (
   _context,
@@ -53,7 +53,7 @@ import {
   buildWorkflowContract,
   buildWorkflowRevisionManifest,
   workflowSource,
-} from '@corvidae/weft';
+} from '@lostgradient/weft';
 
 const manifest = await buildWorkflowRevisionManifest(
   buildWorkflowContract({ name: 'greeting', version: '1.0.0' }),

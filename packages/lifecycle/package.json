@@ -1,5 +1,5 @@
 {
-  "name": "@corvidae/lifecycle",
+  "name": "@lostgradient/lifecycle",
   "private": true,
   "description": "Typed EventTarget, async iterators, observables, hooks, and lifecycle utilities for agent-bureau.",
   "type": "module",
@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@corvidae/typescript": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   }

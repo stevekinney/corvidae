@@ -1,4 +1,4 @@
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { makeTarget } from './chart-interaction-test-target.ts';
 import { ChartInteraction } from './chart-interaction.svelte.ts';

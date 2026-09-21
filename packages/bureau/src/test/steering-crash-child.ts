@@ -18,7 +18,7 @@
  */
 import { writeFileSync } from 'node:fs';
 
-import { createToolbox } from '@corvidae/armorer';
+import { createToolbox } from 'armorer';
 
 import { createBureau } from '../create-bureau';
 

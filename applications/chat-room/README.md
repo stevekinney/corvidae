@@ -1,6 +1,6 @@
 # Chat Room
 
-`@corvidae/chat-room` is the Corvidae workspace's [SvelteKit](https://svelte.dev/docs/kit/introduction) application for integrating the agent-runtime and browser-component packages. It hosts the main chat interface and the server-owned conversation flows used to verify durable streaming, approvals, recovery, and synchronization.
+`@lostgradient/chat-room` is the Corvidae workspace's [SvelteKit](https://svelte.dev/docs/kit/introduction) application for integrating the agent-runtime and browser-component packages. It hosts the main chat interface and the server-owned conversation flows used to verify durable streaming, approvals, recovery, and synchronization.
 
 ## Documentation
 
@@ -12,15 +12,15 @@ The code-adjacent behavioral contract for this application lives in [`docs/`](./
 
 ## Workspace usage
 
-Install dependencies from the repository root with `bun install --frozen-lockfile`. The application consumes private `@corvidae/*` libraries through `workspace:*` and compiles their TypeScript and Svelte source directly.
+Install dependencies from the repository root with `bun install --frozen-lockfile`. The application consumes private `@lostgradient/*` libraries through `workspace:*` and compiles their TypeScript and Svelte source directly.
 
 Start the development server from the repository root:
 
 ```bash
-bun run --filter=@corvidae/chat-room dev
+bun run --filter=@lostgradient/chat-room dev
 ```
 
-Build or preview the production application with `bun run --filter=@corvidae/chat-room build` and `bun run --filter=@corvidae/chat-room preview`.
+Build or preview the production application with `bun run --filter=@lostgradient/chat-room build` and `bun run --filter=@lostgradient/chat-room preview`.
 
 ## Verification
 
@@ -34,4 +34,4 @@ bun run test:browser
 bun run check:client-styles
 ```
 
-Use `bunx turbo run lint typecheck test build --filter=@corvidae/chat-room` from the repository root for the workspace task graph, or `bun run validate` for the complete repository.
+Use `bunx turbo run lint typecheck test build --filter=@lostgradient/chat-room` from the repository root for the workspace task graph, or `bun run validate` for the complete repository.

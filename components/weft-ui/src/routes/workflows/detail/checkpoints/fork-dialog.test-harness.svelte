@@ -6,7 +6,7 @@
    * `checkpoints-tab.test-harness.svelte`'s identical pattern, scoped to
    * just this one component per WFT-117's own dedicated `fork-dialog.test.ts`.
    */
-  import { HttpClient } from '@corvidae/weft';
+  import { HttpClient } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   import type { Principal } from '../../../../lib/scopes.svelte.ts';

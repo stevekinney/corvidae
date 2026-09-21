@@ -12,7 +12,7 @@
    */
   import { untrack, type Snippet } from 'svelte';
 
-  import type { HttpClient } from '@corvidae/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import { QueryClientProvider, type QueryClient } from '@tanstack/svelte-query';
 
   import { provideFleetEventSource } from '../../../app/engine-status.svelte.ts';

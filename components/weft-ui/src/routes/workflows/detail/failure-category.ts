@@ -7,7 +7,7 @@
  * two absent cases: `undefined` (workflow never failed) and `null` (failed,
  * category undetermined).
  */
-import type { FailureCategory } from '@corvidae/weft';
+import type { FailureCategory } from '@lostgradient/weft';
 
 const CATEGORY_EXPLANATION: Readonly<Record<FailureCategory, string>> = {
   application:

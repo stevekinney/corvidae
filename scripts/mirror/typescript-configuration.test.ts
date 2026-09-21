@@ -23,8 +23,8 @@ const corvidaeRoot = join(import.meta.dir, '..', '..');
  * configuration's `compilerOptions.paths` keys are rewritten to.
  */
 const publicNames: ReadonlyMap<string, string> = new Map([
-  ['@corvidae/cinder', '@lostgradient/cinder'],
-  ['@corvidae/weft', '@lostgradient/weft'],
+  ['@lostgradient/cinder', '@lostgradient/cinder'],
+  ['@lostgradient/weft', '@lostgradient/weft'],
 ]);
 
 /** A throwaway corvidae tree carrying only `internal/typescript` and the workspaces under test. */
@@ -172,8 +172,8 @@ describe('a configuration nested inside the source tree', () => {
           compilerOptions: {
             strict: true,
             paths: {
-              '@corvidae/weft': ['../../../index.ts'],
-              '@corvidae/weft/client': ['../../../client/index.ts'],
+              '@lostgradient/weft': ['../../../index.ts'],
+              '@lostgradient/weft/client': ['../../../client/index.ts'],
             },
           },
           include: ['consumer.ts'],
@@ -430,13 +430,13 @@ describe('assertTypeScriptEdgeClosed', () => {
 
   test('accepts a configuration edge replaced by a vendored copy', () => {
     expect(() =>
-      assertTypeScriptEdgeClosed([`@corvidae/weft -> ${configurationWorkspace}`], vendoredPlan),
+      assertTypeScriptEdgeClosed([`@lostgradient/weft -> ${configurationWorkspace}`], vendoredPlan),
     ).not.toThrow();
   });
 
   test('refuses a configuration edge with nothing vendored in its place', () => {
     expect(() =>
-      assertTypeScriptEdgeClosed([`@corvidae/weft -> ${configurationWorkspace}`], {
+      assertTypeScriptEdgeClosed([`@lostgradient/weft -> ${configurationWorkspace}`], {
         files: {},
         vendoredInto: [],
       }),
@@ -445,7 +445,7 @@ describe('assertTypeScriptEdgeClosed', () => {
 
   test('refuses any other dropped edge, which nothing here replaces', () => {
     expect(() =>
-      assertTypeScriptEdgeClosed(['@corvidae/weft -> @corvidae/testing'], vendoredPlan),
+      assertTypeScriptEdgeClosed(['@lostgradient/weft -> @lostgradient/testing'], vendoredPlan),
     ).toThrow(/nothing replaces/);
   });
 });

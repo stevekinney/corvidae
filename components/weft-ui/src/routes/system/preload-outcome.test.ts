@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { HttpClientError, isFaultCode } from '@corvidae/weft';
+import { HttpClientError, isFaultCode } from '@lostgradient/weft';
 
 import {
   describePreloadOutcome,

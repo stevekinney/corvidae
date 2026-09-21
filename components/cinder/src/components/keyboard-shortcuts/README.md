@@ -6,7 +6,7 @@ Grouped keyboard-shortcut reference that renders key combos via Kbd with accessi
 
 ```svelte
 <script lang="ts">
-  import { KeyboardShortcuts } from '@corvidae/cinder';
+  import { KeyboardShortcuts } from '@lostgradient/cinder';
 </script>
 
 <div style="max-width: 28rem;">

@@ -1,11 +1,11 @@
 /// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@corvidae/testing';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
-const { computeLineDiff, groupIntoHunks } = await import('@corvidae/markdown');
+const { computeLineDiff, groupIntoHunks } = await import('@lostgradient/markdown');
 const { formatComputedUnifiedDiff } = await import('../../export/unified-diff-format.ts');
 const { generateUnifiedDiff } = await import('../../export/unified-diff-generation.ts');
 

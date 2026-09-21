@@ -115,7 +115,7 @@ export type HookPlanObservation =
  *
  * Declared inline and structurally rather than imported. The operative type
  * that satisfies it, `ChildWorkflowCorrelation`, lives in
- * `packages/operative/src/events.ts`, and `@corvidae/lifecycle` declares no
+ * `packages/operative/src/events.ts`, and `@lostgradient/lifecycle` declares no
  * runtime dependencies at all — operative already depends on lifecycle, so the
  * reverse edge would be circular. Operative's type satisfies this one
  * structurally, which is the whole point of writing it out.
