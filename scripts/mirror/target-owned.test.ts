@@ -690,7 +690,7 @@ describe('retiring a directory the target still carries', () => {
       'packages/weft/scripts/ci-workflows.test.ts',
     ]);
     expect(retired.slice(6).every((path) => path.startsWith('packages/weft/scripts/'))).toBe(true);
-    expect(retired.length).toBe(36);
+    expect(retired.length).toBe(37);
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
     for (const entry of policy.retired.entries) {
       expect(entry.target).toBe('weft');
