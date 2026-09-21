@@ -89,4 +89,26 @@ describe('bindFeedLifetime', () => {
 
     expect(seen).toEqual(['first', 'second']);
   });
+
+  it('disposes the underlying feed through the wrapper', async () => {
+    // The wrapper forwards `dispose()` rather than owning a lifetime of its
+    // own: after it, the backend has no listeners, so an envelope appended
+    // next reaches nobody — the same observation the backend's own test
+    // makes, taken through the wrapper. The reader is then ended by the
+    // lifetime signal, which is the only thing that ends it (see above).
+    const { backend, lifetime, feed } = buildFeed();
+    const seen: string[] = [];
+    const reading = (async () => {
+      for await (const received of feed.subscribe()) seen.push(received.value);
+    })();
+
+    await Promise.resolve();
+    feed.dispose();
+    backend.append(envelope(0, 'after-dispose'));
+    lifetime.abort();
+    await reading;
+
+    expect(seen).toEqual([]);
+    expect(backend.size).toBe(1);
+  });
 });
