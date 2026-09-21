@@ -2,12 +2,9 @@ import { readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import typescript from 'typescript';
 
-import { publicSpecifierFor } from './internal-names.ts';
 import { serializeJson } from './json-formatting.ts';
 import { targetDirectoryFor } from './layout-map.ts';
-import { publicNameFor, targetFor, type MirrorTarget } from './manifests.ts';
-import { dispositionFor } from './package-map.ts';
-import { isInternalSpecifier } from './source-escapes.ts';
+import { targetFor, type MirrorTarget } from './manifests.ts';
 import { sourceTree, type EmittedWorkspace } from './source.ts';
 import { keysFor, loadTargetOwnedPolicy, type TargetOwnedPolicy } from './target-owned.ts';
 
@@ -20,8 +17,9 @@ import { keysFor, loadTargetOwnedPolicy, type TargetOwnedPolicy } from './target
  *
  * The two targets need different answers because they are shaped differently.
  *
- * - The cinder target is a workspace, so it can hold the package. Only the scope in the `extends`
- *   specifier is rewritten, from `@lostgradient/typescript` to the public name the map derives.
+ * - The cinder target is a workspace, so it can hold the package. Every workspace already
+ *   extends it by its public name — `@lostgradient/typescript`, unchanged since COR-1284 — so
+ *   nothing here rewrites the `extends` specifier at all; it ships exactly as corvidae wrote it.
  * - The weft target is a single package with no sibling to install from, so the configuration is
  *   vendored to a path inside that package and the `extends` specifier becomes relative. COR-1188
  *   drops weft's `devDependencies` edge to `@lostgradient/typescript` and reports it as dropped;
@@ -50,21 +48,17 @@ export function vendorsConfiguration(target: MirrorTarget): boolean {
 }
 
 /**
- * Rewrite one `extends` value. A specifier into the configuration package becomes either the
- * public specifier or a relative path into the vendored copy; anything else is left alone,
- * because a relative `extends` inside a workspace still resolves after the sync.
+ * Rewrite one `extends` value for vendoring. A specifier into the configuration package becomes a
+ * relative path into the vendored copy where the target cannot hold the package as a workspace;
+ * anything else — including a specifier into the package where the target *can* hold it, which is
+ * already the public name corvidae wrote — is left exactly as it is.
  */
-export function rewriteExtends(
-  value: string,
-  publicName: string,
-  vendor: boolean,
-  depthFromPackageRoot = 0,
-): string {
+export function rewriteExtends(value: string, vendor: boolean, depthFromPackageRoot = 0): string {
   if (value !== configurationWorkspace && !value.startsWith(`${configurationWorkspace}/`)) {
     return value;
   }
+  if (!vendor) return value;
   const suffix = value.slice(configurationWorkspace.length).replace(/^\//, '');
-  if (!vendor) return suffix ? `${publicName}/${suffix}` : publicName;
   if (!suffix) {
     throw new TypeScriptConfigurationError(
       `A tsconfig extends "${configurationWorkspace}" with no file; the package exports only ${configurationFiles.join(', ')}`,
@@ -76,60 +70,22 @@ export function rewriteExtends(
 
 function rewriteExtendsField(
   configuration: JsonObject,
-  publicName: string,
   vendor: boolean,
   depthFromPackageRoot: number,
 ): JsonObject {
   const value = configuration['extends'];
   if (typeof value === 'string') {
-    return {
-      ...configuration,
-      extends: rewriteExtends(value, publicName, vendor, depthFromPackageRoot),
-    };
+    return { ...configuration, extends: rewriteExtends(value, vendor, depthFromPackageRoot) };
   }
   if (Array.isArray(value)) {
     return {
       ...configuration,
       extends: value.map((entry) =>
-        typeof entry === 'string'
-          ? rewriteExtends(entry, publicName, vendor, depthFromPackageRoot)
-          : entry,
+        typeof entry === 'string' ? rewriteExtends(entry, vendor, depthFromPackageRoot) : entry,
       ),
     };
   }
   return { ...configuration };
-}
-
-/**
- * Rewrite the internal workspace names a configuration's `compilerOptions.paths` maps.
- *
- * A `paths` key is a module specifier the target's `tsc` matches an import against, so a key that
- * still said `@lostgradient/weft` beside emitted source that now says `@lostgradient/weft` would map
- * nothing. `src/client/__fixtures__/no-workflow-registry/tsconfig.json` is the case that proves
- * this field needs its own pass: it carries no `extends` at all, so an `extends`-only rewrite
- * leaves it silently broken. The values are left exactly as they are — they are relative paths
- * into the emitted tree, not names anything renames.
- */
-function rewritePathsField(
-  configuration: JsonObject,
-  publicNames: ReadonlyMap<string, string>,
-  path: string,
-): JsonObject {
-  const compilerOptions = configuration['compilerOptions'];
-  if (!isJsonObject(compilerOptions)) return configuration;
-  const paths = compilerOptions['paths'];
-  if (!isJsonObject(paths)) return configuration;
-  const rewritten = Object.fromEntries(
-    Object.entries(paths).map(([key, value]) => [
-      isInternalSpecifier(key) ? publicSpecifierFor(key, publicNames, path) : key,
-      value,
-    ]),
-  );
-  return { ...configuration, compilerOptions: { ...compilerOptions, paths: rewritten } };
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -184,12 +140,6 @@ export interface TypeScriptPlanOptions {
    * the configuration is read from corvidae's directory and emitted into the target's.
    */
   workspaces: readonly Pick<EmittedWorkspace, 'corvidaeDirectory' | 'targetDirectory'>[];
-  /**
-   * Public names, keyed by `@lostgradient/*` name, for every workspace this tree carries. A nested
-   * configuration's `compilerOptions.paths` maps specifiers, and those are renamed from the same
-   * authority the manifests and the emitted source use.
-   */
-  publicNames: ReadonlyMap<string, string>;
   /** A clone of the target, read for the keys `target-owned.json` says the target owns. */
   targetDirectory?: string | undefined;
   policy?: TargetOwnedPolicy | undefined;
@@ -251,23 +201,18 @@ export interface TypeScriptPlan {
 }
 
 /**
- * Emit every workspace's tsconfig with its `extends` rewritten, plus the vendored configuration
- * files when the target cannot hold the package.
+ * Emit every workspace's tsconfig with its `extends` vendored where the target needs that, plus
+ * the vendored configuration files themselves when the target cannot hold the package.
  */
 export async function planTypeScriptConfiguration({
   corvidaeRoot,
   target,
   workspaces,
-  publicNames,
   targetDirectory,
   policy,
 }: TypeScriptPlanOptions): Promise<TypeScriptPlan> {
   const resolvedPolicy = policy ?? (await loadTargetOwnedPolicy());
   const vendor = vendorsConfiguration(target);
-  const publicName = publicNameFor(
-    configurationWorkspace,
-    await dispositionFor(configurationWorkspace),
-  );
 
   const files: Record<string, string> = {};
   const vendoredInto: string[] = [];
@@ -282,11 +227,7 @@ export async function planTypeScriptConfiguration({
       const parsed = parseConfiguration(name, await Bun.file(source).text());
       const path = `${emittedDirectory}/${name}`;
       const depth = depthOf(name);
-      const rewritten = rewritePathsField(
-        rewriteExtendsField(parsed, publicName, vendor, depth),
-        publicNames,
-        path,
-      );
+      const rewritten = rewriteExtendsField(parsed, vendor, depth);
       // Only a workspace-root configuration takes the target's `include` and `exclude`. Those keys
       // are owned downstream because which trees a *repository* type-checks is its own decision;
       // a fixture configuration nested inside `src/` names sibling fixture files this transform

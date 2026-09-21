@@ -1,19 +1,19 @@
 import { join } from 'node:path';
 
 import type { MirrorTarget } from './manifests.ts';
-import { findSourceEscapes, type SourceEscape } from './source-escapes.ts';
 import { planSurface, type SurfacePlan } from './surface.ts';
+import { findSourceEscapes, type SourceEscape } from './target-resolvability.ts';
 
 /**
  * Both targets' plans over the committed tree, built once for the whole process.
  *
- * `surface.test.ts` and `source-escapes.test.ts` both assert properties of the real workspaces
- * rather than of a fixture, so both need a plan for both targets. Each file used to memoize its
- * own, which meant the cinder plan — nineteen workspaces, five and a half thousand emitted files,
- * roughly three seconds warm — was built twice per process, and whichever test body happened to
- * run first in each file paid for it on that test's clock. Under a loaded machine that crossed
- * bun's five-second per-test default and the run failed for a reason that had nothing to do with
- * what the test asserts.
+ * `surface.test.ts`, `target-resolvability.test.ts` and `source.test.ts` all assert properties of
+ * the real workspaces rather than of a fixture, so each needs a plan for both targets. Each file
+ * used to memoize its own, which meant the cinder plan — nineteen workspaces, five and a half
+ * thousand emitted files, roughly three seconds warm — was built twice per process, and whichever
+ * test body happened to run first in each file paid for it on that test's clock. Under a loaded
+ * machine that crossed bun's five-second per-test default and the run failed for a reason that had
+ * nothing to do with what the test asserts.
  *
  * Importing this module does the work, at module scope. That is the point rather than a side
  * effect: bun's per-test timeout covers a test body, not module evaluation, so building here

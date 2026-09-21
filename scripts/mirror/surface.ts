@@ -20,8 +20,8 @@ import {
   type SurfaceExportsMap,
 } from './package-surface.ts';
 import { checkParity, loadRegistryBaseline, type ParityResult } from './registry-baseline.ts';
-import { assertNoSourceEscapes } from './source-escapes.ts';
 import { assertSingleOwner, planSource, type EmittedWorkspace, type SourcePlan } from './source.ts';
+import { assertNoSourceEscapes } from './target-resolvability.ts';
 import {
   assertTypeScriptEdgeClosed,
   planTypeScriptConfiguration,
@@ -298,18 +298,12 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
     workspaces: emittedWorkspaces,
-    publicNames: manifestPlan.publicNames,
     targetDirectory: options.targetDirectory,
     policy: options.policy,
   });
   assertTypeScriptEdgeClosed(manifestPlan.droppedEdges, typescript);
 
-  const source = await planSource(
-    options.corvidaeRoot,
-    emittedWorkspaces,
-    manifestPlan.publicNames,
-    options.targetDirectory,
-  );
+  const source = await planSource(options.corvidaeRoot, emittedWorkspaces, options.targetDirectory);
   for (const entry of privateWorkspaces) {
     entry.emitsTypeScript = source.typeScriptWorkspaces.includes(entry.workspace);
   }

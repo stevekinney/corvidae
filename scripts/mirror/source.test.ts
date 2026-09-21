@@ -3,7 +3,8 @@ import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 
-import { committedPlans } from './committed-plans.ts';
+import { committedPlans, corvidaeRoot } from './committed-plans.ts';
+import type { MirrorTarget } from './manifests.ts';
 import {
   additionalSourceRoots,
   assertSingleOwner,
@@ -32,19 +33,6 @@ async function withTree(
     await rm(root, { recursive: true, force: true });
   }
 }
-
-/**
- * The names `package-map.json` assigns the workspaces these fixtures use.
- *
- * Written out rather than loaded so a fixture's expected output is readable beside its input; the
- * real map is what `committed-plans.ts` exercises, over the real tree.
- */
-const publicNames: ReadonlyMap<string, string> = new Map([
-  ['armorer', '@lostgradient/armorer'],
-  ['@lostgradient/editor', '@lostgradient/editor'],
-  ['@lostgradient/testing', '@lostgradient/testing'],
-  ['@lostgradient/weft', '@lostgradient/weft'],
-]);
 
 const editorWorkspace = {
   workspace: '@lostgradient/editor',
@@ -145,17 +133,13 @@ describe('the files that check a workspace’s emitted source', () => {
         ...weftDeclarationFixture(omitted),
       },
       async (root) => {
-        const plan = planSource(
-          root,
-          [
-            {
-              workspace: '@lostgradient/weft',
-              corvidaeDirectory: 'packages/weft',
-              targetDirectory: 'packages/weft',
-            },
-          ],
-          publicNames,
-        );
+        const plan = planSource(root, [
+          {
+            workspace: '@lostgradient/weft',
+            corvidaeDirectory: 'packages/weft',
+            targetDirectory: 'packages/weft',
+          },
+        ]);
         await expect(plan).rejects.toThrow(SourceEmissionError);
         await expect(plan).rejects.toThrow(omitted);
         // Named so the message points at the table that has to change, not at the sibling one.
@@ -187,7 +171,7 @@ describe('what counts as source', () => {
         'components/editor/README.md': '# editor\n',
       },
       async (root) => {
-        const plan = await planSource(root, [editorWorkspace], publicNames);
+        const plan = await planSource(root, [editorWorkspace]);
         expect(Object.keys(plan.files).toSorted()).toEqual([
           'packages/editor/src/lib/index.ts',
           'packages/editor/src/lib/nested/helper.ts',
@@ -205,18 +189,14 @@ describe('what counts as source', () => {
         'components/editor/scripts/build.ts': 'export const build = true;\n',
       },
       async (root) => {
-        const plan = await planSource(
-          root,
-          [
-            {
-              ...editorWorkspace,
-              entry: {
-                build: { requiredInputs: ['scripts/build.ts', 'scripts/pack-for-publish.ts'] },
-              } as unknown as Parameters<typeof planSource>[1][number]['entry'],
-            },
-          ],
-          publicNames,
-        );
+        const plan = await planSource(root, [
+          {
+            ...editorWorkspace,
+            entry: {
+              build: { requiredInputs: ['scripts/build.ts', 'scripts/pack-for-publish.ts'] },
+            } as unknown as Parameters<typeof planSource>[1][number]['entry'],
+          },
+        ]);
         // The input corvidae has is carried; the one it does not have stays target-owned, which is
         // what `assertBuildInputsPresent` checks for in the clone rather than inventing here.
         expect(Object.keys(plan.files).toSorted()).toEqual([
@@ -236,17 +216,13 @@ describe('what counts as source', () => {
         'packages/armorer/test/registry.test.ts': 'export const undeclared = true;\n',
       },
       async (root) => {
-        const plan = await planSource(
-          root,
-          [
-            {
-              workspace: 'armorer',
-              corvidaeDirectory: 'packages/armorer',
-              targetDirectory: 'packages/armorer',
-            },
-          ],
-          publicNames,
-        );
+        const plan = await planSource(root, [
+          {
+            workspace: 'armorer',
+            corvidaeDirectory: 'packages/armorer',
+            targetDirectory: 'packages/armorer',
+          },
+        ]);
         // The relative layout is preserved, which is the whole point: `../test/helpers/…` only
         // resolves in the target if the file sits the same distance from `src/` there. The
         // ninety other files under `test/` stay where they are, because only this one is declared.
@@ -262,17 +238,13 @@ describe('what counts as source', () => {
     await withTree(
       { 'packages/armorer/src/compose.test.ts': 'export const composed = true;\n' },
       async (root) => {
-        const plan = planSource(
-          root,
-          [
-            {
-              workspace: 'armorer',
-              corvidaeDirectory: 'packages/armorer',
-              targetDirectory: 'packages/armorer',
-            },
-          ],
-          publicNames,
-        );
+        const plan = planSource(root, [
+          {
+            workspace: 'armorer',
+            corvidaeDirectory: 'packages/armorer',
+            targetDirectory: 'packages/armorer',
+          },
+        ]);
         await expect(plan).rejects.toThrow(SourceEmissionError);
         await expect(plan).rejects.toThrow('test/helpers/async-assertions.ts');
       },
@@ -290,17 +262,13 @@ describe('what counts as source', () => {
       },
       async (root) => {
         await chmod(join(root, 'packages/weft/src/cli-main.ts'), 0o755);
-        const plan = await planSource(
-          root,
-          [
-            {
-              workspace: '@lostgradient/weft',
-              corvidaeDirectory: 'packages/weft',
-              targetDirectory: 'packages/weft',
-            },
-          ],
-          publicNames,
-        );
+        const plan = await planSource(root, [
+          {
+            workspace: '@lostgradient/weft',
+            corvidaeDirectory: 'packages/weft',
+            targetDirectory: 'packages/weft',
+          },
+        ]);
         expect(plan.executable).toEqual(['packages/weft/src/cli-main.ts']);
       },
     );
@@ -311,17 +279,13 @@ describe('what counts as source', () => {
     const root = await mkdtemp(join(tmpdir(), 'corvidae-source-'));
     try {
       await Bun.write(join(root, 'packages/testing/src/__fixtures__/baseline.png'), bytes);
-      const plan = await planSource(
-        root,
-        [
-          {
-            workspace: '@lostgradient/testing',
-            corvidaeDirectory: 'packages/testing',
-            targetDirectory: 'packages/testing',
-          },
-        ],
-        publicNames,
-      );
+      const plan = await planSource(root, [
+        {
+          workspace: '@lostgradient/testing',
+          corvidaeDirectory: 'packages/testing',
+          targetDirectory: 'packages/testing',
+        },
+      ]);
       expect(plan.files['packages/testing/src/__fixtures__/baseline.png']).toEqual(bytes);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -460,4 +424,44 @@ describe('a remapped workspace on disk', () => {
       },
     );
   });
+});
+
+describe('the committed workspaces', () => {
+  /**
+   * COR-1284 renamed every corvidae workspace to the name it already publishes under, which made
+   * the source-side rewrite layer COR-1285 deletes a no-op by construction. This is the property
+   * that made it deletable, stated directly against the real emitted trees rather than against a
+   * fixture: every byte `planSource` emits for a real workspace is the byte corvidae itself wrote,
+   * with nothing in between. It replaces COR-1284's `the %s plan rewrites zero module specifiers
+   * as internal`, which asserted the rewrite layer's output was already an identity function; now
+   * that the layer is gone, the only fact left to assert is that emission still is one.
+   *
+   * Scoped to `plan.source.files` rather than the merged surface, so a manifest, an exports map or
+   * a vendored tsconfig — none of which corvidae's own tree carries verbatim, all three legitimately
+   * rewritten by the other two producers — never has to be filtered out by path; `SourcePlan`
+   * already excludes them by construction.
+   */
+  test.each<MirrorTarget>(['cinder', 'weft'])(
+    'the %s plan emits corvidae’s source byte-for-byte',
+    async (target) => {
+      const { plan } = committedPlans[target];
+      const mismatches: string[] = [];
+      for (const [path, contents] of Object.entries(plan.source.files)) {
+        const workspace = plan.emitted
+          .filter((candidate) => path.startsWith(`${candidate.targetDirectory}/`))
+          .toSorted((left, right) => right.targetDirectory.length - left.targetDirectory.length)[0];
+        if (workspace === undefined) {
+          mismatches.push(`${path}: no emitted workspace claims this path`);
+          continue;
+        }
+        const corvidaePath = `${workspace.corvidaeDirectory}${path.slice(workspace.targetDirectory.length)}`;
+        const onDisk = await Bun.file(join(corvidaeRoot, corvidaePath)).bytes();
+        const emitted = Buffer.from(contents);
+        if (Buffer.compare(Buffer.from(onDisk), emitted) !== 0) {
+          mismatches.push(`${path}: differs from corvidae’s ${corvidaePath}`);
+        }
+      }
+      expect(mismatches).toEqual([]);
+    },
+  );
 });

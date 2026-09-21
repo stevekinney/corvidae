@@ -1,10 +1,9 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
-import { rewriteEmittedSource } from './internal-names.ts';
 import { formatEmittedFile } from './json-formatting.ts';
 import type { PackageSurfaceEntry } from './package-surface.ts';
-import { isTypeScriptConfiguration } from './source-escapes.ts';
+import { isTypeScriptConfiguration } from './target-resolvability.ts';
 
 /**
  * The source half of the mirror transform: corvidae's workspace source in, the same tree at the
@@ -91,8 +90,8 @@ export interface DeclaredSourceFiles {
  * declares it rather than widening the rule. This is that declaration. It exists because a second,
  * unrelated ruling — COR-1189's restore of nineteen published entry points — put shims *inside*
  * `src/` that re-export from *outside* it, so the emitted tree imports modules the emission rule
- * does not reach. `assertNoSourceEscapes` in `source-escapes.ts` is what makes that loud; this is
- * what answers it.
+ * does not reach. `assertNoSourceEscapes` in `target-resolvability.ts` is what makes that loud;
+ * this is what answers it.
  *
  * **What counts as a declarable path.** One an emitted file depends on, by either of two routes:
  * a module specifier it imports, or a literal path it reads at run time. Every entry was the first
@@ -468,7 +467,6 @@ async function readSourceTree(
   corvidaeRoot: string,
   workspace: EmittedWorkspace,
   plan: SourcePlan,
-  publicNames: ReadonlyMap<string, string>,
   targetDirectory: string | undefined,
 ): Promise<boolean> {
   const root = join(corvidaeRoot, workspace.corvidaeDirectory, sourceTree);
@@ -476,19 +474,18 @@ async function readSourceTree(
   for (const { absolute, relative: path } of await walkSourceFiles(root)) {
     if (isTypeScriptConfiguration(path)) continue;
     const target = `${workspace.targetDirectory}/${sourceTree}/${path}`;
-    await readInto(plan, absolute, target, publicNames, targetDirectory);
+    await readInto(plan, absolute, target, targetDirectory);
     if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
   }
   return carriesTypeScript;
 }
 
 /**
- * Read one file into the plan, rewriting its internal names and recording the executable bit.
+ * Read one file into the plan, formatted for the target, and record the executable bit.
  *
- * The rewrite is here rather than at any of the three call sites because this is the one funnel
- * every emitted source file passes through — the `src/` tree, the declared roots and the declared
- * build inputs alike — and a file that named `@lostgradient/*` downstream would be equally broken
- * whichever of them read it.
+ * One funnel every emitted source file passes through — the `src/` tree, the declared roots and
+ * the declared build inputs alike — because every one of them has to agree with the target's
+ * formatter and preserve the same executable bit, whichever of them read it.
  *
  * The executable bit is preserved because corvidae's two `bin` entry points are executable in the
  * source tree, and a write path that dropped the mode would publish a binary nothing can run.
@@ -497,14 +494,10 @@ async function readInto(
   plan: SourcePlan,
   absolute: string,
   path: string,
-  publicNames: ReadonlyMap<string, string>,
   targetDirectory: string | undefined,
 ): Promise<void> {
   const contents = new Uint8Array(await Bun.file(absolute).arrayBuffer());
-  const rewritten = rewriteEmittedSource(contents, path, publicNames);
-  // After the rewrite, never before it: what ships is the rewritten text, so that is what the
-  // target's formatter has to agree with.
-  plan.files[path] = await formatEmittedFile(rewritten, targetDirectory, path);
+  plan.files[path] = await formatEmittedFile(contents, targetDirectory, path);
   const metadata = await stat(absolute);
   if ((metadata.mode & 0o111) !== 0) plan.executable.push(path);
 }
@@ -521,7 +514,6 @@ async function readAdditionalSourceRoots(
   corvidaeRoot: string,
   workspace: EmittedWorkspace,
   plan: SourcePlan,
-  publicNames: ReadonlyMap<string, string>,
   targetDirectory: string | undefined,
 ): Promise<boolean> {
   let carriesTypeScript = false;
@@ -533,13 +525,7 @@ async function readAdditionalSourceRoots(
           `${workspace.workspace} declares ${path} as source beyond its ${sourceTree}/ tree, but corvidae has no file there. Either restore it or remove the declaration from additionalSourceRoots in source.ts.`,
         );
       }
-      await readInto(
-        plan,
-        absolute,
-        `${workspace.targetDirectory}/${path}`,
-        publicNames,
-        targetDirectory,
-      );
+      await readInto(plan, absolute, `${workspace.targetDirectory}/${path}`, targetDirectory);
       if (path.endsWith('.ts') || path.endsWith('.tsx')) carriesTypeScript = true;
     }
   }
@@ -557,7 +543,6 @@ async function readValidationInputs(
   corvidaeRoot: string,
   workspace: EmittedWorkspace,
   plan: SourcePlan,
-  publicNames: ReadonlyMap<string, string>,
   targetDirectory: string | undefined,
 ): Promise<void> {
   for (const declared of validationInputs[workspace.workspace] ?? []) {
@@ -568,13 +553,7 @@ async function readValidationInputs(
           `${workspace.workspace} declares ${path} as a check on its emitted source, but corvidae has no file there. Either restore it or remove the declaration from validationInputs in source.ts.`,
         );
       }
-      await readInto(
-        plan,
-        absolute,
-        `${workspace.targetDirectory}/${path}`,
-        publicNames,
-        targetDirectory,
-      );
+      await readInto(plan, absolute, `${workspace.targetDirectory}/${path}`, targetDirectory);
     }
   }
 }
@@ -584,20 +563,13 @@ async function readDeclaredBuildInputs(
   corvidaeRoot: string,
   workspace: EmittedWorkspace,
   plan: SourcePlan,
-  publicNames: ReadonlyMap<string, string>,
   targetDirectory: string | undefined,
 ): Promise<void> {
   for (const input of workspace.entry?.build.requiredInputs ?? []) {
     const absolute = join(corvidaeRoot, workspace.corvidaeDirectory, input);
     const file = Bun.file(absolute);
     if (!(await file.exists())) continue;
-    await readInto(
-      plan,
-      absolute,
-      `${workspace.targetDirectory}/${input}`,
-      publicNames,
-      targetDirectory,
-    );
+    await readInto(plan, absolute, `${workspace.targetDirectory}/${input}`, targetDirectory);
   }
 }
 
@@ -610,7 +582,6 @@ async function readDeclaredBuildInputs(
 export async function planSource(
   corvidaeRoot: string,
   emitted: readonly EmittedWorkspace[],
-  publicNames: ReadonlyMap<string, string>,
   targetDirectory?: string,
 ): Promise<SourcePlan> {
   const plan: SourcePlan = {
@@ -621,23 +592,16 @@ export async function planSource(
   };
   for (const workspace of emitted) {
     plan.ownedPrefixes.push(`${workspace.targetDirectory}/${sourceTree}`);
-    const inTree = await readSourceTree(
-      corvidaeRoot,
-      workspace,
-      plan,
-      publicNames,
-      targetDirectory,
-    );
+    const inTree = await readSourceTree(corvidaeRoot, workspace, plan, targetDirectory);
     const declared = await readAdditionalSourceRoots(
       corvidaeRoot,
       workspace,
       plan,
-      publicNames,
       targetDirectory,
     );
     if (inTree || declared) plan.typeScriptWorkspaces.push(workspace.workspace);
-    await readValidationInputs(corvidaeRoot, workspace, plan, publicNames, targetDirectory);
-    await readDeclaredBuildInputs(corvidaeRoot, workspace, plan, publicNames, targetDirectory);
+    await readValidationInputs(corvidaeRoot, workspace, plan, targetDirectory);
+    await readDeclaredBuildInputs(corvidaeRoot, workspace, plan, targetDirectory);
   }
   plan.ownedPrefixes.sort();
   plan.executable.sort();

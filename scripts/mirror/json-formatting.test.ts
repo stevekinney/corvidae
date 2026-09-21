@@ -11,10 +11,6 @@ import { configurationWorkspace, planTypeScriptConfiguration } from './typescrip
 
 const corvidaeRoot = join(import.meta.dir, '..', '..');
 
-const publicNames: ReadonlyMap<string, string> = new Map([
-  ['@lostgradient/weft', '@lostgradient/weft'],
-]);
-
 /** The weft target's own prettier configuration, which lives beside the package, not at the root. */
 const targetPrettierConfiguration = JSON.stringify({
   semi: true,
@@ -101,7 +97,6 @@ describe('an emitted document with a short array', () => {
               workspaces: [
                 { corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' },
               ],
-              publicNames,
               targetDirectory: clone,
             });
             const emitted = plan.files[path] ?? '';
@@ -266,7 +261,6 @@ describe('an emitted file the target’s prettier governs', () => {
                 entry: { build: { requiredInputs: ['documentation/protocol.md'] } },
               } as unknown as Parameters<typeof planSource>[1][number],
             ],
-            new Map(),
             clone,
           );
           const emitted = plan.files['packages/weft/documentation/protocol.md'];

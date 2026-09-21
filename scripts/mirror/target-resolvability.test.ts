@@ -5,16 +5,14 @@ import { join } from 'node:path';
 
 import { committedPlans } from './committed-plans.ts';
 import type { MirrorTarget } from './manifests.ts';
+import { planSource } from './source.ts';
 import {
   assertNoSourceEscapes,
   findSourceEscapes,
-  internalScope,
-  isInternalSpecifier,
   isScannable,
-  moduleSpecifiers,
   SourceEscapeError,
-} from './source-escapes.ts';
-import { planSource } from './source.ts';
+  specifiersCarriedBy,
+} from './target-resolvability.ts';
 
 /** Stand up a throwaway tree, hand it to the body, and remove it however the body ends. */
 async function withTree(
@@ -31,19 +29,6 @@ async function withTree(
   }
 }
 
-/**
- * The names `package-map.json` assigns the workspaces these fixtures use.
- *
- * Written out rather than loaded so a fixture's expected output is readable beside its input; the
- * real map is what `committed-plans.ts` exercises, over the real tree.
- */
-const publicNames: ReadonlyMap<string, string> = new Map([
-  [`${internalScope}/armorer`, '@lostgradient/armorer'],
-  [`${internalScope}/editor`, '@lostgradient/editor'],
-  [`${internalScope}/testing`, '@lostgradient/testing'],
-  [`${internalScope}/weft`, '@lostgradient/weft'],
-]);
-
 describe('reading a file’s module edges', () => {
   test('every form that creates one, and nothing that only looks like one', () => {
     const source = `
@@ -58,7 +43,7 @@ describe('reading a file’s module edges', () => {
       const notAnEdge = "import { i } from './i.ts';";
       // import { j } from './j.ts';
     `;
-    expect(moduleSpecifiers(source, 'packages/editor/src/index.ts')).toEqual([
+    expect(specifiersCarriedBy(source, 'packages/editor/src/index.ts')).toEqual([
       './a.ts',
       './b.ts',
       './c.ts',
@@ -82,12 +67,9 @@ describe('reading a file’s module edges', () => {
       "{#await import('./lazy.ts') then lazy}{lazy.value}{/await}",
       '<Child {registry} />',
     ].join('\n');
-    expect(moduleSpecifiers(component, 'packages/chat/src/lib/widget.svelte').toSorted()).toEqual([
-      '../registry.ts',
-      './child.svelte',
-      './lazy.ts',
-      './reexported.ts',
-    ]);
+    expect(
+      specifiersCarriedBy(component, 'packages/chat/src/lib/widget.svelte').toSorted(),
+    ).toEqual(['../registry.ts', './child.svelte', './lazy.ts', './reexported.ts']);
   });
 });
 
@@ -101,7 +83,6 @@ describe('the gate over one plan', () => {
       {
         file: 'packages/components/src/cli/index.ts',
         specifier: '../../scripts/knowledge/index.ts',
-        kind: 'unemitted-path',
         resolved: 'packages/components/scripts/knowledge/index.ts',
       },
     ]);
@@ -130,13 +111,11 @@ describe('the gate over one plan', () => {
       {
         file: 'packages/chat/src/lib/reexport.ts',
         specifier: '../../fixtures/rows.ts',
-        kind: 'unemitted-path',
         resolved: 'packages/chat/fixtures/rows.ts',
       },
       {
         file: 'packages/chat/src/lib/widget.svelte',
         specifier: '../../tests/harness.ts',
-        kind: 'unemitted-path',
         resolved: 'packages/chat/tests/harness.ts',
       },
     ]);
@@ -149,7 +128,6 @@ describe('the gate over one plan', () => {
       {
         file: 'packages/weft/src/index.ts',
         specifier: '../../../../outside.ts',
-        kind: 'unemitted-path',
         resolved: '../outside.ts',
       },
     ]);
@@ -196,141 +174,49 @@ describe('the gate over one plan', () => {
   });
 });
 
-describe('an internal name in emitted source', () => {
-  test('every specifier form is caught, and a string that only looks like one is not', () => {
-    const files = {
-      'packages/weft/src/index.ts': [
-        `import { a } from '${internalScope}/weft';`,
-        `import type { B } from '${internalScope}/weft';`,
-        `export * from '${internalScope}/armorer';`,
-        `const c = await import('${internalScope}/markdown');`,
-        `const d = import.meta.resolve('${internalScope}/weft');`,
-        `declare module '${internalScope}/weft' { interface Registry { a: 1 } }`,
-        `import { e } from '${internalScope}/weft/client';`,
-        `const key = Symbol.for('${internalScope}/operative/backend-descriptors');`,
-        "import { z } from 'zod';",
-      ].join('\n'),
-    };
-    expect(findSourceEscapes(files).map((escape) => `${escape.kind} ${escape.specifier}`)).toEqual([
-      `internal-name ${internalScope}/armorer`,
-      `internal-name ${internalScope}/markdown`,
-      `internal-name ${internalScope}/weft`,
-      `internal-name ${internalScope}/weft`,
-      `internal-name ${internalScope}/weft`,
-      `internal-name ${internalScope}/weft`,
-      `internal-name ${internalScope}/weft/client`,
-    ]);
-  });
-
-  test('a Svelte component is read the same way', () => {
+describe('a tsconfig’s `extends`', () => {
+  test('is read, which a `.json` file was never scanned for before', () => {
     expect(
       findSourceEscapes({
-        'packages/chat/src/widget.svelte': [
-          '<script lang="ts">',
-          `  import { render } from '${internalScope}/markdown';`,
-          '</script>',
-          '<span>{render}</span>',
-        ].join('\n'),
-      }),
-    ).toEqual([
-      {
-        file: 'packages/chat/src/widget.svelte',
-        specifier: `${internalScope}/markdown`,
-        kind: 'internal-name',
-      },
-    ]);
-  });
-
-  test('a type-position `import()` in a Svelte script is caught, not only a plain import', () => {
-    expect(
-      findSourceEscapes({
-        'packages/editor/src/editor.svelte': [
-          '<script lang="ts">',
-          `  type Utilities = Pick<typeof import('${internalScope}/markdown'), 'normalize'>;`,
-          '  let utilities: Utilities | undefined;',
-          '</script>',
-          '<span>{utilities}</span>',
-        ].join('\n'),
-      }),
-    ).toEqual([
-      {
-        file: 'packages/editor/src/editor.svelte',
-        specifier: `${internalScope}/markdown`,
-        kind: 'internal-name',
-      },
-    ]);
-  });
-
-  test('a third-party bare specifier is still not an escape', () => {
-    expect(
-      findSourceEscapes({
-        'packages/weft/src/index.ts': [
-          "import { join } from 'node:path';",
-          "import { z } from 'zod';",
-          "import { render } from '@lostgradient/markdown';",
-        ].join('\n'),
-      }),
-    ).toEqual([]);
-  });
-
-  test('the message names every offender and says where the rewrite lives', () => {
-    const files = {
-      'packages/weft/src/index.ts': `import { a } from '${internalScope}/weft';\n`,
-      'packages/weft/src/other.ts': "export * from '../outside.ts';\n",
-    };
-    try {
-      assertNoSourceEscapes(files);
-      throw new Error('expected the gate to refuse this plan');
-    } catch (error) {
-      expect(error).toBeInstanceOf(SourceEscapeError);
-      const message = (error as Error).message;
-      expect(message).toContain(`packages/weft/src/index.ts: ${internalScope}/weft`);
-      expect(message).toContain('packages/weft/src/other.ts: ../outside.ts');
-      expect(message).toContain('internal-names.ts');
-      expect(message).toContain('additionalSourceRoots');
-    }
-  });
-});
-
-describe('an internal name in an emitted TypeScript configuration', () => {
-  test('`extends` is read, which a `.json` file was never scanned for before', () => {
-    expect(
-      findSourceEscapes({
-        'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json': `{\n  // a tsconfig is JSON with comments\n  "extends": "${internalScope}/typescript/library.json"\n}\n`,
+        'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json':
+          '{\n  // a tsconfig is JSON with comments\n  "extends": "../../../missing/tsconfig.json"\n}\n',
       }),
     ).toEqual([
       {
         file: 'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json',
-        specifier: `${internalScope}/typescript/library.json`,
-        kind: 'internal-name',
+        specifier: '../../../missing/tsconfig.json',
+        resolved: 'packages/weft/src/missing/tsconfig.json',
       },
     ]);
-  });
-
-  test('`compilerOptions.paths` keys are read, for a configuration with no `extends` at all', () => {
-    expect(
-      findSourceEscapes({
-        'packages/weft/src/client/__fixtures__/registry/tsconfig.json': JSON.stringify({
-          compilerOptions: {
-            paths: { [`${internalScope}/weft`]: ['../../../index.ts'], './local': ['./local.ts'] },
-          },
-        }),
-      }).map((escape) => escape.specifier),
-    ).toEqual([`${internalScope}/weft`]);
   });
 
   test('every entry of an `extends` array is read', () => {
     expect(
       findSourceEscapes({
         'packages/weft/tsconfig.json': JSON.stringify({
-          extends: [`${internalScope}/typescript/library.json`, './.svelte-kit/tsconfig.json'],
+          extends: ['./missing/tsconfig.json', './.svelte-kit/tsconfig.json'],
         }),
         'packages/weft/.svelte-kit/tsconfig.json': '{}',
       }).map((escape) => escape.specifier),
-    ).toEqual([`${internalScope}/typescript/library.json`]);
+    ).toEqual(['./missing/tsconfig.json']);
   });
 
-  test('a configuration the transform has already rewritten is clean', () => {
+  test('`compilerOptions.paths` keys are not read: a pattern is matched against an import, never resolved', () => {
+    expect(
+      findSourceEscapes({
+        'packages/weft/src/client/__fixtures__/registry/tsconfig.json': JSON.stringify({
+          compilerOptions: {
+            paths: {
+              './nothing/emits/this': ['./nothing.ts'],
+              '@lostgradient/weft': ['../../../index.ts'],
+            },
+          },
+        }),
+      }),
+    ).toEqual([]);
+  });
+
+  test('a configuration whose `extends` resolves is clean', () => {
     expect(
       findSourceEscapes({
         'packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json': JSON.stringify({
@@ -362,7 +248,7 @@ describe('a declared additional source root', () => {
         'packages/armorer/test/helpers/async-assertions.ts': 'export const settles = true;\n',
       },
       async (root) => {
-        const plan = await planSource(root, [armorer], publicNames);
+        const plan = await planSource(root, [armorer]);
         expect(Object.keys(plan.files).toSorted()).toEqual([
           'packages/armorer/src/compose.test.ts',
           'packages/armorer/test/helpers/async-assertions.ts',
@@ -385,12 +271,11 @@ describe('a declared additional source root', () => {
         'packages/armorer/vendor/assertions.ts': 'export const settles = true;\n',
       },
       async (root) => {
-        const plan = await planSource(root, [armorer], publicNames);
+        const plan = await planSource(root, [armorer]);
         expect(findSourceEscapes(plan.files)).toEqual([
           {
             file: 'packages/armorer/test/helpers/async-assertions.ts',
             specifier: '../../vendor/assertions.ts',
-            kind: 'unemitted-path',
             resolved: 'packages/armorer/vendor/assertions.ts',
           },
         ]);
@@ -406,22 +291,17 @@ describe('a declared additional source root', () => {
         'components/editor/test/helpers/async-assertions.ts': 'export const settles = true;\n',
       },
       async (root) => {
-        const plan = await planSource(
-          root,
-          [
-            {
-              workspace: '@lostgradient/editor',
-              corvidaeDirectory: 'components/editor',
-              targetDirectory: 'packages/editor',
-            },
-          ],
-          publicNames,
-        );
+        const plan = await planSource(root, [
+          {
+            workspace: '@lostgradient/editor',
+            corvidaeDirectory: 'components/editor',
+            targetDirectory: 'packages/editor',
+          },
+        ]);
         expect(findSourceEscapes(plan.files)).toEqual([
           {
             file: 'packages/editor/src/compose.test.ts',
             specifier: '../test/helpers/async-assertions.ts',
-            kind: 'unemitted-path',
             resolved: 'packages/editor/test/helpers/async-assertions.ts',
           },
         ]);
@@ -448,32 +328,6 @@ describe('the committed workspaces', () => {
     },
   );
 
-  /**
-   * COR-1284's outcome, stated as a fact about the real emitted trees rather than about a
-   * fixture: every corvidae workspace's manifest `name` now equals its public name, so no source
-   * file anywhere in either target can carry a specifier `isInternalSpecifier` recognizes -- there
-   * is no longer an internal-only name for one to name. That is what makes `internal-names.ts`'s
-   * rewrite a no-op by construction rather than by accident, and is exactly the property that
-   * would break first if a future edit ever reintroduced an `internalScope`-prefixed specifier
-   * into committed source. Scanned the same way `findSourceEscapes` scans -- every scannable
-   * emitted file, decoded once -- so a real regression here fails on the actual committed tree,
-   * not only on the internal-names.test.ts and source-escapes.test.ts fixtures that construct
-   * `${internalScope}/...` specifiers by hand to keep exercising the mechanism.
-   */
-  test.each<MirrorTarget>(['cinder', 'weft'])(
-    'the %s plan rewrites zero module specifiers as internal',
-    (target) => {
-      const { plan } = committedPlans[target];
-      let internalSpecifierCount = 0;
-      for (const [path, contents] of Object.entries(plan.files)) {
-        if (!isScannable(path)) continue;
-        const text = typeof contents === 'string' ? contents : new TextDecoder().decode(contents);
-        internalSpecifierCount += moduleSpecifiers(text, path).filter(isInternalSpecifier).length;
-      }
-      expect(internalSpecifierCount).toBe(0);
-    },
-  );
-
   test('the cinder binary and the published knowledge subpath resolve in the target', () => {
     const { plan } = committedPlans.cinder;
     // COR-1189 restored these two shims and COR-1221's emission rule left what they re-export
@@ -488,5 +342,14 @@ describe('the committed workspaces', () => {
     ]) {
       expect(plan.files[path], `${path} is not emitted`).toBeDefined();
     }
+  });
+});
+
+describe('isScannable', () => {
+  test('a scannable extension is read for its module specifiers, anything else is a valid target only', () => {
+    expect(isScannable('packages/weft/src/index.ts')).toBe(true);
+    expect(isScannable('packages/weft/src/widget.svelte')).toBe(true);
+    expect(isScannable('packages/weft/package.json')).toBe(false);
+    expect(isScannable('packages/weft/src/__fixtures__/baseline.png')).toBe(false);
   });
 });

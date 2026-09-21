@@ -16,7 +16,6 @@ import {
   type MirrorTarget,
 } from './manifests.ts';
 import { PackageMapError } from './package-map.ts';
-import { internalScope } from './source-escapes.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
@@ -171,12 +170,21 @@ describe('workspace discovery and target membership', () => {
 });
 
 describe('name mapping', () => {
-  test('no emitted manifest carries the retired internal scope, for either target', async () => {
+  /**
+   * COR-1285 deleted the source-side rewrite layer, which existed to translate a corvidae-only
+   * name into the one `package-map.json` publishes it under. This is the fact that made that
+   * deletable, stated on the manifest half rather than the source half: since COR-1284 renamed
+   * every workspace to the name it already publishes under, nothing here has ever needed
+   * translating either — each emitted manifest's `name` carries the same workspace name corvidae
+   * itself declares, unchanged.
+   */
+  test('every emitted manifest’s name is the workspace’s own name, carried unchanged', async () => {
     for (const target of ['weft', 'cinder'] as const) {
       const plan = await planFor(target);
-      for (const [path, contents] of Object.entries(plan.files)) {
-        if (!path.endsWith('package.json')) continue;
-        expect([path, contents.includes(`${internalScope}/`)]).toEqual([path, false]);
+      for (const workspace of plan.emitted) {
+        const path = `${workspace.targetDirectory}/package.json`;
+        const manifest = parse(plan, path);
+        expect([path, manifest['name']]).toEqual([path, workspace.workspace]);
       }
     }
   });

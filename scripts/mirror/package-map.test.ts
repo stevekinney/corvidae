@@ -62,6 +62,22 @@ describe('mirror package map', () => {
     }
   });
 
+  /**
+   * COR-1285 deleted the source-side rewrite layer that used to translate a corvidae-only name
+   * into whatever this map published it under. Deleting a translation is only sound while there is
+   * nothing left to translate, so this is the ruling that makes it sound: for every scoped
+   * workspace, `name` is not a second name assigned to the workspace — it is the workspace's own
+   * key, restated, because `publishableNames()` and `assertPublishedNamesUnique` both read it as
+   * the workspace's public identity and neither has ever treated it as an alias.
+   */
+  test('a scoped workspace’s published name is its own key, not a second name assigned to it', async () => {
+    const map = await loadPackageMap();
+    for (const [workspace, entry] of Object.entries(map.workspaces)) {
+      if (entry.disposition !== 'publish-as' || !workspace.startsWith('@lostgradient/')) continue;
+      expect(entry.name, `${workspace} publishes under its own name`).toBe(workspace);
+    }
+  });
+
   test('covers the workspaces actually on disk with no extras and no omissions', async () => {
     const report = await coverageReport(repositoryRoot);
 

@@ -18,15 +18,6 @@ import {
 
 const corvidaeRoot = join(import.meta.dir, '..', '..');
 
-/**
- * The names `package-map.json` assigns the workspaces these fixtures use, which is what a nested
- * configuration's `compilerOptions.paths` keys are rewritten to.
- */
-const publicNames: ReadonlyMap<string, string> = new Map([
-  ['@lostgradient/cinder', '@lostgradient/cinder'],
-  ['@lostgradient/weft', '@lostgradient/weft'],
-]);
-
 /** A throwaway corvidae tree carrying only `internal/typescript` and the workspaces under test. */
 async function withTree(
   files: Record<string, string>,
@@ -54,26 +45,26 @@ describe('vendorsConfiguration', () => {
 });
 
 describe('rewriteExtends', () => {
-  test('rescopes the specifier when the target keeps the package', () => {
-    expect(
-      rewriteExtends(`${configurationWorkspace}/library.json`, '@lostgradient/typescript', false),
-    ).toBe('@lostgradient/typescript/library.json');
-  });
-
-  test('points at the vendored copy when the target cannot hold the package', () => {
-    expect(
-      rewriteExtends(`${configurationWorkspace}/browser.json`, '@lostgradient/typescript', true),
-    ).toBe(`./${vendoredDirectory}/browser.json`);
-  });
-
-  test('leaves an unrelated specifier alone', () => {
-    expect(rewriteExtends('./.svelte-kit/tsconfig.json', '@lostgradient/typescript', true)).toBe(
-      './.svelte-kit/tsconfig.json',
+  test('leaves the specifier exactly as written when the target keeps the package', () => {
+    // Every workspace already extends `@lostgradient/typescript` by its public name (settled since
+    // COR-1284), so there is nothing left to rewrite here — the specifier ships unchanged.
+    expect(rewriteExtends(`${configurationWorkspace}/library.json`, false)).toBe(
+      `${configurationWorkspace}/library.json`,
     );
   });
 
+  test('points at the vendored copy when the target cannot hold the package', () => {
+    expect(rewriteExtends(`${configurationWorkspace}/browser.json`, true)).toBe(
+      `./${vendoredDirectory}/browser.json`,
+    );
+  });
+
+  test('leaves an unrelated specifier alone', () => {
+    expect(rewriteExtends('./.svelte-kit/tsconfig.json', true)).toBe('./.svelte-kit/tsconfig.json');
+  });
+
   test('refuses a bare package specifier when vendoring, which names no file', () => {
-    expect(() => rewriteExtends(configurationWorkspace, '@lostgradient/typescript', true)).toThrow(
+    expect(() => rewriteExtends(configurationWorkspace, true)).toThrow(
       TypeScriptConfigurationError,
     );
   });
@@ -149,7 +140,6 @@ describe('a configuration nested inside the source tree', () => {
           corvidaeRoot: root,
           target: 'weft',
           workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
-          publicNames,
         });
         const nested = JSON.parse(
           plan.files['packages/weft/src/cli/__fixtures__/typecheck/tsconfig.json'] ?? '{}',
@@ -162,7 +152,7 @@ describe('a configuration nested inside the source tree', () => {
     );
   });
 
-  test('its `compilerOptions.paths` keys are renamed and its values left alone', async () => {
+  test('its `compilerOptions.paths` keys and values pass through untouched', async () => {
     await withTree(
       {
         'packages/weft/tsconfig.json': JSON.stringify({
@@ -184,7 +174,6 @@ describe('a configuration nested inside the source tree', () => {
           corvidaeRoot: root,
           target: 'weft',
           workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
-          publicNames,
         });
         const nested = JSON.parse(
           plan.files['packages/weft/src/client/__fixtures__/registry/tsconfig.json'] ?? '{}',
@@ -225,7 +214,6 @@ describe('a configuration nested inside the source tree', () => {
             corvidaeRoot: root,
             target: 'weft',
             workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
-            publicNames,
             targetDirectory: clone,
           });
           const root_ = JSON.parse(plan.files['packages/weft/tsconfig.json'] ?? '{}') as {
@@ -261,7 +249,6 @@ describe('planTypeScriptConfiguration', () => {
           corvidaeRoot: root,
           target: 'weft',
           workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
-          publicNames,
         });
         expect(plan.vendoredInto).toEqual(['packages/weft']);
         for (const file of configurationFiles) {
@@ -301,7 +288,6 @@ describe('planTypeScriptConfiguration', () => {
             corvidaeRoot: root,
             target: 'weft',
             workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
-            publicNames,
             targetDirectory: clone,
           });
           const emitted = JSON.parse(plan.files['packages/weft/tsconfig.json'] ?? '{}') as {
@@ -336,7 +322,6 @@ describe('planTypeScriptConfiguration', () => {
             corvidaeRoot: root,
             target: 'weft',
             workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
-            publicNames,
             targetDirectory: clone,
           });
           const emitted = JSON.parse(plan.files['packages/weft/tsconfig.json'] ?? '{}') as {
@@ -364,7 +349,6 @@ describe('planTypeScriptConfiguration', () => {
           workspaces: [
             { corvidaeDirectory: 'components/cinder', targetDirectory: 'packages/components' },
           ],
-          publicNames,
         });
         expect(plan.vendoredInto).toEqual([]);
         const emitted = JSON.parse(plan.files['packages/components/tsconfig.json'] ?? '{}') as {
@@ -390,7 +374,6 @@ describe('planTypeScriptConfiguration', () => {
           workspaces: [
             { corvidaeDirectory: 'applications/chat-room', targetDirectory: 'labs/chat-room' },
           ],
-          publicNames,
         });
         const emitted = JSON.parse(plan.files['labs/chat-room/tsconfig.json'] ?? '{}') as {
           extends?: string[];
@@ -408,7 +391,6 @@ describe('planTypeScriptConfiguration', () => {
       corvidaeRoot,
       target: 'weft',
       workspaces: [{ corvidaeDirectory: 'packages/weft', targetDirectory: 'packages/weft' }],
-      publicNames,
     });
     const emitted = JSON.parse(plan.files['packages/weft/tsconfig.json'] ?? '{}') as {
       extends?: string;

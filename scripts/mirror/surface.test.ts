@@ -30,9 +30,9 @@ import { configurationFiles, vendoredDirectory } from './typescript-configuratio
  * separate, explicit command that checks the baseline itself against npm.
  *
  * Both plans come from `committed-plans.ts`, built once for the process when that module loads
- * and shared with `source-escapes.test.ts`. A test body that built one would be several seconds
- * of planning measured against bun's per-test timeout, which is a failure about the machine
- * rather than about the tree.
+ * and shared with `target-resolvability.test.ts` and `source.test.ts`. A test body that built one
+ * would be several seconds of planning measured against bun's per-test timeout, which is a
+ * failure about the machine rather than about the tree.
  */
 
 /**
