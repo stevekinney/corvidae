@@ -377,8 +377,15 @@ function svelteScriptSpans(contents: string, path: string): SourceSpan[] {
  * Everything else — markup, style, and the markup comments between them — is protected. A name in
  * markup is rendered text rather than documentation, and rewriting rendered text is a decision
  * about what a component says to a reader, which belongs in corvidae's source.
+ *
+ * A Markdown document protects nothing at all: every byte of it is documentation, prose and
+ * fenced code alike, and both tell a reader which package to install.
  */
 export function protectedRanges(contents: string, path: string): SourceSpan[] {
+  // A Markdown document protects nothing. It has no literals in the sense the rest of this
+  // function means: its fenced code is documentation too, and an `import … from '@corvidae/weft'`
+  // inside a fence is exactly what the target's doctest extractor reads and compiles.
+  if (path.endsWith('.md')) return [];
   if (!path.endsWith('.svelte')) return literalSpans(contents, path);
   const scripts = svelteScriptSpans(contents, path);
   const spans: SourceSpan[] = [];

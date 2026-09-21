@@ -43,8 +43,15 @@ import {
  * `protectedRanges`: every literal is off limits, so what remains in a TypeScript file is comment
  * trivia and code, and code cannot spell a package name.
  *
+ * **Why Markdown is included.** The five documents weft's protocol suite reads ship downstream
+ * and carried 19 mentions of `@corvidae/weft`, four of them `import … from '@corvidae/weft'`
+ * inside fences that the target's `verify:markdown-doctests` extracts. A reader-facing document
+ * naming a package that exists on no registry is wrong in the same way an `@example` is, so a
+ * Markdown file takes the prose pass over its whole text, fences included. It takes no specifier
+ * pass: a fenced import is text rather than a module edge, and there is no AST to walk.
+ *
  * **What it does not reach, deliberately.** An internal name inside a literal, wherever it sits:
- * prose in a Markdown file, a code sample stored as a JSON string,
+ * a code sample stored as a JSON string,
  * `Symbol.for('@corvidae/operative/backend-descriptors')`, the `WEFT_PACKAGE_NAME` constant
  * `weft codegen` writes into the declarations it generates, a `describe('@corvidae/weft barrel
  * re-exports')` test name and an error message that interpolates one. Rewriting an arbitrary
@@ -199,13 +206,14 @@ export function rewriteEmittedSource(
   path: string,
   publicNames: ReadonlyMap<string, string>,
 ): Uint8Array {
-  if (!isScannable(path)) return contents;
+  const documentation = path.endsWith('.md');
+  if (!isScannable(path) && !documentation) return contents;
   const text = decoder.decode(contents);
   if (!text.includes(`${internalScope}/`)) return contents;
-  const rewritten = rewriteInternalProse(
-    rewriteInternalSpecifiers(text, path, publicNames),
-    path,
-    publicNames,
-  );
+  // A Markdown document has no module edges to walk — a fenced import is text, not an edge the
+  // parser would report — so it takes the prose pass alone. Everything else takes both, prose
+  // second and over the specifier pass's output.
+  const specified = documentation ? text : rewriteInternalSpecifiers(text, path, publicNames);
+  const rewritten = rewriteInternalProse(specified, path, publicNames);
   return rewritten === text ? contents : encoder.encode(rewritten);
 }
