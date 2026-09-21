@@ -482,11 +482,14 @@ The main entry point exposes session helpers for direct session management witho
 
 ```typescript
 import { createAgentSession, loadAgentSession, saveAgentSession } from '@corvidae/operative';
+import { createConversationHistory } from '@corvidae/conversationalist';
+import { MemoryStorage, textValueStore } from '@corvidae/weft';
 
-// Direct persistence (use createSessionStore from session/index for the full API)
+// Direct persistence (see createSessionStore() below for the full SessionStore API)
+const store = textValueStore(new MemoryStorage());
 const session = createAgentSession({
   agentName: 'my-agent',
-  conversationHistory: conversation.current,
+  conversationHistory: createConversationHistory(),
   id: 'session-abc',
 });
 
@@ -500,6 +503,8 @@ For richer session management, [`createSessionStore()` and `resumeSession()`](#c
 
 ```typescript
 import { createActiveRun, createSessionStore, resumeSession, stopWhen } from '@corvidae/operative';
+import type { GenerateFunction } from '@corvidae/operative';
+import { createToolbox } from '@corvidae/armorer';
 import { MemoryStorage, textValueStore } from '@corvidae/weft';
 
 // createSessionStore requires a real Weft `ConditionalTextValueStore`—it
@@ -512,22 +517,28 @@ import { MemoryStorage, textValueStore } from '@corvidae/weft';
 const kvStore = textValueStore(new MemoryStorage());
 const sessions = createSessionStore(kvStore);
 
-await sessions.save(session);
-const summaries = await sessions.list({ agentName: 'my-agent', sortBy: 'updatedAt' });
-const loaded = await sessions.load('session-abc');
-await sessions.delete('session-abc');
-await sessions.cleanup({ olderThan: 7 * 24 * 60 * 60 * 1000 }); // 1 week
-
 // resumeSession loads an existing session (or creates a new one) and returns
 // the restored Conversation so you can pass it into a run.
 const { session, conversation, isNew } = await resumeSession(sessions, 'session-abc', {
   agentName: 'my-agent',
 });
 
+await sessions.save(session);
+const summaries = await sessions.list({ agentName: 'my-agent', sortBy: 'updatedAt' });
+const loaded = await sessions.load('session-abc');
+
 // Then drive a run from the restored, already-live Conversation instance.
 // createAgent().run() only accepts a plain ConversationHistory (it snapshots
 // its own fresh Conversation internally); createActiveRun accepts a live
-// Conversation directly, which is what resumeSession returns.
+// Conversation directly, which is what resumeSession returns. `isNew` is
+// true here (fresh in-memory store), so this conversation has no history
+// yet—append a turn before running, the same as the Conversation example
+// above, or a real provider sees an empty message list.
+conversation.appendUserMessage('Summarize the docs.');
+// `generate` and `toolbox` follow the same shapes introduced in Quick Start
+// above—swap in a real provider and a populated `createToolbox()` toolbox.
+const generate: GenerateFunction = async () => ({ content: 'Echo', toolCalls: [] });
+const toolbox = createToolbox([]);
 const activeRun = createActiveRun({
   generate,
   toolbox,
@@ -535,6 +546,24 @@ const activeRun = createActiveRun({
   stopWhen: stopWhen.noToolCalls(),
 });
 const result = await activeRun.result;
+
+// `resumeSession` deep-clones the stored history into `conversation`, so
+// the run above updates `conversation.current` without touching
+// `session.conversationHistory` or the stored record—copy it back and
+// save, or the resumed turn is lost the next time this session loads.
+session.conversationHistory = conversation.current;
+await sessions.save(session);
+
+// Once you're done with a session, remove it directly, or reclaim storage
+// in bulk on a schedule. This creates and immediately discards a separate,
+// disposable session—not 'session-abc' above, whose resumed turn was just
+// persisted—so the removal below has a real record to act on.
+const { session: scratchSession } = await resumeSession(sessions, 'session-to-discard', {
+  agentName: 'my-agent',
+});
+await sessions.save(scratchSession);
+await sessions.delete('session-to-discard');
+await sessions.cleanup({ olderThan: 7 * 24 * 60 * 60 * 1000 }); // 1 week
 ```
 
 **`SessionStore` interface:**
@@ -570,7 +599,10 @@ The store does **not** dispatch `SessionCreatedEvent`/`SessionSavedEvent`/ `Sess
 `save()`/`update()` reject with `StaleSessionIncarnationError` when a candidate names a specific, nonempty `incarnation` that no longer matches the live body's current one—writing back a prior incarnation's own object after that body was deleted and the id recreated. A candidate with `incarnation: ''` (the `createAgentSession()` default) is never rejected this way.
 
 ```ts
-const sessions = createSessionStore(kvStore);
+import { createSessionStore } from '@corvidae/operative';
+import { MemoryStorage, textValueStore } from '@corvidae/weft';
+
+const sessions = createSessionStore(textValueStore(new MemoryStorage()));
 const LEASE_MS = 30_000;
 // Unique across PROCESSES, not merely across calls in this one—two
 // processes minting `drainerId` the same deterministic way (a fixed
@@ -592,7 +624,7 @@ function scheduleRetry(atMs: number): void {
   );
 }
 
-// Single-flighted, the same way Bureau's own `drainSessionOutbox` is: two
+// Single-flighted, the same way Bureau's own `drainOutbox` is: two
 // `session.outbox-appended` events firing before the first callback below
 // finishes must join ONE drain rather than run two overlapping ones—two
 // concurrent callbacks sharing `drainerId` would each look like a valid

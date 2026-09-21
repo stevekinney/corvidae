@@ -535,15 +535,23 @@ export interface GeminiCacheCreatingClient {
  *
  * Replaces the two provisional, SDK-shaped response types this package
  * shipped ahead of AB-64 (Gemini's `{ totalTokens?, cachedContentTokenCount? }`
- * and Anthropic's `{ input_tokens? }`) with one shape both
+ * and Anthropic's `{ input_tokens }`) with one shape both
  * `createGeminiTokenCounter` and `createAnthropicTokenCounter` map onto at
- * their own boundary. `totalTokens` is required here even though both SDKs
- * declare their own field optional: AB-64 requires it, so each adapter
- * normalizes the absent case to `0` once, at the mapping boundary, rather
- * than pushing a `?? 0` onto every caller. `cachedTokens` stays optional and
- * is never fabricated as `0` — Anthropic's `messages.countTokens` reports no
- * cache attribution at all, so its adapter always omits the field, and
- * Gemini's adapter omits it whenever the SDK response omits
+ * their own boundary. The two SDKs do not agree on optionality here: `@google/genai`'s
+ * `CountTokensResponse.totalTokens` is optional (the whole response is a
+ * loosely-typed class with every field optional), but `@anthropic-ai/sdk`'s
+ * `MessageTokensCount.input_tokens` is required—Anthropic's `countTokens`
+ * response always carries a count. `totalTokens` is still required here, for
+ * both adapters uniformly: AB-64 requires it, and normalizing Gemini's
+ * genuinely-absent case to `0` once, at the mapping boundary, is simpler than
+ * pushing a `?? 0` onto every caller. Against the official SDK response type
+ * `createAnthropicTokenCounter` never actually observes an absent count to
+ * normalize—but {@link AnthropicTokenCountingClient} deliberately keeps
+ * `input_tokens` optional too, for a caller-supplied client or proxy `baseURL`
+ * that omits it, and the `?? 0` fallback does cover that boundary. `cachedTokens` stays
+ * optional and is never fabricated as `0`—Anthropic's `messages.countTokens`
+ * reports no cache attribution at all, so its adapter always omits the field,
+ * and Gemini's adapter omits it whenever the SDK response omits
  * `cachedContentTokenCount`.
  */
 export interface TokenCountResult {
