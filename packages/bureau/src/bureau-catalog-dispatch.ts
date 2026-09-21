@@ -432,8 +432,127 @@ export function createCatalogDispatcher({
     // promises a synchronous RETURN of the handle, not synchronous START of
     // the agent's own work.
     return trackCatalogRun(
-      createDeferredAgentRun(() => Promise.resolve(agent), input, context, name),
+      createDeferredAgentRun(
+        () => resolveInvariantComposedAgent(name, input, context, principal, agent, hasResolver),
+        input,
+        context,
+        name,
+      ),
     );
+  }
+
+  /**
+   * COR-1277 — the agent this non-durable dispatch actually runs: the catalog
+   * agent itself when nothing can be composed onto it, and otherwise a
+   * one-shot synthetic agent carrying Bureau's invariant tier in front of the
+   * agent's own.
+   *
+   * **Where `createActiveRun` is called is the whole design.** It happens
+   * inside the returned agent's `run()`, never here in the resolver.
+   * `createDeferredAgentRun` checks `isTerminal()` after this function settles
+   * and before calling `run()`, so an abort arriving during resolution settles
+   * the handle synthetically and the underlying run never starts. That is why
+   * this path needs no counterpart to `runDurableCatalogAgent`'s
+   * `dispatchedActiveRun`/`cancellationRequested`/`guardedRun`/`closed()`
+   * machinery: the durable branch calls `createActiveRun` inside ITS resolver,
+   * before that gate (see the comment above `runDurableCatalogAgent`, which
+   * says the gate decides whether to CALL `run()`, "not whether to have
+   * started it"), so it has to forward the abort itself. This one does not
+   * start anything the gate cannot still prevent.
+   */
+  async function resolveInvariantComposedAgent(
+    name: string,
+    input: AgentInput,
+    context: AgentRunContext,
+    principal: string | undefined,
+    agent: AnyRunnableAgent,
+    hasResolver: boolean,
+  ): Promise<RunnableAgent<unknown, boolean>> {
+    // An agent exposing no `OPERATIVE_RESOLVE_RUN_OPTIONS` builds its
+    // `RunOptions` entirely inside `run()`, so there is no bag to merge a tier
+    // into and nothing here can change that (COR-1276's accepted gap). It runs
+    // exactly as it did before this function existed.
+    //
+    // Handed the caller's already-computed boolean rather than re-running
+    // `hasDefinitionResolver` here, because the capability is a GETTER on the
+    // agent and re-running the guard would read it a second time. A test pins
+    // that read count at one for this path ("reads the resolver capability
+    // before the direct-dispatch durability branch"), and a lazily-wrapped
+    // agent is entitled to treat a read as meaningful.
+    if (!hasResolver) return agent as RunnableAgent<unknown, boolean>;
+
+    let resolvedOptions: RunOptions;
+    try {
+      // The cast is what the boolean above costs: `hasResolver` carries the
+      // narrowing that the guard would have applied, but not in a form the
+      // compiler tracks across a parameter. Sound because the caller computed
+      // it from this exact agent, immediately before.
+      resolvedOptions = await (agent as unknown as DefinitionResolvingAgentWithResolver)[
+        OPERATIVE_RESOLVE_RUN_OPTIONS
+      ](input, context);
+    } catch (error) {
+      // Same fallback the durable branch makes, for the same reason: a
+      // `createLazyAgent` wrapper exposes this symbol unconditionally and only
+      // discovers on invocation whether the module behind it supports durable
+      // resolution. `AgentContractError` means "not supported" — fall back to
+      // the agent's own `run()`, which is what direct registration would have
+      // done. This is NOT the no-resolver case above; that one never gets here.
+      if (error instanceof AgentContractError) {
+        return agent as RunnableAgent<unknown, boolean>;
+      }
+      // Any other resolution failure is a genuine one, and it must keep
+      // settling as it does today. Before this change the same failure happened
+      // inside `agent.run()` and `createDeferredAgentRun` classified it as an
+      // `AgentContractError` ("threw synchronously from run()"); rethrowing
+      // here instead would reclassify it as a LOAD_FAILED load error. Deferring
+      // the throw to `run()` keeps the class the caller already sees.
+      return {
+        name,
+        hasOutput: agent.hasOutput,
+        run: () => {
+          throw error;
+        },
+      };
+    }
+
+    // AB-260, matching the durable branch: a catalog agent's own resolver
+    // builds its options independently of this bureau's composition, so
+    // without this it would fall back to operative's default RuntimeServices.
+    // Parity rather than a behavior change — `createAgent`'s own
+    // `buildRunOptions` always populates `runtime`, so for an ordinary agent
+    // the spread below leaves the agent's value in place, and this only bites
+    // for a hand-written resolver that omits it.
+    resolvedOptions = { runtime: runtimeServices, ...resolvedOptions };
+
+    const merged: RunOptions = {
+      ...resolvedOptions,
+      // Bureau first, so it wins `runFirst` and — being pinned last — still
+      // wins the waterfall. Only the invariants that close over nothing
+      // run-specific travel here; see `createBureauInvariantHooks`.
+      hooks: mergeHookRegistries(runtime.createBureauInvariantHooks(), resolvedOptions.hooks),
+    };
+    const hasOutput = merged.output !== undefined;
+
+    return {
+      name,
+      // The resolved options, not `agent.hasOutput`: the durable branch reads
+      // it the same way, so a hand-written agent whose runtime witness
+      // disagrees with its own schema cannot mint a mismatched handle.
+      hasOutput,
+      run: () =>
+        createAgentRun<unknown, boolean>(
+          createActiveRun(
+            merged,
+            undefined,
+            // `createActiveRun` derives `LivenessSnapshot.owner` from this
+            // argument alone, never from `RunOptions.principal`. `agent.run()`
+            // supplies it internally today, so omitting it here would silently
+            // report `owner: undefined` on every principal-carrying run.
+            principal !== undefined ? { owner: principal } : undefined,
+          ),
+          { hasOutput },
+        ),
+    };
   }
 
   return { runAgent };
