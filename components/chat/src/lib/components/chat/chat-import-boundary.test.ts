@@ -12,10 +12,10 @@ import ts from 'typescript';
 const CHAT_ROOT = import.meta.dir;
 // COR-1284 renamed the conversationalist workspace to its unscoped public npm name, so the bare
 // specifier below is the current, correct import form rather than a retired one. Before that
-// rename this file guarded the opposite direction — a scoped `@corvidae/conversationalist` import
-// was current and a bare `conversationalist` import was the retired, pre-monorepo form the ruling
-// has now reinstated. That guard is obsolete by the ruling itself, so it is gone rather than
-// inverted: there is no longer a meaningful "old bare import" to reject when bare is current.
+// rename this file guarded the opposite direction: an internally-scoped import was current and
+// this same bare specifier was the retired, pre-monorepo form the ruling has now reinstated. That
+// guard is obsolete by the ruling itself, so it is gone rather than inverted — there is no longer
+// a meaningful "old bare import" to reject when bare is current.
 const CONVERSATIONALIST_PACKAGE = 'conversationalist';
 const CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN =
   /(?:from\s*['"]conversationalist['"]|import\s*['"]conversationalist['"]|import\s*\(\s*['"]conversationalist['"])/;

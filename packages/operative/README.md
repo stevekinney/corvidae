@@ -476,9 +476,9 @@ The main entry point exposes session helpers for direct session management witho
 - **`saveAgentSession(persistence, session)`**: Persists an `AgentSession` through conflict-aware session storage.
 
 ```typescript
-import { createAgentSession, loadAgentSession, saveAgentSession } from '@corvidae/operative';
-import { createConversationHistory } from '@corvidae/conversationalist';
-import { MemoryStorage, textValueStore } from '@corvidae/weft';
+import { createAgentSession, loadAgentSession, saveAgentSession } from '@lostgradient/operative';
+import { createConversationHistory } from 'conversationalist';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 // Direct persistence (see createSessionStore() below for the full SessionStore API)
 const store = textValueStore(new MemoryStorage());
@@ -497,10 +497,10 @@ For richer session management, [`createSessionStore()` and `resumeSession()`](#c
 ### `createSessionStore()` and `resumeSession()`
 
 ```typescript
-import { createActiveRun, createSessionStore, resumeSession, stopWhen } from '@corvidae/operative';
-import type { GenerateFunction } from '@corvidae/operative';
-import { createToolbox } from '@corvidae/armorer';
-import { MemoryStorage, textValueStore } from '@corvidae/weft';
+import { createActiveRun, createSessionStore, resumeSession, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import { createToolbox } from 'armorer';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 // createSessionStore requires a real Weft `ConditionalTextValueStore`—it
 // checks for a `.conditionalBatch` method, so a hand-rolled `{ get, set,
@@ -594,8 +594,8 @@ The store does **not** dispatch `SessionCreatedEvent`/`SessionSavedEvent`/ `Sess
 `save()`/`update()` reject with `StaleSessionIncarnationError` when a candidate names a specific, nonempty `incarnation` that no longer matches the live body's current one—writing back a prior incarnation's own object after that body was deleted and the id recreated. A candidate with `incarnation: ''` (the `createAgentSession()` default) is never rejected this way.
 
 ```ts
-import { createSessionStore } from '@corvidae/operative';
-import { MemoryStorage, textValueStore } from '@corvidae/weft';
+import { createSessionStore } from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 const sessions = createSessionStore(textValueStore(new MemoryStorage()));
 const LEASE_MS = 30_000;
