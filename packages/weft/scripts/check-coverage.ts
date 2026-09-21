@@ -1639,6 +1639,15 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
       requireUncoveredLines: true,
     },
   ],
+  [
+    'scripts/lib/workflow-visibility-backfill.test-support.ts',
+    {
+      reason:
+        "NoConditionalBatchStorage.batch()'s `return undefined;` (its only statement) and its closing brace are byte-identical to put()'s and delete()'s bodies a few lines above it, and Bun/V8's coverage instrumentation appears to structurally deduplicate identical trivial function bodies within the same file, attributing hits to only one canonical copy's source position. Directly verified this is a coverage-attribution artifact, not a real gap: a standalone test that calls storage.batch() alone (no other method), asserts the resolved value, and logs it via console.log confirms the call executes and returns correctly every time, while these two lines still report zero hits and the enclosing signature line reports a hit count far exceeding the number of calls this file's tests actually make to it — consistent with hits from the identical-bodied put()/delete() calls elsewhere being folded into whichever declaration V8 kept as canonical. workflow-visibility-backfill.test-support.test.ts (COR-1283) calls get/put/delete/batch/scan/capabilities directly and asserts each one's documented behavior, closing every other line in this class; only these two lines resist attribution.",
+      lines: new Set([168, 169]),
+      requireUncoveredLines: true,
+    },
+  ],
 ]);
 
 /**
