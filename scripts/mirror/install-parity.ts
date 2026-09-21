@@ -118,6 +118,41 @@ export async function readWorkflowInstalls(directory: string): Promise<WorkflowI
   return installs;
 }
 
+/**
+ * The `bun-version:` an `oven-sh/setup-bun` step pins in one workflow file, read directly rather
+ * than assumed.
+ *
+ * COR-1286's `mirror-verify.yaml` has to pin the same Bun version the target's own release
+ * workflow does — reading it here, the way `readWorkflowInstalls` already reads the release
+ * workflow's install line, is what lets the renderer generalize past weft's `1.4.2` to whatever a
+ * target's `release.yaml` pins next, without this module needing to know either value ahead of
+ * time. A line scan again, for the reason `extractWorkflowInstalls` gives: the value is inside a
+ * `run:`/`with:` block that YAML treats as opaque text or a scalar, so parsing the document still
+ * leaves this to read as text.
+ */
+export async function readReleaseWorkflowBunVersion(
+  directory: string,
+  file = 'release.yaml',
+): Promise<string> {
+  const path = join(directory, '.github', 'workflows', file);
+  const contents = await Bun.file(path)
+    .text()
+    .catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined;
+      throw error;
+    });
+  if (contents === undefined) {
+    throw new InstallParityError(
+      `${file} does not exist in this clone; cannot read its bun-version pin`,
+    );
+  }
+  const match = contents.match(/bun-version:\s*['"]?([^'"\n#]+)/);
+  if (!match?.[1]) {
+    throw new InstallParityError(`${file} has no \`bun-version:\` pin for oven-sh/setup-bun`);
+  }
+  return match[1].trim();
+}
+
 export interface InstallParityOptions {
   /** The install the mirror is about to run. */
   readonly command: readonly string[];

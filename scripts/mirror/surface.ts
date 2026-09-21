@@ -10,6 +10,7 @@ import {
   type ManifestPlan,
   type PlanOptions,
 } from './manifests.ts';
+import { renderMirrorVerifyWorkflow } from './mirror-verify-workflow.ts';
 import { dispositionFor } from './package-map.ts';
 import {
   checkTargetCoverage,
@@ -73,6 +74,16 @@ export interface PublishedPackage {
   entry: PackageSurfaceEntry;
   exports: SurfaceExportsMap;
   files: string[];
+  /**
+   * The emitted manifest's `version`, read back out rather than recomputed: `target-owned.json`'s
+   * `insideFiles` policy never overlays `version`, so this is always whatever `composeManifest`
+   * already resolved — the target's own preserved version, or `0.0.0`/`package-map.json`'s
+   * `lastPublishedVersion` on a first publish. COR-1286 needs it as a typed value so the shared
+   * verification step list (`verify-steps.ts`) can compute a package's packed tarball filename
+   * ahead of time with `packaging.ts`'s `tarballFilename`, the same way both `verifyTarget` and the
+   * rendered `mirror-verify.yaml` workflow do.
+   */
+  version: string;
 }
 
 /**
@@ -279,6 +290,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
       entry,
       exports: resolved.exports,
       files: resolved.files,
+      version: manifestVersion(manifest, resolved.publicName),
     });
 
     parity.push(checkParity(baseline, resolved.publicName, resolved.exports));
@@ -313,7 +325,36 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     { owner: 'source', paths: Object.keys(source.files) },
   ]);
 
-  const merged = { ...files, ...typescript.files, ...source.files };
+  // COR-1286: the one transform-emitted verification workflow. It is not manifest, TypeScript-
+  // config or source-tree output — it is generated straight from `published`/`privateWorkspaces`,
+  // which this function has just finished computing — and, unlike those three producers, it needs
+  // a real clone: it reads the target's own release workflow for the Bun version and install line
+  // to match (`renderMirrorVerifyWorkflow`). `options.targetDirectory` is optional (`committed-
+  // plans.ts` plans both targets with none, for `surface.test.ts`/`source.test.ts`/`target-
+  // resolvability.test.ts`'s own assertions about the committed tree, against no clone at all), so
+  // this is conditional rather than unconditional the way the other three are: a plan with nothing
+  // to read the release workflow from emits no verification workflow to pair with it, exactly as
+  // it emits nothing else that depends on comparing against an existing target file.
+  const mirrorVerifyWorkflow =
+    options.targetDirectory === undefined
+      ? undefined
+      : await renderMirrorVerifyWorkflow({
+          targetDirectory: options.targetDirectory,
+          bunLockPath: join(options.corvidaeRoot, 'bun.lock'),
+          published,
+          privateWorkspaces,
+        });
+  const merged = {
+    ...files,
+    ...typescript.files,
+    ...source.files,
+    // `target-owned.json`'s narrowed `.github/**` enumeration never claims this path, by
+    // construction: every entry there names a specific release-adjacent filename, and
+    // `.github/workflows/mirror-verify.yaml` is not one of them.
+    ...(mirrorVerifyWorkflow === undefined
+      ? {}
+      : { '.github/workflows/mirror-verify.yaml': mirrorVerifyWorkflow }),
+  };
   // Over the merged set rather than the source half alone: a specifier that names a manifest or a
   // tsconfig is satisfied by the other two producers, and the question the gate asks is whether
   // the *target* can resolve it, not which half of the transform wrote it.
@@ -335,6 +376,25 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
 function hasTypecheckScript(manifest: JsonObject): boolean {
   const scripts = manifest['scripts'];
   return isJsonObject(scripts) && typeof scripts['typecheck'] === 'string';
+}
+
+/**
+ * A published manifest's `version`, failing loudly rather than publishing an undefined one.
+ *
+ * `target-owned.json`'s `insideFiles` policy never overlays `version` — `manifests.ts` always
+ * resolves it before `planSurface` reaches this manifest, to the target's own preserved version,
+ * to `0.0.0` on a fresh target, or to `package-map.json`'s `lastPublishedVersion` on a seeded
+ * first publish — so a manifest reaching here without a string `version` is a manifest pipeline
+ * defect, not a case this function is meant to paper over with a fallback.
+ */
+function manifestVersion(manifest: JsonObject, publicName: string): string {
+  const version = manifest['version'];
+  if (typeof version !== 'string' || version.length === 0) {
+    throw new ManifestTransformError(
+      `${publicName}'s emitted manifest has no string \`version\`; manifests.ts's composeManifest is expected to resolve one before planSurface writes the manifest.`,
+    );
+  }
+  return version;
 }
 
 /**

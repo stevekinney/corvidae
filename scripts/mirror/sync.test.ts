@@ -150,9 +150,29 @@ const sharedTypeScriptConfiguration = {
  */
 const privateWorkspaceDirectory = 'packages/testing';
 
+/**
+ * COR-1286: `renderMirrorVerifyWorkflow` reads `publint`'s and `@arethetypeswrong/cli`'s locked
+ * versions straight out of `bun.lock` rather than a `package.json` range — a minimal, real-shaped
+ * stand-in in the same text-lockfile format `readLockedVersion`'s regex reads, not a fixture-only
+ * shortcut. Written as a raw string (`writeTree` serializes anything else through `JSON.stringify`,
+ * which would re-quote this into something the regex no longer matches the way a real `bun.lock`
+ * does).
+ */
+const fixtureBunLock = [
+  '{',
+  '  "lockfileVersion": 1,',
+  '  "packages": {',
+  '    "publint": ["publint@0.3.24", "", {}, "sha512-fixture-publint"],',
+  '    "@arethetypeswrong/cli": ["@arethetypeswrong/cli@0.18.5", "", {}, "sha512-fixture-attw"]',
+  '  }',
+  '}',
+  '',
+].join('\n');
+
 function corvidaeFixture(): Record<string, unknown> {
   const files: Record<string, unknown> = {
     LICENSE: licence,
+    'bun.lock': fixtureBunLock,
     'package.json': {
       name: 'corvidae',
       private: true,
@@ -239,6 +259,29 @@ export default defineConfig({
  * target-owned inside a source tree, one unknown outside it — are what say the overwrite stops
  * where it should.
  */
+/**
+ * COR-1286: `verifyTarget` reads the target's release workflow for the Bun version and install
+ * line `mirror-verify.yaml` pins to — a minimal, real-shaped stand-in for weft's own
+ * `.github/workflows/release.yaml`, not a fixture-only string, so the workflow renderer exercises
+ * the exact `readReleaseWorkflowBunVersion`/`readWorkflowInstalls` reads a live sync would make.
+ */
+const fixtureReleaseWorkflow = [
+  'name: release',
+  'on:',
+  '  push:',
+  "    tags: ['v*.*.*']",
+  'jobs:',
+  '  publish:',
+  '    runs-on: ubuntu-latest',
+  '    steps:',
+  '      - uses: actions/checkout@v4',
+  '      - uses: oven-sh/setup-bun@v1',
+  '        with:',
+  '          bun-version: 1.4.2',
+  '      - run: bun install --frozen-lockfile',
+  '',
+].join('\n');
+
 function targetFixture(): Record<string, unknown> {
   const files: Record<string, unknown> = {
     'README.md': '# cinder-workspace\n\nTarget-authored front page.\n',
@@ -250,6 +293,7 @@ function targetFixture(): Record<string, unknown> {
     '.gitignore': 'node_modules\n',
     [targetOwnedInsideSource]: '# Agent instructions the target wrote for itself\n',
     [unknownTargetFile]: '# A working document nobody enumerated\n',
+    '.github/workflows/release.yaml': fixtureReleaseWorkflow,
   };
   for (const [directory, entry] of Object.entries(fixturePackages)) {
     files[`${directory}/tsdown.config.ts`] = tsdownConfiguration;
