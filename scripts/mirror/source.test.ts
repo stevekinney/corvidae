@@ -106,17 +106,17 @@ describe('the files that check a workspace’s emitted source', () => {
     (cluster) => cluster.paths,
   );
 
-  test('every declared path is emitted, all thirty-one of them', () => {
+  test('every declared path is emitted, all eleven of them', () => {
     // Against the real tree rather than a fixture, because the thing that can go wrong is a path
     // that no longer matches what corvidae carries, and a fixture would restate the table's own
     // strings back to itself.
     const { plan } = committedPlans.weft;
     const missing = declared.filter((path) => plan.files[`packages/weft/${path}`] === undefined);
     expect(missing).toEqual([]);
-    expect(declared.length).toBe(31);
-    // The gate corvidae rejected. Nothing prunes, so the target keeps its copy until a
-    // target-side edit removes it; emitting corvidae's non-existent one is not the answer.
-    expect(declared).not.toContain('scripts/check-catalog-drift.ts');
+    expect(declared.length).toBe(11);
+    // No gate script is declared any more: under COR-1286 the target runs none, and
+    // `target-owned.json` retires its copies rather than emission replacing them.
+    expect(declared.filter((path) => path.startsWith('scripts/check-'))).toEqual([]);
   });
 
   test('the generator family goes as a set, since its entry point imports the rest', () => {
@@ -126,7 +126,7 @@ describe('the files that check a workspace’s emitted source', () => {
   });
 
   test('a declared check corvidae no longer carries is a refusal, not a silent skip', async () => {
-    const omitted = 'scripts/check-lint-disables.ts';
+    const omitted = 'scripts/operation-client-schema.ts';
     await withTree(
       {
         'packages/weft/src/index.ts': 'export const weft = true;\n',

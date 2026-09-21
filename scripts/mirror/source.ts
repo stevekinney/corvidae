@@ -332,44 +332,10 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
  */
 export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
   '@lostgradient/weft': [
-    {
-      paths: [
-        'scripts/check-catalog-completeness.ts',
-        'scripts/check-definition-vocabulary.ts',
-        'scripts/check-engine-internals-field-access.ts',
-        'scripts/check-implementation-file-sizes.test.ts',
-        'scripts/check-implementation-file-sizes.ts',
-        'scripts/check-import-cycles.ts',
-        'scripts/check-internal-imports.ts',
-        'scripts/check-lint-disables.test.ts',
-        'scripts/check-lint-disables.ts',
-        'scripts/check-revision-keyed-lookups.test.ts',
-        'scripts/check-revision-keyed-lookups.ts',
-        'scripts/check-type-ergonomics.ts',
-      ],
-      reason:
-        'The nine gates corvidae’s own `lint` script runs, plus the three that have tests. `check-catalog-drift.ts` is absent on purpose: corvidae rejected that gate, and because nothing prunes, the target’s copy would survive a sync — dropping its stage from the target’s `lint` and deleting the script is a target-side edit, not an emission.',
-    },
-    {
-      paths: ['scripts/check-coverage.ts', 'scripts/check-coverage.test.ts', 'bunfig.toml'],
-      reason:
-        'The coverage gate corvidae’s own `test:coverage` script runs (COR coverage-gate adoption). Its allowance registry is line-keyed against corvidae’s own source, not upstream’s, so unlike the nine lint gates above it is not a target-drift check: it is the mechanism that makes a coverage regression fail here, on corvidae’s tree, instead of at the next sync against the target’s stale copy. Declared with its test because the test exercises the layering, ignore-pattern, and LCOV-parsing invariants the gate depends on. `bunfig.toml` travels with them rather than in `additionalSourceRoots`: `check-coverage.ts` imports it directly (`import bunfig from "../bunfig.toml"`) so `[test].coveragePathIgnorePatterns` stays a single source of truth instead of a hand-rolled parse that could drift from the file Bun itself reads, and it is also read by every other `bun test` invocation in the target — the same file, not an import-only dependency, which is why it sits with the gate it configures rather than in the imported-but-not-owned table. `packages/weft/bunfig.toml` sits outside `src/`, so without this declaration COR-1221’s source boundary would leave it unemitted, the two copies would drift, and the emitted target would run the coverage gate — and its `[test].pathIgnorePatterns` test discovery — against corvidae’s stale rules.',
-    },
-    {
-      paths: ['scripts/benchmarks/environment-configuration.test.ts'],
-      reason:
-        "The coverage gate's own dependency, one layer removed (COR coverage-gate adoption): `additionalSourceRoots` already declares `scripts/benchmarks/environment-configuration.ts` (imported by `benchmark-environment.ts`, which `src/storage/bun-sql-benchmark.test.ts` imports), but nothing emitted imports this file's own test — it exists solely to unit-test that module directly. Without declaring it, corvidae's own `bun run test:coverage` discovers and runs it by directory-wide `bun test` convention (keeping the module's coverage complete here), while the target's copy of the module has no accompanying test at all and the coverage gate fails against the emitted tree even though it passes against corvidae's. Self-contained: imports only `bun:test` and the already-declared `./environment-configuration.ts`.",
-    },
-    {
-      paths: [
-        '.oxlintrc.json',
-        'documentation/contributing/implementation-file-sizes.md',
-        'documentation/import-cycle-allowlist.json',
-        'documentation/internal-imports-allowlist.json',
-      ],
-      reason:
-        'What those gates judge against. `check-import-cycles.ts` and `check-internal-imports.ts` each read their allowlist by literal path, `check-implementation-file-sizes.test.ts` reads the contributor document, and `.oxlintrc.json` holds the per-file `max-lines` and `complexity` overrides the lint gate applies. The target carries its own copy of all but the document — the allowlists at 213 and 3 bytes, `.oxlintrc.json` at 11,189 — and a sync replaces them, which is the point rather than a side effect: they describe corvidae’s source, and so does the `src/` tree landing beside them.',
-    },
+    // Under COR-1286's demotion the target runs no lint, coverage or documentation gate of its own
+    // — those run in corvidae alone — so the nine `check-*.ts` gates, `check-coverage.ts` with its
+    // test and `bunfig.toml`, the benchmark environment test and the allowlists they judged against
+    // are no longer emitted. `target-owned.json` retires the target's copies instead.
     {
       paths: [
         'scripts/generate-operation-client.test.ts',

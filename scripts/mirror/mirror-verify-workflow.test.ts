@@ -107,6 +107,8 @@ describe('renderMirrorVerifyWorkflow', () => {
       expect(workflow).toContain('name: mirror-verify');
       expect(workflow).toContain('pull_request:');
       expect(workflow).toContain('merge_group:');
+      // The release workflow's gate job `uses:` this file; without the trigger the call is refused.
+      expect(workflow).toContain('workflow_call:');
       expect(workflow).toContain('bun-version: 1.4.2');
       // Read off the release workflow's own install line, not hardcoded to weft's flag.
       expect(workflow).toContain('bun install --frozen-lockfile --linker=isolated');

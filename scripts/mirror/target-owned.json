@@ -184,6 +184,192 @@
         "target": "weft",
         "reason": "Reads `.github/workflows/ci.yaml` and `release.yaml` directly and asserts their Bun pin and install flags. Once `ci.yaml` is retired in this same pull request, `readWorkflow('ci.yaml')` would throw on a file that no longer exists, so this test is retired with its subject rather than left to fail. D3 (COR-1286) is what makes a single file, rather than only a directory, a legal `retired` entry — this is the file that motivated it. Verified this is the only file in the weft seed reading either workflow's path outside fixture-built test data (`verify-documentation.test.ts` builds a synthetic `.github/workflows/ci.yaml` fixture rather than reading the real one, so it is unaffected).",
         "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-catalog-completeness.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-catalog-drift.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-coverage.test.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-coverage.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-declaration-jsdoc.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-definition-vocabulary.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-engine-internals-field-access.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-implementation-file-sizes.test.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-implementation-file-sizes.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-import-cycles.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-internal-imports.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-lint-disables.test.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-lint-disables.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-package-contents.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-revision-keyed-lookups.test.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-revision-keyed-lookups.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-type-ergonomics.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/check-weft-owned-language.test.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/extract-markdown-doctests.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/markdown-doctest-skip-counts.json",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/markdown-doctest-skip-reasons.txt",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/run-gates.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/run-gates.test.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/audit-jsdoc-manifest.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/build-jsdoc-manifest.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/verify-jsdoc-doctests.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/extract-doctests.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/verify-documentation.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/verify-documentation.test.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/verify-no-test-sleeps.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/verify-no-test-sleeps.test.ts",
+        "target": "weft",
+        "reason": "Gate script of the target's own lint, coverage, documentation or doctest chain. COR-1286's ruling: lint, tests, coverage and benchmarks run in corvidae and nowhere else, and the mirror's CI is the transform-emitted `mirror-verify.yaml` plus the release workflow. The cleanup pull request deletes the target's copy and trims the `scripts` block that called it; this entry keeps it gone. Kept beside these, deliberately: `build.ts`, `build-binary*.ts`, `pr-title.ts` (called by `pr-title.yaml`), `pull-request-title.ts`, `verify-release-version.ts` (the release's tag check), and the packaging checks `prepack` still runs.",
+        "issue": "COR-1286"
       }
     ]
   },
@@ -228,8 +414,14 @@
         "key": "main",
         "reason": "Legacy entry point. `package-surface.json` records it, but its own documentation says that record is a port of what the target publishes today — so where the target still carries the key, the target holds the authoritative copy of the same fact."
       },
-      { "key": "module", "reason": "Same as `main`." },
-      { "key": "types", "reason": "Same as `main`." },
+      {
+        "key": "module",
+        "reason": "Same as `main`."
+      },
+      {
+        "key": "types",
+        "reason": "Same as `main`."
+      },
       {
         "key": "publishConfig",
         "reason": "Registry access and tag are a release decision belonging to whoever publishes, which is the target's release tooling."

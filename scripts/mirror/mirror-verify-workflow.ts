@@ -188,6 +188,9 @@ export async function renderMirrorVerifyWorkflow({
     'on:',
     '  pull_request:',
     '  merge_group:',
+    // The release workflow's pre-publish gate calls this workflow rather than restating its steps
+    // (COR-1286 D4), so a tag is verified by the same jobs a pull request is.
+    '  workflow_call:',
     '',
     'permissions:',
     '  contents: read',

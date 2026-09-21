@@ -139,6 +139,30 @@ describe('mirror target-owned enumeration', () => {
     expect(findTargetOwner(policy, '.github/workflows/verify-jsdoc.yaml', 'weft')).toBeUndefined();
   });
 
+  test('weft’s gate scripts are retired, and the scripts the release and pr-title still call are not', async () => {
+    const policy = await loadTargetOwnedPolicy();
+    const retired = retiredDirectoriesFor(policy, 'weft');
+    for (const file of [
+      'check-lint-disables.ts',
+      'check-coverage.ts',
+      'check-coverage.test.ts',
+      'extract-markdown-doctests.ts',
+      'markdown-doctest-skip-counts.json',
+      'run-gates.ts',
+      'verify-jsdoc-doctests.ts',
+    ]) {
+      expect(retired, file).toContain(`packages/weft/scripts/${file}`);
+    }
+    for (const file of [
+      'build.ts',
+      'pr-title.ts',
+      'verify-release-version.ts',
+      'verify-tree-shaking.ts',
+    ]) {
+      expect(retired, file).not.toContain(`packages/weft/scripts/${file}`);
+    }
+  });
+
   test('.husky/** stays target-owned for cinder alone; packages/weft/scripts/husky/** is no longer a paths entry at all', async () => {
     const policy = await loadTargetOwnedPolicy();
     expect(findTargetOwner(policy, '.husky/pre-commit', 'cinder')?.glob).toBe('.husky/**');
@@ -655,7 +679,9 @@ describe('retiring a directory the target still carries', () => {
 
   test('the committed enumeration retires weft-ui and COR-1286s CI-owned paths from weft alone', async () => {
     const policy = await loadTargetOwnedPolicy();
-    expect(retiredDirectoriesFor(policy, 'weft')).toEqual([
+    const retired = retiredDirectoriesFor(policy, 'weft');
+    // The CI-owned paths and weft-ui, then the gate scripts the cleanup pull request deletes.
+    expect(retired.slice(0, 6)).toEqual([
       'packages/weft-ui',
       '.github/workflows/ci.yaml',
       '.github/workflows/verify-jsdoc.yaml',
@@ -663,6 +689,8 @@ describe('retiring a directory the target still carries', () => {
       'packages/weft/scripts/husky',
       'packages/weft/scripts/ci-workflows.test.ts',
     ]);
+    expect(retired.slice(6).every((path) => path.startsWith('packages/weft/scripts/'))).toBe(true);
+    expect(retired.length).toBe(37);
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
     for (const entry of policy.retired.entries) {
       expect(entry.target).toBe('weft');
