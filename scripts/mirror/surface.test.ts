@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
-import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
+import { layoutFor } from './layout-map.ts';
 import {
   assertNothingDeferred,
   discoverWorkspaces,
@@ -322,15 +322,18 @@ describe('emitted source', () => {
     ]);
   });
 
-  test('the deferred application is emitted nowhere and refuses the sync', () => {
+  test('the excluded chat-room application is emitted nowhere and holds nothing up', () => {
+    // `@corvidae/chat-room` is excluded from the mirror by owner ruling (2026-09-21), decided in
+    // `package-map.json` before the layout is consulted, so the committed cinder plan carries no
+    // deferred workspace and nothing lands under the target's application or lab directories.
     const { plan } = committedPlans.cinder;
-    expect(plan.deferred.map((entry) => entry.workspace)).toEqual(['@corvidae/chat-room']);
+    expect(plan.deferred).toEqual([]);
     expect(
       Object.keys(plan.files).filter(
         (path) => path.startsWith('applications/') || path.startsWith('labs/'),
       ),
     ).toEqual([]);
-    expect(() => assertNothingDeferred(plan)).toThrow(DeferredWorkspaceError);
+    expect(() => assertNothingDeferred(plan)).not.toThrow();
   });
 
   test('every emitted private workspace is checked by something', () => {

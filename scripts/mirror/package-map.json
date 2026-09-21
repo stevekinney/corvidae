@@ -107,9 +107,9 @@
       "reason": "Test infrastructure imported from 505 test files and 26 non-test files, all of which are harnesses, fixture loaders, and scripts. Never in a runtime dependencies edge. COR-1196 states this disposition explicitly: it ships to the mirror repository but never into a tarball."
     },
     "@corvidae/chat-room": {
-      "disposition": "private-workspace",
-      "basis": "application",
-      "reason": "A deployable application rather than a library. No workspace declares it as a dependency."
+      "disposition": "exclude",
+      "basis": "owner-excluded-from-public-mirror",
+      "reason": "Excluded from the mirror by the repository owner, 2026-09-21: the chat-room application is not part of the mirror tooling at all. It was `private-workspace` before, which would have shipped its source to the public cinder repository beside the lab that already lives there at `labs/chat-room`; `layout-map.json` had deferred its placement for exactly that collision. No workspace declares it as a dependency, so excluding it breaks nothing emitted, and the cinder plan no longer carries a deferred workspace. Reversible: promote to `private-workspace` and rule on its layout if it should ever become public."
     },
     "@corvidae/bureau": {
       "disposition": "exclude",

@@ -294,8 +294,8 @@ describe('workspace and catalog resolution', () => {
 
   test('every edge into weft routes through the one root catalog entry', async () => {
     const plan = await planFor('cinder');
-    // `applications/chat-room` is absent deliberately: `layout-map.json` defers it, so nothing is
-    // emitted for it at all. The test below is what holds that.
+    // `applications/chat-room` is absent deliberately: `package-map.json` excludes it, so nothing
+    // is emitted for it at all. The test below is what holds that.
     const consumers = ['packages/weft-ui/package.json', 'packages/operative/package.json'];
     for (const consumer of consumers) {
       const dependencies = parse(plan, consumer)['dependencies'] as Record<string, string>;
@@ -659,14 +659,30 @@ describe('COR-1229: seeding a released package the target clone does not yet car
   });
 });
 
-describe('a deferred workspace', () => {
-  test('is emitted nowhere and refuses the sync by name', async () => {
+/**
+ * `@corvidae/chat-room` was the one deferred workspace until the repository owner excluded it
+ * from the mirror outright (2026-09-21). Exclusion is decided in `package-map.json` before the
+ * layout is ever consulted, so the plan carries no deferred entry and the cinder sync no longer
+ * refuses on its account — while the layout entry keeps its `deferred` disposition, so lifting
+ * the exclusion would bring the refusal back until the placement is actually ruled on.
+ */
+describe('the excluded chat-room application', () => {
+  test('is emitted nowhere and no longer holds the cinder sync', async () => {
     const plan = await planFor('cinder');
-    expect(plan.deferred.map((entry) => entry.workspace)).toEqual(['@corvidae/chat-room']);
+    expect(plan.deferred).toEqual([]);
     expect(
       Object.keys(plan.files).filter((path) => path.includes('chat-room')),
-      'nothing is emitted for a workspace whose placement is unresolved',
+      'nothing is emitted for an excluded workspace',
     ).toEqual([]);
+    expect(() => assertNothingDeferred(plan)).not.toThrow();
+    const layout = await layoutFor('@corvidae/chat-room');
+    expect(layout.disposition).toBe('deferred');
+  });
+
+  test('a deferred workspace that is not excluded still refuses the sync by name', async () => {
+    const layout = await layoutFor('@corvidae/chat-room');
+    if (layout.disposition !== 'deferred') throw new Error('the fixture entry must stay deferred');
+    const plan = { deferred: [{ workspace: '@corvidae/chat-room', layout }] };
     expect(() => assertNothingDeferred(plan)).toThrow(DeferredWorkspaceError);
     try {
       assertNothingDeferred(plan);
