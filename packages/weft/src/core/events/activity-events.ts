@@ -212,6 +212,20 @@ export class TaskResultDeadLetteredEvent extends Event {
  * fresh enqueue (never on an idempotent replay of an already-queued token),
  * and a listener that fails or is absent never blocks or fails the enqueue
  * itself.
+ *
+ * @example
+ * ```ts
+ * import { RemoteActivityQueuedEvent } from '@corvidae/weft';
+ *
+ * const engineEvents = new EventTarget();
+ *
+ * engineEvents.addEventListener(RemoteActivityQueuedEvent.type, (event) => {
+ *   const queued = event as RemoteActivityQueuedEvent;
+ *   console.log('try dispatching', queued.operationId, 'on', queued.queue);
+ * });
+ *
+ * engineEvents.dispatchEvent(new RemoteActivityQueuedEvent('order-4417', 'wf-1', 'default'));
+ * ```
  */
 export class RemoteActivityQueuedEvent extends Event {
   static readonly type = 'activity:remote-queued' as const;
@@ -245,6 +259,25 @@ export class RemoteActivityQueuedEvent extends Event {
  * transition machinery independent of whether anything reacts to this
  * event, and an in-flight remote attempt nothing cancels still resolves
  * eventually through the ledger's ordinary visibility-timeout/retry path.
+ *
+ * @example
+ * ```ts
+ * import { RemoteActivityCancellationRequestedEvent } from '@corvidae/weft';
+ *
+ * const engineEvents = new EventTarget();
+ *
+ * engineEvents.addEventListener(
+ *   RemoteActivityCancellationRequestedEvent.type,
+ *   (event) => {
+ *     const abandoned = event as RemoteActivityCancellationRequestedEvent;
+ *     console.log('workflow', abandoned.workflowId, 'left', abandoned.operationId, 'outstanding');
+ *   },
+ * );
+ *
+ * engineEvents.dispatchEvent(
+ *   new RemoteActivityCancellationRequestedEvent('order-4417', 'wf-1'),
+ * );
+ * ```
  */
 export class RemoteActivityCancellationRequestedEvent extends Event {
   static readonly type = 'activity:remote-cancellation-requested' as const;

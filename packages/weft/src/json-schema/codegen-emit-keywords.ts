@@ -56,6 +56,26 @@ export const ARRAY_SUPPORTED_KEYS = ['type', 'items', 'prefixItems', 'additional
  * Thrown by the emitter when the converter cannot produce a type it
  * is willing to stand behind (e.g. recursion overflow). Callers must
  * translate this to a user-facing diagnostic.
+ *
+ * Treat it as a schema problem, not a bug: the emitter refuses rather than
+ * falling back to `unknown`, because a generated type that quietly disagrees
+ * with the wire is worse than a failed build. Catching it is how `weft
+ * codegen` reports which schema it choked on instead of crashing.
+ *
+ * @example
+ * ```ts
+ * import { CodegenEmitError, jsonSchemaToTypeScript } from '@corvidae/weft';
+ *
+ * declare const schema: unknown;
+ *
+ * try {
+ *   console.log(jsonSchemaToTypeScript(schema));
+ * } catch (error) {
+ *   if (error instanceof CodegenEmitError) {
+ *     console.error('cannot generate a type for this schema:', error.message);
+ *   }
+ * }
+ * ```
  */
 export class CodegenEmitError extends WeftError<'CodegenEmitError'> {
   constructor(message: string) {

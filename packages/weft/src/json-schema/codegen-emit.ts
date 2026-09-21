@@ -254,7 +254,33 @@ function jsonSchemaToTypeScriptAtDepth(schema: unknown, depth: number): string {
   );
 }
 
-/** Convert a single JSON Schema fragment to a TypeScript type expression. */
+/**
+ * Convert a single JSON Schema fragment to a TypeScript type expression.
+ *
+ * This is the conversion behind `weft codegen`: it turns the schemas a catalog
+ * snapshot records into the source text of a generated client. The result is
+ * an expression, not a declaration — you get `{ id: string }`, not
+ * `type Foo = { id: string }` — so you can splice it into whatever declaration
+ * you are emitting.
+ *
+ * Anything the converter cannot render faithfully raises
+ * {@link CodegenEmitError} rather than degrading to `unknown` silently, so a
+ * schema that outruns the emitter fails your build instead of quietly
+ * producing a type that lies about the wire.
+ *
+ * @example
+ * ```ts
+ * import { jsonSchemaToTypeScript } from '@corvidae/weft';
+ *
+ * const type = jsonSchemaToTypeScript({
+ *   type: 'object',
+ *   properties: { id: { type: 'string' }, retries: { type: 'number' } },
+ *   required: ['id'],
+ * });
+ *
+ * console.log('export type Task = ' + type + ';');
+ * ```
+ */
 export function jsonSchemaToTypeScript(schema: unknown): string {
   return jsonSchemaToTypeScriptAtDepth(schema, 0);
 }

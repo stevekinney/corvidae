@@ -23,7 +23,7 @@ import {
  *
  * @example
  * ```ts
- * import type { CapabilityConformanceOptions } from './testing.ts';
+ * import type { CapabilityConformanceOptions } from '@corvidae/weft/storage/testing';
  * import { MemoryStorage, type StorageCapabilities } from '@corvidae/weft';
  *
  * const expected = {
@@ -53,7 +53,7 @@ export type CapabilityConformanceOptions = {
  *
  * @example
  * ```ts
- * import type { ConcurrentConditionalBatchConformanceOptions } from './testing.ts';
+ * import type { ConcurrentConditionalBatchConformanceOptions } from '@corvidae/weft/storage/testing';
  * import { BunSQLiteStorage } from '@corvidae/weft';
  *
  * const options: ConcurrentConditionalBatchConformanceOptions = {
@@ -71,7 +71,7 @@ export type ConcurrentConditionalBatchConformanceOptions = {
  *
  * @example
  * ```ts
- * import type { BinaryAndLargeScanConformanceOptions } from './testing.ts';
+ * import type { BinaryAndLargeScanConformanceOptions } from '@corvidae/weft/storage/testing';
  * import { MemoryStorage } from '@corvidae/weft';
  *
  * const options: BinaryAndLargeScanConformanceOptions = {
@@ -91,7 +91,7 @@ export type BinaryAndLargeScanConformanceOptions = {
  *
  * @example
  * ```ts
- * import type { BasicStorageContractOptions } from './testing.ts';
+ * import type { BasicStorageContractOptions } from '@corvidae/weft/storage/testing';
  * import { MemoryStorage } from '@corvidae/weft';
  *
  * const options: BasicStorageContractOptions = {
@@ -110,7 +110,7 @@ export type BasicStorageContractOptions = {
  *
  * @example
  * ```ts
- * import { runBinaryAndLargeScanStorageConformance } from './testing.ts';
+ * import { runBinaryAndLargeScanStorageConformance } from '@corvidae/weft/storage/testing';
  * import { MemoryStorage } from '@corvidae/weft';
  *
  * runBinaryAndLargeScanStorageConformance('MemoryStorage', {
@@ -171,7 +171,7 @@ export function runBinaryAndLargeScanStorageConformance(
  *
  * @example
  * ```ts
- * import { runStorageCapabilityConformance } from './testing.ts';
+ * import { runStorageCapabilityConformance } from '@corvidae/weft/storage/testing';
  * import { MemoryStorage, type StorageCapabilities } from '@corvidae/weft';
  *
  * const expected = {
@@ -269,7 +269,7 @@ export function runStorageCapabilityConformance(
  *
  * @example
  * ```ts
- * import { runConcurrentConditionalBatchConformance } from './testing.ts';
+ * import { runConcurrentConditionalBatchConformance } from '@corvidae/weft/storage/testing';
  * import { BunSQLiteStorage } from '@corvidae/weft';
  *
  * runConcurrentConditionalBatchConformance('BunSQLiteStorage', {
@@ -312,7 +312,7 @@ export function runConcurrentConditionalBatchConformance(
  *
  * @example
  * ```ts
- * import { runBasicStorageContract } from './testing.ts';
+ * import { runBasicStorageContract } from '@corvidae/weft/storage/testing';
  * import { MemoryStorage } from '@corvidae/weft';
  *
  * runBasicStorageContract('MemoryStorage', {

@@ -33,7 +33,30 @@
 
 import type { RetryPolicy } from './types.ts';
 
-/** One remote activity dispatch request, as `ctx.run()` builds it. */
+/**
+ * One remote activity dispatch request, as `ctx.run()` builds it.
+ *
+ * Everything identifying is derived by the engine rather than taken from
+ * caller input — `operationId` is the deterministic async-activity token, so
+ * workflow replay reproduces it exactly, and `workflowType` comes from the
+ * engine's own record of the workflow rather than anything the activity
+ * passed in. That is what makes an enqueue safely idempotent across replays.
+ *
+ * You receive one of these when you implement {@link RemoteActivityBroker};
+ * you do not construct them.
+ *
+ * @example
+ * ```ts
+ * import type { RemoteActivityTaskRequest } from '@corvidae/weft';
+ *
+ * declare const request: RemoteActivityTaskRequest;
+ *
+ * console.log(
+ *   'dispatch', request.workflowType + '.' + request.activityName,
+ *   'as', request.operationId,
+ * );
+ * ```
+ */
 export type RemoteActivityTaskRequest = Readonly<{
   /** The durable async-activity token this task is keyed by — see
    * `deriveAsyncActivityToken`. Doubles as the task ledger's `operationId`. */
@@ -62,6 +85,35 @@ export type RemoteActivityTaskRequest = Readonly<{
  * `enqueue` again) and must never throw merely because no server or worker
  * capacity is currently available — "no capacity" is represented by the task
  * remaining `queued`, not by a rejected promise.
+ *
+ * Implement it to supply your own dispatch, or — far more often — to stand in
+ * for one in a test, where a recording broker lets you assert exactly what
+ * `ctx.run()` produced without a server or a socket anywhere in the picture.
+ * Supply it at construction via `activityExecution: { mode: 'remote', broker }`.
+ *
+ * @example
+ * ```ts
+ * import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '@corvidae/weft';
+ *
+ * const dispatched: RemoteActivityTaskRequest[] = [];
+ *
+ * const recording: RemoteActivityBroker = {
+ *   async enqueue(request) {
+ *     dispatched.push(request);
+ *   },
+ * };
+ *
+ * await recording.enqueue({
+ *   operationId: 'order-4417',
+ *   workflowId: 'wf-1',
+ *   workflowType: 'checkout',
+ *   activityName: 'chargeCard',
+ *   input: { amountCents: 2500 },
+ *   headers: {},
+ * });
+ *
+ * console.log(dispatched.length); // 1
+ * ```
  */
 export interface RemoteActivityBroker {
   enqueue(request: RemoteActivityTaskRequest): Promise<void>;
