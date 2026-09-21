@@ -4,6 +4,8 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import packageJson from '../package.json' with { type: 'json' };
+
 import { format, resolveConfig } from 'prettier';
 
 import { compareStrings } from '../src/server/json-schema-utilities.ts';
@@ -20,6 +22,14 @@ import {
   operationDomainSource,
 } from './operation-client-domains.ts';
 import { schemaToNode } from './operation-client-schema.ts';
+
+/**
+ * The name the generated examples import from — read from the manifest rather than written
+ * here, because this generator is published alongside the package it describes and a mirror of
+ * it carries a different name. A hardcoded name would make the generated file drift the moment
+ * the package was renamed, and the drift test would report the generator as wrong.
+ */
+const packageName: string = packageJson.name;
 
 export const OPERATION_CLIENT_DIRECTORY = 'src/client/generated';
 export const OPERATION_CLIENT_FILE = 'operation-client.generated.ts';
@@ -88,7 +98,7 @@ import {
  *
  * @example
  * \`\`\`ts
- * import { CATALOG_OPERATION_NAMES } from '@corvidae/weft';
+ * import { CATALOG_OPERATION_NAMES } from '${packageName}';
  *
  * const requested = 'weft.activities.complete';
  * const callable = CATALOG_OPERATION_NAMES.some((name) => name === requested);
@@ -109,7 +119,7 @@ ${catalogNames.join('\n')}
  *
  * @example
  * \`\`\`ts
- * import type { CatalogOperationName } from '@corvidae/weft';
+ * import type { CatalogOperationName } from '${packageName}';
  *
  * const operation: CatalogOperationName = 'weft.alerts.list';
  * console.log(operation);
@@ -128,7 +138,7 @@ export type CatalogOperationName = (typeof CATALOG_OPERATION_NAMES)[number];
  *
  * @example
  * \`\`\`ts
- * import { CATALOG_OPERATION_NAMES, CLIENT_OPERATION_NAMES } from '@corvidae/weft';
+ * import { CATALOG_OPERATION_NAMES, CLIENT_OPERATION_NAMES } from '${packageName}';
  *
  * const restOnly = CLIENT_OPERATION_NAMES.filter(
  *   (name) => !CATALOG_OPERATION_NAMES.some((catalogName) => catalogName === name),
@@ -149,7 +159,7 @@ ${clientNames.join('\n')}
  *
  * @example
  * \`\`\`ts
- * import type { ClientOperationName } from '@corvidae/weft';
+ * import type { ClientOperationName } from '${packageName}';
  *
  * const operation: ClientOperationName = 'weft.alerts.list';
  * console.log(operation);
@@ -168,7 +178,7 @@ export type ClientOperationName = (typeof CLIENT_OPERATION_NAMES)[number];
  *
  * @example
  * \`\`\`ts
- * import { CLIENT_REST_OPERATION_BINDINGS } from '@corvidae/weft';
+ * import { CLIENT_REST_OPERATION_BINDINGS } from '${packageName}';
  *
  * for (const [operation, binding] of Object.entries(CLIENT_REST_OPERATION_BINDINGS)) {
  *   console.log(binding.method + ' ' + binding.path + '  ' + operation);
@@ -190,7 +200,7 @@ ${restBindings.join('\n')}
  *
  * @example
  * \`\`\`ts
- * import type { ClientOperationTypes } from '@corvidae/weft';
+ * import type { ClientOperationTypes } from '${packageName}';
  *
  * type CancelInput = ClientOperationTypes['weft.workflows.cancel']['input'];
  *
@@ -210,7 +220,7 @@ export type ClientOperationTypes = ${types};
  *
  * @example
  * \`\`\`ts
- * import type { CatalogOperationTypes } from '@corvidae/weft';
+ * import type { CatalogOperationTypes } from '${packageName}';
  *
  * type AlertsOutput = CatalogOperationTypes['weft.alerts.list']['output'];
  *
@@ -232,7 +242,7 @@ export type WeftClient = CatalogWeftClient<CatalogOperationTypes>;
  *
  * @example
  * \`\`\`ts
- * import type { ClientOperations } from '@corvidae/weft';
+ * import type { ClientOperations } from '${packageName}';
  *
  * declare const client: ClientOperations;
  * const diagnostics = client['weft.catalog.diagnostics'];
@@ -253,7 +263,7 @@ export type ClientOperations = CatalogWeftClient<ClientOperationTypes>;
  *
  * @example
  * \`\`\`ts
- * import { createWeftClient, type ClientOperationTypes } from '@corvidae/weft';
+ * import { createWeftClient, type ClientOperationTypes } from '${packageName}';
  *
  * const client = createWeftClient({
  *   server: 'http://localhost:7233',

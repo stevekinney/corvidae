@@ -1,4 +1,9 @@
 {
   "extends": "@corvidae/typescript/library.json",
+  "compilerOptions": {
+    "paths": {
+      "@corvidae/weft": ["../../../../index.ts"]
+    }
+  },
   "include": ["consumer.ts", "weft.generated.d.ts"]
 }
