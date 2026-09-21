@@ -3,6 +3,7 @@ import {
   isInternalSpecifier,
   isScannable,
   moduleSpecifierRanges,
+  protectedRanges,
 } from './source-escapes.ts';
 
 /**
@@ -29,12 +30,33 @@ import {
  * `import … = require(…)`, `declare module '…'`, and the same set inside a Svelte component's
  * script blocks and markup.
  *
- * **What it does not reach, deliberately.** An internal name that is not a module edge: prose in
- * a Markdown file, a code sample stored as a JSON string, `Symbol.for('@corvidae/operative/\
- * backend-descriptors')`, and the `WEFT_PACKAGE_NAME` constant `weft codegen` writes into the
- * declarations it generates. Rewriting an arbitrary string because it looks like a package name
- * is how a transform corrupts data; each of those is a decision about corvidae's own source, made
- * there rather than guessed at here.
+ * **Why comments are rewritten too, and separately.** A specifier walk is blind to comments by
+ * construction, and the emitted weft target carried 1,121 mentions of `@corvidae/weft` in JSDoc
+ * across 271 files — 1,051 of them on `import … from '@corvidae/weft'` lines inside `@example`
+ * fences. The target's own `verify:jsdoc:doctests` compiles those examples against the package's
+ * public face, so it failed 907 of 1,021 manifest entries on a name that resolves nowhere
+ * downstream, while hover documentation showed every consumer the same name. A specifier and a
+ * documented import are the same fact stated twice; `package-map.json` answers both.
+ *
+ * The comment pass is a second, narrower walk rather than part of the first, because the first
+ * one's subject is module edges and a JSDoc mention is not one. What keeps it safe is
+ * `protectedRanges`: every literal is off limits, so what remains in a TypeScript file is comment
+ * trivia and code, and code cannot spell a package name.
+ *
+ * **What it does not reach, deliberately.** An internal name inside a literal, wherever it sits:
+ * prose in a Markdown file, a code sample stored as a JSON string,
+ * `Symbol.for('@corvidae/operative/backend-descriptors')`, the `WEFT_PACKAGE_NAME` constant
+ * `weft codegen` writes into the declarations it generates, a `describe('@corvidae/weft barrel
+ * re-exports')` test name and an error message that interpolates one. Rewriting an arbitrary
+ * string because it looks like a package name is how a transform corrupts data; each of those is
+ * a decision about corvidae's own source, made there rather than guessed at here. Svelte markup
+ * is protected for the same reason — a name there is rendered text, not documentation.
+ *
+ * **A name the map does not know is left alone in a comment, where a specifier throws.** An
+ * unmapped specifier is a broken import in somebody else's repository; an unmapped mention in
+ * prose is a sentence about a workspace that target does not receive, and failing a whole sync
+ * over a sentence trades a real defect for a worse one. Measured across both targets today, no
+ * comment names a workspace `package-map.json` cannot translate.
  */
 
 /** Raised when emitted source names a workspace `package-map.json` cannot translate. */
@@ -94,6 +116,73 @@ export function rewriteInternalSpecifiers(
   return rewritten;
 }
 
+/**
+ * Every internal name a comment could be naming, longest first so a subpath wins over its root.
+ *
+ * Built from the scope rather than hard-coded so the two constants cannot drift. The character
+ * class is npm's, which admits a dot, so a sentence-final `@corvidae/lifecycle.` matches with the
+ * period attached; `publicNameInProse` trims that rather than the pattern refusing it, because a
+ * package name may legitimately contain a dot and only the map can tell the two apart.
+ */
+const internalNameInProse = new RegExp(
+  `${internalScope}/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*`,
+  'g',
+);
+
+/** Trailing characters a sentence can leave on a name that a package name cannot end with. */
+const sentencePunctuation = new Set(['.', ',', ';', ':', '!', '?', ')', ']', '}', "'", '"', '`']);
+
+/**
+ * The public name one prose mention becomes, or `undefined` to leave it exactly as it is.
+ *
+ * The match is trimmed one trailing character at a time and each candidate is asked of the map,
+ * so `@corvidae/weft` inside `(@corvidae/weft)` resolves, `@corvidae/weft/storage/testing` keeps
+ * its whole face, and a name the map does not know returns `undefined` rather than throwing.
+ */
+export function publicNameInProse(
+  match: string,
+  publicNames: ReadonlyMap<string, string>,
+): string | undefined {
+  for (let candidate = match; candidate.length > 0; candidate = candidate.slice(0, -1)) {
+    const [scope, name, ...subpath] = candidate.split('/');
+    if (name === undefined || name.length === 0) break;
+    const publicName = publicNames.get(`${scope}/${name}`);
+    if (publicName !== undefined && subpath.every((segment) => segment.length > 0)) {
+      return `${[publicName, ...subpath].join('/')}${match.slice(candidate.length)}`;
+    }
+    if (!sentencePunctuation.has(candidate.slice(-1))) break;
+  }
+  return undefined;
+}
+
+/**
+ * Replace every internal package name a file's comments mention with its public name.
+ *
+ * Applied after the specifier rewrite and over that rewrite's output, so the ranges come from the
+ * text as it will ship. Edits run from the end backwards for the same reason they do above: each
+ * one's offsets have to be the offsets the parser reported.
+ */
+export function rewriteInternalProse(
+  contents: string,
+  path: string,
+  publicNames: ReadonlyMap<string, string>,
+): string {
+  const protectedSpans = protectedRanges(contents, path);
+  const edits: { start: number; end: number; replacement: string }[] = [];
+  for (const match of contents.matchAll(internalNameInProse)) {
+    const start = match.index;
+    if (protectedSpans.some((span) => start >= span.start && start < span.end)) continue;
+    const replacement = publicNameInProse(match[0], publicNames);
+    if (replacement === undefined || replacement === match[0]) continue;
+    edits.push({ start, end: start + match[0].length, replacement });
+  }
+  let rewritten = contents;
+  for (const edit of edits.toSorted((left, right) => right.start - left.start)) {
+    rewritten = `${rewritten.slice(0, edit.start)}${edit.replacement}${rewritten.slice(edit.end)}`;
+  }
+  return rewritten;
+}
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -113,6 +202,10 @@ export function rewriteEmittedSource(
   if (!isScannable(path)) return contents;
   const text = decoder.decode(contents);
   if (!text.includes(`${internalScope}/`)) return contents;
-  const rewritten = rewriteInternalSpecifiers(text, path, publicNames);
+  const rewritten = rewriteInternalProse(
+    rewriteInternalSpecifiers(text, path, publicNames),
+    path,
+    publicNames,
+  );
   return rewritten === text ? contents : encoder.encode(rewritten);
 }

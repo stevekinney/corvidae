@@ -297,6 +297,106 @@ function svelteSpecifierRanges(contents: string, path: string): SpecifierRange[]
   return [...byStart.values()].toSorted((left, right) => left.start - right.start);
 }
 
+/** A half-open span of one emitted file, in offsets the parser reported. */
+export interface SourceSpan {
+  start: number;
+  end: number;
+}
+
+/** Every string, template, regular-expression and JSX-text literal in one TypeScript file. */
+function literalSpans(contents: string, path: string): SourceSpan[] {
+  const tree = ts.createSourceFile(
+    path,
+    contents,
+    { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: ts.JSDocParsingMode.ParseNone },
+    false,
+  );
+  const spans: SourceSpan[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isStringLiteralLike(node) ||
+      ts.isRegularExpressionLiteral(node) ||
+      ts.isTemplateLiteral(node) ||
+      ts.isJsxText(node)
+    ) {
+      spans.push({ start: node.getStart(tree), end: node.end });
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(tree, visit);
+  return spans;
+}
+
+/** The `<script>` bodies of a Svelte component, at whole-component offsets. */
+function svelteScriptSpans(contents: string, path: string): SourceSpan[] {
+  let ast: unknown;
+  try {
+    ast = parse(contents, { modern: true, filename: path });
+  } catch (error) {
+    throw new SourceEscapeError(
+      `The transform emits ${path}, which Svelte cannot parse, so its imports cannot be checked: ${(error as Error).message}`,
+    );
+  }
+  const spans: SourceSpan[] = [];
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    if (!isWalkable(node)) return;
+    const content = node['content'];
+    if (
+      node['type'] === 'Script' &&
+      isWalkable(content) &&
+      typeof content['start'] === 'number' &&
+      typeof content['end'] === 'number'
+    ) {
+      spans.push({ start: content['start'], end: content['end'] });
+    }
+    for (const value of Object.values(node)) walk(value);
+  };
+  walk(ast);
+  return spans.toSorted((left, right) => left.start - right.start);
+}
+
+/**
+ * Every span of one emitted file that an in-place rewrite must leave exactly as it is.
+ *
+ * `internal-names.ts` rewrites an internal package name wherever it appears outside these spans,
+ * which is how a name in a JSDoc `@example` becomes the target's name. The spans are what make
+ * that safe, and they are computed by parsing rather than by pattern-matching text.
+ *
+ * For TypeScript and JavaScript, every string, template, regular-expression and JSX-text literal
+ * is protected. What remains is comment trivia and code, and code cannot spell an internal name:
+ * `@corvidae/weft` is not an identifier, a keyword or any other token sequence, so a match found
+ * outside a literal is in a comment by construction. That includes module specifiers, which are
+ * string literals — the specifier rewrite above owns those and this must not touch them twice.
+ *
+ * For a Svelte component, only the `<script>` bodies are open, minus their own literals.
+ * Everything else — markup, style, and the markup comments between them — is protected. A name in
+ * markup is rendered text rather than documentation, and rewriting rendered text is a decision
+ * about what a component says to a reader, which belongs in corvidae's source.
+ */
+export function protectedRanges(contents: string, path: string): SourceSpan[] {
+  if (!path.endsWith('.svelte')) return literalSpans(contents, path);
+  const scripts = svelteScriptSpans(contents, path);
+  const spans: SourceSpan[] = [];
+  let cursor = 0;
+  for (const script of scripts) {
+    spans.push({ start: cursor, end: script.start });
+    for (const literal of literalSpans(contents.slice(script.start, script.end), `${path}.ts`)) {
+      spans.push({
+        start: literal.start + script.start,
+        end: literal.end + script.start,
+      });
+    }
+    cursor = script.end;
+  }
+  spans.push({ start: cursor, end: contents.length });
+  return spans;
+}
+
 /** Every module specifier one emitted file carries, with its position, whatever the language. */
 export function moduleSpecifierRanges(contents: string, path: string): SpecifierRange[] {
   return path.endsWith('.svelte')
