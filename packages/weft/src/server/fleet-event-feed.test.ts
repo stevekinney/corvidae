@@ -1096,6 +1096,15 @@ describe('createFleetEventFeed', () => {
     feed.dispose();
   });
 
+  it('fails loudly when retention never provides a stable snapshot for a workflow-scoped replay', async () => {
+    const feed = createFleetEventFeed(new UnstableWatermarkStorage());
+
+    expect(collect(feed.replay({ workflowId: 'wf-unstable' }), 10)).rejects.toThrow(
+      'could not obtain a stable retention snapshot',
+    );
+    feed.dispose();
+  });
+
   it('rejects an empty workflowId when replaying the by-workflow index', async () => {
     const feed = createFleetEventFeed(new MemoryStorage());
 
