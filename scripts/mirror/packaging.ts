@@ -88,7 +88,14 @@ export function toolsDirectory(toolsRoot: string = defaultToolsRoot): string {
   return join(toolsRoot, 'node_modules', '.bin');
 }
 
-async function resolveTool(toolsRoot: string, name: string): Promise<string> {
+/**
+ * Resolve one packaging tool's binary path, failing loudly rather than falling through to `bunx`.
+ *
+ * Exported (COR-1286) so `verify-steps.ts` can resolve `publint`'s and `attw`'s paths once, up
+ * front, and build a synchronous local {@link VerifyEnvironment} from the result — the shared step
+ * list itself stays a pure function with no filesystem access of its own.
+ */
+export async function resolveTool(toolsRoot: string, name: string): Promise<string> {
   const path = join(toolsDirectory(toolsRoot), name);
   if (await Bun.file(path).exists()) return path;
   throw new PackagingError(
@@ -101,6 +108,31 @@ export interface PackOptions {
   packageDirectory: string;
   /** Where the tarball is written, kept outside the clone so it cannot show up in git status. */
   destination: string;
+  /**
+   * When supplied, the pack's own filename is computed with {@link tarballFilename} and asserted
+   * against what `bun pm pack` actually printed, rather than trusted from stdout alone. COR-1286
+   * needs this: a shared step list that both `verifyTarget` and the rendered `mirror-verify.yaml`
+   * workflow read has nowhere to capture a runtime-parsed path in the rendered YAML, so the
+   * tarball's location there has to be a name computed ahead of time from `publicName` and
+   * `version`, the same way this option computes it. Optional and unused by every caller that
+   * predates COR-1286, so packing with only `packageDirectory`/`destination` behaves exactly as it
+   * always has.
+   */
+  publicName?: string;
+  version?: string;
+}
+
+/**
+ * The filename `bun pm pack` writes for one package, computed rather than parsed.
+ *
+ * Verified against a real `bun pm pack` run (`bun pm pack` v1.4.2): `@lostgradient/weft@1.2.3`
+ * packs to `lostgradient-weft-1.2.3.tgz` — the `@` dropped and the scope separator turned into a
+ * hyphen, matching npm's own tarball-naming convention. `packWorkspace` still reads `bun pm pack`'s
+ * actual stdout and asserts it agrees with this, so a naming-convention change upstream fails loud
+ * here rather than silently producing a workflow step that reads a tarball nothing wrote.
+ */
+export function tarballFilename(publicName: string, version: string): string {
+  return `${publicName.replace(/^@/, '').replace('/', '-')}-${version}.tgz`;
 }
 
 /**
@@ -116,6 +148,8 @@ export interface PackOptions {
 export async function packWorkspace({
   packageDirectory,
   destination,
+  publicName,
+  version,
 }: PackOptions): Promise<string> {
   await mkdir(destination, { recursive: true });
   const result = await runCommand(
@@ -132,6 +166,14 @@ export async function packWorkspace({
     throw new PackagingError(
       `bun pm pack printed no tarball path for ${packageDirectory}:\n${result.stdout}${result.stderr}`,
     );
+  }
+  if (publicName !== undefined && version !== undefined) {
+    const expected = join(destination, tarballFilename(publicName, version));
+    if (expected !== tarball) {
+      throw new PackagingError(
+        `bun pm pack wrote ${tarball} for ${publicName}@${version}, but tarballFilename computed ${expected}. The shared verification step list (COR-1286) depends on this name being predictable from the public name and version alone; a mismatch means \`bun pm pack\`'s naming convention changed underneath it.`,
+      );
+    }
   }
   return tarball;
 }

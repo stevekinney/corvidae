@@ -1,4 +1,4 @@
-import { chmod, mkdir, readdir, rm } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, relative, sep } from 'node:path';
 import { z } from 'zod';
 
@@ -50,12 +50,21 @@ const exceptionEntrySchema = z.object({
 });
 
 /**
- * One target directory the transform removes outright, rather than syncing or leaving alone.
+ * One target directory or single file the transform removes outright, rather than syncing or
+ * leaving alone.
  *
  * `target` is singular on purpose. Every other entry in this file widens to all targets when it
- * omits `targets`, and the same default here would be a retirement nobody scoped removing a
- * directory from a repository nobody considered. A retirement is the destructive direction, so it
- * names its one repository and says nothing about the others.
+ * omits `targets`, and the same default here would be a retirement nobody scoped removing a path
+ * from a repository nobody considered. A retirement is the destructive direction, so it names its
+ * one repository and says nothing about the others.
+ *
+ * `directory` keeps its name even though a retired path is not always one: a bare relative path
+ * with no leading or trailing slash was always exactly as valid a description of a single file —
+ * `packages/weft/scripts/ci-workflows.test.ts` — as of a directory, and D3 (COR-1286) taught the
+ * *walk* to branch on what the path actually is in the clone rather than widening this key to a
+ * `path`/`kind` pair nothing needed. Every entry committed before that change named a directory
+ * and stays valid unchanged: the regex was already a generic relative-path pattern, not a
+ * directory-specific one.
  */
 const retiredEntrySchema = z.object({
   directory: z
@@ -63,7 +72,7 @@ const retiredEntrySchema = z.object({
     .min(1)
     .regex(
       /^[^/]+(\/[^/]+)*$/,
-      'a retired directory is a relative path with no leading or trailing slash',
+      'a retired path is a relative path with no leading or trailing slash',
     ),
   target: targetName,
   reason: z.string().min(1),
@@ -378,24 +387,42 @@ function isUnder(path: string, directory: string): boolean {
 }
 
 /**
- * Every file beneath one retired directory in a clone, as target-relative paths.
+ * Every file a retired path carries in a clone, as target-relative paths.
  *
- * Deliberately not `source.ts`'s walk. That one filters to what the transform calls source and
- * skips the repository-operating names — `.gitignore`, `AGENTS.md`, `CHANGELOG*`,
- * `coverage-ratchet.json` — which are exactly the files a retirement has to notice, because they
- * are exactly the ones `paths` claims for the target. Filtering them out here would turn the
- * collision this function exists to raise into a silent partial deletion.
+ * A `retired` entry's `directory` key names a directory or a single file — nothing in its schema
+ * ever distinguished the two, since a relative path with no leading or trailing slash is exactly
+ * as valid a description of `packages/weft/scripts/ci-workflows.test.ts` as it is of
+ * `packages/weft-ui`. The two need different walks, though: a directory recurses and every entry
+ * arrives relative to it, so the caller has always prefixed each one back onto `normalized`; a
+ * file has nothing beneath it to recurse into and is the whole answer by itself. Branching on
+ * `lstat` here, rather than asking the caller to know which shape it is retiring, is what keeps
+ * `retiredEntrySchema`'s `directory` key unchanged and every existing directory entry valid.
  *
- * A directory the clone does not carry yields nothing rather than failing: a retirement is a
- * standing ruling, and the sync after the one that carried out the deletion finds the directory
- * already gone. `.git` is skipped because a retired directory is never the repository root, so a
- * `.git` beneath one is a nested checkout nobody asked this to walk.
+ * Deliberately not `source.ts`'s walk for the directory case. That one filters to what the
+ * transform calls source and skips the repository-operating names — `.gitignore`, `AGENTS.md`,
+ * `CHANGELOG*`, `coverage-ratchet.json` — which are exactly the files a retirement has to notice,
+ * because they are exactly the ones `paths` claims for the target. Filtering them out here would
+ * turn the collision this function exists to raise into a silent partial deletion.
+ *
+ * A path the clone does not carry yields nothing rather than failing, whichever shape it is: a
+ * retirement is a standing ruling, and the sync after the one that carried out the deletion finds
+ * the path already gone. `.git` is skipped for the directory case because a retired directory is
+ * never the repository root, so a `.git` beneath one is a nested checkout nobody asked this to
+ * walk.
  */
-async function walkEveryFile(root: string): Promise<string[]> {
-  const entries = await readdir(root, { withFileTypes: true, recursive: true }).catch(
+async function walkRetiredPath(root: string, normalized: string): Promise<string[]> {
+  const target = join(root, normalized);
+  const stats = await lstat(target).catch((error: NodeJS.ErrnoException) => {
+    // Only "there is no such path" reads as already gone, for the reason given above: a
+    // permission or I/O error that read as empty would silently shrink a deletion.
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  });
+  if (stats === undefined) return [];
+  if (stats.isFile()) return [normalized];
+
+  const entries = await readdir(target, { withFileTypes: true, recursive: true }).catch(
     (error: NodeJS.ErrnoException) => {
-      // Only "there is no such directory" reads as an empty tree, for the reason the source walk
-      // gives: a permission or I/O error that read as empty would silently shrink a deletion.
       if (error.code === 'ENOENT') return [];
       throw error;
     },
@@ -403,9 +430,9 @@ async function walkEveryFile(root: string): Promise<string[]> {
   const files: string[] = [];
   for (const entry of entries) {
     if (!entry.isFile()) continue;
-    const path = relative(root, join(entry.parentPath, entry.name)).split(sep).join('/');
+    const path = relative(target, join(entry.parentPath, entry.name)).split(sep).join('/');
     if (path.split('/').includes('.git')) continue;
-    files.push(path);
+    files.push(`${normalized}/${path}`);
   }
   return files;
 }
@@ -453,8 +480,7 @@ export async function collectRetiredPaths({
         `Refusing to retire ${normalized} from ${target}: no entry in target-owned.json's \`retired\` section names it. A directory the transform removes outright is enumerated with a reason, a target and an issue; it is never inferred from a plan that emits nothing for it.`,
       );
     }
-    const carried = await walkEveryFile(join(directory, normalized));
-    const found = carried.map((path) => `${normalized}/${path}`);
+    const found = await walkRetiredPath(directory, normalized);
     const matches = found.flatMap((path) => {
       const owner = findTargetOwner(policy, path, target, now);
       return owner ? [owner] : [];

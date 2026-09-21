@@ -7,10 +7,9 @@ import { loadPackageSurface, missingBuildInputs } from './package-surface.ts';
 import {
   assertSucceeded,
   assertTarballsPublishable,
-  checkTarball,
-  packWorkspace,
+  defaultToolsRoot,
+  PackagingError,
   runCommand,
-  runConsumerSmokeTest,
   type SmokeTestResult,
   type TarballReport,
 } from './packaging.ts';
@@ -28,6 +27,7 @@ import {
   retiredDirectoriesFor,
   writeTransformOutput,
 } from './target-owned.ts';
+import { buildVerifySteps, createLocalVerifyEnvironment, specifiersFor } from './verify-steps.ts';
 
 /**
  * The end-to-end mirror sync, runnable against a local bare repository so the whole pipeline can
@@ -400,6 +400,14 @@ export function assertPrivateWorkspacesCheckable(
  * `bun install --frozen-lockfile` at the root comes first and is a check in its own right: it
  * fails if the lockfile the staging install just produced does not satisfy the manifests the
  * transform just wrote.
+ *
+ * COR-1286: the command list this function executes is `verify-steps.ts`'s `buildVerifySteps`,
+ * not a hand-written sequence any more. `mirror-verify-workflow.ts` calls the same function to
+ * render the workflow the transform now emits into the target, so the two can never drift out of
+ * step — a step added here is a step the rendered workflow's next sync picks up automatically, and
+ * vice versa. This function's own job shrinks to resolving the *local* environment
+ * (`createLocalVerifyEnvironment`) and walking the resulting steps, reassembling their results
+ * into the shapes `SyncResult` has always returned.
  */
 export async function verifyTarget({
   toolsRoot,
@@ -434,48 +442,110 @@ export async function verifyTarget({
     allowedExtraFlags: installArguments,
   });
   await rm(join(directory, 'node_modules'), { recursive: true, force: true });
-  assertSucceeded(
-    await runCommand(installCommand, { cwd: directory }),
-    'verifying the staged lockfile satisfies the emitted manifests',
+
+  // Checked before any step runs, exactly as before the refactor: a missing `typecheck` script is
+  // reported over the whole set in one message, not discovered mid-walk after some steps already
+  // ran.
+  assertPrivateWorkspacesCheckable(privateWorkspaces);
+
+  const environment = await createLocalVerifyEnvironment({
+    directory,
+    toolsRoot: toolsRoot ?? defaultToolsRoot,
+    scratchDirectory,
+  });
+  const steps = buildVerifySteps(
+    { installCommand, published, privateWorkspaces, installArguments },
+    environment,
   );
 
+  const reportsByPublicName = new Map<
+    string,
+    { tarball: string; publint?: TarballReport['publint'] }
+  >();
   const reports: TarballReport[] = [];
-  const tarballs = join(scratchDirectory, 'tarballs');
-  for (const entry of published) {
-    const packageDirectory = join(directory, entry.directory);
-    for (const script of ['build', 'typecheck'] as const) {
-      assertSucceeded(
-        await runCommand(['bun', 'run', script], { cwd: packageDirectory }),
-        `running ${script} for ${entry.publicName}`,
-      );
-    }
-    const tarball = await packWorkspace({ packageDirectory, destination: tarballs });
-    reports.push(await checkTarball(entry.publicName, tarball, toolsRoot));
-  }
-  assertTarballsPublishable(reports);
-
-  assertPrivateWorkspacesCheckable(privateWorkspaces);
   const privateTypechecks: string[] = [];
-  for (const entry of privateWorkspaces) {
-    // A workspace that emits no TypeScript has nothing for `tsc` to read: the shared configuration
-    // package is three JSON files. Every other one was just checked to declare the script.
-    if (!entry.emitsTypeScript) continue;
-    assertSucceeded(
-      await runCommand(['bun', 'run', 'typecheck'], { cwd: join(directory, entry.directory) }),
-      `running typecheck for ${entry.publicName}`,
-    );
-    privateTypechecks.push(entry.publicName);
+  let smokeTest: SmokeTestResult | undefined;
+
+  for (const step of steps) {
+    if (step.files) {
+      await mkdir(step.cwd, { recursive: true });
+      for (const [relativePath, contents] of Object.entries(step.files)) {
+        await Bun.write(join(step.cwd, relativePath), contents);
+      }
+    }
+    if (step.command.length === 0) continue;
+    const result = await runCommand(step.command, { cwd: step.cwd });
+
+    switch (step.kind) {
+      case 'install': {
+        assertSucceeded(result, 'verifying the staged lockfile satisfies the emitted manifests');
+        break;
+      }
+      case 'build':
+      case 'typecheck-published': {
+        assertSucceeded(
+          result,
+          `running ${step.kind === 'build' ? 'build' : 'typecheck'} for ${step.publicName}`,
+        );
+        break;
+      }
+      case 'pack': {
+        assertSucceeded(result, `packing ${step.publicName}`);
+        break;
+      }
+      case 'publint': {
+        assertSucceeded(result, `resolving publint for ${step.publicName}`);
+        reportsByPublicName.set(step.publicName ?? '', {
+          tarball: step.tarball ?? '',
+          publint: result,
+        });
+        break;
+      }
+      case 'attw': {
+        assertSucceeded(result, `resolving attw for ${step.publicName}`);
+        const pending = reportsByPublicName.get(step.publicName ?? '');
+        reports.push({
+          publicName: step.publicName ?? '',
+          tarball: step.tarball ?? '',
+          publint: pending?.publint ?? result,
+          typeResolution: result,
+        });
+        break;
+      }
+      case 'typecheck-private': {
+        assertSucceeded(result, `running typecheck for ${step.publicName}`);
+        if (step.publicName) privateTypechecks.push(step.publicName);
+        break;
+      }
+      case 'consumer-install': {
+        assertSucceeded(result, 'installing the packed tarballs into the consumer project');
+        break;
+      }
+      case 'consumer-run': {
+        assertSucceeded(
+          result,
+          `importing specifier(s) from the packed tarballs (${step.description})`,
+        );
+        smokeTest = { directory: step.cwd, specifiers: specifiersFor(published) };
+        break;
+      }
+      case 'write-consumer-project': {
+        // Unreachable: this step's `command` is always empty, so the `continue` above already
+        // skipped it before the switch runs. Kept as an explicit case so the switch stays
+        // exhaustive over `VerifyStepKind` rather than needing a `default` that could silently
+        // swallow a real kind added later.
+        break;
+      }
+    }
+  }
+  // `checkTarball`'s old two-command run is now two steps (`publint`, `attw`), but the *check* that
+  // both succeed for every published package stays one call over the assembled reports — reusing
+  // it is what keeps this function's own success criteria identical to before the refactor.
+  assertTarballsPublishable(reports);
+  if (smokeTest === undefined) {
+    throw new PackagingError('The verification steps produced no consumer smoke test result');
   }
 
-  const smokeTest = await runConsumerSmokeTest({
-    directory: scratchDirectory,
-    packages: published.map((entry, index) => ({
-      publicName: entry.publicName,
-      tarball: reports[index]?.tarball ?? '',
-      exports: entry.exports,
-    })),
-    installArguments,
-  });
   return { reports, smokeTest, privateTypechecks, installParity };
 }
 
