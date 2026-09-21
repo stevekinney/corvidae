@@ -204,7 +204,7 @@
       {
         "directory": ".github/workflows/nightly.yml",
         "target": "agent-bureau",
-        "reason": "The slower-cadence half of the same CI gate, retired under the same COR-1286 ruling. Its lanes are the full process-crash marker matrix, the full Gateway conformance lane, the Cloudflare real-runtime lane and a targeted lifecycle mutation check — three of the four run against `packages/gateway`, `packages/cloudflare` and `packages/integration`, which this same pull request retires, so the workflow would be scheduling nightly runs over directories that no longer exist. It also points at `documentation/testing-cadence.md`, a target document the transform neither writes nor prunes; dropping that reference is the target's own follow-up.",
+        "reason": "The slower-cadence half of the same CI gate, retired under the same COR-1286 ruling. Its lanes are the full process-crash marker matrix, the full Gateway conformance lane, the Cloudflare real-runtime lane and a targeted lifecycle mutation check — three of the four run against `packages/gateway`, `packages/cloudflare` and `packages/integration`, which this same pull request retires, so the workflow would be scheduling nightly runs over directories that no longer exist. It also points at `documentation/testing-cadence.md`, which the transform neither writes nor prunes: that document simply survives the retirement, and the reference to it dies with this file, so it needs no follow-up of its own.",
         "issue": "COR-1287"
       },
       {

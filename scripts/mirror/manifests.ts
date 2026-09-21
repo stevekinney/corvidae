@@ -452,7 +452,11 @@ export function composeManifest({
   target: MirrorTarget;
   emitted: JsonObject;
   existing: JsonObject | undefined;
-  /** Public names of every workspace this mirror ships; their edges are the transform's outright. */
+  /**
+   * Every name an edge to a workspace this mirror ships can appear under: each one's public
+   * name, and since COR-1287 the target's own name for it where the two differ. Edges under
+   * any of them are the transform's outright.
+   */
   mirrorPackages: ReadonlySet<string>;
 }): ComposedManifest {
   if (existing === undefined) return { manifest: emitted, added: [] };
