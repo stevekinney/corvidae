@@ -678,6 +678,81 @@ describe('composition against a manifest the target already carries', () => {
   });
 });
 
+/**
+ * COR-1287, found by staging against the real stevekinney/agent-bureau rather than by reading the
+ * code: that target names corvidae's `@lostgradient/lifecycle` simply `lifecycle`, and six of its
+ * packages depend on it under that name. Rule (1) in `target-owned.json` matched only the public
+ * name, so rule (2) kept the target's entry as an ordinary third-party edge and the composed
+ * manifest declared the same workspace twice. `bun install` refused the staged tree outright —
+ * `Workspace dependency "lifecycle" not found` — which is the good outcome; the bad one is a
+ * target that installs and resolves two copies.
+ */
+describe("COR-1287: the target's own name for a mirror workspace is an alias, not a third party", () => {
+  /** An agent-bureau clone that names lifecycle the way the real one does, with a consumer. */
+  function cloneNamingLifecycleUnscoped(): Record<string, unknown> {
+    return {
+      'package.json': { name: 'agent-bureau', private: true, workspaces: ['packages/*'] },
+      'packages/lifecycle/package.json': { name: 'lifecycle', private: true, version: '0.0.1' },
+      'packages/operative/package.json': {
+        name: '@lostgradient/operative',
+        version: '0.12.0',
+        dependencies: { lifecycle: 'workspace:*', zod: '^4.0.0' },
+      },
+    };
+  }
+
+  test('the stale unscoped edge is replaced, not kept alongside the scoped one', async () => {
+    await withTree(cloneNamingLifecycleUnscoped(), async (targetDirectory) => {
+      const plan = await planFor('agent-bureau', {
+        targetDirectory,
+        extra: {
+          'packages/lifecycle/package.json': { name: '@lostgradient/lifecycle', private: true },
+          'packages/operative/package.json': {
+            name: '@lostgradient/operative',
+            private: true,
+            dependencies: { '@lostgradient/lifecycle': 'workspace:*', zod: 'catalog:' },
+          },
+        },
+      });
+      const dependencies = parse(plan, 'packages/operative/package.json')['dependencies'] as Record<
+        string,
+        string
+      >;
+      expect(dependencies['@lostgradient/lifecycle']).toBe('workspace:*');
+      expect(dependencies).not.toHaveProperty('lifecycle');
+      // The target's own name for the workspace is replaced in the manifest it names, too.
+      expect(parse(plan, 'packages/lifecycle/package.json')['name']).toBe(
+        '@lostgradient/lifecycle',
+      );
+    });
+  });
+
+  test("a target name that is another workspace's public name is a collision, not an alias", async () => {
+    await withTree(
+      {
+        'package.json': { name: 'agent-bureau', private: true, workspaces: ['packages/*'] },
+        // The target calls its `packages/lifecycle` by armorer's published name. Dropping that
+        // edge as an alias would silently remove a real dependency on armorer.
+        'packages/lifecycle/package.json': { name: 'armorer', private: true, version: '0.0.1' },
+      },
+      async (targetDirectory) => {
+        await expect(
+          planFor('agent-bureau', {
+            targetDirectory,
+            extra: {
+              'packages/lifecycle/package.json': {
+                name: '@lostgradient/lifecycle',
+                private: true,
+              },
+              'packages/armorer/package.json': { name: 'armorer', private: true },
+            },
+          }),
+        ).rejects.toThrow(/which is armorer's public name/);
+      },
+    );
+  });
+});
+
 describe('COR-1229: seeding a released package the target clone does not yet carry', () => {
   /**
    * An agent-bureau clone carrying none of the three directories this decision is about.

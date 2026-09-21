@@ -622,6 +622,61 @@ export async function readExistingManifest(
   return (await file.json()) as JsonObject;
 }
 
+/**
+ * Add the target's own name for each mirror workspace to `mirrorPackages`.
+ *
+ * COR-1287. `target-owned.json`'s dependency rule (1) says an edge to a package this mirror ships
+ * is "the transform's outright — name, block and specifier — because only the transform knows what
+ * it is called downstream", and `composeDependencies` implements that by dropping the target's
+ * entry whenever its name is in `mirrorPackages`. That worked while every target already spelled
+ * a mirror workspace the way the mirror publishes it, which was true of weft and cinder and is not
+ * true of agent-bureau: it calls corvidae's `@lostgradient/lifecycle` simply `lifecycle`, and the
+ * same for `bureau`, `memory` and `skills`. Under the public name alone, rule (1) never matched
+ * those entries, rule (2) kept them as ordinary third-party edges, and the composed manifest
+ * carried the same workspace twice under two names. A live staging against the real target
+ * produced exactly that and `bun install` refused it: `Workspace dependency "lifecycle" not
+ * found`, from six consumers at once.
+ *
+ * The alias is read off the clone rather than recorded anywhere: `layout-map.json` already says
+ * which target directory a workspace lands in, and the manifest sitting at that directory names
+ * the package in the target's own vocabulary. That name is as much the transform's to remove as
+ * the public name is to write, because the rename to the public name is the transform's own
+ * output — `name` is a `manifestKey`, so the target cannot get ahead of it.
+ *
+ * Scope: this changes nothing for a target that already agrees with the mirror on a name, which
+ * today is both other targets.
+ */
+async function collectTargetAliases({
+  targetDirectory,
+  emittable,
+  publicNames,
+  mirrorPackages,
+}: {
+  targetDirectory: string | undefined;
+  emittable: readonly { workspace: DiscoveredWorkspace; directory: string }[];
+  publicNames: ReadonlyMap<string, string>;
+  mirrorPackages: Set<string>;
+}): Promise<void> {
+  if (targetDirectory === undefined) return;
+  for (const { workspace, directory } of emittable) {
+    const existing = await readExistingManifest(targetDirectory, `${directory}/package.json`);
+    const existingName = existing?.['name'];
+    if (typeof existingName !== 'string' || existingName.length === 0) continue;
+    if (existingName === publicNames.get(workspace.name)) continue;
+    // A target name that is another workspace's public name is not an alias, it is a collision:
+    // dropping the edge would silently remove a real dependency on that other package. Nothing in
+    // either repository does this today, and a transform that guessed would be unreviewable.
+    for (const [other, publicName] of publicNames) {
+      if (publicName === existingName && other !== workspace.name) {
+        throw new ManifestTransformError(
+          `the target names ${directory} "${existingName}", which is ${other}'s public name; one of the two has to be renamed before a sync can tell an alias from a collision`,
+        );
+      }
+    }
+    mirrorPackages.add(existingName);
+  }
+}
+
 /** Build every manifest and `LICENSE` this target receives, without writing anything. */
 export async function planManifests({
   corvidaeRoot,
@@ -669,17 +724,23 @@ export async function planManifests({
   const firstPublish: string[] = [];
   const seededFromPackageMap: string[] = [];
   const addedDependencies: string[] = [];
-  const mirrorPackages = new Set(publicNames.values());
 
-  for (const workspace of workspaces) {
+  // Every workspace this target receives, resolved once: the emission loop and the alias pass
+  // below have to walk the same set, and the alias pass has to finish before the first manifest is
+  // composed.
+  const emittable = workspaces.flatMap((workspace) => {
     const disposition = dispositions.get(workspace.name);
-    if (!disposition || disposition.disposition === 'exclude') continue;
-    if (targetFor(workspace.name) !== target) continue;
-
+    if (!disposition || disposition.disposition === 'exclude') return [];
+    if (targetFor(workspace.name) !== target) return [];
     const layout = layouts.get(workspace.name);
-    if (!layout || layout.disposition === 'deferred') continue;
-    const directory = layout.targetDirectory;
+    if (!layout || layout.disposition === 'deferred') return [];
+    return [{ workspace, disposition, directory: layout.targetDirectory }];
+  });
 
+  const mirrorPackages = new Set(publicNames.values());
+  await collectTargetAliases({ targetDirectory, emittable, publicNames, mirrorPackages });
+
+  for (const { workspace, disposition, directory } of emittable) {
     const path = `${directory}/package.json`;
     const emitted = rewriteWorkspaceManifest(workspace, disposition, context);
     const existing = await readExistingManifest(targetDirectory, path);
