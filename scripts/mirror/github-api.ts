@@ -102,13 +102,11 @@ export interface GitHubApi {
   /**
    * The same, authenticated as the account rather than as the App.
    *
-   * Seeding a scratch repository carries the target's own `.github/workflows/**`, and GitHub
-   * refuses a workflow file pushed by an App without the `workflows` permission — which this
-   * App deliberately does not hold, because the transform never writes `.github/` on a real
-   * sync: `target-owned.json` reserves it for the target. Widening the App to get a scaffolding
-   * step through would grant standing authority over three real repositories' workflows to
-   * avoid a one-off. Seeding is setup, not the thing under proof, so it pushes as the account
-   * and the transform branch and pull request still go through the App.
+   * Seeding a scratch repository is setup, not the thing under proof, so it pushes as the
+   * account; the transform branch and pull request go through the App, and the App's first write
+   * to the scratch repository is the one a dry run measures. The App holds `workflows: write`
+   * (granted 2026-09-21) because the transform emits `.github/workflows/mirror-verify.yaml`
+   * (COR-1286); every other `.github/` path stays target-owned and is never written by a sync.
    */
   accountPushEnvironment(): Promise<Record<string, string>>;
 }

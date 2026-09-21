@@ -15,6 +15,7 @@ import {
   seedScratchRepository,
   waitForCheckRuns,
   type StageTransform,
+  type VerifyTransform,
 } from './dry-run.ts';
 import type {
   CheckRunRecord,
@@ -31,7 +32,7 @@ import {
   ScratchGuardError,
   scratchRepositoryName,
 } from './scratch-repository.ts';
-import type { StageOutcome } from './sync.ts';
+import type { StageOutcome, VerifyOptions, VerifyResult } from './sync.ts';
 
 /**
  * Every test here drives the real driver against a fake GitHub.
@@ -421,6 +422,14 @@ function fakeStage(version: string): StageTransform {
   };
 }
 
+/**
+ * A verification that records nothing and passes. The real one installs, builds, packs and
+ * smoke-tests the staged tree; every test here that reaches the transform stubs it, and the one
+ * that fails it lives in `runDryRun local verification`.
+ */
+const fakeVerify: VerifyTransform = async () =>
+  ({ reports: [], privateTypechecks: [] }) as unknown as VerifyResult;
+
 async function withWorkDirectory<T>(body: (directory: string) => Promise<T>): Promise<T> {
   const directory = await mkdtemp(join(tmpdir(), 'mirror-dry-run-'));
   try {
@@ -447,6 +456,7 @@ describe('runDryRun', () => {
           scratchRepository: validName,
           run: harness.run,
           stage: fakeStage('1.0.0'),
+          verify: fakeVerify,
           probe: probes.probe,
         }),
       ).rejects.toThrow(InstallationCoverageError);
@@ -472,6 +482,7 @@ describe('runDryRun', () => {
         scratchRepository: validName,
         run: harness.run,
         stage: fakeStage('1.0.0'),
+        verify: fakeVerify,
         probe: probes.probe,
         // The confirming poll needs a tick between reads; nothing here should spend it on a
         // wall clock.
@@ -537,6 +548,7 @@ describe('runDryRun', () => {
         scratchRepository: validName,
         run: harness.run,
         stage: fakeStage('1.0.0'),
+        verify: fakeVerify,
         probe: probes.probe,
         // The confirming poll needs a tick between reads; nothing here should spend it on a
         // wall clock.
@@ -581,6 +593,7 @@ describe('runDryRun', () => {
         keep: true,
         run: harness.run,
         stage: fakeStage('1.0.0'),
+        verify: fakeVerify,
         probe: probes.probe,
         // The confirming poll needs a tick between reads; nothing here should spend it on a
         // wall clock.
@@ -605,6 +618,7 @@ describe('runDryRun', () => {
           scratchRepository: 'stevekinney/weft',
           run: fakeRunner().run,
           stage: fakeStage('1.0.0'),
+          verify: fakeVerify,
           probe: fakeProbe().probe,
         }),
       ).rejects.toThrow(ScratchGuardError);
@@ -660,6 +674,7 @@ async function runWithCheckRuns(options: {
       scratchRepository: validName,
       run: harness.run,
       stage: fakeStage('1.0.0'),
+      verify: fakeVerify,
       probe: probes.probe,
       checkRunAppearanceAttempts: options.appearanceAttempts ?? 2,
       checkRunCompletionAttempts: options.completionAttempts ?? 3,
@@ -775,6 +790,7 @@ describe('runDryRun check run verdict', () => {
         scratchRepository: validName,
         run: harness.run,
         stage: fakeStage('1.0.0'),
+        verify: fakeVerify,
         probe: probes.probe,
         checkRunAppearanceAttempts: 2,
         checkRunCompletionAttempts: 3,
@@ -1447,6 +1463,93 @@ describe('runDryRunCommand', () => {
     // And nothing reached GitHub, so no repository was created for a run that could not start.
     expect(calls.coverageReads).toBe(0);
     expect(calls.created).toEqual([]);
+    expect(calls.deleted).toEqual([]);
+  });
+});
+
+/**
+ * The gate the sixth round trip needed: the real sync runs `verifyTarget` before it pushes, and
+ * the driver did not, so a tree whose root `prepare` hook called a file the transform had
+ * retired went to the scratch repository's CI to fail at `bun install` — ten minutes for what the
+ * harness refuses in one.
+ */
+describe('runDryRun local verification', () => {
+  test('verifies the staged tree in its own scratch subdirectory before committing', async () => {
+    const { api } = fakeGitHub();
+    const harness = fakeRunner();
+    const probes = fakeProbe();
+    const verifications: VerifyOptions[] = [];
+    await withWorkDirectory((workDirectory) =>
+      runDryRun({
+        api,
+        corvidaeRoot: workDirectory,
+        target: 'weft',
+        workDirectory: join(workDirectory, 'clone'),
+        scratchDirectory: join(workDirectory, 'scratch'),
+        corvidaeCommit: 'abc123',
+        scratchRepository: validName,
+        run: harness.run,
+        stage: fakeStage('1.0.0'),
+        verify: async (options) => {
+          verifications.push(options);
+          return fakeVerify(options);
+        },
+        probe: probes.probe,
+        sleep: async () => {},
+      }),
+    );
+    expect(verifications).toHaveLength(1);
+    expect(verifications[0]?.directory).toEqual(expect.stringContaining('clone'));
+    expect(verifications[0]?.scratchDirectory).toEqual(expect.stringMatching(/scratch\/verify$/));
+    expect(verifications[0]?.published.map((entry) => entry.publicName)).toEqual([
+      '@lostgradient/cryptography',
+    ]);
+    // Staged, verified, then committed: the verification sees the tree git will commit, and
+    // nothing is committed until it has passed.
+    const joined = harness.commands.map((command) => command.join(' '));
+    expect(joined.indexOf('git add --all')).toBeLessThan(
+      joined.findIndex((c) => c.startsWith('git commit')),
+    );
+  });
+
+  test('refuses to commit, push or open a pull request when the verification fails', async () => {
+    const { api, calls } = fakeGitHub();
+    const harness = fakeRunner();
+    const probes = fakeProbe();
+    const failure = await withWorkDirectory((workDirectory) =>
+      runDryRun({
+        api,
+        corvidaeRoot: workDirectory,
+        target: 'weft',
+        workDirectory: join(workDirectory, 'clone'),
+        scratchDirectory: join(workDirectory, 'scratch'),
+        corvidaeCommit: 'abc123',
+        scratchRepository: validName,
+        run: harness.run,
+        stage: fakeStage('1.0.0'),
+        verify: async () => {
+          throw new Error(
+            'install dependencies exited 1: prepare script from "project-name" exited with 1',
+          );
+        },
+        probe: probes.probe,
+        sleep: async () => {},
+      }),
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure instanceof Error ? failure.message : '').toContain('prepare script');
+    const joined = harness.commands.map((command) => command.join(' '));
+    // The seed's own commit and push happened; the transform's did not.
+    expect(joined).toContain('git push origin HEAD:refs/heads/main');
+    expect(joined).toContain('git add --all');
+    expect(joined.filter((command) => command.startsWith('git commit'))).toHaveLength(1);
+    expect(joined).not.toContain('git push origin HEAD:refs/heads/mirror-dry-run-20260919');
+    expect(calls.pullRequests).toEqual([]);
+    expect(probes.calls).toEqual([]);
+    // Kept, not deleted: the seeded scratch repository and the staged tree are the evidence.
     expect(calls.deleted).toEqual([]);
   });
 });

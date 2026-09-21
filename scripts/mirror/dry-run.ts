@@ -1,5 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 
+import { join } from 'node:path';
 import {
   createGitHubApi,
   installationTokenFromApp,
@@ -24,13 +25,17 @@ import {
   scratchRepositoryName,
   scratchStamp,
 } from './scratch-repository.ts';
+
 import {
   assertNoForeignCommits,
   gitEnvironment,
   provenanceTrailer,
   stageSurface,
+  verifyTarget,
   type StageOptions,
   type StageOutcome,
+  type VerifyOptions,
+  type VerifyResult,
 } from './sync.ts';
 
 /**
@@ -153,6 +158,8 @@ export async function assertInstallationCoverage(
 
 /** How the transform is invoked, so a test can drive the driver without a real corvidae tree. */
 export type StageTransform = (options: StageOptions) => Promise<StageOutcome>;
+/** The local verification run on the staged tree before anything is committed or pushed. */
+export type VerifyTransform = (options: VerifyOptions) => Promise<VerifyResult>;
 
 export interface DryRunOptions {
   api: GitHubApi;
@@ -184,6 +191,7 @@ export interface DryRunOptions {
   now?: Date;
   run?: CommandRunner;
   stage?: StageTransform;
+  verify?: VerifyTransform;
   /**
    * How the publish is proven. Injectable for the same reason `stage` is: the tests in this file
    * are about the order the driver puts the round trip in, and the probe builds, packs and lints
@@ -293,11 +301,12 @@ export async function seedScratchRepository(options: {
     '--message',
     `Seed ${options.target} from ${options.seedRemote}`,
   );
-  // As the account, not the App. The seed carries the target's own `.github/workflows/**`, and
-  // GitHub refuses a workflow file pushed by an App without the `workflows` permission — which
-  // this App deliberately does not hold, because `target-owned.json` reserves `.github/` for the
-  // target and the transform never writes it. Only the seed needs this; the transform branch and
-  // the pull request below still go through the App, which is what this whole run exists to prove.
+  // As the account, not the App. Seeding is setup, not the thing under proof: it scaffolds the
+  // target's whole tree into a scratch repository, and only the transform branch and the pull
+  // request below — which do go through the App — are what this run exists to prove. The App has
+  // held `workflows: write` since 2026-09-21, because the transform emits
+  // `.github/workflows/mirror-verify.yaml` (COR-1286); the seed keeps the account path anyway so
+  // the App's first write to the scratch repository is the one the run measures.
   const pushEnvironment = { ...environment, ...(await options.api.accountPushEnvironment()) };
   await runGit(
     run,
@@ -321,11 +330,14 @@ export async function transformAndOpenPullRequest(options: {
   api: GitHubApi;
   run: CommandRunner;
   stage: StageTransform;
+  verify: VerifyTransform;
   corvidaeRoot: string;
   target: MirrorTarget;
   corvidaeCommit: string;
   scratchRepository: string;
   workDirectory: string;
+  /** Where verification tarballs and the consumer project go; outside the clone. */
+  scratchDirectory: string;
   branch: string;
   installArguments?: readonly string[];
 }): Promise<TransformOutcome> {
@@ -350,6 +362,21 @@ export async function transformAndOpenPullRequest(options: {
       `The transform produced no change against the seeded ${options.target} tree, so there is no pull request to open. The scratch repository is still there; remove it with --phase delete.`,
     );
   }
+  // What the real sync runs before it pushes, run here for the same reason: install from an
+  // empty `node_modules`, build, typecheck, pack, publint, attw and the consumer smoke test —
+  // the very steps `mirror-verify.yaml` renders. A tree that fails these fails on the scratch
+  // repository's CI ten minutes later; the sixth round trip spent that on a root `prepare` hook
+  // calling a file the transform had retired, which this refuses in one. Throwing here leaves
+  // the scratch repository seeded and the working tree staged, with nothing pushed.
+  await options.verify({
+    directory: workDirectory,
+    published: outcome.plan.published,
+    privateWorkspaces: outcome.plan.privateWorkspaces,
+    // Its own subdirectory: the publish probe later writes `tarballs/` under the same scratch
+    // root, and the verification packs tarballs of its own.
+    scratchDirectory: join(options.scratchDirectory, 'verify'),
+    ...(options.installArguments ? { installArguments: options.installArguments } : {}),
+  });
   await runGit(
     run,
     workDirectory,
@@ -677,6 +704,7 @@ export function assertCheckRunsPassed(options: {
 export async function runDryRun(options: DryRunOptions): Promise<DryRunReport> {
   const run = options.run ?? runCommand;
   const stage = options.stage ?? stageSurface;
+  const verify = options.verify ?? verifyTarget;
   const now = options.now ?? new Date();
   const scratchRepository = options.scratchRepository ?? scratchRepositoryName(now);
   assertScratchName(scratchRepository);
@@ -696,11 +724,13 @@ export async function runDryRun(options: DryRunOptions): Promise<DryRunReport> {
     api: options.api,
     run,
     stage,
+    verify,
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
     corvidaeCommit: options.corvidaeCommit,
     scratchRepository,
     workDirectory: options.workDirectory,
+    scratchDirectory: options.scratchDirectory,
     branch: `mirror-dry-run-${scratchStamp(scratchRepository)}`,
     ...(options.installArguments ? { installArguments: options.installArguments } : {}),
   });
