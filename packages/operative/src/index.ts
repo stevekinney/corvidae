@@ -277,6 +277,20 @@ export type { EventDispatcher } from './loop';
 export * from './providers';
 export * from './retry';
 export * from './run-envelope';
+/*
+ * `operative.runs.events`, declared with Weft's `defineOperation` so a client
+ * subscribing to a run speaks the same dialect and obeys the same access
+ * policy as one subscribing to a workflow. A host registers this into its
+ * catalog and passes `{ runFeeds }` as the operation's engine value.
+ */
+export {
+  createAgentRunEventRegistry,
+  runEventEnvelopeSchema,
+  runEventsSubscriptionOperation,
+  type AgentRunEventRegistry,
+  type RunEventsOperationEngine,
+  type RunEventsSubscriptionInput,
+} from './run-events-operation';
 export { DEFAULT_MAXIMUM_STEPS } from './run-step';
 export * from './scheduler/index';
 
@@ -351,3 +365,22 @@ export {
   type GenerateInstrumentationOptions,
   type InstrumentableGenerateOptions,
 } from './providers/instrumentation';
+
+/*
+ * An agent run's events, projected onto a replay-plus-live feed.
+ *
+ * Built on Weft's `createReplayLiveFeed`, which this package already depends
+ * on, so a subscriber watching a run gets the same cursors and resume
+ * semantics as one watching a workflow. See `run-event-feed.ts` for why the
+ * projection names every field rather than serializing events generically.
+ */
+export {
+  PUBLISHED_RUN_EVENT_KINDS,
+  createAgentRunEventFeed,
+  projectRunEvent,
+  publishedRunEventKinds,
+  type AgentRunEventEnvelope,
+  type AgentRunEventFeed,
+  type AgentRunEventFeedOptions,
+  type PublishedRunEventKind,
+} from './run-event-feed';

@@ -43,8 +43,8 @@ test('application hosts and tests receive only their owned configuration', async
   try {
     await createWorkspace(directory);
     const cases = [
-      { name: 'chat-room', task: 'dev', variable: 'ANTHROPIC_API_KEY' },
-      { name: 'chat-room', task: 'preview', variable: 'ANTHROPIC_BASE_URL' },
+      { name: 'desktop', task: 'dev', variable: 'ANTHROPIC_API_KEY' },
+      { name: 'desktop', task: 'dev', variable: 'ANTHROPIC_BASE_URL' },
       { name: 'weft-ui', task: 'dev:browser', variable: 'WEFT_UI_PORT' },
       { name: 'weft', task: 'test', variable: 'WEFT_EVENT_DISPATCH_ARCHITECTURE_BENCHMARK' },
       { name: 'cinder', task: 'test', variable: 'CINDER_SVG_DATA_URI_ROOTS' },
@@ -289,20 +289,17 @@ test('application check caches restore generated inputs without restoring build 
     await createWorkspace(directory);
     await Bun.write(
       join(directory, '.gitignore'),
-      'node_modules/\n.svelte-kit/\n.playwright/\nbuild/\nexecutions.txt\n',
+      'node_modules/\n.hutch/\n.svelte-kit/\n.playwright/\nbuild/\nexecutions.txt\n',
     );
+    // Electrobun projects its SDK into `.hutch/devkit` rather than generating
+    // `.svelte-kit`, but the property under test is unchanged: a task that
+    // declares generated inputs as outputs restores them from cache, while an
+    // application's build output stays deleted.
     const cases = [
       {
-        name: 'chat-room',
-        tasks: ['lint', 'typecheck'],
-        outputs: [
-          '.svelte-kit/tsconfig.json',
-          '.svelte-kit/ambient.d.ts',
-          '.svelte-kit/env.d.ts',
-          '.svelte-kit/non-ambient.d.ts',
-          '.svelte-kit/types/src/routes/$types.d.ts',
-          '.svelte-kit/generated/root.svelte',
-        ],
+        name: 'desktop',
+        tasks: ['prepare:devkit'],
+        outputs: ['.hutch/devkit/tsconfig.json', '.hutch/devkit/api/sdks/main/index.ts'],
       },
     ];
     for (const application of cases) {
@@ -336,7 +333,7 @@ for (const output of ${JSON.stringify(application.outputs)}) await Bun.write(out
         ];
         const unrelatedBuildOutput = join(
           applicationDirectory,
-          '.svelte-kit/output/server/index.js',
+          'build/dev-macos-arm64/application.js',
         );
         await Bun.write(unrelatedBuildOutput, 'application build');
         await run(directory, command);

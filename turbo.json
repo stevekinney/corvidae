@@ -38,39 +38,38 @@
     "transit": {
       "dependsOn": ["//#preflight", "^transit"]
     },
-    "@lostgradient/chat-room#lint": {
-      "dependsOn": ["sync", "transit"],
-      "outputs": [
-        ".svelte-kit/*.json",
-        ".svelte-kit/*.d.ts",
-        ".svelte-kit/types/**",
-        ".svelte-kit/generated/**"
-      ]
-    },
-    "@lostgradient/chat-room#sync": {
+    "@lostgradient/desktop#prepare:devkit": {
       "dependsOn": ["transit"],
-      "outputs": [
-        ".svelte-kit/*.json",
-        ".svelte-kit/*.d.ts",
-        ".svelte-kit/types/**",
-        ".svelte-kit/generated/**",
-        ".playwright/svelte-kit/*.json",
-        ".playwright/svelte-kit/*.d.ts",
-        ".playwright/svelte-kit/types/**",
-        ".playwright/svelte-kit/generated/**"
-      ]
+      "outputs": [".hutch/**"]
     },
-    "@lostgradient/chat-room#typecheck": {
-      "dependsOn": ["sync", "transit"],
-      "outputs": [
-        ".svelte-kit/*.json",
-        ".svelte-kit/*.d.ts",
-        ".svelte-kit/types/**",
-        ".svelte-kit/generated/**"
-      ]
+    "@lostgradient/desktop#lint": {
+      "dependsOn": ["prepare:devkit", "transit"],
+      "outputs": []
     },
-    "@lostgradient/chat-room#build": {
-      "dependsOn": ["typecheck", "transit"]
+    "@lostgradient/desktop#typecheck": {
+      "dependsOn": ["prepare:devkit", "transit"],
+      "outputs": []
+    },
+    "@lostgradient/desktop#test": {
+      "dependsOn": ["prepare:devkit", "transit"],
+      "outputs": []
+    },
+    "@lostgradient/desktop#build:renderer": {
+      "dependsOn": ["prepare:devkit", "transit"],
+      "outputs": ["dist/**"]
+    },
+    "@lostgradient/desktop#build": {
+      "dependsOn": ["typecheck", "build:renderer", "transit"],
+      "outputs": ["build/**", "artifacts/**"]
+    },
+    "@lostgradient/desktop#dev": {
+      "persistent": true,
+      "cache": false,
+      "passThroughEnv": ["NODE_ENV", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"]
+    },
+    "@lostgradient/desktop#dev:renderer": {
+      "persistent": true,
+      "cache": false
     },
     "//#test:browser-fixtures": {
       "dependsOn": ["^transit"],
@@ -91,26 +90,6 @@
     "dev:server": {
       "persistent": true,
       "cache": false
-    },
-    "@lostgradient/chat-room#dev": {
-      "persistent": true,
-      "cache": false,
-      "passThroughEnv": [
-        "NODE_ENV",
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_BASE_URL",
-        "CHAT_ROOM_SERVER_OWNED_DATABASE"
-      ]
-    },
-    "@lostgradient/chat-room#preview": {
-      "persistent": true,
-      "cache": false,
-      "passThroughEnv": [
-        "NODE_ENV",
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_BASE_URL",
-        "CHAT_ROOM_SERVER_OWNED_DATABASE"
-      ]
     },
     "@lostgradient/weft-ui#dev:browser": {
       "persistent": true,

@@ -302,6 +302,7 @@ export function buildServerContext(
       workerRegistry,
       taskQueue,
       metricsCollector: serverMetricsCollector,
+      ...(options.operations === undefined ? {} : { additionalOperations: options.operations }),
     }),
     liveRestBindings: createLiveRestBindings(),
     supportedAuthenticationSchemes: deriveSupportedOpenApiSecuritySchemes(options.auth),

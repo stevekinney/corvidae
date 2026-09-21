@@ -43,7 +43,8 @@ const fleetEventKindSchema = z.enum(EVENTS_READ_EVENT_TYPES);
 
 const fleetEventsSseInputSchema = z.object({
   workflowId: z.string().min(1).optional(),
-  kind: fleetEventKindSchema.optional(),
+  /* One kind, or several. See `fleet-events-subscription.ts` for the rationale. */
+  kind: z.union([fleetEventKindSchema, z.array(fleetEventKindSchema).min(1)]).optional(),
   fromCursor: cursorSchema.optional(),
   lastEventId: cursorSchema.optional(),
 });
@@ -105,7 +106,12 @@ function matchesFleetEventFilter(
 ): boolean {
   if (envelope.kind === 'fleet:gap') return true;
   if (input.workflowId !== undefined && envelope.workflowId !== input.workflowId) return false;
-  if (input.kind !== undefined && envelope.kind !== input.kind) return false;
+  if (input.kind !== undefined) {
+    const matches = Array.isArray(input.kind)
+      ? input.kind.includes(envelope.kind as (typeof input.kind)[number])
+      : envelope.kind === input.kind;
+    if (!matches) return false;
+  }
   return true;
 }
 

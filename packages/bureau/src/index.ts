@@ -259,3 +259,27 @@ export type {
   WebhookTriggerType,
 } from './webhook-notifier';
 export { streamEventToFrame } from './websocket-frames';
+/*
+ * A bureau's lifecycle events, projected onto Weft's replay-plus-live feed
+ * and exposed as `bureau.events` in the same catalog that carries Weft's own
+ * operations and `operative.runs.events`. One feed per bureau, not per run:
+ * registration, recovery, disposal, and review describe the supervisor.
+ */
+export {
+  PUBLISHED_BUREAU_EVENT_KINDS,
+  createBureauEventFeed,
+  projectBureauEvent,
+  publishedBureauEventKinds,
+  type BureauEventEnvelope,
+  type BureauEventFeed,
+  type BureauEventFeedOptions,
+  type PublishedBureauEventKind,
+} from './bureau-event-feed';
+export {
+  bureauEventEnvelopeSchema,
+  bureauEventsSubscriptionOperation,
+  createBureauEventRegistry,
+  type BureauEventRegistry,
+  type BureauEventsOperationEngine,
+  type BureauEventsSubscriptionInput,
+} from './bureau-events-operation';

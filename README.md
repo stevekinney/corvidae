@@ -19,12 +19,11 @@ Run one workspace through its package scripts:
 
 ```bash
 bunx turbo run lint typecheck test --filter=@lostgradient/operative
-bun run --filter=@lostgradient/chat-room dev
-bun run --filter=@lostgradient/chat-room build
-bun run --filter=@lostgradient/chat-room preview
+bun run --filter=@lostgradient/desktop dev
+bun run --filter=@lostgradient/desktop build
 ```
 
-Chat-room uses the documented [SvelteKit Vite integration](https://svelte.dev/docs/kit/@sveltejs-kit-vite). Its `dev`, `build`, and `preview` commands invoke Vite through Bun. Application output is disposable and excluded from source control.
+The desktop application is an [Electrobun](https://electrobun.dev) 2 build: a Bun main process that runs the Operative agent loop, and a Svelte renderer built by Vite that draws the Cinder chat interface. Electrobun 2 does not ship its SDK through npm — `electrobun prepare` projects it into `.hutch/devkit`, which every lint, typecheck, and build task depends on and which is excluded from source control. Set `ANTHROPIC_API_KEY` before `dev` to exercise a real turn; without it the application still starts and reports the missing key in its failure banner. Application output is disposable and excluded from source control.
 
 Run the cross-component browser suite with `bun run test:browser`, or use `bun run test:browser:preview` to exercise production compilation. Run the operator suite with `bun run --filter=@lostgradient/weft-ui test:browser`. Both use [Playwright](https://playwright.dev/). `bun run dev:browser-fixtures` starts the Bun fixture host for local inspection.
 
@@ -71,6 +70,6 @@ The [migration inventory](./MIGRATION.md) records source revisions, package mapp
 
 The [Operative and Bureau API contract](./documentation/operative-type-safe-api.md) explains typed agents, durable execution, and started-work control. [Hierarchical hook composition](./documentation/hierarchical-hook-composition.md) covers how Bureau, agent and direct-run hooks compose into one immutable plan per run, who can narrow whom, and what a run will tell you about its own plan. The [workflow versioning guide](./documentation/workflow-versioning.md) describes version stamps and recovery behavior. Generated codebase reports are disposable; `scripts/measure-codebase.ts` and `scripts/inventory-dependencies.ts` write fresh measurements to `/tmp` by default.
 
-The [runtime contracts guide](./documentation/runtime-contracts.md) connects provider capabilities, model selection, steering, and cleanup across packages. Weft's [workflow revision guide](./packages/weft/documentation/guides/workflow-revisions.md), [shared-store ownership guide](./packages/weft/documentation/guides/shared-store-ownership.md), and [remote task recovery guide](./packages/weft/documentation/guides/remote-task-recovery.md) cover durable execution across deployments. For interfaces, start with [Cinder composition](./components/cinder/documentation/interface-guide.md) and [chat-room integration](./applications/chat-room/docs/interface-surfaces.md).
+The [runtime contracts guide](./documentation/runtime-contracts.md) connects provider capabilities, model selection, steering, and cleanup across packages. Weft's [workflow revision guide](./packages/weft/documentation/guides/workflow-revisions.md), [shared-store ownership guide](./packages/weft/documentation/guides/shared-store-ownership.md), and [remote task recovery guide](./packages/weft/documentation/guides/remote-task-recovery.md) cover durable execution across deployments. For interfaces, start with [Cinder composition](./components/cinder/documentation/interface-guide.md) and [desktop application integration](./applications/desktop/README.md).
 
 The [completed-project documentation audit](./documentation/completed-project-documentation.md) maps all 28 completed Linear projects to their reader-facing guides and references.

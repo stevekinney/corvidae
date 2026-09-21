@@ -254,12 +254,17 @@ describe('generateOpenRpcDocument — Codex regressions', () => {
 
   it('the registry cannot admit an rpc.discover operation — name collision is structurally impossible', () => {
     // Codex flagged a theoretical rpc.discover collision. The
-    // `OperationRegistry` enforces the `weft.<segment>.<segment>`
-    // naming convention at construction, so no domain operation can
-    // ever be named `rpc.discover`. This test pins that invariant —
-    // if the naming rule is relaxed in the future, the generator's
-    // deduplication guard (documented in `generateOpenRpcDocument`)
-    // is the backstop.
+    // `OperationRegistry` enforces the naming convention at
+    // construction, so no domain operation can ever be named
+    // `rpc.discover`.
+    //
+    // The rule was since relaxed to admit namespaces other than `weft.`,
+    // so a shared catalog can carry `operative.*` and `bureau.*`. That
+    // relaxation is exactly the future this test's earlier comment warned
+    // about, and the invariant is preserved deliberately rather than
+    // devolved to the generator's deduplication backstop:
+    // `OPERATION_NAME_PATTERN` now excludes the `rpc.` prefix by negative
+    // lookahead, which JSON-RPC 2.0 reserves for rpc-internal methods.
     expect(() =>
       createOperationRegistry([
         makeOp({
@@ -268,6 +273,6 @@ describe('generateOpenRpcDocument — Codex regressions', () => {
           outputSchema: z.object({}),
         }),
       ]),
-    ).toThrow(/weft\./);
+    ).toThrow(/operation name/);
   });
 });

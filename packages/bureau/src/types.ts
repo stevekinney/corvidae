@@ -9,6 +9,7 @@ import type {
 import type { CreateMemoryOptions, Memory } from '@lostgradient/memory';
 import type {
   AgentInput,
+  AgentRunEventRegistry,
   AgentSession,
   CacheOptions,
   CreateRunEngineOptions,
@@ -72,6 +73,7 @@ import type {
   BureauAgentCatalog,
 } from './agent-catalog';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
+import type { BureauEventFeed } from './bureau-event-feed.ts';
 import type {
   DurableEventHistoryPageOptions,
   DurableEventHistorySubscribeOptions,
@@ -286,6 +288,15 @@ export interface PersistenceOptions {
 // ── Bureau (headless, no HTTP) ──────────────────────────────────────
 
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
+  /**
+   * This bureau's identity, as {@link Bureau.id} and as the `bureauId` a
+   * `bureau.events` subscription names.
+   *
+   * Defaults to a runtime-generated identifier, which is fine for a single
+   * in-process bureau. A host serving several needs ids it can hand a client,
+   * so it supplies them.
+   */
+  id?: string;
   /**
    * The typed agent catalog (AB-15, AB-22) — a plain literal map of agent
    * name to `RunnableAgent`, exposed read-only as {@link Bureau.agents} and
@@ -1004,6 +1015,42 @@ export interface BureauRunOptions {
 }
 
 export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
+  /** This bureau's identity — {@link BureauOptions.id}, or a generated one. */
+  readonly id: string;
+  /**
+   * This bureau's own events, as a replay-plus-live feed.
+   *
+   * The same events `addEventListener`/`subscribe` deliver, but recorded with
+   * cursors, so a client that reconnects resumes where it stopped instead of
+   * missing whatever happened while it was away. Serve it as `bureau.events`
+   * by registering this bureau's id against it — see
+   * `createBureauEventRegistry`.
+   *
+   * Shutdown ends every subscriber rather than leaving it hanging, but does
+   * not promise a final `bureau.disposed` envelope — see Weft's
+   * `bindFeedLifetime` for why. A client treats the stream ending as the
+   * signal.
+   *
+   * Named `eventFeed` because `events` is already this interface's
+   * async-iterator method.
+   */
+  readonly eventFeed: BureauEventFeed;
+  /**
+   * The event feeds of the runs this bureau owns, keyed by run id.
+   *
+   * A bureau owns its operatives' events as well as their lifecycles: it
+   * creates each run's feed before registering the run, pumps the run into
+   * it, and reaps it when the run is removed. Pass this as the
+   * `operative.runs.events` engine's `runFeeds` and a client can watch any
+   * run this bureau started.
+   *
+   * A feed outlives its run's completion and is reaped by `deleteRun`, so a
+   * client that subscribes on hearing `run.completed` still gets the whole
+   * history. A host that never deletes runs retains them.
+   *
+   * Read-only: entries are bureau's to create and remove.
+   */
+  readonly runEventFeeds: AgentRunEventRegistry;
   readonly store: Store;
   readonly memory: Memory | undefined;
   readonly scheduler: Scheduler | undefined;

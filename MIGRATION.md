@@ -32,7 +32,8 @@ This inventory records the consolidation boundaries and validation evidence. The
 | `/Users/stevekinney/Developer/cinder/packages/editor` | `components/editor` | `@lostgradient/editor` | `@lostgradient/editor` | Browser component library |
 | `/Users/stevekinney/Developer/cinder/packages/markdown` | `packages/markdown` | `@lostgradient/markdown` | `@lostgradient/markdown` | Library |
 | `/Users/stevekinney/Developer/cinder/packages/testing` | `packages/testing` | `@cinder/testing` | `@lostgradient/testing` | Library |
-| `/Users/stevekinney/Developer/cinder/labs/chat-room` | `applications/chat-room` | `@cinder/chat-room-lab` | `@lostgradient/chat-room` | Application |
+| `/Users/stevekinney/Developer/cinder/labs/chat-room` | `applications/chat-room`, later `applications/desktop` | `@cinder/chat-room-lab` | `@lostgradient/chat-room`, later `@lostgradient/desktop` | Application |
+| Extracted from `applications/chat-room` | `packages/telephone` | — | `@lostgradient/telephone` | Library |
 
 ## Architecture
 
@@ -54,7 +55,8 @@ Arrows run from consumer to provider. Every manifest edge appears below, includi
 
 | Consumer | Runtime or source-contract providers | Development providers |
 | --- | --- | --- |
-| `@lostgradient/chat-room` | `armorer`, `@lostgradient/chat`, `@lostgradient/cinder`, `conversationalist`, `@lostgradient/editor`, `@lostgradient/markdown`, `@lostgradient/operative`, `@lostgradient/weft` | `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/desktop` | `armorer`, `@lostgradient/chat`, `@lostgradient/cinder`, `conversationalist`, `@lostgradient/operative`, `@lostgradient/telephone` | `@lostgradient/typescript` |
+| `@lostgradient/telephone` | `armorer`, `@lostgradient/chat`, `@lostgradient/operative` | `conversationalist`, `@lostgradient/typescript` |
 | `@lostgradient/chat` | `@lostgradient/cinder`, `conversationalist`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/cinder` | `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/editor` | `@lostgradient/cinder`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
@@ -83,7 +85,8 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 
 | Workspace | Direct external dependencies |
 | --- | --- |
-| `@lostgradient/chat-room` | `@lasercat/homogenaize`, `@milkdown/ctx`, `@milkdown/kit`, `@sveltejs/kit`, `lucide-svelte`, `prosemirror-state`, `prosemirror-view`, `svelte`, `zod` |
+| `@lostgradient/desktop` | `@lostgradient/environmentalist`, `electrobun`, `svelte`, `zod` |
+| `@lostgradient/telephone` | none |
 | `armorer` | `@modelcontextprotocol/client`, `@modelcontextprotocol/core`, `@modelcontextprotocol/server`, `@openai/agents`, `@opentelemetry/api`, `@standard-schema/spec`, `zod` |
 | `@lostgradient/bureau` | `zod` |
 | `@lostgradient/chat` | `decode-named-character-reference`, `micromark-util-decode-numeric-character-reference`, `svelte`, `zod` |

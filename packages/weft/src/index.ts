@@ -82,9 +82,83 @@ export { AUTHORIZATION_SCOPES, isAuthorizationScope } from './server/authorizati
 export type { AuthorizationScope } from './server/authorization-scope.ts';
 export * from './server/handler.ts';
 export { handleRequest } from './server/handler.ts';
+/*
+ * The operation catalog, as a public contract.
+ *
+ * `defineOperation` was internal while Weft was its own catalog's only
+ * author. It is exported now because it is not: `@lostgradient/operative` and
+ * `@lostgradient/bureau` already depend on this package, and a gateway serving
+ * all three wants one dispatch pipeline, one transport matrix
+ * (`http`/`jsonRpcHttp`/`jsonRpcWebSocket`/`jsonRpcStdio`), and one AsyncAPI
+ * document rather than a second RPC dialect beside them.
+ *
+ * Exporting the definition surface rather than moving it keeps the 194
+ * operations already registered here, and their tests, exactly where they
+ * are. See `OPERATION_NAME_PATTERN` for the namespace change that makes a
+ * shared catalog expressible.
+ */
 export * from './server/index.ts';
 export { serve } from './server/index.ts';
+export {
+  OPERATION_NAME_PATTERN,
+  isValidOperationName,
+  validateOperationName,
+} from './server/operation-catalog/types.ts';
+export type {
+  OperationContext,
+  OperationKind,
+  StreamOperationInvocation,
+  SubscriptionOperationInvocation,
+  TransportAvailability,
+  UnknownKeyPolicy,
+} from './server/operation-catalog/types.ts';
+export { defineOperation } from './server/operation-registry.ts';
+export type {
+  OperationDefinitionInput,
+  SchemaOperationDefinition,
+  StreamSchemaOperationDefinition,
+  SubscriptionSchemaOperationDefinition,
+  UnarySchemaOperationDefinition,
+} from './server/operation-registry.ts';
+/*
+ * The replay-plus-live feed and its subscription plumbing, as public
+ * contracts.
+ *
+ * `createReplayLiveFeed` is generic over its envelope and its backend, and
+ * Weft already instantiates it twice (workflow events, fleet events). A third
+ * consumer — an agent run in `@lostgradient/operative`, a bureau in
+ * `@lostgradient/bureau` — needs the same cursors, the same replay-then-live
+ * join, and the same resume semantics, so it takes them from here rather than
+ * growing a parallel set. `createReplayAwareClosableIterable` goes with them:
+ * a subscription operation outside this package cannot be written without it.
+ *
+ * `createInMemoryReplayLiveBackend` is the live-only backend. Choosing it
+ * first is deliberate and reversible: a durable backend replaces that one
+ * argument and changes nothing above it.
+ *
+ * These exports are grouped by subject in this comment but sorted by module
+ * below, because the formatter orders export statements alphabetically.
+ */
+export { bindFeedLifetime } from './server/bind-feed-lifetime.ts';
+export { createInMemoryReplayLiveBackend } from './server/in-memory-replay-live-backend.ts';
+export type {
+  InMemoryReplayLiveBackend,
+  InMemoryReplayLiveBackendOptions,
+} from './server/in-memory-replay-live-backend.ts';
+export {
+  createReplayAwareClosableIterable,
+  type ClosableAsyncIterable,
+  type ReplayAwareClosableIterable,
+} from './server/operations/event-stream-contracts.ts';
 export type { SchedulingPolicy } from './server/task-queue-types.ts';
+export { createReplayLiveFeed, decodeCursor, encodeCursor } from './server/workflow-event-feed.ts';
+export type {
+  Cursor,
+  ReplayLiveFeed,
+  ReplayLiveFeedBackend,
+  ReplayLiveSubscribeOptions,
+  SequencedEventEnvelope,
+} from './server/workflow-event-feed.ts';
 export * from './service-worker/index.ts';
 export * from './storage/auto.ts';
 export { BunSQLiteStorage } from './storage/bun-sql.ts';
@@ -238,3 +312,4 @@ export {
   taskLedgerKey,
 } from './core/task-ledger/task-ledger.ts';
 export { createLiveOperationRegistry } from './server/rest-bindings.ts';
+export type { LiveOperationRegistryOptions } from './server/rest-bindings.ts';

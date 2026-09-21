@@ -21,13 +21,7 @@
 
 import type { ApprovalResolution } from '@lostgradient/cinder';
 import type { TypingParticipant } from '../chat.types.ts';
-import type {
-  JSONValue,
-  Message,
-  MessageInput,
-  ToolCall,
-  ToolResult,
-} from '../conversation-model.ts';
+import type { Message, MessageInput, ToolCall, ToolResult } from '../conversation-model.ts';
 import type { ChatAttachment } from '../input/chat-attachment.ts';
 import type { ToolCallPresentation } from '../utilities/types.ts';
 
@@ -49,9 +43,11 @@ export type ChatReadReceiptEvent = {
 };
 
 /** A tool result plus an optional JSON-safe provider extension for approval state. */
-export type ChatToolResult = ToolResult & {
-  pendingApproval?: JSONValue;
-};
+/**
+ * Re-exported from the wire types, which own it now: the transport contract is
+ * compiled by producers that render nothing, so it cannot depend on this file.
+ */
+export type { ChatToolResult } from '../../../session/stream-event-codec-types.ts';
 
 /**
  * Push handlers Chat hands to {@link ChatAdapter.subscribe}. The adapter invokes

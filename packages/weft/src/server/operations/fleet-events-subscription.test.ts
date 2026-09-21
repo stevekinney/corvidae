@@ -150,6 +150,38 @@ describe('weft.events.subscribe operation', () => {
     await subscription.close();
   });
 
+  it('delivers every kind in a requested set', async () => {
+    // A client wanting several kinds previously had to open one subscription
+    // per kind and reconcile their cursors, or take the whole fleet feed and
+    // discard most of it across a socket.
+    const started = fleetEvent(1, { kind: 'workflow:started' });
+    const completed = fleetEvent(2, { kind: 'workflow:completed' });
+    const failed = fleetEvent(3, { kind: 'workflow:failed' });
+    const subscription = await invokeFleetSubscription(
+      { kind: ['workflow:started', 'workflow:failed'] },
+      [started, completed, failed],
+    );
+
+    expect(hasFleetEventIterable(subscription)).toBe(true);
+    if (!hasFleetEventIterable(subscription)) throw new Error('expected subscription result');
+    expect(collectSequences(subscription.iterable)).resolves.toEqual([1, 3]);
+    await subscription.close();
+  });
+
+  it('still accepts a bare kind, unchanged for existing callers', async () => {
+    const started = fleetEvent(1, { kind: 'workflow:started' });
+    const completed = fleetEvent(2, { kind: 'workflow:completed' });
+    const subscription = await invokeFleetSubscription({ kind: 'workflow:completed' }, [
+      started,
+      completed,
+    ]);
+
+    expect(hasFleetEventIterable(subscription)).toBe(true);
+    if (!hasFleetEventIterable(subscription)) throw new Error('expected subscription result');
+    expect(collectSequences(subscription.iterable)).resolves.toEqual([2]);
+    await subscription.close();
+  });
+
   it('delivers retention gaps before applying workflow and kind filters', async () => {
     const gap = fleetEvent(4, {
       kind: 'fleet:gap',

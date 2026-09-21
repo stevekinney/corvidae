@@ -73,7 +73,11 @@
     "**/node_modules/**",
     "**/*.generated.d.ts",
     "*.lock",
-    "**/.playwright/**"
+    "**/.playwright/**",
+    "**/.hutch/**",
+    "**/.cottontail-tmp/**",
+    "**/dist/**",
+    "**/artifacts/**"
   ],
   "overrides": [
     {

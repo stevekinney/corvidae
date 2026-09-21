@@ -2,7 +2,12 @@ import { isJSONValue, isToolResult } from '../components/chat/builders.ts';
 import { decodeStreamEvent } from './stream-event-codec-decoding-stream.ts';
 import { decodeRunEvent, decodeToolEvent } from './stream-event-codec-decoding-tool-run.ts';
 import { projectPlainJSON } from './stream-event-codec-encoding-projection.ts';
-import type { ChatStreamEvent, V2WireEnvelope, WireEnvelope } from './stream-event-codec-types.ts';
+import type {
+  ChatStreamEvent,
+  OptionalWireEnvelope,
+  V2WireEnvelope,
+  WireEnvelope,
+} from './stream-event-codec-types.ts';
 import {
   isNonNegativeSafeInteger,
   isRecord,
@@ -121,7 +126,7 @@ function decodeAssistantStepEvent(
 
 function decodeTextEvent(
   parsed: Record<string, unknown>,
-  envelope: Partial<WireEnvelope>,
+  envelope: OptionalWireEnvelope,
 ): ChatStreamEvent {
   if (typeof parsed['text'] !== 'string') throw new Error('Invalid chat stream event');
   return { type: 'text', text: parsed['text'], ...envelope };
@@ -129,7 +134,7 @@ function decodeTextEvent(
 
 function decodeToolCallEvent(
   parsed: Record<string, unknown>,
-  envelope: Partial<WireEnvelope>,
+  envelope: OptionalWireEnvelope,
 ): ChatStreamEvent {
   if (
     typeof parsed['id'] !== 'string' ||
@@ -148,7 +153,7 @@ function decodeToolCallEvent(
 
 function prepareFrame(value: unknown): {
   parsed: Record<string, unknown> & { type: string };
-  envelope: Partial<WireEnvelope>;
+  envelope: OptionalWireEnvelope;
 } {
   const raw = typeof value === 'string' ? JSON.parse(value) : value;
   // Own key only, like the envelope: an inherited `type` would let an object
@@ -188,7 +193,7 @@ function hasStringType(
 
 function decodeLegacyToolResult(
   parsed: Record<string, unknown>,
-  envelope: Partial<WireEnvelope>,
+  envelope: OptionalWireEnvelope,
 ): ChatStreamEvent {
   const { type: _type, pendingApproval, wireVersion: _wv, sequence: _seq, ...candidate } = parsed;
   if (!isToolResult(candidate) || (pendingApproval !== undefined && !isJSONValue(pendingApproval)))

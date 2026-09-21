@@ -68,7 +68,7 @@ test('the executable repository has no unregistered environment reads', async ()
 
 test('registers runtime and script boundaries separately', () => {
   expect(boundaryKind('packages/operative/src/environment-configuration.ts')).toBe('runtime');
-  expect(boundaryKind('applications/chat-room/src/lib/server/environment-configuration.ts')).toBe(
+  expect(boundaryKind('applications/desktop/src/bun/chat/environment-configuration.ts')).toBe(
     'runtime',
   );
   expect(boundaryKind('components/weft-ui/scripts/browser/environment-configuration.ts')).toBe(

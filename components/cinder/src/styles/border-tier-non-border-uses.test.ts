@@ -150,7 +150,7 @@ const SCAN_ROOTS = [
   'components/chat/src',
   'components/editor/src',
   // A registered workspace that consumes cinder and styles with these tiers.
-  'applications/chat-room/src',
+  'applications/desktop/src',
 ];
 
 /** `tokens-base.css` is generated from the corpus, where the aliases are already gated. */

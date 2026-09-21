@@ -322,8 +322,8 @@ describe('emitted source', () => {
     ]);
   });
 
-  test('the excluded chat-room application is emitted nowhere and holds nothing up', () => {
-    // `@lostgradient/chat-room` is excluded from the mirror by owner ruling (2026-09-21), decided in
+  test('the excluded desktop application is emitted nowhere and holds nothing up', () => {
+    // `@lostgradient/desktop` is excluded from the mirror by owner ruling (2026-09-21), decided in
     // `package-map.json` before the layout is consulted, so the committed cinder plan carries no
     // deferred workspace and nothing lands under the target's application or lab directories.
     const { plan } = committedPlans.cinder;
