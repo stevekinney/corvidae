@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { encode } from '../core/codec.ts';
+import { PersistedDataCorruptError } from '../core/persisted-data-incompatible-error.ts';
 import {
   KEYS,
   type BatchOperation,
@@ -254,6 +255,22 @@ class RetainingBetweenWorkflowIndexScanAndEventReadStorage extends MemoryStorage
           },
         ],
       );
+    }
+    return super.get(key);
+  }
+}
+
+class CorruptingEventWithoutIndexStorage extends MemoryStorage {
+  corruptOnNextEventRead = false;
+
+  override async get(key: string): Promise<Uint8Array | null> {
+    if (key === KEYS.fleetEvent(0) && this.corruptOnNextEventRead) {
+      this.corruptOnNextEventRead = false;
+      // Delete ONLY the event record, leaving its by-workflow index entry in
+      // place — unlike retain()/purge(), which always delete both keys
+      // atomically, this is a torn write neither legitimate deleter could
+      // produce: genuine corruption, not a benign concurrent deletion.
+      await super.delete(KEYS.fleetEvent(0));
     }
     return super.get(key);
   }
@@ -1079,6 +1096,15 @@ describe('createFleetEventFeed', () => {
     feed.dispose();
   });
 
+  it('fails loudly when retention never provides a stable snapshot for a workflow-scoped replay', async () => {
+    const feed = createFleetEventFeed(new UnstableWatermarkStorage());
+
+    expect(collect(feed.replay({ workflowId: 'wf-unstable' }), 10)).rejects.toThrow(
+      'could not obtain a stable retention snapshot',
+    );
+    feed.dispose();
+  });
+
   it('rejects an empty workflowId when replaying the by-workflow index', async () => {
     const feed = createFleetEventFeed(new MemoryStorage());
 
@@ -1154,6 +1180,52 @@ describe('createFleetEventFeed', () => {
     // had simply run a moment later and never seen it at all.
     expect(replayed.map((event) => event.kind)).toEqual(['worker:connected']);
     expect(replayed.map((event) => event.sequence)).toEqual([1]);
+    feed.dispose();
+  });
+
+  it('reports genuine corruption when a workflow-indexed event is missing but its index entry survives', async () => {
+    const storage = new CorruptingEventWithoutIndexStorage();
+    const feed = createFleetEventFeed(storage);
+    await feed.append({
+      kind: 'worker:connected',
+      workflowId: 'wf-corrupt',
+      emittedAtMs: 0,
+      payload: { index: 0 },
+    });
+    storage.corruptOnNextEventRead = true;
+
+    // Unlike the retention-race and purge-race tests above (where the index
+    // entry is also gone, so a missing event reads as a benign concurrent
+    // deletion), the by-workflow index for sequence 0 is still present here —
+    // no legitimate deleter ever tears those two keys apart, so this must
+    // surface as PersistedDataCorruptError rather than being silently
+    // skipped.
+    expect(
+      collect(feed.replay({ workflowId: 'wf-corrupt', fromCursor: '-1' }), 10),
+    ).rejects.toThrow(PersistedDataCorruptError);
+    feed.dispose();
+  });
+
+  it('reports genuine corruption when an indexed event decodes but names a different workflow', async () => {
+    const storage = new MemoryStorage();
+    const feed = createFleetEventFeed(storage);
+    await feed.append({
+      kind: 'worker:connected',
+      workflowId: 'wf-real-owner',
+      emittedAtMs: 0,
+      payload: { index: 0 },
+    });
+    // Plant a phantom by-workflow index entry pointing an UNRELATED workflow
+    // at sequence 0 — an index/event pairing no legitimate writer ever
+    // produces (append() always writes both keys for the SAME workflowId in
+    // one atomic batch). The event at sequence 0 decodes fine, but its own
+    // workflowId ("wf-real-owner") disagrees with the index that pointed us
+    // here ("wf-phantom-owner").
+    await storage.put(KEYS.fleetEventByWorkflow('wf-phantom-owner', 0), new Uint8Array());
+
+    expect(
+      collect(feed.replay({ workflowId: 'wf-phantom-owner', fromCursor: '-1' }), 10),
+    ).rejects.toThrow(PersistedDataCorruptError);
     feed.dispose();
   });
 

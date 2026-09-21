@@ -82,6 +82,7 @@ describe('internal workspace architecture', () => {
       'bun run lint',
       'bun run typecheck',
       'bun run test',
+      'bun run coverage',
       'bun run build',
       'bun run format:check',
       'bun run audit',

@@ -548,6 +548,40 @@ describe('schedule record decoding', () => {
       '[weft] Ignoring malformed schedule "schedule-state" with a pinnedRevision but no revisionPolicy.',
     );
   });
+
+  it('rejects schedule records with an invalid skippedCount (COR-1224)', () => {
+    using warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+
+    const state = createScheduleState();
+    const decoded = decodeScheduleState(
+      encode({
+        ...state,
+        skippedCount: -1,
+      }),
+    );
+
+    expect(decoded).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[weft] Ignoring malformed schedule "schedule-state" with invalid skippedCount.',
+    );
+  });
+
+  it('rejects schedule records with an invalid lastSkippedAt (COR-1224)', () => {
+    using warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+
+    const state = createScheduleState();
+    const decoded = decodeScheduleState(
+      encode({
+        ...state,
+        lastSkippedAt: 'not-a-timestamp',
+      }),
+    );
+
+    expect(decoded).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[weft] Ignoring malformed schedule "schedule-state" with invalid lastSkippedAt.',
+    );
+  });
 });
 
 describe('recurring schedules', () => {

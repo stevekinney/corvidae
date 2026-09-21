@@ -707,4 +707,168 @@ describe('Long-poll activity heartbeat — same shared seam as WebSocket (COR-23
     );
     expect(freshResult?.status).toBe(200);
   });
+
+  it('returns 413 when the raw heartbeat body exceeds the configured request limit', async () => {
+    const { context } = await setUpLongPoll();
+    const options = { ...minimalServeOptions(new MemoryStorage()), maxRequestBodyBytes: 32 };
+    const request = new Request('http://localhost/v1/tasks/default/heartbeat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        operationId: 'op-lp-1',
+        workerId: 'longpoll-w1',
+        attemptToken: 'x'.repeat(64),
+      }),
+    });
+    const response = await handleTaskHeartbeatRequest(
+      context,
+      options,
+      request,
+      new URL(request.url),
+    );
+    expect(response?.status).toBe(413);
+  });
+
+  it('returns 400 for an invalid JSON heartbeat body', async () => {
+    const { options, context } = await setUpLongPoll();
+    const request = new Request('http://localhost/v1/tasks/default/heartbeat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json at all',
+    });
+    const response = await handleTaskHeartbeatRequest(
+      context,
+      options,
+      request,
+      new URL(request.url),
+    );
+    expect(response?.status).toBe(400);
+    expect(await response?.json()).toMatchObject({ error: 'Invalid JSON body' });
+  });
+
+  it('returns 400 when operationId is missing from the heartbeat body', async () => {
+    const { options, context } = await setUpLongPoll();
+    const { request, url } = heartbeatRequest({
+      workerId: 'longpoll-w1',
+      attemptToken: 'lp-attempt-1',
+    });
+    const response = await handleTaskHeartbeatRequest(context, options, request, url);
+    expect(response?.status).toBe(400);
+    expect(await response?.json()).toMatchObject({
+      error: 'Missing required field: operationId',
+    });
+  });
+
+  it('returns 400 when attemptToken is missing from the heartbeat body', async () => {
+    const { options, context } = await setUpLongPoll();
+    const { request, url } = heartbeatRequest({ operationId: 'op-lp-1', workerId: 'longpoll-w1' });
+    const response = await handleTaskHeartbeatRequest(context, options, request, url);
+    expect(response?.status).toBe(400);
+    expect(await response?.json()).toMatchObject({
+      error: 'attemptToken must be a non-empty string',
+    });
+  });
+
+  it("returns 403 when the ledger record's queue does not match the heartbeat request's queue", async () => {
+    const { options, context } = await setUpLongPoll();
+    const request = new Request('http://localhost/v1/tasks/other-queue/heartbeat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        operationId: 'op-lp-1',
+        workerId: 'longpoll-w1',
+        attemptToken: 'lp-attempt-1',
+      }),
+    });
+    const response = await handleTaskHeartbeatRequest(
+      context,
+      options,
+      request,
+      new URL(request.url),
+    );
+    expect(response?.status).toBe(403);
+  });
+
+  it('answers ok/not-cancelled as a harmless no-op when the attempt already resolved before the heartbeat arrived', async () => {
+    const { storage, options, context, claimed } = await setUpLongPoll();
+
+    // The attempt already resolved (terminal, disposition "resolved") by
+    // the time this resent heartbeat arrives — authorization still succeeds
+    // by matching attemptToken alone (terminal records drop session
+    // identity), but there is nothing left to renew or answer "cancelled"
+    // for.
+    const resolved = {
+      recordVersion: 1 as const,
+      operationId: claimed.operationId,
+      workflowType: claimed.workflowType,
+      activityName: claimed.activityName,
+      queue: claimed.queue,
+      input: claimed.input,
+      headers: claimed.headers,
+      visibilityTimeoutMilliseconds: claimed.visibilityTimeoutMilliseconds,
+      createdAt: claimed.createdAt,
+      generation: claimed.generation,
+      state: 'terminal' as const,
+      disposition: 'resolved' as const,
+      attempt: claimed.attempt,
+      attemptToken: claimed.attemptToken,
+      status: 'completed' as const,
+      resultDigest: 'digest-1',
+      terminalAt: Date.now(),
+      adopted: false,
+      retentionGeneration: 0,
+    };
+    await storage.put(taskLedgerKey('op-lp-1'), encodeRemoteTaskRecord(resolved));
+
+    const { request, url } = heartbeatRequest({
+      operationId: 'op-lp-1',
+      workerId: 'longpoll-w1',
+      attemptToken: 'lp-attempt-1',
+    });
+    const response = await handleTaskHeartbeatRequest(context, options, request, url);
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({ ok: true, cancelled: false });
+  });
+
+  it('re-reads the current record and answers accurately when the lease renewal loses the race', async () => {
+    class LosesCasStorage extends MemoryStorage {
+      override async conditionalBatch(): Promise<boolean> {
+        return false;
+      }
+    }
+    const storage = new LosesCasStorage();
+    const context = minimalServerContext({ registry: null as never });
+    const queued = freshQueued(Date.now(), 10_000);
+    const claimed = claimQueued(
+      queued,
+      {
+        expectedGeneration: queued.generation,
+        attemptToken: 'lp-attempt-1',
+        workerSessionId: 'longpoll-w1',
+        leaseDurationMilliseconds: 10_000,
+      },
+      Date.now(),
+    );
+    if (!claimed.ok) throw new Error(`Expected claimQueued to succeed: ${claimed.reason}`);
+    await storage.put(taskLedgerKey('op-lp-1'), encodeRemoteTaskRecord(claimed.nextRecord));
+    const options = minimalServeOptions(storage);
+
+    const { request, url } = heartbeatRequest({
+      operationId: 'op-lp-1',
+      workerId: 'longpoll-w1',
+      attemptToken: 'lp-attempt-1',
+    });
+    const response = await handleTaskHeartbeatRequest(context, options, request, url);
+
+    // The renewal transition itself lost the CAS (every conditionalBatch
+    // fails), but the handler still answers successfully by re-reading the
+    // record fresh rather than propagating the internal transition failure
+    // — and the fresh read shows the record is still leased, not cancelled.
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({ ok: true, cancelled: false });
+
+    const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-lp-1')));
+    if (record?.state !== 'leased') throw new Error('Expected a leased record');
+    expect(record.leaseDeadline).toBe(claimed.nextRecord.leaseDeadline);
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { renderNode, schemaToNode } from './operation-client-schema.ts';
+import { renderNode, schemaToNode, type TypeNode } from './operation-client-schema.ts';
 
 const NO_ALIASES = new Map<string, string>();
 /** Render a JSON Schema with no alias substitution — the pre-hoist baseline. */
@@ -215,5 +215,17 @@ describe('schemaToNode + renderNode — emitted text contract', () => {
     expect(renderInline({ enum: [] })).toBe('unknown');
     expect(renderInline({ const: { unsupported: true } })).toBe('unknown');
     expect(renderInline({})).toBe('unknown');
+  });
+
+  it('throws on a node kind outside the closed TypeNode union', () => {
+    // `TypeNode`'s discriminant is closed and `schemaToNode()` only ever
+    // produces one of its member kinds, so TypeScript proves the `default`
+    // branch in `renderNode()`'s switch unreachable (`node satisfies never`).
+    // Cast past that — as the caller-provided-id runtime guard tests do
+    // elsewhere in this repo — to prove the runtime guard itself still fires
+    // for a genuinely malformed node (e.g. one built by a future schema
+    // variant this renderer has not been updated for).
+    const malformed = { kind: 'not-a-real-kind' } as unknown as TypeNode;
+    expect(() => renderNode(malformed, NO_ALIASES)).toThrow(/Unsupported schema node/);
   });
 });

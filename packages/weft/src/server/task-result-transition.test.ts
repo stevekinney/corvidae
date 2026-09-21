@@ -486,3 +486,26 @@ describe('applyWorkerTaskResult — dead-lettered disposition (COR-240)', () => 
     expect(record.pendingResultDigest).toBe(expectedDigest);
   });
 });
+
+describe('applyWorkerTaskResult — hard rejection (not dead-lettered)', () => {
+  it("surfaces commitTaskLedgerCompletion's hard rejection reason for an unknown operation, without dead-lettering", async () => {
+    const storage = new MemoryStorage();
+    const options = minimalServeOptions(storage);
+
+    const applied = await applyWorkerTaskResult(
+      options,
+      undefined,
+      {
+        operationId: 'op-never-dispatched',
+        attemptToken: 'any-token',
+        status: 'completed',
+        value: 'value',
+      },
+      'worker-1',
+    );
+
+    expect(applied.ok).toBe(false);
+    if (applied.ok) throw new Error('expected a hard rejection, not an ack');
+    expect(applied.reason).toContain('leased');
+  });
+});

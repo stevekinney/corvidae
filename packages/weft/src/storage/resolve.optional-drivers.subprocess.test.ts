@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'bun:test';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { withOptionalStorageDriversHidden } from './block-optional-storage-drivers.test-support.ts';
 
@@ -56,4 +60,51 @@ describe('storage/resolve (optional-driver subprocess gates)', () => {
     }
     expect(exitCode).toBe(0);
   }, 30_000);
+
+  it('skips a package that is not installed under the given root rather than treating it as an error', async () => {
+    // `weftRoot` here has no `node_modules` at all, so every optional
+    // storage-driver package's `exists()` check reports false — the same
+    // "not installed" path a workspace missing a subset of the optional
+    // peers takes in production, distinct from the "installed, temporarily
+    // renamed" path the other tests in this file exercise.
+    const emptyRoot = import.meta.dir;
+    let bodyRan = false;
+    const result = await withOptionalStorageDriversHidden(emptyRoot, async () => {
+      bodyRan = true;
+      return 'ok';
+    });
+    expect(result).toBe('ok');
+    expect(bodyRan).toBe(true);
+  });
+
+  it('still resolves with the body result when restoring a hidden package fails', async () => {
+    // The restore rename (`node_modules/.hidden-pg` -> `node_modules/pg`) is
+    // best-effort: if something removes the hidden copy while it is hidden
+    // (a crashed process, a concurrent cleanup), `withOptionalStorageDriversHidden`
+    // must not let that failure mask the body's own result or throw past it.
+    const tempRoot = mkdtempSync(join(tmpdir(), 'weft-optional-drivers-restore-'));
+    try {
+      const pgDir = join(tempRoot, 'node_modules', 'pg');
+      await mkdir(pgDir, { recursive: true });
+      await writeFile(join(pgDir, 'package.json'), JSON.stringify({ name: 'pg' }));
+
+      const result = await withOptionalStorageDriversHidden(tempRoot, async () => {
+        // Delete the hidden copy while it's still hidden, so the restore
+        // rename in `finally` has nothing to rename from.
+        await rm(join(tempRoot, 'node_modules', '.hidden-pg'), {
+          recursive: true,
+          force: true,
+        });
+        return 'body-result';
+      });
+
+      expect(result).toBe('body-result');
+      // Neither the original nor the hidden copy exists — the failed
+      // restore was swallowed, not silently retried or re-created.
+      expect(existsSync(pgDir)).toBe(false);
+      expect(existsSync(join(tempRoot, 'node_modules', '.hidden-pg'))).toBe(false);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });

@@ -267,6 +267,29 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
     },
     {
       paths: [
+        'examples/environment-configuration.ts',
+        'examples/checkout/src/index.ts',
+        'examples/checkout/tests/checkout.test.ts',
+        'examples/order-processing/src/activities/inventory.ts',
+        'examples/order-processing/src/activities/payment.ts',
+        'examples/order-processing/src/activities/shipping.ts',
+        'examples/order-processing/src/client.ts',
+        'examples/order-processing/src/messages.ts',
+        'examples/order-processing/src/model.ts',
+        'examples/order-processing/src/registry.ts',
+        'examples/order-processing/src/sample-data.ts',
+        'examples/order-processing/src/server.ts',
+        'examples/order-processing/src/workflows/order.ts',
+        'examples/order-processing/src/workflows/shipment.ts',
+        'examples/order-processing/src/workflows/sweep-stale.ts',
+        'examples/order-processing/tests/order-processing.test.ts',
+        'examples/order-processing/tests/smoke-server.test.ts',
+      ],
+      reason:
+        'Nothing emitted imports these (COR coverage-gate adoption’s `cmp` check against `seed-bare.git`: every file under `examples/checkout/` and `examples/order-processing/` differs from upstream’s copy except `examples/order-processing/src/sample-data.ts`, and `examples/environment-configuration.ts` — which `examples/checkout/src/index.ts` and `examples/order-processing/src/{client,server}.ts` import — does not exist upstream at all), but both example directories exist in the target too, unemitted, so a sync leaves the target holding its own stale copy beside corvidae’s. Declared here rather than left to the target so the two trees converge on corvidae’s source the way every other declared file does, and so `scripts/check-coverage.ts`’s allowance registry — which upstream keys against `examples/order-processing/**` — can be realigned against the copy that actually ships. `examples/checkout/**` is excluded from every `bun test` invocation by `[test].pathIgnorePatterns` in `bunfig.toml` (upstream carries the same exclusion), so it never appears in a coverage report and the registry has no entries for it; it is still declared so the target’s copy does not drift from corvidae’s.',
+    },
+    {
+      paths: [
         'documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md',
         'documentation/guides/remote-task-recovery.md',
         'documentation/guides/remote-workers.md',
@@ -329,6 +352,16 @@ export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFi
         'The nine gates corvidae’s own `lint` script runs, plus the three that have tests. `check-catalog-drift.ts` is absent on purpose: corvidae rejected that gate, and because nothing prunes, the target’s copy would survive a sync — dropping its stage from the target’s `lint` and deleting the script is a target-side edit, not an emission.',
     },
     {
+      paths: ['scripts/check-coverage.ts', 'scripts/check-coverage.test.ts', 'bunfig.toml'],
+      reason:
+        'The coverage gate corvidae’s own `test:coverage` script runs (COR coverage-gate adoption). Its allowance registry is line-keyed against corvidae’s own source, not upstream’s, so unlike the nine lint gates above it is not a target-drift check: it is the mechanism that makes a coverage regression fail here, on corvidae’s tree, instead of at the next sync against the target’s stale copy. Declared with its test because the test exercises the layering, ignore-pattern, and LCOV-parsing invariants the gate depends on. `bunfig.toml` travels with them rather than in `additionalSourceRoots`: `check-coverage.ts` imports it directly (`import bunfig from "../bunfig.toml"`) so `[test].coveragePathIgnorePatterns` stays a single source of truth instead of a hand-rolled parse that could drift from the file Bun itself reads, and it is also read by every other `bun test` invocation in the target — the same file, not an import-only dependency, which is why it sits with the gate it configures rather than in the imported-but-not-owned table. `packages/weft/bunfig.toml` sits outside `src/`, so without this declaration COR-1221’s source boundary would leave it unemitted, the two copies would drift, and the emitted target would run the coverage gate — and its `[test].pathIgnorePatterns` test discovery — against corvidae’s stale rules.',
+    },
+    {
+      paths: ['scripts/benchmarks/environment-configuration.test.ts'],
+      reason:
+        "The coverage gate's own dependency, one layer removed (COR coverage-gate adoption): `additionalSourceRoots` already declares `scripts/benchmarks/environment-configuration.ts` (imported by `benchmark-environment.ts`, which `src/storage/bun-sql-benchmark.test.ts` imports), but nothing emitted imports this file's own test — it exists solely to unit-test that module directly. Without declaring it, corvidae's own `bun run test:coverage` discovers and runs it by directory-wide `bun test` convention (keeping the module's coverage complete here), while the target's copy of the module has no accompanying test at all and the coverage gate fails against the emitted tree even though it passes against corvidae's. Self-contained: imports only `bun:test` and the already-declared `./environment-configuration.ts`.",
+    },
+    {
       paths: [
         '.oxlintrc.json',
         'documentation/contributing/implementation-file-sizes.md',
@@ -350,9 +383,10 @@ export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFi
         'scripts/operation-client-schema.test.ts',
         'scripts/operation-client-schema.ts',
         'scripts/operation-client-test-support.ts',
+        'scripts/operation-client-test-support.test.ts',
       ],
       reason:
-        'The generator that produces `src/client/generated/operation-client.generated.ts`, which is already emitted under `src/`, and therefore the check that the committed file still matches its inputs. It goes as a set or not at all: the target has only the first two, in a diverged singular-API form, and `generate-operation-client.ts` imports `operation-client-aliases.ts`, `operation-client-schema.ts` and the rest of this list, so emitting the entry point alone would land a script that cannot resolve its own imports.',
+        "The generator that produces `src/client/generated/operation-client.generated.ts`, which is already emitted under `src/`, and therefore the check that the committed file still matches its inputs. It goes as a set or not at all: the target has only the first two, in a diverged singular-API form, and `generate-operation-client.ts` imports `operation-client-aliases.ts`, `operation-client-schema.ts` and the rest of this list, so emitting the entry point alone would land a script that cannot resolve its own imports. `operation-client-test-support.test.ts` (COR coverage-gate adoption) is the odd one out — nothing emitted imports it either, same as the benchmark case above — it exists solely to unit-test `snapshotTestOperation`'s invoke handler, which no other consumer of this test-support module ever calls; without declaring it the target's copy has no accompanying test and the coverage gate fails against the emitted tree even though it passes against corvidae's. Its only imports are `bun:test`, the already-declared `operation-client-test-support.ts`, and the already-emitted `../src/server/principal.ts`.",
     },
   ],
 };

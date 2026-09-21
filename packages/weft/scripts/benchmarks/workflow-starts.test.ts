@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 import { isConstrainedCodexRunner } from './benchmark-environment.ts';
+import { isCoverageInstrumentationEnabled } from './coverage-mode.ts';
 import {
   buildMeasuredWorkflowArgument,
   buildWarmupWorkflowArgument,
@@ -17,11 +18,32 @@ import {
  * workflow completion, because this gate is intentionally about the start hot
  * path rather than end-to-end workflow runtime. Coverage instrumentation from
  * `bun test --coverage` does not propagate into `bun run`, so the child
- * measurement path is the same in covered and non-covered parent runs.
+ * measurement path itself is not directly instrumented.
+ *
+ * It is still parent-process contention sensitive: `packages/weft/scripts/check-coverage.ts`
+ * runs the entire suite — all ~11.5K tests across ~780 files, this one included — as one
+ * `bun test --coverage` invocation, and Bun's coverage workers for the other 779 files
+ * compete for CPU with this benchmark's `bun run` child while it measures. A COR
+ * coverage-gate-adoption run observed 31,585/sec against the 50,000/sec baseline target under
+ * that contention (single sample; not re-measured in isolation), the same class of effect
+ * `activity-completions.test.ts` and `token-stream-latency.test.ts` already document and gate
+ * with a lower coverage-mode floor via `isCoverageInstrumentationEnabled()`. This benchmark
+ * predates that pattern and lacked it; the floor below is a conservative margin under the one
+ * observed sample and should be tightened once more coverage-mode runs establish a real
+ * low-water mark, the way `activity-completions.test.ts`'s target was calibrated.
  */
 
 const IS_CONSTRAINED_CODEX_RUNNER = isConstrainedCodexRunner();
-const ARCHITECTURE_TARGET_ADMISSIONS_PER_SECOND = IS_CONSTRAINED_CODEX_RUNNER ? 1_000 : 50_000;
+const BASELINE_TARGET_ADMISSIONS_PER_SECOND = IS_CONSTRAINED_CODEX_RUNNER ? 1_000 : 50_000;
+const COVERAGE_TARGET_ADMISSIONS_PER_SECOND = IS_CONSTRAINED_CODEX_RUNNER ? 1_000 : 20_000;
+
+function getTargetAdmissionsPerSecond(): number {
+  return isCoverageInstrumentationEnabled()
+    ? COVERAGE_TARGET_ADMISSIONS_PER_SECOND
+    : BASELINE_TARGET_ADMISSIONS_PER_SECOND;
+}
+
+const ARCHITECTURE_TARGET_ADMISSIONS_PER_SECOND = getTargetAdmissionsPerSecond();
 const TOTAL_STARTS = 10_000;
 const START_BATCH_SIZE = 100;
 const WARMUP_STARTS = 50;

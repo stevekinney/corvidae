@@ -152,4 +152,23 @@ describe('commitTaskLedgerDelete', () => {
 
     expect(result.ok).toBe(false);
   });
+
+  it('throws a TypeError when storage has no capabilities() function once the precondition passes', async () => {
+    const backing = new MemoryStorage();
+    const record = terminalFixture();
+    await backing.put(taskLedgerKey(record.operationId), encodeRemoteTaskRecord(record));
+
+    // Only `get` is present — `capabilities` and `conditionalBatch` are
+    // dropped, so the guard must fire before either is ever called.
+    const storageWithoutCapabilities = { get: (key: string) => backing.get(key) };
+
+    await expect(
+      commitTaskLedgerDelete(
+        storageWithoutCapabilities,
+        record.operationId,
+        (current) => canDeleteRetainedTerminalTask(current, { expectedRetentionGeneration: 0 }),
+        1,
+      ),
+    ).rejects.toThrow('Task ledger deletion requires storage capabilities.');
+  });
 });

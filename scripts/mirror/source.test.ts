@@ -116,14 +116,14 @@ describe('the documents a workspace declares', () => {
 describe('the files that check a workspace’s emitted source', () => {
   const declared = (validationInputs['@corvidae/weft'] ?? []).flatMap((cluster) => cluster.paths);
 
-  test('every declared path is emitted, all twenty-six of them', () => {
+  test('every declared path is emitted, all thirty-one of them', () => {
     // Against the real tree rather than a fixture, because the thing that can go wrong is a path
     // that no longer matches what corvidae carries, and a fixture would restate the table's own
     // strings back to itself.
     const { plan } = committedPlans.weft;
     const missing = declared.filter((path) => plan.files[`packages/weft/${path}`] === undefined);
     expect(missing).toEqual([]);
-    expect(declared.length).toBe(26);
+    expect(declared.length).toBe(31);
     // The gate corvidae rejected. Nothing prunes, so the target keeps its copy until a
     // target-side edit removes it; emitting corvidae's non-existent one is not the answer.
     expect(declared).not.toContain('scripts/check-catalog-drift.ts');
@@ -131,7 +131,7 @@ describe('the files that check a workspace’s emitted source', () => {
 
   test('the generator family goes as a set, since its entry point imports the rest', () => {
     const family = declared.filter((path) => path.startsWith('scripts/operation-client-'));
-    expect(family.length).toBe(8);
+    expect(family.length).toBe(9);
     expect(declared).toContain('scripts/generate-operation-client.ts');
   });
 

@@ -410,6 +410,21 @@ describe('GET /v1/registry — authorization', () => {
     expect(value.registryVersion).toBe(2);
     expect(value.workflows.some((m) => m.name === 'demo')).toBe(true);
   });
+
+  it('throws when invoked directly with a context whose engine is not a concrete Engine instance', async () => {
+    // `invoke()` is exercised end-to-end above only through `handleRequest`/
+    // `executeOperation`, which always supply a real `Engine`. This guard
+    // exists for a caller that constructs the invoke context itself (a
+    // non-Engine test double, or a future alternate context builder).
+    await expect(
+      getRegistryOperation.invoke({
+        engine: {},
+        principal: { method: 'unauthenticated' },
+        transport: 'jsonRpcStdio',
+        input: {},
+      }),
+    ).rejects.toThrow('Registry snapshot requires a concrete Engine instance.');
+  });
 });
 
 describe('GET /v1/registry — error shaping', () => {
