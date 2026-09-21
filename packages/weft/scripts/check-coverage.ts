@@ -1648,6 +1648,14 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
       requireUncoveredLines: true,
     },
   ],
+  [
+    'src/cli/codegen-emit-registry.ts',
+    {
+      reason:
+        "CodegenPackageNameError (`export class CodegenPackageNameError extends Error {}`) has no explicit constructor. codegen-emit-registry.test.ts's \"refuses a package name npm would not accept\" test does instantiate it (via `new CodegenPackageNameError(...)` at emitRegistryDeclaration's throw site, itself on a line already reported covered), and every other function in this file — sortedWorkflowEntries, collectSchemaOccurrences, schemaTypeReference, emitWorkflowEntry, emitAliasDeclarations (including its two-or-more-alias comparator, exercised by the \"sorts multiple alias declarations deterministically\" test), and emitRegistryDeclaration itself — is reached by the existing 18-test suite, matching this file's 100% line coverage (LF/LH 80/80). Isolated a minimal repro to confirm the mechanism before allowing it: a standalone one-file module exporting only a no-explicit-constructor `class extends Error {}` and a function that instantiates it, exercised by one passing test, reports FNF:2/FNH:1 in Bun's own LCOV — the class counts as a function but its implicit constructor is never marked hit regardless of instantiation, because Bun's coverage instrumentation has no synthesizable source line inside an absent constructor body to attach a hit record to. That reproduces this file's exact FNF:11/FNH:10 shape with nothing else unaccounted for.",
+      functions: 1,
+    },
+  ],
 ]);
 
 /**
