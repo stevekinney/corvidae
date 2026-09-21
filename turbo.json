@@ -135,6 +135,25 @@
         "WEFT_TEST_POSTGRES_URL"
       ]
     },
+    "@corvidae/weft#test:coverage": {
+      "outputs": ["coverage/**"],
+      "dependsOn": ["transit"],
+      "env": [
+        "CODEX_CI",
+        "NODE_ENV",
+        "CI",
+        "GITHUB_ACTIONS",
+        "WEFT_BROWSER_SMOKE",
+        "WEFT_STRICT_FAULTS",
+        "WEFT_SQLITE_ARCHITECTURE_BENCHMARK",
+        "WEFT_SEARCH_ATTRIBUTES_ARCHITECTURE_BENCHMARK",
+        "WEFT_EVENT_DISPATCH_ARCHITECTURE_BENCHMARK",
+        "WEFT_COVERAGE_MODE",
+        "NODE_V8_COVERAGE",
+        "WEFT_KEEP_DURABILITY_FIXTURES",
+        "WEFT_TEST_POSTGRES_URL"
+      ]
+    },
     "@corvidae/cinder#test": {
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"]
