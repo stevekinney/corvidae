@@ -42,7 +42,7 @@ Use `wss://` for deployed workers. Plain `ws://` is only appropriate for localho
 
 The following subset shows the required identity and common execution options. The [worker API reference](../reference/api-workers.md#remoteworkeroptions) also covers complete manifests, artifact digests, authentication headers, and runtime metadata:
 
-```typescript partial
+```typescript
 import type { ActivityInterceptor } from '@corvidae/weft';
 
 interface RemoteWorkerOptions {
@@ -67,7 +67,7 @@ On connection, the worker sends a v6 `register` message carrying its worker ID, 
 
 A workflow reaches a `RemoteWorker` the same way it reaches any other activity: through `ctx.run()`. Configure the engine with `activityExecution: { mode: 'remote' }` and every `ctx.run()` call durably enqueues its activity onto the engine's own task ledger for a connected worker to claim, instead of running on the main thread or a local Worker pool.
 
-```typescript partial
+```typescript
 import { Engine, activity, workflow } from '@corvidae/weft';
 
 const formatGreeting = activity({

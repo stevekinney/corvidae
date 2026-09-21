@@ -60,7 +60,11 @@ For production artifact identity, construct a manifest from registered workflows
 
 `server.getTaskResult(operationId)` returns a public projection of the ledger. It deliberately excludes worker session and attempt credentials.
 
-```typescript partial
+```typescript
+import { serve } from '@corvidae/weft';
+
+declare const server: ReturnType<typeof serve>;
+
 const result = await server.getTaskResult('invoice-42');
 
 if (result === null) {
@@ -84,7 +88,11 @@ A resolved result exposes `resultStatus` and `resultDigest`, plus an error when 
 
 Resolved outcomes use `resultDigest`; cancellation and retry exhaustion use a token-safe `adoptionToken`. After your application has durably incorporated the outcome, the adoption call is:
 
-```typescript partial
+```typescript
+import { serve } from '@corvidae/weft';
+
+declare const server: ReturnType<typeof serve>;
+
 const result = await server.getTaskResult('invoice-42');
 
 if (result?.status === 'terminal') {
