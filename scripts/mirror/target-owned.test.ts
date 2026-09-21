@@ -110,6 +110,44 @@ describe('mirror target-owned enumeration', () => {
     expect(findTargetOwner(policy, 'SECURITY.md', 'cinder')).toBeUndefined();
   });
 
+  test('the narrowed .github/** enumeration still protects each target release workflow, but never refuses the transform-emitted mirror-verify.yaml', async () => {
+    const policy = await loadTargetOwnedPolicy();
+    for (const target of ['weft', 'cinder'] as const) {
+      expect(findTargetOwner(policy, '.github/workflows/release.yaml', target)?.glob).toBe(
+        '.github/workflows/release.yaml',
+      );
+      // COR-1286's own requirement: the plan for a target includes this path among its files, so
+      // the guard must let the transform write it.
+      expect(
+        findTargetOwner(policy, '.github/workflows/mirror-verify.yaml', target),
+      ).toBeUndefined();
+    }
+    expect(findTargetOwner(policy, '.github/workflows/pr-title.yaml', 'weft')?.glob).toBe(
+      '.github/workflows/pr-title.yaml',
+    );
+    expect(findTargetOwner(policy, '.github/workflows/pr-title.yaml', 'cinder')).toBeUndefined();
+    expect(findTargetOwner(policy, '.github/workflows/release-manual.yaml', 'cinder')?.glob).toBe(
+      '.github/workflows/release-manual.yaml',
+    );
+    expect(
+      findTargetOwner(policy, '.github/workflows/deploy-playground.yaml', 'cinder')?.glob,
+    ).toBe('.github/workflows/deploy-playground.yaml');
+    // The two retired workflow files are no longer target-owned at all — they are deleted by
+    // `retired`, not preserved by `paths`. Both guards agree they are not writable/preservable the
+    // same way, which is why `assertRetirementsCoherent` does not refuse them as a collision.
+    expect(findTargetOwner(policy, '.github/workflows/ci.yaml', 'weft')).toBeUndefined();
+    expect(findTargetOwner(policy, '.github/workflows/verify-jsdoc.yaml', 'weft')).toBeUndefined();
+  });
+
+  test('.husky/** stays target-owned for cinder alone; packages/weft/scripts/husky/** is no longer a paths entry at all', async () => {
+    const policy = await loadTargetOwnedPolicy();
+    expect(findTargetOwner(policy, '.husky/pre-commit', 'cinder')?.glob).toBe('.husky/**');
+    expect(findTargetOwner(policy, '.husky/pre-commit', 'weft')).toBeUndefined();
+    expect(
+      findTargetOwner(policy, 'packages/weft/scripts/husky/verify-hooks-installed.ts', 'weft'),
+    ).toBeUndefined();
+  });
+
   test('an unknown target is rejected rather than silently permitting every path', async () => {
     const policy = await loadTargetOwnedPolicy();
     expect(() =>
@@ -520,6 +558,60 @@ describe('retiring a directory the target still carries', () => {
     );
   });
 
+  test('a retired entry naming a single file removes the named file and leaves its siblings', async () => {
+    const fileRetirement = {
+      directory: 'packages/retired-ui/scripts/ci-workflows.test.ts',
+      target: 'weft',
+      reason: 'the workflow this test reads no longer exists in the target',
+      issue: 'COR-1286',
+    } as const;
+    await withFixtureTarget(
+      async (directory) => {
+        const policy = policyFor([fileRetirement]);
+        const paths = await collectRetiredPaths({
+          policy,
+          target: 'weft',
+          directory,
+          directories: retiredDirectoriesFor(policy, 'weft'),
+        });
+        // Exactly the one named file, not a directory's worth: `walkRetiredPath` stops at `lstat`
+        // rather than trying to `readdir` a path that is not one, which is D3's whole point.
+        expect(paths).toEqual(['packages/retired-ui/scripts/ci-workflows.test.ts']);
+
+        const { deleted } = await writeTransformOutput({
+          policy,
+          target: 'weft',
+          directory,
+          files: {},
+          deletions: paths,
+        });
+        expect(deleted).toEqual(paths);
+        expect(
+          await Bun.file(
+            join(directory, 'packages/retired-ui/scripts/ci-workflows.test.ts'),
+          ).exists(),
+        ).toBe(false);
+        // The sibling in the same directory, and the one two levels up, both survive: a retired
+        // file is removed alone, never as a stand-in for its containing directory.
+        expect(
+          await Bun.file(join(directory, 'packages/retired-ui/scripts/run-gates.ts')).exists(),
+        ).toBe(true);
+        expect(await Bun.file(join(directory, 'packages/retired-ui/README.md')).exists()).toBe(
+          true,
+        );
+        const porcelain = await runGit(directory, 'status', '--porcelain');
+        expect(porcelain.split('\n').filter((line) => line.length > 0)).toEqual([
+          ' D packages/retired-ui/scripts/ci-workflows.test.ts',
+        ]);
+      },
+      {
+        'packages/retired-ui/README.md': '# retired\n',
+        'packages/retired-ui/scripts/ci-workflows.test.ts': "it('reads ci.yaml', () => {});\n",
+        'packages/retired-ui/scripts/run-gates.ts': 'export const main = true;\n',
+      },
+    );
+  });
+
   test('a retirement whose directory the target no longer carries is a no-op, not a failure', async () => {
     await withFixtureTarget(async (directory) => {
       const policy = policyFor([retirement]);
@@ -561,12 +653,27 @@ describe('retiring a directory the target still carries', () => {
     ).not.toThrow();
   });
 
-  test('the committed enumeration retires weft-ui from weft alone', async () => {
+  test('the committed enumeration retires weft-ui and COR-1286s CI-owned paths from weft alone', async () => {
     const policy = await loadTargetOwnedPolicy();
-    expect(retiredDirectoriesFor(policy, 'weft')).toEqual(['packages/weft-ui']);
+    expect(retiredDirectoriesFor(policy, 'weft')).toEqual([
+      'packages/weft-ui',
+      '.github/workflows/ci.yaml',
+      '.github/workflows/verify-jsdoc.yaml',
+      '.husky',
+      'packages/weft/scripts/husky',
+      'packages/weft/scripts/ci-workflows.test.ts',
+    ]);
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
-    const entry = policy.retired.entries.find((candidate) => candidate.target === 'weft');
-    expect(entry?.issue).toBe('COR-1192');
-    expect(entry?.reason.length).toBeGreaterThan(0);
+    for (const entry of policy.retired.entries) {
+      expect(entry.target).toBe('weft');
+      expect(entry.reason.length).toBeGreaterThan(0);
+      expect(['COR-1192', 'COR-1286']).toContain(entry.issue);
+    }
+    // The one retired entry that names a file rather than a directory — D3's own evidence that
+    // `retiredEntrySchema`'s `directory` key needed no widening to carry it.
+    const fileEntry = policy.retired.entries.find(
+      (candidate) => candidate.directory === 'packages/weft/scripts/ci-workflows.test.ts',
+    );
+    expect(fileEntry?.issue).toBe('COR-1286');
   });
 });

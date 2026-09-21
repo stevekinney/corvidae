@@ -44,17 +44,41 @@
       "reason": "Changesets configuration and pending changeset files drive the target's release pipeline. Cinder carries `.changeset/config.json` and `.changeset/README.md`; corvidae has no changesets at all."
     },
     {
-      "glob": ".github/**",
-      "reason": "Workflows, composite actions, CODEOWNERS, branch protection and the pull request template are target-owned and composed separately. Corvidae's AGENTS.md forbids adding CI/CD here, so there is no corvidae source for them."
+      "glob": ".github/workflows/release.yaml",
+      "reason": "COR-1286's ruling: a mirror runs one transform-emitted verification workflow (`mirror-verify.yaml`) plus the target's existing release workflow, unchanged. `release.yaml` is that release workflow for both targets today — evidenced for weft (tag-triggered `npm publish`) and named for cinder by the same issue; corvidae has no source for it and must never touch it.",
+      "targets": ["weft", "cinder"]
+    },
+    {
+      "glob": ".github/workflows/release-manual.yaml",
+      "reason": "Cinder's manually-triggered release workflow, same release-infrastructure class as `release.yaml`. Not independently verified against a cinder clone in this pass (COR-1286 worked offline against a weft-only seed); named by the issue's own ruling.",
+      "targets": ["cinder"]
+    },
+    {
+      "glob": ".github/workflows/deploy-playground.yaml",
+      "reason": "Cinder's playground deployment workflow, target-owned until COR-1201 resolves its disposition.",
+      "targets": ["cinder"]
+    },
+    {
+      "glob": ".github/workflows/pr-title.yaml",
+      "reason": "Weft's PR-title enforcement workflow. Unrelated to `verifyTarget`'s jobs and not something COR-1286's ruling touches — kept target-owned so the narrower `.github/**` enumeration below does not accidentally make it transform-writable.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": ".github/CODEOWNERS",
+      "reason": "Anticipatory, not evidence-backed: absent from the weft seed this issue checked and unverified for cinder. Review-routing configuration a public repository can add at any time, with no corvidae counterpart. Same class as CODE_OF_CONDUCT.md."
+    },
+    {
+      "glob": ".github/PULL_REQUEST_TEMPLATE*",
+      "reason": "Weft carries `.github/pull_request_template.md`; cinder's is anticipatory, not independently verified. Pull request template content is target-facing contributor guidance with no corvidae source."
+    },
+    {
+      "glob": ".github/ISSUE_TEMPLATE/**",
+      "reason": "Anticipatory, not evidence-backed: absent from the weft seed this issue checked and unverified for cinder. Same class as CODE_OF_CONDUCT.md."
     },
     {
       "glob": ".husky/**",
-      "reason": "Git hook scripts. Both targets install husky hooks; corvidae explicitly has no Git hooks."
-    },
-    {
-      "glob": "packages/weft/scripts/husky/**",
-      "reason": "Weft's root `prepare` runs `husky && bun packages/weft/scripts/husky/verify-hooks-installed.ts`, so this hook-verification helper lives inside a package directory the transform otherwise writes. It is hook infrastructure, not package source.",
-      "targets": ["weft"]
+      "reason": "Git hook scripts. COR-1286 retired weft's `.husky` outright (corvidae explicitly has no Git hooks, and the sync now removes rather than merely ignoring it); this entry survives narrowed to cinder alone, whose husky disposition is COR-1196's to rule on.",
+      "targets": ["cinder"]
     },
     {
       "glob": "bun.lock",
@@ -123,13 +147,43 @@
     }
   ],
   "retired": {
-    "policy": "A directory a target still carries and the transform is to remove outright, named here and nowhere else. This is the one deletion in the mirror that is not bounded by what the transform emits. COR-1221 ruled that a sync prunes only beneath the prefixes it writes, so a directory the plan says nothing about survives; that rule is what keeps a target's working documents, build scripts and unrelated trees safe, and it is deliberately not relaxed. The inferred version of this capability — 'delete anything in the target the plan did not emit' — would delete every one of those, so a retirement is never derived from the plan's silence. Every entry requires all four keys: `directory` (the target-relative directory removed, matched as itself and as a prefix), `target` (exactly one repository, singular so that an entry can never retire a directory from a target nobody considered), `reason` (why the directory is retired rather than synced) and `issue` (the Linear identifier whose sync pull request carries the removal, so a reviewer sees the deletion against a ruling). Relationship to `paths`: a retirement never overrides one. `loadTargetOwnedPolicy` refuses a `retired.directory` that a `paths` glob already claims for the same target, and `collectRetiredPaths` refuses a retirement whose contents include a target-owned file, naming both entries. Neither is a precedence rule — both are failures, because 'the target owns this' and 'the transform deletes this' cannot both be true and picking a winner would delete something nobody ruled on. The other half of a retirement is out of band: a directory a target's own CI, hooks or documentation reference has to lose those references in the target's own pull request, which the transform cannot write and must not try to.",
+    "policy": "A directory, or since COR-1286 a single file, that a target still carries and the transform is to remove outright, named here and nowhere else. This is the one deletion in the mirror that is not bounded by what the transform emits. COR-1221 ruled that a sync prunes only beneath the prefixes it writes, so a path the plan says nothing about survives; that rule is what keeps a target's working documents, build scripts and unrelated trees safe, and it is deliberately not relaxed. The inferred version of this capability — 'delete anything in the target the plan did not emit' — would delete every one of those, so a retirement is never derived from the plan's silence. Every entry requires all four keys: `directory` (the target-relative directory or file removed, matched as itself and, for a directory, as a prefix too — `target-owned.ts`'s `walkRetiredPath` tells the two apart by `lstat`, so the key needed no schema change to carry a file), `target` (exactly one repository, singular so that an entry can never retire a path from a target nobody considered), `reason` (why the path is retired rather than synced) and `issue` (the Linear identifier whose sync pull request carries the removal, so a reviewer sees the deletion against a ruling). Relationship to `paths`: a retirement never overrides one. `loadTargetOwnedPolicy` refuses a `retired.directory` that a `paths` glob already claims for the same target, and `collectRetiredPaths` refuses a retirement whose contents include a target-owned file, naming both entries. Neither is a precedence rule — both are failures, because 'the target owns this' and 'the transform deletes this' cannot both be true and picking a winner would delete something nobody ruled on. The other half of a retirement is out of band: a directory or file a target's own CI, hooks or documentation reference has to lose those references in the target's own pull request, which the transform cannot write and must not try to.",
     "entries": [
       {
         "directory": "packages/weft-ui",
         "target": "weft",
         "reason": "The monorepo is weft-ui's home. `layout-map.json` routes `@lostgradient/weft-ui` to the cinder target, so the weft sync has never written this directory and weft's copy has drifted away from corvidae's: it hand-writes `TimeRange` as an optional-property object under a comment claiming the two are structurally identical, which `exactOptionalPropertyTypes` falsifies, and a live dry run failed weft's own `ui-typecheck` and `ui-e2e` on it. Nothing external depends on either copy — `@lostgradient/weft-ui` returns 404 on the registry and was never published — so the drifted copy is removed rather than reconciled. Retired rather than deferred because deferring emits nothing and leaves the directory in place, which is the state that produced the failure.",
         "issue": "COR-1192"
+      },
+      {
+        "directory": ".github/workflows/ci.yaml",
+        "target": "weft",
+        "reason": "COR-1286's ruling: a mirror runs one transform-emitted verification workflow (`mirror-verify.yaml`, whose jobs are exactly `verifyTarget`'s steps) plus the release workflow, unchanged. `ci.yaml` is weft's pull-request CI gate that `mirror-verify.yaml` replaces; every script it runs (`lint`, `typecheck`, `test`, `test:coverage`, `build`, the example workflows) is target-side tooling `verifyTarget` does not exercise, so the file becomes dead CI once the mirror opens its own PR-time workflow. `packages/weft/scripts/ci-workflows.test.ts`, which reads this file directly, is retired in the same pull request so its assertions are never left pointing at a path that no longer exists.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": ".github/workflows/verify-jsdoc.yaml",
+        "target": "weft",
+        "reason": "A path-filtered PR-time re-run of documentation and JSDoc checks (`verify:documentation`, `build`, `verify:jsdoc`, `verify:jsdoc:doctests`, `verify:jsdoc:declarations`, `verify:markdown-doctests`) that `packages/weft/scripts/run-gates.ts`'s `validate` and `prepack` pipelines already gate at release time through `release.yaml`. Those package.json scripts and the scripts they call (`verify-documentation.ts`, `audit-jsdoc-manifest.ts`, `verify-jsdoc-doctests.ts`, `check-declaration-jsdoc.ts`, `extract-markdown-doctests.ts`) are called by the release workflow and stay; only this redundant standalone PR-time workflow file is retired.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": ".husky",
+        "target": "weft",
+        "reason": "Git hook scripts. Corvidae's own AGENTS.md forbids Git-hook installation, and COR-1286's ruling removes rather than merely ignores everything the target carries for its own CI that is not the release workflow or a workflow the mirror itself emits. Weft's root `prepare` script (`husky && bun packages/weft/scripts/husky/verify-hooks-installed.ts`) still names this directory after the retirement; per this policy's own 'out of band' clause, removing that reference is the target's own follow-up pull request, not something the transform writes.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/husky",
+        "target": "weft",
+        "reason": "The hook-verification helpers `.husky`'s scripts invoke (`verify-hooks-installed.ts`, `pre-commit.ts`, `post-checkout.ts`, `post-merge.ts`, `run-tests.ts`, `utilities.ts` and their tests). Hook infrastructure, not package source; retired alongside `.husky` in the same pull request for the same reason, with the same out-of-band follow-up needed for the root `prepare` script's reference to `verify-hooks-installed.ts`.",
+        "issue": "COR-1286"
+      },
+      {
+        "directory": "packages/weft/scripts/ci-workflows.test.ts",
+        "target": "weft",
+        "reason": "Reads `.github/workflows/ci.yaml` and `release.yaml` directly and asserts their Bun pin and install flags. Once `ci.yaml` is retired in this same pull request, `readWorkflow('ci.yaml')` would throw on a file that no longer exists, so this test is retired with its subject rather than left to fail. D3 (COR-1286) is what makes a single file, rather than only a directory, a legal `retired` entry — this is the file that motivated it. Verified this is the only file in the weft seed reading either workflow's path outside fixture-built test data (`verify-documentation.test.ts` builds a synthetic `.github/workflows/ci.yaml` fixture rather than reading the real one, so it is unaffected).",
+        "issue": "COR-1286"
       }
     ]
   },
