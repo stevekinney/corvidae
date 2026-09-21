@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   InternalNameError,
+  publicNameInProse,
   publicSpecifierFor,
   rewriteEmittedSource,
   rewriteInternalSpecifiers,
@@ -18,6 +19,116 @@ const publicNames: ReadonlyMap<string, string> = new Map([
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
+
+describe('an internal name a comment mentions', () => {
+  /**
+   * The defect this pass exists for.
+   *
+   * The specifier walk is blind to comments, so every `@example` in the emitted weft target told
+   * a consumer to import from `@corvidae/weft`. The target compiles those examples against the
+   * package's public face in `verify:jsdoc:doctests`, and 907 of 1,021 manifest entries failed on
+   * a name that resolves nowhere downstream.
+   */
+  test('an `@example` import is rewritten, root face and subpath face alike', () => {
+    const source = [
+      '/**',
+      ' * @example',
+      " * import { start } from '@corvidae/weft';",
+      " * import { harness } from '@corvidae/weft/storage/testing';",
+      ' */',
+      'export const start = 1;',
+      '',
+    ].join('\n');
+    const rewritten = decoder.decode(
+      rewriteEmittedSource(encoder.encode(source), 'packages/weft/src/index.ts', publicNames),
+    );
+    expect(rewritten).toContain("import { start } from '@lostgradient/weft';");
+    expect(rewritten).toContain("import { harness } from '@lostgradient/weft/storage/testing';");
+    expect(rewritten).not.toContain('@corvidae/');
+  });
+
+  test('prose outside an example is rewritten too, since hover documentation shows it', () => {
+    const source = [
+      '/** Documented in `@corvidae/weft`, and re-exported from @corvidae/weft/client. */',
+      '// Run `bun run --filter=@corvidae/weft test` first.',
+      'export const value = 1;',
+      '',
+    ].join('\n');
+    const rewritten = decoder.decode(
+      rewriteEmittedSource(encoder.encode(source), 'packages/weft/src/value.ts', publicNames),
+    );
+    expect(rewritten).toContain('`@lostgradient/weft`');
+    expect(rewritten).toContain('@lostgradient/weft/client.');
+    expect(rewritten).toContain('--filter=@lostgradient/weft');
+  });
+
+  /**
+   * Two of these exist in the emitted weft target — a `describe()` name and an error message that
+   * interpolates the package name — and both are corvidae's own statements about corvidae. A
+   * transform that rewrites a string because it looks like a package name corrupts data.
+   */
+  test('a name inside a string literal is left exactly as it is', () => {
+    const source = [
+      "describe('@corvidae/weft barrel re-exports', () => {});",
+      'const message = `Failed to build @corvidae/weft for browser`;',
+      "const symbol = Symbol.for('@corvidae/operative/backend-descriptors');",
+      '',
+    ].join('\n');
+    const rewritten = decoder.decode(
+      rewriteEmittedSource(encoder.encode(source), 'packages/weft/src/barrel.test.ts', publicNames),
+    );
+    expect(rewritten).toBe(source);
+  });
+
+  test('a name the map does not know is left alone in prose, where a specifier throws', () => {
+    const source = [
+      '/** Internal only: @corvidae/typescript carries the shared options. */',
+      '',
+    ].join('\n');
+    const rewritten = decoder.decode(
+      rewriteEmittedSource(encoder.encode(source), 'packages/weft/src/notes.ts', publicNames),
+    );
+    expect(rewritten).toContain('@corvidae/typescript');
+    expect(() =>
+      rewriteInternalSpecifiers(
+        "import '@corvidae/typescript';\n",
+        'packages/weft/src/notes.ts',
+        publicNames,
+      ),
+    ).toThrow(InternalNameError);
+  });
+
+  test('sentence punctuation is trimmed before the map is asked, and put back after', () => {
+    expect(publicNameInProse('@corvidae/weft', publicNames)).toBe('@lostgradient/weft');
+    expect(publicNameInProse('@corvidae/weft.', publicNames)).toBe('@lostgradient/weft.');
+    expect(publicNameInProse('@corvidae/weft/storage.', publicNames)).toBe(
+      '@lostgradient/weft/storage.',
+    );
+    expect(publicNameInProse('@corvidae/absent', publicNames)).toBeUndefined();
+  });
+
+  test('a comment inside a Svelte script is rewritten and its markup is not', () => {
+    const source = [
+      '<script lang="ts">',
+      '  // Pair this with `@corvidae/markdown` for the full pipeline.',
+      "  const label = '@corvidae/markdown';",
+      '</script>',
+      '',
+      '<p>Run <code>bun add @corvidae/markdown</code> to install.</p>',
+      '',
+    ].join('\n');
+    const rewritten = decoder.decode(
+      rewriteEmittedSource(
+        encoder.encode(source),
+        'packages/chat/src/lib/thing.svelte',
+        publicNames,
+      ),
+    );
+    expect(rewritten).toContain('Pair this with `@lostgradient/markdown`');
+    expect(rewritten).toContain("const label = '@corvidae/markdown';");
+    expect(rewritten).toContain('<code>bun add @corvidae/markdown</code>');
+  });
+});
 
 describe('what counts as an internal name', () => {
   test('the scope, a workspace under it, and a subpath into one', () => {
