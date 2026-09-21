@@ -10,6 +10,7 @@ import {
   listCoverageTestFiles,
   parseLcov,
   readCoveragePathIgnorePatterns,
+  readTestScriptPathIgnorePatterns,
   runCoverageShard,
 } from './check-coverage.ts';
 
@@ -23,6 +24,31 @@ describe('listCoverageTestFiles', () => {
     expect(files.some((file) => file.includes('node_modules/'))).toBe(false);
     expect(files.some((file) => file.startsWith('coverage/'))).toBe(false);
     expect(files).toEqual(files.toSorted());
+  });
+
+  /**
+   * The measurement benchmarks that `bun run test` excludes are excluded from the coverage shard
+   * too, and from the same list: the shard reads the script rather than keeping its own copy, so
+   * the two cannot drift. Pinned against the concrete eight so a script edit that drops one is a
+   * visible change here rather than a silently widened shard.
+   */
+  it('excludes exactly the measurement benchmarks the test script excludes', async () => {
+    const excluded = readTestScriptPathIgnorePatterns();
+    expect(excluded).toEqual([
+      'scripts/benchmarks/activity-completions.test.ts',
+      'scripts/benchmarks/cold-start.test.ts',
+      'scripts/benchmarks/load-growth-memory.test.ts',
+      'scripts/benchmarks/memory-per-workflow.test.ts',
+      'scripts/benchmarks/recovery.test.ts',
+      'scripts/benchmarks/token-stream-latency.test.ts',
+      'scripts/benchmarks/worker-spawn.test.ts',
+      'scripts/benchmarks/workflow-starts.test.ts',
+    ]);
+    const files = await listCoverageTestFiles();
+    for (const path of excluded) expect(files).not.toContain(path);
+    // The benchmark directory's unit tests are not measurement runs and stay in the shard.
+    expect(files).toContain('scripts/benchmarks/coverage-mode.test.ts');
+    expect(files).toContain('scripts/benchmarks/environment-configuration.test.ts');
   });
 });
 

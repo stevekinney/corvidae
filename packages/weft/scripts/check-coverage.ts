@@ -4,6 +4,9 @@ import { $, Glob } from 'bun';
 // stays a single source of truth (no hand-rolled TOML parse that could drift). The
 // path resolves relative to THIS file, so it holds regardless of the invocation cwd.
 import bunfig from '../bunfig.toml';
+// The package manifest supplies the `test` script's own exclusions, for the same reason
+// `bunfig.toml` supplies the instrumentation ignores: one list, read where it is written.
+import packageJson from '../package.json' with { type: 'json' };
 
 type CoverageResult = {
   covered: boolean;
@@ -1985,6 +1988,28 @@ export function parseLcov(content: string): CoverageResult {
   return summarizeCoverageFiles(parseLcovFiles(content));
 }
 
+/**
+ * The paths the package's own `test` script excludes with `--path-ignore-patterns`.
+ *
+ * Those are the measurement benchmarks — throughput, latency and memory runs whose numbers
+ * swing enough between runs on one machine that they cannot assert a target, which is why
+ * `bun run test` leaves them to `test:benchmarks` on demand. The coverage shard runs the same
+ * suite under instrumentation and contention, where they swing more, not less: a run of this
+ * gate failed twice in ten on `load-growth-memory`'s RSS-slope bound with the tree at 100 %
+ * coverage. So the shard applies exactly the exclusion `test` applies, read from the script
+ * rather than copied, and the runner modules only those benchmarks exercise are ignored from
+ * instrumentation in `bunfig.toml` with their reasons.
+ */
+export function readTestScriptPathIgnorePatterns(): string[] {
+  const script = packageJson.scripts?.test;
+  if (typeof script !== 'string') {
+    throw new Error(
+      'package.json scripts.test must be a string for the coverage shard to mirror its exclusions.',
+    );
+  }
+  return [...script.matchAll(/--path-ignore-patterns='([^']+)'/g)].map((match) => match[1] ?? '');
+}
+
 export async function listCoverageTestFiles(): Promise<string[]> {
   // Git supplies the repository ownership boundary that `rg --files` previously
   // provided: tracked files plus untracked, non-ignored files. A root Bun.Glob scan
@@ -1993,9 +2018,11 @@ export async function listCoverageTestFiles(): Promise<string[]> {
   const repositoryFileOutput = await $`git ls-files --cached --others --exclude-standard`.text();
   const repositoryFiles = repositoryFileOutput.split('\n').filter(Boolean);
   const testFileGlobs = COVERAGE_TEST_FILE_GLOBS.map((pattern) => new Glob(pattern));
+  const excludedByTestScript = new Set(readTestScriptPathIgnorePatterns());
 
   return repositoryFiles
     .filter((file) => {
+      if (excludedByTestScript.has(file)) return false;
       const basename = file.slice(file.lastIndexOf('/') + 1);
       return testFileGlobs.some((glob) => glob.match(basename));
     })
