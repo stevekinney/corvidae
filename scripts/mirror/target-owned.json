@@ -49,6 +49,11 @@
       "targets": ["weft", "cinder"]
     },
     {
+      "glob": ".github/workflows/release.yml",
+      "reason": "The same ruling as `release.yaml` above, for the target that spells the file `release.yml`. Verified against a clone of stevekinney/agent-bureau (2026-09-21): a changesets/action release coordinator on push to main, pinning Bun 1.4.0 and installing with `bun install --frozen-lockfile`. Target-owned twice over — corvidae has no source for it, and its *filename* is load-bearing downstream: the workflow's own header records that `release.yml` is what each package registers as its npm trusted publisher (org stevekinney, repo agent-bureau, workflow release.yml), so rewriting or renaming it would break publishing until every registration was redone. `resolveReleaseWorkflowFile` in `install-parity.ts` is what finds this spelling rather than assuming the other one.",
+      "targets": ["agent-bureau"]
+    },
+    {
       "glob": ".github/workflows/release-manual.yaml",
       "reason": "Cinder's manually-triggered release workflow, same release-infrastructure class as `release.yaml`. Not independently verified against a cinder clone in this pass (COR-1286 worked offline against a weft-only seed); named by the issue's own ruling.",
       "targets": ["cinder"]
@@ -90,8 +95,8 @@
     },
     {
       "glob": ".worktreeinclude",
-      "reason": "Worktree bootstrap list naming target-local non-secret files. Present in cinder.",
-      "targets": ["cinder"]
+      "reason": "Worktree bootstrap list naming target-local non-secret files. Present in cinder and, verified against a clone on 2026-09-21, in agent-bureau.",
+      "targets": ["cinder", "agent-bureau"]
     },
     {
       "glob": "**/AGENTS.md",
@@ -144,6 +149,11 @@
       "glob": "MIGRATION-NOTES.md",
       "reason": "Target-maintained migration notes keyed to published versions.",
       "targets": ["cinder"]
+    },
+    {
+      "glob": "RELEASING.md",
+      "reason": "Target working document with no corvidae counterpart: the release runbook `release.yml` itself points at for registering npm trusted publishers. Same one-off document class as `AUDIT-BACKLOG.md` and `MIGRATION-NOTES.md`; present at agent-bureau's root, absent from the other two targets.",
+      "targets": ["agent-bureau"]
     }
   ],
   "retired": {
@@ -184,6 +194,54 @@
         "target": "weft",
         "reason": "Reads `.github/workflows/ci.yaml` and `release.yaml` directly and asserts their Bun pin and install flags. Once `ci.yaml` is retired in this same pull request, `readWorkflow('ci.yaml')` would throw on a file that no longer exists, so this test is retired with its subject rather than left to fail. D3 (COR-1286) is what makes a single file, rather than only a directory, a legal `retired` entry — this is the file that motivated it. Verified this is the only file in the weft seed reading either workflow's path outside fixture-built test data (`verify-documentation.test.ts` builds a synthetic `.github/workflows/ci.yaml` fixture rather than reading the real one, so it is unaffected).",
         "issue": "COR-1286"
+      },
+      {
+        "directory": ".github/workflows/ci.yml",
+        "target": "agent-bureau",
+        "reason": "COR-1286's ruling, applied to the third target: a mirror runs one transform-emitted verification workflow (`mirror-verify.yaml`, whose jobs are exactly `verifyTarget`'s steps) plus the target's existing release workflow, unchanged. `ci.yml` is agent-bureau's pull-request CI gate that `mirror-verify.yaml` replaces; its jobs (`validate`, `coverage-and-package-shape`, `lifecycle-contract`, `crash-conformance-smoke`, `runtime-matrix`) run target-side tooling `verifyTarget` does not exercise, and four of the five reach packages this same pull request retires, so the file becomes dead CI once the mirror opens its own PR-time workflow. Note the `.yml` spelling: it is the target's, and `resolveReleaseWorkflowFile` is what keeps the transform reading the target's own filenames rather than weft's.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": ".github/workflows/nightly.yml",
+        "target": "agent-bureau",
+        "reason": "The slower-cadence half of the same CI gate, retired under the same COR-1286 ruling. Its lanes are the full process-crash marker matrix, the full Gateway conformance lane, the Cloudflare real-runtime lane and a targeted lifecycle mutation check — three of the four run against `packages/gateway`, `packages/cloudflare` and `packages/integration`, which this same pull request retires, so the workflow would be scheduling nightly runs over directories that no longer exist. It also points at `documentation/testing-cadence.md`, a target document the transform neither writes nor prunes; dropping that reference is the target's own follow-up.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "lefthook.yml",
+        "target": "agent-bureau",
+        "reason": "Git hook configuration, retired under the same ruling as weft's `.husky` (COR-1286): corvidae's own AGENTS.md forbids Git-hook installation, and a mirror does not carry hook infrastructure for CI it no longer runs. agent-bureau keeps its hooks in a single root `lefthook.yml` rather than a directory of scripts — there is no `.lefthook/` in the clone — so this one file is the whole of it, which D3 (COR-1286) is what makes a legal `retired` entry. Its `pre-commit` commands run `bun run lint` and `bun run check-types`, both root scripts the mirror does not gate on. Out of band, in the target's own pull request: the root manifest's `\"prepare\": \"lefthook install\"` still names the tool after this retirement, and `scripts` is target-owned under COR-1223's inversion, so the transform cannot remove that reference and must not try.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/cloudflare",
+        "target": "agent-bureau",
+        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/cloudflare` and have to stop.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/evaluation",
+        "target": "agent-bureau",
+        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/evaluation` and have to stop.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/gateway",
+        "target": "agent-bureau",
+        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/gateway` and have to stop.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/integration",
+        "target": "agent-bureau",
+        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/integration` and have to stop.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/interoperability",
+        "target": "agent-bureau",
+        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/interoperability` and have to stop.",
+        "issue": "COR-1287"
       }
     ]
   },
@@ -228,8 +286,14 @@
         "key": "main",
         "reason": "Legacy entry point. `package-surface.json` records it, but its own documentation says that record is a port of what the target publishes today — so where the target still carries the key, the target holds the authoritative copy of the same fact."
       },
-      { "key": "module", "reason": "Same as `main`." },
-      { "key": "types", "reason": "Same as `main`." },
+      {
+        "key": "module",
+        "reason": "Same as `main`."
+      },
+      {
+        "key": "types",
+        "reason": "Same as `main`."
+      },
       {
         "key": "publishConfig",
         "reason": "Registry access and tag are a release decision belonging to whoever publishes, which is the target's release tooling."

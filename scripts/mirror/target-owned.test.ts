@@ -657,7 +657,7 @@ describe('retiring a directory the target still carries', () => {
     ).not.toThrow();
   });
 
-  test('the committed enumeration retires weft-ui and COR-1286s CI-owned paths from weft alone', async () => {
+  test('the committed enumeration retires each target only what its own issue ruled on', async () => {
     const policy = await loadTargetOwnedPolicy();
     expect(retiredDirectoriesFor(policy, 'weft')).toEqual([
       'packages/weft-ui',
@@ -667,11 +667,32 @@ describe('retiring a directory the target still carries', () => {
       'packages/weft/scripts/husky',
       'packages/weft/scripts/ci-workflows.test.ts',
     ]);
+    // COR-1287. The two CI workflows and the hook configuration are COR-1286's demotion ruling
+    // carried to a third target; the five packages are D1's — corvidae never carried them, and a
+    // mirror carries only what its source of truth carries.
+    expect(retiredDirectoriesFor(policy, 'agent-bureau')).toEqual([
+      '.github/workflows/ci.yml',
+      '.github/workflows/nightly.yml',
+      'lefthook.yml',
+      'packages/cloudflare',
+      'packages/evaluation',
+      'packages/gateway',
+      'packages/integration',
+      'packages/interoperability',
+    ]);
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
     for (const entry of policy.retired.entries) {
-      expect(entry.target).toBe('weft');
+      expect(['weft', 'agent-bureau']).toContain(entry.target);
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['COR-1192', 'COR-1286']).toContain(entry.issue);
+      expect(['COR-1192', 'COR-1286', 'COR-1287']).toContain(entry.issue);
+    }
+    // A retirement names exactly one repository, so no target's list may reach another's paths.
+    for (const target of mirrorTargets) {
+      for (const directory of retiredDirectoriesFor(policy, target)) {
+        expect(
+          policy.retired.entries.filter((entry) => entry.directory === directory),
+        ).toHaveLength(1);
+      }
     }
     // The one retired entry that names a file rather than a directory — D3's own evidence that
     // `retiredEntrySchema`'s `directory` key needed no widening to carry it.
