@@ -9,6 +9,8 @@ import {
   assertNoSourceEscapes,
   findSourceEscapes,
   internalScope,
+  isInternalSpecifier,
+  isScannable,
   moduleSpecifiers,
   SourceEscapeError,
 } from './source-escapes.ts';
@@ -443,6 +445,32 @@ describe('the committed workspaces', () => {
     'the %s plan emits nothing that escapes',
     (target) => {
       expect(committedPlans[target].escapes).toEqual([]);
+    },
+  );
+
+  /**
+   * COR-1284's outcome, stated as a fact about the real emitted trees rather than about a
+   * fixture: every corvidae workspace's manifest `name` now equals its public name, so no source
+   * file anywhere in either target can carry a specifier `isInternalSpecifier` recognizes -- there
+   * is no longer an internal-only name for one to name. That is what makes `internal-names.ts`'s
+   * rewrite a no-op by construction rather than by accident, and is exactly the property that
+   * would break first if a future edit ever reintroduced an `internalScope`-prefixed specifier
+   * into committed source. Scanned the same way `findSourceEscapes` scans -- every scannable
+   * emitted file, decoded once -- so a real regression here fails on the actual committed tree,
+   * not only on the internal-names.test.ts and source-escapes.test.ts fixtures that construct
+   * `${internalScope}/...` specifiers by hand to keep exercising the mechanism.
+   */
+  test.each<MirrorTarget>(['cinder', 'weft'])(
+    'the %s plan rewrites zero module specifiers as internal',
+    (target) => {
+      const { plan } = committedPlans[target];
+      let internalSpecifierCount = 0;
+      for (const [path, contents] of Object.entries(plan.files)) {
+        if (!isScannable(path)) continue;
+        const text = typeof contents === 'string' ? contents : new TextDecoder().decode(contents);
+        internalSpecifierCount += moduleSpecifiers(text, path).filter(isInternalSpecifier).length;
+      }
+      expect(internalSpecifierCount).toBe(0);
     },
   );
 
