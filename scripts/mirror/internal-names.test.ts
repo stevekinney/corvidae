@@ -107,6 +107,48 @@ describe('an internal name a comment mentions', () => {
     expect(publicNameInProse('@corvidae/absent', publicNames)).toBeUndefined();
   });
 
+  /**
+   * The documents weft's protocol suite reads ship downstream, and the target extracts fenced
+   * TypeScript out of them and compiles it. A fence is documentation the same way an `@example`
+   * is, so a Markdown file has nothing to protect: prose and fence alike are rewritten.
+   */
+  test('a Markdown document is rewritten in its prose and inside its fences', () => {
+    const source = [
+      '# Remote workers',
+      '',
+      'The public contract is exported from `@corvidae/weft`, and the storage harness from',
+      '`@corvidae/weft/storage/testing`.',
+      '',
+      '```ts',
+      "import { RemoteWorker } from '@corvidae/weft';",
+      '```',
+      '',
+    ].join('\n');
+    const rewritten = decoder.decode(
+      rewriteEmittedSource(
+        encoder.encode(source),
+        'packages/weft/documentation/guides/remote-workers.md',
+        publicNames,
+      ),
+    );
+    expect(rewritten).toContain('`@lostgradient/weft`');
+    expect(rewritten).toContain('`@lostgradient/weft/storage/testing`');
+    expect(rewritten).toContain("import { RemoteWorker } from '@lostgradient/weft';");
+    expect(rewritten).not.toContain('@corvidae/');
+  });
+
+  test('a Markdown document naming an unmapped workspace is left exactly as it is', () => {
+    const source = '# Notes\n\nThe shared options live in `@corvidae/typescript`.\n';
+    const rewritten = decoder.decode(
+      rewriteEmittedSource(
+        encoder.encode(source),
+        'packages/weft/documentation/notes.md',
+        publicNames,
+      ),
+    );
+    expect(rewritten).toBe(source);
+  });
+
   test('a comment inside a Svelte script is rewritten and its markup is not', () => {
     const source = [
       '<script lang="ts">',
@@ -307,14 +349,21 @@ describe('rewriting one emitted file’s bytes', () => {
     expect(rewriteEmittedSource(contents, 'packages/weft/src/a.ts', publicNames)).toBe(contents);
   });
 
-  test('a file whose language carries no specifiers is never parsed', () => {
-    // A PNG's bytes are not text, and a Markdown file's `@corvidae/*` is prose. Both come back
-    // byte-identical, which is what keeps the transform from corrupting either.
+  test('a file whose language carries no specifiers is never parsed for them', () => {
+    // A PNG's bytes are not text, so nothing here reads them at all. A Markdown file is text and
+    // is documentation throughout, so it takes the prose pass — but never the specifier pass,
+    // which would try to parse a document as TypeScript. This test used to assert that Markdown
+    // came back untouched; the emitted weft documents shipped `@corvidae/weft` downstream to a
+    // reader and to the target's markdown doctest extractor, which is what changed the ruling.
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     expect(rewriteEmittedSource(png, 'packages/testing/src/baseline.png', publicNames)).toBe(png);
     const markdown = encoder.encode('Install `@corvidae/weft` from the workspace.\n');
-    expect(rewriteEmittedSource(markdown, 'packages/weft/src/README.md', publicNames)).toBe(
-      markdown,
+    expect(
+      decoder.decode(rewriteEmittedSource(markdown, 'packages/weft/src/README.md', publicNames)),
+    ).toBe('Install `@lostgradient/weft` from the workspace.\n');
+    const untranslatable = encoder.encode('Install `@corvidae/typescript`.\n');
+    expect(rewriteEmittedSource(untranslatable, 'packages/weft/src/README.md', publicNames)).toBe(
+      untranslatable,
     );
   });
 
