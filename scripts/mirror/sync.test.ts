@@ -14,11 +14,50 @@ import {
   findForeignCommits,
   ForeignCommitError,
   git,
+  gitEnvironment,
   provenanceTrailer,
   runSync,
   SyncError,
   type SyncResult,
 } from './sync.ts';
+
+describe('gitEnvironment', () => {
+  test('disables hooks the target may have armed in the clone', () => {
+    // husky writes `core.hooksPath` into the clone's LOCAL config, which `GIT_CONFIG_GLOBAL` and
+    // `GIT_CONFIG_SYSTEM` do not reach. Injecting it through `GIT_CONFIG_*` covers every git
+    // command the sync runs — the push as well as the commit.
+    const environment = gitEnvironment({});
+    expect(environment['GIT_CONFIG_COUNT']).toBe('1');
+    expect(environment['GIT_CONFIG_KEY_0']).toBe('core.hooksPath');
+    expect(environment['GIT_CONFIG_VALUE_0']).toBe('/dev/null');
+  });
+
+  test('appends to an inherited GIT_CONFIG_COUNT rather than overwriting index 0', () => {
+    // Nothing sets these today. Hardcoding index 0 would silently drop the caller's entry and
+    // clobber its key the first time something did, in an environment nobody tested.
+    const environment = gitEnvironment({
+      GIT_CONFIG_COUNT: '2',
+      GIT_CONFIG_KEY_0: 'user.name',
+      GIT_CONFIG_VALUE_0: 'someone',
+      GIT_CONFIG_KEY_1: 'core.pager',
+      GIT_CONFIG_VALUE_1: 'cat',
+    });
+    expect(environment['GIT_CONFIG_COUNT']).toBe('3');
+    expect(environment['GIT_CONFIG_KEY_0']).toBe('user.name');
+    expect(environment['GIT_CONFIG_KEY_1']).toBe('core.pager');
+    expect(environment['GIT_CONFIG_KEY_2']).toBe('core.hooksPath');
+    expect(environment['GIT_CONFIG_VALUE_2']).toBe('/dev/null');
+  });
+
+  test('ignores an unusable inherited count rather than producing a broken one', () => {
+    // git reads keys 0..count-1, so a malformed count must not make this emit a gap.
+    for (const count of ['', 'not-a-number', '0', '-3']) {
+      const environment = gitEnvironment({ GIT_CONFIG_COUNT: count });
+      expect(environment['GIT_CONFIG_COUNT']).toBe('1');
+      expect(environment['GIT_CONFIG_KEY_0']).toBe('core.hooksPath');
+    }
+  });
+});
 
 /**
  * A fake remote, a fake corvidae, and a fake target, so the whole pipeline runs without GitHub,

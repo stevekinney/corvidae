@@ -1,0 +1,170 @@
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+/**
+ * Keep the mirror's verification install honest about the target's real one.
+ *
+ * COR-1278: `verifyTarget` installed the staged tree with `--ignore-scripts`, while every one of
+ * weft's own CI jobs installs without it. The flag was added for an unrelated reason — stopping
+ * the target's husky `prepare` from arming hooks before the sync's own commit — and it silently
+ * took `better-sqlite3`'s `install` script with it, so the staged tree carried the package fully
+ * requirable but with no compiled `better_sqlite3.node`. The mirror then verified a tree that no
+ * consumer, and not even the target's own CI, would ever produce, and reported it green until an
+ * integration test happened to construct a database.
+ *
+ * The lesson generalizes past that one flag: a verification step that installs differently from
+ * the environment it claims to prove is worse than no verification step, because it converts an
+ * unknown into a false assurance. So the flags the mirror installs with are checked against the
+ * flags the target's own workflows install with, read from the clone at sync time rather than
+ * copied into a constant here. A constant would be one more thing to remember to update, and the
+ * whole failure mode is a divergence nobody noticed.
+ *
+ * @module mirror/install-parity
+ */
+
+/** One `bun install` invocation found in a target workflow. */
+export interface WorkflowInstall {
+  /** Workflow file it came from, relative to `.github/workflows`. */
+  readonly file: string;
+  /** The command text, from `bun install` to end of line. */
+  readonly command: string;
+  /** Flag names it passes, without values: `--linker=isolated` reads as `--linker`. */
+  readonly flags: readonly string[];
+}
+
+/** What a parity check established, so an unverifiable target is visible rather than silent. */
+export interface InstallParity {
+  /** The verification install's command text. */
+  readonly command: string;
+  /** Workflow installs the parity was checked against; empty when the target has no workflows. */
+  readonly checkedAgainst: readonly string[];
+}
+
+/** Raised when the mirror would install differently from the target's own CI. */
+export class InstallParityError extends Error {}
+
+/**
+ * Flags that suppress part of an install and can therefore never be waived by a caller.
+ *
+ * `allowedExtraFlags` exists for run-scoped arguments that change how a package is *fetched*
+ * without changing what ends up built — `--offline`, which the offline tests pass to prove no
+ * registry was reached. Letting that escape hatch also cover a flag that skips build steps would
+ * reintroduce exactly the defect this module exists to catch, so the two sets are disjoint by
+ * construction: a suppressing flag passes only when the target's own install passes it too.
+ */
+const neverWaivable: ReadonlySet<string> = new Set([
+  '--ignore-scripts',
+  '--no-optional',
+  '--omit',
+  '--production',
+]);
+
+/** The flag name in `token`, without its value. */
+function flagName(token: string): string | undefined {
+  if (!token.startsWith('--')) return undefined;
+  const separator = token.indexOf('=');
+  return separator === -1 ? token : token.slice(0, separator);
+}
+
+/** Flag names in a command line, in order, without values. */
+export function installFlags(command: readonly string[] | string): readonly string[] {
+  const tokens = typeof command === 'string' ? command.split(/\s+/) : command;
+  return tokens
+    .map((token) => flagName(token))
+    .filter((name): name is string => name !== undefined);
+}
+
+/**
+ * Every `bun install` in one workflow file.
+ *
+ * Deliberately a line scan rather than a YAML parse: a workflow's `run:` body is an opaque shell
+ * string to YAML, so parsing the document still leaves the command to read as text, and the extra
+ * dependency would buy nothing. A line is taken from `bun install` to its end, which is what a
+ * single-line `run:` step is; a multi-line install with a continuation is not something either
+ * target writes, and would show up here as a shorter command rather than a wrong one.
+ */
+export function extractWorkflowInstalls(file: string, contents: string): WorkflowInstall[] {
+  const installs: WorkflowInstall[] = [];
+  for (const line of contents.split('\n')) {
+    // A commented-out install is not an install the target runs, and letting one through would
+    // make the gate *weaker* rather than noisier: every flag found here joins the reference set
+    // the mirror's own command is checked against, so `# we used to pass --ignore-scripts` would
+    // quietly authorize passing it for real. A subset check is only as strong as its reference.
+    if (line.trimStart().startsWith('#')) continue;
+    const start = line.indexOf('bun install');
+    if (start === -1) continue;
+    const command = line.slice(start).trim();
+    installs.push({ file, command, flags: installFlags(command) });
+  }
+  return installs;
+}
+
+/** Every `bun install` across a clone's `.github/workflows`. */
+export async function readWorkflowInstalls(directory: string): Promise<WorkflowInstall[]> {
+  const workflows = join(directory, '.github', 'workflows');
+  let entries: string[];
+  try {
+    entries = await readdir(workflows);
+  } catch {
+    return [];
+  }
+
+  const installs: WorkflowInstall[] = [];
+  for (const entry of entries.toSorted()) {
+    if (!entry.endsWith('.yaml') && !entry.endsWith('.yml')) continue;
+    const contents = await Bun.file(join(workflows, entry)).text();
+    installs.push(...extractWorkflowInstalls(entry, contents));
+  }
+  return installs;
+}
+
+export interface InstallParityOptions {
+  /** The install the mirror is about to run. */
+  readonly command: readonly string[];
+  /** Installs read from the target's workflows. */
+  readonly workflowInstalls: readonly WorkflowInstall[];
+  /** Run-scoped flags the harness adds that the target has no reason to carry. */
+  readonly allowedExtraFlags?: readonly string[] | undefined;
+}
+
+/**
+ * Refuse a verification install that suppresses something the target's own install does not.
+ *
+ * Subset, not equality: the target passing a flag the mirror omits is the target's business, and
+ * `--linker=isolated` is already supplied through the run's own arguments. What must not happen
+ * is the mirror passing a flag no CI job passes, because that is the mirror proving a tree that
+ * does not exist anywhere else.
+ *
+ * A target with no workflows is not an error — the test fixtures have none — but it is not a pass
+ * either. It returns an empty `checkedAgainst`, so the sync's result records that nothing was
+ * compared rather than implying a clean comparison.
+ */
+export function assertInstallParity({
+  command,
+  workflowInstalls,
+  allowedExtraFlags = [],
+}: InstallParityOptions): InstallParity {
+  const text = command.join(' ');
+  const parity: InstallParity = {
+    command: text,
+    checkedAgainst: workflowInstalls.map((install) => `${install.file}: ${install.command}`),
+  };
+  if (workflowInstalls.length === 0) return parity;
+
+  const targetFlags = new Set(workflowInstalls.flatMap((install) => install.flags));
+  const waivable = new Set(allowedExtraFlags.filter((flag) => !neverWaivable.has(flag)));
+  const divergent = [
+    ...new Set(
+      installFlags(command).filter((flag) => !targetFlags.has(flag) && !waivable.has(flag)),
+    ),
+  ];
+  if (divergent.length === 0) return parity;
+
+  throw new InstallParityError(
+    `The mirror's verification install passes ${divergent.join(', ')}, which no install in the ` +
+      `target's own workflows passes. Verifying a tree the target would never build is how ` +
+      `COR-1278 shipped an uncompiled native binding past a green sync.\n` +
+      `  mirror:  ${text}\n` +
+      workflowInstalls.map((install) => `  ${install.file}: ${install.command}`).join('\n'),
+  );
+}
