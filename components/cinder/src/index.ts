@@ -166,6 +166,7 @@ export type {
   ChoiceGridContext,
   ChoiceGridItemState,
   ChoiceGridProps,
+  ChoiceGridSize,
 } from './components/choice-grid/index.ts';
 
 export { default as ChoiceGridItem } from './components/choice-grid-item/index.ts';
