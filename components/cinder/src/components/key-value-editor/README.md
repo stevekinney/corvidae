@@ -14,8 +14,8 @@ The component owns row addition, removal, and change reporting. The consumer own
 <script lang="ts">
   import { KeyValueEditor } from '@lostgradient/cinder';
   let entries = $state([
-    { key: 'HOST', value: 'localhost' },
-    { key: 'PORT', value: '3000' },
+    { id: 'host', key: 'HOST', value: 'localhost' },
+    { id: 'port', key: 'PORT', value: '3000' },
   ]);
 </script>
 
@@ -23,6 +23,8 @@ The component owns row addition, removal, and change reporting. The consumer own
 ```
 
 `entries` is the editable list; `onValueChange` is the callback form when the parent does not use a binding. The editor adds and removes rows and reports the resulting array, but it does not validate key syntax, deduplicate names, or persist changes. Supply `secret={(key) => ...}` to route matching values through a password input; the predicate receives the key only, so that callback does not receive the secret value or a policy object.
+
+Each row's `id` is an immutable identity, independent of its editable `key`/`value` text — it must be unique within one editor's `entries`, but two rows may otherwise share equal key/value text. Consumers own minting `id` for the rows they supply (e.g. `crypto.randomUUID()`); the editor mints its own `id` for a row added through "Add pair". Keying rows by `id` (not position) lets a parent reorder, insert, or remove other rows without disturbing a row's focused input.
 
 Give `addLabel` and `removeLabel` concrete action wording when the surrounding page has more than one editor. If a value fails validation or saving, keep the row and its text in the list so the user can correct it instead of treating a rejected update as a deletion.
 
