@@ -89,9 +89,17 @@ export class BuildInputError extends SyncError {
 /** The trailer that records which corvidae commit produced a sync. */
 export const provenanceTrailer = 'Corvidae-Commit';
 
+/**
+ * The identity every mirror commit carries: the mirror App's own bot account, in the form GitHub
+ * links to it (`<id>+<login>@users.noreply.github.com`). An invalid-domain placeholder was used
+ * here first, and the first real sync (stevekinney/weft pull request 984) showed why it cannot
+ * be: a commit GitHub can attribute to no account is an "unattributed change" under the target's
+ * ruleset, which then demands an approving review the repository's sole human cannot give to a
+ * pull request they opened. Attributed to the App, the commit is the App's, which is the truth.
+ */
 const mirrorIdentity = {
-  name: 'corvidae-mirror',
-  email: 'mirror@corvidae.invalid',
+  name: 'lost-gradient-mirror-sync[bot]',
+  email: '331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com',
 } as const;
 
 /**

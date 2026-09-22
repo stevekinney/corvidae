@@ -436,6 +436,13 @@ describe('the mirror sync against a fake remote', () => {
         // being used as the change-detection record.
         const pushed = await git(harness.remote, 'log', '-1', '--format=%B');
         expect(pushed).toContain(`${provenanceTrailer}: corvidae-first`);
+        // Authored as the mirror App's bot account, in the form GitHub attributes to it. The first
+        // real sync was refused a merge as an "unattributed change" under the target's ruleset
+        // because its author was a placeholder no account could be linked to.
+        const author = await git(harness.remote, 'log', '-1', '--format=%an <%ae>');
+        expect(author.trim()).toBe(
+          'lost-gradient-mirror-sync[bot] <331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com>',
+        );
 
         // The divergence the first run consumed is why this one is a skip: the target now holds
         // corvidae's bytes, so the second run re-emits what is already there. The skip is a
