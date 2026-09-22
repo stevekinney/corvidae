@@ -171,6 +171,91 @@ describe('tryCompile', () => {
     const result = await tryCompile('not a schema');
     expect(result.ok).toBe(false);
   });
+
+  // COR-228 parity fixtures — preserved across the CSP-safe interpreter swap.
+  test('2019-09 $recursiveRef compiles and its meta-schema is valid', async () => {
+    const schema = {
+      $schema: 'https://json-schema.org/draft/2019-09/schema',
+      $id: 'https://example.com/tree',
+      $recursiveAnchor: true,
+      type: 'object',
+      properties: { children: { type: 'array', items: { $recursiveRef: '#' } } },
+    };
+    expect(await validateMetaSchema(schema, '2019-09')).toEqual({ valid: true, errors: [] });
+    expect(await tryCompile(schema, '2019-09')).toEqual({ ok: true });
+  });
+
+  test('2020-12 $dynamicRef compiles and its meta-schema is valid', async () => {
+    const schema = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      $id: 'https://example.com/tree2020',
+      $dynamicAnchor: 'node',
+      type: 'object',
+      properties: { children: { type: 'array', items: { $dynamicRef: '#node' } } },
+    };
+    expect(await validateMetaSchema(schema, '2020-12')).toEqual({ valid: true, errors: [] });
+    expect(await tryCompile(schema, '2020-12')).toEqual({ ok: true });
+  });
+
+  test('a general (non-$defs-shorthand) unresolved $ref fails to compile', async () => {
+    const schema = { type: 'object', properties: { a: { $ref: '#/nonexistent' } } };
+    const result = await tryCompile(schema);
+    expect(result.ok).toBe(false);
+  });
+
+  test('an unrecognised keyword is preserved without failing meta-schema or compile checks', async () => {
+    const schema = { type: 'string', 'x-vendor-extension': 42 };
+    const meta = await validateMetaSchema(schema);
+    expect(meta.valid).toBe(true);
+    expect(await tryCompile(schema)).toEqual({ ok: true });
+  });
+
+  // Every format ajv-formats' `fullFormats` set registers must remain a
+  // recognised `format` value (no compile warning), matching the existing
+  // "registers the standard email format" regression above.
+  const AJV_FORMATS = [
+    'date',
+    'time',
+    'date-time',
+    'iso-time',
+    'iso-date-time',
+    'duration',
+    'uri',
+    'uri-reference',
+    'uri-template',
+    'url',
+    'email',
+    'hostname',
+    'ipv4',
+    'ipv6',
+    'regex',
+    'uuid',
+    'json-pointer',
+    'json-pointer-uri-fragment',
+    'relative-json-pointer',
+    'byte',
+    'int32',
+    'int64',
+    'float',
+    'double',
+    'password',
+    'binary',
+  ] as const;
+
+  test('every ajv-formats format compiles without a warning', async () => {
+    const originalWarn = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...values: unknown[]) => warnings.push(values);
+    try {
+      for (const format of AJV_FORMATS) {
+        const type = ['int32', 'int64', 'float', 'double'].includes(format) ? 'number' : 'string';
+        expect(await tryCompile({ type, format })).toEqual({ ok: true });
+      }
+    } finally {
+      console.warn = originalWarn;
+    }
+    expect(warnings).toEqual([]);
+  });
 });
 
 describe('tryParseJson', () => {
