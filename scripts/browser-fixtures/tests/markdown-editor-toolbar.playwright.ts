@@ -249,3 +249,214 @@ for (const theme of THEMES) {
     });
   }
 }
+
+// ---------------------------------------------------------------------------
+// COR-463 — LinkPopover bounds, density, focus, and reachability across the
+// light/dark themes, the 320x800 and 1280x720 viewports, and the five popup
+// cases named in the ticket (insert with selected text, insert without
+// selection, edit an existing link, invalid URL, disabled submit with
+// missing required data). Structured as one test per (theme, viewport)
+// combination that walks all five cases in sequence — booting one Milkdown
+// instance per combination rather than five — instead of 20 independent
+// `test()` blocks.
+// ---------------------------------------------------------------------------
+
+const linkPopoverViewports = [
+  { name: 'mobile' as const, width: 320, height: 800 },
+  { name: 'desktop' as const, width: 1280, height: 720 },
+];
+
+const HEADER_FOOTER_MAX_HEIGHT = 41; // 40px density budget + 1px sub-pixel rounding allowance
+const CONTENT_SPACING_MAX = 13; // --cinder-space-3 (12px) + 1px sub-pixel rounding allowance
+const CLOSE_BUTTON_FINE_POINTER_SIZE = 28;
+const TITLE_ICON_SIZE = 16;
+
+type PopoverDensity = {
+  hasFloatingSurfaceClass: boolean;
+  popoverX: number;
+  popoverWidth: number;
+  headerHeight: number | null;
+  footerHeight: number | null;
+  closeWidth: number | null;
+  closeHeight: number | null;
+  titleIconWidth: number | null;
+  contentPaddingTop: number | null;
+  contentGap: number | null;
+};
+
+async function measureLinkPopoverDensity(page: Page): Promise<PopoverDensity> {
+  return page.locator('.link-popover').evaluate((element) => {
+    const header = element.querySelector('.link-popover-header');
+    const footer = element.querySelector('.link-popover-footer');
+    const content = element.querySelector('.link-popover-content');
+    const close = element.querySelector('.link-popover-close');
+    const titleIcon = element.querySelector('.link-popover-title svg');
+    const rect = element.getBoundingClientRect();
+    const contentStyle = content ? getComputedStyle(content) : null;
+    return {
+      hasFloatingSurfaceClass: element.classList.contains('cinder-_floating-surface'),
+      popoverX: rect.x,
+      popoverWidth: rect.width,
+      headerHeight: header?.getBoundingClientRect().height ?? null,
+      footerHeight: footer?.getBoundingClientRect().height ?? null,
+      closeWidth: close?.getBoundingClientRect().width ?? null,
+      closeHeight: close?.getBoundingClientRect().height ?? null,
+      titleIconWidth: titleIcon?.getBoundingClientRect().width ?? null,
+      contentPaddingTop: contentStyle ? parseFloat(contentStyle.paddingTop) : null,
+      contentGap: contentStyle ? parseFloat(contentStyle.rowGap || contentStyle.gap) : null,
+    };
+  });
+}
+
+async function assertLinkPopoverBoundsAndDensity(
+  page: Page,
+  viewportWidth: number,
+  label: string,
+): Promise<void> {
+  const popover = page.locator('.link-popover');
+  await expect(popover, `${label}: popover visible`).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.id ?? null), {
+      message: `${label}: initial focus reaches the URL input`,
+    })
+    .toMatch(/-url$/);
+
+  // Floating UI's `autoUpdate` keeps recomputing position for a moment after
+  // the first placement (fonts/icons settling can shift the anchor rect
+  // slightly), so wait for two consecutive reads of the popover's left edge
+  // to agree before measuring bounds — a fixed sleep would either flake on a
+  // slow settle or waste time on a fast one.
+  let previousLeft: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const currentLeft = await popover.evaluate((element) => element.getBoundingClientRect().x);
+        const stable = currentLeft === previousLeft;
+        previousLeft = currentLeft;
+        return stable;
+      },
+      { message: `${label}: popover position settles` },
+    )
+    .toBe(true);
+
+  const density = await measureLinkPopoverDensity(page);
+  expect(density.hasFloatingSurfaceClass, `${label}: composes the shared floating-surface`).toBe(
+    true,
+  );
+  expect(density.headerHeight, `${label}: header height measured`).not.toBeNull();
+  expect(density.headerHeight!, `${label}: header <= 40px`).toBeLessThanOrEqual(
+    HEADER_FOOTER_MAX_HEIGHT,
+  );
+  expect(density.footerHeight!, `${label}: footer <= 40px`).toBeLessThanOrEqual(
+    HEADER_FOOTER_MAX_HEIGHT,
+  );
+  expect(density.closeWidth!, `${label}: close button width is 28px`).toBeCloseTo(
+    CLOSE_BUTTON_FINE_POINTER_SIZE,
+    0,
+  );
+  expect(density.closeHeight!, `${label}: close button height is 28px`).toBeCloseTo(
+    CLOSE_BUTTON_FINE_POINTER_SIZE,
+    0,
+  );
+  expect(density.titleIconWidth!, `${label}: title icon is 16px`).toBeCloseTo(TITLE_ICON_SIZE, 0);
+  expect(density.contentPaddingTop!, `${label}: content padding <= 12px`).toBeLessThanOrEqual(
+    CONTENT_SPACING_MAX,
+  );
+  expect(density.contentGap!, `${label}: content gap <= 12px`).toBeLessThanOrEqual(
+    CONTENT_SPACING_MAX,
+  );
+  // No horizontal viewport overflow.
+  expect(
+    density.popoverX,
+    `${label}: popover does not overflow the viewport's left edge`,
+  ).toBeGreaterThanOrEqual(0);
+  expect(
+    density.popoverX + density.popoverWidth,
+    `${label}: popover does not overflow the viewport's right edge`,
+  ).toBeLessThanOrEqual(viewportWidth + 1);
+  await expect(page.locator('.link-popover-close'), `${label}: Close is reachable`).toBeVisible();
+}
+
+for (const theme of THEMES) {
+  for (const viewport of linkPopoverViewports) {
+    test(`MarkdownEditor LinkPopover bounds and density across the five popup cases in ${theme} at ${viewport.width}x${viewport.height}`, async ({
+      componentPage,
+    }) => {
+      const page = await componentPage.open({
+        entry: markdownEditorEntry,
+        theme,
+        viewport,
+        fixtureName: 'assertion',
+      });
+
+      const editorWrapper = page.locator('#example-mount-basic .markdown-editor-wrapper');
+      await expect(editorWrapper).toBeVisible();
+      const paragraph = editorWrapper.locator('.ProseMirror p').first();
+      await expect(paragraph).toBeVisible();
+      const linkButton = editorWrapper.locator('[data-testid="toolbar-link"]');
+      const urlField = page.locator('.link-popover-content input[type="url"]');
+      const textField = page.locator('.link-popover-content input:not([type="url"])');
+
+      // Case: insert WITH a selection — selects the paragraph's first word
+      // ("This"), so the popover renders URL-only (no separate text field).
+      await paragraph.click();
+      await page.keyboard.press('Home');
+      await page.keyboard.press('Shift+ArrowRight');
+      await page.keyboard.press('Shift+ArrowRight');
+      await page.keyboard.press('Shift+ArrowRight');
+      await page.keyboard.press('Shift+ArrowRight');
+      await linkButton.click();
+      await assertLinkPopoverBoundsAndDensity(page, viewport.width, 'insert with selection');
+      await expect(textField, 'insert with selection: no text field').toHaveCount(0);
+      await urlField.fill('example.com');
+      await page
+        .locator('.link-popover')
+        .getByRole('button', { name: 'Insert', exact: true })
+        .click();
+      await expect(page.locator('.link-popover')).toBeHidden();
+
+      // Case: insert WITHOUT a selection — caret only, at the end of the
+      // paragraph. Renders both fields, and (case: disabled submit) Insert
+      // stays disabled until both required fields have a value.
+      await paragraph.click();
+      await page.keyboard.press('End');
+      await linkButton.click();
+      await assertLinkPopoverBoundsAndDensity(page, viewport.width, 'insert without selection');
+      await expect(urlField, 'insert without selection: URL field present').toBeVisible();
+      await expect(textField, 'insert without selection: text field present').toBeVisible();
+      await expect(
+        page.locator('.link-popover').getByRole('button', { name: 'Insert', exact: true }),
+        'disabled submit: Insert disabled with empty required fields',
+      ).toBeDisabled();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.link-popover')).toBeHidden();
+
+      // Case: edit an existing link — click into the "This" link created
+      // above and reopen the popover from the toolbar.
+      const insertedLink = editorWrapper.locator('a', { hasText: 'This' });
+      await expect(insertedLink).toBeVisible();
+      await insertedLink.click();
+      await linkButton.click();
+      await assertLinkPopoverBoundsAndDensity(page, viewport.width, 'edit existing link');
+      await expect(
+        page.locator('.link-popover').getByRole('button', { name: 'Update', exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.locator('.link-popover').getByRole('button', { name: 'Remove', exact: true }),
+      ).toBeVisible();
+      await expect(urlField).toHaveValue('https://example.com');
+
+      // Case: invalid URL — typing a dangerous scheme into the same open
+      // (edit) popover surfaces the error and disables Update.
+      await urlField.fill('javascript:alert(1)');
+      await expect(page.getByText('This URL scheme is not allowed')).toBeVisible();
+      await expect(
+        page.locator('.link-popover').getByRole('button', { name: 'Update', exact: true }),
+        'invalid URL: Update disabled',
+      ).toBeDisabled();
+      await assertLinkPopoverBoundsAndDensity(page, viewport.width, 'invalid URL');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.link-popover')).toBeHidden();
+    });
+  }
+}

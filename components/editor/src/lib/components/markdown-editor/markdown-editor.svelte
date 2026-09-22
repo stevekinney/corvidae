@@ -426,6 +426,18 @@
     editorState?.focus();
   }
 
+  // Outside interaction targets some OTHER control — a different toolbar
+  // button, a click into the raw-source textarea, a click on the page. That
+  // control's own focus assignment must win, so this closes the popover
+  // WITHOUT the editorState.focus() call handleLinkPopoverClose makes for
+  // every explicit close (Escape/Cancel/Close/Insert/Update/Remove). Forcing
+  // focus back into the editor here would steal it from whatever was
+  // actually clicked immediately after this handler runs.
+  function handleLinkPopoverOutsideDismiss() {
+    linkPopoverOpen = false;
+    linkPopoverAnchorElement = null;
+  }
+
   function handleLinkInsert(url: string, text: string | undefined = undefined) {
     if (!editorContext) return;
 
@@ -842,6 +854,7 @@
       onclose={handleLinkPopoverClose}
       oninsert={handleLinkInsert}
       onremove={handleLinkRemove}
+      onOutsideDismiss={handleLinkPopoverOutsideDismiss}
     />
   {/if}
 </div>
