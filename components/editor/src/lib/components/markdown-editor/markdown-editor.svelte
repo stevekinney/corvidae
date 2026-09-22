@@ -1116,12 +1116,12 @@
   }
 
   .markdown-editor :global(.template-completion-item--active) {
-    background: var(--cinder-surface-active, #f0f4ff);
+    background: var(--cinder-surface-hover);
   }
 
   @media (hover: hover) {
     .markdown-editor :global(.template-completion-item:hover) {
-      background: var(--cinder-surface-active, #f0f4ff);
+      background: var(--cinder-surface-hover);
     }
   }
 

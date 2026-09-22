@@ -6,15 +6,22 @@ import {
   componentDirKey,
   componentOwnedPrefix,
   countByKey,
+  defaultScanRoots,
+  extractExamplesJsonSurfaces,
+  extractStyleSurface,
   findDeclaredNames,
   findReferences,
   findRegressions,
   flagKey,
+  isExamplesJsonPath,
   isTestPath,
   matchesPrefix,
   parseBaseline,
   parseGlobalTokens,
+  readBaseline,
+  scan,
   toPosixPath,
+  tokenRegistryPath,
 } from './check-component-css-token-usage.ts';
 
 describe('parseGlobalTokens', () => {
@@ -194,10 +201,138 @@ describe('toPosixPath / isTestPath', () => {
     expect(toPosixPath('a\\b')).toBe('a/b');
   });
 
-  test('isTestPath matches test/spec/examples, not real sources', () => {
+  test('isTestPath matches test/spec, not real sources', () => {
     expect(isTestPath('x/x.test.ts')).toBe(true);
-    expect(isTestPath('x/x.examples.json')).toBe(true);
     expect(isTestPath('x/x.css')).toBe(false);
+  });
+
+  // COR-344: *.examples.json used to be excluded from BOTH the declaration and
+  // reference passes via isTestPath. It is no longer a test path at all — it
+  // is excluded from declarations only (isExamplesJsonPath, checked directly
+  // in `scan`), so a stale reference inside one is no longer invisible.
+  test('isTestPath no longer treats *.examples.json as a test path', () => {
+    expect(isTestPath('x/x.examples.json')).toBe(false);
+  });
+
+  test('isExamplesJsonPath matches *.examples.json only', () => {
+    expect(isExamplesJsonPath('x/x.examples.json')).toBe(true);
+    expect(isExamplesJsonPath('x/x.example.json')).toBe(false);
+    expect(isExamplesJsonPath('x/x.css')).toBe(false);
+  });
+});
+
+describe('componentOwnedPrefix / componentDirKey — a non-default componentsPrefix', () => {
+  // COR-344: chat and editor components live under `.../src/lib/components/`,
+  // not Cinder's `src/components/`. The same ownership rule must apply there.
+  test('resolves the owning prefix under a package-qualified components root', () => {
+    expect(
+      componentOwnedPrefix(
+        'chat/src/lib/components/chat-navigation-rail/chat-navigation-rail.css',
+        'chat/src/lib/components',
+      ),
+    ).toBe('--cinder-chat-navigation-rail');
+    expect(
+      componentDirKey(
+        'chat/src/lib/components/chat-navigation-rail/chat-navigation-rail.css',
+        'chat/src/lib/components',
+      ),
+    ).toBe('chat-navigation-rail');
+  });
+
+  test('a path outside the given componentsPrefix resolves to null', () => {
+    expect(componentOwnedPrefix('chat/src/lib/chat.css', 'chat/src/lib/components')).toBeNull();
+  });
+});
+
+describe('extractStyleSurface — inline style="…" attributes (COR-344)', () => {
+  test('keeps a var() reference inside an inline style attribute', () => {
+    const surface = extractStyleSurface(
+      '<div style="border: 1px solid var(--cinder-border-subtle);">x</div>',
+      true,
+    );
+    expect(findReferences(surface).map((r) => r.name)).toEqual(['--cinder-border-subtle']);
+  });
+
+  test('still keeps a <style> block reference alongside an inline one', () => {
+    const source = [
+      '<div style="color: var(--cinder-inline-only);">x</div>',
+      '<style>',
+      '  div { background: var(--cinder-block-only); }',
+      '</style>',
+    ].join('\n');
+    const names = findReferences(extractStyleSurface(source, true)).map((r) => r.name);
+    expect(names).toEqual(['--cinder-inline-only', '--cinder-block-only']);
+  });
+
+  test('does not treat a style:property={expr} directive as an inline style', () => {
+    const surface = extractStyleSurface(
+      '<div style:color={"var(--cinder-should-not-appear)"}>x</div>',
+      true,
+    );
+    expect(findReferences(surface)).toEqual([]);
+  });
+
+  test('reports the inline reference on its own source line', () => {
+    const source = 'line one\n<div style="color: var(--cinder-line-two);">x</div>';
+    expect(findReferences(extractStyleSurface(source, true))).toEqual([
+      { name: '--cinder-line-two', lineNumber: 2 },
+    ]);
+  });
+});
+
+describe('extractExamplesJsonSurfaces (COR-344)', () => {
+  test('extracts each example code snippet, keyed by id', () => {
+    const source = JSON.stringify({
+      $schema: 'examples.schema.json',
+      component: 'widget',
+      import: '@lostgradient/widget',
+      examples: [
+        {
+          id: 'basic',
+          title: 't',
+          description: 'd',
+          code: '<div style="color: var(--cinder-a);">x</div>',
+        },
+        {
+          id: 'other',
+          title: 't',
+          description: 'd',
+          code: '<div style="color: var(--cinder-b);">x</div>',
+        },
+      ],
+    });
+    const surfaces = extractExamplesJsonSurfaces(source);
+    expect(surfaces.map((s) => s.id)).toEqual(['basic', 'other']);
+    expect(findReferences(surfaces[0]!.surface).map((r) => r.name)).toEqual(['--cinder-a']);
+    expect(findReferences(surfaces[1]!.surface).map((r) => r.name)).toEqual(['--cinder-b']);
+  });
+
+  test('returns an empty array for malformed JSON rather than throwing', () => {
+    expect(extractExamplesJsonSurfaces('{ not json')).toEqual([]);
+  });
+
+  test('returns an empty array when `examples` is missing or not an array', () => {
+    expect(extractExamplesJsonSurfaces('{}')).toEqual([]);
+    expect(extractExamplesJsonSurfaces('{ "examples": "nope" }')).toEqual([]);
+  });
+});
+
+describe('workspace-wide gate (COR-344)', () => {
+  // This is the actual CI/`bun run validate` gate: it scans the real,
+  // committed workspace tree (Cinder + chat + editor + the desktop app +
+  // browser-fixtures — see `defaultScanRoots`) and fails the moment any
+  // `--cinder-*` reference is undeclared beyond what `token-usage-baseline.json`
+  // already accepts. `check-component-css-token-usage.ts --strict` (the CLI
+  // entry point, wired to `tokens:audit`) performs the identical scan +
+  // regression check; this test is what makes that check run automatically
+  // under `bun test` instead of requiring someone to remember to run it by hand.
+  test('no --cinder-* reference is undeclared beyond the committed baseline', async () => {
+    const globals = parseGlobalTokens(await Bun.file(tokenRegistryPath).text());
+    const flags = await scan(globals, defaultScanRoots());
+    const unresolved = flags.filter((flag) => flag.category === 'unresolved');
+    const baseline = await readBaseline();
+    const regressions = findRegressions(unresolved, baseline);
+    expect(regressions).toEqual([]);
   });
 });
 

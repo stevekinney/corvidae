@@ -182,7 +182,7 @@
     min-width: 0;
     user-select: text;
     overflow-wrap: anywhere;
-    color: var(--cinder-text);
+    color: var(--cinder-text-default);
     font-size: var(--cinder-text-sm);
   }
 
