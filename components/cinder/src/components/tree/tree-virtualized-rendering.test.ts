@@ -143,4 +143,59 @@ describe('Tree — virtualized data path', () => {
     expect(activeId).toBe(`${tree.id}-item-0`);
     expect(container.querySelector(`#${activeId}`)).not.toBeNull();
   });
+
+  test('a row taller than the estimate is measured rather than clipped to it', async () => {
+    // getBoundingClientRect() in happy-dom never reflects real CSS layout, so this
+    // stands in for a real browser: a row whose OWN box carries an imposed
+    // block-size reports that imposed value back (today's bug — the measurement
+    // is trapped at the estimate no matter how tall the content is); a row left
+    // unsized reports its true content height instead.
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    const intrinsicHeightByIndex = new Map<number, number>([[0, 80]]);
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      const indexAttribute = this.dataset['cinderVirtualIndex'];
+      const intrinsic =
+        indexAttribute === undefined
+          ? undefined
+          : intrinsicHeightByIndex.get(Number.parseInt(indexAttribute, 10));
+      if (intrinsic === undefined) return originalGetBoundingClientRect.call(this);
+      const imposed = (this.getAttribute('style') ?? '').match(/block-size:\s*([\d.]+)px/);
+      const height = imposed ? Number.parseFloat(imposed[1]!) : intrinsic;
+      return {
+        width: 100,
+        height,
+        top: 0,
+        right: 100,
+        bottom: height,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+    };
+
+    try {
+      const { container } = render(Tree, {
+        props: {
+          'aria-label': 'Virtual files',
+          virtualized: true,
+          items: flatItems(10),
+          virtualizationEstimatedRowHeight: 20,
+          virtualizationHeight: 100,
+        },
+      });
+
+      await waitFor(() => expect(treeItemById(container, 'item-1')).toBeDefined());
+      // The virtualizer measures on mount and, once item 0's true 80px height is
+      // learned, must shift every row after it down by the difference — clipped
+      // measurement leaves item 1 sitting right after the 20px estimate instead.
+      await waitFor(() => {
+        const secondRow = treeItemById(container, 'item-1');
+        const offset = secondRow.getAttribute('style')?.match(/translateY\(([\d.]+)px\)/);
+        expect(Number.parseFloat(offset?.[1] ?? '0')).toBeGreaterThan(20);
+      });
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
 });

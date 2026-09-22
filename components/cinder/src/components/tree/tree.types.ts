@@ -52,7 +52,15 @@ type TreeSharedProps = Omit<
   expandedIds?: string[];
   /** Typed programmatic handle. Use `bind:ref` to receive it. */
   ref?: TreeRef | undefined;
-  /** Estimated row height for virtualized Tree rows. Default: 36. */
+  /**
+   * Estimated row height for virtualized Tree rows, used before a row is
+   * measured and as the fallback while none of its content has mounted yet.
+   * Default: 36.
+   *
+   * Rows are genuinely variable-height: the virtualized row carries no imposed
+   * `block-size`, so a row whose content renders taller than this estimate is
+   * measured and accommodated rather than clipped to it.
+   */
   virtualizationEstimatedRowHeight?: number;
   /** Extra rows rendered before and after the viewport. Default: 4. */
   virtualizationOverscan?: number;
