@@ -93,4 +93,94 @@ test.describe('Carousel interaction and layout', () => {
       await context.close();
     }
   });
+
+  // COR-181: focus pause/rotation-order/descendant-keyboard-ownership cases
+  // that need a real browser — actual Tab order, real focus recovery, and
+  // genuine text-caret/range-input arrow-key behavior, none of which
+  // happy-dom's unit tests can authoritatively prove.
+  test('keyboard tab order reaches the rotation control before the viewport slides', async ({
+    page,
+  }) => {
+    await page.goto(CAROUSEL_ROUTE, { waitUntil: 'load' });
+    await page.locator('#before-keyboard-carousel').focus();
+    await page.keyboard.press('Tab');
+    await expect(
+      page.locator('#example-mount-keyboard .cinder-carousel__control--pause'),
+    ).toBeFocused();
+  });
+
+  test('keyboard navigation moves outgoing-slide focus to the carousel root before it goes inert', async ({
+    page,
+  }) => {
+    await page.goto(CAROUSEL_ROUTE, { waitUntil: 'load' });
+    const scope = page.locator('#example-mount-keyboard');
+    const link = scope.locator('.cinder-carousel__slide').first().getByRole('link');
+    await link.focus();
+
+    await page.keyboard.press('ArrowRight');
+
+    await expect(scope.locator('.cinder-carousel')).toBeFocused();
+  });
+
+  test('editable notes and range slide controls keep their own arrow-key behavior instead of navigating slides', async ({
+    page,
+  }) => {
+    await page.goto(CAROUSEL_ROUTE, { waitUntil: 'load' });
+    const scope = page.locator('#example-mount-keyboard');
+    const dots = scope.locator('.cinder-carousel__dot');
+
+    const notes = scope.getByLabel('Introduction notes');
+    await notes.click();
+    await notes.press('End');
+    const caretBeforeArrow = await notes.evaluate(
+      (element) => (element as HTMLInputElement).selectionStart,
+    );
+    await notes.press('ArrowLeft');
+    const caretAfterArrow = await notes.evaluate(
+      (element) => (element as HTMLInputElement).selectionStart,
+    );
+    // The caret actually moved (native input behavior owns the key) and the
+    // carousel did not treat it as a "previous slide" shortcut.
+    expect(caretAfterArrow).toBe((caretBeforeArrow ?? 0) - 1);
+    await expect(dots.nth(0)).toHaveAttribute('aria-current', 'true');
+
+    const volume = scope.getByLabel('Introduction volume');
+    await volume.click();
+    const volumeBefore = Number(await volume.inputValue());
+    await volume.press('ArrowRight');
+    const volumeAfter = Number(await volume.inputValue());
+    // The range's own value actually changed (native widget owns the key)
+    // and the carousel did not treat it as a "next slide" shortcut either.
+    expect(volumeAfter).toBeGreaterThan(volumeBefore);
+    await expect(dots.nth(0)).toHaveAttribute('aria-current', 'true');
+  });
+
+  test('clicking Play explicitly restarts rotation and keeps focus on the control', async ({
+    page,
+  }) => {
+    await page.goto(CAROUSEL_ROUTE, { waitUntil: 'load' });
+    const scope = page.locator('#example-mount-keyboard');
+    const rotationControl = scope.locator('.cinder-carousel__control--pause');
+    const dots = scope.locator('.cinder-carousel__dot');
+
+    await rotationControl.click();
+    await expect(rotationControl).toHaveText('Play');
+    // A full interval elapses while paused; a genuinely stopped rotation must
+    // not advance on its own.
+    await page.waitForTimeout(1_200);
+    await expect(dots.nth(0)).toHaveAttribute('aria-current', 'true');
+
+    await rotationControl.click();
+    await expect(rotationControl).toHaveText('Pause');
+    await expect(rotationControl).toBeFocused();
+
+    // Hover pausing is independent of the explicit Play/Pause toggle — the
+    // pointer is still resting on the control from the click above, and
+    // `isHovered` alone would keep rotation stopped regardless of
+    // `userPaused`. Move away to isolate what this test is actually proving:
+    // the EXPLICIT restart, not merely the absence of hover.
+    await page.mouse.move(0, 0);
+
+    await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true', { timeout: 5_000 });
+  });
 });

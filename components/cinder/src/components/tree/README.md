@@ -44,7 +44,7 @@ The leaf remains importable individually for à-la-carte builds — see `@lostgr
 | `selectionBehavior` | `"independent"` \| `"cascade"` | no | — | Select only the target item or cascade through its selectable scope. Default: 'independent'. |
 | `selectionMode` | `"none"` \| `"single"` \| `"multiple"` | no | — | Selection model. Default: 'none'. |
 | `typeaheadDisabled` | `boolean` | no | `false` | Disable typeahead. |
-| `virtualizationEstimatedRowHeight` | `number` | no | — | Estimated row height for virtualized Tree rows. Default: 36. |
+| `virtualizationEstimatedRowHeight` | `number` | no | — | Estimated row height for virtualized Tree rows, used before a row is measured and as the fallback while none of its content has mounted yet. Default: 36. Rows are genuinely variable-height: the virtualized row carries no imposed `block-size`, so a row whose content renders taller than this estimate is measured and accommodated rather than clipped to it. |
 | `virtualizationHeight` | `string` \| `number` | no | — | Block size for the virtualized scroll viewport. Default: '20rem'. |
 | `virtualizationOverscan` | `number` | no | — | Extra rows rendered before and after the viewport. Default: 4. |
 | `virtualized` | `boolean` | no | — | Use the data-driven virtualized render path for large trees. Default: false. |
