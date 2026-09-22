@@ -122,7 +122,7 @@ describe('MarkdownEditor teardown', () => {
         props: {
           id: 'quiet-markdown-editor',
           label: 'Quiet Markdown editor',
-          showToolbar: false,
+          toolbarEnabled: false,
           value: 'Initial **markdown**',
         },
       });

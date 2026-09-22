@@ -41,7 +41,7 @@ export function createEditorAttachment(options: EditorAttachmentOptions): Attach
     onchange,
     onselectionchange,
     onlinkshortcut,
-    oncommentshortcut,
+    onCommentShortcut,
     debounceMs = DEFAULT_DEBOUNCE_MS,
     getPlugins,
     getPlaceholderCompletion,
@@ -71,7 +71,7 @@ export function createEditorAttachment(options: EditorAttachmentOptions): Attach
       ...(onchange && { onchange }),
       ...(onselectionchange && { onselectionchange }),
       ...(onlinkshortcut && { onlinkshortcut }),
-      ...(oncommentshortcut && { oncommentshortcut }),
+      ...(onCommentShortcut && { onCommentShortcut }),
       ...(placeholderCompletion && { placeholderCompletion }),
       ...(placeholderDecoration && { placeholderDecoration }),
     };

@@ -39,16 +39,16 @@ Declare `"@lostgradient/editor": "workspace:*"` in the consuming workspace and r
 | `modeLabel` | `string` | no | — | Accessible label for the mode toggle (visually hidden) |
 | `placeholder` | `string` | no | — | Placeholder text when empty |
 | `readonly` | `boolean` | no | — | Read-only mode |
-| `showModeToggle` | `boolean` | no | — | Show an inline toggle for switching between WYSIWYG and raw Markdown |
-| `showToolbar` | `boolean` | no | — | Show formatting toolbar (DEP-37) |
+| `modeToggleVisible` | `boolean` | no | — | Show an inline toggle for switching between WYSIWYG and raw Markdown |
+| `toolbarEnabled` | `boolean` | no | — | Show formatting toolbar (DEP-37) |
 | `snapshotMode` | `boolean` | no | — | Snapshot mode for visual regression testing. When `true`: - Applies `caret-color: transparent` and `user-select: none` to the editor root via a `data-snapshot-mode` attribute, producing a stable visual state (no blinking cursor, no selection highlights). - Blurs any focused element inside the component on mount so the initial screenshot does not capture a focused ring or active caret. This is a purely visual / CSS concern. It does NOT affect editability, ProseMirror state, or any prop controlled by `readonly` / `mode`. |
 | `value` | `string` | no | — | Current markdown content (two-way bindable) |
-| `onchange` | `(opaque)` | no | — | Called when content changes Not expressible in JSON Schema; see the component types for the signature. |
-| `oncommentshortcut` | `(opaque)` | no | — | Called when comment shortcut (Ctrl-Alt-c) is pressed (DEP-47) Not expressible in JSON Schema; see the component types for the signature. |
-| `onmodechange` | `(opaque)` | no | — | Called when editor mode changes Not expressible in JSON Schema; see the component types for the signature. |
-| `onready` | `(opaque)` | no | — | Called when the editor is ready (Milkdown initialized) Not expressible in JSON Schema; see the component types for the signature. |
-| `onselectionchange` | `(opaque)` | no | — | Called when selection changes (stub for DEP-39) Not expressible in JSON Schema; see the component types for the signature. |
-| `ontoolbarcontextchange` | `(opaque)` | no | — | Notified whenever the toolbar context changes. Use this to host the formatting controls somewhere this component does not render — for example folding them into a surrounding application toolbar so the editor does not stack a second bar of its own. Pair it with `showToolbar={false}`. Not expressible in JSON Schema; see the component types for the signature. |
+| `onValueChange` | `(opaque)` | no | — | Called when content changes Not expressible in JSON Schema; see the component types for the signature. |
+| `onCommentShortcut` | `(opaque)` | no | — | Called when comment shortcut (Ctrl-Alt-c) is pressed (DEP-47) Not expressible in JSON Schema; see the component types for the signature. |
+| `onModeChange` | `(opaque)` | no | — | Called when editor mode changes Not expressible in JSON Schema; see the component types for the signature. |
+| `onReady` | `(opaque)` | no | — | Called when the editor is ready (Milkdown initialized) Not expressible in JSON Schema; see the component types for the signature. |
+| `onSelectionChange` | `(opaque)` | no | — | Called when selection changes (stub for DEP-39) Not expressible in JSON Schema; see the component types for the signature. |
+| `onToolbarContextChange` | `(opaque)` | no | — | Notified whenever the toolbar context changes. Use this to host the formatting controls somewhere this component does not render — for example folding them into a surrounding application toolbar so the editor does not stack a second bar of its own. Pair it with `toolbarEnabled={false}`. Not expressible in JSON Schema; see the component types for the signature. |
 | `placeholderCompletion` | `(opaque)` | no | — | Placeholder completion configuration (DEP-583). When provided, enables inline suggestion menu for {{…}} tokens in WYSIWYG mode. Not expressible in JSON Schema; see the component types for the signature. |
 | `placeholderDecoration` | `(opaque)` | no | — | Placeholder decoration configuration (DEP-583). When provided, decorates invalid {{…}} tokens with CSS class and data attributes. Not expressible in JSON Schema; see the component types for the signature. |
 | `plugins` | `(opaque)` | no | — | Additional Milkdown plugins to load. Used for comment anchoring (DEP-39), decorations, and other extensions. Not expressible in JSON Schema; see the component types for the signature. |

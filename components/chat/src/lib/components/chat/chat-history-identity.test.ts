@@ -210,7 +210,7 @@ describe('history loading across conversation identity changes', () => {
         conversation: conversation('old-history'),
         adapter: oldAdapter,
         moreHistoryAvailable: true,
-        onadaptererror: (event: { command: string; error: unknown }) => {
+        onAdapterError: (event: { command: string; error: unknown }) => {
           adapterErrors.push(event);
         },
       },
@@ -229,7 +229,7 @@ describe('history loading across conversation identity changes', () => {
       conversation: conversation('new-history'),
       adapter: newAdapter,
       moreHistoryAvailable: true,
-      onadaptererror: (event: { command: string; error: unknown }) => {
+      onAdapterError: (event: { command: string; error: unknown }) => {
         adapterErrors.push(event);
       },
     });

@@ -18,7 +18,7 @@
     /** Whether the count exceeds 99 (for compact badge styling) */
     hasLargeCount: boolean;
     /** Callback when jump-to-latest is clicked */
-    onjumptolatest?: () => void;
+    onJumpToLatest?: () => void;
   };
 </script>
 
@@ -31,11 +31,11 @@
     unreadCount,
     displayUnreadCount,
     hasLargeCount,
-    onjumptolatest,
+    onJumpToLatest,
   }: ChatJumpControlsProps = $props();
 
   function handleJump(): void {
-    onjumptolatest?.();
+    onJumpToLatest?.();
   }
 </script>
 

@@ -22,7 +22,7 @@
     markdownNode,
     expanded = false,
     onToggle,
-    onapprovalresolve,
+    onApprovalResolve,
     reasoningExpanded = false,
     onreasoning,
     stepsExpanded = true,
@@ -87,7 +87,7 @@
   {:else if part.type === 'tool-result'}
     <ToolResultPart {part} />
   {:else if part.type === 'tool-approval'}
-    <ToolApprovalPart {part} {onapprovalresolve} />
+    <ToolApprovalPart {part} {onApprovalResolve} />
   {:else if part.type === 'reasoning'}
     <ReasoningPart {part} expanded={reasoningExpanded} onToggle={onreasoning} />
   {:else if part.type === 'transcript-entry'}

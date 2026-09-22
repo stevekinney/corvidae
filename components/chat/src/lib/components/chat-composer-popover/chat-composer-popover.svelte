@@ -168,7 +168,7 @@
     composerAriaControls: open ? listboxId : undefined,
     composerAriaActiveDescendant: open ? (activeItemId ?? undefined) : undefined,
     composerAriaAutocomplete: 'list',
-    oncomposerinput: handleComposerInput,
+    onComposerInput: handleComposerInput,
     oncomposerkeydown: handleComposerKeydown,
     oncomposerselectionchange: handleComposerSelectionChange,
     oncomposerblur: handleComposerBlur,

@@ -383,7 +383,7 @@ describe('history prepend at scrollTop=0 (#1237)', () => {
         id: 'prepend-reject-chat',
         conversation,
         adapter,
-        onadaptererror: (event: { command: string; error: unknown }) => {
+        onAdapterError: (event: { command: string; error: unknown }) => {
           adapterErrors.push(event);
         },
       },
@@ -417,7 +417,7 @@ describe('history prepend at scrollTop=0 (#1237)', () => {
         id: 'prepend-reject-chat',
         conversation,
         adapter,
-        onadaptererror: (event: { command: string; error: unknown }) => {
+        onAdapterError: (event: { command: string; error: unknown }) => {
           adapterErrors.push(event);
         },
       });
@@ -467,7 +467,7 @@ describe('history prepend at scrollTop=0 (#1237)', () => {
         id: 'prepend-reject-noop-chat',
         conversation,
         adapter,
-        onadaptererror: (event: { command: string; error: unknown }) => {
+        onAdapterError: (event: { command: string; error: unknown }) => {
           adapterErrors.push(event);
         },
       },

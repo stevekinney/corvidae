@@ -976,7 +976,7 @@ describe('Chat history pagination', () => {
         id: 'adapter-history-error-chat',
         conversation,
         adapter,
-        onadaptererror: (event: ChatAdapterErrorEvent) => errors.push(event),
+        onAdapterError: (event: ChatAdapterErrorEvent) => errors.push(event),
       },
     });
 

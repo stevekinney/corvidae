@@ -20,7 +20,7 @@ Header primitive for the active Chat conversation, composed as a sibling above C
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class name merged with `.cinder-chat-conversation-header`. |
 | `headingLevel` | `2` \| `3` \| `4` | no | — | Heading level for the conversation title. Default `2`. |
-| `showExportActions` | `boolean` | no | — | Whether to render the built-in conversation export actions. Default `true`. |
+| `exportActionsVisible` | `boolean` | no | — | Whether to render the built-in conversation export actions. Default `true`. |
 | `actions` | `(opaque)` | no | — | Additional action controls rendered after the built-in export actions. Not expressible in JSON Schema; see the component types for the signature. |
 | `conversation` | `(opaque)` | yes | — | Active compatible conversation snapshot. Not expressible in JSON Schema; see the component types for the signature. |
 

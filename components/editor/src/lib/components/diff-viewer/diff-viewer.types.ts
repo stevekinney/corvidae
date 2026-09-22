@@ -25,9 +25,9 @@ export type DiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    */
   normalizeInputs?: boolean;
   /** Called when user wants to revert all changes */
-  onrevertall?: () => void;
+  onRevertAll?: () => void;
   /** Called when user wants to revert a specific hunk */
-  onreverthunk?: (hunkIndex: number, hunk: DiffHunk) => void;
+  onRevertHunk?: (hunkIndex: number, hunk: DiffHunk) => void;
   /** Whether the viewer is read-only (hides revert buttons) */
   readonly?: boolean;
   /**

@@ -67,18 +67,18 @@
     label = 'Markdown editor',
     value = $bindable(''),
     mode = $bindable<EditorMode>('wysiwyg'),
-    showModeToggle = false,
+    modeToggleVisible = false,
     modeLabel = 'Editor mode',
     readonly = false,
     placeholder = 'Start writing...',
-    showToolbar = true,
-    ontoolbarcontextchange,
+    toolbarEnabled = true,
+    onToolbarContextChange,
     class: className,
-    onchange,
-    onready,
-    onmodechange,
-    onselectionchange,
-    oncommentshortcut,
+    onValueChange,
+    onReady,
+    onModeChange,
+    onSelectionChange,
+    onCommentShortcut,
     plugins = [],
     placeholderCompletion,
     placeholderDecoration,
@@ -123,7 +123,7 @@
    * shouldn't carry a dead custom property. That gate was itself a
    * regression, caught in review: `value` is this component's own
    * `$bindable` state, kept in sync with the live document through
-   * `onchange`'s debounced callback (`changeDebounceMs`, stacked on top of
+   * `onValueChange`'s debounced callback (`changeDebounceMs`, stacked on top of
    * `@milkdown/plugin-listener`'s own ~200ms internal debounce) — so for a
    * few hundred ms after a user deletes the last character, `is-editor-empty`
    * is already present (ProseMirror's own decoration recompute is
@@ -265,7 +265,7 @@
   // Should toolbar be visible?
   // Show toolbar in wysiwyg mode, or always when mode toggle is enabled (so users can switch modes)
   const toolbarVisible = $derived(
-    showToolbar && !readonly && browser && (mode === 'wysiwyg' || showModeToggle),
+    toolbarEnabled && !readonly && browser && (mode === 'wysiwyg' || modeToggleVisible),
   );
 
   // Link popover state
@@ -291,7 +291,7 @@
 
   // Publish the context so a parent can host the formatting controls itself.
   $effect(() => {
-    ontoolbarcontextchange?.(toolbarContext);
+    onToolbarContextChange?.(toolbarContext);
   });
 
   // Derive link popover props based on current selection
@@ -494,12 +494,12 @@
     onready: (state) => {
       editorState = state;
       isInitializing = false;
-      onready?.();
+      onReady?.();
     },
     onchange: (markdown) => {
       isInternalUpdate = true;
       value = markdown;
-      onchange?.(markdown);
+      onValueChange?.(markdown);
       // Increment version to trigger toolbar state re-derivation
       // (block type may have changed even if selection didn't move)
       selectionVersion++;
@@ -511,7 +511,7 @@
     onselectionchange: (selection) => {
       // Increment version to trigger toolbar state re-derivation
       selectionVersion++;
-      onselectionchange?.(selection);
+      onSelectionChange?.(selection);
     },
     onlinkshortcut: () => {
       // Mod-k pressed - open link popover with a virtual element anchor
@@ -523,7 +523,7 @@
       linkPopoverOpen = true;
     },
     // DEP-47: Comment shortcut (Ctrl-Alt-c)
-    oncommentshortcut: () => oncommentshortcut?.(),
+    onCommentShortcut: () => onCommentShortcut?.(),
   });
 
   // Track mode transitions to normalize content on switch (DEP-45).
@@ -536,7 +536,7 @@
     const priorMode = previousMode;
     previousMode = nextMode;
 
-    onmodechange?.(nextMode);
+    onModeChange?.(nextMode);
 
     // Prevent stale editor context when switching modes.
     linkPopoverOpen = false;
@@ -558,7 +558,7 @@
       if (normalized !== value) {
         isInternalUpdate = true;
         value = normalized;
-        onchange?.(normalized);
+        onValueChange?.(normalized);
         queueMicrotask(() => {
           isInternalUpdate = false;
         });
@@ -576,7 +576,7 @@
       if (normalized !== value) {
         isInternalUpdate = true;
         value = normalized;
-        onchange?.(normalized);
+        onValueChange?.(normalized);
         queueMicrotask(() => {
           isInternalUpdate = false;
         });
@@ -658,8 +658,8 @@
 
     // `value` is $bindable — a consumer that binds it (`bind:value`) expects
     // it to reflect an imperative content change the same way it reflects a
-    // typed one, not go stale until the next debounced `onchange` fires (or
-    // never, if `onchange` is suppressed for this external update).
+    // typed one, not go stale until the next debounced `onValueChange` fires (or
+    // never, if `onValueChange` is suppressed for this external update).
     //
     // cinder#1328: an UNCONDITIONAL `value = content;` here permanently
     // broke a LATER, unrelated parent-driven value change (e.g.
@@ -783,7 +783,7 @@
             </div>
           {/if}
 
-          {#if showModeToggle}
+          {#if modeToggleVisible}
             <div class="toolbar-mode-toggle">
               <SegmentedControl
                 id={`${id}-mode-toggle`}
@@ -830,7 +830,7 @@
           bind:value
           variant="code"
           class="markdown-editor surface source-mode"
-          oninput={(e) => onchange?.(e.currentTarget.value)}
+          oninput={(e) => onValueChange?.(e.currentTarget.value)}
           {placeholder}
           readonly={readonly || undefined}
           aria-label={accessibleEditorLabel}

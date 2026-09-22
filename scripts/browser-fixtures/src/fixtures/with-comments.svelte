@@ -125,7 +125,7 @@ The editor should make source, rendered, and diff modes available without leavin
     bind:value
     bind:threads
     currentUserId="steve"
-    onthreaddelete={handleThreadDelete}
+    onThreadDelete={handleThreadDelete}
   />
   <Button size="xs" variant="secondary" onclick={() => (documentRemovalAllowed = true)}>
     Allow document thread removal

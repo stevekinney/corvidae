@@ -98,7 +98,7 @@
       {adapter}
       {streaming}
       scrollFadeVisible
-      onadaptererror={handleAdapterError}
+      onAdapterError={handleAdapterError}
     />
   </div>
 </main>

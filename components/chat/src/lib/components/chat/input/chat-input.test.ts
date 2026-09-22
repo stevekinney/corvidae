@@ -143,7 +143,7 @@ describe('ChatInput', () => {
       id: 'large-paste-callback-composer',
       value: 'keep SELECT',
       largePasteThreshold: 5,
-      oncomposerinput: (nextValue: string) => values.push(nextValue),
+      onComposerInput: (nextValue: string) => values.push(nextValue),
     });
     const form = container.querySelector('form')!;
     const composer = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
@@ -651,7 +651,7 @@ describe('ChatInput', () => {
         target,
         props: {
           id: 'insert-range-observer',
-          oncomposerinput: (value: string, event?: Event) => changes.push({ value, event }),
+          onComposerInput: (value: string, event?: Event) => changes.push({ value, event }),
         },
       });
       const api = instance as unknown as {
@@ -670,7 +670,7 @@ describe('ChatInput', () => {
     });
   });
 
-  describe('oncomposerinput', () => {
+  describe('onComposerInput', () => {
     test('fires with the current composer value on every input event', async () => {
       const values: string[] = [];
       const target = document.createElement('div');
@@ -678,8 +678,8 @@ describe('ChatInput', () => {
       const instance = mount(ChatInput, {
         target,
         props: {
-          id: 'oncomposerinput-composer',
-          oncomposerinput: (value: string) => values.push(value),
+          id: 'onComposerInput-composer',
+          onComposerInput: (value: string) => values.push(value),
         },
       });
 
@@ -698,7 +698,7 @@ describe('ChatInput', () => {
       document.body.append(target);
       const instance = mount(ChatInput, {
         target,
-        props: { id: 'oncomposerinput-omitted-composer' },
+        props: { id: 'onComposerInput-omitted-composer' },
       });
 
       const composer = target.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;

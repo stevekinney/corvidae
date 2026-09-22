@@ -16,7 +16,7 @@ export type EditorMode = 'wysiwyg' | 'source';
  *
  * This carries everything `EditorToolbar` needs, so a caller can render a
  * complete toolbar — including one hosted outside this component, via
- * `ontoolbarcontextchange`. The handler fields matter: without them the
+ * `onToolbarContextChange`. The handler fields matter: without them the
  * documented `toolbar` snippet ("replaces default toolbar") could not
  * reproduce undo, redo, or the link popover.
  */
@@ -56,7 +56,7 @@ export type MarkdownEditorProps = Omit<
   /** Editor display mode (two-way bindable) */
   mode?: EditorMode;
   /** Show an inline toggle for switching between WYSIWYG and raw Markdown */
-  showModeToggle?: boolean;
+  modeToggleVisible?: boolean;
   /** Accessible label for the mode toggle (visually hidden) */
   modeLabel?: string;
   /** Read-only mode */
@@ -64,19 +64,19 @@ export type MarkdownEditorProps = Omit<
   /** Placeholder text when empty */
   placeholder?: string;
   /** Show formatting toolbar (DEP-37) */
-  showToolbar?: boolean;
+  toolbarEnabled?: boolean;
   /** Additional CSS classes */
   class?: string;
   /** Called when content changes */
-  onchange?: (value: string) => void;
+  onValueChange?: (value: string) => void;
   /** Called when the editor is ready (Milkdown initialized) */
-  onready?: () => void;
+  onReady?: () => void;
   /** Called when editor mode changes */
-  onmodechange?: (mode: EditorMode) => void;
+  onModeChange?: (mode: EditorMode) => void;
   /** Called when selection changes (stub for DEP-39) */
-  onselectionchange?: (selection: EditorSelection | null) => void;
+  onSelectionChange?: (selection: EditorSelection | null) => void;
   /** Called when comment shortcut (Ctrl-Alt-c) is pressed (DEP-47) */
-  oncommentshortcut?: () => void;
+  onCommentShortcut?: () => void;
   /**
    * Additional Milkdown plugins to load.
    * Used for comment anchoring (DEP-39), decorations, and other extensions.
@@ -111,9 +111,9 @@ export type MarkdownEditorProps = Omit<
    * Use this to host the formatting controls somewhere this component does not
    * render — for example folding them into a surrounding application toolbar so
    * the editor does not stack a second bar of its own. Pair it with
-   * `showToolbar={false}`.
+   * `toolbarEnabled={false}`.
    */
-  ontoolbarcontextchange?: (context: ToolbarContext) => void;
+  onToolbarContextChange?: (context: ToolbarContext) => void;
 
   /**
    * Additional toolbar actions (appended to default toolbar).

@@ -6,7 +6,7 @@
     /** The tool-approval render part. */
     part: ToolApprovalMessagePart;
     /** Called when the user resolves the approval. */
-    onapprovalresolve?:
+    onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
   };
 </script>
@@ -15,10 +15,10 @@
   import { ApprovalCard } from '@lostgradient/cinder';
   import type { ApprovalCardProps } from '@lostgradient/cinder';
 
-  let { part, onapprovalresolve }: ToolApprovalPartProps = $props();
+  let { part, onApprovalResolve }: ToolApprovalPartProps = $props();
 
   const canResolve = $derived(
-    part.state === 'pending' && !part.resolutionInFlight && onapprovalresolve !== undefined,
+    part.state === 'pending' && !part.resolutionInFlight && onApprovalResolve !== undefined,
   );
   const cardProps = $derived.by(() => {
     const props: ApprovalCardProps = {
@@ -44,7 +44,7 @@
 
   function resolveApproval(resolution: ApprovalResolution): void {
     if (!canResolve) return;
-    onapprovalresolve?.(part.toolCallId, resolution);
+    onApprovalResolve?.(part.toolCallId, resolution);
   }
 
   function handleKeydown(event: KeyboardEvent): void {
