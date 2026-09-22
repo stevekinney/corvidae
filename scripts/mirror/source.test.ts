@@ -526,3 +526,18 @@ describe('applyVersionConstants', () => {
     expect(decoder.decode(files['packages/other/src/version.ts'])).toBe(documented);
   });
 });
+
+/** COR-1192: the package front page ships from corvidae, and carries no version literal. */
+describe('the weft package README', () => {
+  test('is emitted, and names no release version', () => {
+    const emitted = committedPlans.weft.plan.files['packages/weft/README.md'];
+    expect(emitted).toBeDefined();
+    const text = typeof emitted === 'string' ? emitted : new TextDecoder().decode(emitted);
+    expect(text).toContain('# Weft');
+    // No release literal: the sentence that carried `0.25.0` is gone, and nothing else in the
+    // page names a weft version, so a future literal shows up here before it ships stale.
+    expect(text).not.toMatch(/Current release/);
+    expect(text).not.toMatch(/@lostgradient\/weft@\d|weft (?:version|release) \d/i);
+    expect(text).not.toContain('0.25.0');
+  });
+});

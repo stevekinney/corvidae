@@ -252,6 +252,11 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
   ],
   '@lostgradient/weft': [
     {
+      paths: ['README.md'],
+      reason:
+        "The package's published front page, shipped through its `files` array (COR-1192). `target-owned.json` has always said per-package READMEs are the transform's, but nothing emitted one, so weft's public README lived only on the target and drifted (it carried a release literal). Corvidae's copy is now that front page — no version literal in it; the manifest and `VERSION` carry the version — and it is emitted with the source it describes.",
+    },
+    {
       paths: ['scripts/lib/workflow-visibility-backfill.ts'],
       reason:
         'Imported by `src/core/engine/list-candidate-resolution.test.ts` and `src/storage/bun-sql-workflow-visibility-backfill.test.ts`.',
