@@ -293,6 +293,7 @@ describe('renderMirrorVerifyWorkflow', () => {
       });
       expect(workflow).toContain("cat > package.json <<'MIRROR_VERIFY_EOF'");
       expect(workflow).toContain("cat > smoke.mjs <<'MIRROR_VERIFY_EOF'");
+      expect(workflow).toContain("cat > smoke-node.mjs <<'MIRROR_VERIFY_EOF'");
       expect(workflow).toContain("import * as module0 from '@lostgradient/cryptography';");
       const writeIndex = workflow.indexOf('write the consumer smoke-test project');
       const installIndex = workflow.indexOf(

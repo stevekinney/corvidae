@@ -1,6 +1,8 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import type { ExportTarget } from './package-surface.ts';
+
 import type { SurfaceExportsMap } from './package-surface.ts';
 
 /**
@@ -263,11 +265,48 @@ function indent(text: string): string {
  * importable specifier and is skipped; `./package.json` is data, not a module. Everything else is
  * something somebody downstream will write in an import statement.
  */
+/** The consumer smoke script: import every specifier and refuse one that is not a module. */
+export function smokeScript(specifiers: readonly string[]): string {
+  return (
+    `${specifiers.map((specifier, index) => `import * as module${index} from '${specifier}';`).join('\n')}\n` +
+    `const loaded = [${specifiers.map((_, index) => `module${index}`).join(', ')}];\n` +
+    `for (const [index, module] of loaded.entries()) {\n` +
+    `  if (typeof module !== 'object' || module === null) {\n` +
+    `    throw new Error(\`\${${JSON.stringify(specifiers)}[index]} did not resolve to a module\`);\n` +
+    `  }\n` +
+    `}\n`
+  );
+}
+
 export function importableSpecifiers(publicName: string, exports: SurfaceExportsMap): string[] {
   return Object.keys(exports)
     .filter((subpath) => !subpath.includes('*') && subpath !== './package.json')
     .map((subpath) => (subpath === '.' ? publicName : `${publicName}/${subpath.slice(2)}`))
     .toSorted();
+}
+
+/**
+ * The subset of {@link importableSpecifiers} node can resolve: a subpath whose export target is a
+ * string, or whose conditions include one node honours (`node`, `import`, `require`, `default`),
+ * recursively. A `types` + `bun` entry — weft's `./storage/sqlite/bun` and `./storage/testing` —
+ * is bun's alone by design, and importing it under node is `ERR_PACKAGE_PATH_NOT_EXPORTED`, which
+ * would be the smoke test refusing a correct export map rather than a broken one.
+ */
+export function nodeImportableSpecifiers(publicName: string, exports: SurfaceExportsMap): string[] {
+  return Object.keys(exports)
+    .filter((subpath) => !subpath.includes('*') && subpath !== './package.json')
+    .filter((subpath) => resolvesUnderNode(exports[subpath]))
+    .map((subpath) => (subpath === '.' ? publicName : `${publicName}/${subpath.slice(2)}`))
+    .toSorted();
+}
+
+const nodeConditions = ['node', 'import', 'require', 'default'] as const;
+
+function resolvesUnderNode(target: ExportTarget | undefined): boolean {
+  if (target === undefined || target === null) return false;
+  if (typeof target === 'string') return true;
+  if (Array.isArray(target)) return target.some((entry) => resolvesUnderNode(entry));
+  return nodeConditions.some((condition) => resolvesUnderNode(target[condition]));
 }
 
 export interface SmokeTestPackage {
@@ -319,16 +358,11 @@ export async function runConsumerSmokeTest({
   if (specifiers.length === 0) {
     throw new PackagingError('The smoke test was given no importable specifier to check');
   }
-  await Bun.write(
-    join(project, 'smoke.mjs'),
-    `${specifiers.map((specifier, index) => `import * as module${index} from '${specifier}';`).join('\n')}\n` +
-      `const loaded = [${specifiers.map((_, index) => `module${index}`).join(', ')}];\n` +
-      `for (const [index, module] of loaded.entries()) {\n` +
-      `  if (typeof module !== 'object' || module === null) {\n` +
-      `    throw new Error(\`\${${JSON.stringify(specifiers)}[index]} did not resolve to a module\`);\n` +
-      `  }\n` +
-      `}\n`,
+  const nodeSpecifiers = packages.flatMap((entry) =>
+    nodeImportableSpecifiers(entry.publicName, entry.exports),
   );
+  await Bun.write(join(project, 'smoke.mjs'), smokeScript(specifiers));
+  await Bun.write(join(project, 'smoke-node.mjs'), smokeScript(nodeSpecifiers));
 
   assertSucceeded(
     await runCommand(['bun', 'install', ...installArguments], { cwd: project }),
@@ -339,8 +373,8 @@ export async function runConsumerSmokeTest({
     `importing ${specifiers.length} specifier(s) from the packed tarballs`,
   );
   assertSucceeded(
-    await runCommand(['node', 'smoke.mjs'], { cwd: project }),
-    `importing ${specifiers.length} specifier(s) from the packed tarballs under node`,
+    await runCommand(['node', 'smoke-node.mjs'], { cwd: project }),
+    `importing ${nodeSpecifiers.length} specifier(s) from the packed tarballs under node`,
   );
   return { directory: project, specifiers };
 }

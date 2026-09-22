@@ -263,6 +263,7 @@ describe('buildVerifySteps', () => {
     // differs by scratch directory — so only its *structure*, not its bytes, is compared.
     expect(localWrite?.files?.['smoke.mjs']).toBe(workflowWrite?.files?.['smoke.mjs']);
     expect(localWrite?.files?.['smoke.mjs']).toContain("from '@lostgradient/cryptography'");
+    expect(localWrite?.files?.['smoke-node.mjs']).toBe(workflowWrite?.files?.['smoke-node.mjs']);
     const localManifest = JSON.parse(localWrite?.files?.['package.json'] ?? '{}') as {
       dependencies: Record<string, string>;
     };
@@ -301,7 +302,11 @@ describe('the consumer smoke test runs under node as well as bun', () => {
 
   test('writes a plain-JavaScript smoke script both runtimes can execute', () => {
     const write = steps.find((step) => step.kind === 'write-consumer-project');
-    expect(Object.keys(write?.files ?? {}).toSorted()).toEqual(['package.json', 'smoke.mjs']);
+    expect(Object.keys(write?.files ?? {}).toSorted()).toEqual([
+      'package.json',
+      'smoke-node.mjs',
+      'smoke.mjs',
+    ]);
     expect(write?.files?.['smoke.mjs']).not.toMatch(/:\s*\w+\s*[=;)]/);
   });
 
@@ -314,7 +319,26 @@ describe('the consumer smoke test runs under node as well as bun', () => {
     expect(bun).toBeGreaterThan(install);
     expect(node).toBeGreaterThan(bun);
     expect(steps[bun]?.command).toEqual(['bun', 'run', 'smoke.mjs']);
-    expect(steps[node]?.command).toEqual(['node', 'smoke.mjs']);
+    expect(steps[node]?.command).toEqual(['node', 'smoke-node.mjs']);
     expect(steps[node]?.cwd).toBe(steps[bun]?.cwd);
+  });
+
+  test('a subpath exported for bun alone is imported under bun and left out under node', () => {
+    const first = published[0];
+    if (first === undefined) throw new Error('the fixture has no published package');
+    const bunOnly = {
+      ...first,
+      exports: {
+        ...first.exports,
+        './bun-only': { types: './dist/bun-only.d.ts', bun: './dist/bun-only.js' },
+      },
+    } as (typeof published)[number];
+    const write = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: [bunOnly], privateWorkspaces: [] },
+      localEnvironment(),
+    ).find((step) => step.kind === 'write-consumer-project');
+    expect(write?.files?.['smoke.mjs']).toContain(`from '${first.publicName}/bun-only'`);
+    expect(write?.files?.['smoke-node.mjs']).not.toContain('/bun-only');
+    expect(write?.files?.['smoke-node.mjs']).toContain(`from '${first.publicName}'`);
   });
 });

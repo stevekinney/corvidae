@@ -2,6 +2,7 @@ import { join } from 'node:path';
 
 import {
   importableSpecifiers,
+  nodeImportableSpecifiers,
   resolveTool,
   tarballFilename,
   type SmokeTestPackage,
@@ -325,6 +326,9 @@ export function buildVerifySteps(
   const specifiers = smokeTestPackages.flatMap((entry) =>
     importableSpecifiers(entry.publicName, entry.exports),
   );
+  const nodeSpecifiers = smokeTestPackages.flatMap((entry) =>
+    nodeImportableSpecifiers(entry.publicName, entry.exports),
+  );
   steps.push({
     kind: 'write-consumer-project',
     description: 'write the consumer smoke-test project',
@@ -333,6 +337,7 @@ export function buildVerifySteps(
     files: {
       'package.json': consumerManifest(smokeTestPackages),
       'smoke.mjs': consumerSmokeScript(specifiers),
+      'smoke-node.mjs': consumerSmokeScript(nodeSpecifiers),
     },
   });
   steps.push({
@@ -350,12 +355,14 @@ export function buildVerifySteps(
   // Under node as well (COR-1192): the packed 0.26.0 tarball imported under bun and failed under
   // node, because Bun's bundler rewrites an inlined CommonJS dependency's `require` to
   // `import.meta.require`, which only bun defines. The script is plain JavaScript so both
-  // runtimes execute the same file; a resolution that only one of them accepts is a red step.
+  // runtimes execute the same script shape; node's list omits the subpaths whose export map is
+  // bun's alone (`types` + `bun`), which node correctly refuses. A resolution node cannot make
+  // for a subpath it should is a red step.
   steps.push({
     kind: 'consumer-run-node',
-    description: `import ${specifiers.length} specifier(s) from the packed tarballs under node`,
+    description: `import ${nodeSpecifiers.length} specifier(s) from the packed tarballs under node`,
     cwd: consumerDirectory,
-    command: ['node', 'smoke.mjs'],
+    command: ['node', 'smoke-node.mjs'],
   });
 
   return steps;
