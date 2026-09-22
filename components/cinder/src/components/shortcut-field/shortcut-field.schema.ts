@@ -15,8 +15,15 @@ const schema = {
     },
     label: {
       type: 'string',
-      description: "Accessible label for the shortcut field. Defaults to `'Keyboard\nshortcut'`.",
+      description:
+        "Accessible label for the shortcut field. Defaults to `'Keyboard\nshortcut'`. Rendered as visible field text by default (see\n`labelVisible`).",
       default: 'Keyboard shortcut',
+    },
+    labelVisible: {
+      type: 'boolean',
+      description:
+        'Whether `label` renders as visible field text. When `false`, the label\nremains in the DOM (associated via `aria-labelledby`) but is visually\nhidden with the shared `cinder-sr-only` treatment. Defaults to `true`,\nmatching the field-control contract used by `FormField`, `Input`, and\n`PhoneInput`.',
+      default: true,
     },
     disabled: {
       type: 'boolean',
