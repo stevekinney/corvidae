@@ -18,6 +18,7 @@
 <script lang="ts">
   import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
+  import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import type { ButtonProps } from './button.types.ts';
@@ -53,6 +54,13 @@
     'aria-haspopup': ariaHaspopup,
     ...rest
   }: ButtonProps = $props();
+
+  // Read during initialization (works identically during SSR) so the
+  // connected-corner styling attribute is present in the very first markup a
+  // <ButtonGroup> ancestor's Button children produce — see
+  // button-group-context.ts and COR-459. `undefined` outside any group.
+  const buttonGroupContext = getButtonGroupContext();
+  const buttonGroupItemAttribute = buttonGroupContext?.groupId;
 
   // Prop-derived values must use `$derived` so they update when the consumer flips a prop
   // (most importantly `loading`) after the initial render.
@@ -222,6 +230,7 @@
     tabindex={loading ? -1 : anchorTabIndex}
     class={mergedClassName}
     {...dataAttributes}
+    data-cinder-button-group-item={buttonGroupItemAttribute}
     aria-disabled={resolvedAriaDisabled}
     aria-busy={resolvedAriaBusy}
     aria-label={resolvedAriaLabel}
@@ -239,6 +248,7 @@
     type={buttonType ?? 'button'}
     class={mergedClassName}
     {...dataAttributes}
+    data-cinder-button-group-item={buttonGroupItemAttribute}
     disabled={buttonDisabled || loading}
     aria-disabled={resolvedAriaDisabled}
     aria-busy={resolvedAriaBusy}
