@@ -403,14 +403,8 @@ function componentDeclarationSite(
     // Anything declared inside this package's src/ is ours to police —
     // including shared helper surfaces (src/utilities/dialog-props.ts, …)
     // that component Props intersect. node_modules declarations (inherited
-    // HTMLAttributes members, svelte helpers) are not, and neither are
-    // `*.generated.ts` files: forwarded-html-attributes.generated.ts is a
-    // flattened copy of those same svelte/elements members (COR-239).
-    if (
-      normalized.includes('/src/') &&
-      !normalized.includes('/node_modules/') &&
-      !normalized.endsWith('.generated.ts')
-    ) {
+    // HTMLAttributes members, svelte helpers) are not.
+    if (normalized.includes('/src/') && !normalized.includes('/node_modules/')) {
       return { sourceFile, declaration };
     }
   }

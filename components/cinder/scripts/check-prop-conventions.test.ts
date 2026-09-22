@@ -757,35 +757,3 @@ describe('check-prop-conventions — configurable directories (COR-500)', () => 
     expect(resolved[0]).toContain(join('src', 'components'));
   });
 });
-
-describe('check-prop-conventions — generated declarations', () => {
-  // `src/_internal/forwarded-html-attributes.generated.ts` (COR-239) is a
-  // verbatim, flattened copy of `svelte/elements` interfaces. Its native
-  // members (`'on:error'`, `onerror`, …) are not authored surface, exactly as
-  // the same members are not when they arrive from node_modules, so a
-  // component's own `onError` must not be reported as duplicating them.
-  test('does not treat members of a *.generated.ts file as an existing concept', async () => {
-    const root = mkdtempSync(join(import.meta.dir, '..', 'src', 'components', '.tmp-generated-'));
-    try {
-      writeFileSync(
-        join(root, 'tsconfig.json'),
-        JSON.stringify({ compilerOptions: { strict: true, skipLibCheck: true } }),
-      );
-      mkdirSync(join(root, 'shared'), { recursive: true });
-      writeFileSync(
-        join(root, 'shared', 'forwarded.generated.ts'),
-        "export interface FlatAttributes { 'on:error'?: ((event: Event) => void) | null; onerror?: ((event: Event) => void) | null }",
-      );
-      mkdirSync(join(root, 'widget'), { recursive: true });
-      writeFileSync(
-        join(root, 'widget', 'widget.types.ts'),
-        "import type { FlatAttributes } from '../shared/forwarded.generated.ts';\n" +
-          'export type WidgetProps = FlatAttributes & { onError?: (error: Error) => void };',
-      );
-
-      expect(await scan([root])).toEqual([]);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
