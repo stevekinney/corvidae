@@ -1,5 +1,12 @@
 import type { HTMLAttributes } from 'svelte/elements';
 export type DonutChartDatum = {
+  /**
+   * Unique within the chart. Keys the rendered arc and value-list row so
+   * keyboard focus and activation stay attached to the same logical datum
+   * across reorders, insertions, and removals of `data`. Labels are not a
+   * substitute—they are editable and need not be unique.
+   */
+  id: string;
   label: string;
   /** A negative, `NaN`, or infinite value renders as `0`—it is not rejected, and does not round-trip back to the caller. */
   value: number;
