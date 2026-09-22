@@ -155,10 +155,14 @@ const oracles: Record<(typeof missingComponents)[number], Oracle> = {
     await expect(page.locator('.cinder-setting-row input')).toHaveValue('Ada Lovelace');
   },
   'shortcut-field': async (page) => {
-    await expect(page.locator('.cinder-shortcut-field [role="textbox"]')).toHaveAttribute(
-      'aria-label',
-      'Open command palette',
-    );
+    // COR-443: the accessible name now comes from a visible label associated
+    // via aria-labelledby, not aria-label — assert through Playwright's own
+    // accessible-name computation so this exercises the real association,
+    // not just the attribute that produces it.
+    await expect(
+      page.locator('.cinder-shortcut-field').getByRole('textbox', { name: 'Open command palette' }),
+    ).toBeVisible();
+    await expect(page.getByText('Open command palette', { exact: true })).toBeVisible();
     await expect(page.locator('.cinder-shortcut-field kbd')).toHaveText(['Meta', 'K']);
   },
   stack: async (page) => {

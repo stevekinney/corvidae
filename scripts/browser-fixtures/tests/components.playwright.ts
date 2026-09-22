@@ -166,6 +166,26 @@ test.describe('fixture interaction rendering', () => {
 
     await expect(page.getByRole('menu')).toBeVisible();
   });
+
+  test('ShortcutField label contract: visible label names the textbox (COR-443)', async ({
+    componentPage,
+  }) => {
+    const entry = allEntries.find((candidate) => candidate.slug === 'shortcut-field');
+    expect(entry).toBeDefined();
+
+    const page = await componentPage.open({
+      entry: entry!,
+      theme: 'light',
+      viewport: VIEWPORTS.find((viewport) => viewport.name === 'desktop')!,
+    });
+
+    // The accessible name comes from aria-labelledby pointing at the shared
+    // FormFieldFrame label, so this exercises the real browser accessible-name
+    // computation rather than a raw aria-label attribute (see COR-443's
+    // rewrite of missing-defaults.playwright.ts's 'shortcut-field' case).
+    await expect(page.getByRole('textbox', { name: 'Open command palette' })).toBeVisible();
+    await expect(page.getByText('Open command palette', { exact: true })).toBeVisible();
+  });
 });
 
 async function assertRows(page: import('@playwright/test').Page, selector: string) {

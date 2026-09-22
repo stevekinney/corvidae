@@ -27,10 +27,20 @@ export type ShortcutFieldProps = Omit<
   validate?: (value: string[]) => string | undefined;
   /**
    * Accessible label for the shortcut field. Defaults to `'Keyboard
-   * shortcut'`.
+   * shortcut'`. Rendered as visible field text by default (see
+   * `labelVisible`).
    * @default 'Keyboard shortcut'
    */
   label?: string;
+  /**
+   * Whether `label` renders as visible field text. When `false`, the label
+   * remains in the DOM (associated via `aria-labelledby`) but is visually
+   * hidden with the shared `cinder-sr-only` treatment. Defaults to `true`,
+   * matching the field-control contract used by `FormField`, `Input`, and
+   * `PhoneInput`.
+   * @default true
+   */
+  labelVisible?: boolean;
   /** Set when the shortcut is unavailable. Defaults to `false`. @default false */
   disabled?: boolean;
   /** Additional class merged with the component's root class. */
