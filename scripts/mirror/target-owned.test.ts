@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { mirrorTargets } from './manifests.ts';
 import {
   assertNoEmissionsIntoRetired,
   assertRetirementsCoherent,
@@ -89,9 +90,12 @@ async function withFixtureTarget(
 }
 
 describe('mirror target-owned enumeration', () => {
-  test('the committed enumeration parses, names both targets and carries no expired exception', async () => {
+  test('the committed enumeration parses, names every target and carries no expired exception', async () => {
     const policy = await loadTargetOwnedPolicy();
-    expect(policy.targets).toEqual(['weft', 'cinder']);
+    expect(policy.targets).toEqual(['weft', 'cinder', 'agent-bureau']);
+    // The enumeration's own `targets` list and the transform's are the same set or the guard is
+    // scoped to a repository the transform never plans, which no entry's `targets` would reveal.
+    expect(policy.targets.toSorted()).toEqual([...mirrorTargets].toSorted());
     expect(findExpiredExceptions(policy)).toEqual([]);
     expect(policy.paths.every((entry) => entry.reason.length > 0)).toBe(true);
   });
@@ -677,7 +681,7 @@ describe('retiring a directory the target still carries', () => {
     ).not.toThrow();
   });
 
-  test('the committed enumeration retires weft-ui and COR-1286s CI-owned paths from weft alone', async () => {
+  test('the committed enumeration retires each target only what its own issue ruled on', async () => {
     const policy = await loadTargetOwnedPolicy();
     const retired = retiredDirectoriesFor(policy, 'weft');
     // The CI-owned paths and weft-ui, then the gate scripts the cleanup pull request deletes.
@@ -691,11 +695,32 @@ describe('retiring a directory the target still carries', () => {
     ]);
     expect(retired.slice(6).every((path) => path.startsWith('packages/weft/scripts/'))).toBe(true);
     expect(retired.length).toBe(37);
+    // COR-1287. The two CI workflows and the hook configuration are COR-1286's demotion ruling
+    // carried to a third target; the five packages are D1's — corvidae never carried them, and a
+    // mirror carries only what its source of truth carries.
+    expect(retiredDirectoriesFor(policy, 'agent-bureau')).toEqual([
+      '.github/workflows/ci.yml',
+      '.github/workflows/nightly.yml',
+      'lefthook.yml',
+      'packages/cloudflare',
+      'packages/evaluation',
+      'packages/gateway',
+      'packages/integration',
+      'packages/interoperability',
+    ]);
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
     for (const entry of policy.retired.entries) {
-      expect(entry.target).toBe('weft');
+      expect(['weft', 'agent-bureau']).toContain(entry.target);
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['COR-1192', 'COR-1286']).toContain(entry.issue);
+      expect(['COR-1192', 'COR-1286', 'COR-1287']).toContain(entry.issue);
+    }
+    // A retirement names exactly one repository, so no target's list may reach another's paths.
+    for (const target of mirrorTargets) {
+      for (const directory of retiredDirectoriesFor(policy, target)) {
+        expect(
+          policy.retired.entries.filter((entry) => entry.directory === directory),
+        ).toHaveLength(1);
+      }
     }
     // The one retired entry that names a file rather than a directory — D3's own evidence that
     // `retiredEntrySchema`'s `directory` key needed no widening to carry it.

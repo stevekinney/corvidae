@@ -7,6 +7,7 @@ import {
   planManifests,
   publicNameFor,
   readExistingManifest,
+  targetHasCatalog as targetCanHoldCatalog,
   type ManifestPlan,
   type PlanOptions,
 } from './manifests.ts';
@@ -227,7 +228,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   const baseline = await loadRegistryBaseline();
   const root = (await Bun.file(join(options.corvidaeRoot, 'package.json')).json()) as JsonObject;
   const catalog = isJsonObject(root['catalog']) ? (root['catalog'] as Record<string, string>) : {};
-  const targetHasCatalog = options.target === 'cinder';
+  const targetHasCatalog = targetCanHoldCatalog(options.target);
 
   const components = await discoverComponents();
 

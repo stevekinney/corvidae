@@ -118,6 +118,41 @@ export async function readWorkflowInstalls(directory: string): Promise<WorkflowI
   return installs;
 }
 
+/** The two spellings GitHub Actions accepts for the same workflow file, in the order probed. */
+const releaseWorkflowNames = ['release.yaml', 'release.yml'] as const;
+
+/**
+ * Which of the two spellings this clone's release workflow actually uses.
+ *
+ * `release.yaml` was a default parameter until COR-1287, which is the same class of mistake this
+ * module was written to catch one layer down: a constant standing in for something that is only
+ * true of the targets that existed when it was written. weft and cinder spell it `release.yaml`,
+ * stevekinney/agent-bureau spells it `release.yml`, GitHub Actions accepts both, and a default
+ * that guesses wrong does not fail cleanly — `readWorkflowInstalls` finds the install line under
+ * the real name, the `find` for `releaseWorkflowFile` misses it, and the rendered workflow
+ * silently loses the release workflow's install arguments. So the name is read off the clone, for
+ * the reason the module header gives: the whole failure mode is a divergence nobody noticed.
+ *
+ * Both present is an error rather than a preference. Two release workflows is a fact about the
+ * target nobody has ruled on, and picking one would make the mirror pin its Bun version and
+ * install flags to whichever this function happened to probe first.
+ */
+export async function resolveReleaseWorkflowFile(directory: string): Promise<string> {
+  const present: string[] = [];
+  for (const name of releaseWorkflowNames) {
+    if (await Bun.file(join(directory, '.github', 'workflows', name)).exists()) present.push(name);
+  }
+  if (present.length === 1) return present[0] as string;
+  if (present.length === 0) {
+    throw new InstallParityError(
+      `This clone carries neither ${releaseWorkflowNames.join(' nor ')}; cannot read a release workflow's bun-version pin`,
+    );
+  }
+  throw new InstallParityError(
+    `This clone carries both ${present.join(' and ')}; which one is the release workflow has to be ruled on rather than guessed`,
+  );
+}
+
 /**
  * The `bun-version:` an `oven-sh/setup-bun` step pins in one workflow file, read directly rather
  * than assumed.
@@ -125,15 +160,20 @@ export async function readWorkflowInstalls(directory: string): Promise<WorkflowI
  * COR-1286's `mirror-verify.yaml` has to pin the same Bun version the target's own release
  * workflow does — reading it here, the way `readWorkflowInstalls` already reads the release
  * workflow's install line, is what lets the renderer generalize past weft's `1.4.2` to whatever a
- * target's `release.yaml` pins next, without this module needing to know either value ahead of
+ * target's release workflow pins next, without this module needing to know either value ahead of
  * time. A line scan again, for the reason `extractWorkflowInstalls` gives: the value is inside a
  * `run:`/`with:` block that YAML treats as opaque text or a scalar, so parsing the document still
  * leaves this to read as text.
+ *
+ * `file` is optional and resolved from the clone when it is omitted, so no caller has to carry a
+ * per-target filename. Passing one explicitly is still how a fixture names a workflow that is not
+ * a release workflow at all.
  */
 export async function readReleaseWorkflowBunVersion(
   directory: string,
-  file = 'release.yaml',
+  workflowFile?: string,
 ): Promise<string> {
+  const file = workflowFile ?? (await resolveReleaseWorkflowFile(directory));
   const path = join(directory, '.github', 'workflows', file);
   const contents = await Bun.file(path)
     .text()

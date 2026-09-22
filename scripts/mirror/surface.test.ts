@@ -59,6 +59,9 @@ function planText(plan: SurfacePlan, path: string): string {
  */
 const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
   weft: [],
+  // COR-1287: the agent-bureau target's ten packages each resolve every subpath their emitted
+  // manifest names, so it joins weft with nothing accepted.
+  'agent-bureau': [],
   cinder: [
     // The two promoted components' deprecated shims: `src/components/experimental/` is absent
     // here, and only the bare component entry narrows — each one's `/schema`, `/variables` and
@@ -101,21 +104,36 @@ describe('surface parity', () => {
     expect(result?.added).toEqual([]);
   });
 
+  /**
+   * COR-1287 split this list across two targets. The four `runtime-closure-forced` packages moved
+   * to agent-bureau with the rest of that repository's source; `@lostgradient/weft-ui` is the one
+   * that stayed in cinder. Asserted per target rather than merged back into one list, because a
+   * package appearing under the wrong target here is precisely the routing mistake the member map
+   * exists to prevent, and a merged list would hide it.
+   */
   test('a package with no published predecessor is a first publish, not a failure', () => {
-    const { plan } = committedPlans.cinder;
-    const results = plan.parity.filter(isFirstPublish);
-    expect(results.map((result) => result.publicName).toSorted()).toEqual([
+    const firstPublishNames = (target: MirrorTarget): string[] =>
+      committedPlans[target].plan.parity
+        .filter(isFirstPublish)
+        .map((result) => result.publicName)
+        .toSorted();
+    expect(firstPublishNames('cinder')).toEqual(['@lostgradient/weft-ui']);
+    expect(firstPublishNames('agent-bureau')).toEqual([
       '@lostgradient/cryptography',
       '@lostgradient/embeddings',
       '@lostgradient/lifecycle',
       '@lostgradient/tool-protocol',
-      '@lostgradient/weft-ui',
     ]);
-    for (const result of results) {
-      expect(result.missing, `${result.publicName} cannot narrow what was never published`).toEqual(
-        [],
-      );
-      expect(result.added.length, `${result.publicName} proposes no subpaths`).toBeGreaterThan(0);
+    expect(firstPublishNames('weft')).toEqual([]);
+
+    for (const target of mirrorTargets) {
+      for (const result of committedPlans[target].plan.parity.filter(isFirstPublish)) {
+        expect(
+          result.missing,
+          `${result.publicName} cannot narrow what was never published`,
+        ).toEqual([]);
+        expect(result.added.length, `${result.publicName} proposes no subpaths`).toBeGreaterThan(0);
+      }
     }
   });
 });

@@ -2,7 +2,12 @@ import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { assertInstallParity, readWorkflowInstalls, type InstallParity } from './install-parity.ts';
-import { assertNothingDeferred, runInstall, type MirrorTarget } from './manifests.ts';
+import {
+  assertNothingDeferred,
+  mirrorTargets,
+  runInstall,
+  type MirrorTarget,
+} from './manifests.ts';
 import { loadPackageSurface, missingBuildInputs } from './package-surface.ts';
 import {
   assertSucceeded,
@@ -673,11 +678,18 @@ function required(argv: readonly string[], name: string): string {
   return value;
 }
 
+/** Narrow a `--target` argument to a known target, so a third one needs no second literal here. */
+function isMirrorTarget(value: string): value is MirrorTarget {
+  return (mirrorTargets as readonly string[]).includes(value);
+}
+
 export async function runSyncCommand(argv: readonly string[]): Promise<number> {
   try {
     const target = required(argv, 'target');
-    if (target !== 'weft' && target !== 'cinder') {
-      throw new SyncError(`Unknown --target "${target}"; expected weft or cinder`);
+    if (!isMirrorTarget(target)) {
+      throw new SyncError(
+        `Unknown --target "${target}"; expected one of ${mirrorTargets.join(', ')}`,
+      );
     }
     const result = await runSync({
       corvidaeRoot:
