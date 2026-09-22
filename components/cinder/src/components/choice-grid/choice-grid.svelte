@@ -19,6 +19,7 @@
     ChoiceGridContext,
     ChoiceGridItemState,
     ChoiceGridProps,
+    ChoiceGridSize,
   } from './choice-grid.types.ts';
 </script>
 
@@ -36,7 +37,11 @@
     values = $bindable([]),
     multiple = false,
     columns = 'responsive',
-    minColumnWidth = '10rem',
+    size,
+    // The responsive default depends on `size`: a compact grid needs a
+    // smaller minimum column before consumers have a reason to override it
+    // (COR-330). An explicit `minColumnWidth` always wins over either default.
+    minColumnWidth = size === 'sm' ? '6rem' : '10rem',
     ariaLabel,
     ariaLabelledby,
     disabled = false,
@@ -217,6 +222,9 @@
     get disabled() {
       return disabled;
     },
+    get size() {
+      return size;
+    },
     isSelected,
     select,
     register,
@@ -270,6 +278,7 @@
   aria-disabled={disabled || undefined}
   data-cinder-multiple={multiple || undefined}
   data-cinder-disabled={disabled || undefined}
+  data-cinder-size={size}
 >
   {@render children()}
 </Grid>
