@@ -1,15 +1,17 @@
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import {
   checkComponentNameForBarePluralShadow,
   collectComponentNameShadowViolations,
   collectPropConventionViolations,
   collectResolvedSurfaceViolations,
+  componentsDirsFromArgv,
   createPropsProgram,
   existingComponentDirectoryNames,
   namespaceOnlySingularNames,
+  scan,
 } from './check-prop-conventions';
 
 describe('check-prop-conventions', () => {
@@ -637,5 +639,121 @@ describe('check-prop-conventions component-name directory scan', () => {
     expect(violations).toHaveLength(1);
     expect(violations[0]?.candidateName).toBe('widgets');
     expect(violations[0]?.shadowedComponent).toBe('widget');
+  });
+});
+
+describe('check-prop-conventions — configurable directories (COR-500)', () => {
+  // Two SEPARATE roots stand in for two workspaces (e.g. cinder and chat):
+  // each gets its own directory tree, its own tsconfig.json (so
+  // `createPropsProgram`'s per-directory `configSearchFrom` — not a single
+  // shared program — is what actually resolves each one), and its own
+  // component file. `scan()` is the CLI-facing entry point
+  // `check:prop-conventions` calls with multiple directories, so these
+  // exercise it directly rather than the lower-level per-directory helpers.
+  function makeWorkspaceRoot(prefix: string): string {
+    const root = mkdtempSync(join(import.meta.dir, '..', 'src', 'components', prefix));
+    writeFileSync(
+      join(root, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { strict: true, skipLibCheck: true } }),
+    );
+    return root;
+  }
+
+  function writeComponentFile(root: string, name: string, source: string): string {
+    const componentDirectory = join(root, name);
+    mkdirSync(componentDirectory, { recursive: true });
+    const filePath = join(componentDirectory, `${name}.types.ts`);
+    writeFileSync(filePath, source);
+    return filePath;
+  }
+
+  test('discovers violations across every directory it is given, each resolved against its own tsconfig', async () => {
+    const rootA = makeWorkspaceRoot('.tmp-multi-a-');
+    const rootB = makeWorkspaceRoot('.tmp-multi-b-');
+    try {
+      writeComponentFile(
+        rootA,
+        'widget-a',
+        'export type WidgetAProps = { onactivate?: (value: string) => void };',
+      );
+      writeComponentFile(
+        rootB,
+        'widget-b',
+        'export type WidgetBProps = { ondeactivate?: (value: string) => void };',
+      );
+
+      const violations = await scan([rootA, rootB]);
+      const propNames = violations.map((violation) => violation.propName).toSorted();
+      expect(propNames).toEqual(['onactivate', 'ondeactivate']);
+
+      const violationA = violations.find((violation) => violation.propName === 'onactivate');
+      const violationB = violations.find((violation) => violation.propName === 'ondeactivate');
+      expect(violationA?.filePath).toContain('widget-a.types.ts');
+      expect(violationB?.filePath).toContain('widget-b.types.ts');
+    } finally {
+      rmSync(rootA, { recursive: true, force: true });
+      rmSync(rootB, { recursive: true, force: true });
+    }
+  });
+
+  test('still resolves a one-level-inherited violation (a non-exported helper type merged via intersection) through a scanned directory', async () => {
+    const root = makeWorkspaceRoot('.tmp-multi-inherit-');
+    try {
+      writeComponentFile(
+        root,
+        'inherited-widget',
+        [
+          'type InheritedWidgetHelper = { onactivate?: (value: string) => void };',
+          'export type InheritedWidgetProps = InheritedWidgetHelper & { id?: string };',
+        ].join('\n'),
+      );
+
+      const violations = await scan([root]);
+      expect(violations).toHaveLength(1);
+      expect(violations[0]?.propName).toBe('onactivate');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('accepts an Event-first lowercase handler (native passthrough) across multiple scanned directories', async () => {
+    const rootA = makeWorkspaceRoot('.tmp-multi-event-a-');
+    const rootB = makeWorkspaceRoot('.tmp-multi-event-b-');
+    try {
+      writeComponentFile(
+        rootA,
+        'event-widget-a',
+        'export type EventWidgetAProps = { onclick?: (event: MouseEvent) => void };',
+      );
+      writeComponentFile(
+        rootB,
+        'event-widget-b',
+        'export type EventWidgetBProps = { onpointerdown?: (event: PointerEvent) => void };',
+      );
+
+      expect(await scan([rootA, rootB])).toEqual([]);
+    } finally {
+      rmSync(rootA, { recursive: true, force: true });
+      rmSync(rootB, { recursive: true, force: true });
+    }
+  });
+
+  test('componentsDirsFromArgv resolves CLI arguments against the working directory, not hardcoded sibling paths', () => {
+    const resolved = componentsDirsFromArgv([
+      'bun',
+      'check-prop-conventions.ts',
+      '../chat/src/lib/components',
+      '../editor/src/lib/components',
+    ]);
+    expect(resolved).toEqual([
+      resolve(process.cwd(), '../chat/src/lib/components'),
+      resolve(process.cwd(), '../editor/src/lib/components'),
+    ]);
+  });
+
+  test('componentsDirsFromArgv falls back to cinder’s own componentsDirectory when no arguments are given', () => {
+    const resolved = componentsDirsFromArgv(['bun', 'check-prop-conventions.ts']);
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]).toContain(join('src', 'components'));
   });
 });
