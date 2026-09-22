@@ -1,9 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { ExportTarget } from './package-surface.ts';
-
-import type { SurfaceExportsMap } from './package-surface.ts';
+import type { ExportTarget, SurfaceExportsMap } from './package-surface.ts';
 
 /**
  * What a packed tarball is checked with before anything published leaves the mirror.
