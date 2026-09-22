@@ -51,13 +51,13 @@ describe('scoped theme tokens', () => {
     const lightBlock = extractRuleBlock(css, "[data-theme='light']");
 
     expect(darkBlock).toContain(
-      '--cinder-shadow-sm: 0 1px 2px oklch(100% 0 0 / 0.09), 0 1px 1px oklch(100% 0 0 / 0.05);',
+      '--cinder-shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.09), 0 1px 1px oklch(0% 0 0 / 0.05);',
     );
     expect(darkBlock).toContain(
-      '--cinder-shadow-md: 0 4px 6px -1px oklch(100% 0 0 / 0.09), 0 2px 4px -2px oklch(100% 0 0 / 0.06);',
+      '--cinder-shadow-md: 0 4px 6px -1px oklch(0% 0 0 / 0.09), 0 2px 4px -2px oklch(0% 0 0 / 0.06);',
     );
     expect(darkBlock).toContain(
-      '--cinder-shadow-lg:\n    0 10px 15px -3px oklch(100% 0 0 / 0.11), 0 4px 6px -4px oklch(100% 0 0 / 0.07);',
+      '--cinder-shadow-lg: 0 10px 15px -3px oklch(0% 0 0 / 0.11), 0 4px 6px -4px oklch(0% 0 0 / 0.07);',
     );
     expect(darkBlock).toContain(
       '--cinder-shadow-overlay:\n    0 10px 15px -3px oklch(0% 0 0 / 0.45), 0 4px 6px -4px oklch(0% 0 0 / 0.32);',
