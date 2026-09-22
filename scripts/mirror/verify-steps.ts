@@ -51,7 +51,8 @@ export type VerifyStepKind =
   | 'write-consumer-project'
   | 'consumer-install'
   | 'consumer-run'
-  | 'consumer-run-node';
+  | 'consumer-run-node'
+  | 'prepack';
 
 /** One command `verifyTarget` runs, or the rendered workflow's job runs as a step. */
 export interface VerifyStep {
@@ -262,6 +263,20 @@ export function buildVerifySteps(
       command: ['bun', 'run', 'typecheck'],
       publicName: entry.publicName,
     });
+    // COR-1192: the release workflow runs `bun run prepack` right before `npm publish`, and the first
+    // tagged release failed there — twice — on gates nothing before the tag had run. Whatever the
+    // published package's recorded `prepack` is, it runs here too, so a tag cannot be the first
+    // place it executes. Only for a package whose surface records the script; the surface is the
+    // ruling about the published scripts and is what the sync writes onto the manifest.
+    if (typeof entry.entry.build?.scripts?.['prepack'] === 'string') {
+      steps.push({
+        kind: 'prepack',
+        description: `prepack ${entry.publicName}`,
+        cwd: env.resolveDirectory(entry.directory),
+        command: ['bun', 'run', 'prepack'],
+        publicName: entry.publicName,
+      });
+    }
   }
 
   for (const entry of ordered) {

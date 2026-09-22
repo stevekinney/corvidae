@@ -143,6 +143,26 @@ describe('mirror target-owned enumeration', () => {
     expect(findTargetOwner(policy, '.github/workflows/verify-jsdoc.yaml', 'weft')).toBeUndefined();
   });
 
+  test('weft’s surviving release and packaging scripts are the target’s own, and the emitted generator files are not', async () => {
+    const policy = await loadTargetOwnedPolicy();
+    for (const file of [
+      'verify-tree-shaking.ts',
+      'verify-release-version.ts',
+      'pr-title.ts',
+      'validate-package-consumers.ts',
+    ]) {
+      expect(findTargetOwner(policy, `packages/weft/scripts/${file}`, 'weft')?.glob).toBe(
+        `packages/weft/scripts/${file}`,
+      );
+    }
+    expect(
+      findTargetOwner(policy, 'packages/weft/scripts/generate-operation-client.ts', 'weft'),
+    ).toBeUndefined();
+    expect(
+      findTargetOwner(policy, 'packages/weft/scripts/operation-client-schema.ts', 'weft'),
+    ).toBeUndefined();
+  });
+
   test('weft’s gate scripts are retired, and the scripts the release and pr-title still call are not', async () => {
     const policy = await loadTargetOwnedPolicy();
     const retired = retiredDirectoriesFor(policy, 'weft');

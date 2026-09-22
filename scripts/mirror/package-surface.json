@@ -193,8 +193,7 @@
       "build": {
         "scripts": {
           "build": "bun run scripts/build.ts",
-          "prepack": "bun run scripts/run-gates.ts prepack",
-          "prepublishOnly": "bun run validate",
+          "prepack": "bun run build && bun run verify:exports && bun run verify:portability && bun run validate:package-consumers",
           "clean": "rm -rf dist coverage tsconfig.tsbuildinfo"
         },
         "toolchain": {
@@ -1744,7 +1743,6 @@
     "The four packages with a null `lastPublishedVersion` in package-map.json (@lostgradient/cryptography, @lostgradient/embeddings, @lostgradient/tool-protocol, @lostgradient/lifecycle) have no upstream manifest to vendor. Their surface here follows the tsdown convention their published agent-bureau siblings use, but it is a proposal the coordinator should confirm before the first publish, not a port of anything.",
     "`requiredInputs` records that no build script in this list exists in corvidae. COR-1190 ruled that they stay target-owned rather than becoming transform-owned: the transform never prunes, so a file the target already carries survives every sync, and making the mirror author another repository’s build toolchain would put the mirror in charge of how the target builds. What changed is that the assumption is now checked — `assertBuildInputsPresent` in `sync.ts` fails a sync, naming every missing file, when a clone lacks one — so a manifest whose `build` script points at a file nothing wrote can no longer reach a publish silently.",
     "`toolchain` is derived from the import closure of each upstream build entrypoint, not from the upstream `devDependencies` block as a whole. A build that shells out to a tool it never imports would be missed.",
-    "`@lostgradient/operative`, `armorer` and `conversationalist` carry the two exports defects COR-1190 fixed in the four never-published entries: conditions ordered so `types` is never consulted and `default` shadows what follows it, and one shared `types` covering a `require` condition, which describes the CommonJS output as ESM. `publint --strict` errors on both and `attw` reports the second as masquerading. These three are ports of what those packages publish today, so correcting them changes published resolution behaviour and needs an owner ruling rather than a transform-side edit; the four that were fixed were proposals nothing had published.",
-    "`@lostgradient/weft` declares `prepack: bun run scripts/run-gates.ts prepack`, and `scripts/run-gates.ts` is not in its `requiredInputs`. The packaging checks pack with `--ignore-scripts`, so the gap does not fail them, but a real `bun pm pack` on a clone carrying only the recorded inputs would. Either add it to `requiredInputs` or rule that the gate is not part of what the mirror rehearses."
+    "`@lostgradient/operative`, `armorer` and `conversationalist` carry the two exports defects COR-1190 fixed in the four never-published entries: conditions ordered so `types` is never consulted and `default` shadows what follows it, and one shared `types` covering a `require` condition, which describes the CommonJS output as ESM. `publint --strict` errors on both and `attw` reports the second as masquerading. These three are ports of what those packages publish today, so correcting them changes published resolution behaviour and needs an owner ruling rather than a transform-side edit; the four that were fixed were proposals nothing had published."
   ]
 }

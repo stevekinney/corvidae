@@ -7,6 +7,7 @@ import {
   assertNothingDeferred,
   discoverWorkspaces,
   mirrorTargets,
+  targetFor,
   type MirrorTarget,
 } from './manifests.ts';
 import { loadPackageSurface } from './package-surface.ts';
@@ -444,5 +445,44 @@ describe('the plan and the guard on the committed tree', () => {
       ...nonSourcePrefixes.map((prefix) => `${prefix}*`),
     ].toSorted();
     expect(filtered).toEqual(reaching);
+  });
+});
+
+/**
+ * COR-1192. The first tagged release failed at `bun run prepack` on the real target: the sync
+ * had put `prepack: bun run scripts/run-gates.ts prepack` back onto a manifest the cleanup pull
+ * request had trimmed, because `package-surface.json` recorded that script and
+ * `applySurfaceToManifest` writes the recorded scripts over the target's block. What the surface
+ * records is therefore a ruling about the published package, and it must never name a file the
+ * same policy retires.
+ */
+describe('emitted scripts and retired files', () => {
+  test('no script the surface records for a published package names a path its target retires', async () => {
+    // The surface's `build.scripts` are written over the target's block on every sync, so they are
+    // the ruling about the published package's scripts. (A committed plan with no target clone
+    // also carries corvidae's own `lint`/`test` scripts, which name corvidae's gates; a real sync
+    // keeps the target's block for those, so they are not what this test judges.)
+    const policy = await loadTargetOwnedPolicy();
+    const surface = await loadPackageSurface();
+    for (const [workspace, entry] of Object.entries(surface.packages)) {
+      const target = targetFor(workspace);
+      const retiredNames = policy.retired.entries
+        .filter((retired) => retired.target === target)
+        .map((retired) => retired.directory.split('/').at(-1) ?? '');
+      for (const [name, command] of Object.entries(entry.build.scripts)) {
+        for (const retired of retiredNames) {
+          expect(command, `${target} ${workspace} ${name}`).not.toContain(retired);
+        }
+      }
+    }
+  });
+
+  test('weft’s prepack is the trimmed release gate and prepublishOnly is gone', () => {
+    const { plan } = committedPlans.weft;
+    const manifest = JSON.parse(String(plan.files['packages/weft/package.json']));
+    expect(manifest.scripts.prepack).toBe(
+      'bun run build && bun run verify:exports && bun run verify:portability && bun run validate:package-consumers',
+    );
+    expect(manifest.scripts.prepublishOnly).toBeUndefined();
   });
 });
