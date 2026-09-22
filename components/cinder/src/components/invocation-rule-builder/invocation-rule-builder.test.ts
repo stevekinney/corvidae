@@ -205,20 +205,10 @@ describe('InvocationRuleBuilder', () => {
       expect(invocationRuleBuilderSchema.properties).toHaveProperty('fieldOptions');
       expect(invocationRuleBuilderSchema.properties).toHaveProperty('operatorOptions');
       expect(invocationRuleBuilderSchema.properties).toHaveProperty('actionOptions');
-      // `unsupportedProps` also lists every unsupported native attribute InvocationRuleBuilder
-      // now forwards (COR-239's flattened `FlatHTMLAttributesElement` enumerates the same
-      // function-typed `on:x`/`onx` properties `HTMLAttributes<HTMLElement>` always had — this
-      // schema generator just didn't see them through the un-flattened generic interface
-      // before), so the list is no longer just `onValueChange` alone. What this test actually
-      // cares about — `onValueChange` is unsupported and not required — still holds.
-      const unsupportedPropNames = invocationRuleBuilderSchema.metadata?.unsupportedProps?.map(
-        (prop) => prop.name,
-      );
-      expect(unsupportedPropNames).toContain('onValueChange');
-      const onValueChangeEntry = invocationRuleBuilderSchema.metadata?.unsupportedProps?.find(
-        (prop) => prop.name === 'onValueChange',
-      );
-      expect(onValueChangeEntry?.required).not.toBe(true);
+      expect(
+        invocationRuleBuilderSchema.metadata?.unsupportedProps?.map((prop) => prop.name),
+      ).toEqual(['onValueChange']);
+      expect(invocationRuleBuilderSchema.metadata?.unsupportedProps?.[0]?.required).not.toBe(true);
 
       expect(
         validate({

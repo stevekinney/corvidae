@@ -1,11 +1,6 @@
 import type { Snippet } from 'svelte';
+import type { HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 import type { BadgeVariant } from '../badge/badge.types.ts';
-
-import type {
-  FlatHTMLAttributesSpanElement,
-  FlatHTMLButtonAttributes,
-} from '../../_internal/forwarded-html-attributes.generated.ts';
-
 export type ChipVariant = BadgeVariant;
 export type ChipSize = 'sm' | 'md';
 export type ChipMode = 'display' | 'toggle' | 'removable';
@@ -15,22 +10,7 @@ export type ChipMode = 'display' | 'toggle' | 'removable';
  * (density="toolbar"). Default rendering is unchanged.
  */
 export type ChipDensity = 'toolbar';
-// Forwarded through the flattened (non-generic) copies of svelte/elements' attribute
-// interfaces — see `_internal/forwarded-html-attributes.generated.ts` (COR-239). Referencing
-// the generic interfaces directly from all three modes of this union pushes `keyof ChipProps`
-// (which svelte's `Component<Props, {}, Bindings>` computes for its `Bindings` constraint)
-// over TypeScript's type complexity budget: TS2590 under a consumer's `skipLibCheck: false`.
-export type ChipDisplayProps = Omit<FlatHTMLAttributesSpanElement, 'class'> & {
-  // Named rather than a general `data-*` index signature — the flattened attribute type above is
-  // already at TypeScript's type complexity budget for this three-mode union, and an index
-  // signature (even a small `data-${string}` one) reintroduces TS2590. `data-test-id`,
-  // `data-cinder-mode`, and `data-cinder-variant` are the three this workspace's own tests rely
-  // on (chip-attributes.test.ts); the latter two are also intentionally overridable-and-
-  // overridden — the component's own derived value wins when a consumer spreads a conflicting
-  // one (see that same test).
-  'data-test-id'?: string;
-  'data-cinder-mode'?: string;
-  'data-cinder-variant'?: string;
+export type ChipDisplayProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   /** Rendering and interaction mode. Default `"display"`. */
   mode?: 'display';
   /** Visible text content of the chip. */
@@ -62,12 +42,9 @@ export type ChipDisplayProps = Omit<FlatHTMLAttributesSpanElement, 'class'> & {
 // omitted: the component consumes them (wraps onclick, suppresses empty aria-label)
 // rather than discarding them.
 export type ChipToggleProps = Omit<
-  FlatHTMLButtonAttributes,
+  HTMLButtonAttributes,
   'class' | 'disabled' | 'aria-pressed' | 'type'
 > & {
-  'data-test-id'?: string;
-  'data-cinder-mode'?: string;
-  'data-cinder-variant'?: string;
   /** Rendering and interaction mode. Must be `"toggle"` for this variant. */
   mode: 'toggle';
   /** Visible text content of the chip. */
@@ -94,10 +71,7 @@ export type ChipToggleProps = Omit<
   onRemove?: never;
   removeAriaLabel?: never;
 };
-export type ChipRemovableProps = Omit<FlatHTMLAttributesSpanElement, 'class'> & {
-  'data-test-id'?: string;
-  'data-cinder-mode'?: string;
-  'data-cinder-variant'?: string;
+export type ChipRemovableProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   /** Rendering and interaction mode. Must be `"removable"` for this variant. */
   mode: 'removable';
   /** Visible text content of the chip and fallback accessible name for the remove button. */

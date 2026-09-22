@@ -1,10 +1,5 @@
 import type { Snippet } from 'svelte';
-
-import type {
-  FlatHTMLAnchorAttributes,
-  FlatHTMLButtonAttributes,
-} from '../../_internal/forwarded-html-attributes.generated.ts';
-import type { WellKnownDataTestId } from '../../_internal/well-known-data-attributes.ts';
+import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
 /**
  * Visual style of the button.
@@ -29,7 +24,7 @@ export type ButtonVariant =
  */
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
-type SharedBase = WellKnownDataTestId & {
+type SharedBase = {
   /** Visual style. */
   variant?: ButtonVariant;
   /** Size of the button. */
@@ -46,17 +41,6 @@ type SharedBase = WellKnownDataTestId & {
   trailingIcon?: Snippet;
   /** Custom class merged with `.cinder-button`. */
   class?: string;
-  /**
-   * Marks the Button rendered by `InlineConfirm`'s cancel action so it can be found with
-   * `querySelector('[data-cinder-inline-cancel]')` (`inline-confirm.svelte`).
-   *
-   * Named rather than a general `data-*` index signature: the flattened attribute types above
-   * are already at TypeScript's type complexity budget for this two-arm union (see the comment
-   * on `ButtonOnlyProps`/`LinkButtonProps` below) — adding an index signature, even a small one,
-   * reintroduces TS2590. A consumer needing an arbitrary `data-*` attribute on Button can still
-   * set it via the DOM after render; this workspace's own use is the one named case.
-   */
-  'data-cinder-inline-cancel'?: boolean;
 };
 
 // At least one of `label` or `children` must be provided so the button has an accessible name.
@@ -84,16 +68,8 @@ type IconOnlyVisual =
 type WithIconOnly = { iconOnly: true } & IconOnlyAccessibleName & IconOnlyVisual;
 type SharedProps = SharedBase & (WithLabel | WithChildren | WithIconOnly);
 
-// Forwarded through the flattened (non-generic) copies of `HTMLButtonAttributes` /
-// `HTMLAnchorAttributes` — see `_internal/forwarded-html-attributes.generated.ts` (COR-239).
-// Referencing svelte/elements' own generic interfaces from both arms of this union makes
-// `keyof ButtonProps` (which svelte's `Component<Props, {}, Bindings>` computes to check its
-// `Bindings` constraint) re-walk their multi-level generic inheritance chain once per arm,
-// which is exactly what tips a published consumer's `skipLibCheck: false` type-check into
-// TS2590. The flattened copies are structurally identical, non-generic object types, so `keyof`
-// stays cheap regardless of how many arms reference them.
-type ButtonOnlyProps = SharedProps & Omit<FlatHTMLButtonAttributes, 'class'> & { href?: undefined };
-type LinkButtonProps = SharedProps & Omit<FlatHTMLAnchorAttributes, 'class'> & { href: string };
+type ButtonOnlyProps = SharedProps & Omit<HTMLButtonAttributes, 'class'> & { href?: undefined };
+type LinkButtonProps = SharedProps & Omit<HTMLAnchorAttributes, 'class'> & { href: string };
 
 /** Props for the Button component. */
 export type ButtonProps = ButtonOnlyProps | LinkButtonProps;

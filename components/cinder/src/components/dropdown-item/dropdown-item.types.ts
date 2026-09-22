@@ -1,10 +1,5 @@
 import type { Snippet } from 'svelte';
-
-import type {
-  FlatHTMLAnchorAttributes,
-  FlatHTMLAttributesElement,
-  FlatHTMLButtonAttributes,
-} from '../../_internal/forwarded-html-attributes.generated.ts';
+import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
 export type DropdownItemVariant = 'default' | 'danger';
 export type DropdownItemRole = 'menuitem' | 'menuitemcheckbox' | 'menuitemradio';
@@ -15,7 +10,7 @@ export type DropdownItemRole = 'menuitem' | 'menuitemcheckbox' | 'menuitemradio'
 // consumer can attach an inline handler without TypeScript forcing it to
 // "prove" which branch it is on. Element-specific NON-event attributes live in
 // the two branches so the `href` ⇄ `type` discriminant stays real.
-type DropdownItemBase = Omit<FlatHTMLAttributesElement, 'class'> & {
+type DropdownItemBase = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
   /** Visual style of the item. Use `danger` to signal a destructive action. Default `default`. */
   variant?: DropdownItemVariant;
   /** ARIA role for the row. Use `menuitemcheckbox` or `menuitemradio` for selectable menu items. */
@@ -31,18 +26,6 @@ type DropdownItemBase = Omit<FlatHTMLAttributesElement, 'class'> & {
   children?: Snippet;
   /** When true the item is inert: click is blocked and aria-disabled is set. */
   disabled?: boolean | undefined;
-  /**
-   * Marks the DropdownItem `menu-bar.svelte` renders as a submenu trigger, found with
-   * `querySelector('[data-cinder-menu-bar-submenu-trigger]')`.
-   *
-   * Named rather than a general `data-*` index signature: the flattened attribute types above
-   * are already at TypeScript's type complexity budget for this two-arm union — adding an index
-   * signature, even a small one, reintroduces TS2590 (see the module doc on
-   * `scripts/generate-forwarded-html-attributes.ts`, COR-239). A consumer needing an arbitrary
-   * `data-*` attribute on DropdownItem can still set it via the DOM after render; this
-   * workspace's own use is the one named case.
-   */
-  'data-cinder-menu-bar-submenu-trigger'?: boolean;
 };
 
 /**
@@ -56,10 +39,7 @@ type DropdownItemBase = Omit<FlatHTMLAttributesElement, 'class'> & {
  * aria-disabled), not the native attribute.
  */
 export type DropdownItemButtonProps = DropdownItemBase &
-  Omit<
-    FlatHTMLButtonAttributes,
-    keyof FlatHTMLAttributesElement | 'class' | 'disabled' | 'type'
-  > & {
+  Omit<HTMLButtonAttributes, keyof HTMLAttributes<HTMLElement> | 'class' | 'disabled' | 'type'> & {
     href?: undefined;
     /**
      * Button type forwarded to the `<button>` element. Defaults to `"button"`.
@@ -82,7 +62,7 @@ export type DropdownItemButtonProps = DropdownItemBase &
  * event handlers — so the inline-handler contravariance trap never reappears.
  */
 export type DropdownItemAnchorProps = DropdownItemBase &
-  Omit<FlatHTMLAnchorAttributes, keyof FlatHTMLAttributesElement | 'class' | 'href'> & {
+  Omit<HTMLAnchorAttributes, keyof HTMLAttributes<HTMLElement> | 'class' | 'href'> & {
     /**
      * Destination URL. Any defined value — including an empty string — selects
      * the anchor branch and renders an `<a>`. Omit `href` entirely to render a
