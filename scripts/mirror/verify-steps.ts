@@ -148,12 +148,79 @@ function consumerSmokeScript(specifiers: readonly string[]): string {
 }
 
 /**
- * The ordered verification steps for one target: install, then per published package build,
- * typecheck, pack and packaging checks, then per checkable private workspace typecheck, then the
- * consumer smoke test. Mirrors `verifyTarget`'s own comment on why the order is what it is: the
- * root install first because everything after it depends on a satisfied `node_modules`, then one
- * package at a time rather than a root fan-out, because this list verifies exactly what the plan
- * emits and nothing the target's own root scripts might additionally include.
+ * Raised when the published packages cannot be put in an order that builds every dependency before
+ * its consumers — today, only because their intra-target edges form a cycle.
+ *
+ * This is a hard failure, and deliberately one that reaches further than verification. `planSurface`
+ * renders `mirror-verify.yaml` from the same `published` list, so a cycle refuses the *plan*, not
+ * just the run: a target whose packages depend on each other circularly has no build order at all,
+ * and a plan that emitted a workflow claiming otherwise would be a workflow that cannot pass. The
+ * alternative — ordering what can be ordered and leaving the rest in discovery order — is the
+ * defect COR-1289 fixes, reintroduced quietly for the one case where it is guaranteed to bite.
+ */
+export class VerifyStepOrderError extends Error {}
+
+/**
+ * The published packages, reordered so every package follows the packages it depends on.
+ *
+ * Kahn's algorithm, taking every package whose dependencies are already satisfied in each round and
+ * keeping them in the caller's discovery order within the round. Stability matters: discovery order
+ * is what the step list used before COR-1289 and what every target with no intra-target edges still
+ * gets, so a target that never had the defect sees no change at all.
+ */
+function orderByDependencies(published: readonly PublishedPackage[]): readonly PublishedPackage[] {
+  const byPublicName = new Map(published.map((entry) => [entry.publicName, entry]));
+  for (const entry of published) {
+    for (const dependency of entry.dependsOn) {
+      if (byPublicName.has(dependency)) continue;
+      // `surface.ts` narrows `dependsOn` to the published set before it ever reaches here, so a
+      // stranger means the two halves disagree about what this target publishes — a defect to
+      // surface, not one to route around by ignoring the edge and ordering as if it were absent.
+      throw new VerifyStepOrderError(
+        `${entry.publicName} depends on ${dependency}, which this target does not publish; dependsOn is expected to name only published packages of the same target`,
+      );
+    }
+  }
+
+  const ordered: PublishedPackage[] = [];
+  const built = new Set<string>();
+  let remaining = [...published];
+  while (remaining.length > 0) {
+    const ready = remaining.filter((entry) =>
+      entry.dependsOn.every((dependency) => built.has(dependency)),
+    );
+    if (ready.length === 0) {
+      const edges = remaining.flatMap((entry) =>
+        entry.dependsOn.map((dependency) => `  ${entry.publicName} -> ${dependency}`),
+      );
+      throw new VerifyStepOrderError(
+        `These published packages depend on each other in a cycle, so no build order satisfies them: ${remaining
+          .map((entry) => entry.publicName)
+          .join(', ')}\n${edges.join('\n')}`,
+      );
+    }
+    ordered.push(...ready);
+    for (const entry of ready) built.add(entry.publicName);
+    remaining = remaining.filter((entry) => !ready.includes(entry));
+  }
+  return ordered;
+}
+
+/**
+ * The ordered verification steps for one target: install, then every published package's build,
+ * then every one's typecheck, then per package pack and packaging checks, then per checkable
+ * private workspace typecheck, then the consumer smoke test. Mirrors `verifyTarget`'s own comment
+ * on why the order is what it is: the root install first because everything after it depends on a
+ * satisfied `node_modules`, then one package at a time rather than a root fan-out, because this
+ * list verifies exactly what the plan emits and nothing the target's own root scripts might
+ * additionally include.
+ *
+ * COR-1289 split the per-package loop into phases and reordered the packages within them. A
+ * package's `typecheck` resolves an edge to a sibling in the same target through that sibling's
+ * `exports`, which name `dist/`; interleaving build and typecheck per package therefore type-checks
+ * the first package against siblings that have not been built yet. Building everything first is
+ * what closes that, and `orderByDependencies` is what makes "everything" reachable — a dependency
+ * later in discovery order than its consumer has to build earlier than it.
  */
 export function buildVerifySteps(
   inputs: VerifyStepsInputs,
@@ -169,24 +236,32 @@ export function buildVerifySteps(
   ];
 
   const tarballsDirectory = join(env.scratchDirectory, 'tarballs');
-  const smokeTestPackages: SmokeTestPackage[] = [];
+  const tarballFor = (entry: PublishedPackage): string =>
+    join(tarballsDirectory, tarballFilename(entry.publicName, entry.version));
+  const ordered = orderByDependencies(inputs.published);
 
-  for (const entry of inputs.published) {
-    const cwd = env.resolveDirectory(entry.directory);
+  for (const entry of ordered) {
     steps.push({
       kind: 'build',
       description: `build ${entry.publicName}`,
-      cwd,
+      cwd: env.resolveDirectory(entry.directory),
       command: ['bun', 'run', 'build'],
       publicName: entry.publicName,
     });
+  }
+
+  for (const entry of ordered) {
     steps.push({
       kind: 'typecheck-published',
       description: `typecheck ${entry.publicName}`,
-      cwd,
+      cwd: env.resolveDirectory(entry.directory),
       command: ['bun', 'run', 'typecheck'],
       publicName: entry.publicName,
     });
+  }
+
+  for (const entry of ordered) {
+    const cwd = env.resolveDirectory(entry.directory);
     steps.push({
       kind: 'pack',
       description: `pack ${entry.publicName}`,
@@ -202,7 +277,7 @@ export function buildVerifySteps(
       ],
       publicName: entry.publicName,
     });
-    const tarball = join(tarballsDirectory, tarballFilename(entry.publicName, entry.version));
+    const tarball = tarballFor(entry);
     steps.push({
       kind: 'publint',
       description: `publint ${entry.publicName}`,
@@ -219,8 +294,18 @@ export function buildVerifySteps(
       publicName: entry.publicName,
       tarball,
     });
-    smokeTestPackages.push({ publicName: entry.publicName, tarball, exports: entry.exports });
   }
+
+  // Discovery order, not the build order above. Nothing about importing a packed tarball depends on
+  // the order the tarballs were produced in — every pack has already run by the time the consumer
+  // project is written — and `sync.ts` reports the smoke test's specifiers with `specifiersFor`,
+  // which reads `published` as the caller passed it. Deriving this list from `ordered` instead would
+  // make the reported specifiers disagree with the ones the script actually imports.
+  const smokeTestPackages: SmokeTestPackage[] = inputs.published.map((entry) => ({
+    publicName: entry.publicName,
+    tarball: tarballFor(entry),
+    exports: entry.exports,
+  }));
 
   for (const entry of inputs.privateWorkspaces) {
     if (!entry.emitsTypeScript) continue;

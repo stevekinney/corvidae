@@ -64,6 +64,29 @@ const dependencyFields = [
 ] as const;
 
 /**
+ * The blocks whose intra-target edges order a target's verification (COR-1289).
+ *
+ * A published package's `typecheck` resolves an edge to another package in the same target through
+ * that package's `exports`, which point at `dist/` — so the dependency has to have been built
+ * first. These three blocks are the ones that say "this package's published surface needs that
+ * one": `dependencies` and `optionalDependencies` are installed alongside it, and a
+ * `peerDependencies` entry is still a name the consumer's own source imports and its declaration
+ * files name.
+ *
+ * `devDependencies` is deliberately absent, and its absence is load-bearing rather than an
+ * oversight. A development edge does not participate in the published type surface, so ordering
+ * does not need it; including it would additionally manufacture cycles out of test-only back-edges
+ * — a package depending on a fixture or harness workspace that itself depends on the package under
+ * test is an ordinary and legal arrangement that no build order could satisfy, and
+ * `verify-steps.ts`'s cycle refusal would reject the whole plan over it.
+ */
+const publishedEdgeFields = new Set<(typeof dependencyFields)[number]>([
+  'dependencies',
+  'peerDependencies',
+  'optionalDependencies',
+]);
+
+/**
  * Per-target facts that are not in `package-map.json`, which rules on what a workspace *becomes*
  * rather than on which repository it lands in.
  *
@@ -241,6 +264,14 @@ interface RewriteContext {
   requiredCatalog: Map<string, string>;
   /** Edges dropped because the other end does not exist downstream, reported rather than silent. */
   dropped: string[];
+  /**
+   * COR-1289: every edge that stays `workspace:*` because both ends ship in this target, keyed by
+   * the consumer's corvidae name and holding the dependency's public name. Recorded here, at the
+   * one place the transform decides an edge is intra-target, rather than recovered by parsing the
+   * emitted manifests a second time — a second parse would be a second opinion about which
+   * specifiers are mirror-internal, and this one is already authoritative.
+   */
+  intraTargetEdges: Map<string, Set<string>>;
 }
 
 /** Resolve one internal `@lostgradient/*` edge, or `undefined` when the edge cannot be carried. */
@@ -262,7 +293,17 @@ function resolveInternalEdge(
     );
   }
   const publicName = publicNameFor(dependency, disposition);
-  if (targetFor(dependency) === context.target) return [publicName, 'workspace:*'];
+  if (targetFor(dependency) === context.target) {
+    if (publishedEdgeFields.has(field)) {
+      let edges = context.intraTargetEdges.get(consumer);
+      if (!edges) {
+        edges = new Set<string>();
+        context.intraTargetEdges.set(consumer, edges);
+      }
+      edges.add(publicName);
+    }
+    return [publicName, 'workspace:*'];
+  }
 
   if (disposition.disposition === 'private-workspace') {
     // A private workspace has no registry presence, so an edge to one cannot cross repositories.
@@ -567,6 +608,20 @@ export interface ManifestPlan {
   /** Internal edges dropped because the other end does not exist in this target. */
   droppedEdges: string[];
   /**
+   * COR-1289: the intra-target `workspace:*` edges that survive, keyed by the consumer's corvidae
+   * name and holding each dependency's public name, sorted.
+   *
+   * Recorded for the same reason `publicNames` is: it is a fact the dependency composition already
+   * established, and a second producer re-deriving it is a second chance to disagree. `surface.ts`
+   * narrows it to the edges between *published* packages when it fills each `PublishedPackage`'s
+   * `dependsOn`, which is what orders the verification step list — a package's typecheck resolves
+   * these edges through `exports` → `dist/`, so the dependency must already have been built.
+   *
+   * Only `dependencies`, `peerDependencies` and `optionalDependencies` contribute; see
+   * `publishedEdgeFields` for why `devDependencies` does not.
+   */
+  intraTargetEdges: ReadonlyMap<string, readonly string[]>;
+  /**
    * Third-party dependencies the target declared nowhere, added from corvidae, as
    * `path: name (block)`. Reported rather than refused: a package legitimately gains a dependency,
    * and the alternative to adding it is emitting source that cannot resolve its own imports.
@@ -721,6 +776,7 @@ export async function planManifests({
     dispositions,
     requiredCatalog: new Map(),
     dropped: [],
+    intraTargetEdges: new Map(),
   };
 
   const licence = await Bun.file(join(corvidaeRoot, 'LICENSE')).text();
@@ -800,6 +856,12 @@ export async function planManifests({
     firstPublish: firstPublish.toSorted(),
     seededFromPackageMap: seededFromPackageMap.toSorted(),
     droppedEdges: context.dropped,
+    intraTargetEdges: new Map(
+      [...context.intraTargetEdges].map(([consumer, edges]) => [
+        consumer,
+        [...edges].toSorted((left, right) => left.localeCompare(right)),
+      ]),
+    ),
     addedDependencies: addedDependencies.toSorted(),
     emitted: emittedWorkspaces,
     publicNames,

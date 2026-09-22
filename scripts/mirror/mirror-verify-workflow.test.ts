@@ -20,6 +20,7 @@ const published: PublishedPackage[] = [
     exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
     files: ['dist'],
     version: '1.2.3',
+    dependsOn: [],
   },
 ];
 
