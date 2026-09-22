@@ -162,7 +162,7 @@ describe('schema-form validation', () => {
     });
   });
 
-  test('treats fulfilled async JSON Schema validation as valid for falsy root values', async () => {
+  test('validates a falsy root value against a boolean-typed schema', async () => {
     const result = await validateSchemaValue(
       {
         $async: true,
@@ -174,7 +174,12 @@ describe('schema-form validation', () => {
     expect(result).toEqual({ valid: true, value: false, issues: [] });
   });
 
-  test('reports async JSON Schema validation rejections as validation issues', async () => {
+  // `$async` is not a JSON Schema keyword — it was an Ajv-only compile hint
+  // this file's implementation never actually depended on for real
+  // asynchronous validators, so it's preserved here only as an unknown
+  // keyword (see "accepts an unrecognised keyword" above) rather than
+  // treated as a supported schema feature.
+  test('reports a const violation as a validation issue at the field path', async () => {
     const result = await validateSchemaValue(
       {
         $async: true,
@@ -187,7 +192,7 @@ describe('schema-form validation', () => {
 
     expect(result.valid).toBe(false);
     expect(result.issues[0]?.path).toEqual(['accepted']);
-    expect(result.issues[0]?.message).toMatch(/constant/i);
+    expect(result.issues[0]?.message).toMatch(/`true`/i);
   });
 
   test('groups issues by path without overwriting the first field message', () => {
@@ -232,6 +237,124 @@ describe('schema-form validation', () => {
     if (!serialized.ok) {
       expect(serialized.issue.path).toEqual([]);
       expect(serialized.issue.message).toMatch(/circular|cyclic/i);
+    }
+  });
+
+  // COR-228 parity fixtures — preserved across the CSP-safe interpreter swap.
+  test('validates through a local $ref', async () => {
+    const schema = {
+      type: 'object',
+      properties: { a: { $ref: '#/$defs/str' } },
+      $defs: { str: { type: 'string' } },
+    };
+    expect(await validateSchemaValue(schema, { a: 'x' })).toEqual({
+      valid: true,
+      value: { a: 'x' },
+      issues: [],
+    });
+    const invalid = await validateSchemaValue(schema, { a: 1 });
+    expect(invalid.valid).toBe(false);
+  });
+
+  test('validates through a 2019-09 $recursiveRef', async () => {
+    const schema = {
+      $schema: 'https://json-schema.org/draft/2019-09/schema',
+      $id: 'schema-form-recursive-ref',
+      $recursiveAnchor: true,
+      type: 'object',
+      properties: { children: { type: 'array', items: { $recursiveRef: '#' } } },
+    };
+    const valid = await validateSchemaValue(schema, { children: [{ children: [] }] });
+    expect(valid.valid).toBe(true);
+    const invalid = await validateSchemaValue(schema, { children: [{ children: 'nope' }] });
+    expect(invalid.valid).toBe(false);
+  });
+
+  test('validates through a 2020-12 $dynamicRef', async () => {
+    const schema = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      $id: 'schema-form-dynamic-ref',
+      $dynamicAnchor: 'node',
+      type: 'object',
+      properties: { children: { type: 'array', items: { $dynamicRef: '#node' } } },
+    };
+    const valid = await validateSchemaValue(schema, { children: [{ children: [] }] });
+    expect(valid.valid).toBe(true);
+    const invalid = await validateSchemaValue(schema, { children: [{ children: 'nope' }] });
+    expect(invalid.valid).toBe(false);
+  });
+
+  test('reports a missing $ref target as a root compilation issue', async () => {
+    const result = await validateSchemaValue(
+      { type: 'object', properties: { a: { $ref: '#/nonexistent' } } },
+      { a: 1 },
+    );
+    expect(result.valid).toBe(false);
+    expect(result.issues[0]?.path).toEqual([]);
+  });
+
+  test('accepts an unrecognised keyword without affecting validation', async () => {
+    const schema = { type: 'object', properties: { a: { type: 'string' } }, 'x-vendor': 42 };
+    expect(await validateSchemaValue(schema, { a: 'x' })).toEqual({
+      valid: true,
+      value: { a: 'x' },
+      issues: [],
+    });
+  });
+
+  // SchemaForm has never registered ajv-formats (unlike JsonSchemaEditor,
+  // which does — see json-schema-validator.test.ts). Under Ajv's strict:false,
+  // an unregistered `format` is a no-op: the keyword is recognised (no
+  // warning, no schema error) but never asserts, so any value passes
+  // regardless of the format's validity. That is SchemaForm's actual
+  // current behaviour and this repair doesn't own changing it — preserve it
+  // exactly rather than newly enforcing formats as a side effect of sharing
+  // an interpreter with JsonSchemaEditor.
+  const AJV_FORMATS = [
+    'date',
+    'time',
+    'date-time',
+    'iso-time',
+    'iso-date-time',
+    'duration',
+    'uri',
+    'uri-reference',
+    'uri-template',
+    'url',
+    'email',
+    'hostname',
+    'ipv4',
+    'ipv6',
+    'regex',
+    'uuid',
+    'json-pointer',
+    'json-pointer-uri-fragment',
+    'relative-json-pointer',
+    'byte',
+    'int32',
+    'int64',
+    'float',
+    'double',
+    'password',
+    'binary',
+  ] as const;
+
+  test('every ajv-formats format is recognised but not asserted (matches current behaviour)', async () => {
+    for (const format of AJV_FORMATS) {
+      const type = ['int32', 'int64', 'float', 'double'].includes(format) ? 'number' : 'string';
+      const schema = { type, format };
+      const obviouslyInvalidValue =
+        type === 'number' ? Number.NaN : '\u0000not a valid anything\u0000';
+      const result = await validateSchemaValue(schema, obviouslyInvalidValue);
+      // Type mismatches (NaN isn't a JSON Schema "number" once serialised,
+      // but Ajv's runtime check treats it as one) still short-circuit
+      // before reaching format — assert on the *reported issues*, not
+      // truthiness, so a real behaviour change (format newly enforced)
+      // fails loudly instead of coincidentally passing on the type check.
+      const formatIssue = result.issues.find((issue) =>
+        issue.message.toLowerCase().includes('format'),
+      );
+      expect(formatIssue).toBeUndefined();
     }
   });
 
