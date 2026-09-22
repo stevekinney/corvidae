@@ -45,6 +45,8 @@
     name,
     class: className,
     onValueChange,
+    headerVisible = true,
+    displayValue,
   }: SliderProps = $props();
 
   const formField = getFormFieldContext();
@@ -444,6 +446,25 @@
     return unit ? `${nextValue} ${unit}` : String(nextValue);
   }
 
+  // The header's visible value text. `displayValue` replaces only this
+  // display — `formattedAriaValue`'s ARIA `aria-valuetext` output is a
+  // separate, untouched formatter (COR-327). The discriminated SliderProps
+  // union ties the formatter's argument shape to `mode`, so the cast here
+  // bridges the runtime (SliderValue) and prop (number | [number, number])
+  // types the same way `commit`'s `onValueChange` cast does above.
+  const visibleValueText = $derived.by<string>(() => {
+    if (isRange) {
+      if (displayValue) {
+        return (displayValue as (value: [number, number]) => string)([lowValue, highValue]);
+      }
+      return `${visibleValue(lowValue)}–${visibleValue(highValue)}`;
+    }
+    if (displayValue) {
+      return (displayValue as (value: number) => string)(lowValue);
+    }
+    return visibleValue(lowValue);
+  });
+
   // Render tick mark positions.
   const tickMarks = $derived.by<number[]>(() => {
     if (tickList) return tickList;
@@ -471,10 +492,8 @@
   {...rootDirection ? { dir: rootDirection } : {}}
 >
   <div class="cinder-slider__header">
-    {#if !formFieldLabelId}<span class="cinder-slider__label">{label}</span>{/if}
-    <span class="cinder-slider__value">
-      {visibleValue(lowValue)}{#if isRange}–{visibleValue(highValue)}{/if}
-    </span>
+    {#if headerVisible && !formFieldLabelId}<span class="cinder-slider__label">{label}</span>{/if}
+    <span class="cinder-slider__value">{visibleValueText}</span>
   </div>
   {#if isRange}
     <span id={lowQualifierId} class="cinder-sr-only">

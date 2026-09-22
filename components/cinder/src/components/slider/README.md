@@ -22,6 +22,26 @@ The thumb, track fill, and tick marks do not: they travel along an interval inse
 
 Pointer interaction follows the same interval: clicking or dragging anywhere in the reserved endpoint margin — including at the track's physical edges — still resolves to `min` or `max`. You don't need to add your own padding or a click handler to reach the ends of the range.
 
+## Compact headers and formatted values
+
+`headerVisible?: boolean` (default `true`) hides the header row's label span. The value span always keeps rendering — hiding the label never leaves an empty gap in its place, and it never changes a thumb's accessible name, which always comes from `label` regardless of what the header displays.
+
+`displayValue` replaces only that value span's text: `(value: number) => string` in single mode, `(value: [number, number]) => string` in range mode (called once with the full tuple, not once per thumb). It's independent of `valueText`, which formats `aria-valuetext` for assistive technology — set both when the visible text and the announced text should differ, or just `displayValue` to restyle what's shown while keeping the default `aria-valuetext` behavior.
+
+```svelte
+<Slider label="Scale" min={0} max={12} value={7} displayValue={(v) => `${v} notes · C4–B4`} />
+<Slider
+  label="Octave range"
+  mode="range"
+  min={0}
+  max={22}
+  value={[0, 22]}
+  displayValue={([low, high]) => `${low}–${high}`}
+/>
+```
+
+**Composing with FormField.** Slider already has an automatic mechanism for this: rendered inside `<FormField>`, it detects the field's label via context and omits its own label span, letting `<FormField>` own the label through `aria-labelledby` instead (see [Accessible name](./slider.a11y.md#accessible-name)). `headerVisible` doesn't replace that mechanism — it composes with it. The label renders only when both are true: `headerVisible` is `true` (the default) _and_ the Slider isn't inside a `FormField`. Set `headerVisible={false}` for a compact standalone Slider; inside a `FormField` it's redundant (the label is already suppressed) but harmless, and the value span keeps rendering either way.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -30,6 +50,7 @@ Pointer interaction follows the same interval: clicking or dragging anywhere in 
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Extra class names merged with `.cinder-slider`. |
 | `disabled` | `boolean` | no | — | Disables interaction. |
+| `headerVisible` | `boolean` | no | — | Whether the header row renders the visible label span. Default `true`. Hides only the label — the visible value text always stays, with no layout gap left behind — and never affects the thumbs' accessible names, which come from `label` regardless. This composes with, rather than replaces, the automatic label suppression a Slider already performs inside `<FormField>` (the field owns the label there via `aria-labelledby`, so Slider's own label span is omitted independent of this prop). Setting `headerVisible={false}` inside a FormField is a no-op for the label — it's already hidden — but still governs the value span the same way it does standalone. |
 | `label` | `string` | yes | — | Visible label / accessible name for the slider. Required. |
 | `max` | `number` | no | — | Maximum value. Default `100`. |
 | `min` | `number` | no | — | Minimum value. Default `0`. |
@@ -39,6 +60,7 @@ Pointer interaction follows the same interval: clicking or dragging anywhere in 
 | `step` | `number` | no | — | Step increment for arrow keys. Default `1`. Must be a positive finite number. |
 | `ticks` | `false` \| `true` \| `number`[] | no | — | Optional tick marks. `true` renders one per `step`; an array snaps to those values. |
 | `unit` | `string` | no | — | Optional unit displayed with the current value, such as `%` or `ms`. |
+| `displayValue` | `(opaque)` | no | — | Formats the visible value text shown in the header. Replaces only the value display — the `valueText` ARIA formatter is untouched. Absent a formatter, the value renders with the current unit-based formatting. Not expressible in JSON Schema; see the component types for the signature. |
 | `onValueChange` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `value` | `(opaque)` | no | — | A prop whose shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `valueText` | `(opaque)` | no | — | Formats the numeric value for `aria-valuetext`. Not expressible in JSON Schema; see the component types for the signature. |

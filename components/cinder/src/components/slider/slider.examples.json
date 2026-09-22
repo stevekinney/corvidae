@@ -38,6 +38,12 @@
       "title": "Slider with formatted value text",
       "description": "Use `valueText` to format the value for screen readers — percentages, currency, dates.",
       "code": "<script lang=\"ts\">\n  import { Slider } from '@lostgradient/cinder';\n  let percent = $state(60);\n  let price = $state(250);\n\n  const usd = new Intl.NumberFormat('en-US', {\n    style: 'currency',\n    currency: 'USD',\n    maximumFractionDigits: 0,\n  });\n</script>\n\n<div style=\"display: flex; flex-direction: column; gap: 1.5rem; max-width: 24rem;\">\n  <div>\n    <Slider\n      label=\"Opacity\"\n      value={percent}\n      valueText={(value) => `${value} percent`}\n      onValueChange={(next) => {\n        percent = next;\n      }}\n    />\n    <p>Opacity: {percent}%</p>\n  </div>\n\n  <div>\n    <Slider\n      label=\"Budget\"\n      value={price}\n      min={0}\n      max={1000}\n      step={25}\n      valueText={(value) => usd.format(value)}\n      onValueChange={(next) => {\n        price = next;\n      }}\n    />\n    <p>Budget: {usd.format(price)}</p>\n  </div>\n</div>\n"
+    },
+    {
+      "id": "compact-header-and-value",
+      "title": "Compact header with a formatted value",
+      "description": "`headerVisible={false}` hides the label span while the value keeps rendering; `displayValue` replaces the visible value text without touching the `aria-valuetext` announced to assistive technology.",
+      "code": "<script lang=\"ts\">\n  import { Slider } from '@lostgradient/cinder';\n  let notes = $state(7);\n  let octaves = $state<[number, number]>([0, 22]);\n</script>\n\n<div style=\"display: flex; flex-direction: column; gap: 1rem; max-width: 24rem;\">\n  <Slider\n    label=\"Scale length\"\n    headerVisible={false}\n    value={notes}\n    min={0}\n    max={12}\n    displayValue={(value) => `${value} notes · C4–B4`}\n    onValueChange={(next) => {\n      notes = next;\n    }}\n  />\n  <Slider\n    label=\"Octave range\"\n    mode=\"range\"\n    headerVisible={false}\n    value={octaves}\n    min={0}\n    max={22}\n    displayValue={([low, high]) => `${low}–${high}`}\n    onValueChange={(next) => {\n      octaves = next;\n    }}\n  />\n</div>\n"
     }
   ]
 }
