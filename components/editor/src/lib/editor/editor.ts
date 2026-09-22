@@ -139,11 +139,11 @@ function createMarkdownChangeHandler(
 
 function createEditorKeymapWithCallbacks(
   onlinkshortcut: EditorConfig['onlinkshortcut'],
-  oncommentshortcut: EditorConfig['oncommentshortcut'],
+  onCommentShortcut: EditorConfig['onCommentShortcut'],
 ) {
   return createEditorKeymap({
     ...(onlinkshortcut ? { onlinkshortcut } : {}),
-    ...(oncommentshortcut ? { oncommentshortcut } : {}),
+    ...(onCommentShortcut ? { onCommentShortcut } : {}),
   });
 }
 
@@ -208,7 +208,7 @@ export async function createEditor(
     onchange,
     onselectionchange,
     onlinkshortcut,
-    oncommentshortcut,
+    onCommentShortcut,
     plugins = [],
     placeholderCompletion,
     placeholderDecoration,
@@ -250,7 +250,7 @@ export async function createEditor(
     clipboardPlugin,
     history,
     placeholderPlugin,
-    createEditorKeymapWithCallbacks(onlinkshortcut, oncommentshortcut),
+    createEditorKeymapWithCallbacks(onlinkshortcut, onCommentShortcut),
     () => isDestroyed,
     onmarkdownupdated,
     onselectionchange,

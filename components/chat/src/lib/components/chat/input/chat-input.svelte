@@ -63,7 +63,7 @@
     /** Called when stop is requested (transforms send button into stop button when sending=true) */
     onstop?: (() => void) | undefined;
     /** Called when user input or insertAtRange changes the composer's plain-text value. */
-    oncomposerinput?: ((value: string, event?: Event) => void) | undefined;
+    onComposerInput?: ((value: string, event?: Event) => void) | undefined;
     /**
      * Called before ChatInput's internal Enter-to-send handling when a keydown
      * originates from the composer textarea. Calling `preventDefault()` skips
@@ -75,11 +75,11 @@
     /** Called when focus leaves the composer textarea. */
     oncomposerblur?: ((event: FocusEvent) => void) | undefined;
     /** Called when an attachment is added */
-    onattachmentadd?: ((attachment: ChatAttachment) => void) | undefined;
+    onAttachmentAdd?: ((attachment: ChatAttachment) => void) | undefined;
     /** Called when an attachment is removed */
-    onattachmentremove?: ((attachment: ChatAttachment) => void) | undefined;
+    onAttachmentRemove?: ((attachment: ChatAttachment) => void) | undefined;
     /** Called when an attachment fails validation */
-    onattachmentfailure?: ((file: File, error: string) => void) | undefined;
+    onAttachmentFailure?: ((file: File, error: string) => void) | undefined;
 
     // Snippets for extensibility
     /** Custom actions area (e.g., additional buttons) */
@@ -162,13 +162,13 @@
     largePasteThreshold = 8_000,
     onsubmit,
     onstop,
-    oncomposerinput,
+    onComposerInput,
     oncomposerkeydown,
     oncomposerselectionchange,
     oncomposerblur,
-    onattachmentadd,
-    onattachmentremove,
-    onattachmentfailure,
+    onAttachmentAdd,
+    onAttachmentRemove,
+    onAttachmentFailure,
     actions,
     ...rest
   }: ChatInputProps = $props();
@@ -266,7 +266,7 @@
   ): ChatAttachment | null {
     // Type validation
     if (!isValidType(file)) {
-      onattachmentfailure?.(
+      onAttachmentFailure?.(
         file,
         `Invalid file type: ${file.type}. Accepted types: ${acceptedTypes.join(', ')}.`,
       );
@@ -276,7 +276,7 @@
     // Size validation
     if (file.size > maxFileSize) {
       const maxSizeMB = Math.round(maxFileSize / (1024 * 1024));
-      onattachmentfailure?.(file, `File exceeds ${maxSizeMB}MB limit`);
+      onAttachmentFailure?.(file, `File exceeds ${maxSizeMB}MB limit`);
       return null;
     }
 
@@ -309,7 +309,7 @@
     };
 
     attachments = [...attachments, attachment];
-    onattachmentadd?.(attachment);
+    onAttachmentAdd?.(attachment);
     announcer.announce(`${KIND_LABELS[kind]} attached: ${file.name}`);
 
     // Fire-and-forget text extraction for code files
@@ -361,12 +361,12 @@
             : remainingAttachment,
         );
         value = `${value.slice(0, start)}${attachment.restoreText}${value.slice(end)}`;
-        oncomposerinput?.(value);
+        onComposerInput?.(value);
         const caretIndex = start + attachment.restoreText.length;
         previousComposerValue = value;
         queueMicrotask(() => editorElement?.setSelectionRange(caretIndex, caretIndex));
       }
-      onattachmentremove?.(attachment);
+      onAttachmentRemove?.(attachment);
       announcer.announce(`${KIND_LABELS[attachment.kind]} removed`);
     }
   }
@@ -399,7 +399,7 @@
     }
 
     // If we have files, prevent default and let addAttachment handle all validation
-    // (including calling onattachmentfailure for invalid types/sizes)
+    // (including calling onAttachmentFailure for invalid types/sizes)
     if (files.length > 0) {
       event.preventDefault();
       files.forEach((file) => addAttachment(file));
@@ -422,7 +422,7 @@
           editorElement.setRangeText('', restoreRange.start, restoreRange.end, 'start');
           value = editorElement.value;
           previousComposerValue = value;
-          oncomposerinput?.(value, event);
+          onComposerInput?.(value, event);
         }
       }
     }
@@ -669,7 +669,7 @@
       previousComposerValue = value;
     }
     pendingInputRange = null;
-    oncomposerinput?.(value, event);
+    onComposerInput?.(value, event);
   }
 
   function handleBeforeInput(event: InputEvent): void {
@@ -757,7 +757,7 @@
     previousComposerValue = nextValue;
     editorElement.focus();
     editorElement.setSelectionRange(caret, caret);
-    oncomposerinput?.(value);
+    onComposerInput?.(value);
   }
 
   export function addFiles(files: File[]): void {

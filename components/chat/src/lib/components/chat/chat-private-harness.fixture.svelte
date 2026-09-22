@@ -102,7 +102,7 @@
   });
 
   // --- Event log (queryable: data-event + data-payload per entry) ---
-  // Chat emits a burst of identical onunreadindicatorchange events while its
+  // Chat emits a burst of identical onUnreadIndicatorChange events while its
   // empty state settles on mount (all `{unreadCount:0, newMessageIndicatorVisible:
   // false}`). We de-duplicate: a callback whose (event, payload) is identical to
   // the most recent entry for that event is dropped. That kills the mount noise
@@ -733,7 +733,7 @@
   // --- Chat callbacks ---
   function handleSubmit(event: ChatSubmitEvent): void {
     const content = typeof event.message.content === 'string' ? event.message.content : '';
-    record('onsubmit', JSON.stringify({ content, attachments: event.attachments.length }));
+    record('onSubmit', JSON.stringify({ content, attachments: event.attachments.length }));
     const imageParts: MultiModalContent[] = event.attachments
       .filter((attachment) => attachment.kind === 'image')
       .map((attachment) => createSubmittedImageContent(attachment));
@@ -752,13 +752,13 @@
   }
 
   function handleEdit(event: { messageId: string; content: string }): void {
-    record('onedit', event);
+    record('onEdit', event);
     conversation = replaceMessageContent(conversation, event.messageId, event.content);
   }
 
   function handleStopGenerating(event: { messageId: string }): void {
     cancelPending('preservePartial');
-    record('onstopgenerating', event.messageId);
+    record('onStopGenerating', event.messageId);
   }
 
   function cancelPendingHistoryRequest(): void {
@@ -814,9 +814,9 @@
     adapterEnabled
       ? {
           adapter: harnessAdapter,
-          ontypingchange: (participants: TypingParticipant[]) =>
-            record('ontypingchange', participants),
-          onreadreceipt: (event: ChatReadReceiptEvent) => record('onreadreceipt', event),
+          onTypingChange: (participants: TypingParticipant[]) =>
+            record('onTypingChange', participants),
+          onReadReceipt: (event: ChatReadReceiptEvent) => record('onReadReceipt', event),
         }
       : {},
   );
@@ -1043,22 +1043,22 @@
         {...readReceiptProps}
         typingParticipants={directTypingParticipants}
         {...adapterProps}
-        onsubmit={handleSubmit}
-        onedit={handleEdit}
-        onretry={(messageId: string) => record('onretry', messageId)}
-        onstopgenerating={handleStopGenerating}
-        onjumptolatest={() => record('onjumptolatest')}
-        onscrollstatechange={(event: { atBottom: boolean }) =>
-          record('onscrollstatechange', { atBottom: event.atBottom })}
-        onunreadindicatorchange={(event: {
+        onSubmit={handleSubmit}
+        onEdit={handleEdit}
+        onRetry={(messageId: string) => record('onRetry', messageId)}
+        onStopGenerating={handleStopGenerating}
+        onJumpToLatest={() => record('onJumpToLatest')}
+        onScrollStateChange={(event: { atBottom: boolean }) =>
+          record('onScrollStateChange', { atBottom: event.atBottom })}
+        onUnreadIndicatorChange={(event: {
           unreadCount: number;
           newMessageIndicatorVisible: boolean;
-        }) => record('onunreadindicatorchange', event)}
+        }) => record('onUnreadIndicatorChange', event)}
         onExpandedChange={(expanded: boolean) => record('onExpandedChange', { expanded })}
-        onattachmentadd={(attachment: { id: string }) => record('onattachmentadd', attachment.id)}
-        onattachmentremove={(attachment: { id: string }) =>
-          record('onattachmentremove', attachment.id)}
-        onattachmentfailure={(_file: File, error: string) => record('onattachmentfailure', error)}
+        onAttachmentAdd={(attachment: { id: string }) => record('onAttachmentAdd', attachment.id)}
+        onAttachmentRemove={(attachment: { id: string }) =>
+          record('onAttachmentRemove', attachment.id)}
+        onAttachmentFailure={(_file: File, error: string) => record('onAttachmentFailure', error)}
       >
         {#snippet header()}
           <div
@@ -1102,21 +1102,21 @@
         {...readReceiptProps}
         typingParticipants={directTypingParticipants}
         {...adapterProps}
-        onsubmit={handleSubmit}
-        onedit={handleEdit}
-        onretry={(messageId: string) => record('onretry', messageId)}
-        onstopgenerating={handleStopGenerating}
-        onjumptolatest={() => record('onjumptolatest')}
-        onscrollstatechange={(event: { atBottom: boolean }) =>
-          record('onscrollstatechange', { atBottom: event.atBottom })}
-        onunreadindicatorchange={(event: {
+        onSubmit={handleSubmit}
+        onEdit={handleEdit}
+        onRetry={(messageId: string) => record('onRetry', messageId)}
+        onStopGenerating={handleStopGenerating}
+        onJumpToLatest={() => record('onJumpToLatest')}
+        onScrollStateChange={(event: { atBottom: boolean }) =>
+          record('onScrollStateChange', { atBottom: event.atBottom })}
+        onUnreadIndicatorChange={(event: {
           unreadCount: number;
           newMessageIndicatorVisible: boolean;
-        }) => record('onunreadindicatorchange', event)}
-        onattachmentadd={(attachment: { id: string }) => record('onattachmentadd', attachment.id)}
-        onattachmentremove={(attachment: { id: string }) =>
-          record('onattachmentremove', attachment.id)}
-        onattachmentfailure={(_file: File, error: string) => record('onattachmentfailure', error)}
+        }) => record('onUnreadIndicatorChange', event)}
+        onAttachmentAdd={(attachment: { id: string }) => record('onAttachmentAdd', attachment.id)}
+        onAttachmentRemove={(attachment: { id: string }) =>
+          record('onAttachmentRemove', attachment.id)}
+        onAttachmentFailure={(_file: File, error: string) => record('onAttachmentFailure', error)}
       >
         {#snippet header()}
           <div

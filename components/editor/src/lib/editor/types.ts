@@ -49,7 +49,7 @@ export interface EditorConfig {
   /** Callback when link keyboard shortcut (Mod-k) is pressed */
   onlinkshortcut?: () => void;
   /** Callback when comment shortcut (Ctrl-Alt-c) is pressed (DEP-47) */
-  oncommentshortcut?: () => void;
+  onCommentShortcut?: () => void;
   /**
    * Additional Milkdown plugins to load.
    *
@@ -160,7 +160,7 @@ export interface EditorAttachmentOptions {
   /** Called when link keyboard shortcut (Mod-k) is pressed */
   onlinkshortcut?: () => void;
   /** Called when comment shortcut (Ctrl-Alt-c) is pressed (DEP-47) */
-  oncommentshortcut?: () => void;
+  onCommentShortcut?: () => void;
   /** Debounce delay for onchange in ms */
   debounceMs?: number;
   /**

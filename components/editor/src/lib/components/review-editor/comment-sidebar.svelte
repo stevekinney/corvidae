@@ -19,7 +19,7 @@
     /** Callback when all threads should be cleared */
     onclearall?: () => void;
     /** Callback when one thread should be removed */
-    onthreaddelete?: (threadId: string) => void;
+    onThreadDelete?: (threadId: string) => void;
     /** Callback when user submits a document-level comment */
     onadddocumentcomment?: (body: string) => void;
     /** Additional CSS class */
@@ -56,7 +56,7 @@
     readonly = false,
     onthreadselect,
     onclearall,
-    onthreaddelete,
+    onThreadDelete,
     onadddocumentcomment,
     class: className,
   }: CommentSidebarProps = $props();
@@ -123,7 +123,7 @@
   async function handleThreadDelete(threadId: string): Promise<void> {
     const displayedIndex = visibleThreads.findIndex((thread) => thread.id === threadId);
     const selectedThreadId = activeThreadId;
-    onthreaddelete?.(threadId);
+    onThreadDelete?.(threadId);
     await tick();
 
     if (visibleThreads.some((thread) => thread.id === threadId)) {

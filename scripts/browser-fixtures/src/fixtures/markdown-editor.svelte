@@ -15,8 +15,8 @@
     <MarkdownEditor
       id="editor-basic"
       bind:value={basicValue}
-      showToolbar
-      showModeToggle
+      toolbarEnabled
+      modeToggleVisible
       label="Markdown editor"
     />
   </div>
@@ -24,7 +24,7 @@
     <MarkdownEditor
       id="editor-empty"
       bind:value={emptyValue}
-      showToolbar={false}
+      toolbarEnabled={false}
       placeholder="Start writing your release notes…"
       label="Empty markdown editor"
     />
@@ -38,8 +38,8 @@
         id="agent-prompt"
         bind:value={prompt}
         bind:mode
-        showToolbar
-        showModeToggle
+        toolbarEnabled
+        modeToggleVisible
         label="Agent prompt"
       />
     </Card>

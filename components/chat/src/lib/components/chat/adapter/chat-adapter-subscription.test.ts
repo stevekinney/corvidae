@@ -154,15 +154,15 @@ describe('Chat adapter subscription owner', () => {
     const firstReceipts: ChatReadReceiptEvent[] = [];
     const secondReceipts: ChatReadReceiptEvent[] = [];
     const view = mountFixture(initial, currentAdapter, {
-      onpushmessage: () => oldMessages.push(incoming),
-      ontypingchange: (value) => firstTyping.push(value),
-      onreadreceipt: (event) => firstReceipts.push(event),
+      onPushMessage: () => oldMessages.push(incoming),
+      onTypingChange: (value) => firstTyping.push(value),
+      onReadReceipt: (event) => firstReceipts.push(event),
     });
     flushSync();
     view.instance.setCallbacks({
-      onpushmessage: (message) => newMessages.push(message),
-      ontypingchange: (value) => secondTyping.push(value),
-      onreadreceipt: (event) => secondReceipts.push(event),
+      onPushMessage: (message) => newMessages.push(message),
+      onTypingChange: (value) => secondTyping.push(value),
+      onReadReceipt: (event) => secondReceipts.push(event),
     });
     flushSync();
     const handlers = subscriptions[0]!.handlers;
@@ -200,7 +200,7 @@ describe('Chat adapter subscription owner', () => {
       },
     };
     const replayView = mountFixture(conversation('replay'), replayAdapter, {
-      onpushmessage: (message) => replayed.push(message.id),
+      onPushMessage: (message) => replayed.push(message.id),
     });
     void replayView;
     flushSync();

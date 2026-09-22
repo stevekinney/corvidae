@@ -86,7 +86,7 @@ export interface EditorKeymapOptions {
   /** Called when Mod-k (link shortcut) is pressed */
   onlinkshortcut?: () => void;
   /** Called when Ctrl-Alt-c (comment shortcut) is pressed (DEP-47) */
-  oncommentshortcut?: () => void;
+  onCommentShortcut?: () => void;
 }
 
 /**
@@ -270,9 +270,9 @@ export function createKeymapBindings(
     };
   }
 
-  if (options.oncommentshortcut) {
+  if (options.onCommentShortcut) {
     bindings['Ctrl-Alt-c'] = () => {
-      options.oncommentshortcut?.();
+      options.onCommentShortcut?.();
       return true;
     };
   }

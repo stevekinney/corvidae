@@ -101,9 +101,10 @@ export type ChatCapabilities = {
 };
 
 /** Props for the Chat component. */
-// `onsubmit` is redefined below with a ChatSubmitEvent payload, so strip the
-// native DOM SubmitEvent handler from the base attributes to avoid an
-// intersection that no handler can satisfy.
+// `onSubmit` (a custom camelCase callback, distinct from the native lowercase
+// `onsubmit`) is redefined below with a ChatSubmitEvent payload; the native
+// DOM SubmitEvent handler is still stripped from the base attributes here so
+// a consumer cannot pass a native `onsubmit` that this component ignores.
 export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> & {
   /** Unique identifier used to scope accessibility attributes across the chat surface. */
   id: string;
@@ -217,7 +218,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * `Message`. Pass an array of {@link TypingParticipant} objects; the component
    * renders a per-participant typing indicator above the input. While defined,
    * including as an empty array, this prop determines the visible indicator instead
-   * of adapter-derived state. Adapter events still call `ontypingchange`, and their
+   * of adapter-derived state. Adapter events still call `onTypingChange`, and their
    * derived state may continue updating and become visible if this prop later becomes
    * `undefined`. Omit the prop or pass `undefined` to show adapter-derived state.
    * Default `undefined` (indicator hidden until adapter state is available).
@@ -228,7 +229,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * Pass a `Map` keyed by message id with a {@link ReadReceipt} value; the
    * component renders a receipt badge on USER messages only. While defined,
    * including as an empty `Map`, this prop determines the visible receipts instead
-   * of adapter-derived state. Adapter events still call `onreadreceipt`, and their
+   * of adapter-derived state. Adapter events still call `onReadReceipt`, and their
    * derived state may continue accumulating and become visible if this prop later
    * becomes `undefined`. Omit the prop or pass `undefined` to show adapter-derived
    * state. Default `undefined` (no receipts shown until adapter state is available).
@@ -237,34 +238,34 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   /**
    * Optional command/transport boundary around `conversation`. Its methods take
    * precedence over the matching callback props (e.g. `sendMessage` over
-   * `onsubmit`); omit it and Chat behaves exactly as with plain callbacks.
+   * `onSubmit`); omit it and Chat behaves exactly as with plain callbacks.
    */
   adapter?: ChatAdapter;
   /** Called when an adapter command fails — either a rejected promise or a synchronous throw from the method. */
-  onadaptererror?: (event: ChatAdapterErrorEvent) => void;
+  onAdapterError?: (event: ChatAdapterErrorEvent) => void;
   /** Forwarded from the adapter's real-time `onMessage` push (consumer owns the transcript). */
-  onpushmessage?: (message: Message) => void;
+  onPushMessage?: (message: Message) => void;
   /** Forwarded from the adapter's real-time `onTypingChange` participant snapshot push. */
-  ontypingchange?: (participants: TypingParticipant[]) => void;
+  onTypingChange?: (participants: TypingParticipant[]) => void;
   /** Forwarded from the adapter's real-time `onReadReceipt` push. */
-  onreadreceipt?: (event: ChatReadReceiptEvent) => void;
-  onsubmit?: (event: ChatSubmitEvent) => void;
-  onretry?: (messageId: string) => void;
-  onedit?: (event: { messageId: string; content: string }) => void;
+  onReadReceipt?: (event: ChatReadReceiptEvent) => void;
+  onSubmit?: (event: ChatSubmitEvent) => void;
+  onRetry?: (messageId: string) => void;
+  onEdit?: (event: { messageId: string; content: string }) => void;
   /**
    * Overrides Chat's built-in artifact panel. When supplied, Chat calls this
    * once with the resolved artifact and does not open its local panel.
    */
-  onartifactopen?: (artifact: ResolvedChatArtifact) => void;
+  onArtifactOpen?: (artifact: ResolvedChatArtifact) => void;
   /** Commits a confirmed transcript rollback to immediately before the selected user message. */
-  onrollback?: (messageId: string) => void;
+  onRollback?: (messageId: string) => void;
   /**
    * Called when the user resolves an action-required approval. The complete
    * resolution payload is forwarded unchanged. When an adapter is also wired,
    * Chat calls `adapter.resolveToolApproval(toolCallId, resolution)` first and
    * uses this callback only when the adapter does not implement that method.
    */
-  onapprovalresolve?: (
+  onApprovalResolve?: (
     toolCallId: string,
     resolution: ApprovalResolution,
   ) => void | ChatToolApprovalResolution | Promise<void | ChatToolApprovalResolution>;
@@ -296,21 +297,21 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   onSuggestionSelect?: (label: string) => void;
   /** Called when the explicit history trigger is activated. The consumer prepends compatible messages into `conversation`. */
   onLoadHistory?: () => void | Promise<void>;
-  onstopgenerating?: (event: ChatStopGeneratingEvent) => void;
-  onjumptolatest?: () => void;
-  onscrollstatechange?: (event: ChatScrollStateChangeEvent) => void;
-  onunreadindicatorchange?: (event: ChatUnreadIndicatorChangeEvent) => void;
+  onStopGenerating?: (event: ChatStopGeneratingEvent) => void;
+  onJumpToLatest?: () => void;
+  onScrollStateChange?: (event: ChatScrollStateChangeEvent) => void;
+  onUnreadIndicatorChange?: (event: ChatUnreadIndicatorChangeEvent) => void;
   onExpandedChange?: (expanded: boolean) => void;
-  onattachmentadd?: (attachment: ChatAttachment) => void;
-  onattachmentremove?: (attachment: ChatAttachment) => void;
-  onattachmentfailure?: (file: File, error: string) => void;
+  onAttachmentAdd?: (attachment: ChatAttachment) => void;
+  onAttachmentRemove?: (attachment: ChatAttachment) => void;
+  onAttachmentFailure?: (file: File, error: string) => void;
   /**
    * Called with the composer's current plain-text value after user input or
    * `insertAtRange()`. The optional event exposes the textarea for
    * composer-bound overlays without reaching into `.chat-input-editor` DOM
    * directly; programmatic range insertion omits the event.
    */
-  oncomposerinput?: (value: string, event?: Event) => void;
+  onComposerInput?: (value: string, event?: Event) => void;
   /**
    * Called before Chat's internal composer key handling when a keydown
    * originates from the composer textarea. Call `event.preventDefault()` to

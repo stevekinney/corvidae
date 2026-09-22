@@ -42,12 +42,12 @@ const schema = {
           'Bindable: reactive access to computed hunks.\nParent components can bind to this to reactively access hunk data.',
       },
       {
-        name: 'onrevertall',
+        name: 'onRevertAll',
         reason: 'function-or-snippet',
         description: 'Called when user wants to revert all changes',
       },
       {
-        name: 'onreverthunk',
+        name: 'onRevertHunk',
         reason: 'function-or-snippet',
         description: 'Called when user wants to revert a specific hunk',
       },

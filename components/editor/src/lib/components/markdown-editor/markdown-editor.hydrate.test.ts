@@ -93,14 +93,14 @@ describe('MarkdownEditor hydration status', () => {
       {
         id: 'hydration-editor',
         label: 'Hydration editor',
-        showToolbar: false,
+        toolbarEnabled: false,
         value: '# Hydration',
-        onready: () => resolveReady?.(),
+        onReady: () => resolveReady?.(),
       },
       {
         id: 'hydration-editor',
         label: 'Hydration editor',
-        showToolbar: false,
+        toolbarEnabled: false,
         value: '# Hydration',
       },
     );

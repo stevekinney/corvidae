@@ -6,10 +6,10 @@
   export type AdapterSwitchFixtureProps = {
     initial: ConversationHistory;
     adapter: ChatAdapter;
-    onpushmessage?: (message: Message) => void;
-    ontypingchange?: (participants: TypingParticipant[]) => void;
-    onreadreceipt?: (event: ChatReadReceiptEvent) => void;
-    onadaptererror?: (event: { command: ChatCommand; error: unknown }) => void;
+    onPushMessage?: (message: Message) => void;
+    onTypingChange?: (participants: TypingParticipant[]) => void;
+    onReadReceipt?: (event: ChatReadReceiptEvent) => void;
+    onAdapterError?: (event: { command: ChatCommand; error: unknown }) => void;
     onerror?: (error: unknown) => void;
   };
 </script>
@@ -21,10 +21,10 @@
   let {
     initial,
     adapter,
-    onpushmessage = () => {},
-    ontypingchange = () => {},
-    onreadreceipt = () => {},
-    onadaptererror = () => {},
+    onPushMessage = () => {},
+    onTypingChange = () => {},
+    onReadReceipt = () => {},
+    onAdapterError = () => {},
     onerror = (error) => {
       throw error;
     },
@@ -44,13 +44,13 @@
   }
 
   export function setCallbacks(callbacks: {
-    onpushmessage?: (message: Message) => void;
-    ontypingchange?: (participants: TypingParticipant[]) => void;
-    onreadreceipt?: (event: ChatReadReceiptEvent) => void;
+    onPushMessage?: (message: Message) => void;
+    onTypingChange?: (participants: TypingParticipant[]) => void;
+    onReadReceipt?: (event: ChatReadReceiptEvent) => void;
   }): void {
-    onpushmessage = callbacks.onpushmessage ?? (() => {});
-    ontypingchange = callbacks.ontypingchange ?? (() => {});
-    onreadreceipt = callbacks.onreadreceipt ?? (() => {});
+    onPushMessage = callbacks.onPushMessage ?? (() => {});
+    onTypingChange = callbacks.onTypingChange ?? (() => {});
+    onReadReceipt = callbacks.onReadReceipt ?? (() => {});
   }
 </script>
 
@@ -60,10 +60,10 @@
       id="switch-chat"
       {conversation}
       adapter={currentAdapter}
-      {onpushmessage}
-      {ontypingchange}
-      {onreadreceipt}
-      {onadaptererror}
+      {onPushMessage}
+      {onTypingChange}
+      {onReadReceipt}
+      {onAdapterError}
     />
   </div>
   {#snippet failed(error)}

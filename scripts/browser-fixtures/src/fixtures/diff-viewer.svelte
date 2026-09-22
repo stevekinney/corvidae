@@ -57,7 +57,7 @@ The first version includes authentication, a dashboard, and CSV export tools.
 - Add audit logging`;
 </script>
 
-<DiffViewer {original} {current} readonly={!editable} onrevertall={handleRevertAll}>
+<DiffViewer {original} {current} readonly={!editable} onRevertAll={handleRevertAll}>
   {#snippet toolbarActions()}
     {#if editable}
       <Button variant="secondary" size="xs" onclick={handleNamedAction}>Mark reviewed</Button>

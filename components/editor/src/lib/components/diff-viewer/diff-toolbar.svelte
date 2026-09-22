@@ -35,7 +35,7 @@
     /** Called when user clicks previous change */
     onjumpprevious?: (() => void) | undefined;
     /** Called when user wants to revert all changes */
-    onrevertall?: (() => void) | undefined;
+    onRevertAll?: (() => void) | undefined;
     /** Called when user triggers manual diff compute (for large docs) */
     ontriggercompute?: (() => void) | undefined;
     /** Copy the current comparison as a complete unified diff. */
@@ -74,7 +74,7 @@
     diffState,
     onjumpnext,
     onjumpprevious,
-    onrevertall,
+    onRevertAll,
     ontriggercompute,
     oncopydiff,
     actions,
@@ -143,8 +143,8 @@
       {/if}
 
       <!-- Revert All button -->
-      {#if hasChanges && !readonly && onrevertall}
-        <Button variant="secondary" size="xs" onclick={onrevertall}>
+      {#if hasChanges && !readonly && onRevertAll}
+        <Button variant="secondary" size="xs" onclick={onRevertAll}>
           <RotateCcw class="cinder-icon-sm" />
           Revert All
         </Button>

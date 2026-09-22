@@ -316,7 +316,7 @@ describe('the comments toggle points at the sidebar that exists', () => {
 describe('the editor view renders one control row, not two', () => {
   /**
    * The diff view passed DiffViewer an empty toolbar snippet ("controls are in
-   * the unified bar above") and the summary view passed `showToolbar={false}`,
+   * the unified bar above") and the summary view passed `toolbarEnabled={false}`,
    * but the editor view passed neither — so it stacked MarkdownEditor's own
    * formatting toolbar under the unified bar. Two full-height bars cost ~90px
    * of chrome before any document content.
@@ -326,8 +326,8 @@ describe('the editor view renders one control row, not two', () => {
       implementationSource.indexOf('<MarkdownEditor'),
       implementationSource.indexOf('{:else if activeView === '),
     );
-    expect(editorView).toContain('showToolbar={false}');
-    expect(editorView).toContain('ontoolbarcontextchange');
+    expect(editorView).toContain('toolbarEnabled={false}');
+    expect(editorView).toContain('onToolbarContextChange');
   });
 
   test('the formatting controls are hosted inside the unified bar', () => {

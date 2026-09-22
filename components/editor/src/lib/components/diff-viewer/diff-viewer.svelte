@@ -99,8 +99,8 @@
     original,
     current,
     normalizeInputs = true,
-    onrevertall,
-    onreverthunk,
+    onRevertAll,
+    onRevertHunk,
     readonly = false,
     hunks: bindableHunks = $bindable<DiffHunk[]>([]),
     viewMode = $bindable<DiffViewerMode>('unified'),
@@ -316,7 +316,7 @@
   }
 
   function handleRevertHunk(hunk: DiffHunk) {
-    onreverthunk?.(hunk.index, hunk);
+    onRevertHunk?.(hunk.index, hunk);
   }
 
   let copyStatus = $state<'idle' | 'copied' | 'failed'>('idle');
@@ -436,7 +436,7 @@
       {diffState}
       onjumpnext={jumpToNext}
       onjumpprevious={jumpToPrevious}
-      {onrevertall}
+      {onRevertAll}
       ontriggercompute={() => diffController.triggerCompute()}
       oncopydiff={copyUnifiedDiff}
     >
@@ -483,7 +483,7 @@
       {@const hunkAtLine = hunkStartMap.get(idx)}
 
       <!-- Hunk header with revert button (shown at first change of each hunk) -->
-      {#if hunkAtLine && !readonly && onreverthunk}
+      {#if hunkAtLine && !readonly && onRevertHunk}
         <div class="hunk-header">
           <span class="hunk-range">
             @@ -{hunkAtLine.originalStart},{hunkAtLine.originalCount} +{hunkAtLine.currentStart},{hunkAtLine.currentCount}

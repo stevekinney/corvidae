@@ -88,7 +88,7 @@ export type ChatMessagePartsRendererProps = {
   /** Called when a tool-call part's disclosure toggle is activated. */
   onToggle?: (() => void) | undefined;
   /** Called when the user resolves an action-required approval. */
-  onapprovalresolve?:
+  onApprovalResolve?:
     ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
   /** Whether the reasoning block for this message is expanded. */
   reasoningExpanded?: boolean | undefined;

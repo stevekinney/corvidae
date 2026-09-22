@@ -166,7 +166,7 @@ describe('ThreadPopover focus restoration', () => {
   });
 
   test('goes to the fallback after a delete even while the opener is still on screen', async () => {
-    // The asynchronous-removal window. A consumer whose `onthreaddelete` waits
+    // The asynchronous-removal window. A consumer whose `onThreadDelete` waits
     // on a server keeps the sidebar item mounted while the request is in
     // flight, so the popover closes with its opener still perfectly focusable.
     // Ordinary restoration hands focus straight back to it — and then the

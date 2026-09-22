@@ -507,14 +507,29 @@ export function collectResolvedSurfaceViolations(
   );
 }
 
-export function createPropsProgram(typesFiles: readonly string[]): ts.Program {
+/**
+ * Builds a `ts.Program` over `typesFiles`, resolved against the nearest
+ * `tsconfig.json` found by walking UP from `configSearchFrom` (defaulting to
+ * this package's own root, for callers — including the existing test suite —
+ * that only ever pass cinder's own fixtures). Scanning another workspace's
+ * component directory (chat, editor, …) passes that workspace's own root
+ * here instead, so its Props surfaces resolve against ITS tsconfig rather
+ * than cinder's — the correct `paths`/dependency resolution for imports that
+ * workspace makes, cinder's own included.
+ */
+export function createPropsProgram(
+  typesFiles: readonly string[],
+  configSearchFrom: string = packageRoot,
+): ts.Program {
   const configPath = ts.findConfigFile(
-    packageRoot,
+    configSearchFrom,
     (fileName) => ts.sys.fileExists(fileName),
     'tsconfig.json',
   );
   if (!configPath) {
-    throw new Error('check-prop-conventions: could not locate a tsconfig.json for the package.');
+    throw new Error(
+      `check-prop-conventions: could not locate a tsconfig.json above ${configSearchFrom}.`,
+    );
   }
   const parsed = ts.getParsedCommandLineOfConfigFile(configPath, undefined, {
     ...ts.sys,
@@ -540,8 +555,17 @@ export function createPropsProgram(typesFiles: readonly string[]): ts.Program {
 // resolution — not the per-file surface walk, so scanning all files costs
 // roughly the same as scanning the prefiltered subset did.)
 
-async function scan(): Promise<PropConventionViolation[]> {
-  const glob = new Glob('src/components/**/*.types.ts');
+/**
+ * Scans one component directory's `**\/*.types.ts` files: the syntactic pass
+ * (banned exact names) plus one `ts.Program`, built against THAT directory's
+ * own nearest tsconfig, for the type-aware pass. Kept directory-scoped (not
+ * merged into one program across every directory this run is given) so each
+ * workspace's Props surfaces resolve against its own tsconfig — the correct
+ * dependency/`paths` resolution for what that workspace actually imports —
+ * rather than borrowing cinder's.
+ */
+async function scanDirectory(componentsDir: string): Promise<PropConventionViolation[]> {
+  const glob = new Glob('**/*.types.ts');
   const violations = new Map<string, PropConventionViolation>();
   const record = (violation: PropConventionViolation) => {
     violations.set(
@@ -551,8 +575,8 @@ async function scan(): Promise<PropConventionViolation[]> {
   };
 
   const typeAwareCandidates: string[] = [];
-  for await (const relativePath of glob.scan({ cwd: packageRoot })) {
-    const absolutePath = resolve(packageRoot, relativePath);
+  for await (const relativePath of glob.scan({ cwd: componentsDir })) {
+    const absolutePath = resolve(componentsDir, relativePath);
     const source = await Bun.file(absolutePath).text();
     const filePath = relative(repositoryRoot, absolutePath);
     for (const violation of collectPropConventionViolations(source, filePath)) {
@@ -562,9 +586,30 @@ async function scan(): Promise<PropConventionViolation[]> {
   }
 
   if (typeAwareCandidates.length > 0) {
-    const program = createPropsProgram(typeAwareCandidates);
+    const program = createPropsProgram(typeAwareCandidates, componentsDir);
     for (const violation of collectResolvedSurfaceViolations(program, typeAwareCandidates)) {
       record(violation);
+    }
+  }
+
+  return [...violations.values()];
+}
+
+/**
+ * Scans every directory in `componentsDirs` (each a component directory to
+ * scan, not necessarily cinder's own — see {@link scanDirectory}) and merges
+ * the results into one sorted, de-duplicated report.
+ */
+export async function scan(
+  componentsDirs: readonly string[] = [componentsDirectory],
+): Promise<PropConventionViolation[]> {
+  const violations = new Map<string, PropConventionViolation>();
+  for (const componentsDir of componentsDirs) {
+    for (const violation of await scanDirectory(resolve(componentsDir))) {
+      violations.set(
+        `${violation.filePath}:${violation.line}:${violation.propName}:${violation.message}`,
+        violation,
+      );
     }
   }
 
@@ -1057,8 +1102,23 @@ export function collectComponentNameShadowViolations(
   return violations;
 }
 
+/**
+ * CLI directory arguments, resolved against the current working directory —
+ * not hardcoded sibling paths (`../../chat`, `../../editor`) — so this
+ * script does not take a structural dependency on any other workspace.
+ * `components:cinder`'s `check:prop-conventions` script passes
+ * `components/cinder/src/components`, `components/chat/src/lib/components`,
+ * and `components/editor/src/lib/components` explicitly; with no arguments
+ * this falls back to cinder's own `componentsDirectory`, matching the
+ * script's original (cinder-only) behavior.
+ */
+export function componentsDirsFromArgv(argv: readonly string[]): string[] {
+  const directories = argv.slice(2).map((argument) => resolve(process.cwd(), argument));
+  return directories.length > 0 ? directories : [componentsDirectory];
+}
+
 async function main() {
-  const violations = await scan();
+  const violations = await scan(componentsDirsFromArgv(process.argv));
   const componentNameViolations = collectComponentNameShadowViolations();
 
   if (violations.length > 0 || componentNameViolations.length > 0) {

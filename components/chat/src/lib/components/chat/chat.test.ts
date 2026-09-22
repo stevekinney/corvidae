@@ -625,7 +625,7 @@ describe('Chat — slot composition', () => {
         id: 'chat-prompt-submit',
         conversation,
         emptyPrompts: ['Summarize this'],
-        onsubmit: (event: { message: { content: unknown } }) => {
+        onSubmit: (event: { message: { content: unknown } }) => {
           submitted.push(String(event.message.content));
         },
       },
@@ -834,9 +834,9 @@ describe('Chat — interactions', () => {
     conversation = appendUserMessage(conversation, 'Second request');
     conversation = appendAssistantMessage(conversation, 'Second response');
     const firstUserId = conversation.ids[0]!;
-    const onrollback = jest.fn();
+    const onRollback = jest.fn();
     const { container, getByRole } = render(Chat, {
-      props: { id: 'chat-rollback', conversation, onrollback },
+      props: { id: 'chat-rollback', conversation, onRollback },
     });
 
     const firstMessage = container.querySelector<HTMLElement>(
@@ -848,12 +848,12 @@ describe('Chat — interactions', () => {
       firstMessage.querySelector<HTMLButtonElement>('.chat-message-rollback-button')!,
     );
 
-    expect(onrollback).not.toHaveBeenCalled();
+    expect(onRollback).not.toHaveBeenCalled();
     expect(container.querySelectorAll('[data-cinder-rollback-discarded]')).toHaveLength(4);
     expect(getByRole('dialog', { name: 'Rollback conversation?' })).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Rollback conversation' }));
-    expect(onrollback).toHaveBeenCalledWith(firstUserId);
+    expect(onRollback).toHaveBeenCalledWith(firstUserId);
     expect(container.querySelectorAll('[data-cinder-rollback-discarded]')).toHaveLength(0);
   });
 
@@ -902,7 +902,7 @@ describe('Chat — interactions', () => {
         id: 'chat-stop',
         conversation,
         streaming: true,
-        onstopgenerating: (event: { messageId: string }) => stopped.push(event.messageId),
+        onStopGenerating: (event: { messageId: string }) => stopped.push(event.messageId),
       },
     });
 
@@ -913,7 +913,7 @@ describe('Chat — interactions', () => {
 });
 
 describe('Chat — atBottom bindable after send', () => {
-  test('handleSubmit fires onsubmit and does not throw (atBottom write regression guard)', async () => {
+  test('handleSubmit fires onSubmit and does not throw (atBottom write regression guard)', async () => {
     // Regression: handleSubmit called scrollState.setIsAtBottom(true) but never
     // wrote to the `atBottom` bindable prop. The parent binding went stale:
     // a consumer with `bind:atBottom` would see false even though Chat had set
@@ -933,7 +933,7 @@ describe('Chat — atBottom bindable after send', () => {
         conversation: createConversation({ id: 'conversation-atbottom-send' }),
         atBottom: false,
         emptyPrompts: ['Tell me a joke'],
-        onsubmit: (event: { message: { content: unknown } }) => {
+        onSubmit: (event: { message: { content: unknown } }) => {
           submitted.push(String(event.message.content));
         },
       },
@@ -968,7 +968,7 @@ describe('Chat — atBottom bindable after send', () => {
       props: {
         id: 'chat-scroll-top-unread',
         conversation,
-        onunreadindicatorchange: (event: { unreadCount: number }) => {
+        onUnreadIndicatorChange: (event: { unreadCount: number }) => {
           unreadChanges.push(event.unreadCount);
         },
       },
