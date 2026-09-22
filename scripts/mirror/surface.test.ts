@@ -71,6 +71,46 @@ const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
   ],
 };
 
+describe('published dependency edges', () => {
+  /**
+   * COR-1289: `dependsOn` is what orders verification, and it is only allowed to name published
+   * packages of the same target. Asserted over the committed tree rather than a fixture because
+   * the narrowing it pins is about real membership: `planManifests` records every surviving
+   * `workspace:*` edge, including edges to private workspaces, and a private workspace is never
+   * built into a `dist/` for anything to wait on. Also asserted against `intraTargetEdges`, so
+   * `dependsOn` cannot acquire an edge the manifest half never recorded.
+   */
+  for (const target of mirrorTargets) {
+    test(`${target}: dependsOn names only published packages the transform recorded an edge to`, () => {
+      const { plan } = committedPlans[target];
+      const publishedNames = new Set(plan.published.map((entry) => entry.publicName));
+      for (const entry of plan.published) {
+        const recorded = new Set(plan.intraTargetEdges.get(entry.workspace) ?? []);
+        expect([
+          entry.publicName,
+          entry.dependsOn.filter((name) => !publishedNames.has(name)),
+        ]).toEqual([entry.publicName, []]);
+        expect([entry.publicName, entry.dependsOn.filter((name) => !recorded.has(name))]).toEqual([
+          entry.publicName,
+          [],
+        ]);
+      }
+    });
+  }
+
+  /**
+   * The defect's own shape, on the tree that has it: `chat` depends on two packages that both come
+   * after it in discovery order. Asserting the edges rather than the resulting step order keeps
+   * this test about what `planSurface` produces; `verify-steps.test.ts` owns the ordering itself.
+   */
+  test('cinder’s chat records its edges to cinder and markdown', () => {
+    const { plan } = committedPlans.cinder;
+    const chat = plan.published.find((entry) => entry.publicName === '@lostgradient/chat');
+    expect(chat?.dependsOn).toContain('@lostgradient/cinder');
+    expect(chat?.dependsOn).toContain('@lostgradient/markdown');
+  });
+});
+
 describe('surface parity', () => {
   for (const target of mirrorTargets) {
     test(`${target}: no published subpath disappears`, () => {

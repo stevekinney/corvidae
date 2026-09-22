@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test';
 
 import { tarballFilename } from './packaging.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
-import { buildVerifySteps, type VerifyEnvironment } from './verify-steps.ts';
+import {
+  buildVerifySteps,
+  VerifyStepOrderError,
+  type VerifyEnvironment,
+  type VerifyStepKind,
+} from './verify-steps.ts';
 
 const published: PublishedPackage[] = [
   {
@@ -13,6 +18,7 @@ const published: PublishedPackage[] = [
     exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
     files: ['dist'],
     version: '1.2.3',
+    dependsOn: [],
   },
 ];
 
@@ -71,6 +77,89 @@ describe('buildVerifySteps', () => {
       'consumer-install',
       'consumer-run',
     ]);
+  });
+
+  test('a package is built before the packages that depend on it, whatever order discovery found them in', () => {
+    // COR-1289: `armorer` comes first in discovery order and depends on `@lostgradient/cryptography`,
+    // which comes second. A typecheck resolves an intra-target dependency through its `exports` →
+    // `dist/`, so building in discovery order leaves `cryptography` with no `dist/` when `armorer`
+    // is type-checked and the step fails with `Cannot find module '@lostgradient/cryptography'`.
+    const dependentFirst: PublishedPackage[] = [
+      {
+        workspace: '@lostgradient/armorer',
+        directory: 'packages/armorer',
+        publicName: 'armorer',
+        entry: {} as PublishedPackage['entry'],
+        exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+        files: ['dist'],
+        version: '2.0.0',
+        dependsOn: ['@lostgradient/cryptography'],
+      },
+      {
+        workspace: '@lostgradient/cryptography',
+        directory: 'packages/cryptography',
+        publicName: '@lostgradient/cryptography',
+        entry: {} as PublishedPackage['entry'],
+        exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+        files: ['dist'],
+        version: '1.2.3',
+        dependsOn: [],
+      },
+    ];
+    const steps = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: dependentFirst, privateWorkspaces: [] },
+      localEnvironment(),
+    );
+    const indexOf = (kind: VerifyStepKind, publicName: string): number =>
+      steps.findIndex((step) => step.kind === kind && step.publicName === publicName);
+    const dependencyBuild = indexOf('build', '@lostgradient/cryptography');
+    expect(dependencyBuild).toBeGreaterThan(-1);
+    expect(dependencyBuild).toBeLessThan(indexOf('build', 'armorer'));
+    expect(dependencyBuild).toBeLessThan(indexOf('typecheck-published', 'armorer'));
+    // The phase split itself, which is what makes the ordering sufficient rather than merely
+    // necessary: every build runs before any typecheck, so no typecheck can resolve a sibling's
+    // `exports` against a `dist/` that a later build was going to produce.
+    const kinds = steps.map((step) => step.kind);
+    expect(kinds.lastIndexOf('build')).toBeLessThan(kinds.indexOf('typecheck-published'));
+  });
+
+  test('a dependency cycle between two published packages is refused, naming both', () => {
+    const cyclic: PublishedPackage[] = [
+      {
+        workspace: '@lostgradient/armorer',
+        directory: 'packages/armorer',
+        publicName: 'armorer',
+        entry: {} as PublishedPackage['entry'],
+        exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+        files: ['dist'],
+        version: '2.0.0',
+        dependsOn: ['@lostgradient/cryptography'],
+      },
+      {
+        workspace: '@lostgradient/cryptography',
+        directory: 'packages/cryptography',
+        publicName: '@lostgradient/cryptography',
+        entry: {} as PublishedPackage['entry'],
+        exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+        files: ['dist'],
+        version: '1.2.3',
+        dependsOn: ['armorer'],
+      },
+    ];
+    let thrown: unknown;
+    try {
+      buildVerifySteps(
+        { installCommand: ['bun', 'install'], published: cyclic, privateWorkspaces: [] },
+        localEnvironment(),
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(VerifyStepOrderError);
+    const message = thrown instanceof Error ? thrown.message : '';
+    expect(message).toContain('armorer');
+    expect(message).toContain('@lostgradient/cryptography');
+    expect(message).toContain('cycle');
   });
 
   test('a private workspace that emits no TypeScript gets no typecheck step', () => {
