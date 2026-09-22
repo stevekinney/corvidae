@@ -11,6 +11,7 @@
     "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src scripts",
     "tokens:check": "bun scripts/tokens/validate-corpus.ts && bun scripts/tokens/generate-artifacts.ts --check",
     "tokens:generate": "bun scripts/tokens/generate-artifacts.ts",
+    "tokens:audit": "bun scripts/check-component-css-token-usage.ts",
     "components:check": "bun scripts/generate-component-artifacts.ts --check",
     "components:generate": "bun scripts/generate-component-artifacts.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
