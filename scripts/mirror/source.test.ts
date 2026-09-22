@@ -7,12 +7,14 @@ import { committedPlans, corvidaeRoot } from './committed-plans.ts';
 import type { MirrorTarget } from './manifests.ts';
 import {
   additionalSourceRoots,
+  applyVersionConstants,
   assertSingleOwner,
   collectPrunablePaths,
   isSourceFile,
   planSource,
   SourceEmissionError,
   validationInputs,
+  versionConstants,
 } from './source.ts';
 import { planSurface } from './surface.ts';
 import { loadTargetOwnedPolicy, writeTransformOutput } from './target-owned.ts';
@@ -464,4 +466,63 @@ describe('the committed workspaces', () => {
       expect(mismatches).toEqual([]);
     },
   );
+});
+
+/**
+ * COR-1192: the exported `VERSION` must not contradict the target's manifest. `package.json`'s
+ * `version` is target-owned and `src/version.ts` is emitted, so without this the next sync after a
+ * target bump ships corvidae's stale literal. The transform rewrites the literal to the version the
+ * composed manifest already carries — a declared file per workspace, a strict shape, and a refusal
+ * for anything else, so the rewrite can never silently do nothing.
+ */
+describe('applyVersionConstants', () => {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const documented =
+    "/**\n * Current Weft package version.\n */\nexport const VERSION = '0.25.0';\n";
+  const published = [
+    { workspace: '@lostgradient/weft', directory: 'packages/weft', version: '0.26.0' },
+  ];
+
+  test('weft declares src/version.ts, and the committed file has the shape the rewrite expects', () => {
+    expect(versionConstants['@lostgradient/weft']).toBe('src/version.ts');
+    const emitted = committedPlans.weft.plan.files['packages/weft/src/version.ts'];
+    expect(emitted).toBeDefined();
+    const text = typeof emitted === 'string' ? emitted : decoder.decode(emitted);
+    const version = committedPlans.weft.plan.published.find(
+      (entry) => entry.workspace === '@lostgradient/weft',
+    )?.version;
+    expect(text.endsWith(`export const VERSION = '${version}';\n`)).toBe(true);
+  });
+
+  test('rewrites the literal to the composed manifest version and keeps the documentation', () => {
+    const files = { 'packages/weft/src/version.ts': encoder.encode(documented) };
+    const rewritten = applyVersionConstants(files, published);
+    expect(rewritten).toEqual(['packages/weft/src/version.ts']);
+    expect(decoder.decode(files['packages/weft/src/version.ts'])).toBe(
+      "/**\n * Current Weft package version.\n */\nexport const VERSION = '0.26.0';\n",
+    );
+  });
+
+  test('a declared file the plan does not carry is a refusal, naming the workspace and path', () => {
+    expect(() => applyVersionConstants({}, published)).toThrow(SourceEmissionError);
+    expect(() => applyVersionConstants({}, published)).toThrow('packages/weft/src/version.ts');
+  });
+
+  test('a declared file whose shape is not the documented export is a refusal, not a silent skip', () => {
+    const files = {
+      'packages/weft/src/version.ts': encoder.encode('export const VERSION = computeVersion();\n'),
+    };
+    expect(() => applyVersionConstants(files, published)).toThrow(SourceEmissionError);
+    expect(() => applyVersionConstants(files, published)).toThrow('@lostgradient/weft');
+  });
+
+  test('a workspace with no declaration is left alone', () => {
+    const files = { 'packages/other/src/version.ts': encoder.encode(documented) };
+    const rewritten = applyVersionConstants(files, [
+      { workspace: '@lostgradient/other', directory: 'packages/other', version: '1.0.0' },
+    ]);
+    expect(rewritten).toEqual([]);
+    expect(decoder.decode(files['packages/other/src/version.ts'])).toBe(documented);
+  });
 });

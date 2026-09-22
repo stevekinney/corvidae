@@ -330,6 +330,64 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
  * no source to validate is not a workspace — and the flag means "there is emitted source worth
  * type-checking", which these files are not the evidence for.
  */
+/**
+ * Files whose single exported version literal the transform rewrites to the composed manifest's
+ * `version`, one per workspace, target-relative to the workspace directory.
+ *
+ * COR-1192. A published manifest's `version` is target-owned and the transform never writes it;
+ * `src/version.ts` is emitted source. Left alone, the next sync after a target bump would ship
+ * corvidae's stale literal beside the bumped manifest, against the release contract that tag,
+ * manifest and exported `VERSION` agree. The manifest plan already resolves the version every
+ * emitted manifest carries, so the constant is derived from it at emission: parity by
+ * construction, at every sync, with the target's `verify-release-version.ts` left as the tag gate.
+ * The alternative measured first — `version.ts` importing `package.json` — has weft's `Bun.build`
+ * inline the whole manifest object into every bundle for one string. Declared explicitly rather
+ * than by filename convention, so a workspace that stores its version some other way is a visible
+ * omission here rather than a silent miss.
+ */
+export const versionConstants: Readonly<Record<string, string>> = {
+  '@lostgradient/weft': 'src/version.ts',
+};
+
+/** The one shape a declared version file may have: any leading comment, then the export. */
+const versionConstantShape = /^([\s\S]*?)export const VERSION = '([^']*)';\n$/;
+
+/**
+ * Rewrite each declared version file in `files` to its package's composed version, in place.
+ *
+ * Returns the target-relative paths rewritten. A declared file the plan does not carry, or one
+ * whose content is not exactly the documented export, is a refusal: the rewrite exists so the
+ * literal can never disagree with the manifest, and a shape it cannot see through would let it.
+ */
+export function applyVersionConstants(
+  files: Record<string, string | Uint8Array>,
+  published: readonly { workspace: string; directory: string; version: string }[],
+): string[] {
+  const rewritten: string[] = [];
+  for (const entry of published) {
+    const declared = versionConstants[entry.workspace];
+    if (declared === undefined) continue;
+    const path = `${entry.directory}/${declared}`;
+    const current = files[path];
+    if (current === undefined) {
+      throw new SourceEmissionError(
+        `${entry.workspace} declares ${declared} as its version constant in versionConstants, but the plan emits no ${path}`,
+      );
+    }
+    const text = typeof current === 'string' ? current : new TextDecoder().decode(current);
+    const match = versionConstantShape.exec(text);
+    if (!match) {
+      throw new SourceEmissionError(
+        `${entry.workspace}'s ${path} is declared as a version constant but is not shaped as \`export const VERSION = '<version>';\` after an optional comment; the transform refuses to guess where the version lives`,
+      );
+    }
+    const next = `${match[1]}export const VERSION = '${entry.version}';\n`;
+    files[path] = typeof current === 'string' ? next : new TextEncoder().encode(next);
+    rewritten.push(path);
+  }
+  return rewritten.toSorted();
+}
+
 export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
   '@lostgradient/weft': [
     // Under COR-1286's demotion the target runs no lint, coverage or documentation gate of its own
