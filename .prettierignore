@@ -13,6 +13,8 @@ playwright-report/
 test-results/
 .playwright/
 *.tsbuildinfo
+# Agent worktrees are separate checkouts with their own formatting state.
+.claude/worktrees/
 # Generated declaration fixtures are checked against exact generator output and typechecked.
 **/*.generated.d.ts
 .env
