@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { loadPackageSurface } from './package-surface.ts';
 import { runCommand } from './packaging.ts';
 import { planSurface } from './surface.ts';
 import {
@@ -536,6 +537,34 @@ describe('the foreign-commit guard', () => {
           (report) => report.publicName === '@lostgradient/cryptography',
         );
         expect(published).toBeDefined();
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    "a hand commit to a declared build input is the target's own, since the transform never writes one",
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const editor = harness.runDirectory('build-input-editor');
+        await mkdir(editor, { recursive: true });
+        await git(editor, 'clone', '--quiet', harness.remote, editor);
+        // The fixture package's first declared build input, read from the surface rather than
+        // hardcoded, so the test follows the declaration if it changes.
+        const surface = await loadPackageSurface();
+        const entry = surface.packages['@lostgradient/cryptography'];
+        const input = entry?.build.requiredInputs[0];
+        expect(input).toBeDefined();
+        const path = join(editor, 'packages/cryptography', input ?? '');
+        await Bun.write(path, `${await readFile(path, 'utf8')}\n// tuned by the target\n`);
+        await git(editor, 'add', '--all');
+        await git(editor, 'commit', '--quiet', '--message', 'Tune the build input');
+        await git(editor, 'push', '--quiet', 'origin', 'HEAD:main');
+
+        const result = await sync(harness, 'after-build-input');
+        expect(['skip', 'pushed']).toContain(result.decision);
       });
     },
     endToEndTimeout,

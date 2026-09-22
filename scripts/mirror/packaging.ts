@@ -320,7 +320,7 @@ export async function runConsumerSmokeTest({
     throw new PackagingError('The smoke test was given no importable specifier to check');
   }
   await Bun.write(
-    join(project, 'smoke.ts'),
+    join(project, 'smoke.mjs'),
     `${specifiers.map((specifier, index) => `import * as module${index} from '${specifier}';`).join('\n')}\n` +
       `const loaded = [${specifiers.map((_, index) => `module${index}`).join(', ')}];\n` +
       `for (const [index, module] of loaded.entries()) {\n` +
@@ -335,8 +335,12 @@ export async function runConsumerSmokeTest({
     'installing the packed tarballs into the consumer project',
   );
   assertSucceeded(
-    await runCommand(['bun', 'run', 'smoke.ts'], { cwd: project }),
+    await runCommand(['bun', 'run', 'smoke.mjs'], { cwd: project }),
     `importing ${specifiers.length} specifier(s) from the packed tarballs`,
+  );
+  assertSucceeded(
+    await runCommand(['node', 'smoke.mjs'], { cwd: project }),
+    `importing ${specifiers.length} specifier(s) from the packed tarballs under node`,
   );
   return { directory: project, specifiers };
 }

@@ -49,7 +49,8 @@ export type VerifyStepKind =
   | 'typecheck-private'
   | 'write-consumer-project'
   | 'consumer-install'
-  | 'consumer-run';
+  | 'consumer-run'
+  | 'consumer-run-node';
 
 /** One command `verifyTarget` runs, or the rendered workflow's job runs as a step. */
 export interface VerifyStep {
@@ -134,7 +135,7 @@ function consumerManifest(packages: readonly SmokeTestPackage[]): string {
   )}\n`;
 }
 
-/** The consumer smoke-test project's `smoke.ts`, byte-identical to what `runConsumerSmokeTest` writes. */
+/** The consumer smoke-test project's `smoke.mjs`, byte-identical to what `runConsumerSmokeTest` writes. */
 function consumerSmokeScript(specifiers: readonly string[]): string {
   return (
     `${specifiers.map((specifier, index) => `import * as module${index} from '${specifier}';`).join('\n')}\n` +
@@ -331,7 +332,7 @@ export function buildVerifySteps(
     command: [],
     files: {
       'package.json': consumerManifest(smokeTestPackages),
-      'smoke.ts': consumerSmokeScript(specifiers),
+      'smoke.mjs': consumerSmokeScript(specifiers),
     },
   });
   steps.push({
@@ -344,7 +345,17 @@ export function buildVerifySteps(
     kind: 'consumer-run',
     description: `import ${specifiers.length} specifier(s) from the packed tarballs`,
     cwd: consumerDirectory,
-    command: ['bun', 'run', 'smoke.ts'],
+    command: ['bun', 'run', 'smoke.mjs'],
+  });
+  // Under node as well (COR-1192): the packed 0.26.0 tarball imported under bun and failed under
+  // node, because Bun's bundler rewrites an inlined CommonJS dependency's `require` to
+  // `import.meta.require`, which only bun defines. The script is plain JavaScript so both
+  // runtimes execute the same file; a resolution that only one of them accepts is a red step.
+  steps.push({
+    kind: 'consumer-run-node',
+    description: `import ${specifiers.length} specifier(s) from the packed tarballs under node`,
+    cwd: consumerDirectory,
+    command: ['node', 'smoke.mjs'],
   });
 
   return steps;

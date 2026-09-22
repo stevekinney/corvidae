@@ -2,10 +2,12 @@ import { mkdir, rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 
 import { assertInstallParity, readWorkflowInstalls, type InstallParity } from './install-parity.ts';
+import { layoutFor } from './layout-map.ts';
 import {
   assertNothingDeferred,
   mirrorTargets,
   runInstall,
+  targetFor,
   type MirrorTarget,
 } from './manifests.ts';
 import { loadPackageSurface, missingBuildInputs } from './package-surface.ts';
@@ -255,6 +257,12 @@ export async function findForeignCommits(
 export interface ForeignCommitOwnership {
   policy: TargetOwnedPolicy;
   target: string;
+  /**
+   * Target-relative files that are the target's own although no `target-owned.json` glob names
+   * them: the declared build inputs (`requiredInputs` in `package-surface.json`, target-owned by
+   * COR-1190's ruling), which the transform reads for presence and never writes.
+   */
+  targetOwnedFiles?: ReadonlySet<string> | undefined;
 }
 
 /**
@@ -272,7 +280,7 @@ export interface ForeignCommitOwnership {
 async function isTargetOwnedCommit(
   directory: string,
   sha: string,
-  { policy, target }: ForeignCommitOwnership,
+  { policy, target, targetOwnedFiles }: ForeignCommitOwnership,
 ): Promise<boolean> {
   const status = await git(directory, 'show', '--format=', '--name-status', sha);
   const transformOwnedKeys = new Set(policy.insideFiles.manifestKeys.map((entry) => entry.key));
@@ -281,6 +289,7 @@ async function isTargetOwnedCommit(
     const kind = fields[0] ?? '';
     const path = fields[fields.length - 1] ?? '';
     if (findTargetOwner(policy, path, target) !== undefined) continue;
+    if (targetOwnedFiles?.has(path)) continue;
     if (basename(path) !== 'package.json' || !kind.startsWith('M')) return false;
     const before = await git(directory, 'show', `${sha}^:${path}`);
     const after = await git(directory, 'show', `${sha}:${path}`);
@@ -289,6 +298,24 @@ async function isTargetOwnedCommit(
     }
   }
   return true;
+}
+
+/**
+ * Every declared build input of the workspaces this target receives, as target-relative paths:
+ * the files a hand commit may touch that no `target-owned.json` glob names.
+ */
+async function declaredBuildInputs(target: string): Promise<Set<string>> {
+  const surface = await loadPackageSurface();
+  const files = new Set<string>();
+  for (const [workspace, entry] of Object.entries(surface.packages)) {
+    if (targetFor(workspace) !== target) continue;
+    const layout = await layoutFor(workspace);
+    if (!layout || layout.disposition === 'deferred') continue;
+    for (const input of entry.build.requiredInputs) {
+      files.add(`${layout.targetDirectory}/${input}`);
+    }
+  }
+  return files;
 }
 
 /** Top-level keys whose serialized value differs between two JSON documents. */
@@ -610,6 +637,13 @@ export async function verifyTarget({
         smokeTest = { directory: step.cwd, specifiers: specifiersFor(published) };
         break;
       }
+      case 'consumer-run-node': {
+        assertSucceeded(
+          result,
+          `importing specifier(s) from the packed tarballs under node (${step.description})`,
+        );
+        break;
+      }
       case 'write-consumer-project': {
         // Unreachable: this step's `command` is always empty, so the `continue` above already
         // skipped it before the switch runs. Kept as an explicit case so the switch stays
@@ -681,6 +715,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   await assertNoForeignCommits(clone, {
     policy: await loadTargetOwnedPolicy(),
     target: options.target,
+    targetOwnedFiles: await declaredBuildInputs(options.target),
   });
 
   const { plan } = await stageSurface({

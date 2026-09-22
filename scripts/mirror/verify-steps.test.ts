@@ -76,6 +76,7 @@ describe('buildVerifySteps', () => {
       'write-consumer-project',
       'consumer-install',
       'consumer-run',
+      'consumer-run-node',
     ]);
   });
 
@@ -257,11 +258,11 @@ describe('buildVerifySteps', () => {
     );
     const localWrite = local.find((step) => step.kind === 'write-consumer-project');
     const workflowWrite = workflow.find((step) => step.kind === 'write-consumer-project');
-    // `smoke.ts` only lists import specifiers, never a path, so it really is byte-identical.
+    // `smoke.mjs` only lists import specifiers, never a path, so it really is byte-identical.
     // `package.json` is not — its `file:` dependency embeds the tarball's path, which legitimately
     // differs by scratch directory — so only its *structure*, not its bytes, is compared.
-    expect(localWrite?.files?.['smoke.ts']).toBe(workflowWrite?.files?.['smoke.ts']);
-    expect(localWrite?.files?.['smoke.ts']).toContain("from '@lostgradient/cryptography'");
+    expect(localWrite?.files?.['smoke.mjs']).toBe(workflowWrite?.files?.['smoke.mjs']);
+    expect(localWrite?.files?.['smoke.mjs']).toContain("from '@lostgradient/cryptography'");
     const localManifest = JSON.parse(localWrite?.files?.['package.json'] ?? '{}') as {
       dependencies: Record<string, string>;
     };
@@ -282,5 +283,38 @@ describe('buildVerifySteps', () => {
     const workflowInstall = workflow.find((step) => step.kind === 'consumer-install');
     expect(localInstall?.command).toEqual(['bun', 'install', '--offline']);
     expect(localInstall?.command).toEqual(workflowInstall?.command);
+  });
+});
+
+/**
+ * COR-1192. The packed 0.26.0 tarball imported cleanly under bun and failed under node
+ * (`import.meta.require` from an inlined CommonJS dependency), and the emitted workflow was green
+ * because its smoke test ran under bun alone. The consumer script is plain JavaScript and runs
+ * under both runtimes, one step each, bun first, so a runtime-specific resolution failure is a
+ * red check rather than a release surprise.
+ */
+describe('the consumer smoke test runs under node as well as bun', () => {
+  const steps = buildVerifySteps(
+    { installCommand: ['bun', 'install', '--frozen-lockfile'], published, privateWorkspaces: [] },
+    localEnvironment(),
+  );
+
+  test('writes a plain-JavaScript smoke script both runtimes can execute', () => {
+    const write = steps.find((step) => step.kind === 'write-consumer-project');
+    expect(Object.keys(write?.files ?? {}).toSorted()).toEqual(['package.json', 'smoke.mjs']);
+    expect(write?.files?.['smoke.mjs']).not.toMatch(/:\s*\w+\s*[=;)]/);
+  });
+
+  test('runs it under bun and then under node, after the consumer install', () => {
+    const kinds = steps.map((step) => step.kind);
+    const install = kinds.indexOf('consumer-install');
+    const bun = kinds.indexOf('consumer-run');
+    const node = kinds.indexOf('consumer-run-node');
+    expect(install).toBeGreaterThan(-1);
+    expect(bun).toBeGreaterThan(install);
+    expect(node).toBeGreaterThan(bun);
+    expect(steps[bun]?.command).toEqual(['bun', 'run', 'smoke.mjs']);
+    expect(steps[node]?.command).toEqual(['node', 'smoke.mjs']);
+    expect(steps[node]?.cwd).toBe(steps[bun]?.cwd);
   });
 });

@@ -172,7 +172,7 @@ describe('renderMirrorVerifyWorkflow', () => {
     // A structural indentation scan can't reliably tell "the block legitimately ended" apart from
     // "this line should have been indented and was not" — a dedented line is exactly what both
     // look like. So this checks against ground truth instead: `write-consumer-project`'s two
-    // heredoc bodies (`package.json`, `smoke.ts`) are known multi-line strings, split the same way
+    // heredoc bodies (`package.json`, `smoke.mjs`) are known multi-line strings, split the same way
     // `renderStep` is documented to split them, and every one of those lines, reconstructed with
     // the renderer's own indent, must appear verbatim and contiguously in the rendered output.
     // This is the exact shape the bug had: a multi-line string pushed as one array element only
@@ -292,7 +292,7 @@ describe('renderMirrorVerifyWorkflow', () => {
         privateWorkspaces,
       });
       expect(workflow).toContain("cat > package.json <<'MIRROR_VERIFY_EOF'");
-      expect(workflow).toContain("cat > smoke.ts <<'MIRROR_VERIFY_EOF'");
+      expect(workflow).toContain("cat > smoke.mjs <<'MIRROR_VERIFY_EOF'");
       expect(workflow).toContain("import * as module0 from '@lostgradient/cryptography';");
       const writeIndex = workflow.indexOf('write the consumer smoke-test project');
       const installIndex = workflow.indexOf(
