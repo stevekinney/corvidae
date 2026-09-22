@@ -1,5 +1,5 @@
 import { mkdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { assertInstallParity, readWorkflowInstalls, type InstallParity } from './install-parity.ts';
 import {
@@ -28,9 +28,11 @@ import {
 import {
   assertNoEmissionsIntoRetired,
   collectRetiredPaths,
+  findTargetOwner,
   loadTargetOwnedPolicy,
   retiredDirectoriesFor,
   writeTransformOutput,
+  type TargetOwnedPolicy,
 } from './target-owned.ts';
 import { buildVerifySteps, createLocalVerifyEnvironment, specifiersFor } from './verify-steps.ts';
 
@@ -233,16 +235,82 @@ async function readHistory(directory: string): Promise<CommitRecord[]> {
  * never pushed is discarded with the clone, and the next run re-derives the same output from
  * scratch.
  */
-export async function findForeignCommits(directory: string): Promise<ForeignCommit[]> {
+export async function findForeignCommits(
+  directory: string,
+  ownership?: ForeignCommitOwnership,
+): Promise<ForeignCommit[]> {
   const history = await readHistory(directory);
   const newestMirrored = history.findIndex((commit) => commit.provenance.length > 0);
   if (newestMirrored === -1) return [];
-  return history.slice(0, newestMirrored).map(({ sha, subject }) => ({ sha, subject }));
+  const candidates = history.slice(0, newestMirrored);
+  if (ownership === undefined) return candidates.map(({ sha, subject }) => ({ sha, subject }));
+  const foreign: ForeignCommit[] = [];
+  for (const { sha, subject } of candidates) {
+    if (!(await isTargetOwnedCommit(directory, sha, ownership))) foreign.push({ sha, subject });
+  }
+  return foreign;
+}
+
+/** What decides whether a commit above the mirror's own is the target's to make. */
+export interface ForeignCommitOwnership {
+  policy: TargetOwnedPolicy;
+  target: string;
+}
+
+/**
+ * Whether every change a commit makes is one the transform preserves.
+ *
+ * COR-1192. After the first sync, every release bump is a hand commit above a mirror-authored
+ * one: a manifest's `version` is target-owned and the transform never writes it, so the target
+ * has to, and a guard that called that foreign would refuse every release. A commit is the
+ * target's own when each path it touches is either target-owned by `target-owned.json`'s
+ * enumeration — the changelog, the readme, the release workflow — or a manifest the transform
+ * composes whose changed top-level keys are all outside the transform's own `manifestKeys`. A
+ * manifest added or deleted outright is the transform's business, and so is any other path:
+ * emitted source, a vendored tsconfig, the emitted workflow.
+ */
+async function isTargetOwnedCommit(
+  directory: string,
+  sha: string,
+  { policy, target }: ForeignCommitOwnership,
+): Promise<boolean> {
+  const status = await git(directory, 'show', '--format=', '--name-status', sha);
+  const transformOwnedKeys = new Set(policy.insideFiles.manifestKeys.map((entry) => entry.key));
+  for (const line of status.split('\n').filter((entry) => entry.length > 0)) {
+    const fields = line.split('\t');
+    const kind = fields[0] ?? '';
+    const path = fields[fields.length - 1] ?? '';
+    if (findTargetOwner(policy, path, target) !== undefined) continue;
+    if (basename(path) !== 'package.json' || !kind.startsWith('M')) return false;
+    const before = await git(directory, 'show', `${sha}^:${path}`);
+    const after = await git(directory, 'show', `${sha}:${path}`);
+    for (const key of changedTopLevelKeys(before, after)) {
+      if (transformOwnedKeys.has(key)) return false;
+    }
+  }
+  return true;
+}
+
+/** Top-level keys whose serialized value differs between two JSON documents. */
+function changedTopLevelKeys(before: string, after: string): string[] {
+  const parse = (text: string): Record<string, unknown> => {
+    const value: unknown = JSON.parse(text);
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  };
+  const previous = parse(before);
+  const next = parse(after);
+  const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  return [...keys].filter((key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]));
 }
 
 /** Throws `ForeignCommitError` naming every commit the mirror did not author. */
-export async function assertNoForeignCommits(directory: string): Promise<void> {
-  const foreign = await findForeignCommits(directory);
+export async function assertNoForeignCommits(
+  directory: string,
+  ownership?: ForeignCommitOwnership,
+): Promise<void> {
+  const foreign = await findForeignCommits(directory, ownership);
   if (foreign.length > 0) throw new ForeignCommitError(foreign);
 }
 
@@ -610,7 +678,10 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     directory: options.directory,
     branch: options.branch,
   });
-  await assertNoForeignCommits(clone);
+  await assertNoForeignCommits(clone, {
+    policy: await loadTargetOwnedPolicy(),
+    target: options.target,
+  });
 
   const { plan } = await stageSurface({
     corvidaeRoot: options.corvidaeRoot,

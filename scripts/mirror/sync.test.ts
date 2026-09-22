@@ -502,6 +502,82 @@ describe('the mirror sync against a fake remote', () => {
 });
 
 describe('the foreign-commit guard', () => {
+  /**
+   * COR-1192. After the first sync every release bump is a hand commit above a mirror-authored
+   * one: the manifest's `version` is target-owned and the transform never writes it, so the
+   * target has to. A guard that called that foreign would refuse every release. A commit is the
+   * target's own when everything it changes is something the transform preserves — a
+   * target-owned path, or a target-owned key inside a manifest the transform composes.
+   */
+  test(
+    "a hand commit confined to target-owned paths and manifest keys is the target's own, not foreign",
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const bumper = harness.runDirectory('bumper');
+        await mkdir(bumper, { recursive: true });
+        await git(bumper, 'clone', '--quiet', harness.remote, bumper);
+        const manifestPath = join(bumper, 'packages/cryptography/package.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<
+          string,
+          unknown
+        >;
+        manifest['version'] = '9.9.9';
+        await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        await Bun.write(join(bumper, 'README.md'), '# agent-bureau\n\nRelease 9.9.9 notes.\n');
+        await git(bumper, 'add', '--all');
+        await git(bumper, 'commit', '--quiet', '--message', 'Release 9.9.9');
+        await git(bumper, 'push', '--quiet', 'origin', 'HEAD:main');
+
+        const result = await sync(harness, 'after-bump');
+        expect(['skip', 'pushed']).toContain(result.decision);
+        const published = result.verification.reports.find(
+          (report) => report.publicName === '@lostgradient/cryptography',
+        );
+        expect(published).toBeDefined();
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    'a hand commit that changes a transform-owned manifest key is still foreign',
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const intruder = harness.runDirectory('exports-intruder');
+        await mkdir(intruder, { recursive: true });
+        await git(intruder, 'clone', '--quiet', harness.remote, intruder);
+        const manifestPath = join(intruder, 'packages/cryptography/package.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<
+          string,
+          unknown
+        >;
+        manifest['sideEffects'] = true;
+        await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        await git(intruder, 'add', '--all');
+        await git(intruder, 'commit', '--quiet', '--message', 'Flip a key the transform owns');
+        await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
+        const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
+        const foreignSha = intruderHead.trim();
+
+        let thrown: unknown;
+        try {
+          await sync(harness, 'after-key-intrusion');
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(ForeignCommitError);
+        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+          foreignSha,
+        ]);
+      });
+    },
+    endToEndTimeout,
+  );
+
   test(
     'a commit the mirror did not author stops the sync and is named',
     async () => {
