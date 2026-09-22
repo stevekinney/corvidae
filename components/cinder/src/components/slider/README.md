@@ -14,6 +14,14 @@ Drag handle input for selecting a numeric value within a bounded range.
 </div>
 ```
 
+## Layout
+
+Slider's root fills its container's inline size (`width: 100%`), and its outer border box always matches the space you give it — the header row spans that full width, and an equal-width sibling control lines up with the root's edges exactly.
+
+The thumb, track fill, and tick marks do not: they travel along an interval inset by half the rendered thumb's width on each side, so a thumb centered at `min` or `max` still keeps its own border box inside the root — it never overhangs past the root's inline edges the way a naive `left: 0%`/`left: 100%` placement would. That inset is computed from the actual rendered `.cinder-slider__thumb` size (`--_cinder-slider-thumb-size`, `1.125rem` by default), so it scales with `font-size` instead of assuming a fixed pixel diameter.
+
+Pointer interaction follows the same interval: clicking or dragging anywhere in the reserved endpoint margin — including at the track's physical edges — still resolves to `min` or `max`. You don't need to add your own padding or a click handler to reach the ends of the range.
+
 ## Props
 
 <!-- generated:props:start -->

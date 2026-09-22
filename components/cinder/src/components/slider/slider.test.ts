@@ -674,6 +674,26 @@ function mockTrackRect(track: HTMLElement, width: number) {
   });
 }
 
+// COR-291: happy-dom performs no real layout, so an unmocked thumb reports a
+// 0×0 rect and pointer mapping degrades to the pre-fix track-relative
+// formula (exercised above). These tests mock a nonzero thumb rect to prove
+// the inset travel interval — clicks inside the reserved half-thumb margin
+// at each end must still clamp to min/max, not to a value derived from the
+// track's raw width.
+function mockThumbRect(thumb: HTMLElement, width: number) {
+  thumb.getBoundingClientRect = () => ({
+    left: 0,
+    top: 0,
+    right: width,
+    bottom: width,
+    width,
+    height: width,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  });
+}
+
 describe('Slider (pointer)', () => {
   test('pointerdown on the track sets the value based on click position', async () => {
     const { container } = render(Slider, {
@@ -813,6 +833,70 @@ describe('Slider (pointer)', () => {
 
     expect(thumb.getAttribute('aria-valuenow')).toBe('25');
     await fireEvent(document, new PointerEvent('pointerup', { bubbles: true }));
+  });
+
+  test('COR-291: a click inside the reserved endpoint margin still clamps to min, not a fraction of track width', async () => {
+    const { container } = render(Slider, {
+      props: { label: 'Volume', value: 50, min: 0, max: 100 },
+    });
+    const track = container.querySelector<HTMLDivElement>('.cinder-slider__track')!;
+    const thumb = getThumbs(container)[0]!;
+    mockTrackRect(track, 200);
+    mockThumbRect(thumb, 20);
+
+    // Travel interval: [thumbSize/2, trackWidth - thumbSize/2] = [10, 190].
+    // clientX=10 sits at the very start of that interval — the pre-fix
+    // formula (clientX / trackWidth) would report 10/200 = 5%, i.e. value 5.
+    await fireEvent.pointerDown(track, { clientX: 10 });
+    expect(thumb.getAttribute('aria-valuenow')).toBe('0');
+  });
+
+  test('COR-291: a click inside the reserved endpoint margin still clamps to max, not a fraction of track width', async () => {
+    const { container } = render(Slider, {
+      props: { label: 'Volume', value: 50, min: 0, max: 100 },
+    });
+    const track = container.querySelector<HTMLDivElement>('.cinder-slider__track')!;
+    const thumb = getThumbs(container)[0]!;
+    mockTrackRect(track, 200);
+    mockThumbRect(thumb, 20);
+
+    // clientX=190 sits at the end of the travel interval — the pre-fix
+    // formula would report 190/200 = 95%, i.e. value 95.
+    await fireEvent.pointerDown(track, { clientX: 190 });
+    expect(thumb.getAttribute('aria-valuenow')).toBe('100');
+  });
+
+  test('COR-291: the physical track edges still reach min and max beyond the reserved margin', async () => {
+    const { container } = render(Slider, {
+      props: { label: 'Volume', value: 50, min: 0, max: 100 },
+    });
+    const track = container.querySelector<HTMLDivElement>('.cinder-slider__track')!;
+    const thumb = getThumbs(container)[0]!;
+    mockTrackRect(track, 200);
+    mockThumbRect(thumb, 20);
+
+    await fireEvent.pointerDown(track, { clientX: 0 });
+    expect(thumb.getAttribute('aria-valuenow')).toBe('0');
+
+    await fireEvent(document, new PointerEvent('pointerup', { bubbles: true }));
+    await fireEvent.pointerDown(track, { clientX: 200 });
+    expect(thumb.getAttribute('aria-valuenow')).toBe('100');
+  });
+
+  test('COR-291: a mid-travel click maps against the inset interval, not the raw track width', async () => {
+    const { container } = render(Slider, {
+      props: { label: 'Volume', value: 0, min: 0, max: 100 },
+    });
+    const track = container.querySelector<HTMLDivElement>('.cinder-slider__track')!;
+    const thumb = getThumbs(container)[0]!;
+    mockTrackRect(track, 200);
+    mockThumbRect(thumb, 20);
+
+    // Travel interval [10, 190]; clientX=100 is the interval's midpoint →
+    // value 50. The pre-fix formula (100/200) would agree here, so this
+    // pins the general (non-edge) mapping stays correct under the fix too.
+    await fireEvent.pointerDown(track, { clientX: 100 });
+    expect(thumb.getAttribute('aria-valuenow')).toBe('50');
   });
 
   test('document listeners are cleaned up on unmount during drag', async () => {

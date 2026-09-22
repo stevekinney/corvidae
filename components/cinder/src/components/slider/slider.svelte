@@ -172,9 +172,15 @@
     return clampToBounds(rounded);
   }
 
-  function percentOf(numeric: number): number {
+  // A fraction in [0, 1] along the value range, not a percentage. The CSS
+  // maps this fraction onto an inset travel interval — `--_cinder-slider-travel`
+  // — rather than the track's full width, so a value of 0 or 1 lands the
+  // thumb's *center* half a thumb-width in from the track edge. That keeps
+  // the thumb's rendered border box inside the root's layout bounds at
+  // min/max instead of overhanging by half its diameter (COR-291).
+  function fractionOf(numeric: number): number {
     if (max === min) return 0;
-    return ((numeric - min) / (max - min)) * 100;
+    return (numeric - min) / (max - min);
   }
 
   /** Apply a new value, respecting the controlled prop. */
@@ -301,11 +307,34 @@
   let activeThumb: 'single' | 'low' | 'high' | null = $state(null);
   let activeThumbRecent: 'low' | 'high' | null = $state(null);
 
+  /**
+   * The rendered thumb border-box width, read from the DOM rather than the
+   * `1.125rem` CSS default so pointer mapping tracks the same rem-based,
+   * font-scaled size the CSS actually paints (COR-291). Falls back to `0`
+   * (no inset) when no thumb has been rendered yet or layout can't be
+   * measured — matching the pre-fix track-relative mapping in that case.
+   */
+  function thumbSizePx(): number {
+    return (
+      trackElement?.querySelector<HTMLElement>('.cinder-slider__thumb')?.getBoundingClientRect()
+        .width ?? 0
+    );
+  }
+
   function valueFromClientX(clientX: number): number {
     if (!trackElement) return min;
     const rect = trackElement.getBoundingClientRect();
     if (rect.width === 0) return min;
-    const physicalRatio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    // The visual travel interval is inset by half the thumb size on each
+    // side (see `.cinder-slider__track`'s `--_cinder-slider-travel` in
+    // slider.css) so the thumb's border box stays inside the root at
+    // min/max. Clicks/drags in that reserved margin still clamp to the
+    // nearest endpoint, so the physical edges of the track remain reachable.
+    const thumbSize = Math.min(thumbSizePx(), rect.width);
+    const travelWidth = rect.width - thumbSize;
+    const travelStart = rect.left + thumbSize / 2;
+    const physicalRatio =
+      travelWidth === 0 ? 0 : Math.max(0, Math.min(1, (clientX - travelStart) / travelWidth));
     const ratio = isRightToLeft ? 1 - physicalRatio : physicalRatio;
     return min + ratio * (max - min);
   }
@@ -464,15 +493,15 @@
   >
     <div
       class="cinder-slider__range"
-      style:--_cinder-slider-low="{percentOf(lowValue)}%"
-      style:--_cinder-slider-high="{percentOf(isRange ? highValue : lowValue)}%"
+      style:--_cinder-slider-low={fractionOf(lowValue)}
+      style:--_cinder-slider-high={fractionOf(isRange ? highValue : lowValue)}
       aria-hidden="true"
     ></div>
 
     {#if tickMarks.length > 0}
       <div class="cinder-slider__ticks" aria-hidden="true">
         {#each tickMarks as tick (tick)}
-          <span class="cinder-slider__tick" style:--_cinder-slider-tick="{percentOf(tick)}%"></span>
+          <span class="cinder-slider__tick" style:--_cinder-slider-tick={fractionOf(tick)}></span>
         {/each}
       </div>
     {/if}
@@ -494,7 +523,7 @@
         aria-valuetext={valueText || unit ? formattedAriaValue(lowValue) : undefined}
         aria-disabled={disabled || undefined}
         aria-orientation="horizontal"
-        style:--_cinder-slider-pos="{percentOf(lowValue)}%"
+        style:--_cinder-slider-pos={fractionOf(lowValue)}
         onkeydown={(event) => handleKey(event, 'low')}
         onpointerdown={(event) => handleThumbPointerDown(event, 'low')}
       ></div>
@@ -514,7 +543,7 @@
         aria-valuetext={valueText || unit ? formattedAriaValue(highValue) : undefined}
         aria-disabled={disabled || undefined}
         aria-orientation="horizontal"
-        style:--_cinder-slider-pos="{percentOf(highValue)}%"
+        style:--_cinder-slider-pos={fractionOf(highValue)}
         onkeydown={(event) => handleKey(event, 'high')}
         onpointerdown={(event) => handleThumbPointerDown(event, 'high')}
       ></div>
@@ -534,7 +563,7 @@
         aria-valuetext={valueText || unit ? formattedAriaValue(lowValue) : undefined}
         aria-disabled={disabled || undefined}
         aria-orientation="horizontal"
-        style:--_cinder-slider-pos="{percentOf(lowValue)}%"
+        style:--_cinder-slider-pos={fractionOf(lowValue)}
         onkeydown={(event) => handleKey(event, 'single')}
         onpointerdown={(event) => handleThumbPointerDown(event, 'single')}
       ></div>
