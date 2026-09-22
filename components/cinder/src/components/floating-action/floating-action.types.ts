@@ -1,5 +1,10 @@
 import type { Snippet } from 'svelte';
-import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
+
+import type {
+  FlatHTMLAnchorAttributes,
+  FlatHTMLButtonAttributes,
+} from '../../_internal/forwarded-html-attributes.generated.ts';
+import type { WellKnownDataTestId } from '../../_internal/well-known-data-attributes.ts';
 
 /**
  * Visual palette of the floating action.
@@ -29,7 +34,7 @@ export type FloatingActionSize = 'sm' | 'md' | 'lg';
  */
 export type FloatingActionShape = 'filled' | 'extended';
 
-type SharedBase = {
+type SharedBase = WellKnownDataTestId & {
   /** Shape. `filled` = circle, `extended` = pill with icon + label. */
   shape?: FloatingActionShape;
   /** Size — controls diameter for filled, height for extended. */
@@ -51,13 +56,19 @@ type SharedBase = {
  * Button-rendered floating action — no `href` prop.
  * The `type` attribute is omitted because the component always renders `type="button"`.
  */
+// Forwarded through the flattened (non-generic) copies of svelte/elements' attribute
+// interfaces — see `_internal/forwarded-html-attributes.generated.ts` (COR-239). Referencing
+// the generic interfaces directly from both arms of this union pushes `keyof
+// FloatingActionProps` (which svelte's `Component<Props, {}, Bindings>` computes for its
+// `Bindings` constraint) over TypeScript's type complexity budget: TS2590 under a consumer's
+// `skipLibCheck: false`.
 type FloatingActionOnly = SharedBase &
-  Omit<HTMLButtonAttributes, 'class' | 'type' | 'disabled'> & { href?: undefined };
+  Omit<FlatHTMLButtonAttributes, 'class' | 'type' | 'disabled'> & { href?: undefined };
 
 /**
  * Link-rendered floating action — requires an `href` prop, renders as `<a>`.
  */
-type FloatingActionLink = SharedBase & Omit<HTMLAnchorAttributes, 'class'> & { href: string };
+type FloatingActionLink = SharedBase & Omit<FlatHTMLAnchorAttributes, 'class'> & { href: string };
 
 /**
  * Props for the FloatingAction component.

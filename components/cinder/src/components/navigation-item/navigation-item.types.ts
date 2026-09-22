@@ -1,7 +1,12 @@
 import type { Snippet } from 'svelte';
-import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
-type CommonArm = {
+import type {
+  FlatHTMLAnchorAttributes,
+  FlatHTMLButtonAttributes,
+} from '../../_internal/forwarded-html-attributes.generated.ts';
+import type { WellKnownDataTestId } from '../../_internal/well-known-data-attributes.ts';
+
+type CommonArm = WellKnownDataTestId & {
   /** Marks this item as the currently active destination; emits `aria-current` and applies active visual styling. */
   active?: boolean;
   /** Prevents interaction: removes the item from the tab order, blocks clicks, and applies disabled visual styling. */
@@ -36,8 +41,17 @@ type CommonArm = {
 // silently overridden at runtime. `disabled` is owned by `CommonArm`, so it's also
 // Omit-ted from the button arm to keep a single source of truth (matching the
 // `buttonAttributes` runtime cast).
+// Forwarded through the flattened (non-generic) copies of svelte/elements' attribute
+// interfaces — see `_internal/forwarded-html-attributes.generated.ts` (COR-239). Referencing
+// the generic interfaces directly from both arms of this union pushes `keyof
+// NavigationItemProps` (which svelte's `Component<Props, {}, Bindings>` computes for its
+// `Bindings` constraint) over TypeScript's type complexity budget: TS2590 under a consumer's
+// `skipLibCheck: false`.
 export type LinkArm = CommonArm &
-  Omit<HTMLAnchorAttributes, 'class' | 'href' | 'onclick' | 'aria-current' | 'aria-disabled'> & {
+  Omit<
+    FlatHTMLAnchorAttributes,
+    'class' | 'href' | 'onclick' | 'aria-current' | 'aria-disabled'
+  > & {
     /** Destination URL. Providing this prop renders the item as an `<a>` element instead of a `<button>`. */
     href: string;
     /**
@@ -50,7 +64,7 @@ export type LinkArm = CommonArm &
   };
 type ButtonArm = CommonArm &
   Omit<
-    HTMLButtonAttributes,
+    FlatHTMLButtonAttributes,
     'class' | 'onclick' | 'disabled' | 'type' | 'aria-current' | 'aria-disabled'
   > & {
     href?: undefined;

@@ -1,5 +1,10 @@
 import type { Snippet } from 'svelte';
-import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
+import type { HTMLAnchorAttributes } from 'svelte/elements';
+
+import type {
+  FlatHTMLAnchorAttributes,
+  FlatHTMLButtonAttributes,
+} from '../../_internal/forwarded-html-attributes.generated.ts';
 
 export type SelectableRowDensity = 'comfortable' | 'condensed';
 export type SelectableRowSelectedState = 'pressed' | 'current';
@@ -26,9 +31,15 @@ type SelectableRowSharedProps = {
   style?: string;
 };
 
+// Forwarded through the flattened (non-generic) copies of svelte/elements' attribute
+// interfaces — see `_internal/forwarded-html-attributes.generated.ts` (COR-239). Referencing
+// the generic interfaces directly from both arms of this union pushes `keyof
+// SelectableRowProps` (which svelte's `Component<Props, {}, Bindings>` computes for its
+// `Bindings` constraint) over TypeScript's type complexity budget: TS2590 under a consumer's
+// `skipLibCheck: false`.
 type SelectableRowButtonProps = SelectableRowSharedProps &
   Omit<
-    HTMLButtonAttributes,
+    FlatHTMLButtonAttributes,
     'aria-current' | 'aria-pressed' | 'class' | 'href' | 'style' | 'title' | 'type'
   > & {
     href?: undefined;
@@ -44,7 +55,7 @@ type SelectableRowButtonProps = SelectableRowSharedProps &
 
 type SelectableRowLinkProps = SelectableRowSharedProps &
   Omit<
-    HTMLAnchorAttributes,
+    FlatHTMLAnchorAttributes,
     'aria-current' | 'aria-pressed' | 'class' | 'href' | 'rel' | 'style' | 'target' | 'title'
   > & {
     /** Destination that renders the primary action as a native anchor. */

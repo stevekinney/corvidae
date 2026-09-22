@@ -1,7 +1,8 @@
 import type { Placement } from '@floating-ui/dom';
 import type { Snippet } from 'svelte';
-import type { HTMLAttributes } from 'svelte/elements';
 import type { AnchoredOverlayWidthMode } from '../../_internal/anchored-overlay.svelte.ts';
+import type { FlatHTMLAttributesDivElement } from '../../_internal/forwarded-html-attributes.generated.ts';
+
 export type DropdownPlacement = 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end';
 export type DropdownContext = {
   get menuId(): string;
@@ -17,7 +18,13 @@ export type DropdownContext = {
   close: () => void;
   focusTrigger: () => void;
 };
-type DropdownBaseProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
+// Forwarded through the flattened (non-generic) copy of `HTMLAttributes<HTMLDivElement>` —
+// see `_internal/forwarded-html-attributes.generated.ts` (COR-239). `DropdownBaseProps` is
+// intersected into both arms of `DropdownProps`, and referencing the generic interface
+// directly there pushes `keyof DropdownProps` (which svelte's `Component<Props, {}, "open">`
+// computes for its `Bindings` constraint) over TypeScript's type complexity budget: TS2590
+// under a consumer's `skipLibCheck: false`.
+type DropdownBaseProps = Omit<FlatHTMLAttributesDivElement, 'class'> & {
   /** HTML id applied to the dropdown root element. Auto-generated when omitted. */
   id?: string;
   /** Additional class names merged with the component's root class. */

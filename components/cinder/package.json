@@ -15,6 +15,9 @@
     "components:check": "bun scripts/generate-component-artifacts.ts --check",
     "components:generate": "bun scripts/generate-component-artifacts.ts",
     "check:prop-conventions": "bun scripts/check-prop-conventions.ts src/components ../chat/src/lib/components ../editor/src/lib/components",
+    "attributes:check": "bun scripts/generate-forwarded-html-attributes.ts --check",
+    "attributes:generate": "bun scripts/generate-forwarded-html-attributes.ts",
+    "test:consumer:strict-types": "bun scripts/consumer-strict-types.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
     "knowledge": "bun scripts/knowledge/index.ts"
   },

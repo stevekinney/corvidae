@@ -1,7 +1,9 @@
 import type { Snippet } from 'svelte';
-import type { HTMLAttributes } from 'svelte/elements';
+import type { FlatHTMLAttributesDivElement } from '../../_internal/forwarded-html-attributes.generated.ts';
 import type { FlattenedTreeDataItem, TreeDataItem } from '../../_internal/tree-data.ts';
 import type { TreeReorderTarget } from '../../_internal/tree-drag-controller.svelte.ts';
+import type { WellKnownDataTestId } from '../../_internal/well-known-data-attributes.ts';
+
 /** Selection model for a Tree. */
 export type TreeSelectionMode = 'none' | 'single' | 'multiple';
 /** Selection behavior for multiple-selection trees. */
@@ -30,8 +32,14 @@ export type TreeVirtualizedItemRenderState = {
   selected: boolean;
   focused: boolean;
 };
+// Forwarded through the flattened (non-generic) copy of `HTMLAttributes<HTMLDivElement>` —
+// see `_internal/forwarded-html-attributes.generated.ts` (COR-239). `TreeSharedProps` is
+// intersected with the two-arm children/virtualized union below; referencing the generic
+// interface directly pushes `keyof TreeProps` (which svelte's `Component<Props, {},
+// "expandedIds" | "selectedIds" | "ref">` computes for its `Bindings` constraint) over
+// TypeScript's type complexity budget: TS2590 under a consumer's `skipLibCheck: false`.
 type TreeSharedProps = Omit<
-  HTMLAttributes<HTMLDivElement>,
+  FlatHTMLAttributesDivElement,
   | 'children'
   | 'class'
   | 'role'
@@ -39,61 +47,62 @@ type TreeSharedProps = Omit<
   | 'aria-label'
   | 'aria-labelledby'
   | 'aria-multiselectable'
-> & {
-  /** Selection model. Default: 'none'. */
-  selectionMode?: TreeSelectionMode;
-  /** Render tree-owned checkbox indicators when selectionMode is multiple. Default: false. */
-  checkboxSelection?: boolean;
-  /** Select only the target item or cascade through its selectable scope. Default: 'independent'. */
-  selectionBehavior?: TreeSelectionBehavior;
-  /** Currently selected node ids. Bindable. */
-  selectedIds?: string[];
-  /** Currently expanded branch ids. Bindable. */
-  expandedIds?: string[];
-  /** Typed programmatic handle. Use `bind:ref` to receive it. */
-  ref?: TreeRef | undefined;
-  /**
-   * Estimated row height for virtualized Tree rows, used before a row is
-   * measured and as the fallback while none of its content has mounted yet.
-   * Default: 36.
-   *
-   * Rows are genuinely variable-height: the virtualized row carries no imposed
-   * `block-size`, so a row whose content renders taller than this estimate is
-   * measured and accommodated rather than clipped to it.
-   */
-  virtualizationEstimatedRowHeight?: number;
-  /** Extra rows rendered before and after the viewport. Default: 4. */
-  virtualizationOverscan?: number;
-  /** Block size for the virtualized scroll viewport. Default: '20rem'. */
-  virtualizationHeight?: number | string;
-  /** Optional custom virtualized row renderer. */
-  virtualizedItem?: Snippet<[TreeVirtualizedItemRenderState]>;
-  /** Accessible label for the tree. One of aria-label or aria-labelledby is required. */
-  'aria-label'?: string;
-  /** The `id` of a visible element whose text serves as the accessible label for the tree. One of `aria-label` or `aria-labelledby` is required. */
-  'aria-labelledby'?: string;
-  /**
-   * Disable typeahead.
-   * @default false
-   */
-  typeaheadDisabled?: boolean;
-  /** Controlled filter query. When provided, matching is driven by this value. */
-  filterValue?: string;
-  /** Fires whenever the built-in search input changes the filter query. */
-  onFilterChange?: (value: string) => void;
-  /** Placeholder and accessible label for the built-in search input. Default: 'Search tree'. */
-  filterPlaceholder?: string;
-  /** Render the built-in search input before the role="tree" element. Default: false. */
-  searchVisible?: boolean;
-  /** Custom filter predicate. Default: case-insensitive label substring matching. */
-  filterPredicate?: TreeFilterPredicate;
-  /** Called when a draggable item is dropped before, after, or into another tree item. */
-  onReorder?: (draggedId: string, target: TreeReorderTarget) => void;
-  /** Additional CSS class merged with `.cinder-tree`. */
-  class?: string;
-  /** Optional selection controls rendered before the role="tree" element. */
-  selectionControls?: Snippet;
-};
+> &
+  WellKnownDataTestId & {
+    /** Selection model. Default: 'none'. */
+    selectionMode?: TreeSelectionMode;
+    /** Render tree-owned checkbox indicators when selectionMode is multiple. Default: false. */
+    checkboxSelection?: boolean;
+    /** Select only the target item or cascade through its selectable scope. Default: 'independent'. */
+    selectionBehavior?: TreeSelectionBehavior;
+    /** Currently selected node ids. Bindable. */
+    selectedIds?: string[];
+    /** Currently expanded branch ids. Bindable. */
+    expandedIds?: string[];
+    /** Typed programmatic handle. Use `bind:ref` to receive it. */
+    ref?: TreeRef | undefined;
+    /**
+     * Estimated row height for virtualized Tree rows, used before a row is
+     * measured and as the fallback while none of its content has mounted yet.
+     * Default: 36.
+     *
+     * Rows are genuinely variable-height: the virtualized row carries no imposed
+     * `block-size`, so a row whose content renders taller than this estimate is
+     * measured and accommodated rather than clipped to it.
+     */
+    virtualizationEstimatedRowHeight?: number;
+    /** Extra rows rendered before and after the viewport. Default: 4. */
+    virtualizationOverscan?: number;
+    /** Block size for the virtualized scroll viewport. Default: '20rem'. */
+    virtualizationHeight?: number | string;
+    /** Optional custom virtualized row renderer. */
+    virtualizedItem?: Snippet<[TreeVirtualizedItemRenderState]>;
+    /** Accessible label for the tree. One of aria-label or aria-labelledby is required. */
+    'aria-label'?: string;
+    /** The `id` of a visible element whose text serves as the accessible label for the tree. One of `aria-label` or `aria-labelledby` is required. */
+    'aria-labelledby'?: string;
+    /**
+     * Disable typeahead.
+     * @default false
+     */
+    typeaheadDisabled?: boolean;
+    /** Controlled filter query. When provided, matching is driven by this value. */
+    filterValue?: string;
+    /** Fires whenever the built-in search input changes the filter query. */
+    onFilterChange?: (value: string) => void;
+    /** Placeholder and accessible label for the built-in search input. Default: 'Search tree'. */
+    filterPlaceholder?: string;
+    /** Render the built-in search input before the role="tree" element. Default: false. */
+    searchVisible?: boolean;
+    /** Custom filter predicate. Default: case-insensitive label substring matching. */
+    filterPredicate?: TreeFilterPredicate;
+    /** Called when a draggable item is dropped before, after, or into another tree item. */
+    onReorder?: (draggedId: string, target: TreeReorderTarget) => void;
+    /** Additional CSS class merged with `.cinder-tree`. */
+    class?: string;
+    /** Optional selection controls rendered before the role="tree" element. */
+    selectionControls?: Snippet;
+  };
 
 type TreeSnippetProps = {
   /** Tree items (snippet). Required when virtualized is false or omitted; mutually exclusive with items. */
