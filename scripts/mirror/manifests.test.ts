@@ -334,6 +334,31 @@ describe('workspace and catalog resolution', () => {
     expect(plan.droppedEdges).toEqual(['@lostgradient/weft -> @lostgradient/typescript']);
   });
 
+  /**
+   * COR-1289: the two rulings behind `publishedEdgeFields`, pinned so that widening it later fails
+   * here rather than silently changing a verification order. The fixture is the shape the exclusion
+   * exists for — `markdown` declares a development-only edge back to `cinder`, which already
+   * depends on `markdown` — and counting it would make an ordinary arrangement an unorderable
+   * cycle. The edge itself is untouched: only the ordering record leaves it out.
+   */
+  test('a dependencies edge orders the target; a devDependencies back-edge does not', async () => {
+    const plan = await planFor('cinder', {
+      extra: {
+        'packages/markdown/package.json': {
+          name: '@lostgradient/markdown',
+          private: true,
+          dependencies: { zod: 'catalog:' },
+          devDependencies: { '@lostgradient/cinder': 'workspace:*' },
+        },
+      },
+    });
+    expect(plan.intraTargetEdges.get('@lostgradient/cinder')).toEqual(['@lostgradient/markdown']);
+    expect(plan.intraTargetEdges.get('@lostgradient/markdown')).toBeUndefined();
+    expect(parse(plan, 'packages/markdown/package.json')['devDependencies']).toEqual({
+      '@lostgradient/cinder': 'workspace:*',
+    });
+  });
+
   test('the monorepo target keeps its catalog and its internal workspace edges', async () => {
     const plan = await planFor('cinder');
     const root = parse(plan, 'package.json');

@@ -152,8 +152,10 @@ function consumerSmokeScript(specifiers: readonly string[]): string {
  * its consumers — today, only because their intra-target edges form a cycle.
  *
  * This is a hard failure, and deliberately one that reaches further than verification. `planSurface`
- * renders `mirror-verify.yaml` from the same `published` list, so a cycle refuses the *plan*, not
- * just the run: a target whose packages depend on each other circularly has no build order at all,
+ * renders `mirror-verify.yaml` from the same `published` list whenever it has a `targetDirectory` to
+ * read the release workflow from — which every `stageSurface` does — so a cycle refuses the *plan*
+ * there, not just the run: a target whose packages depend on each other circularly has no build
+ * order at all,
  * and a plan that emitted a workflow claiming otherwise would be a workflow that cannot pass. The
  * alternative — ordering what can be ordered and leaving the rest in discovery order — is the
  * defect COR-1289 fixes, reintroduced quietly for the one case where it is guaranteed to bite.
