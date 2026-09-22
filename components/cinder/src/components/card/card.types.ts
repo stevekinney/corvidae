@@ -1,5 +1,12 @@
 import type { Snippet } from 'svelte';
-import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
+
+import type {
+  FlatHTMLAnchorAttributes,
+  FlatHTMLAttributesDivElement,
+  FlatHTMLButtonAttributes,
+} from '../../_internal/forwarded-html-attributes.generated.ts';
+import type { WellKnownDataTestId } from '../../_internal/well-known-data-attributes.ts';
+
 export type CardVariant = 'card' | 'well';
 export type CardTone = 'default' | 'muted';
 export type CardSurfaceTone = 'default' | 'danger';
@@ -8,7 +15,7 @@ export type CardElevation = 'none' | 'sm' | 'md' | 'lg';
 export type CardPadding = 'default' | 'none';
 /** Heading level for the generated card title, so the document outline stays correct. */
 export type CardHeadingLevel = 2 | 3 | 4 | 5 | 6;
-type CardCommon = {
+type CardCommon = WellKnownDataTestId & {
   /** Custom class merged with `.cinder-card`. */
   class?: string;
   /** Visual container style. `card` is raised; `well` is flatter and inset. */
@@ -26,20 +33,25 @@ type CardCommon = {
   /** Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges. */
   padding?: CardPadding;
 };
+// Forwarded through the flattened (non-generic) copies of svelte/elements' attribute
+// interfaces — see `_internal/forwarded-html-attributes.generated.ts` (COR-239). Referencing
+// the generic interfaces directly from three arms of this union pushes `keyof CardProps`
+// (which svelte's `Component<Props, {}, Bindings>` computes for its `Bindings` constraint)
+// over TypeScript's type complexity budget: TS2590 under a consumer's `skipLibCheck: false`.
 type CardStatic = CardCommon &
-  Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'href' | 'onclick' | 'type'> & {
+  Omit<FlatHTMLAttributesDivElement, 'class' | 'href' | 'onclick' | 'type'> & {
     href?: never;
     onclick?: never;
     type?: never;
   };
 type CardLink = CardCommon &
-  Omit<HTMLAnchorAttributes, 'class' | 'href' | 'onclick' | 'type'> & {
+  Omit<FlatHTMLAnchorAttributes, 'class' | 'href' | 'onclick' | 'type'> & {
     /** Destination URL that makes the entire card an anchor. */
     href: string;
     onclick?: (event: MouseEvent) => void;
   };
 type CardButton = CardCommon &
-  Omit<HTMLButtonAttributes, 'class' | 'onclick' | 'type'> & {
+  Omit<FlatHTMLButtonAttributes, 'class' | 'onclick' | 'type'> & {
     /** Click handler that makes the entire card a button. */
     onclick: (event: MouseEvent) => void;
     href?: never;

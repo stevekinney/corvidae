@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from 'svelte/elements';
+import type { FlatHTMLAttributesElement } from '../../_internal/forwarded-html-attributes.generated.ts';
 
 /**
  * A single condition within a rule. The field, operator, and value
@@ -159,8 +159,14 @@ export type InvocationRuleConditionChange =
  * `mode="flat-conditions"` uses a direct `conditions` array so consumers do
  * not need to invent rule-group metadata.
  */
+// Forwarded through the flattened (non-generic) copy of `HTMLAttributes<HTMLElement>` — see
+// `_internal/forwarded-html-attributes.generated.ts` (COR-239). `InvocationRuleBuilderBaseProps`
+// is intersected with the two-arm mode union below; referencing the generic interface directly
+// pushes `keyof InvocationRuleBuilderProps` (which svelte's `Component<Props, {}, "">` computes
+// for its `Bindings` constraint) over TypeScript's type complexity budget: TS2590 under a
+// consumer's `skipLibCheck: false`.
 type InvocationRuleBuilderBaseProps = Omit<
-  HTMLAttributes<HTMLElement>,
+  FlatHTMLAttributesElement,
   'class' | 'children' | 'onchange'
 > & {
   /**

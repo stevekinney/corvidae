@@ -1,5 +1,8 @@
 import type { Snippet } from 'svelte';
-import type { HTMLAnchorAttributes, HTMLAttributes } from 'svelte/elements';
+import type { HTMLAnchorAttributes } from 'svelte/elements';
+
+import type { FlatHTMLAttributesDivElement } from '../../_internal/forwarded-html-attributes.generated.ts';
+import type { WellKnownDataTestId } from '../../_internal/well-known-data-attributes.ts';
 
 /**
  * The CTA renders as a `<button>` when no `href` is given, in which case
@@ -41,33 +44,43 @@ type PricingCardLinkCTA = {
   rel?: HTMLAnchorAttributes['rel'];
 };
 
-/** Props for the PricingCard component. */
-export type PricingCardProps = Omit<HTMLAttributes<HTMLDivElement>, 'onselect'> & {
-  /** Plan name displayed as the card heading. */
-  name: string;
-  /** Price string, e.g. "$9/mo" or "Free". Rendered verbatim — include any currency symbol and billing period. */
-  price: string;
-  /** List of feature strings to display. Rendered as a bulleted list. */
-  features: string[];
-  /** Label for the call-to-action button. */
-  callToActionLabel: string;
-  /**
-   * Optional footnote or caveat displayed beneath the features list.
-   * Use for legal disclaimers, billing notes, or conditional terms.
-   * Rendered in a visually subdued style to distinguish it from the main feature list.
-   * Accepts plain text or a snippet (e.g. a terms link). Snippet content is
-   * rendered inside a `<p>` — emit phrasing content only (text, inline
-   * formatting, links), never block elements.
-   */
-  caveat?: string | Snippet;
-  /**
-   * Whether this card represents the currently selected plan.
-   * Sets `data-cinder-selected` and `aria-current="true"` on the root element.
-   */
-  selected?: boolean;
-  /** Merged with the root element's class list. */
-  class?: string;
-} & (PricingCardButtonCTA | PricingCardLinkCTA);
+/**
+ * Props for the PricingCard component.
+ *
+ * Forwarded through the flattened (non-generic) copy of `HTMLAttributes<HTMLDivElement>` — see
+ * `_internal/forwarded-html-attributes.generated.ts` (COR-239). This is intersected with the
+ * two-arm CTA union below; referencing the generic interface directly pushes `keyof
+ * PricingCardProps` (which svelte's `Component<Props, {}, "">` computes for its `Bindings`
+ * constraint) over TypeScript's type complexity budget: TS2590 under a consumer's
+ * `skipLibCheck: false`.
+ */
+export type PricingCardProps = Omit<FlatHTMLAttributesDivElement, 'onselect'> &
+  WellKnownDataTestId & {
+    /** Plan name displayed as the card heading. */
+    name: string;
+    /** Price string, e.g. "$9/mo" or "Free". Rendered verbatim — include any currency symbol and billing period. */
+    price: string;
+    /** List of feature strings to display. Rendered as a bulleted list. */
+    features: string[];
+    /** Label for the call-to-action button. */
+    callToActionLabel: string;
+    /**
+     * Optional footnote or caveat displayed beneath the features list.
+     * Use for legal disclaimers, billing notes, or conditional terms.
+     * Rendered in a visually subdued style to distinguish it from the main feature list.
+     * Accepts plain text or a snippet (e.g. a terms link). Snippet content is
+     * rendered inside a `<p>` — emit phrasing content only (text, inline
+     * formatting, links), never block elements.
+     */
+    caveat?: string | Snippet;
+    /**
+     * Whether this card represents the currently selected plan.
+     * Sets `data-cinder-selected` and `aria-current="true"` on the root element.
+     */
+    selected?: boolean;
+    /** Merged with the root element's class list. */
+    class?: string;
+  } & (PricingCardButtonCTA | PricingCardLinkCTA);
 
 /** Cinder-specific props for the PricingCard component, used by the schema generator. */
 export interface PricingCardSchemaProps {

@@ -1,6 +1,8 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAnchorAttributes, HTMLAttributes } from 'svelte/elements';
 
+import type { FlatHTMLAttributesElement } from '../../_internal/forwarded-html-attributes.generated.ts';
+
 export type SegmentCurrentToken = 'page' | 'step' | 'location' | 'date' | 'time' | 'true';
 
 // Attributes the component owns and computes itself, so a consumer value would
@@ -38,7 +40,13 @@ type SegmentOwnedAttributes =
   | 'aria-current'
   | 'onclick';
 
-type SharedElementAttributes = Omit<HTMLAttributes<HTMLElement>, SegmentOwnedAttributes>;
+// Forwarded through the flattened (non-generic) copy of `HTMLAttributes<HTMLElement>` — see
+// `_internal/forwarded-html-attributes.generated.ts` (COR-239). This is intersected into both
+// arms of `SegmentProps`; referencing the generic interface directly pushes `keyof
+// SegmentProps` (which svelte's `Component<Props, {}, "">` computes for its `Bindings`
+// constraint) over TypeScript's type complexity budget: TS2590 under a consumer's
+// `skipLibCheck: false`.
+type SharedElementAttributes = Omit<FlatHTMLAttributesElement, SegmentOwnedAttributes>;
 
 type SegmentButtonProps = SharedElementAttributes &
   SharedProps & {
