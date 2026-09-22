@@ -171,7 +171,7 @@ describe('Tree — virtualized data path', () => {
         x: 0,
         y: 0,
         toJSON: () => ({}),
-      } as DOMRect;
+      };
     };
 
     try {
