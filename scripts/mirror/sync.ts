@@ -620,6 +620,10 @@ export async function verifyTarget({
         });
         break;
       }
+      case 'prepack': {
+        assertSucceeded(result, `running prepack for ${step.publicName}`);
+        break;
+      }
       case 'typecheck-private': {
         assertSucceeded(result, `running typecheck for ${step.publicName}`);
         if (step.publicName) privateTypechecks.push(step.publicName);

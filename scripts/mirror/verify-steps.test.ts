@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { committedPlans } from './committed-plans.ts';
+
 import { tarballFilename } from './packaging.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
 import {
@@ -340,5 +342,50 @@ describe('the consumer smoke test runs under node as well as bun', () => {
     expect(write?.files?.['smoke.mjs']).toContain(`from '${first.publicName}/bun-only'`);
     expect(write?.files?.['smoke-node.mjs']).not.toContain('/bun-only');
     expect(write?.files?.['smoke-node.mjs']).toContain(`from '${first.publicName}'`);
+  });
+});
+
+/**
+ * COR-1192. `release.yaml` runs `bun run prepack` right before `npm publish`; the first tagged
+ * release failed there twice on gates nothing before the tag had run. A published package whose
+ * surface records a `prepack` script gets a step for it, after its typecheck and before its pack.
+ */
+describe('prepack runs in verification when the surface records it', () => {
+  test('a package with a recorded prepack gets the step between typecheck and pack; one without does not', () => {
+    const first = published[0];
+    if (first === undefined) throw new Error('the fixture has no published package');
+    const withPrepack = {
+      ...first,
+      entry: {
+        ...first.entry,
+        build: {
+          ...first.entry.build,
+          scripts: { ...first.entry.build?.scripts, prepack: 'bun run build' },
+        },
+      },
+    };
+    const without = {
+      ...first,
+      entry: { ...first.entry, build: { ...first.entry.build, scripts: {} } },
+    };
+    const steps = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: [withPrepack], privateWorkspaces: [] },
+      localEnvironment(),
+    );
+    const kinds = steps.map((step) => step.kind);
+    expect(kinds.indexOf('prepack')).toBeGreaterThan(kinds.indexOf('typecheck-published'));
+    expect(kinds.indexOf('prepack')).toBeLessThan(kinds.indexOf('pack'));
+    expect(steps[kinds.indexOf('prepack')]?.command).toEqual(['bun', 'run', 'prepack']);
+    const bare = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: [without], privateWorkspaces: [] },
+      localEnvironment(),
+    );
+    expect(bare.map((step) => step.kind)).not.toContain('prepack');
+  });
+
+  test('weft’s committed surface records a prepack, so its rendered workflow runs it', async () => {
+    const { plan } = committedPlans.weft;
+    const weft = plan.published.find((entry) => entry.publicName === '@lostgradient/weft');
+    expect(weft?.entry.build.scripts['prepack']).toContain('verify:exports');
   });
 });
