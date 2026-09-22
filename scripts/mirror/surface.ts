@@ -22,7 +22,13 @@ import {
   type SurfaceExportsMap,
 } from './package-surface.ts';
 import { checkParity, loadRegistryBaseline, type ParityResult } from './registry-baseline.ts';
-import { assertSingleOwner, planSource, type EmittedWorkspace, type SourcePlan } from './source.ts';
+import {
+  applyVersionConstants,
+  assertSingleOwner,
+  planSource,
+  type EmittedWorkspace,
+  type SourcePlan,
+} from './source.ts';
 import { assertNoSourceEscapes } from './target-resolvability.ts';
 import {
   assertTypeScriptEdgeClosed,
@@ -317,6 +323,9 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   assertTypeScriptEdgeClosed(manifestPlan.droppedEdges, typescript);
 
   const source = await planSource(options.corvidaeRoot, emittedWorkspaces, options.targetDirectory);
+  // COR-1192: the exported version literal follows the composed manifest's `version`, which
+  // `published` has just resolved, so tag, manifest and `VERSION` agree at every sync.
+  applyVersionConstants(source.files, published);
   for (const entry of privateWorkspaces) {
     entry.emitsTypeScript = source.typeScriptWorkspaces.includes(entry.workspace);
   }
