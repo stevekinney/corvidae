@@ -27,7 +27,8 @@ const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
  * than written as a literal: these tests assert the rule that a cross-target edge follows
  * `lastPublishedVersion`, and a literal turned every weft release into six test edits.
  */
-const weftDisposition = (await loadPackageMap()).workspaces['@lostgradient/weft'];
+const realPackageMap = await loadPackageMap();
+const weftDisposition = realPackageMap.workspaces['@lostgradient/weft'];
 if (weftDisposition?.disposition !== 'publish-as' || !weftDisposition.lastPublishedVersion) {
   throw new Error('package-map.json must record @lostgradient/weft as published');
 }
