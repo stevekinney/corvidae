@@ -204,6 +204,36 @@
    */
   let restoredId: string | undefined;
   /**
+   * Whether the current restore attempt is still waiting on a KEYED anchor that
+   * has not appeared in `items` yet. Drives the mutation-watch effect below,
+   * which is the only thing that pays to notice a same-length, in-place items
+   * mutation — everywhere else, `items.length` and array identity are enough.
+   */
+  let hasPendingKeyedRestore = $state(false);
+  /**
+   * Bumped by the mutation-watch effect when an item changes while a keyed
+   * restore is pending, so the restore effect re-evaluates even though neither
+   * `items.length` nor the array's identity moved. Read by the restore effect
+   * purely to be tracked — its value carries no information of its own.
+   */
+  let pendingRestoreMutationSignal = $state(0);
+  /**
+   * The saved intra-row remainder from a `dynamicSize` restore, held until the
+   * anchor row itself is actually measured.
+   *
+   * The offsets table is all estimates when the restore effect writes the
+   * initial scroll offset, so that write clamps the saved remainder to the
+   * row's ESTIMATED size — a reader deep into a row taller than `itemHeight`
+   * lands near its top rather than at their saved position. Once the anchor
+   * row is measured, the correction pass below re-applies the real remainder
+   * against its actual size and clears this.
+   */
+  let pendingRestoreRemainder: {
+    index: number;
+    key: VirtualListKey;
+    offsetWithinRow: number;
+  } | null = null;
+  /**
    * The tracker itself is a plain binding — nothing derives from it directly. The
    * velocity it produces IS `$state`, because `effectiveOverscan` reads it.
    */
@@ -572,6 +602,13 @@
     // item change would re-apply the saved position over wherever the reader had
     // since scrolled to.
     const itemCount = items.length;
+    // Tracked so a same-length, in-place mutation that introduces a still-missing
+    // keyed anchor re-triggers this effect too. `items.length` alone cannot see
+    // that: the count does not change, and comparing the array's own identity
+    // does not either, since the consumer mutated the same reference in place.
+    // This only ever increments while `hasPendingKeyedRestore` is true, so it
+    // costs nothing once a restore has resolved or given up.
+    void pendingRestoreMutationSignal;
     if (!element || !id || restoredId === id || itemCount === 0) return;
 
     untrack(() => {
@@ -581,10 +618,12 @@
         // A different collection: its attempt history is its own.
         restoredIdInProgress = id;
         lastRestoreAttemptCount = 0;
+        hasPendingKeyedRestore = false;
       }
 
       if (!saved) {
         restoredId = id;
+        hasPendingKeyedRestore = false;
         return;
       }
 
@@ -610,6 +649,25 @@
         if (items.length > lastRestoreAttemptCount) {
           lastRestoreAttemptCount = items.length;
           restoredId = undefined;
+          // Only for a KEYED anchor: the mutation watch below exists to notice a
+          // same-length mutation that introduces a missing KEY, which is the one
+          // case `items.length` cannot see at all. A plain index anchor is already
+          // re-checked whenever the count changes, and needs no extra tracking.
+          hasPendingKeyedRestore = saved.anchorKey !== undefined;
+          return;
+        }
+        // A KEYED anchor never gives up on length alone: the mutation watch below
+        // is what re-triggers THIS effect once a same-length mutation actually
+        // introduces the anchor, and re-running with no growth is exactly what
+        // that looks like BEFORE such a mutation has happened — not evidence the
+        // row is gone. Waiting costs nothing further unless a relevant mutation
+        // actually arrives, which is the whole point of that watch. What ends the
+        // wait instead is the reader: `handleReaderTakeover` drops it on their first
+        // wheel, pointer, touch, or scrolling key, so a late anchor cannot yank them
+        // back from wherever they have gone since.
+        if (saved.anchorKey !== undefined) {
+          restoredId = undefined;
+          hasPendingKeyedRestore = true;
           return;
         }
         // Growth has stopped and the row never appeared, so stop looking — the key
@@ -618,10 +676,12 @@
         // overwrites it with the reader's real position anyway. Deleting it was only
         // ever needed back when a missing anchor got clamped into range.
         restoredId = id;
+        hasPendingKeyedRestore = false;
         return;
       }
 
       restoredId = id;
+      hasPendingKeyedRestore = false;
 
       // Nothing queued for the old view may land after this. Two things can be in
       // flight: a correction the growth effect queued to preserve the pre-prepend
@@ -632,6 +692,7 @@
       // than where they left off.
       pendingScrollTarget = null;
       pendingReanchor = null;
+      pendingRestoreRemainder = null;
       retireSettleLoop();
       // The append pin too. When the saved anchor arrives in an APPENDED page — under
       // `reverse`, or with `stickToBottom` still reading a short first page as being
@@ -661,12 +722,19 @@
         // Strictly inside the row. An inclusive clamp lands on exactly the next row's
         // start — 30px into a 40px row becomes 20px into a 20px row, which IS row
         // 201 — defeating the anchor this whole branch exists to honour.
-        const withinRow = Math.min(
-          Math.max(0, saved.offsetWithinRow ?? 0),
-          Math.max(0, rowSize - 1),
-        );
+        const rawWithinRow = Math.max(0, saved.offsetWithinRow ?? 0);
+        const withinRow = Math.min(rawWithinRow, Math.max(0, rowSize - 1));
         writeScrollOffset(element, rowStart + withinRow, 'auto');
         scrollOffset = readScrollOffset(element);
+        // The row is only an ESTIMATE at this point, so a remainder deeper than
+        // that estimate just got clamped away above. Held here, keyed to the row
+        // rather than the index, so the measurement-correction pass can re-apply
+        // the full remainder once this specific row is actually measured — even
+        // if other rows measure, reflow, or prepend in between.
+        pendingRestoreRemainder =
+          rawWithinRow > withinRow
+            ? { index: anchorIndex, key: keyAt(anchorIndex), offsetWithinRow: rawWithinRow }
+            : null;
       } else {
         // From the row anchor, not the raw saved pixel offset. `itemHeight` can differ
         // between visits — a density setting, a responsive breakpoint — and the old
@@ -678,6 +746,30 @@
         writeScrollOffset(element, anchorIndex * resolvedItemHeight + withinRow, 'auto');
         scrollOffset = readScrollOffset(element);
       }
+    });
+  });
+
+  /**
+   * Wakes a pending keyed restore on a same-length, in-place items mutation.
+   *
+   * The restore effect above tracks `items.length` and the array's own identity,
+   * so a consumer that mutates an existing (reactive) items array in place —
+   * replacing a row without changing the count — never re-triggers it, and the
+   * anchor key that mutation just introduced is never looked for again. Reading
+   * every item here is O(n), so it runs only while a keyed restore is actually
+   * still pending; once resolved or abandoned, this touches nothing but the one
+   * boolean that gates it.
+   */
+  $effect.pre(() => {
+    if (!hasPendingKeyedRestore) return;
+    const currentItems = items;
+    for (let index = 0; index < currentItems.length; index += 1) void currentItems[index];
+    // Untracked write: reading `pendingRestoreMutationSignal` here, even as part
+    // of `+= 1`, would make THIS effect depend on the very value it writes —
+    // Svelte then reruns it forever chasing its own update ("effect_update_depth_exceeded").
+    // The restore effect below is the only thing that ever needs to read it.
+    untrack(() => {
+      pendingRestoreMutationSignal += 1;
     });
   });
 
@@ -819,6 +911,17 @@
       }
     }
 
+    // A pending restore remainder is keyed to a row, but its INDEX also has to
+    // move with a prepend — same reasoning as the reanchor above — so the
+    // correction pass below still finds it at the right offset in the rebuilt
+    // table. The key check there is what catches it if this ever disagrees.
+    if (growth.kind === 'prepended' && pendingRestoreRemainder) {
+      pendingRestoreRemainder = {
+        ...pendingRestoreRemainder,
+        index: pendingRestoreRemainder.index + growth.prependedCount,
+      };
+    }
+
     previousTotalSize = currentTotal;
     previousKeys = nextKeys;
   });
@@ -860,6 +963,10 @@
     if (dynamicSize) return;
     measurementStore.reset();
     previousOffsets = undefined;
+    // No offsets table exists to re-measure a row against in fixed mode, so a
+    // remainder still waiting on one would otherwise apply against whatever
+    // geometry happens to exist if `dynamicSize` comes back on.
+    pendingRestoreRemainder = null;
   });
 
   /**
@@ -1015,6 +1122,30 @@
       const anchorIndex = findOffsetIndex(previousOffsets, liveScrollOffset);
       const delta = resolveMeasurementCorrectionDelta(corrections, anchorIndex);
       if (delta !== 0) target = liveScrollOffset + delta;
+    }
+
+    // A restored intra-row remainder, deliberately checked LAST so it overrides
+    // both the anchor and the correction-delta targets above: until the anchor
+    // row is actually measured, neither of those describes the reader's saved
+    // position — they describe where the ESTIMATE currently sits. Applied once,
+    // the moment the row's real size is known, then cleared.
+    if (
+      pendingRestoreRemainder !== null &&
+      pendingRestoreRemainder.index < items.length &&
+      measurementStore.sizes.has(pendingRestoreRemainder.key) &&
+      keyAt(pendingRestoreRemainder.index) === pendingRestoreRemainder.key
+    ) {
+      const anchorStart = currentOffsets[pendingRestoreRemainder.index] ?? 0;
+      const anchorSize = Math.max(
+        0,
+        (currentOffsets[pendingRestoreRemainder.index + 1] ?? anchorStart) - anchorStart,
+      );
+      const offsetWithinRow = Math.min(
+        pendingRestoreRemainder.offsetWithinRow,
+        Math.max(0, anchorSize - 1),
+      );
+      target = Math.max(0, anchorStart + offsetWithinRow);
+      pendingRestoreRemainder = null;
     }
 
     if (target !== null) pendingScrollTarget = Math.max(0, target);
@@ -1386,22 +1517,38 @@
     scrollToIndexGeneration += 1;
   }
 
-  function handleWheel(event: WheelEvent & { currentTarget: EventTarget & HTMLDivElement }): void {
+  /**
+   * Everything a reader's own input supersedes: the settle loop, and any restore
+   * still waiting to land. A keyed anchor waits for as long as it takes to appear,
+   * and a restored remainder waits for its row to be measured — so either one could
+   * otherwise fire long after the reader had scrolled somewhere else, and drag them
+   * back to a position they have already left.
+   */
+  function handleReaderTakeover(): void {
     retireSettleLoop();
+    pendingRestoreRemainder = null;
+    if (hasPendingKeyedRestore) {
+      hasPendingKeyedRestore = false;
+      restoredId = restoredIdInProgress;
+    }
+  }
+
+  function handleWheel(event: WheelEvent & { currentTarget: EventTarget & HTMLDivElement }): void {
+    handleReaderTakeover();
     if (typeof onWheel === 'function') onWheel(event);
   }
 
   function handlePointerDown(
     event: PointerEvent & { currentTarget: EventTarget & HTMLDivElement },
   ): void {
-    retireSettleLoop();
+    handleReaderTakeover();
     if (typeof onPointerDown === 'function') onPointerDown(event);
   }
 
   function handleTouchStart(
     event: TouchEvent & { currentTarget: EventTarget & HTMLDivElement },
   ): void {
-    retireSettleLoop();
+    handleReaderTakeover();
     if (typeof onTouchStart === 'function') onTouchStart(event);
   }
 
@@ -1443,7 +1590,7 @@
     // is not.
     if (event.target !== event.currentTarget) return;
 
-    if (scrollsMainAxis(event.key)) retireSettleLoop();
+    if (scrollsMainAxis(event.key)) handleReaderTakeover();
 
     // Only take over the keys when there is a sticky row to keep in view or the
     // list is virtualized past what the browser can reach. Otherwise the native
@@ -1475,7 +1622,7 @@
       // inline-axis set because a horizontal container is not what they scroll — but
       // this branch claims them in either orientation, and a settle loop left running
       // can write its own destination back afterwards and undo the page.
-      retireSettleLoop();
+      handleReaderTakeover();
 
       const furthest = maxScrollOffset(currentTotalSize(), viewportHeight);
       const clampToScrollRange = (offset: number): number =>
