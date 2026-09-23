@@ -67,6 +67,15 @@ Use the same row identity users see on screen whenever possible. A first pinned 
 - **Announcements.** Match position ("Match 3 of 12") and "No matches" go through DataGrid's existing live region (`role="status"`, `aria-live="polite"`) — the same one used for resize/reorder announcements.
 - **Coexistence.** Search reads whatever `rows`/`columns` the grid currently has, so a committed edit or a sort change updates matches (and, if the active search still matches, the highlight) the same way it already updates row/column geometry.
 
+## Zoom and toolbar counts
+
+`zoom` and `zoomControls` are both off by default (`zoom` at its `100` default, `zoomControls` unset) — an existing grid's accessibility contract, DOM, and cost are unchanged until a caller opts in.
+
+- **Toolbar.** `zoomControls` renders its row-count/column-count/zoom-controls group inside the same `role="toolbar"` region `search` uses (Cinder's Toolbar) — set either or both to get one toolbar; with neither set, DataGrid renders no toolbar at all.
+- **Zoom buttons.** "Zoom out" and "Zoom in" are real `<button>`s (Cinder's Button) with their own accessible names — not icon-only controls relying on a tooltip — and each disables itself at its respective `[50, 200]` bound rather than silently doing nothing.
+- **Announcements.** A zoom-level change is announced ("Zoom 120%") through DataGrid's existing live region (`role="status"`, `aria-live="polite"`), the same one used for search, resize, and reorder announcements.
+- **Text scaling.** `zoom` scales cell and header text size together with row height, header height, and column width, so a caller does not need a separate mechanism to make DataGrid's own text larger — this is in addition to, not a replacement for, the browser's own page-zoom/text-size controls, which continue to work normally.
+
 ## Virtualized columns
 
 Column virtualization keeps off-screen columns out of the DOM. The grid preserves `aria-colindex` for the full column set and adds edge shadows plus a stable scrollbar gutter so sighted users have a visible horizontal-overflow cue and the vertical scrollbar does not cover the last visible column.

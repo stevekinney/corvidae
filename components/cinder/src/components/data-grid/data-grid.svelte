@@ -11,7 +11,7 @@
    * @useWhen You need role=grid semantics instead of native table semantics.
    * @useWhen You need inline cell editing backed by Cinder's own Input, with commit/cancel keyboard behavior handled for you.
    * @useWhen You need opt-in pointer- and keyboard-driven column resizing or reordering (`resizableColumns` / `reorderableColumns`).
-   * @useWhen You need an opt-in toolbar search across every cell, with next/previous match navigation (`search`).
+   * @useWhen You need opt-in toolbar search/zoom controls, or `zoom` scaling row/header height, column width, and text.
    * @avoidWhen You only need a semantic read-only table — use DataTable or the Table family instead.
    * @related data-table, table
    */
@@ -31,6 +31,12 @@
     DataGridSortModel,
     DataGridSortModelItem,
   } from './data-grid.types.ts';
+  export { parseDelimitedText, resolveDelimitedTextColumnKeys } from './parse-delimited-text.ts';
+  export type {
+    DelimitedTextRow,
+    ParseDelimitedTextOptions,
+    ParsedDelimitedText,
+  } from './parse-delimited-text.ts';
 </script>
 
 <script lang="ts" generics="TRow">
@@ -39,6 +45,8 @@
 
   import ChevronLeft from 'lucide-svelte/icons/chevron-left';
   import ChevronRight from 'lucide-svelte/icons/chevron-right';
+  import ZoomIn from 'lucide-svelte/icons/zoom-in';
+  import ZoomOut from 'lucide-svelte/icons/zoom-out';
   import { classNames } from '../../utilities/class-names.ts';
   import { copyToClipboard } from '../../utilities/clipboard.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
@@ -105,6 +113,10 @@
   ].join(',');
 
   const defaultVirtualRowHeight = 44;
+  const minZoomPercent = 50;
+  const maxZoomPercent = 200;
+  const defaultZoomPercent = 100;
+  const zoomStepPercent = 10;
 
   let {
     rows,
@@ -131,6 +143,9 @@
     rowClass,
     getRowAriaLabel,
     search = false,
+    zoom = $bindable(100),
+    onZoomChange,
+    zoomControls = false,
     class: className,
     id: consumerId,
     'aria-label': ariaLabel,
@@ -234,6 +249,20 @@
   const shouldWarnVirtualRowHeightFallback = $derived(
     virtualizeRows && !isValidVirtualRowHeight(rowHeight),
   );
+  // --- Zoom (COR-1139) ---------------------------------------------------
+  //
+  // `zoomScale` (`resolvedZoomPercent / 100`) is the single multiplier every
+  // rendered pixel dimension — row height, column width, and (through the
+  // `--_cinder-data-grid-zoom-scale` CSS variable below) header height and
+  // cell text size — is scaled by. `columnModel`'s own widths stay in
+  // unscaled base pixels throughout (see its module comment); `zoomScale`
+  // is only ever applied at render/measurement call sites, never folded
+  // into `columnSizing` or `columnModel`, so a resize keeps reporting base
+  // widths no matter the current zoom level.
+  const resolvedZoomPercent = $derived(resolveZoomPercent(zoom));
+  const shouldWarnInvalidZoom = $derived(zoom !== undefined && !isFiniteZoomValue(zoom));
+  const zoomScale = $derived(resolvedZoomPercent / 100);
+  const scaledRowHeight = $derived(resolvedRowHeight * zoomScale);
   const shouldVirtualizeRows = $derived(virtualizeRows && sortedKeyedRows.length > 0);
   const shouldVirtualizeColumns = $derived(
     virtualizeColumns &&
@@ -247,16 +276,16 @@
     getScrollElement: () => gridElement ?? null,
     getRowCount: () => sortedKeyedRows.length,
     getRowKey: (index) => sortedKeyedRows[index]?.rowKey ?? index,
-    getRowHeight: () => resolvedRowHeight,
+    getRowHeight: () => scaledRowHeight,
     getColumnCount: () => columnModel.unpinnedColumns.length,
     getColumnKey: (index) => columnModel.unpinnedColumns[index]?.key ?? index,
-    getColumnWidth: (index) => columnModel.unpinnedColumns[index]?.width ?? 150,
+    getColumnWidth: (index) => (columnModel.unpinnedColumns[index]?.width ?? 150) * zoomScale,
     getOverscan: () => 5,
-    getInitialHeight: () => resolvedRowHeight * 10,
+    getInitialHeight: () => scaledRowHeight * 10,
     getInitialWidth: () => measuredGridWidth ?? 1_000,
     getScrollPaddingStart: () => getHeaderHeight(),
-    getScrollPaddingInlineStart: () => columnModel.leftPinnedWidth,
-    getScrollPaddingInlineEnd: () => columnModel.rightPinnedWidth,
+    getScrollPaddingInlineStart: () => columnModel.leftPinnedWidth * zoomScale,
+    getScrollPaddingInlineEnd: () => columnModel.rightPinnedWidth * zoomScale,
   });
   // Keeps the column virtualizer's own measured sizes in sync with resolved
   // column widths (COR-1131). `@tanstack/virtual-core` only recomputes an
@@ -275,7 +304,7 @@
   $effect(() => {
     if (!shouldVirtualizeColumns) return;
     columnModel.unpinnedColumns.forEach((column, index) => {
-      rowVirtualizer.resizeColumn(index, column.width);
+      rowVirtualizer.resizeColumn(index, column.width * zoomScale);
     });
   });
   const observeHeaderSize: Attachment<HTMLElement> = (node) => {
@@ -337,7 +366,9 @@
   });
   const gridContentWidth = $derived(
     shouldVirtualizeColumns
-      ? columnModel.leftPinnedWidth + rowVirtualizer.totalWidth + columnModel.rightPinnedWidth
+      ? columnModel.leftPinnedWidth * zoomScale +
+          rowVirtualizer.totalWidth +
+          columnModel.rightPinnedWidth * zoomScale
       : undefined,
   );
   const shouldShowColumnOverflowShadow = $derived(
@@ -347,15 +378,15 @@
   );
   const gridTemplateColumns = $derived.by(() => {
     if (!shouldVirtualizeColumns) {
-      return columnModel.renderColumns.map((column) => `${column.width}px`).join(' ');
+      return columnModel.renderColumns.map((column) => `${column.width * zoomScale}px`).join(' ');
     }
 
     return [
-      ...columnModel.leftPinnedColumns.map((column) => `${column.width}px`),
+      ...columnModel.leftPinnedColumns.map((column) => `${column.width * zoomScale}px`),
       `${virtualColumnLeadingSpacer}px`,
       ...virtualColumns.map((item) => `${item.size}px`),
       `${virtualColumnTrailingSpacer}px`,
-      ...columnModel.rightPinnedColumns.map((column) => `${column.width}px`),
+      ...columnModel.rightPinnedColumns.map((column) => `${column.width * zoomScale}px`),
     ].join(' ');
   });
   const renderedColumns = $derived.by(() => {
@@ -378,7 +409,7 @@
         keyedRow,
         visualRowIndex,
         start: 0,
-        size: resolvedRowHeight,
+        size: scaledRowHeight,
         virtualized: false,
       }));
     }
@@ -485,12 +516,30 @@
   let previousDebouncedSearchQuery: string | undefined;
   let currentSearchMatchTrackedKey: string | undefined;
 
-  const searchToolbarAriaLabel = $derived(
+  // Shared by both toolbar groups (`search` and `zoomControls`) — whichever
+  // are enabled render inside the same single `<Toolbar>` (COR-1140).
+  const toolbarAriaLabel = $derived(
     resolvedAriaLabel ? `${resolvedAriaLabel} toolbar` : 'Grid toolbar',
   );
   const searchFieldAriaLabel = $derived(
     resolvedAriaLabel ? `Search ${resolvedAriaLabel}` : 'Search',
   );
+
+  // --- Toolbar counts and zoom controls (COR-1140) -----------------------
+  //
+  // Counts use the current row count and the current *visible* column
+  // count (`columnModel.renderColumns`, i.e. every column DataGrid is
+  // actually rendering — left-pinned, unpinned, and right-pinned together
+  // — not the raw `columns` prop length, which would ignore column-model
+  // resolution).
+  const toolbarRowCount = $derived(rows.length);
+  const toolbarColumnCount = $derived(columnModel.renderColumns.length);
+  const toolbarCountsText = $derived(
+    `${toolbarRowCount} ${toolbarRowCount === 1 ? 'row' : 'rows'}, ${toolbarColumnCount} ${toolbarColumnCount === 1 ? 'column' : 'columns'}`,
+  );
+  const canZoomOut = $derived(resolvedZoomPercent > minZoomPercent);
+  const canZoomIn = $derived(resolvedZoomPercent < maxZoomPercent);
+
   // Explicitly re-checks `search` (not just relying on callers gating reads)
   // so nothing here ever calls a column's `getValue` while search is off,
   // no matter what else changes (COR-1136).
@@ -636,6 +685,7 @@
   let liveRegionTimeoutId: ReturnType<typeof setTimeout> | undefined;
   let liveRegionVersion = 0;
   let warnedVirtualRowHeightFallback = false;
+  let warnedInvalidZoom = false;
 
   $effect(() => {
     if (!resolvedAriaLabel && !resolvedAriaLabelledBy && !hasWarnedNoLabel) {
@@ -667,6 +717,15 @@
     warnedVirtualRowHeightFallback = true;
     devWarn(
       '[cinder-data-grid] DataGrid row virtualization is using the default rowHeight of 44px. Pass a positive finite rowHeight to match your row layout.',
+    );
+  });
+
+  $effect(() => {
+    if (!shouldWarnInvalidZoom || warnedInvalidZoom) return;
+
+    warnedInvalidZoom = true;
+    devWarn(
+      `[cinder-data-grid] DataGrid zoom must be a finite number; received ${JSON.stringify(zoom)}. Falling back to ${defaultZoomPercent}.`,
     );
   });
 
@@ -813,6 +872,20 @@
     return isValidVirtualRowHeight(value) ? value : defaultVirtualRowHeight;
   }
 
+  function isFiniteZoomValue(value: number | undefined): value is number {
+    return typeof value === 'number' && Number.isFinite(value);
+  }
+
+  // A finite value out of `[minZoomPercent, maxZoomPercent]` is clamped
+  // into range (the way column resize clamps to `minWidth`/`maxWidth`); a
+  // non-finite value (`NaN`, `Infinity`, …) is invalid and falls back to
+  // `defaultZoomPercent`, the same dev-warn-and-fall-back pattern
+  // `resolveVirtualRowHeight` uses for `rowHeight`.
+  function resolveZoomPercent(value: number | undefined): number {
+    if (!isFiniteZoomValue(value)) return defaultZoomPercent;
+    return Math.min(Math.max(value, minZoomPercent), maxZoomPercent);
+  }
+
   function formatDataGridValue(value: unknown): string {
     if (value === null || value === undefined) return '';
     if (value instanceof Date) return value.toISOString();
@@ -831,14 +904,18 @@
 
   function getCellStyle(column: ResolvedDataGridColumn<TRow>): string {
     const customProperties = [
-      `--_cinder-data-grid-column-width: ${column.width}px`,
+      `--_cinder-data-grid-column-width: ${column.width * zoomScale}px`,
       `grid-column: ${getCellGridColumn(column)}`,
     ];
     if (column.pin === 'left') {
-      customProperties.push(`--_cinder-data-grid-pin-left-offset: ${column.pinOffset}px`);
+      customProperties.push(
+        `--_cinder-data-grid-pin-left-offset: ${column.pinOffset * zoomScale}px`,
+      );
     }
     if (column.pin === 'right') {
-      customProperties.push(`--_cinder-data-grid-pin-right-offset: ${column.pinOffset}px`);
+      customProperties.push(
+        `--_cinder-data-grid-pin-right-offset: ${column.pinOffset * zoomScale}px`,
+      );
     }
     return customProperties.join('; ');
   }
@@ -927,6 +1004,21 @@
     liveRegionAnnouncementSequence += 1;
   }
 
+  // --- Zoom controls (COR-1140) ------------------------------------------
+
+  function setZoom(nextZoomPercent: number): void {
+    const clampedZoomPercent = resolveZoomPercent(nextZoomPercent);
+    if (clampedZoomPercent === resolvedZoomPercent) return;
+
+    zoom = clampedZoomPercent;
+    onZoomChange?.(clampedZoomPercent);
+    announce(`Zoom ${clampedZoomPercent}%`);
+  }
+
+  function stepZoom(direction: 1 | -1): void {
+    setZoom(resolvedZoomPercent + direction * zoomStepPercent);
+  }
+
   // --- Pointer resize (COR-1131) ---------------------------------------
 
   function handleResizeHandlePointerDown(
@@ -951,9 +1043,15 @@
     event.preventDefault();
     const rawDeltaX = event.clientX - resizeDragState.startClientX;
     const deltaX = isRightToLeft ? -rawDeltaX : rawDeltaX;
+    // `resizeDragState.startWidth` and the column's min/max are unscaled
+    // base pixels (COR-1139) but `deltaX` is a screen-pixel pointer delta —
+    // at zoom !== 100% the handle itself renders `zoomScale` px on screen
+    // per base px, so dividing here keeps the handle tracking the pointer
+    // one-to-one instead of the column growing/shrinking faster or slower
+    // than the drag.
     const nextWidth = getPointerResizedColumnWidth(
       resizeDragState.startWidth,
-      deltaX,
+      deltaX / zoomScale,
       resizeDragState.minWidth,
       resizeDragState.maxWidth,
     );
@@ -1620,35 +1718,59 @@
   }
 </script>
 
-{#if search}
-  <Toolbar class="cinder-data-grid__toolbar" aria-label={searchToolbarAriaLabel}>
-    <ToolbarGroup class="cinder-data-grid__toolbar-search-group">
-      <SearchField
-        id={searchFieldId}
-        bind:value={searchQuery}
-        placeholder="Search"
-        aria-label={searchFieldAriaLabel}
-        aria-controls={resolvedGridId}
-        onkeydown={handleSearchFieldKeydown}
-      />
-      <Button
-        variant="ghost"
-        size="sm"
-        iconOnly
-        aria-label="Previous match"
-        disabled={searchMatches.length === 0}
-        onclick={() => goToSearchMatch(-1)}><ChevronLeft aria-hidden="true" /></Button
-      >
-      <Button
-        variant="ghost"
-        size="sm"
-        iconOnly
-        aria-label="Next match"
-        disabled={searchMatches.length === 0}
-        onclick={() => goToSearchMatch(1)}><ChevronRight aria-hidden="true" /></Button
-      >
-      <span class="cinder-data-grid__search-status">{searchStatusText}</span>
-    </ToolbarGroup>
+{#if search || zoomControls}
+  <Toolbar class="cinder-data-grid__toolbar" aria-label={toolbarAriaLabel}>
+    {#if search}
+      <ToolbarGroup class="cinder-data-grid__toolbar-search-group">
+        <SearchField
+          id={searchFieldId}
+          bind:value={searchQuery}
+          placeholder="Search"
+          aria-label={searchFieldAriaLabel}
+          aria-controls={resolvedGridId}
+          onkeydown={handleSearchFieldKeydown}
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label="Previous match"
+          disabled={searchMatches.length === 0}
+          onclick={() => goToSearchMatch(-1)}><ChevronLeft aria-hidden="true" /></Button
+        >
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label="Next match"
+          disabled={searchMatches.length === 0}
+          onclick={() => goToSearchMatch(1)}><ChevronRight aria-hidden="true" /></Button
+        >
+        <span class="cinder-data-grid__search-status">{searchStatusText}</span>
+      </ToolbarGroup>
+    {/if}
+    {#if zoomControls}
+      <ToolbarGroup class="cinder-data-grid__toolbar-zoom-group">
+        <span class="cinder-data-grid__toolbar-counts">{toolbarCountsText}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label="Zoom out"
+          disabled={!canZoomOut}
+          onclick={() => stepZoom(-1)}><ZoomOut aria-hidden="true" /></Button
+        >
+        <span class="cinder-data-grid__zoom-level">{resolvedZoomPercent}%</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label="Zoom in"
+          disabled={!canZoomIn}
+          onclick={() => stepZoom(1)}><ZoomIn aria-hidden="true" /></Button
+        >
+      </ToolbarGroup>
+    {/if}
     <ToolbarSpacer />
   </Toolbar>
 {/if}
@@ -1676,6 +1798,7 @@
   style:--_cinder-data-grid-content-width={gridContentWidth === undefined
     ? undefined
     : `${gridContentWidth}px`}
+  style:--_cinder-data-grid-zoom-scale={zoomScale}
   {@attach rowVirtualizer.mountScrollContainer}
   {@attach observeGridSize}
 >

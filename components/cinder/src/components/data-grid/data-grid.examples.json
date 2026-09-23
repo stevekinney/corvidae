@@ -32,6 +32,18 @@
       "title": "Searchable order grid",
       "description": "Opts into the toolbar search: a SearchField plus next/previous controls that highlight and step through matching cells.",
       "code": "<script lang=\"ts\">\n  import { DataGrid, type DataGridColumnDef } from '@lostgradient/cinder';\n\n  type Order = {\n    id: string;\n    customer: string;\n    status: string;\n  };\n\n  const orders: Order[] = [\n    { id: 'ORD-1001', customer: 'Ada Lovelace', status: 'Packed' },\n    { id: 'ORD-1002', customer: 'Grace Hopper', status: 'Shipped' },\n    { id: 'ORD-1003', customer: 'Alan Turing', status: 'Queued' },\n  ];\n\n  const columns: DataGridColumnDef<Order>[] = [\n    { key: 'id', header: 'Order', width: 120, pin: 'left' },\n    { key: 'customer', header: 'Customer', width: 220 },\n    { key: 'status', header: 'Status', width: 140 },\n  ];\n</script>\n\n<DataGrid\n  rows={orders}\n  {columns}\n  getRowId={(order) => order.id}\n  search\n  aria-label=\"Orders\"\n/>\n"
+    },
+    {
+      "id": "zoom-controls",
+      "title": "Zoom and toolbar counts",
+      "description": "Opts into zoomControls: a toolbar row/column count plus zoom in/out controls bound to zoom.",
+      "code": "<script lang=\"ts\">\n  import { DataGrid, type DataGridColumnDef } from '@lostgradient/cinder';\n\n  type Order = {\n    id: string;\n    customer: string;\n    status: string;\n  };\n\n  const orders: Order[] = [\n    { id: 'ORD-1001', customer: 'Ada Lovelace', status: 'Packed' },\n    { id: 'ORD-1002', customer: 'Grace Hopper', status: 'Shipped' },\n    { id: 'ORD-1003', customer: 'Alan Turing', status: 'Queued' },\n  ];\n\n  const columns: DataGridColumnDef<Order>[] = [\n    { key: 'id', header: 'Order', width: 120, pin: 'left' },\n    { key: 'customer', header: 'Customer', width: 220 },\n    { key: 'status', header: 'Status', width: 140 },\n  ];\n\n  let zoom = $state(100);\n</script>\n\n<DataGrid\n  rows={orders}\n  {columns}\n  getRowId={(order) => order.id}\n  zoomControls\n  bind:zoom\n  aria-label=\"Orders\"\n/>\n"
+    },
+    {
+      "id": "csv-import",
+      "title": "Parsed CSV import",
+      "description": "Parses static CSV text with parseDelimitedText and passes the derived columns/rows straight into DataGrid.",
+      "code": "<script lang=\"ts\">\n  import { DataGrid, parseDelimitedText } from '@lostgradient/cinder';\n\n  const csv = `id,customer,status\nORD-1001,Ada Lovelace,Packed\nORD-1002,Grace Hopper,Shipped\nORD-1003,Alan Turing,Queued\n`;\n\n  const parsed = parseDelimitedText(csv, { delimiter: ',' });\n  const rows = parsed.rows.map((row, index) => ({ ...row, __rowIndex: String(index) }));\n</script>\n\n<DataGrid\n  {rows}\n  columns={parsed.columns}\n  getRowId={(row) => row.__rowIndex}\n  aria-label=\"Imported orders\"\n/>\n"
     }
   ]
 }

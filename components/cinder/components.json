@@ -1550,7 +1550,7 @@
         "You need role=grid semantics instead of native table semantics.",
         "You need inline cell editing backed by Cinder's own Input, with commit/cancel keyboard behavior handled for you.",
         "You need opt-in pointer- and keyboard-driven column resizing or reordering (`resizableColumns` / `reorderableColumns`).",
-        "You need an opt-in toolbar search across every cell, with next/previous match navigation (`search`)."
+        "You need opt-in toolbar search/zoom controls, or `zoom` scaling row/header height, column width, and text."
       ],
       "avoidWhen": [
         {

@@ -4,6 +4,11 @@
   .cinder-data-grid {
     --_cinder-data-grid-template-columns: none;
     --_cinder-data-grid-content-width: max-content;
+    /* Multiplier applied to row height, header height, column width, and
+       cell text size together (COR-1139). `1` when a grid does not opt
+       into `zoom` (the default `100`), so an existing grid renders
+       identically to before this feature existed. */
+    --_cinder-data-grid-zoom-scale: 1;
 
     display: block;
     inline-size: 100%;
@@ -14,7 +19,7 @@
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
-    font-size: var(--cinder-text-sm);
+    font-size: calc(var(--cinder-text-sm) * var(--_cinder-data-grid-zoom-scale));
     overscroll-behavior-inline: contain;
     -webkit-overflow-scrolling: touch;
   }
@@ -51,8 +56,11 @@
 
   .cinder-data-grid__header-row {
     /* Round the 13px type's 1.5 line-height plus padding and border to a whole
-       pixel so sticky and pinned layers share a stable raster boundary. */
-    min-block-size: 2.3125rem;
+       pixel so sticky and pinned layers share a stable raster boundary.
+       Scaled by `--_cinder-data-grid-zoom-scale` (COR-1139) — this is a
+       floor, not a fixed height, so a larger zoom's bigger header text can
+       still grow the row past it. */
+    min-block-size: calc(2.3125rem * var(--_cinder-data-grid-zoom-scale));
     background: var(--cinder-surface-inset);
     box-shadow: var(--_cinder-data-grid-overflow-shadow, none);
   }
@@ -345,7 +353,7 @@
   }
 
   .cinder-data-grid[data-cinder-density='compact'] .cinder-data-grid__header-row {
-    min-block-size: 1.8125rem;
+    min-block-size: calc(1.8125rem * var(--_cinder-data-grid-zoom-scale));
   }
 
   .cinder-data-grid[data-cinder-density='compact']
@@ -365,7 +373,7 @@
   }
 
   .cinder-data-grid[data-cinder-density='spacious'] .cinder-data-grid__header-row {
-    min-block-size: 2.8125rem;
+    min-block-size: calc(2.8125rem * var(--_cinder-data-grid-zoom-scale));
   }
 
   .cinder-data-grid[data-cinder-density='spacious']
@@ -403,6 +411,25 @@
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
     white-space: nowrap;
+  }
+
+  .cinder-data-grid__toolbar-zoom-group {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-data-grid__toolbar-counts,
+  .cinder-data-grid__zoom-level {
+    flex: 0 0 auto;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    white-space: nowrap;
+  }
+
+  .cinder-data-grid__zoom-level {
+    min-inline-size: 3.5em;
+    text-align: center;
   }
 
   /* Same warning-surface pair `.cinder-autocomplete__match` uses to

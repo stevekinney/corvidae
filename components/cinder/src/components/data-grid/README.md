@@ -183,6 +183,79 @@ Opt in with `search`. DataGrid renders a toolbar — built from Cinder's own Too
 - **Coexistence.** Search recomputes from whatever `rows`/`columns` DataGrid currently has, so committing a cell edit or changing `sortModel` updates matches and highlighting automatically — no extra wiring required.
 - The search field's accessible name is derived from the grid's own `aria-label` (e.g. "Search Orders") and it sets `aria-controls` to the grid.
 
+## Zoom
+
+Opt in with `zoom` (a percentage, default `100`). It multiplies row height, header height, column width, and cell text size together — everything scales as one unit, not independently.
+
+```svelte
+<script lang="ts">
+  import { DataGrid } from '@lostgradient/cinder';
+  import type { DataGridColumnDef } from '@lostgradient/cinder';
+
+  type Order = { id: string; customer: string; status: string };
+
+  const columns: DataGridColumnDef<Order>[] = [
+    { key: 'id', header: 'Order', width: 120, pin: 'left' },
+    { key: 'customer', header: 'Customer', width: 220 },
+    { key: 'status', header: 'Status', width: 140 },
+  ];
+
+  const rows: Order[] = [
+    { id: 'ORD-1001', customer: 'Ada Lovelace', status: 'Packed' },
+    { id: 'ORD-1002', customer: 'Grace Hopper', status: 'Shipped' },
+  ];
+
+  let zoom = $state(100);
+</script>
+
+<DataGrid {columns} {rows} getRowId={(row) => row.id} bind:zoom aria-label="Orders" />
+```
+
+- **Range.** `zoom` is clamped to `[50, 200]`. A non-finite value (`NaN`, `Infinity`, a non-number) is ignored and DataGrid falls back to `100`, warning in development — the same pattern `rowHeight` uses for an invalid value.
+- **`$bindable`.** Mirrors `sortModel`/`columnSizing`: DataGrid assigns `zoom` directly after a zoom-control interaction (see `zoomControls` below), in addition to calling `onZoomChange`.
+- **Base pixels stay base pixels.** `columnSizing` (see [Resizing and reordering columns](#resizing-and-reordering-columns)) always stays in unscaled base pixels, whatever `zoom` currently is — only the rendered, on-screen size is scaled. A pointer resize under a non-100% zoom still commits the same base width a 100%-zoom resize would for the same visual drag distance; a keyboard resize step is always exactly 10 base px, regardless of zoom.
+- **Virtualization.** `virtualizeRows`/`virtualizeColumns` measure and scroll using the _scaled_ row height and column widths, so virtualized and non-virtualized grids stay visually consistent at any zoom level.
+
+### Toolbar counts and zoom controls
+
+Opt in with `zoomControls` to render a row count, a visible column count, and zoom in/out buttons in the same toolbar `search` uses — set both to combine them in one toolbar, or either alone. With neither `search` nor `zoomControls` set, DataGrid renders no toolbar DOM at all.
+
+```svelte
+<DataGrid {columns} {rows} getRowId={(row) => row.id} zoomControls bind:zoom aria-label="Orders" />
+```
+
+- **Counts.** The row count is the current `rows.length`; the column count is the current number of visible (rendered) columns — left-pinned, unpinned, and right-pinned together.
+- **Zoom buttons.** "Zoom out" and "Zoom in" step `zoom` by 10 percentage points, clamped to `[50, 200]`; each is disabled at its respective bound. Both have accessible names and neither is `aria-controls`-wired to the grid (they act on the grid as a whole, not a scoped region of it).
+- **Announcements.** Changing the zoom level announces "Zoom `<n>`%" through DataGrid's existing live region.
+
+## Parsing CSV/TSV text
+
+`parseDelimitedText(text, { delimiter })` is a pure parsing utility — not a new component or a props-driven "preset" — that turns CSV/TSV (or any single-character-delimited) text into `{ columns, rows }` for DataGrid's existing `columns`/`rows` props, unchanged.
+
+```svelte
+<script lang="ts">
+  import { DataGrid, parseDelimitedText } from '@lostgradient/cinder';
+
+  const csv = `id,customer,status\nORD-1001,Ada Lovelace,Packed\nORD-1002,Grace Hopper,Shipped\n`;
+  const { columns, rows: parsedRows } = parseDelimitedText(csv, { delimiter: ',' });
+
+  // Parsed rows have no built-in stable identity, so derive one — here, an
+  // index — before handing them to DataGrid's `getRowId`.
+  const rows = parsedRows.map((row, index) => ({ ...row, __rowIndex: String(index) }));
+</script>
+
+<DataGrid {rows} {columns} getRowId={(row) => row.__rowIndex} aria-label="Imported orders" />
+```
+
+- **Delimiter is explicit.** `delimiter` is required and used exactly as given — `parseDelimitedText` never guesses a delimiter from the input. Pass `','` for CSV or `'\t'` for TSV.
+- **Header row.** The first parsed row is always the header row, supplying both `key` and `header` for every derived `DataGridColumnDef`. There is no positional/headerless mode.
+- **Quoting.** A quoted field (`"…"`) may contain the delimiter, embedded newlines (`\n` or `\r\n`), and an escaped double quote written as `""`.
+- **Line endings.** Both `\n` and `\r\n` are accepted, including a mix of the two in the same input.
+- **Blank lines are skipped.** A line with nothing at all between two line endings — including the header line — is dropped rather than becoming an empty row/column. A line that has delimiters but empty values (e.g. `,,`) is _not_ blank and is kept.
+- **Duplicate/empty headers.** Header names are trimmed when deriving each column's `key`. An empty header (after trimming) falls back to `column_<n>` (1-indexed by position); a `key` that collides with one already assigned gets `_2`, `_3`, … appended, deterministically by left-to-right header order. The displayed `header` keeps the original text (even duplicated, or empty once a key was defaulted) — only the internal `key` is disambiguated.
+- **Values are always strings.** `parseDelimitedText` never infers or coerces a numeric/date column — convert one yourself, either by mapping `rows` before handing them to DataGrid or with that column's `getValue`.
+- **`getRowId`.** Parsed rows have no id of their own. Either pick a column you know is unique in your data (`getRowId={(row) => row.email}`) or derive one from position, as in the example above.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -202,6 +275,8 @@ Opt in with `search`. DataGrid renders a toolbar — built from Cinder's own Too
 | `stickyHeader` | `boolean` | no | — | Keeps the column header row pinned to the top edge while scrolling. Defaults to `true`. |
 | `virtualizeColumns` | `boolean` | no | — | Enables LTR horizontal virtualization for unpinned columns. Pinned columns stay rendered. |
 | `virtualizeRows` | `boolean` | no | — | Enables fixed-height row virtualization. |
+| `zoom` | `number` | no | — | Multiplies row height, header height, column width, and cell text size by `zoom / 100`. `$bindable` — DataGrid assigns it directly after a zoom-control interaction (see `zoomControls`), in addition to calling `onZoomChange`, mirroring `sortModel`. Defaults to `100`. Clamped to `[50, 200]`; a non-finite value (e.g. `NaN`) is ignored and falls back to `100` with the same dev-warn pattern `rowHeight` uses. `columnSizing` always stays in unscaled base pixels regardless of `zoom` — only the rendered, on-screen size is scaled — so a resize (`resizableColumns`) keeps reporting the same base width whatever the current zoom level is. |
+| `zoomControls` | `boolean` | no | — | Renders a toolbar group (in the same toolbar `search` uses) with the current row count, the current visible column count, and zoom in/out controls for `zoom`. Off by default: a grid that doesn't opt in renders no extra toolbar DOM. Renders in the same `<Toolbar>` as `search` when both are enabled; with neither enabled, DataGrid renders no toolbar at all. |
 | `columnPinning` | `(opaque)` | no | — | Pins supplied column keys to the left or right edge. Not expressible in JSON Schema; see the component types for the signature. |
 | `columns` | `(opaque)` | yes | — | A prop whose shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `getRowAriaLabel` | `(opaque)` | no | — | Optional accessible row label for screen-reader row summaries. Not expressible in JSON Schema; see the component types for the signature. |
@@ -211,6 +286,7 @@ Opt in with `search`. DataGrid renders a toolbar — built from Cinder's own Too
 | `onColumnSizingChange` | `(opaque)` | no | — | Called after the user resizes a column and DataGrid updates `columnSizing`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onSelectionModelChange` | `(opaque)` | no | — | Called when row selection changes through cell interaction. Not expressible in JSON Schema; see the component types for the signature. |
 | `onSortModelChange` | `(opaque)` | no | — | Called after the user changes sort order and DataGrid updates `sortModel`. Not expressible in JSON Schema; see the component types for the signature. |
+| `onZoomChange` | `(opaque)` | no | — | Called after a zoom-control interaction and DataGrid updates `zoom`. Not expressible in JSON Schema; see the component types for the signature. |
 | `rowClass` | `(opaque)` | no | — | Additional class names for body rows. Not expressible in JSON Schema; see the component types for the signature. |
 | `rows` | `(opaque)` | yes | — | A generically typed prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `sortModel` | `(opaque)` | no | — | Controls the row sort order used to render rows. Not expressible in JSON Schema; see the component types for the signature. |

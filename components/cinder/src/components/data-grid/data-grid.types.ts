@@ -201,4 +201,29 @@ export type DataGridProps<TRow = Record<string, unknown>> = Omit<
    * timers.
    */
   search?: boolean;
+  /**
+   * Multiplies row height, header height, column width, and cell text size
+   * by `zoom / 100`. `$bindable` — DataGrid assigns it directly after a
+   * zoom-control interaction (see `zoomControls`), in addition to calling
+   * `onZoomChange`, mirroring `sortModel`. Defaults to `100`. Clamped to
+   * `[50, 200]`; a non-finite value (e.g. `NaN`) is ignored and falls back
+   * to `100` with the same dev-warn pattern `rowHeight` uses.
+   *
+   * `columnSizing` always stays in unscaled base pixels regardless of
+   * `zoom` — only the rendered, on-screen size is scaled — so a resize
+   * (`resizableColumns`) keeps reporting the same base width whatever the
+   * current zoom level is.
+   */
+  zoom?: number;
+  /** Called after a zoom-control interaction and DataGrid updates `zoom`. */
+  onZoomChange?: (zoom: number) => void;
+  /**
+   * Renders a toolbar group (in the same toolbar `search` uses) with the
+   * current row count, the current visible column count, and zoom in/out
+   * controls for `zoom`. Off by default: a grid that doesn't opt in renders
+   * no extra toolbar DOM. Renders in the same `<Toolbar>` as `search` when
+   * both are enabled; with neither enabled, DataGrid renders no toolbar at
+   * all.
+   */
+  zoomControls?: boolean;
 };
