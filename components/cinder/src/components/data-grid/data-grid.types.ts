@@ -191,4 +191,14 @@ export type DataGridProps<TRow = Record<string, unknown>> = Omit<
   rowClass?: string | ((row: TRow, rowIndex: number) => string | undefined);
   /** Optional accessible row label for screen-reader row summaries. */
   getRowAriaLabel?: (row: TRow, rowIndex: number) => string | undefined;
+  /**
+   * Renders a toolbar above the grid (outside `role="grid"`) with a search
+   * field plus next/previous match controls. Matching is case-insensitive,
+   * checks every column's resolved value (via `getValue` when supplied) as
+   * a string, runs 300ms after the user stops typing, and covers every row
+   * and column regardless of virtualization. Off by default: a grid that
+   * doesn't opt in renders no toolbar, computes no matches, and starts no
+   * timers.
+   */
+  search?: boolean;
 };

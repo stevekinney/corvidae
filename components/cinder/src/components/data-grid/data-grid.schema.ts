@@ -69,6 +69,11 @@ const schema = {
       type: 'string',
       description: 'Additional class names merged onto the root grid.',
     },
+    search: {
+      type: 'boolean',
+      description:
+        'Renders a toolbar above the grid (outside `role="grid"`) with a search\nfield plus next/previous match controls. Matching is case-insensitive,\nchecks every column\'s resolved value (via `getValue` when supplied) as\na string, runs 300ms after the user stops typing, and covers every row\nand column regardless of virtualization. Off by default: a grid that\ndoesn\'t opt in renders no toolbar, computes no matches, and starts no\ntimers.',
+    },
   },
   additionalProperties: false,
   metadata: {

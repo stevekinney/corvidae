@@ -57,6 +57,16 @@ Set `rowHeader: true` on the column that identifies each row. Body cells in that
 
 Use the same row identity users see on screen whenever possible. A first pinned identifier column is a good default because screen readers can announce the row context before the remaining grid cells.
 
+## Search
+
+`search` is off by default — an existing grid's accessibility contract, DOM, and cost are unchanged until a caller opts in.
+
+- **Toolbar.** The search toolbar renders outside `role="grid"` as a `role="toolbar"` region (Cinder's Toolbar) with its own accessible name ("`<grid label>` toolbar", or "Grid toolbar" without one). The search field's own accessible name is derived from the grid's label ("Search `<grid label>`") and it carries `aria-controls` pointing at the grid.
+- **Matching.** Matching is announced, not just painted: a matching cell gets `cinder-data-grid__cell--search-match`, the current match additionally gets `cinder-data-grid__cell--search-match-current`, and both are also exposed as `data-cinder-search-match`/`data-cinder-search-match-current` for tooling. Neither is the only way the state is conveyed — the current match also becomes the active cell (`aria-activedescendant`), so a screen-reader user tracking the grid's active cell the normal way lands on it too.
+- **Navigation.** The toolbar's previous/next buttons and `Enter`/`Shift+Enter` in the search field step through matches with wraparound, same as any other find-in-page control. Each step scrolls the matching cell into view and makes it the active cell.
+- **Announcements.** Match position ("Match 3 of 12") and "No matches" go through DataGrid's existing live region (`role="status"`, `aria-live="polite"`) — the same one used for resize/reorder announcements.
+- **Coexistence.** Search reads whatever `rows`/`columns` the grid currently has, so a committed edit or a sort change updates matches (and, if the active search still matches, the highlight) the same way it already updates row/column geometry.
+
 ## Virtualized columns
 
 Column virtualization keeps off-screen columns out of the DOM. The grid preserves `aria-colindex` for the full column set and adds edge shadows plus a stable scrollbar gutter so sighted users have a visible horizontal-overflow cue and the vertical scrollbar does not cover the last visible column.

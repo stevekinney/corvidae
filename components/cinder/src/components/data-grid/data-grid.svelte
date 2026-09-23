@@ -11,6 +11,7 @@
    * @useWhen You need role=grid semantics instead of native table semantics.
    * @useWhen You need inline cell editing backed by Cinder's own Input, with commit/cancel keyboard behavior handled for you.
    * @useWhen You need opt-in pointer- and keyboard-driven column resizing or reordering (`resizableColumns` / `reorderableColumns`).
+   * @useWhen You need an opt-in toolbar search across every cell, with next/previous match navigation (`search`).
    * @avoidWhen You only need a semantic read-only table — use DataTable or the Table family instead.
    * @related data-table, table
    */
@@ -33,13 +34,20 @@
 </script>
 
 <script lang="ts" generics="TRow">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
+  import ChevronLeft from 'lucide-svelte/icons/chevron-left';
+  import ChevronRight from 'lucide-svelte/icons/chevron-right';
   import { classNames } from '../../utilities/class-names.ts';
   import { copyToClipboard } from '../../utilities/clipboard.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
+  import Button from '../button/button.svelte';
   import Input from '../input/input.svelte';
+  import SearchField from '../search-field/search-field.svelte';
+  import Toolbar from '../toolbar/toolbar.svelte';
+  import ToolbarGroup from '../toolbar/toolbar-group.svelte';
+  import ToolbarSpacer from '../toolbar/toolbar-spacer.svelte';
   import {
     DataGridColumnModel,
     getDataGridColumnValue,
@@ -51,7 +59,7 @@
     resolveDataGridEditType,
     type DataGridEditCellIdentity,
   } from './_internal/edit-model.svelte.ts';
-  import type { DataGridCellCoordinate } from './_internal/geometry.ts';
+  import { getCellCoordinateKey, type DataGridCellCoordinate } from './_internal/geometry.ts';
   import {
     getKeyboardResizedColumnWidth,
     getPointerResizedColumnWidth,
@@ -63,6 +71,13 @@
     getAdjacentCellIndex,
     isPrintableCharacterKeydown,
   } from './_internal/keyboard-model.ts';
+  import {
+    formatDataGridSearchStatus,
+    getDataGridSearchMatchKey,
+    getDataGridSearchMatches,
+    getNextDataGridSearchMatchIndex,
+    type DataGridSearchMatch,
+  } from './_internal/search-model.ts';
   import { DataGridSelectionModel as InternalDataGridSelectionModel } from './_internal/selection-model.svelte.ts';
   import {
     getActiveDataGridSortModel,
@@ -115,7 +130,9 @@
     onCellEdit,
     rowClass,
     getRowAriaLabel,
+    search = false,
     class: className,
+    id: consumerId,
     'aria-label': ariaLabel,
     'aria-labelledby': ariaLabelledBy,
     onkeydown: consumerOnKeydown,
@@ -396,6 +413,12 @@
   const rowDomIds = $derived(sortedKeyedRows.map((row) => row.rowDomId));
   const columnKeys = $derived(columnModel.renderColumns.map((column) => column.key));
   const gridId = $props.id();
+  // The grid root only needs a real, renderable `id` when something outside
+  // it must reference it — today, only the search toolbar's
+  // `aria-controls` (COR-1134). An explicit consumer `id` always wins;
+  // otherwise a grid that hasn't opted into `search` renders with no `id`
+  // attribute at all, exactly as it did before this feature existed.
+  const resolvedGridId = $derived(consumerId ?? (search ? gridId : undefined));
   let requestedActiveRowIndex = $state(0);
   let requestedActiveColumnKey = $state<string | undefined>();
   const selectionState = new InternalDataGridSelectionModel({
@@ -444,6 +467,121 @@
       ? ariaLabelledBy
       : undefined,
   );
+
+  // --- Search (COR-1134–COR-1138) ---------------------------------------
+  //
+  // `searchQuery` is the SearchField's live, every-keystroke value.
+  // `debouncedSearchQuery` only catches up 300ms after typing stops (see the
+  // gated $effect below), and every derived value that scans cells —
+  // `searchMatches` — reads the debounced value, not the live one, which is
+  // what keeps matching from recomputing (and re-highlighting, and
+  // rescanning every cell) on every keystroke.
+  const searchFieldId = `${gridId}-search`;
+  let searchQuery = $state('');
+  let debouncedSearchQuery = $state('');
+  let currentSearchMatchIndex = $state<number | undefined>();
+
+  const searchToolbarAriaLabel = $derived(
+    resolvedAriaLabel ? `${resolvedAriaLabel} toolbar` : 'Grid toolbar',
+  );
+  const searchFieldAriaLabel = $derived(
+    resolvedAriaLabel ? `Search ${resolvedAriaLabel}` : 'Search',
+  );
+  // Explicitly re-checks `search` (not just relying on callers gating reads)
+  // so nothing here ever calls a column's `getValue` while search is off,
+  // no matter what else changes (COR-1136).
+  const searchMatches = $derived.by((): readonly DataGridSearchMatch[] => {
+    if (!search) return [];
+    return getDataGridSearchMatches(
+      sortedKeyedRows,
+      columnModel.renderColumns,
+      debouncedSearchQuery,
+    );
+  });
+  const searchMatchKeys = $derived.by(
+    () => new Set(searchMatches.map((match) => getDataGridSearchMatchKey(match))),
+  );
+  const currentSearchMatch = $derived(
+    currentSearchMatchIndex !== undefined ? searchMatches[currentSearchMatchIndex] : undefined,
+  );
+  const currentSearchMatchKey = $derived(
+    currentSearchMatch ? getDataGridSearchMatchKey(currentSearchMatch) : undefined,
+  );
+  // Blank until a search has actually run — "No matches" before the user
+  // has typed anything would read as a false negative, not an empty state.
+  const searchStatusText = $derived(
+    debouncedSearchQuery.trim() === ''
+      ? ''
+      : formatDataGridSearchStatus(currentSearchMatchIndex, searchMatches.length),
+  );
+
+  // Debounce: gated on `search` so a non-search grid never starts this timer
+  // (COR-1136). Re-runs on every `searchQuery` change, clearing the previous
+  // pending timeout first — the same setTimeout+cleanup shape the existing
+  // live-region effect below uses.
+  $effect(() => {
+    if (!search) return;
+    const query = searchQuery;
+    const timeoutId = setTimeout(() => {
+      debouncedSearchQuery = query;
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  });
+
+  // Once the debounced query settles, jump to (and announce) the first
+  // match. Also re-fires when `searchMatches` itself changes for a reason
+  // other than typing — an edit commit or a sort that changes which cells
+  // match — so the live region and the current-match highlight both stay
+  // accurate; see the module doc for why this coexists with editing and
+  // sorting instead of needing separate wiring for each.
+  //
+  // The `announce()` calls below are wrapped in `untrack()`. `announce`
+  // does `liveRegionAnnouncementSequence += 1`, a read-then-write of that
+  // same piece of state; called directly inside this effect, the read half
+  // makes the effect depend on the very value its write half just changed,
+  // which is exactly Svelte's effect_update_depth_exceeded ("an effect
+  // reads and writes the same piece of state") — an infinite self-retrigger.
+  // `untrack()` keeps the write but stops that read from being recorded as
+  // one of this effect's dependencies. The resize/reorder call sites for
+  // the same `announce()` don't need this because they run from keydown
+  // handlers, not from inside a tracked `$effect`.
+  $effect(() => {
+    if (!search) return;
+    const query = debouncedSearchQuery;
+    const matches = searchMatches;
+    if (query.trim() === '') {
+      currentSearchMatchIndex = undefined;
+      return;
+    }
+    if (matches.length === 0) {
+      currentSearchMatchIndex = undefined;
+      untrack(() => announce('No matches'));
+      return;
+    }
+    currentSearchMatchIndex = 0;
+    const firstMatch = matches[0];
+    if (firstMatch) moveActiveCell(firstMatch.rowIndex, firstMatch.columnIndex);
+    untrack(() => announce(formatDataGridSearchStatus(0, matches.length)));
+  });
+
+  function goToSearchMatch(direction: 1 | -1): void {
+    if (!search || searchMatches.length === 0) return;
+    const nextIndex = getNextDataGridSearchMatchIndex(
+      currentSearchMatchIndex,
+      searchMatches.length,
+      direction,
+    );
+    currentSearchMatchIndex = nextIndex;
+    const match = nextIndex !== undefined ? searchMatches[nextIndex] : undefined;
+    if (match) moveActiveCell(match.rowIndex, match.columnIndex);
+    announce(formatDataGridSearchStatus(nextIndex, searchMatches.length));
+  }
+
+  function handleSearchFieldKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    goToSearchMatch(event.shiftKey ? -1 : 1);
+  }
 
   let hasWarnedNoLabel = false;
   let warnedDuplicateRowIdsSignature: string | undefined;
@@ -1444,9 +1582,43 @@
   }
 </script>
 
+{#if search}
+  <Toolbar class="cinder-data-grid__toolbar" aria-label={searchToolbarAriaLabel}>
+    <ToolbarGroup class="cinder-data-grid__toolbar-search-group">
+      <SearchField
+        id={searchFieldId}
+        bind:value={searchQuery}
+        placeholder="Search"
+        aria-label={searchFieldAriaLabel}
+        aria-controls={resolvedGridId}
+        onkeydown={handleSearchFieldKeydown}
+      />
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label="Previous match"
+        disabled={searchMatches.length === 0}
+        onclick={() => goToSearchMatch(-1)}><ChevronLeft aria-hidden="true" /></Button
+      >
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label="Next match"
+        disabled={searchMatches.length === 0}
+        onclick={() => goToSearchMatch(1)}><ChevronRight aria-hidden="true" /></Button
+      >
+      <span class="cinder-data-grid__search-status">{searchStatusText}</span>
+    </ToolbarGroup>
+    <ToolbarSpacer />
+  </Toolbar>
+{/if}
+
 <div
   {...rest}
   bind:this={gridElement}
+  id={resolvedGridId}
   class={classNames('cinder-data-grid', className)}
   role="grid"
   aria-rowcount={rows.length + 1}
@@ -1586,9 +1758,17 @@
           {@const isAnchorCell = selectionState.isAnchorCell(cellCoordinates)}
           {@const editCellIdentity = { rowKey: rowDomId, columnKey: column.key }}
           {@const isEditingCell = editModel.isEditing(editCellIdentity)}
+          {@const isSearchMatchCell =
+            search && searchMatchKeys.has(getCellCoordinateKey(cellCoordinates))}
+          {@const isCurrentSearchMatchCell =
+            search && currentSearchMatchKey === getCellCoordinateKey(cellCoordinates)}
           <div
             id={cellId}
-            class="cinder-data-grid__cell"
+            class={classNames(
+              'cinder-data-grid__cell',
+              isSearchMatchCell && 'cinder-data-grid__cell--search-match',
+              isCurrentSearchMatchCell && 'cinder-data-grid__cell--search-match-current',
+            )}
             role={column.rowHeader ? 'rowheader' : 'gridcell'}
             aria-colindex={column.colIndex}
             aria-selected={isSelectedCell ? 'true' : undefined}
@@ -1599,6 +1779,8 @@
             data-cinder-anchor={isAnchorCell ? 'true' : undefined}
             data-cinder-editable={column.editable ? 'true' : undefined}
             data-cinder-editing={isEditingCell ? 'true' : undefined}
+            data-cinder-search-match={isSearchMatchCell ? '' : undefined}
+            data-cinder-search-match-current={isCurrentSearchMatchCell ? '' : undefined}
             data-cinder-row-id={rowId}
             data-cinder-row-dom-id={rowDomId}
             data-cinder-column-key={column.key}

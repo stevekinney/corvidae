@@ -151,6 +151,38 @@ Every resize or reorder from the keyboard is announced through the same live reg
 
 This is intentionally scoped to the column of the currently active cell rather than a fully independent header roving-tabindex, since DataGrid has no such concept outside of resizing/reordering: `Shift+ArrowLeft`/`Shift+ArrowRight` on a body cell keeps its existing meaning (extending the cell selection range) and is completely unaffected — the resize/reorder shortcuts only ever fire while header focus is active.
 
+## Search
+
+Opt in with `search`. DataGrid renders a toolbar — built from Cinder's own Toolbar, SearchField, and Button — directly above the grid, **outside** the `role="grid"` element. Off by default: a grid that doesn't pass `search` renders no toolbar, computes no matches, and starts no timers.
+
+```svelte
+<script lang="ts">
+  import { DataGrid } from '@lostgradient/cinder';
+  import type { DataGridColumnDef } from '@lostgradient/cinder';
+
+  type Order = { id: string; customer: string; status: string };
+
+  const columns: DataGridColumnDef<Order>[] = [
+    { key: 'id', header: 'Order', width: 120, pin: 'left' },
+    { key: 'customer', header: 'Customer', width: 220 },
+    { key: 'status', header: 'Status', width: 140 },
+  ];
+
+  const rows: Order[] = [
+    { id: 'ORD-1001', customer: 'Ada Lovelace', status: 'Packed' },
+    { id: 'ORD-1002', customer: 'Grace Hopper', status: 'Shipped' },
+  ];
+</script>
+
+<DataGrid {columns} {rows} getRowId={(row) => row.id} search aria-label="Orders" />
+```
+
+- **Matching.** 300ms after the user stops typing, DataGrid checks every column's resolved value (through the column's `getValue` when supplied, otherwise the row property) as a case-insensitive substring match — over every row in sorted order and every column, regardless of what row/column virtualization currently has rendered. A matching cell gets the `cinder-data-grid__cell--search-match` class; the current match additionally gets `cinder-data-grid__cell--search-match-current`.
+- **Navigation.** The toolbar's previous/next buttons, or `Enter` / `Shift+Enter` in the search field, step through matches with wraparound. Stepping (and settling on the first match once typing stops) makes that cell the active cell and scrolls it into view through the same virtualization-adapter scroll-to-index path arrow-key navigation already uses, so it works identically whether or not `virtualizeRows` / `virtualizeColumns` is on.
+- **Announcements.** Match position ("Match 3 of 12") and "No matches" are announced through DataGrid's existing live region.
+- **Coexistence.** Search recomputes from whatever `rows`/`columns` DataGrid currently has, so committing a cell edit or changing `sortModel` updates matches and highlighting automatically — no extra wiring required.
+- The search field's accessible name is derived from the grid's own `aria-label` (e.g. "Search Orders") and it sets `aria-controls` to the grid.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -164,6 +196,7 @@ This is intentionally scoped to the column of the currently active cell rather t
 | `reorderableColumns` | `boolean` | no | — | Enables pointer drag and keyboard reordering of header cells. Off by default so existing grids render unchanged. A column can only be reordered among columns that share its `pin` value — reordering never moves a column across the left-pinned, unpinned, or right-pinned groups. |
 | `resizableColumns` | `boolean` | no | — | Enables a pointer- and keyboard-driven resize handle on resizable header cells. Off by default so existing grids render unchanged. A column opts out individually with `resizable: false`. |
 | `rowHeight` | `number` | no | — | Fixed body-row pixel height used by row virtualization. Defaults to 44 when omitted or invalid. |
+| `search` | `boolean` | no | — | Renders a toolbar above the grid (outside `role="grid"`) with a search field plus next/previous match controls. Matching is case-insensitive, checks every column's resolved value (via `getValue` when supplied) as a string, runs 300ms after the user stops typing, and covers every row and column regardless of virtualization. Off by default: a grid that doesn't opt in renders no toolbar, computes no matches, and starts no timers. |
 | `selectionMode` | `"none"` \| `"single"` \| `"multiple"` | no | — | Controls row-selection behavior. Cell focus and range selection remain available. |
 | `selectionModel` | `string`[] | no | — | Controlled row-selection ids, keyed by `getRowId`. |
 | `stickyHeader` | `boolean` | no | — | Keeps the column header row pinned to the top edge while scrolling. Defaults to `true`. |
