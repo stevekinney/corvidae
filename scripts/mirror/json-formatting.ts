@@ -1,5 +1,5 @@
 import { dirname, join, relative, sep } from 'node:path';
-import { format, getFileInfo, resolveConfig } from 'prettier';
+import { format, getFileInfo, getSupportInfo, resolveConfig } from 'prettier';
 
 /**
  * Format emitted text the way the target's prettier would, or hand it back unchanged.
@@ -13,7 +13,22 @@ import { format, getFileInfo, resolveConfig } from 'prettier';
 async function formatForDestination(text: string, destination: string): Promise<string> {
   const resolved = await resolveConfig(destination);
   if (resolved === null) return text;
+  // A parser the target's configuration names but prettier does not ship (`svelte`, from
+  // `prettier-plugin-svelte`) cannot run here, because the target's plugins are dropped above.
+  // Such a file keeps corvidae's bytes rather than failing the whole plan (COR-1196).
+  const shipped = await builtInParsers();
+  if (typeof resolved.parser === 'string' && !shipped.has(resolved.parser)) return text;
   return format(text, { ...resolved, plugins: [], filepath: destination });
+}
+
+let builtInParserNames: Promise<ReadonlySet<string>> | undefined;
+
+/** The parsers prettier ships without any plugin, read from prettier itself. */
+function builtInParsers(): Promise<ReadonlySet<string>> {
+  builtInParserNames ??= getSupportInfo().then(
+    ({ languages }) => new Set(languages.flatMap((language) => language.parsers)),
+  );
+  return builtInParserNames;
 }
 
 /**

@@ -213,6 +213,34 @@ describe('an emitted file the target’s prettier governs', () => {
     );
   });
 
+  /**
+   * COR-1196. Cinder is the first target that ships Svelte, and its configuration maps
+   * `**\/*.svelte` to the `svelte` parser, which only `prettier-plugin-svelte` supplies. With the
+   * target's plugins dropped (above), that parser does not exist in this process, and formatting
+   * threw `Couldn't resolve parser "svelte"` on the first component the plan reached, so the whole
+   * cinder plan failed. A file whose parser prettier does not ship is copied as bytes: the mirror
+   * runs no formatting gate, and guessing at a plugin's output with a different plugin version
+   * would be worse than leaving corvidae's bytes alone.
+   */
+  test('copies bytes for a file whose parser only a target plugin supplies', async () => {
+    await withClone(
+      {
+        '.prettierrc.json': JSON.stringify({
+          printWidth: 100,
+          plugins: ['prettier-plugin-svelte'],
+          overrides: [{ files: '*.svelte', options: { parser: 'svelte' } }],
+        }),
+      },
+      async (clone) => {
+        const component =
+          '<script lang="ts">\n  let count = $state(0)\n</script>\n\n<button>{count}</button>\n';
+        const contents = new TextEncoder().encode(component);
+        const emitted = await formatEmittedFile(contents, clone, 'src/counter.svelte');
+        expect(new TextDecoder().decode(emitted)).toBe(component);
+      },
+    );
+  });
+
   test('is left byte-identical when the target ignores it', async () => {
     await withClone(
       {
