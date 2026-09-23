@@ -10,7 +10,7 @@
       "disposition": "publish-as",
       "name": "@lostgradient/weft",
       "basis": "settled",
-      "lastPublishedVersion": "0.25.0",
+      "lastPublishedVersion": "0.26.0",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft."
     },
     "@lostgradient/weft-ui": {
