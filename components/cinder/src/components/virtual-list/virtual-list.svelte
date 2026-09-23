@@ -166,6 +166,20 @@
   /** ~0.5s at 60fps: long enough for a smooth scroll to land, short enough to never hang. */
   const SCROLL_SETTLE_MAX_FRAMES = 30;
   /**
+   * COR-374: how many consecutive stable intervals `waitForScrollSettled`
+   * must see before the keyboard-destination watch treats the browser as
+   * having actually stopped — see that function's doc for why the plain,
+   * one-interval default is not enough here. Measured against real Chromium:
+   * a RE-TARGETED `scrollTo({ behavior: 'smooth' })` — issued by every
+   * keypress after the first, while an earlier one is still animating — can
+   * hold the read position still for a single interval before the
+   * retargeted animation visibly resumes. Two held that same false "settled"
+   * reading in testing; three did not, with a full interval of margin left
+   * over, so this is not a value picked to just barely clear what was
+   * measured.
+   */
+  const KEYBOARD_DESTINATION_STABLE_INTERVALS = 3;
+  /**
    * How long after the last scroll event adaptive overscan returns to its floor.
    * Comfortably past a fling's own event cadence, so it never fires mid-gesture.
    */
@@ -324,6 +338,35 @@
   // $state, not a plain let: arming the pin must itself re-run the re-pin effect.
   let isPinnedToBottom = $state(false);
   let scrollToIndexGeneration = 0;
+  /**
+   * COR-374: the row a held or rapidly-repeated arrow key is currently headed
+   * toward, kept in component state rather than re-derived from the live
+   * scroll position on every keypress.
+   *
+   * Under `smoothScroll` the live position LAGS the destination for as long
+   * as the animation is still running: `scrollOffset` only updates from the
+   * container's own `scroll` events, which a smooth scroll emits gradually as
+   * it animates, not the instant `writeScrollOffset` issues the write. A
+   * second ArrowDown that lands before the first has moved anything therefore
+   * reads `firstUncoveredIndex` as still pointing at the ORIGINAL row,
+   * resolves the exact same next-row target the first press already asked
+   * for, and the settle loop the second call starts simply supersedes the
+   * first's — two presses net one row of movement instead of two. Stepping
+   * from this instead of the live position — see `handleKeyDown` — makes
+   * each press advance the list rather than repeat the last one.
+   *
+   * Plain state, not `$state`: read only from `handleKeyDown` and from
+   * `watchPendingKeyboardIndex` below, both imperative, matching
+   * `pendingReanchor` just above.
+   */
+  let pendingKeyboardIndex: number | null = null;
+  /**
+   * Bumped whenever `pendingKeyboardIndex` is armed or explicitly retired, so
+   * a `watchPendingKeyboardIndex` call whose own destination has since been
+   * superseded — by a newer arrow press, or by an explicit retirement — knows
+   * not to clear a destination it no longer owns once its own wait resolves.
+   */
+  let pendingKeyboardIndexToken = 0;
 
   const resolvedItemHeight = $derived(resolveVirtualItemHeight(itemHeight));
   const resolvedOverscan = $derived(resolveVirtualOverscan(overscan));
@@ -789,6 +832,9 @@
       pendingReanchor = null;
       pendingRestoreRemainder = null;
       retireSettleLoop();
+      // A restore is itself a programmatic scroll the reader's held arrow key
+      // knows nothing about — same class as COR-374's case 5 below.
+      retirePendingKeyboardIndex();
       // The append pin too. When the saved anchor arrives in an APPENDED page — under
       // `reverse`, or with `stickToBottom` still reading a short first page as being
       // at the end — the growth pass has already armed it, and its effect scrolls to
@@ -1015,6 +1061,16 @@
         ...pendingRestoreRemainder,
         index: pendingRestoreRemainder.index + growth.prependedCount,
       };
+    }
+
+    // COR-374: a pending keyboard destination is a row INDEX like the anchors
+    // above, and a prepend shifts it exactly the same way — the row the
+    // reader's held arrow key was headed toward now sits `prependedCount`
+    // further along the list. Left uncorrected, the destination would still
+    // resolve to whatever row now occupies the OLD index, several rows off
+    // from where the reader was actually headed.
+    if (growth.kind === 'prepended' && pendingKeyboardIndex !== null) {
+      pendingKeyboardIndex += growth.prependedCount;
     }
 
     previousTotalSize = currentTotal;
@@ -1792,8 +1848,81 @@
     }
   }
 
+  /**
+   * COR-374, case 1: drops the pending keyboard destination outright.
+   *
+   * A wheel, pointer, or touch input is the reader taking the scroll back by
+   * some means this list does not track the row arithmetic for — unlike an
+   * arrow press, which replaces `pendingKeyboardIndex` with a new destination
+   * of its own, none of these produce one. The next arrow press has to
+   * resolve from wherever they actually are, not from a destination three
+   * gestures stale.
+   *
+   * Deliberately separate from `handleReaderTakeover`, which
+   * `handleKeyDown` also calls for every key that merely SHARES an axis with
+   * this list — including the very arrow press this destination exists to
+   * serve. Folding this in there would retire the destination a line before
+   * `handleKeyDown` reads it.
+   */
+  function retirePendingKeyboardIndex(): void {
+    pendingKeyboardIndex = null;
+    pendingKeyboardIndexToken += 1;
+  }
+
+  /**
+   * COR-374: keeps `pendingKeyboardIndex` alive for exactly as long as the
+   * browser is still visibly moving toward it, then lets it go — case 5.
+   *
+   * This is the one signal that tells "a smooth animation that has not yet
+   * emitted its first scroll event" apart from "something reset the scroll
+   * to where this run started": the component cannot otherwise distinguish
+   * them, which is why a previous fix for this bug tracked the destination
+   * but invalidated it by guessing at causes, missed a programmatic write
+   * (a consumer setting `scrollTop`, a fragment link, find-in-page) that
+   * triggers none of them, and was removed rather than shipped that way.
+   * Tying the destination's lifetime to the browser's own motion signal
+   * needs no such guessing: whatever stops the motion — arriving, or being
+   * overridden — is exactly when the destination stops meaning anything, so
+   * this expires it right there regardless of which one happened.
+   *
+   * Passes `KEYBOARD_DESTINATION_STABLE_INTERVALS`, not
+   * `waitForScrollSettled`'s plain default — see that constant's doc. The
+   * default (one stable interval) is enough to keep a bare one-frame check
+   * from expiring the destination before a smooth scroll has moved at all,
+   * but COR-374's actual failure mode was subtler than that: RETARGETING an
+   * animation already in flight, which is what every press after the first
+   * does, can itself hold the read position still for one interval before
+   * the retargeted animation visibly resumes — indistinguishable from
+   * genuinely settled at that threshold. Requiring more consecutive stable
+   * intervals is what tells the two apart.
+   *
+   * Runs unconditionally, in fixed-height mode too. `runScrollToIndex` skips
+   * its own settle-and-retry pass there because fixed rows never need a
+   * second write, but this needs the same motion signal regardless of
+   * sizing mode to know when the destination has stopped being meaningful.
+   *
+   * Correct under `windowScroll` with no special case: `waitForScrollSettled`
+   * reads through `readScrollOffset`, which already resolves to
+   * `window.scrollY` there instead of the element's own `scrollTop` — so the
+   * motion this waits on is already the window's own, the one the reader is
+   * actually watching.
+   */
+  async function watchPendingKeyboardIndex(index: number): Promise<void> {
+    const element = scrollElement;
+    if (!element) return;
+    pendingKeyboardIndex = index;
+    const token = (pendingKeyboardIndexToken += 1);
+    await waitForScrollSettled(element, KEYBOARD_DESTINATION_STABLE_INTERVALS);
+    // Superseded by a newer press or an explicit retirement while this was
+    // waiting — either already holds whatever destination is now correct,
+    // so clearing it here would erase one this call does not own.
+    if (isDestroyed || pendingKeyboardIndexToken !== token) return;
+    pendingKeyboardIndex = null;
+  }
+
   function handleWheel(event: WheelEvent & { currentTarget: EventTarget & HTMLDivElement }): void {
     handleReaderTakeover();
+    retirePendingKeyboardIndex();
     if (typeof onWheel === 'function') onWheel(event);
   }
 
@@ -1801,6 +1930,7 @@
     event: PointerEvent & { currentTarget: EventTarget & HTMLDivElement },
   ): void {
     handleReaderTakeover();
+    retirePendingKeyboardIndex();
     if (typeof onPointerDown === 'function') onPointerDown(event);
   }
 
@@ -1808,6 +1938,7 @@
     event: TouchEvent & { currentTarget: EventTarget & HTMLDivElement },
   ): void {
     handleReaderTakeover();
+    retirePendingKeyboardIndex();
     if (typeof onTouchStart === 'function') onTouchStart(event);
   }
 
@@ -1883,6 +2014,11 @@
       // this branch claims them in either orientation, and a settle loop left running
       // can write its own destination back afterwards and undo the page.
       handleReaderTakeover();
+      // Paging moves by pixels, not by the row arithmetic `pendingKeyboardIndex`
+      // tracks, so it invalidates rather than extends it — a Page key between two
+      // held arrows must not leave the next one resolving from a row the reader
+      // was never actually paged to.
+      retirePendingKeyboardIndex();
 
       const furthest = maxScrollOffset(currentTotalSize(), viewportHeight);
       const clampToScrollRange = (offset: number): number =>
@@ -1924,20 +2060,43 @@
 
     const target = resolveKeyboardTargetIndex({
       key: event.key,
-      // The row the reader can see, not the rendered edge: `virtualWindow.startIndex`
-      // carries overscan, so the first arrow press jumped relative to a row several
-      // above the viewport.
-      // The first row the header is not covering. A sticky header occupies the
-      // viewport's leading edge, so `firstVisibleIndex` IS that header — and
-      // advancing from it moves to the row underneath it rather than past it.
-      currentIndex: firstUncoveredIndex,
+      // COR-374: the row a still-in-flight arrow press is already headed to,
+      // when there is one — not the live position, which lags for as long as
+      // a `smoothScroll` animation toward it is still running. Falling back to
+      // `firstUncoveredIndex` otherwise: nothing pending means the reader is
+      // exactly where the list last reported, and that IS the row to step
+      // from. The first row the header is not covering, specifically — a
+      // sticky header occupies the viewport's leading edge, so
+      // `firstVisibleIndex` IS that header, and advancing from it moves to the
+      // row underneath it rather than past it. `virtualWindow.startIndex`
+      // would be wrong for the same reason one row further out: it carries
+      // overscan, several rows above the viewport.
+      currentIndex: pendingKeyboardIndex ?? firstUncoveredIndex,
       itemCount: items.length,
       orientation: isHorizontal ? 'horizontal' : 'vertical',
       writingDirection,
       stickyIndexes: stickyIndexSet,
     });
-    if (target === null) return;
+    if (target === null) {
+      // COR-374, case 2: Space and Shift+Space are in `scrollsMainAxis`'s key
+      // sets but resolve to no target here, so the browser scrolls the
+      // container itself — natively, with no `scrollToIndex` call and nothing
+      // for `pendingKeyboardIndex` to track. Left standing, it would steer the
+      // next arrow press back toward a row the reader already scrolled past.
+      // Guarded on `scrollsMainAxis` rather than unconditionally: an off-axis
+      // arrow (case 4) resolves to `null` here too, and must NOT invalidate —
+      // it scrolls nothing, so the destination a DIFFERENT axis's held arrow
+      // is still owed stays exactly as good as it was.
+      if (scrollsMainAxis(event.key)) retirePendingKeyboardIndex();
+      return;
+    }
     event.preventDefault();
+
+    // Tracked BEFORE issuing the scroll, so a second press landing in the same
+    // synchronous turn (impossible from real input, but not from a test or a
+    // scripted key-repeat) already sees the new destination rather than a
+    // one-tick-stale `null`.
+    void watchPendingKeyboardIndex(target);
 
     // Through the normal path, which applies the header inset and keeps the settle
     // loop. An earlier version wrote the offset directly here to apply that inset, and
@@ -2117,10 +2276,30 @@
    * Waiting for the position to hold still covers both that and a late
    * measurement, and the frame cap keeps a continuously-scrolling container
    * (a user dragging, an ongoing animation) from holding the loop open.
+   *
+   * `requiredStableIntervals` (default 1, this function's original threshold —
+   * every existing caller keeps its exact behavior) is how many CONSECUTIVE
+   * equal-reading intervals must elapse before the position counts as settled.
+   * COR-374's keyboard-destination watch passes a higher value: measured
+   * against real Chromium, RE-TARGETING an animation already in flight — which
+   * is exactly what a second `scrollTo({ behavior: 'smooth' })` call issues
+   * while the first is still running — can hold the read position still for
+   * one interval before the retargeted animation visibly resumes, the same
+   * "hasn't moved yet" gap this function's own doc warns a single-frame check
+   * would misread as settled. One stable interval is enough signal for the
+   * dynamicSize retry loop, which only ever issues ONE write per pass and
+   * needs to know when it is safe to re-measure; it is NOT enough to tell that
+   * retarget stall apart from a genuinely finished animation, which is what
+   * the keyboard watch needs in order to decide whether to let the
+   * destination expire.
    */
-  async function waitForScrollSettled(element: HTMLElement): Promise<void> {
+  async function waitForScrollSettled(
+    element: HTMLElement,
+    requiredStableIntervals = 1,
+  ): Promise<void> {
     await tick();
     let previousOffset = Number.NaN;
+    let stableIntervals = 0;
     for (let frame = 0; frame < SCROLL_SETTLE_MAX_FRAMES; frame += 1) {
       await nextAnimationFrame();
       if (isDestroyed) return;
@@ -2128,7 +2307,12 @@
       // moves, so the loop would report "settled" after two frames and skip the
       // settle pass entirely.
       const currentOffset = readScrollOffset(element);
-      if (currentOffset === previousOffset) return;
+      if (currentOffset === previousOffset) {
+        stableIntervals += 1;
+        if (stableIntervals >= requiredStableIntervals) return;
+      } else {
+        stableIntervals = 0;
+      }
       previousOffset = currentOffset;
     }
   }
