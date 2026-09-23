@@ -212,43 +212,45 @@ describe('what counts as source', () => {
   test('a declared file lands at the same workspace-relative path in the target', async () => {
     await withTree(
       {
-        'packages/armorer/src/compose.test.ts':
-          "import { settles } from '../test/helpers/async-assertions';\n",
-        'packages/armorer/test/helpers/async-assertions.ts': 'export const settles = true;\n',
-        'packages/armorer/test/registry.test.ts': 'export const undeclared = true;\n',
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        // Outside `src/` and declared nowhere, so it must stay behind.
+        'packages/weft/documentation/undeclared.md': '# not emitted\n',
+        ...weftDeclarationFixture(),
       },
       async (root) => {
         const plan = await planSource(root, [
           {
-            workspace: 'armorer',
-            corvidaeDirectory: 'packages/armorer',
-            targetDirectory: 'packages/armorer',
+            workspace: '@lostgradient/weft',
+            corvidaeDirectory: 'packages/weft',
+            targetDirectory: 'packages/weft',
           },
         ]);
-        // The relative layout is preserved, which is the whole point: `../test/helpers/…` only
-        // resolves in the target if the file sits the same distance from `src/` there. The
-        // ninety other files under `test/` stay where they are, because only this one is declared.
-        expect(Object.keys(plan.files).toSorted()).toEqual([
-          'packages/armorer/src/compose.test.ts',
-          'packages/armorer/test/helpers/async-assertions.ts',
-        ]);
+        // The relative layout is preserved: a declared file outside `src/` sits at the same
+        // workspace-relative path in the target, and a neighbour nobody declared is not emitted.
+        const files = Object.keys(plan.files);
+        expect(files).toContain('packages/weft/README.md');
+        expect(files).toContain('packages/weft/src/index.ts');
+        expect(files).not.toContain('packages/weft/documentation/undeclared.md');
       },
     );
   });
 
   test('a declared file corvidae no longer carries is a refusal, not a silent skip', async () => {
     await withTree(
-      { 'packages/armorer/src/compose.test.ts': 'export const composed = true;\n' },
+      {
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        ...weftDeclarationFixture('README.md'),
+      },
       async (root) => {
         const plan = planSource(root, [
           {
-            workspace: 'armorer',
-            corvidaeDirectory: 'packages/armorer',
-            targetDirectory: 'packages/armorer',
+            workspace: '@lostgradient/weft',
+            corvidaeDirectory: 'packages/weft',
+            targetDirectory: 'packages/weft',
           },
         ]);
         await expect(plan).rejects.toThrow(SourceEmissionError);
-        await expect(plan).rejects.toThrow('test/helpers/async-assertions.ts');
+        await expect(plan).rejects.toThrow('README.md');
       },
     );
   });

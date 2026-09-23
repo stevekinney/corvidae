@@ -1,7 +1,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { expectPromiseToReject } from '../helpers/async-assertions';
+import { expectPromiseToReject } from '../../src/async-assertion-test-helpers';
 
 import { createTool } from '../../src/create-tool';
 import { createToolResultCache } from '../../src/idempotency/create-tool-result-cache';

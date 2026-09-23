@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { committedPlans } from './committed-plans.ts';
 import { mirrorTargets } from './manifests.ts';
 import {
   assertNoEmissionsIntoRetired,
@@ -700,6 +701,24 @@ describe('retiring a directory the target still carries', () => {
       assertNoEmissionsIntoRetired(policy, 'cinder', ['packages/retired-ui/src/app.ts']),
     ).not.toThrow();
   });
+
+  // The runtime refusal above stops a sync; this stops the edit. A retirement added for
+  // agent-bureau's stale `packages/*/test` trees once collided with a helper corvidae still emitted
+  // there (`packages/armorer/test/helpers/async-assertions.ts`, imported by five colocated `src`
+  // tests), and nothing in test:self noticed until a staging proof refused the whole plan.
+  test.each([...mirrorTargets])(
+    'the committed %s plan emits nothing into its own retired paths',
+    async (target) => {
+      const policy = await loadTargetOwnedPolicy();
+      expect(() =>
+        assertNoEmissionsIntoRetired(
+          policy,
+          target,
+          Object.keys(committedPlans[target].plan.files),
+        ),
+      ).not.toThrow();
+    },
+  );
 
   test('the committed enumeration retires each target only what its own issue ruled on', async () => {
     const policy = await loadTargetOwnedPolicy();

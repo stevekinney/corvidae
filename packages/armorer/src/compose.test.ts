@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { expectPromiseToReject } from '../test/helpers/async-assertions';
+import { expectPromiseToReject } from './async-assertion-test-helpers';
 
 import { createTool, createToolCall } from './create-tool';
 import { pipe } from './utilities';

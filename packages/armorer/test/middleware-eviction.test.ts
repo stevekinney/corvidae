@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { expectPromiseToReject } from './helpers/async-assertions';
+import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
 
 import { defineTool } from '../src/core';
 import type { ToolConfiguration } from '../src/is-tool';

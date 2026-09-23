@@ -243,13 +243,6 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         'Workflow fixtures reached from `src/routes/` through `fixtures/workflows.ts`, which re-exports the rest. `fixtures/dynamic-sources.ts`, its test and `fixtures/dynamic-workflows/` are not declared: nothing emitted imports them.',
     },
   ],
-  armorer: [
-    {
-      paths: ['test/helpers/async-assertions.ts'],
-      reason:
-        'Five `src/compose*.test.ts` suites import it without an extension. One file out of the 91 under `test/`, which is why this is declared as a file rather than as that directory.',
-    },
-  ],
   '@lostgradient/weft': [
     {
       paths: ['README.md'],

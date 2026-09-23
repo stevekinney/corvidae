@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { expectPromiseToReject } from './helpers/async-assertions';
+import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
 
 import { createExecutionLifecycle, type EffectiveToolExecutionContext } from '../src';
 import { createConcurrencyLimiter } from '../src/utilities/concurrency';

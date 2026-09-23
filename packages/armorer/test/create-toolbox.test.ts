@@ -3,7 +3,7 @@ import { hmacSha256HexSync } from '@lostgradient/cryptography';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, expectTypeOf, it } from 'bun:test';
 import { z } from 'zod';
-import { expectPromiseToReject } from './helpers/async-assertions';
+import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
 
 import {
   type AnyToolbox,

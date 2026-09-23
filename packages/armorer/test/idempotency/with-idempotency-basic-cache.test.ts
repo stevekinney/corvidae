@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { z } from 'zod';
+import { expectPromiseToReject } from '../../src/async-assertion-test-helpers';
 import { createTool } from '../../src/create-tool';
 import { createToolResultCache } from '../../src/idempotency/create-tool-result-cache';
 import { fullInputKey } from '../../src/idempotency/key-generators';
 import type { CachedToolResult, ToolResultCache } from '../../src/idempotency/types';
 import { withIdempotency } from '../../src/idempotency/with-idempotency';
-import { expectPromiseToReject } from '../helpers/async-assertions';
 import { createTestStore, requestContext } from './with-idempotency-fixtures';
 
 describe('withIdempotency', () => {
