@@ -180,6 +180,34 @@ describe('DataGrid column resizing (COR-1131)', () => {
     expect(onColumnSizingChange.mock.calls[2]?.[0]).toEqual({ customer: 80 });
   });
 
+  // COR-1145: a pointer-only resize (no prior click/focus anywhere in the
+  // grid) must still leave the grid root holding real DOM focus once it
+  // sets `aria-activedescendant` to the header — otherwise that
+  // relationship is inert for assistive tech (activedescendant only means
+  // anything while its host has focus) and the very next keydown would go
+  // nowhere.
+  test('a pointer-only resize (no prior focus) leaves the grid holding real DOM focus', async () => {
+    const { container } = render(OrderDataGrid, {
+      rows,
+      columns,
+      resizableColumns: true,
+      getRowId: getOrderId,
+      'aria-label': 'Orders',
+    });
+
+    const grid = container.querySelector<HTMLElement>('[role="grid"]')!;
+    expect(document.activeElement).not.toBe(grid);
+
+    const handle = resizeHandle(container, 'customer');
+    stubPointerCapture(handle);
+    await fireEvent.pointerDown(handle, { pointerId: 1, clientX: 100 });
+    await fireEvent.pointerMove(handle, { pointerId: 1, clientX: 140 });
+    await fireEvent.pointerUp(handle, { pointerId: 1, clientX: 140 });
+
+    expect(document.activeElement).toBe(grid);
+    expect(grid.getAttribute('aria-activedescendant')).toBe(headerCell(container, 'customer').id);
+  });
+
   test('dragging the resize handle on a sortable column does not trigger a sort', async () => {
     const onSortModelChange = mock((_next: unknown) => {});
     const { container } = render(OrderDataGrid, {
@@ -248,6 +276,32 @@ describe('DataGrid column reordering (COR-1132)', () => {
 
     expect(onColumnOrderChange).toHaveBeenCalledTimes(1);
     expect(onColumnOrderChange.mock.calls[0]?.[0]).toEqual(['status', 'customer', 'total']);
+  });
+
+  // COR-1145: same real-focus requirement as the pointer-resize regression
+  // above, for a pointer-only reorder drop.
+  test('a pointer-only reorder (no prior focus) leaves the grid holding real DOM focus', async () => {
+    const { container } = render(OrderDataGrid, {
+      rows,
+      columns,
+      reorderableColumns: true,
+      getRowId: getOrderId,
+      'aria-label': 'Orders',
+    });
+
+    const grid = container.querySelector<HTMLElement>('[role="grid"]')!;
+    expect(document.activeElement).not.toBe(grid);
+
+    const restore = measureHeaderCells({ customer: 180, status: 120, total: 100 });
+    const source = headerCell(container, 'customer');
+    stubPointerCapture(source);
+    await fireEvent.pointerDown(source, { pointerId: 1, clientX: 90, clientY: 10 });
+    await fireEvent.pointerMove(source, { pointerId: 1, clientX: 260, clientY: 10 });
+    await fireEvent.pointerUp(source, { pointerId: 1, clientX: 260, clientY: 10 });
+    restore();
+
+    expect(document.activeElement).toBe(grid);
+    expect(grid.getAttribute('aria-activedescendant')).toBe(headerCell(container, 'customer').id);
   });
 
   test('COR-1132 regression: a right-to-left drag drops on the side the pointer is actually over', async () => {

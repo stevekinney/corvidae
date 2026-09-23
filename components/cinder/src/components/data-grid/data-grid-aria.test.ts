@@ -115,6 +115,49 @@ describe('DataGrid ARIA', () => {
     expect(firstDataCells.map((cell) => cell.getAttribute('aria-colindex'))).toEqual(['1', '2']);
   });
 
+  // Regression: `aria-colindex` must track each column's actual left-to-right
+  // *visual* position (pinned-left, then unpinned, then pinned-right), not
+  // its position in the `columns`/`columnOrder` array. Declaring a `pin`ned
+  // column away from its pin group (a right-pinned column declared first,
+  // here) used to leave `aria-colindex` mirroring declaration order while
+  // the DOM rendered in pin-grouped order — inverted from what a
+  // screen-reader user's `aria-colindex`-driven column announcement would
+  // read against what's actually on screen.
+  test('assigns aria-colindex by rendered pin-grouped order, not declaration order', () => {
+    type Widget = { a: string; b: string; c: string };
+    const widgetColumns: DataGridColumnDef<Widget>[] = [
+      { key: 'a', header: 'A', pin: 'right' },
+      { key: 'b', header: 'B' },
+      { key: 'c', header: 'C', pin: 'left' },
+    ];
+    const widgetRows: Widget[] = [{ a: '1', b: '2', c: '3' }];
+    const WidgetDataGrid = DataGrid as Component<DataGridProps<Widget>>;
+
+    const { container } = render(WidgetDataGrid, {
+      rows: widgetRows,
+      columns: widgetColumns,
+      getRowId: () => 'row-1',
+      'aria-label': 'Widgets',
+    });
+
+    const headers = Array.from(container.querySelectorAll('[role="columnheader"]'));
+    expect(headers.map((header) => header.getAttribute('data-cinder-column-key'))).toEqual([
+      'c',
+      'b',
+      'a',
+    ]);
+    expect(headers.map((header) => header.getAttribute('aria-colindex'))).toEqual(['1', '2', '3']);
+
+    const firstDataRow = container.querySelector('[role="row"][aria-rowindex="2"]');
+    const cells = Array.from(firstDataRow?.querySelectorAll('[role="gridcell"]') ?? []);
+    expect(cells.map((cell) => cell.getAttribute('data-cinder-column-key'))).toEqual([
+      'c',
+      'b',
+      'a',
+    ]);
+    expect(cells.map((cell) => cell.getAttribute('aria-colindex'))).toEqual(['1', '2', '3']);
+  });
+
   test('renders row-header columns with role=rowheader', () => {
     const { container } = render(IssueDataGrid, {
       rows,

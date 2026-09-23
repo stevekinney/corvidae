@@ -696,7 +696,10 @@ describe('DataGrid row virtualization', () => {
       expect(firstLeftPinnedCell?.style.gridColumn).toBe('1');
       expect(firstLeftPinnedCell?.getAttribute('aria-colindex')).toBe('1');
       expect(laterLeftPinnedCell?.style.gridColumn).toBe('2');
-      expect(laterLeftPinnedCell?.getAttribute('aria-colindex')).toBe('6');
+      // `aria-colindex` matches `style.gridColumn` here — both are the
+      // column's actual rendered position (1st and 2nd left-pinned track),
+      // not metric5's declaration position (6th in `columns`) (COR-1145).
+      expect(laterLeftPinnedCell?.getAttribute('aria-colindex')).toBe('2');
     } finally {
       restoreMeasurement();
     }

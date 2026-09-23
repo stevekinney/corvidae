@@ -403,6 +403,30 @@
       ...columnModel.rightPinnedColumns,
     ];
   });
+  // `aria-colindex` must reflect each column's 1-based position in the
+  // *actual visual left-to-right order* — pinned-left, then unpinned, then
+  // pinned-right — for the full column set, matching `aria-colcount`
+  // (`columnModel.orderedColumns.length`). That's exactly what
+  // `columnModel.renderColumns`' own `renderIndex` already is, since it's
+  // built from the same pin-grouped concatenation. `renderedColumns` above
+  // is different: when `virtualizeColumns` is on, it's cut down to only the
+  // currently-visible unpinned columns, so a virtualized column's own
+  // `renderIndex` there would be stale (a position among *visible* columns,
+  // not the full set). Looking each column's index up in this map instead
+  // of reading `renderIndex` directly off the (possibly virtualized-filtered)
+  // rendered column keeps `aria-colindex` correct in both cases, and also
+  // fixes it for a non-virtualized grid whose `columns`/`columnOrder` don't
+  // already declare pinned columns adjacent to their pin group.
+  const ariaColIndexByColumnKey = $derived.by(() => {
+    const indexByKey = new Map<string, number>();
+    for (const column of columnModel.renderColumns) {
+      indexByKey.set(column.key, column.renderIndex);
+    }
+    return indexByKey;
+  });
+  function getAriaColIndex(column: ResolvedDataGridColumn<TRow>): number | undefined {
+    return ariaColIndexByColumnKey.get(column.key);
+  }
   const renderedRows = $derived.by(() => {
     if (!shouldVirtualizeRows) {
       return sortedKeyedRows.map((keyedRow, visualRowIndex) => ({
@@ -1065,7 +1089,16 @@
     resizeDragState = undefined;
     liveColumnWidths = {};
     if (finalWidth !== startWidth) commitColumnWidth(columnKey, finalWidth);
-    if (headerInteractionEnabled) headerFocusColumnKey = columnKey;
+    // Setting `headerFocusColumnKey` alone only moves `aria-activedescendant`
+    // — that relationship only means anything to AT while the grid itself
+    // has real DOM focus (COR-1145). A pointer-only resize (no prior cell
+    // click) would otherwise finish with `aria-activedescendant` pointing at
+    // the header while focus was still wherever it started (often nowhere),
+    // silently breaking both the announcement and subsequent keyboard input.
+    if (headerInteractionEnabled) {
+      headerFocusColumnKey = columnKey;
+      gridElement?.focus({ preventScroll: true });
+    }
   }
 
   // --- Pointer reorder (COR-1132) ---------------------------------------
@@ -1194,7 +1227,14 @@
     if (!nextOrder) return;
 
     commitColumnOrder(nextOrder);
-    if (headerInteractionEnabled) headerFocusColumnKey = draggedKey;
+    // See the matching comment in `handleResizeHandlePointerUp` — a
+    // pointer-only reorder needs the same real-focus fix so
+    // `aria-activedescendant` is live and keyboard input keeps working
+    // immediately after the drop (COR-1145).
+    if (headerInteractionEnabled) {
+      headerFocusColumnKey = draggedKey;
+      gridElement?.focus({ preventScroll: true });
+    }
   }
 
   // --- Keyboard resize and reorder (COR-1133) ---------------------------
@@ -1817,7 +1857,7 @@
         class="cinder-data-grid__header-cell"
         role="columnheader"
         tabindex="-1"
-        aria-colindex={column.colIndex}
+        aria-colindex={getAriaColIndex(column)}
         aria-sort={column.sortable ? getHeaderAriaSort(column, sortItem) : undefined}
         data-cinder-pin={column.pin}
         data-cinder-sortable={column.sortable ? 'true' : undefined}
@@ -1931,7 +1971,7 @@
               isCurrentSearchMatchCell && 'cinder-data-grid__cell--search-match-current',
             )}
             role={column.rowHeader ? 'rowheader' : 'gridcell'}
-            aria-colindex={column.colIndex}
+            aria-colindex={getAriaColIndex(column)}
             aria-selected={isSelectedCell ? 'true' : undefined}
             tabindex="-1"
             data-cinder-pin={column.pin}

@@ -29,7 +29,6 @@ export type ResolvedDataGridColumn<TRow> = DataGridValueColumn<TRow> & {
   width: number;
   minWidth: number;
   maxWidth?: number;
-  colIndex: number;
   renderIndex: number;
   pin?: DataGridColumnPin;
   pinOffset: number;
@@ -147,7 +146,11 @@ function resolveColumn<TRow>(
     header: column.header,
     minWidth,
     width: Math.min(Math.max(baseWidth, minWidth), maxWidth),
-    colIndex: index + 1,
+    // Placeholder — `renderColumns` below overwrites this with the column's
+    // 1-based position in actual left-to-right visual order (pinned-left,
+    // then unpinned, then pinned-right). Until then it just mirrors
+    // `orderedColumns` position, which is wrong whenever a `pin`ned column
+    // isn't already declared adjacent to its pin group.
     renderIndex: index + 1,
     pinOffset: 0,
   };

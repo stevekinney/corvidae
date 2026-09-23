@@ -207,6 +207,42 @@ describe('DataGrid editing — entering edit mode', () => {
     expect(cell.getAttribute('data-cinder-editing')).toBe('true');
     expect(getCellInput(cell).value).toBe('Grace Hopper');
   });
+
+  // COR-1145: entering edit mode must move real DOM focus into the editing
+  // Input (documented in data-grid.a11y.md's editing focus-management
+  // section) — not just render it — for both the keyboard (Enter) and
+  // pointer (double-click) entry paths, and the cursor lands at the end of
+  // the prefilled text rather than the browser default of selecting it all.
+  test('Enter moves DOM focus into the editing Input with the cursor at the end of the value', async () => {
+    const { container } = render(OrderDataGrid, {
+      rows,
+      columns: editableColumns,
+      getRowId: getOrderId,
+      'aria-label': 'Orders',
+    });
+
+    const grid = container.querySelector<HTMLElement>('[role="grid"]');
+    await fireEvent.keyDown(grid!, { key: 'Enter' });
+
+    const input = getCellInput(getDataCell(container, 0, 0));
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(input.value.length);
+    expect(input.selectionEnd).toBe(input.value.length);
+  });
+
+  test('double-click moves DOM focus into the editing Input', async () => {
+    const { container } = render(OrderDataGrid, {
+      rows,
+      columns: editableColumns,
+      getRowId: getOrderId,
+      'aria-label': 'Orders',
+    });
+
+    const cell = getDataCell(container, 1, 0);
+    await fireEvent.dblClick(cell);
+
+    expect(document.activeElement).toBe(getCellInput(cell));
+  });
 });
 
 describe('DataGrid editing — commit and cancel', () => {

@@ -39,6 +39,27 @@ See the [tabular family boundaries](https://github.com/stevekinney/cinder/blob/m
 
 - You only need a semantic read-only table — use DataTable or the Table family instead.
 
+## Keyboard navigation
+
+DataGrid owns a single root tab stop (the `role="grid"` element itself) and moves a virtual "active cell" with `aria-activedescendant` instead of putting body cells in the tab order — the same roving-focus pattern the [ARIA grid pattern](https://www.w3.org/WAI/ARIA/apg/patterns/grid/) describes. This table is the complete base keyboard contract; [Editing](#editing) and [header focus, resize, and reorder](#header-focus-resize-and-reorder-by-keyboard) layer their own keys on top of it, scoped to when a cell is editing or a header is focused.
+
+| Key | Effect |
+| --- | --- |
+| `ArrowUp` / `ArrowDown` / `ArrowLeft` / `ArrowRight` | Moves the active cell one row or column. |
+| `Shift+Arrow` (any direction) | Extends the selected range from the anchor cell (where the range started) to the new active cell. |
+| `Home` | Moves to the first column of the active row. |
+| `Ctrl`/`Cmd`+`Home` | Moves to the first cell of the grid (first row, first column). |
+| `End` | Moves to the last column of the active row. |
+| `Ctrl`/`Cmd`+`End` | Moves to the last cell of the grid (last row, last column). |
+| `PageUp` / `PageDown` | Moves the active cell 10 rows up or down, same column. |
+| `Tab` / `Shift+Tab` | Moves the active cell to the next/previous cell in row-major reading order (wrapping to the next/previous row at a row boundary), same as pressing Tab through table cells. |
+| `Enter` / `Space` | Selects the active cell (extends with `Shift`, toggles with `Ctrl`/`Cmd`, same as a click) and updates row selection per `selectionMode`. On an editable, non-editing cell, `Enter` instead enters edit mode — see [Editing](#editing). |
+| `Escape` | Collapses the current cell range and row selection down to just the active cell. |
+| `Ctrl`/`Cmd`+`A` | Selects every cell, and every row when `selectionMode` is `'single'` or `'multiple'`. |
+| `Ctrl`/`Cmd`+`C` | Copies the selected cells (or just the active cell when nothing else is selected) to the clipboard as tab/newline-delimited text, and announces "Copied `<n>` cells" (or "Copy failed") through the live region. |
+
+Clicking a cell mirrors the keyboard equivalents above for the cell range: a plain click moves the active cell (and, in `'single'`/`'multiple'` `selectionMode`, selects that cell's row), `Shift`-click extends the cell range the same way `Shift+Arrow` does, and `Ctrl`/`Cmd`-click toggles the cell into the range the same way `Ctrl+Enter` does. Row selection itself only follows a plain or `Ctrl`/`Cmd`-click/`Enter` (replace or toggle) — `Shift`-click/`Enter` extends the cell range without changing which rows are selected, since row selection has no notion of a contiguous "range" the way cells do.
+
 ## Editing
 
 Mark a column `editable: true` to let its cells enter edit mode. DataGrid tracks the editing cell by stable row key plus column key — not by visual row/column index — so sorting and virtualization never lose an in-progress edit.
@@ -255,6 +276,12 @@ Opt in with `zoomControls` to render a row count, a visible column count, and zo
 - **Duplicate/empty headers.** Header names are trimmed when deriving each column's `key`. An empty header (after trimming) falls back to `column_<n>` (1-indexed by position); a `key` that collides with one already assigned gets `_2`, `_3`, … appended, deterministically by left-to-right header order. The displayed `header` keeps the original text (even duplicated, or empty once a key was defaulted) — only the internal `key` is disambiguated.
 - **Values are always strings.** `parseDelimitedText` never infers or coerces a numeric/date column — convert one yourself, either by mapping `rows` before handing them to DataGrid or with that column's `getValue`.
 - **`getRowId`.** Parsed rows have no id of their own. Either pick a column you know is unique in your data (`getRowId={(row) => row.email}`) or derive one from position, as in the example above.
+
+## Unsupported behavior and limitations
+
+- **Extremely tall/wide content is not clamped.** `virtualizeRows`/`virtualizeColumns` render actual-size row and column tracks and translate them into view — they never fake or clamp the grid's total scrollable height/width the way some virtualization libraries do at extreme row/column counts. Every browser has a hard ceiling on an element's rendered size, past which layout silently breaks (rows overlap, scroll position stops tracking, or the element is clipped to the ceiling): roughly 17,895,697px in Gecko (Firefox) and roughly 33,554,428px in Chromium and WebKit (Chrome, Edge, Safari). At the default 44px row height that's roughly 406,000 rows in Gecko and roughly 762,000 rows in Chromium/WebKit before row virtualization's total height hits the ceiling — proportionally fewer at a larger `rowHeight` or a `zoom` above 100%, since both scale the total height directly. This is a deliberate decision, not an oversight: DataGrid does not clamp, cap, or otherwise paper over the ceiling, because doing so would silently misrepresent the data's true size (a clamped scrollbar no longer means what it says) for a case only reachable with unrealistically large datasets. If your data can approach these row/column counts, page or window it server-side (or client-side ahead of DataGrid) so the grid itself never receives more rows/columns than a browser can lay out correctly.
+- **Row/column virtualization requires a browser.** `virtualizeRows`/`virtualizeColumns` need real `ResizeObserver`/scroll measurements and are inert during server rendering — see [`virtualization-adapter.svelte.ts`](./_internal/virtualization-adapter.svelte.ts)'s SSR accessors, which report fixed aggregate sizes and empty virtual windows instead of touching the DOM. A server-rendered grid with virtualization enabled renders its full row/column set on the server and virtualizes only after hydration in the browser.
+- **Search and zoom scan/scale the full dataset, not just what's rendered.** `search` computes matches over every row and column regardless of virtualization (see [Search](#search)), and `zoom` scales every row's height into the virtualizer's total-height calculation (see [Zoom](#zoom)) — both cost is proportional to the full `rows`/`columns` size, not the virtualized window, on top of the row/column-count ceiling above.
 
 ## Props
 
