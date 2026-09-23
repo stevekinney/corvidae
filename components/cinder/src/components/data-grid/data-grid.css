@@ -109,6 +109,7 @@
   }
 
   .cinder-data-grid__header-cell {
+    position: relative;
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-text-muted);
     text-wrap: balance;
@@ -116,6 +117,50 @@
 
   .cinder-data-grid__header-cell[data-cinder-sortable] {
     padding: 0;
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-header-active] {
+    outline: var(--cinder-ring-width) solid transparent;
+    outline-offset: -2px;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-data-grid__header-cell[data-cinder-header-active] {
+      outline: var(--cinder-ring-width) solid ButtonText;
+    }
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-drag-source] {
+    opacity: 0.5;
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-drop-indicator='before'] {
+    box-shadow: inset 2px 0 0 0 var(--cinder-ring-color);
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-drop-indicator='after'] {
+    box-shadow: inset -2px 0 0 0 var(--cinder-ring-color);
+  }
+
+  .cinder-data-grid__resize-handle {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: -3px;
+    inline-size: 6px;
+    cursor: col-resize;
+    touch-action: none;
+    z-index: 1;
+  }
+
+  .cinder-data-grid__resize-handle:active {
+    background: color-mix(in srgb, var(--cinder-text-default) 16%, transparent);
+  }
+
+  @media (hover: hover) {
+    .cinder-data-grid__resize-handle:hover {
+      background: color-mix(in srgb, var(--cinder-text-default) 16%, transparent);
+    }
   }
 
   .cinder-data-grid__sort-button {

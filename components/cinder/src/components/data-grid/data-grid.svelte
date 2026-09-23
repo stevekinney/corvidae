@@ -10,8 +10,8 @@
    * @useWhen Rendering interactive tabular data that will need grid behavior such as selection, virtualization, resizing, or editing.
    * @useWhen You need role=grid semantics instead of native table semantics.
    * @useWhen You need inline cell editing backed by Cinder's own Input, with commit/cancel keyboard behavior handled for you.
+   * @useWhen You need opt-in pointer- and keyboard-driven column resizing or reordering (`resizableColumns` / `reorderableColumns`).
    * @avoidWhen You only need a semantic read-only table — use DataTable or the Table family instead.
-   * @avoidWhen You need resize handles or drag-to-reorder controls — DataGrid does not provide them yet.
    * @related data-table, table
    */
   export type {
@@ -53,6 +53,12 @@
   } from './_internal/edit-model.svelte.ts';
   import type { DataGridCellCoordinate } from './_internal/geometry.ts';
   import {
+    getKeyboardResizedColumnWidth,
+    getPointerResizedColumnWidth,
+    moveColumnKeyWithinPinGroup,
+    reorderColumnKeyBeforeOrAfter,
+  } from './_internal/column-interaction-model.ts';
+  import {
     dataGridKeyToAction,
     getAdjacentCellIndex,
     isPrintableCharacterKeydown,
@@ -65,6 +71,8 @@
   } from './_internal/sort-model.ts';
   import { DataGridVirtualizationAdapter } from './_internal/virtualization-adapter.svelte.ts';
   import type {
+    DataGridColumnPin,
+    DataGridColumnSizing,
     DataGridProps,
     DataGridSelectionModel,
     DataGridSortModelItem,
@@ -92,8 +100,12 @@
     virtualizeRows = false,
     virtualizeColumns = false,
     rowHeight,
-    columnOrder,
-    columnSizing,
+    resizableColumns = false,
+    reorderableColumns = false,
+    columnOrder = $bindable<readonly string[] | undefined>(undefined),
+    onColumnOrderChange,
+    columnSizing = $bindable<DataGridColumnSizing | undefined>(undefined),
+    onColumnSizingChange,
     columnPinning,
     selectionMode = 'none',
     selectionModel = $bindable<DataGridSelectionModel | undefined>(undefined),
@@ -110,12 +122,57 @@
     ...rest
   }: DataGridProps<TRow> = $props();
 
+  // Live-updating widths from an in-progress pointer resize drag (COR-1131),
+  // keyed by column key. Merged over `columnSizing` for rendering only —
+  // the drag commits into `columnSizing`/`onColumnSizingChange` on
+  // pointerup, mirroring the rest of DataGrid's controlled-prop contract.
+  let liveColumnWidths = $state<Record<string, number>>({});
+  const effectiveColumnSizing = $derived.by(() => {
+    if (Object.keys(liveColumnWidths).length === 0) return columnSizing;
+    return { ...columnSizing, ...liveColumnWidths };
+  });
+
   const columnModel = new DataGridColumnModel<TRow>({
     columns: () => columns,
     columnOrder: () => columnOrder,
-    columnSizing: () => columnSizing,
+    columnSizing: () => effectiveColumnSizing,
     columnPinning: () => columnPinning,
   });
+
+  const headerInteractionEnabled = $derived(
+    resizableColumns === true || reorderableColumns === true,
+  );
+  let headerFocusColumnKey = $state<string | undefined>();
+
+  type ColumnResizeDragState = {
+    pointerId: number;
+    columnKey: string;
+    startClientX: number;
+    startWidth: number;
+    minWidth: number;
+    maxWidth: number | undefined;
+  };
+  let resizeDragState = $state<ColumnResizeDragState | undefined>();
+
+  type HeaderCellRect = {
+    key: string;
+    pin: DataGridColumnPin | undefined;
+    left: number;
+    right: number;
+  };
+  type ColumnDragState = {
+    pointerId: number;
+    draggedKey: string;
+    pin: DataGridColumnPin | undefined;
+    targetKey: string | undefined;
+    dropSide: 'before' | 'after' | undefined;
+    rects: readonly HeaderCellRect[];
+  };
+  let reorderPointerDownState = $state<
+    { pointerId: number; columnKey: string; startClientX: number; startClientY: number } | undefined
+  >();
+  let columnDragState = $state<ColumnDragState | undefined>();
+  const columnDragThresholdPx = 4;
 
   let liveRegionMessage = $state('');
   let renderedLiveRegionMessage = $state('');
@@ -183,6 +240,17 @@
     getScrollPaddingStart: () => getHeaderHeight(),
     getScrollPaddingInlineStart: () => columnModel.leftPinnedWidth,
     getScrollPaddingInlineEnd: () => columnModel.rightPinnedWidth,
+  });
+  // Keeps the column virtualizer's own measured sizes in sync with resolved
+  // column widths (COR-1131). `@tanstack/virtual-core` only recomputes an
+  // item's cached size on an explicit resize call, so a controlled
+  // `columnSizing` update or a pointer/keyboard resize would otherwise
+  // leave the virtualized column tracks and total width stale even though
+  // the resized cell's own CSS width is already correct.
+  $effect(() => {
+    columnModel.unpinnedColumns.forEach((column, index) => {
+      rowVirtualizer.resizeColumn(index, column.width);
+    });
   });
   const observeHeaderSize: Attachment<HTMLElement> = (node) => {
     if (typeof ResizeObserver === 'undefined') return;
@@ -344,9 +412,11 @@
   const activeColumnKey = $derived(columnModel.renderColumns[activeColumnIndex]?.key);
   const canExposeActiveCell = $derived(!(shouldVirtualizeRows && typeof window === 'undefined'));
   const activeCellId = $derived(
-    canExposeActiveCell && activeRowDomId !== undefined && firstColumnKey !== undefined
-      ? getCellId(activeRowDomId, activeColumnKey ?? firstColumnKey)
-      : undefined,
+    headerFocusColumnKey !== undefined
+      ? getHeaderCellId(headerFocusColumnKey)
+      : canExposeActiveCell && activeRowDomId !== undefined && firstColumnKey !== undefined
+        ? getCellId(activeRowDomId, activeColumnKey ?? firstColumnKey)
+        : undefined,
   );
   const activeCellCoordinates = $derived(
     activeRowDomId !== undefined && activeColumnKey !== undefined
@@ -541,6 +611,10 @@
     return `${gridId}-cell-r-${toDomIdSegment(rowId)}-c-${toDomIdSegment(columnKey)}`;
   }
 
+  function getHeaderCellId(columnKey: string): string {
+    return `${gridId}-header-c-${toDomIdSegment(columnKey)}`;
+  }
+
   function toDomIdSegment(value: string): string {
     const segment = Array.from(value, (character) => character.codePointAt(0)?.toString(16) ?? '0');
     return segment.length > 0 ? segment.join('_') : 'empty';
@@ -633,12 +707,281 @@
     return `sorted ${sortItem.direction}, priority ${sortPriority}`;
   }
 
-  function handleColumnHeaderClick(column: ResolvedDataGridColumn<TRow>, event: MouseEvent): void {
+  function handleColumnHeaderClick(
+    column: ResolvedDataGridColumn<TRow>,
+    event: { shiftKey: boolean },
+  ): void {
     if (!column.sortable) return;
 
     const nextSortModel = getNextDataGridSortModel(activeSortModel, column.key, event.shiftKey);
     sortModel = nextSortModel;
     onSortModelChange?.(nextSortModel);
+  }
+
+  function getColumnHeaderLabel(column: ResolvedDataGridColumn<TRow>): string {
+    return typeof column.header === 'string' ? column.header : column.key;
+  }
+
+  function canResizeColumn(column: ResolvedDataGridColumn<TRow>): boolean {
+    return resizableColumns === true && column.resizable !== false;
+  }
+
+  function commitColumnWidth(columnKey: string, width: number): void {
+    const nextSizing: DataGridColumnSizing = { ...columnSizing, [columnKey]: width };
+    columnSizing = nextSizing;
+    onColumnSizingChange?.(nextSizing);
+  }
+
+  function commitColumnOrder(nextOrder: readonly string[]): void {
+    columnOrder = nextOrder;
+    onColumnOrderChange?.(nextOrder);
+  }
+
+  function announce(message: string): void {
+    liveRegionMessage = message;
+    liveRegionAnnouncementSequence += 1;
+  }
+
+  // --- Pointer resize (COR-1131) ---------------------------------------
+
+  function handleResizeHandlePointerDown(
+    event: PointerEvent,
+    column: ResolvedDataGridColumn<TRow>,
+  ): void {
+    event.stopPropagation();
+    event.preventDefault();
+    (event.currentTarget as Element).setPointerCapture(event.pointerId);
+    resizeDragState = {
+      pointerId: event.pointerId,
+      columnKey: column.key,
+      startClientX: event.clientX,
+      startWidth: column.width,
+      minWidth: column.minWidth,
+      maxWidth: column.maxWidth,
+    };
+  }
+
+  function handleResizeHandlePointerMove(event: PointerEvent): void {
+    if (!resizeDragState || event.pointerId !== resizeDragState.pointerId) return;
+    event.preventDefault();
+    const rawDeltaX = event.clientX - resizeDragState.startClientX;
+    const deltaX = isRightToLeft ? -rawDeltaX : rawDeltaX;
+    const nextWidth = getPointerResizedColumnWidth(
+      resizeDragState.startWidth,
+      deltaX,
+      resizeDragState.minWidth,
+      resizeDragState.maxWidth,
+    );
+    liveColumnWidths = { [resizeDragState.columnKey]: nextWidth };
+  }
+
+  function handleResizeHandlePointerUp(event: PointerEvent): void {
+    if (!resizeDragState || event.pointerId !== resizeDragState.pointerId) return;
+    const { columnKey, startWidth } = resizeDragState;
+    const finalWidth = liveColumnWidths[columnKey] ?? startWidth;
+    resizeDragState = undefined;
+    liveColumnWidths = {};
+    if (finalWidth !== startWidth) commitColumnWidth(columnKey, finalWidth);
+    if (headerInteractionEnabled) headerFocusColumnKey = columnKey;
+  }
+
+  // --- Pointer reorder (COR-1132) ---------------------------------------
+
+  function getHeaderCellRects(): HeaderCellRect[] {
+    if (!headerElement) return [];
+    const cells = headerElement.querySelectorAll<HTMLElement>('.cinder-data-grid__header-cell');
+    return Array.from(cells).flatMap((cell) => {
+      const key = cell.dataset['cinderColumnKey'];
+      if (key === undefined) return [];
+      const rect = cell.getBoundingClientRect();
+      const pin = columnModel.renderColumns.find((column) => column.key === key)?.pin;
+      return [{ key, pin, left: rect.left, right: rect.right }];
+    });
+  }
+
+  function updateColumnDragTarget(clientX: number): void {
+    if (!columnDragState) return;
+    const candidates = columnDragState.rects.filter(
+      (rect) => rect.pin === columnDragState?.pin && rect.key !== columnDragState?.draggedKey,
+    );
+    if (candidates.length === 0) {
+      columnDragState = { ...columnDragState, targetKey: undefined, dropSide: undefined };
+      return;
+    }
+
+    let closest = candidates[0]!;
+    let closestDistance = Math.abs(clientX - (closest.left + closest.right) / 2);
+    for (const rect of candidates) {
+      const distance = Math.abs(clientX - (rect.left + rect.right) / 2);
+      if (distance < closestDistance) {
+        closest = rect;
+        closestDistance = distance;
+      }
+    }
+
+    const midpoint = (closest.left + closest.right) / 2;
+    const dropSide: 'before' | 'after' = clientX < midpoint ? 'before' : 'after';
+    columnDragState = { ...columnDragState, targetKey: closest.key, dropSide };
+  }
+
+  function handleHeaderCellPointerDown(
+    event: PointerEvent,
+    column: ResolvedDataGridColumn<TRow>,
+  ): void {
+    if (!reorderableColumns) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest('.cinder-data-grid__resize-handle')
+    ) {
+      return;
+    }
+    reorderPointerDownState = {
+      pointerId: event.pointerId,
+      columnKey: column.key,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+    };
+  }
+
+  function handleHeaderCellPointerMove(event: PointerEvent): void {
+    if (columnDragState && columnDragState.pointerId === event.pointerId) {
+      event.preventDefault();
+      updateColumnDragTarget(event.clientX);
+      return;
+    }
+
+    if (!reorderPointerDownState || reorderPointerDownState.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - reorderPointerDownState.startClientX;
+    const deltaY = event.clientY - reorderPointerDownState.startClientY;
+    if (Math.abs(deltaX) < columnDragThresholdPx && Math.abs(deltaY) < columnDragThresholdPx)
+      return;
+
+    const draggedColumn = columnModel.renderColumns.find(
+      (column) => column.key === reorderPointerDownState?.columnKey,
+    );
+    reorderPointerDownState = undefined;
+    if (!draggedColumn) return;
+
+    event.preventDefault();
+    (event.currentTarget as Element).setPointerCapture(event.pointerId);
+    columnDragState = {
+      pointerId: event.pointerId,
+      draggedKey: draggedColumn.key,
+      pin: draggedColumn.pin,
+      targetKey: undefined,
+      dropSide: undefined,
+      rects: getHeaderCellRects(),
+    };
+    updateColumnDragTarget(event.clientX);
+  }
+
+  function handleHeaderCellPointerUp(event: PointerEvent): void {
+    if (reorderPointerDownState?.pointerId === event.pointerId) reorderPointerDownState = undefined;
+    if (!columnDragState || columnDragState.pointerId !== event.pointerId) return;
+
+    const { draggedKey, targetKey, dropSide } = columnDragState;
+    columnDragState = undefined;
+    if (targetKey === undefined || dropSide === undefined) return;
+
+    const orderedKeys = columnModel.orderedColumns.map((column) => column.key);
+    const pinByKey = new Map(columnModel.orderedColumns.map((column) => [column.key, column.pin]));
+    const nextOrder = reorderColumnKeyBeforeOrAfter(
+      orderedKeys,
+      pinByKey,
+      draggedKey,
+      targetKey,
+      dropSide,
+    );
+    if (!nextOrder) return;
+
+    commitColumnOrder(nextOrder);
+    if (headerInteractionEnabled) headerFocusColumnKey = draggedKey;
+  }
+
+  // --- Keyboard resize and reorder (COR-1133) ---------------------------
+
+  function enterHeaderFocus(columnKey: string | undefined): void {
+    if (columnKey === undefined) return;
+    headerFocusColumnKey = columnKey;
+  }
+
+  function moveHeaderFocus(direction: 1 | -1): void {
+    const headerColumns = columnModel.renderColumns;
+    const index = headerColumns.findIndex((column) => column.key === headerFocusColumnKey);
+    if (index < 0) return;
+    const nextIndex = Math.min(Math.max(index + direction, 0), headerColumns.length - 1);
+    headerFocusColumnKey = headerColumns[nextIndex]?.key;
+  }
+
+  function resizeHeaderColumn(column: ResolvedDataGridColumn<TRow>, direction: 1 | -1): void {
+    const nextWidth = getKeyboardResizedColumnWidth(
+      column.width,
+      direction,
+      column.minWidth,
+      column.maxWidth,
+    );
+    if (nextWidth === column.width) return;
+    commitColumnWidth(column.key, nextWidth);
+    announce(`${getColumnHeaderLabel(column)} column resized to ${Math.round(nextWidth)} pixels`);
+  }
+
+  function moveHeaderColumn(column: ResolvedDataGridColumn<TRow>, direction: 1 | -1): void {
+    const orderedKeys = columnModel.orderedColumns.map((candidate) => candidate.key);
+    const pinByKey = new Map(
+      columnModel.orderedColumns.map((candidate) => [candidate.key, candidate.pin]),
+    );
+    const nextOrder = moveColumnKeyWithinPinGroup(orderedKeys, pinByKey, column.key, direction);
+    if (!nextOrder) return;
+
+    commitColumnOrder(nextOrder);
+    const groupKeys = nextOrder.filter((key) => pinByKey.get(key) === column.pin);
+    const position = groupKeys.indexOf(column.key) + 1;
+    announce(`${getColumnHeaderLabel(column)} column moved to position ${position}`);
+  }
+
+  function handleHeaderFocusKeydown(event: KeyboardEvent): void {
+    const column = columnModel.renderColumns.find(
+      (candidate) => candidate.key === headerFocusColumnKey,
+    );
+    if (!column) {
+      headerFocusColumnKey = undefined;
+      return;
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'Escape') {
+      event.preventDefault();
+      headerFocusColumnKey = undefined;
+      return;
+    }
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      const direction: 1 | -1 = event.key === 'ArrowRight' ? 1 : -1;
+      const isCommand = event.ctrlKey || event.metaKey;
+
+      if (event.shiftKey && isCommand) {
+        if (!reorderableColumns) return;
+        event.preventDefault();
+        moveHeaderColumn(column, direction);
+        return;
+      }
+
+      if (event.shiftKey) {
+        if (!resizableColumns || !canResizeColumn(column)) return;
+        event.preventDefault();
+        resizeHeaderColumn(column, direction);
+        return;
+      }
+
+      event.preventDefault();
+      moveHeaderFocus(direction);
+      return;
+    }
+
+    if ((event.key === 'Enter' || event.key === ' ') && column.sortable) {
+      event.preventDefault();
+      handleColumnHeaderClick(column, event);
+    }
   }
 
   function getCellCoordinate(
@@ -809,6 +1152,7 @@
     columnKey: string,
     rowIndex: number,
   ): void {
+    headerFocusColumnKey = undefined;
     requestedActiveRowIndex = rowIndex;
     requestedActiveColumnKey = columnKey;
     selectionState.setActiveCell(
@@ -993,6 +1337,11 @@
 
     if (isInteractiveEventTarget(event)) return;
 
+    if (headerFocusColumnKey !== undefined) {
+      handleHeaderFocusKeydown(event);
+      return;
+    }
+
     if (sortedKeyedRows.length === 0 || columnModel.renderColumns.length === 0) return;
 
     const activeColumn = columnModel.renderColumns[activeColumnIndex];
@@ -1007,6 +1356,19 @@
         beginEditCell(activeRowDomId, activeColumn.key, event.key);
         return;
       }
+    }
+
+    if (
+      headerInteractionEnabled &&
+      event.key === 'ArrowUp' &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      activeRowIndex === 0
+    ) {
+      event.preventDefault();
+      enterHeaderFocus(activeColumnKey);
+      return;
     }
 
     const action = dataGridKeyToAction(event, {
@@ -1094,14 +1456,26 @@
       {@const sortItem = getColumnSortModelItem(column.key)}
       {@const sortPriority = getColumnSortPriority(column.key)}
       <div
+        id={getHeaderCellId(column.key)}
         class="cinder-data-grid__header-cell"
         role="columnheader"
+        tabindex="-1"
         aria-colindex={column.colIndex}
         aria-sort={column.sortable ? getHeaderAriaSort(column, sortItem) : undefined}
         data-cinder-pin={column.pin}
         data-cinder-sortable={column.sortable ? 'true' : undefined}
         data-cinder-sort-direction={sortItem?.direction}
+        data-cinder-column-key={column.key}
+        data-cinder-header-active={headerFocusColumnKey === column.key ? 'true' : undefined}
+        data-cinder-drag-source={columnDragState?.draggedKey === column.key ? 'true' : undefined}
+        data-cinder-drop-indicator={columnDragState?.targetKey === column.key
+          ? columnDragState.dropSide
+          : undefined}
         style={getCellStyle(column)}
+        onpointerdown={(event) => handleHeaderCellPointerDown(event, column)}
+        onpointermove={handleHeaderCellPointerMove}
+        onpointerup={handleHeaderCellPointerUp}
+        onpointercancel={handleHeaderCellPointerUp}
       >
         {#if column.sortable}
           <button
@@ -1134,6 +1508,24 @@
           {@render column.header()}
         {:else}
           {column.header}
+        {/if}
+        {#if canResizeColumn(column)}
+          <div
+            class="cinder-data-grid__resize-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={`Resize ${getColumnHeaderLabel(column)} column`}
+            aria-valuenow={Math.round(column.width)}
+            aria-valuemin={Math.round(column.minWidth)}
+            aria-valuemax={Number.isFinite(column.maxWidth)
+              ? Math.round(column.maxWidth ?? 0)
+              : undefined}
+            data-cinder-resize-handle
+            onpointerdown={(event) => handleResizeHandlePointerDown(event, column)}
+            onpointermove={handleResizeHandlePointerMove}
+            onpointerup={handleResizeHandlePointerUp}
+            onpointercancel={handleResizeHandlePointerUp}
+          ></div>
         {/if}
       </div>
     {/each}

@@ -14,13 +14,22 @@ Purpose: ARIA data grid foundation for spreadsheet-like datasets with explicit r
 ## Avoid when
 
 - You only need a semantic read-only table — use DataTable or the Table family instead.
-- You need resize handles or drag-to-reorder controls — DataGrid does not provide them yet.
 
 ## Keyboard and focus
 
 The grid owns the root tab stop and moves the active cell with keyboard commands. Do not put body cells directly in the tab order unless the component documents that behavior.
 
 Keep focus indicators visible. If you wrap or restyle DataGrid, verify the focused element remains visually apparent in default and forced-colors modes.
+
+## Resizing and reordering columns
+
+`resizableColumns` and `reorderableColumns` are both off by default — an existing grid's accessibility contract is unchanged until a caller opts in.
+
+- **Resize handle.** A resizable header cell renders a `role="separator"` element with `aria-orientation="vertical"`, an `aria-label` naming the column ("Resize Customer column"), and `aria-valuenow`/`aria-valuemin`/`aria-valuemax` reflecting the column's current width and bounds. The handle is not independently focusable (`tabindex="-1"`) — width is announced and changed through the keyboard path below instead of a second, redundant Tab stop.
+- **Header focus.** Pressing `ArrowUp` from the top body row (only when `resizableColumns` or `reorderableColumns` is set) moves `aria-activedescendant` to that column's header cell, exactly the same way `aria-activedescendant` already tracks the active body cell. `ArrowDown` or `Escape` returns it to the body cell. This never happens on a grid that has not opted in, so `ArrowUp` at the top row keeps being a no-op on every existing grid.
+- **Keyboard resize/reorder.** While a header is focused, `Shift+ArrowLeft`/`Shift+ArrowRight` resizes by 10px (clamped to `minWidth`/`maxWidth`) and `Ctrl`/`Cmd`+`Shift`+`ArrowLeft`/`ArrowRight` moves the column one position within its pin group. Both are announced through DataGrid's existing live region (`role="status"`, `aria-live="polite"`), for example "Customer column resized to 190 pixels" or "Customer column moved to position 2". `Shift+ArrowLeft`/`Shift+ArrowRight` on a body cell (not header-focused) keeps its pre-existing meaning of extending the cell-selection range — the two never overlap, since the resize/reorder shortcuts only fire while a header is the active descendant.
+- **Pin groups.** Reordering is constrained to within the same pin group: a column can only change position among columns that share its `pin` value. This applies identically to the pointer drag and the keyboard shortcut, so a screen-reader user and a mouse user get the same set of valid destinations.
+- **Sort is unaffected.** Dragging the resize handle, or dragging a header far enough to start a reorder, never triggers that column's sort — a plain click (or Enter/Space while header-focused) still sorts a sortable column.
 
 ## Editing
 

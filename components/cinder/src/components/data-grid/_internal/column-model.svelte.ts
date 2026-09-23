@@ -16,6 +16,7 @@ export type DataGridValueColumn<TRow> = {
   key: string;
   rowHeader?: boolean;
   sortable?: boolean;
+  resizable?: boolean;
   sortComparator?: DataGridSortComparator<TRow>;
   getValue?: (row: TRow) => unknown;
   editable?: boolean;
@@ -154,6 +155,7 @@ function resolveColumn<TRow>(
   if (column.maxWidth !== undefined) resolvedColumn.maxWidth = column.maxWidth;
   if (column.rowHeader !== undefined) resolvedColumn.rowHeader = column.rowHeader;
   if (column.sortable !== undefined) resolvedColumn.sortable = column.sortable;
+  if (column.resizable !== undefined) resolvedColumn.resizable = column.resizable;
   if (column.sortComparator !== undefined) resolvedColumn.sortComparator = column.sortComparator;
   if (column.getValue !== undefined) resolvedColumn.getValue = column.getValue;
   if (column.editable !== undefined) resolvedColumn.editable = column.editable;

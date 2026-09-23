@@ -66,6 +66,13 @@ type DataGridBaseColumnDef<TRow> = {
   /** Enables header-click sorting for this column. */
   sortable?: boolean;
   /**
+   * Overrides the grid-level `resizableColumns` for this column. Set
+   * `false` to prevent this column from resizing even when the grid enables
+   * resizing. Has no effect when `resizableColumns` is `false`. Defaults to
+   * `true`.
+   */
+  resizable?: boolean;
+  /**
    * Enables inline editing for this column. Editable cells enter edit mode
    * on Enter, double-click, or by typing a printable character while the
    * cell is focused (not yet editing). Defaults to `false`.
@@ -125,10 +132,37 @@ export type DataGridProps<TRow = Record<string, unknown>> = Omit<
   virtualizeColumns?: boolean;
   /** Fixed body-row pixel height used by row virtualization. Defaults to 44 when omitted or invalid. */
   rowHeight?: number;
-  /** Applies a supplied column order. */
+  /**
+   * Enables a pointer- and keyboard-driven resize handle on resizable
+   * header cells. Off by default so existing grids render unchanged. A
+   * column opts out individually with `resizable: false`.
+   */
+  resizableColumns?: boolean;
+  /**
+   * Enables pointer drag and keyboard reordering of header cells. Off by
+   * default so existing grids render unchanged. A column can only be
+   * reordered among columns that share its `pin` value — reordering never
+   * moves a column across the left-pinned, unpinned, or right-pinned
+   * groups.
+   */
+  reorderableColumns?: boolean;
+  /**
+   * Applies a supplied column order. `$bindable` — DataGrid assigns it
+   * directly after a pointer or keyboard reorder (see `reorderableColumns`),
+   * in addition to calling `onColumnOrderChange`, mirroring `sortModel`.
+   */
   columnOrder?: readonly string[];
-  /** Overrides resolved column widths by column key. */
+  /** Called after the user reorders a column and DataGrid updates `columnOrder`. */
+  onColumnOrderChange?: (columnOrder: readonly string[]) => void;
+  /**
+   * Overrides resolved column widths by column key. `$bindable` — DataGrid
+   * assigns it directly after a pointer or keyboard resize (see
+   * `resizableColumns`), in addition to calling `onColumnSizingChange`,
+   * mirroring `sortModel`.
+   */
   columnSizing?: DataGridColumnSizing;
+  /** Called after the user resizes a column and DataGrid updates `columnSizing`. */
+  onColumnSizingChange?: (columnSizing: DataGridColumnSizing) => void;
   /** Pins supplied column keys to the left or right edge. */
   columnPinning?: DataGridColumnPinning;
   /** Controls row-selection behavior. Cell focus and range selection remain available. */

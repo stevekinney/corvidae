@@ -537,6 +537,53 @@ describe('DataGrid row virtualization', () => {
     }
   });
 
+  test('COR-1131: resizing a virtualized unpinned column re-measures the column virtualizer', async () => {
+    const restoreMeasurement = measureDataGrid(520);
+    const columnCount = 40;
+    try {
+      const { container } = render(LogDataGrid, {
+        rows: makeMetricRows(1, columnCount),
+        columns: makeMetricColumns(columnCount),
+        getRowId: getLogRowId,
+        virtualizeColumns: true,
+        resizableColumns: true,
+        'aria-label': 'Metrics',
+      });
+
+      const grid = container.querySelector<HTMLElement>('[role="grid"]');
+      if (!grid) throw new Error('Expected DataGrid root');
+      await waitFor(() => expect(gridCells(container).length).toBeGreaterThan(0));
+
+      const totalWidthBefore = grid.style.getPropertyValue('--_cinder-data-grid-content-width');
+
+      // metric1 is unpinned (only index 0 and the last column are pinned by
+      // makeMetricColumns), so resizing it exercises the column
+      // virtualizer's own `totalWidth` re-measurement, not just pinned width.
+      const handle = container.querySelector<HTMLElement>(
+        '[data-cinder-column-key="metric1"] [data-cinder-resize-handle]',
+      );
+      if (!handle) throw new Error('Expected a resize handle on metric1');
+      (handle as unknown as { setPointerCapture: () => void }).setPointerCapture = () => {};
+
+      await fireEvent.pointerDown(handle, { pointerId: 1, clientX: 0 });
+      await fireEvent.pointerMove(handle, { pointerId: 1, clientX: 100 });
+      await fireEvent.pointerUp(handle, { pointerId: 1, clientX: 100 });
+      await waitFor(() =>
+        expect(
+          container
+            .querySelector<HTMLElement>('[data-cinder-column-key="metric1"]')
+            ?.style.getPropertyValue('--_cinder-data-grid-column-width'),
+        ).toBe('200px'),
+      );
+
+      // The column virtualizer's total measured width grew with the resize.
+      const totalWidthAfter = grid.style.getPropertyValue('--_cinder-data-grid-content-width');
+      expect(totalWidthAfter).not.toBe(totalWidthBefore);
+    } finally {
+      restoreMeasurement();
+    }
+  });
+
   test('wide pinned columns do not shift the unpinned scroll window', async () => {
     const restoreMeasurement = measureDataGrid(520);
     const columnCount = 40;
