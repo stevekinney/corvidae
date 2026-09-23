@@ -12,7 +12,7 @@ import type {
   ConversationEventMap,
 } from './events';
 import { ConversationEvent, conversationEventConstructors } from './events';
-import { composeConversationActions } from './history-composition';
+import { composeConversationActions, type ConversationActions } from './history-composition';
 import { type ConversationChangeContext } from './history-events';
 import { HistoryLifecycle } from './history-lifecycle';
 import { createConversationChangeContext } from './history-messages';
@@ -52,6 +52,18 @@ export type ConversationMutationResult =
       readonly revision: number;
       readonly reason: 'revision-conflict' | 'stale-external-event' | 'invalid-external-snapshot';
     };
+
+/**
+ * The domain actions `composeConversationActions` installs on every `Conversation`.
+ *
+ * Declared here, beside the class, rather than as `declare module './history'` in
+ * history-composition.ts. A relative module augmentation does not survive declaration bundling:
+ * the bundler moves the class into a shared chunk under a local alias, and `./history` becomes a
+ * file that only re-exports it, so the augmentation merges into nothing and the published
+ * `Conversation` loses every action method. Same-module merging has no path to lose.
+ */
+// oxlint-disable-next-line typescript/no-unsafe-declaration-merging -- the constructor installs every member of ConversationActions (see composeConversationActions), so the merged members are always present at runtime.
+export interface Conversation extends ConversationActions<Conversation> {}
 
 /**
  * Manages a stack of conversation versions to support undo, redo, and branching.
