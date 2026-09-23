@@ -92,6 +92,12 @@
     resolveEdgeProximity,
     type EdgeLatch,
   } from './_internal/edge-proximity.ts';
+  import { FrameBatcher } from './_internal/frame-scheduler.ts';
+  import {
+    resolveDocumentOffset,
+    resolveWindowScrollOffset,
+    resolveWindowScrollTarget,
+  } from './_internal/window-scroll.ts';
   import {
     classifyItemGrowth,
     shouldPinToEnd,
@@ -116,6 +122,7 @@
     overscan = 5,
     height = '20rem',
     stickToBottom = false,
+    windowScroll = false,
     reverse = false,
     onEndReached,
     onStartReached,
@@ -166,6 +173,23 @@
   let scrollElement: HTMLElement | undefined = $state();
   let scrollOffset = $state(0);
   let measuredViewportHeight = $state(0);
+  /**
+   * The list's top edge in document coordinates, under `windowScroll`. Cached
+   * rather than read live: `readScrollOffset` runs from the window's own
+   * `scroll` handler, which must never force a synchronous layout by calling
+   * `getBoundingClientRect` there (see COR-577) — so the layout-forcing read
+   * that produces this happens elsewhere (mount, window resize, the resize
+   * observer already in use) and this is what the scroll handler reads instead.
+   */
+  let documentOffset = $state(0);
+  /**
+   * Coalesces the `getBoundingClientRect` read `documentOffset` needs onto a
+   * single animation frame when `windowScroll`'s window resize listener and
+   * the component's own resize observer both fire for the same layout
+   * change — see `frame-scheduler.ts`, written for exactly this. Built lazily
+   * so a list that never turns `windowScroll` on never constructs it.
+   */
+  let windowMeasurementBatcher: FrameBatcher<void> | undefined;
   let hasObservedItemCount = false;
   let shouldStickAfterAppend = false;
   /**
@@ -253,11 +277,21 @@
   let previousCrossExtent = 0;
 
   /**
+   * `horizontal` as it actually applies. `windowScroll` does not compose with
+   * it — windowing the window's own horizontal scroll is not supported — so
+   * this silently degrades to vertical whenever both are set, rather than the
+   * two fighting over which axis owns the scroll offset. Every axis-dependent
+   * read below goes through this, not the raw prop, so the degrade is total:
+   * layout, offsets, and scroll reads and writes all agree.
+   */
+  const isHorizontal = $derived(horizontal && !windowScroll);
+
+  /**
    * Logical property names for the axis in play. Logical rather than physical so
    * the inline axis flips correctly under RTL with no separate branch: the browser
    * resolves `inset-inline-start` to the right edge on its own.
    */
-  const rowLayout = $derived(resolveRowLayoutDescriptor(horizontal ? 'horizontal' : 'vertical'));
+  const rowLayout = $derived(resolveRowLayoutDescriptor(isHorizontal ? 'horizontal' : 'vertical'));
   /**
    * The shared hook rather than an inline media query, per OVERLAY-POLICY and the
    * `check:no-inline-match-media` guard. It is reactive, so a preference changed
@@ -468,6 +502,26 @@
   });
 
   /**
+   * Window-level listeners for `windowScroll`. The container renders no
+   * scrolling element of its own under this mode (see the CSS rule on
+   * `[data-cinder-window-scroll]`), so its scroll offset and viewport size
+   * come from `window` rather than a native `scroll`/resize on `scrollElement`.
+   *
+   * Passive and added on mount, exactly the deliverable asks for. Torn down
+   * on teardown AND whenever `windowScroll` itself flips off, so a disabled
+   * list is never driven by a listener nothing reads anymore.
+   */
+  $effect(() => {
+    if (!windowScroll || typeof window === 'undefined') return;
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+    window.addEventListener('resize', handleWindowResize, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleWindowScroll);
+      window.removeEventListener('resize', handleWindowResize);
+    };
+  });
+
+  /**
    * Fires the infinite-scroll callbacks as the reader approaches either end.
    *
    * Depends on the window AND the item count: an append can bring the end into
@@ -564,7 +618,12 @@
   });
 
   const observeResize = useResizeObserver(() => {
-    if (scrollElement) syncViewport(scrollElement);
+    if (!scrollElement) return;
+    // Under `windowScroll` this goes through the same batcher as the window's own
+    // `resize` listener — both can fire for one layout change, and coalescing
+    // avoids paying for `getBoundingClientRect` twice in the same frame.
+    if (windowScroll) scheduleWindowMeasurement();
+    else syncViewport(scrollElement);
   });
 
   /**
@@ -1293,6 +1352,8 @@
     rowResizeObserver = undefined;
     measurementStore.reset();
     previousOffsets = undefined;
+    windowMeasurementBatcher?.dispose();
+    windowMeasurementBatcher = undefined;
   });
 
   function keyAt(index: number): VirtualListKey {
@@ -1311,9 +1372,18 @@
    * Under `horizontal` + RTL that is not simply `scrollLeft`: browsers disagree on
    * its sign and origin, so the raw value is normalized through the convention this
    * browser was measured to use. See `resolveRtlScrollType`.
+   *
+   * Under `windowScroll` `element` goes unused: there is no scrolling container to
+   * read from, so this reads `window.scrollY` instead and turns it into a
+   * list-relative offset with the cached `documentOffset` — deliberately never
+   * `getBoundingClientRect` here. This function runs from the window's own `scroll`
+   * handler on every event, and a `getBoundingClientRect` call there would force a
+   * synchronous layout on every scroll frame, exactly what COR-577 removed from this
+   * component's other scroll paths.
    */
   function readScrollOffset(element: HTMLElement): number {
-    if (!horizontal) return Math.max(0, element.scrollTop);
+    if (windowScroll) return resolveWindowScrollOffset(readWindowScrollPosition(), documentOffset);
+    if (!isHorizontal) return Math.max(0, element.scrollTop);
     // Normalization is the identity under ltr, and resolving the convention costs a
     // layout-forcing probe. Short-circuit so a left-to-right page never pays for an
     // answer it would discard.
@@ -1330,9 +1400,18 @@
     );
   }
 
-  /** Writes a start-edge-relative offset back along the active axis. */
+  /**
+   * Writes a start-edge-relative offset back along the active axis.
+   *
+   * Under `windowScroll` this scrolls the window itself, at the list's own
+   * offset in the document plus `offset` — see `resolveWindowScrollTarget`.
+   */
   function writeScrollOffset(element: HTMLElement, offset: number, behavior: ScrollBehavior): void {
-    if (!horizontal) {
+    if (windowScroll) {
+      writeWindowScrollPosition(offset, behavior);
+      return;
+    }
+    if (!isHorizontal) {
       if (behavior === 'smooth' && typeof element.scrollTo === 'function') {
         element.scrollTo({ top: offset, behavior: 'smooth' });
       } else {
@@ -1359,6 +1438,27 @@
       element.scrollTo({ left: raw, behavior: 'smooth' });
     } else {
       element.scrollLeft = raw;
+    }
+  }
+
+  /** `window.scrollY`, floored — never `undefined` outside a real `window`. */
+  function readWindowScrollPosition(): number {
+    return typeof window === 'undefined' ? 0 : Math.max(0, window.scrollY);
+  }
+
+  /** `window.innerHeight` — the `windowScroll` viewport size. */
+  function readWindowViewportSize(): number {
+    return typeof window === 'undefined' ? resolvedItemHeight * 10 : window.innerHeight;
+  }
+
+  /** Scrolls the window to the document position that puts `offset` at its top. */
+  function writeWindowScrollPosition(offset: number, behavior: ScrollBehavior): void {
+    if (typeof window === 'undefined') return;
+    const target = resolveWindowScrollTarget(offset, documentOffset);
+    if (behavior === 'smooth' && typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: target, behavior: 'smooth' });
+    } else {
+      window.scrollTo(0, target);
     }
   }
 
@@ -1401,6 +1501,14 @@
    * Re-reads the container's size and scroll position, and returns the size it
    * measured so a caller acting in the same turn can use the fresh value rather
    * than the `viewportHeight` derived, which still holds the pre-patch number.
+   *
+   * This is the one place `windowScroll`'s layout-forcing reads —
+   * `getBoundingClientRect` for `documentOffset`, `window.innerHeight` for the
+   * viewport — are allowed to happen. Callers are mount, the window's `resize`
+   * listener (via `scheduleWindowMeasurement`, batched onto a frame), and the
+   * resize observer the component already runs — never the window's `scroll`
+   * listener, which reads only `readScrollOffset` and must stay cheap. See
+   * `readScrollOffset`.
    */
   function syncViewport(element: HTMLElement): number {
     const rect = element.getBoundingClientRect();
@@ -1409,11 +1517,14 @@
     // is the inline extent: the container's block-size is `auto` and collapses to
     // one row's height, which would badly under-report the viewport and render too
     // few columns. The `height` prop is reinterpreted as the inline size in that
-    // mode, so the fallback stays correct without a branch.
-    const measured =
-      (horizontal ? rect.width || element.clientWidth : rect.height || element.clientHeight) ||
-      parsePixelLength(height) ||
-      resolvedItemHeight * 10;
+    // mode, so the fallback stays correct without a branch. Under `windowScroll`
+    // neither applies: `height` is ignored outright and the viewport is the
+    // window's own.
+    const measured = windowScroll
+      ? readWindowViewportSize()
+      : (isHorizontal ? rect.width || element.clientWidth : rect.height || element.clientHeight) ||
+        parsePixelLength(height) ||
+        resolvedItemHeight * 10;
 
     // A CROSS-axis change re-wraps every row, so every cached main-axis size taken
     // at the old cross extent is now wrong. Offscreen rows would keep those stale
@@ -1426,6 +1537,10 @@
     // border-box extent never changes — so comparing the rect would miss it
     // entirely and leave offscreen rows holding sizes measured at the other extent.
     invalidateOnCrossAxisChange(element, rect);
+
+    // The list's own top edge in the document, re-derived from the SAME rect this
+    // call already paid the layout cost for — never a second, dedicated read.
+    if (windowScroll) documentOffset = resolveDocumentOffset(rect.top, readWindowScrollPosition());
 
     measuredViewportHeight = measured;
     scrollOffset = readScrollOffset(element);
@@ -1442,7 +1557,7 @@
     // adds or removes a non-overlay scrollbar and re-wraps every row while the
     // border-box extent never changes — so comparing the rect would miss it
     // entirely and leave offscreen rows holding sizes measured at the other extent.
-    const measuredCrossExtent = horizontal
+    const measuredCrossExtent = isHorizontal
       ? element.clientHeight || rect.height || 0
       : element.clientWidth || rect.width || 0;
     if (
@@ -1474,16 +1589,47 @@
 
   function handleScroll(event: UIEvent & { currentTarget: EventTarget & HTMLDivElement }): void {
     if (typeof onScroll === 'function') onScroll(event);
-    const element = event.currentTarget as HTMLElement;
+    processScrollOffsetChange(event.currentTarget as HTMLElement, event.timeStamp);
+  }
+
+  /**
+   * `windowScroll`'s counterpart to `handleScroll`: the window's `scroll`
+   * event carries no `currentTarget` naming the list, so this reads
+   * `scrollElement` itself instead — cheaply, only to hand `readScrollOffset`
+   * something to (not) read `scrollTop` from under `windowScroll`.
+   *
+   * There is no `onScroll` prop call here. That prop is typed against, and
+   * bound to, the internal container's own native scroll event — under
+   * `windowScroll` there is no such event, so a consumer's handler simply
+   * never fires; see the prop's doc comment.
+   */
+  function handleWindowScroll(event: Event): void {
+    const element = scrollElement;
+    if (!element) return;
+    processScrollOffsetChange(element, event.timeStamp);
+    // Content above the list can change size without resizing the window or the
+    // list itself — an image loading, an accordion collapsing — which moves the
+    // list's top edge and leaves `documentOffset` stale. Re-deriving it here would
+    // force a layout on the scroll frame, so it is queued onto the next animation
+    // frame instead, where the browser is about to lay out anyway; the batcher
+    // collapses every scroll event in that frame into one read.
+    scheduleWindowMeasurement();
+  }
+
+  /**
+   * Everything a fresh scroll offset drives, shared by the internal
+   * container's native handler and `windowScroll`'s window handler: the
+   * offset itself, the adaptive-overscan velocity tracker, and the
+   * stick-to-bottom pin. One body so the two paths cannot drift apart on what
+   * "a scroll happened" means.
+   */
+  function processScrollOffsetChange(element: HTMLElement, timestamp: number): void {
     scrollOffset = readScrollOffset(element);
     if (adaptiveOverscan) {
-      // `event.timeStamp` rather than a clock read: it is the time the browser
-      // associated with the scroll itself, so a handler delayed behind a long task
-      // does not report the delay as a slower scroll.
-      velocityTracker = trackScrollVelocity(velocityTracker, {
-        scrollOffset,
-        timestamp: event.timeStamp,
-      });
+      // `timestamp` rather than a clock read: it is the time the browser associated
+      // with the scroll itself, so a handler delayed behind a long task does not
+      // report the delay as a slower scroll.
+      velocityTracker = trackScrollVelocity(velocityTracker, { scrollOffset, timestamp });
       scrollVelocity = velocityTracker.velocityInPixelsPerMillisecond;
       // Velocity only updates when ANOTHER scroll event arrives, so a reader who
       // stops mid-fling would otherwise hold the enlarged overscan indefinitely —
@@ -1500,6 +1646,36 @@
     if (stickToBottom || reverse) {
       isPinnedToBottom = isAtBottom(element, currentTotalSize(), viewportHeight);
     }
+  }
+
+  /**
+   * `windowScroll`'s counterpart to the resize observer: re-measures
+   * `documentOffset` and the viewport when the WINDOW itself resizes, rather
+   * than when the list's own box does.
+   *
+   * Routed through `scheduleWindowMeasurement` rather than calling
+   * `syncViewport` directly — a window resize and the resize observer firing
+   * for the same layout change would otherwise each force their own
+   * `getBoundingClientRect`, and batching collapses that to one.
+   */
+  function handleWindowResize(): void {
+    scheduleWindowMeasurement();
+  }
+
+  /**
+   * Coalesces `windowScroll`'s document-offset remeasurement onto a single
+   * animation frame via `FrameBatcher` (see `frame-scheduler.ts`, written for
+   * exactly this). Multiple triggers in one frame — a window resize alongside
+   * the list's own resize observer firing for the same layout change — commit
+   * as one `syncViewport` call instead of one apiece.
+   */
+  function scheduleWindowMeasurement(): void {
+    windowMeasurementBatcher ??= new FrameBatcher<void>(() => {
+      if (isDestroyed) return;
+      const element = scrollElement;
+      if (element) syncViewport(element);
+    });
+    windowMeasurementBatcher.recordRead(undefined);
   }
 
   /**
@@ -1562,7 +1738,7 @@
    * happens.
    */
   function scrollsMainAxis(key: string): boolean {
-    return horizontal ? INLINE_AXIS_SCROLL_KEYS.has(key) : BLOCK_AXIS_SCROLL_KEYS.has(key);
+    return isHorizontal ? INLINE_AXIS_SCROLL_KEYS.has(key) : BLOCK_AXIS_SCROLL_KEYS.has(key);
   }
 
   function handleKeyDown(
@@ -1592,11 +1768,12 @@
 
     if (scrollsMainAxis(event.key)) handleReaderTakeover();
 
-    // Only take over the keys when there is a sticky row to keep in view or the
-    // list is virtualized past what the browser can reach. Otherwise the native
-    // scroll container already handles every one of these correctly, and
+    // Only take over the keys when there is a sticky row to keep in view, the list
+    // is virtualized past what the browser can reach, or — under `windowScroll` —
+    // there is no native scroll container at all to fall back on. Otherwise the
+    // native scroll container already handles every one of these correctly, and
     // intercepting them would replace smooth native scrolling with a jump.
-    if (!stickyIndexes.length) return;
+    if (!stickyIndexes.length && !windowScroll) return;
 
     // Page keys move by PIXELS, not by a row count, and do not go through
     // `scrollToIndex` at all.
@@ -1672,7 +1849,7 @@
       // advancing from it moves to the row underneath it rather than past it.
       currentIndex: firstUncoveredIndex,
       itemCount: items.length,
-      orientation: horizontal ? 'horizontal' : 'vertical',
+      orientation: isHorizontal ? 'horizontal' : 'vertical',
       writingDirection,
       stickyIndexes: stickyIndexSet,
     });
@@ -1713,7 +1890,7 @@
       const mainAxisSize = resolveObservedMainAxisSize(
         entry.borderBoxSize?.[0],
         entry.contentRect,
-        horizontal ? 'horizontal' : 'vertical',
+        isHorizontal ? 'horizontal' : 'vertical',
       );
       // Zero is a legitimate measurement — a row can collapse to nothing. Discarding
       // it would leave the offsets table reserving space the row no longer occupies,
@@ -1961,8 +2138,9 @@
   {tabindex}
   data-cinder-stick-to-bottom={stickToBottom ? 'true' : undefined}
   data-cinder-dynamic-size={dynamicSize ? 'true' : undefined}
-  data-cinder-orientation={horizontal ? 'horizontal' : undefined}
-  style:--cinder-virtual-list-height={height}
+  data-cinder-orientation={isHorizontal ? 'horizontal' : undefined}
+  data-cinder-window-scroll={windowScroll ? 'true' : undefined}
+  style:--cinder-virtual-list-height={windowScroll ? undefined : height}
   onscroll={handleScroll}
   onwheel={handleWheel}
   onpointerdown={handlePointerDown}
