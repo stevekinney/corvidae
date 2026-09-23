@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { loadPackageSurface } from './package-surface.ts';
 import { runCommand } from './packaging.ts';
 import { planSurface } from './surface.ts';
 import {
@@ -143,12 +144,18 @@ const sharedTypeScriptConfiguration = {
 /**
  * A workspace that ships to the mirror and never to the registry.
  *
- * `@lostgradient/testing` is the real map's clearest private workspace, and it is here because a
- * private workspace is the one class the packaging checks say nothing about: nothing packs it, so
- * `typecheck` in the target is the only thing that reads the source the mirror now publishes for
- * it. Without one in the fixture that path would never run.
+ * A private workspace is the one class the packaging checks say nothing about: nothing packs it,
+ * so `typecheck` in the target is the only thing that reads the source the mirror now publishes
+ * for it. Without one in the fixture that path would never run.
+ *
+ * `@lostgradient/skills` rather than `@lostgradient/testing` since COR-1287: this harness plans
+ * the agent-bureau target, because that is where `targetFor` now routes the two published
+ * packages it has always used, and `@lostgradient/testing` ships from cinder. Skills is the same
+ * class of workspace in the target this harness now stands up — private in the map, private in
+ * the target, TypeScript source and a typecheck script.
  */
-const privateWorkspaceDirectory = 'packages/testing';
+const privateWorkspaceDirectory = 'packages/skills';
+const privateWorkspaceName = '@lostgradient/skills';
 
 /**
  * COR-1286: `renderMirrorVerifyWorkflow` reads `publint`'s and `@arethetypeswrong/cli`'s locked
@@ -187,7 +194,7 @@ function corvidaeFixture(): Record<string, unknown> {
     ...sharedTypeScriptConfiguration,
   };
   files[`${privateWorkspaceDirectory}/package.json`] = {
-    name: '@lostgradient/testing',
+    name: privateWorkspaceName,
     private: true,
     type: 'module',
     exports: { '.': './src/index.ts' },
@@ -284,7 +291,7 @@ const fixtureReleaseWorkflow = [
 
 function targetFixture(): Record<string, unknown> {
   const files: Record<string, unknown> = {
-    'README.md': '# cinder-workspace\n\nTarget-authored front page.\n',
+    'README.md': '# agent-bureau\n\nTarget-authored front page.\n',
     LICENSE: licence,
     // Only `node_modules` is ignored, deliberately. The build's `dist/` and any
     // `tsconfig.tsbuildinfo` are left visible to git so that a sync which staged after building
@@ -354,7 +361,7 @@ async function withHarness(body: (harness: Harness) => Promise<void>): Promise<v
 async function sync(harness: Harness, label: string): Promise<SyncResult> {
   return runSync({
     corvidaeRoot: harness.corvidae,
-    target: 'cinder',
+    target: 'agent-bureau',
     remote: harness.remote,
     directory: harness.runDirectory(label),
     scratchDirectory: join(harness.scratch, label),
@@ -380,17 +387,19 @@ describe('the mirror sync against a fake remote', () => {
         expect(first.decision).toBe('pushed');
         expect(first.changed.length).toBeGreaterThan(0);
         // `firstPublish` is every manifest emitted at 0.0.0, which includes the private
-        // configuration workspace. Nothing publishes that one, so the name reads wider than what
-        // it reports; pinned as observed rather than quietly filtered here.
+        // workspace. Nothing publishes that one, so the name reads wider than what it reports;
+        // pinned as observed rather than quietly filtered here. `@lostgradient/typescript` was in
+        // this list until COR-1287 and is not a regression by its absence: it ships from the
+        // cinder target, so the agent-bureau plan vendors its configuration rather than emitting
+        // a manifest for it, exactly as the weft plan always has.
         expect(first.firstPublish.toSorted()).toEqual([
           '@lostgradient/cryptography',
           '@lostgradient/lifecycle',
-          '@lostgradient/testing',
-          '@lostgradient/typescript',
+          privateWorkspaceName,
         ]);
         // The private workspace is type-checked in the target even though nothing packs it: its
         // source ships now, and `typecheck` is the only check that reads it.
-        expect(first.verification.privateTypechecks).toEqual(['@lostgradient/testing']);
+        expect(first.verification.privateTypechecks).toEqual([privateWorkspaceName]);
         expect(
           await readFile(join(first.directory, privateWorkspaceDirectory, 'src/index.ts'), 'utf8'),
         ).toContain('harness:');
@@ -428,6 +437,13 @@ describe('the mirror sync against a fake remote', () => {
         // being used as the change-detection record.
         const pushed = await git(harness.remote, 'log', '-1', '--format=%B');
         expect(pushed).toContain(`${provenanceTrailer}: corvidae-first`);
+        // Authored as the mirror App's bot account, in the form GitHub attributes to it. The first
+        // real sync was refused a merge as an "unattributed change" under the target's ruleset
+        // because its author was a placeholder no account could be linked to.
+        const author = await git(harness.remote, 'log', '-1', '--format=%an <%ae>');
+        expect(author.trim()).toBe(
+          'lost-gradient-mirror-sync[bot] <331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com>',
+        );
 
         // The divergence the first run consumed is why this one is a skip: the target now holds
         // corvidae's bytes, so the second run re-emits what is already there. The skip is a
@@ -487,6 +503,110 @@ describe('the mirror sync against a fake remote', () => {
 });
 
 describe('the foreign-commit guard', () => {
+  /**
+   * COR-1192. After the first sync every release bump is a hand commit above a mirror-authored
+   * one: the manifest's `version` is target-owned and the transform never writes it, so the
+   * target has to. A guard that called that foreign would refuse every release. A commit is the
+   * target's own when everything it changes is something the transform preserves — a
+   * target-owned path, or a target-owned key inside a manifest the transform composes.
+   */
+  test(
+    "a hand commit confined to target-owned paths and manifest keys is the target's own, not foreign",
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const bumper = harness.runDirectory('bumper');
+        await mkdir(bumper, { recursive: true });
+        await git(bumper, 'clone', '--quiet', harness.remote, bumper);
+        const manifestPath = join(bumper, 'packages/cryptography/package.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<
+          string,
+          unknown
+        >;
+        manifest['version'] = '9.9.9';
+        await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        await Bun.write(join(bumper, 'README.md'), '# agent-bureau\n\nRelease 9.9.9 notes.\n');
+        await git(bumper, 'add', '--all');
+        await git(bumper, 'commit', '--quiet', '--message', 'Release 9.9.9');
+        await git(bumper, 'push', '--quiet', 'origin', 'HEAD:main');
+
+        const result = await sync(harness, 'after-bump');
+        expect(['skip', 'pushed']).toContain(result.decision);
+        const published = result.verification.reports.find(
+          (report) => report.publicName === '@lostgradient/cryptography',
+        );
+        expect(published).toBeDefined();
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    "a hand commit to a declared build input is the target's own, since the transform never writes one",
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const editor = harness.runDirectory('build-input-editor');
+        await mkdir(editor, { recursive: true });
+        await git(editor, 'clone', '--quiet', harness.remote, editor);
+        // The fixture package's first declared build input, read from the surface rather than
+        // hardcoded, so the test follows the declaration if it changes.
+        const surface = await loadPackageSurface();
+        const entry = surface.packages['@lostgradient/cryptography'];
+        const input = entry?.build.requiredInputs[0];
+        expect(input).toBeDefined();
+        const path = join(editor, 'packages/cryptography', input ?? '');
+        await Bun.write(path, `${await readFile(path, 'utf8')}\n// tuned by the target\n`);
+        await git(editor, 'add', '--all');
+        await git(editor, 'commit', '--quiet', '--message', 'Tune the build input');
+        await git(editor, 'push', '--quiet', 'origin', 'HEAD:main');
+
+        const result = await sync(harness, 'after-build-input');
+        expect(['skip', 'pushed']).toContain(result.decision);
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    'a hand commit that changes a transform-owned manifest key is still foreign',
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const intruder = harness.runDirectory('exports-intruder');
+        await mkdir(intruder, { recursive: true });
+        await git(intruder, 'clone', '--quiet', harness.remote, intruder);
+        const manifestPath = join(intruder, 'packages/cryptography/package.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<
+          string,
+          unknown
+        >;
+        manifest['sideEffects'] = true;
+        await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        await git(intruder, 'add', '--all');
+        await git(intruder, 'commit', '--quiet', '--message', 'Flip a key the transform owns');
+        await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
+        const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
+        const foreignSha = intruderHead.trim();
+
+        let thrown: unknown;
+        try {
+          await sync(harness, 'after-key-intrusion');
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(ForeignCommitError);
+        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+          foreignSha,
+        ]);
+      });
+    },
+    endToEndTimeout,
+  );
+
   test(
     'a commit the mirror did not author stops the sync and is named',
     async () => {
@@ -533,7 +653,7 @@ describe('the foreign-commit guard', () => {
             'bun',
             new URL('./sync.ts', import.meta.url).pathname,
             '--target',
-            'cinder',
+            'agent-bureau',
             '--corvidae-root',
             harness.corvidae,
             '--remote',
@@ -577,7 +697,7 @@ describe('the build-input check', () => {
 
       const plan = await planSurface({
         corvidaeRoot: harness.corvidae,
-        target: 'cinder',
+        target: 'agent-bureau',
         targetDirectory: clone,
       });
       expect(collectMissingBuildInputs(clone, plan.published)).toEqual([
@@ -592,7 +712,10 @@ describe('the build-input check', () => {
     // build reads is now two classes rather than one: corvidae's `src/`, which the transform
     // writes, and the target's `requiredInputs`, which it never writes and never prunes.
     await withHarness(async (harness) => {
-      const plan = await planSurface({ corvidaeRoot: harness.corvidae, target: 'cinder' });
+      const plan = await planSurface({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+      });
       const sourcePaths = Object.keys(plan.files).filter((path) => path.includes('/src/'));
       expect(sourcePaths.toSorted()).toEqual([
         'packages/cryptography/src/index.ts',

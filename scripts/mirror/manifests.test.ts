@@ -8,6 +8,8 @@ import {
   composeManifest,
   discoverWorkspaces,
   ManifestTransformError,
+  membersOf,
+  mirrorTargets,
   planManifests,
   publicNameFor,
   stageTarget,
@@ -15,7 +17,7 @@ import {
   type ManifestPlan,
   type MirrorTarget,
 } from './manifests.ts';
-import { PackageMapError } from './package-map.ts';
+import { loadPackageMap, PackageMapError } from './package-map.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
@@ -149,13 +151,54 @@ describe('workspace discovery and target membership', () => {
     });
   });
 
-  test('only weft ships from the weft target', () => {
+  test('each target claims exactly the workspaces its repository ships', () => {
     expect(targetFor('@lostgradient/weft')).toBe('weft');
-    for (const manifest of Object.values(workspaces)) {
-      const name = manifest['name'] as string;
-      if (name === '@lostgradient/weft') continue;
-      expect(targetFor(name)).toBe('cinder');
+    expect(targetFor('@lostgradient/cinder')).toBe('cinder');
+    expect(targetFor('armorer')).toBe('agent-bureau');
+    expect(targetFor('@lostgradient/operative')).toBe('agent-bureau');
+  });
+
+  /**
+   * The routing gate. Until COR-1287 `targetFor` defaulted every unlisted workspace to cinder, so
+   * a workspace nobody routed still got a target — the wrong one, silently, with no failure
+   * anywhere downstream because every consumer only ever asks which target a workspace belongs to
+   * and believes the answer. With three targets the default is gone and the membership lists have
+   * to be exhaustive instead, which is a property of `package-map.json` rather than of this file:
+   * a workspace added to the map with any disposition but `exclude` is a workspace that must
+   * appear in exactly one list. Asserted in both directions, because a member list naming a
+   * workspace the map excludes or no longer carries is the same defect pointing the other way.
+   */
+  test('every non-excluded workspace in package-map.json has exactly one target', async () => {
+    const map = await loadPackageMap();
+    const routed = Object.entries(map.workspaces).filter(
+      ([, entry]) => entry.disposition !== 'exclude',
+    );
+    expect(routed.length).toBeGreaterThan(0);
+
+    const claims = new Map<string, MirrorTarget[]>();
+    for (const target of mirrorTargets) {
+      for (const member of membersOf(target)) {
+        claims.set(member, [...(claims.get(member) ?? []), target]);
+      }
     }
+
+    const unrouted = routed.map(([name]) => name).filter((name) => !claims.has(name));
+    expect(unrouted).toEqual([]);
+
+    const multiplyClaimed = [...claims]
+      .filter(([, targets]) => targets.length > 1)
+      .map(([name, targets]) => `${name} -> ${targets.join(', ')}`);
+    expect(multiplyClaimed).toEqual([]);
+
+    const routedNames = new Set(routed.map(([name]) => name));
+    const claimedButNotRouted = [...claims.keys()]
+      .filter((name) => !routedNames.has(name))
+      .toSorted();
+    expect(claimedButNotRouted).toEqual([]);
+  });
+
+  test('a workspace no target claims is refused rather than defaulted', () => {
+    expect(() => targetFor('@lostgradient/not-a-workspace')).toThrow(ManifestTransformError);
   });
 
   test('a private workspace gets a derived name rather than a published one', async () => {
@@ -291,6 +334,31 @@ describe('workspace and catalog resolution', () => {
     expect(plan.droppedEdges).toEqual(['@lostgradient/weft -> @lostgradient/typescript']);
   });
 
+  /**
+   * COR-1289: the two rulings behind `publishedEdgeFields`, pinned so that widening it later fails
+   * here rather than silently changing a verification order. The fixture is the shape the exclusion
+   * exists for — `markdown` declares a development-only edge back to `cinder`, which already
+   * depends on `markdown` — and counting it would make an ordinary arrangement an unorderable
+   * cycle. The edge itself is untouched: only the ordering record leaves it out.
+   */
+  test('a dependencies edge orders the target; a devDependencies back-edge does not', async () => {
+    const plan = await planFor('cinder', {
+      extra: {
+        'packages/markdown/package.json': {
+          name: '@lostgradient/markdown',
+          private: true,
+          dependencies: { zod: 'catalog:' },
+          devDependencies: { '@lostgradient/cinder': 'workspace:*' },
+        },
+      },
+    });
+    expect(plan.intraTargetEdges.get('@lostgradient/cinder')).toEqual(['@lostgradient/markdown']);
+    expect(plan.intraTargetEdges.get('@lostgradient/markdown')).toBeUndefined();
+    expect(parse(plan, 'packages/markdown/package.json')['devDependencies']).toEqual({
+      '@lostgradient/cinder': 'workspace:*',
+    });
+  });
+
   test('the monorepo target keeps its catalog and its internal workspace edges', async () => {
     const plan = await planFor('cinder');
     const root = parse(plan, 'package.json');
@@ -304,15 +372,26 @@ describe('workspace and catalog resolution', () => {
   test('every edge into weft routes through the one root catalog entry', async () => {
     const plan = await planFor('cinder');
     // `applications/desktop` is absent deliberately: `package-map.json` excludes it, so nothing
-    // is emitted for it at all. The test below is what holds that.
-    const consumers = ['packages/weft-ui/package.json', 'packages/operative/package.json'];
-    for (const consumer of consumers) {
-      const dependencies = parse(plan, consumer)['dependencies'] as Record<string, string>;
-      expect([consumer, dependencies['@lostgradient/weft']]).toEqual([consumer, 'catalog:']);
-    }
+    // is emitted for it at all. The test below is what holds that. `packages/operative` is absent
+    // for a different reason as of COR-1287 — it ships from the agent-bureau target now, and the
+    // test below covers the same edge there, where no catalog exists to route it through.
+    const dependencies = parse(plan, 'packages/weft-ui/package.json')['dependencies'] as Record<
+      string,
+      string
+    >;
+    expect(dependencies['@lostgradient/weft']).toBe('catalog:');
     expect(
       (parse(plan, 'package.json')['catalog'] as Record<string, string>)['@lostgradient/weft'],
     ).toBe('^0.25.0');
+  });
+
+  test('the agent-bureau target inlines its edge into weft, having no catalog to hold it', async () => {
+    const plan = await planFor('agent-bureau');
+    expect(parse(plan, 'packages/operative/package.json')['dependencies']).toEqual({
+      '@lostgradient/weft': '^0.25.0',
+      zod: '^4.6.5',
+    });
+    expect(parse(plan, 'package.json')['catalog']).toBeUndefined();
   });
 
   test('a cross-target edge inlines the published range where no catalog can hold it', async () => {
@@ -624,29 +703,103 @@ describe('composition against a manifest the target already carries', () => {
   });
 });
 
-describe('COR-1229: seeding a released package the target clone does not yet carry', () => {
-  /** The real stevekinney/cinder layout, none of the three directories this decision is about. */
-  function realCinderClone(): Record<string, unknown> {
-    const files: Record<string, unknown> = {
-      'package.json': { name: 'cinder-workspace', private: true, workspaces: ['packages/*'] },
+/**
+ * COR-1287, found by staging against the real stevekinney/agent-bureau rather than by reading the
+ * code: that target names corvidae's `@lostgradient/lifecycle` simply `lifecycle`, and six of its
+ * packages depend on it under that name. Rule (1) in `target-owned.json` matched only the public
+ * name, so rule (2) kept the target's entry as an ordinary third-party edge and the composed
+ * manifest declared the same workspace twice. `bun install` refused the staged tree outright —
+ * `Workspace dependency "lifecycle" not found` — which is the good outcome; the bad one is a
+ * target that installs and resolves two copies.
+ */
+describe("COR-1287: the target's own name for a mirror workspace is an alias, not a third party", () => {
+  /** An agent-bureau clone that names lifecycle the way the real one does, with a consumer. */
+  function cloneNamingLifecycleUnscoped(): Record<string, unknown> {
+    return {
+      'package.json': { name: 'agent-bureau', private: true, workspaces: ['packages/*'] },
+      'packages/lifecycle/package.json': { name: 'lifecycle', private: true, version: '0.0.1' },
+      'packages/operative/package.json': {
+        name: '@lostgradient/operative',
+        version: '0.12.0',
+        dependencies: { lifecycle: 'workspace:*', zod: '^4.0.0' },
+      },
     };
-    for (const name of [
-      'chat',
-      'components',
-      'editor',
-      'markdown',
-      'mcp',
-      'playground',
-      'testing',
-    ]) {
-      files[`packages/${name}/package.json`] = { name: `cinder-${name}`, version: '9.9.9' };
+  }
+
+  test('the stale unscoped edge is replaced, not kept alongside the scoped one', async () => {
+    await withTree(cloneNamingLifecycleUnscoped(), async (targetDirectory) => {
+      const plan = await planFor('agent-bureau', {
+        targetDirectory,
+        extra: {
+          'packages/lifecycle/package.json': { name: '@lostgradient/lifecycle', private: true },
+          'packages/operative/package.json': {
+            name: '@lostgradient/operative',
+            private: true,
+            dependencies: { '@lostgradient/lifecycle': 'workspace:*', zod: 'catalog:' },
+          },
+        },
+      });
+      const dependencies = parse(plan, 'packages/operative/package.json')['dependencies'] as Record<
+        string,
+        string
+      >;
+      expect(dependencies['@lostgradient/lifecycle']).toBe('workspace:*');
+      expect(dependencies).not.toHaveProperty('lifecycle');
+      // The target's own name for the workspace is replaced in the manifest it names, too.
+      expect(parse(plan, 'packages/lifecycle/package.json')['name']).toBe(
+        '@lostgradient/lifecycle',
+      );
+    });
+  });
+
+  test("a target name that is another workspace's public name is a collision, not an alias", async () => {
+    await withTree(
+      {
+        'package.json': { name: 'agent-bureau', private: true, workspaces: ['packages/*'] },
+        // The target calls its `packages/lifecycle` by armorer's published name. Dropping that
+        // edge as an alias would silently remove a real dependency on armorer.
+        'packages/lifecycle/package.json': { name: 'armorer', private: true, version: '0.0.1' },
+      },
+      async (targetDirectory) => {
+        await expect(
+          planFor('agent-bureau', {
+            targetDirectory,
+            extra: {
+              'packages/lifecycle/package.json': {
+                name: '@lostgradient/lifecycle',
+                private: true,
+              },
+              'packages/armorer/package.json': { name: 'armorer', private: true },
+            },
+          }),
+        ).rejects.toThrow(/which is armorer's public name/);
+      },
+    );
+  });
+});
+
+describe('COR-1229: seeding a released package the target clone does not yet carry', () => {
+  /**
+   * An agent-bureau clone carrying none of the three directories this decision is about.
+   *
+   * COR-1287 moved all three workspaces to the agent-bureau target, so this fixture moved with
+   * them. It is deliberately *not* the real stevekinney/agent-bureau layout, which does carry all
+   * three: the mechanism under test is what happens when the target has no manifest to read a
+   * version off, and a clone that already has one exercises the other branch.
+   */
+  function agentBureauCloneMissingThree(): Record<string, unknown> {
+    const files: Record<string, unknown> = {
+      'package.json': { name: 'agent-bureau', private: true, workspaces: ['packages/*'] },
+    };
+    for (const name of ['bureau', 'lifecycle', 'memory', 'skills']) {
+      files[`packages/${name}/package.json`] = { name, private: true, version: '9.9.9' };
     }
     return files;
   }
 
   test('operative, armorer, and conversationalist are each seeded at their lastPublishedVersion', async () => {
-    await withTree(realCinderClone(), async (targetDirectory) => {
-      const plan = await planFor('cinder', {
+    await withTree(agentBureauCloneMissingThree(), async (targetDirectory) => {
+      const plan = await planFor('agent-bureau', {
         targetDirectory,
         extra: {
           'packages/armorer/package.json': { name: 'armorer', private: true },
@@ -654,6 +807,7 @@ describe('COR-1229: seeding a released package the target clone does not yet car
             name: 'conversationalist',
             private: true,
           },
+          'packages/lifecycle/package.json': { name: '@lostgradient/lifecycle', private: true },
         },
       });
       expect(parse(plan, 'packages/operative/package.json')['version']).toBe('0.12.0');
@@ -662,8 +816,12 @@ describe('COR-1229: seeding a released package the target clone does not yet car
       expect(plan.seededFromPackageMap.toSorted()).toEqual(
         ['@lostgradient/operative', 'armorer', 'conversationalist'].toSorted(),
       );
-      // Markdown's target manifest already exists, so it is carried through rather than seeded.
-      expect(plan.seededFromPackageMap).not.toContain('@lostgradient/markdown');
+      // Lifecycle's target manifest already exists, so it is carried through rather than seeded —
+      // at the target's own `9.9.9` here, which is also why it is not a `firstPublish` despite
+      // `package-map.json` recording no published version for it.
+      expect(plan.seededFromPackageMap).not.toContain('@lostgradient/lifecycle');
+      expect(plan.firstPublish).not.toContain('@lostgradient/lifecycle');
+      expect(parse(plan, 'packages/lifecycle/package.json')['version']).toBe('9.9.9');
     });
   });
 });
@@ -704,20 +862,26 @@ describe('the excluded desktop application', () => {
 
   test('leaves every other member of its target emitted', async () => {
     const plan = await planFor('cinder');
+    // `packages/operative` left this list in COR-1287, not because anything excluded it but
+    // because it ships from the agent-bureau target now; the assertion below is the same one for
+    // its new home.
     expect(plan.emitted.map((entry) => entry.targetDirectory).toSorted()).toEqual([
       'internal/typescript',
       'packages/components',
       'packages/markdown',
-      'packages/operative',
       'packages/weft-ui',
+    ]);
+    const agentBureau = await planFor('agent-bureau');
+    expect(agentBureau.emitted.map((entry) => entry.targetDirectory).toSorted()).toEqual([
+      'packages/operative',
     ]);
   });
 });
 
 describe('the plan never touches a target-owned path', () => {
-  test('both targets clear the guard', async () => {
+  test('every target clears the guard', async () => {
     const policy = await loadTargetOwnedPolicy();
-    for (const target of ['weft', 'cinder'] as const) {
+    for (const target of mirrorTargets) {
       const plan = await planFor(target);
       expect(() =>
         assertWritablePaths({ policy, target, paths: Object.keys(plan.files) }),

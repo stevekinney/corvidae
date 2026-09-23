@@ -48,7 +48,7 @@ import {
  * live dry run failed twelve of the weft repository's twenty checks because of it.
  */
 
-export type MirrorTarget = 'weft' | 'cinder';
+export type MirrorTarget = 'weft' | 'cinder' | 'agent-bureau';
 
 /** Raised when a manifest cannot be rewritten without inventing a fact the map does not carry. */
 export class ManifestTransformError extends Error {}
@@ -64,13 +64,43 @@ const dependencyFields = [
 ] as const;
 
 /**
+ * The blocks whose intra-target edges order a target's verification (COR-1289).
+ *
+ * A published package's `typecheck` resolves an edge to another package in the same target through
+ * that package's `exports`, which point at `dist/` — so the dependency has to have been built
+ * first. These three blocks are the ones that say "this package's published surface needs that
+ * one": `dependencies` and `optionalDependencies` are installed alongside it, and a
+ * `peerDependencies` entry is still a name the consumer's own source imports and its declaration
+ * files name.
+ *
+ * `devDependencies` is deliberately absent, and its absence is load-bearing rather than an
+ * oversight. A development edge does not participate in the published type surface, so ordering
+ * does not need it; including it would additionally manufacture cycles out of test-only back-edges
+ * — a package depending on a fixture or harness workspace that itself depends on the package under
+ * test is an ordinary and legal arrangement that no build order could satisfy, and
+ * `verify-steps.ts`'s cycle refusal would reject the whole plan over it.
+ */
+const publishedEdgeFields = new Set<(typeof dependencyFields)[number]>([
+  'dependencies',
+  'peerDependencies',
+  'optionalDependencies',
+]);
+
+/**
  * Per-target facts that are not in `package-map.json`, which rules on what a workspace *becomes*
  * rather than on which repository it lands in.
  *
  * `rootName` and `workspaces` are read off the targets as they exist today (`weft-monorepo` with
- * `packages/*`, `cinder-workspace` with its explicit list) rather than invented, so a sync does
- * not rewrite a key that was already correct. `catalog` records whether the target has a
- * workspace root able to hold one.
+ * `packages/*`, `cinder-workspace` with its explicit list, `agent-bureau` with `packages/*`)
+ * rather than invented, so a sync does not rewrite a key that was already correct. `catalog`
+ * records whether the target has a workspace root able to hold one: `agent-bureau`'s root declares
+ * `workspaces` but no `catalog`, so its specifiers inline to concrete ranges the way weft's do.
+ *
+ * `members` is exhaustive as of COR-1287. It used to be a single list — weft's — with every other
+ * workspace falling through to cinder, which was correct while there were two targets and stopped
+ * being correct the moment a third one claimed ten of the workspaces that fell through. Every
+ * non-excluded workspace in `package-map.json` is now named by exactly one list, enforced by
+ * `manifests.test.ts` against the map rather than left to this comment.
  */
 const targetDefinitions = {
   weft: {
@@ -78,21 +108,84 @@ const targetDefinitions = {
     workspaces: ['packages/*'],
     catalog: false,
     /** The weft target is a single-package repository; every other workspace ships elsewhere. */
-    members: ['@lostgradient/weft'] as readonly string[],
+    members: ['@lostgradient/weft'],
   },
   cinder: {
     rootName: 'cinder-workspace',
     workspaces: workspaceDirectories.map((directory) => `${directory}/*`),
     catalog: true,
-    members: undefined,
+    members: [
+      '@lostgradient/cinder',
+      '@lostgradient/chat',
+      '@lostgradient/editor',
+      '@lostgradient/markdown',
+      '@lostgradient/weft-ui',
+      '@lostgradient/testing',
+      '@lostgradient/typescript',
+    ],
   },
-} as const satisfies Record<MirrorTarget, unknown>;
+  'agent-bureau': {
+    rootName: 'agent-bureau',
+    workspaces: ['packages/*'],
+    catalog: false,
+    members: [
+      '@lostgradient/operative',
+      'armorer',
+      'conversationalist',
+      '@lostgradient/cryptography',
+      '@lostgradient/embeddings',
+      '@lostgradient/tool-protocol',
+      '@lostgradient/lifecycle',
+      '@lostgradient/bureau',
+      '@lostgradient/memory',
+      '@lostgradient/skills',
+    ],
+  },
+} as const satisfies Record<
+  MirrorTarget,
+  {
+    rootName: string;
+    workspaces: readonly string[];
+    catalog: boolean;
+    members: readonly string[];
+  }
+>;
 
 export const mirrorTargets = Object.keys(targetDefinitions) as readonly MirrorTarget[];
 
-/** Which target a workspace ships from. Anything the weft repository does not own is monorepo source. */
+/**
+ * Which target a workspace ships from.
+ *
+ * Throws rather than defaulting. A default was what made the two-target version read cleanly, and
+ * it is exactly what a third target cannot have: an unlisted workspace silently joining whichever
+ * target held the fallback is a package published from the wrong repository, which no downstream
+ * check would notice. Every caller here filters `exclude` first, so a workspace reaching this
+ * function is one the mirror emits and therefore one that must have a home.
+ */
 export function targetFor(workspace: string): MirrorTarget {
-  return targetDefinitions.weft.members.includes(workspace) ? 'weft' : 'cinder';
+  for (const target of mirrorTargets) {
+    if ((targetDefinitions[target].members as readonly string[]).includes(workspace)) return target;
+  }
+  throw new ManifestTransformError(
+    `${workspace} is not a member of any mirror target; add it to one of targetDefinitions' member lists or exclude it in package-map.json`,
+  );
+}
+
+/**
+ * Whether the target's root can hold a Bun catalog, which decides whether a `catalog:` specifier
+ * survives into it or is inlined to the concrete range corvidae's root catalog declares.
+ *
+ * Exported because `surface.ts` asks the same question about the toolchain dependencies it adds
+ * and used to answer it with its own `options.target === 'cinder'`. Two literals, one fact: a
+ * third target made the copy wrong rather than merely duplicated.
+ */
+export function targetHasCatalog(target: MirrorTarget): boolean {
+  return targetDefinitions[target].catalog;
+}
+
+/** The member workspaces of one target, for the map-coverage test rather than for the transform. */
+export function membersOf(target: MirrorTarget): readonly string[] {
+  return targetDefinitions[target].members;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -171,6 +264,14 @@ interface RewriteContext {
   requiredCatalog: Map<string, string>;
   /** Edges dropped because the other end does not exist downstream, reported rather than silent. */
   dropped: string[];
+  /**
+   * COR-1289: every edge that stays `workspace:*` because both ends ship in this target, keyed by
+   * the consumer's corvidae name and holding the dependency's public name. Recorded here, at the
+   * one place the transform decides an edge is intra-target, rather than recovered by parsing the
+   * emitted manifests a second time — a second parse would be a second opinion about which
+   * specifiers are mirror-internal, and this one is already authoritative.
+   */
+  intraTargetEdges: Map<string, Set<string>>;
 }
 
 /** Resolve one internal `@lostgradient/*` edge, or `undefined` when the edge cannot be carried. */
@@ -192,7 +293,17 @@ function resolveInternalEdge(
     );
   }
   const publicName = publicNameFor(dependency, disposition);
-  if (targetFor(dependency) === context.target) return [publicName, 'workspace:*'];
+  if (targetFor(dependency) === context.target) {
+    if (publishedEdgeFields.has(field)) {
+      let edges = context.intraTargetEdges.get(consumer);
+      if (!edges) {
+        edges = new Set<string>();
+        context.intraTargetEdges.set(consumer, edges);
+      }
+      edges.add(publicName);
+    }
+    return [publicName, 'workspace:*'];
+  }
 
   if (disposition.disposition === 'private-workspace') {
     // A private workspace has no registry presence, so an edge to one cannot cross repositories.
@@ -382,7 +493,11 @@ export function composeManifest({
   target: MirrorTarget;
   emitted: JsonObject;
   existing: JsonObject | undefined;
-  /** Public names of every workspace this mirror ships; their edges are the transform's outright. */
+  /**
+   * Every name an edge to a workspace this mirror ships can appear under: each one's public
+   * name, and since COR-1287 the target's own name for it where the two differ. Edges under
+   * any of them are the transform's outright.
+   */
   mirrorPackages: ReadonlySet<string>;
 }): ComposedManifest {
   if (existing === undefined) return { manifest: emitted, added: [] };
@@ -493,6 +608,20 @@ export interface ManifestPlan {
   /** Internal edges dropped because the other end does not exist in this target. */
   droppedEdges: string[];
   /**
+   * COR-1289: the intra-target `workspace:*` edges that survive, keyed by the consumer's corvidae
+   * name and holding each dependency's public name, sorted.
+   *
+   * Recorded for the same reason `publicNames` is: it is a fact the dependency composition already
+   * established, and a second producer re-deriving it is a second chance to disagree. `surface.ts`
+   * narrows it to the edges between *published* packages when it fills each `PublishedPackage`'s
+   * `dependsOn`, which is what orders the verification step list — a package's typecheck resolves
+   * these edges through `exports` → `dist/`, so the dependency must already have been built.
+   *
+   * Only `dependencies`, `peerDependencies` and `optionalDependencies` contribute; see
+   * `publishedEdgeFields` for why `devDependencies` does not.
+   */
+  intraTargetEdges: ReadonlyMap<string, readonly string[]>;
+  /**
    * Third-party dependencies the target declared nowhere, added from corvidae, as
    * `path: name (block)`. Reported rather than refused: a package legitimately gains a dependency,
    * and the alternative to adding it is emitting source that cannot resolve its own imports.
@@ -552,6 +681,61 @@ export async function readExistingManifest(
   return (await file.json()) as JsonObject;
 }
 
+/**
+ * Add the target's own name for each mirror workspace to `mirrorPackages`.
+ *
+ * COR-1287. `target-owned.json`'s dependency rule (1) says an edge to a package this mirror ships
+ * is "the transform's outright — name, block and specifier — because only the transform knows what
+ * it is called downstream", and `composeDependencies` implements that by dropping the target's
+ * entry whenever its name is in `mirrorPackages`. That worked while every target already spelled
+ * a mirror workspace the way the mirror publishes it, which was true of weft and cinder and is not
+ * true of agent-bureau: it calls corvidae's `@lostgradient/lifecycle` simply `lifecycle`, and the
+ * same for `bureau`, `memory` and `skills`. Under the public name alone, rule (1) never matched
+ * those entries, rule (2) kept them as ordinary third-party edges, and the composed manifest
+ * carried the same workspace twice under two names. A live staging against the real target
+ * produced exactly that and `bun install` refused it: `Workspace dependency "lifecycle" not
+ * found`, from six consumers at once.
+ *
+ * The alias is read off the clone rather than recorded anywhere: `layout-map.json` already says
+ * which target directory a workspace lands in, and the manifest sitting at that directory names
+ * the package in the target's own vocabulary. That name is as much the transform's to remove as
+ * the public name is to write, because the rename to the public name is the transform's own
+ * output — `name` is a `manifestKey`, so the target cannot get ahead of it.
+ *
+ * Scope: this changes nothing for a target that already agrees with the mirror on a name, which
+ * today is both other targets.
+ */
+async function collectTargetAliases({
+  targetDirectory,
+  emittable,
+  publicNames,
+  mirrorPackages,
+}: {
+  targetDirectory: string | undefined;
+  emittable: readonly { workspace: DiscoveredWorkspace; directory: string }[];
+  publicNames: ReadonlyMap<string, string>;
+  mirrorPackages: Set<string>;
+}): Promise<void> {
+  if (targetDirectory === undefined) return;
+  for (const { workspace, directory } of emittable) {
+    const existing = await readExistingManifest(targetDirectory, `${directory}/package.json`);
+    const existingName = existing?.['name'];
+    if (typeof existingName !== 'string' || existingName.length === 0) continue;
+    if (existingName === publicNames.get(workspace.name)) continue;
+    // A target name that is another workspace's public name is not an alias, it is a collision:
+    // dropping the edge would silently remove a real dependency on that other package. Nothing in
+    // either repository does this today, and a transform that guessed would be unreviewable.
+    for (const [other, publicName] of publicNames) {
+      if (publicName === existingName && other !== workspace.name) {
+        throw new ManifestTransformError(
+          `the target names ${directory} "${existingName}", which is ${other}'s public name; one of the two has to be renamed before a sync can tell an alias from a collision`,
+        );
+      }
+    }
+    mirrorPackages.add(existingName);
+  }
+}
+
 /** Build every manifest and `LICENSE` this target receives, without writing anything. */
 export async function planManifests({
   corvidaeRoot,
@@ -592,6 +776,7 @@ export async function planManifests({
     dispositions,
     requiredCatalog: new Map(),
     dropped: [],
+    intraTargetEdges: new Map(),
   };
 
   const licence = await Bun.file(join(corvidaeRoot, 'LICENSE')).text();
@@ -599,17 +784,23 @@ export async function planManifests({
   const firstPublish: string[] = [];
   const seededFromPackageMap: string[] = [];
   const addedDependencies: string[] = [];
-  const mirrorPackages = new Set(publicNames.values());
 
-  for (const workspace of workspaces) {
+  // Every workspace this target receives, resolved once: the emission loop and the alias pass
+  // below have to walk the same set, and the alias pass has to finish before the first manifest is
+  // composed.
+  const emittable = workspaces.flatMap((workspace) => {
     const disposition = dispositions.get(workspace.name);
-    if (!disposition || disposition.disposition === 'exclude') continue;
-    if (targetFor(workspace.name) !== target) continue;
-
+    if (!disposition || disposition.disposition === 'exclude') return [];
+    if (targetFor(workspace.name) !== target) return [];
     const layout = layouts.get(workspace.name);
-    if (!layout || layout.disposition === 'deferred') continue;
-    const directory = layout.targetDirectory;
+    if (!layout || layout.disposition === 'deferred') return [];
+    return [{ workspace, disposition, directory: layout.targetDirectory }];
+  });
 
+  const mirrorPackages = new Set(publicNames.values());
+  await collectTargetAliases({ targetDirectory, emittable, publicNames, mirrorPackages });
+
+  for (const { workspace, disposition, directory } of emittable) {
     const path = `${directory}/package.json`;
     const emitted = rewriteWorkspaceManifest(workspace, disposition, context);
     const existing = await readExistingManifest(targetDirectory, path);
@@ -665,6 +856,12 @@ export async function planManifests({
     firstPublish: firstPublish.toSorted(),
     seededFromPackageMap: seededFromPackageMap.toSorted(),
     droppedEdges: context.dropped,
+    intraTargetEdges: new Map(
+      [...context.intraTargetEdges].map(([consumer, edges]) => [
+        consumer,
+        [...edges].toSorted((left, right) => left.localeCompare(right)),
+      ]),
+    ),
     addedDependencies: addedDependencies.toSorted(),
     emitted: emittedWorkspaces,
     publicNames,

@@ -58,4 +58,5 @@ async function build(target: MirrorTarget): Promise<CommittedPlan> {
 export const committedPlans: Readonly<Record<MirrorTarget, CommittedPlan>> = {
   cinder: await build('cinder'),
   weft: await build('weft'),
+  'agent-bureau': await build('agent-bureau'),
 };

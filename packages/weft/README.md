@@ -1,8 +1,14 @@
 # Weft
 
-A private durable execution library for Corvidae. Declare `"@lostgradient/weft": "workspace:*"` in the consuming workspace and install dependencies from the repository root with `bun install --frozen-lockfile`. Import the [TypeScript](https://www.typescriptlang.org/) source API from `@lostgradient/weft`.
+A Bun-native durable execution engine. The current release is whatever `npm view @lostgradient/weft version` reports; the package's exported `VERSION` and its manifest always agree.
 
-The internal command-line entry points live alongside the library source in this workspace.
+Install the library from npm as `@lostgradient/weft`:
+
+```bash
+bun add @lostgradient/weft
+```
+
+The CLI binaries remain unscoped: package installs place `weft` and `weft-mcp` on `PATH`.
 
 > _Weft_—the cross-threads in weaving that bind the warp together.
 
@@ -10,30 +16,39 @@ The internal command-line entry points live alongside the library source in this
 
 Imagine you're building an e-commerce checkout: charge the customer's credit card, reserve inventory, send a confirmation email, schedule shipping. What happens if your server crashes between step one and step two? The customer has been charged, but the inventory was never reserved. You can't just re-run the whole flow—you'd double-charge them.
 
-**Durable execution** solves this. You write a normal-looking function around durable boundaries; with durable storage, Weft checkpoints those boundaries and automatically resumes persisted work after a process restart. The activity crash-window limit is described under [Durability Guarantee](#durability-guarantee).
+**Durable execution** solves this. You write a normal-looking function around durable boundaries; with durable storage, Weft checkpoints those boundaries and automatically resumes persisted work after a process restart. The exact guarantee, including the current activity crash-window limit, is spelled out in [Durability Guarantee](documentation/architecture/durability-guarantee.md).
 
-Weft combines TypeScript workflows, Bun-native storage and servers, and persisted operation results. Recovery rebuilds workflow execution from those results; it does not serialize a live JavaScript stack.
+Temporal is the most prominent durable execution engine, built in 2019 with Go, gRPC, and Cassandra. It works. But we can do better with modern tools.
 
 ## What Is Weft?
 
-Weft runs async workflows to completion across crashes, retries, and arbitrary stretches of wall-clock time. You write what looks like a normal generator function; the engine persists a checkpoint at every `yield*` boundary and resumes from the last checkpoint on recovery. During recovery, the engine starts a fresh generator and reuses recorded operation results as it advances to unfinished work.
+Weft runs async workflows to completion across crashes, retries, and arbitrary stretches of wall-clock time. You write what looks like a normal generator function; the engine persists a checkpoint at every `yield*` boundary and resumes from the last checkpoint on recovery. No replay, no determinism constraints, no special imports.
 
-It supports long-running business processes such as checkouts, onboarding, and fulfillment, where a process crash must not lose the persisted workflow state.
+It's built for two execution shapes that traditional workflow engines treat as second-class:
+
+- **Long-running business processes**—checkouts, onboarding flows, fulfillment pipelines—where a process crash mid-flight must not lose money or leave the system in a partial state.
 
 ## Design Constraints
 
-Weft is deliberately narrower than a polyglot workflow platform. These constraints are what make its checkpoint model practical:
+Weft is a ground-up rethink: what would durable execution look like if you designed it today, for today's workloads?
 
 - **Web-native everywhere.** Every API comes from web standards: `fetch`, `WebSocket`, `Worker`, `BroadcastChannel`, `structuredClone`, `AbortController`, `crypto.randomUUID()`, `ReadableStream`. If the browser has it, we use it.
-- **Bun-native on the server.** [Bun](https://bun.sh/) supplies `Bun.serve()`, `Bun.SQL`, `Bun.build()`, and `bun:test`. The full platform matters here, not just the runtime.
+- **Bun-native on the server.** `Bun.serve()`, `Bun.SQL`, `Bun.build()`, `bun:test`. The full Bun platform, not just "Node.js but faster."
+- **Single binary, every OS.** `bun build --compile` produces standalone executables for darwin-arm64, darwin-x64, linux-x64, linux-arm64, and windows-x64. One CI pipeline, six binaries, zero runtime dependencies.
 - **Runs in the browser.** The core engine (minus the server shell) runs in Web Workers with a Service Worker as its persistence backbone. Same workflow code, different environment.
 - **Human-in-the-loop.** Workflows can pause at any checkpoint and surface a decision to a human reviewer via `ctx.review()`. The workflow resumes with the reviewer's decision—approved or rejected—without any special infrastructure.
 
-> [!IMPORTANT] Workflows run in TypeScript on the engine; activities can run in any language via the `RemoteWorker` protocol. This split is intentional: the engine implements the TypeScript generator protocol, while remote activities exchange versioned JSON messages. See [ADR 0001](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md) for the design rationale.
+> [!IMPORTANT] Workflows run in TypeScript on the engine; activities can run in any language via the `RemoteWorker` protocol. This split is intentional — the checkpoint model requires single-process generator state, so workflow code is TypeScript-only by design. See [ADR 0001](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md) for the design rationale.
 
-## Internal development status
+## Stability Tiers
 
-Corvidae is pre-release and internal-only. Application consumers compile this library's source directly, and API changes are coordinated within the workspace. Browser behavior requires real-browser validation of IndexedDB, extension storage, and Service Worker hosting; fake storage tests alone do not establish that behavior.
+Weft is pre-1.0. The [breaking-change policy](documentation/contributing/breaking-changes.md#stability-tiers) owns the current candidate-stable and experimental surface inventory; feature guides state local context without maintaining a second list.
+
+Candidate-stable surfaces are suitable for serious trials, but the 1.0 compatibility promise is not final until the Tier-0 work is complete. Surfaces not named in the canonical inventory are experimental by default.
+
+The public path to 1.0 is tracked in the [roadmap to 1.0](documentation/roadmap-to-1.0.md). The 1.0 compatibility promise will apply to the stable tier only; experimental surfaces may continue changing until they graduate.
+
+The browser surfaces graduate on a specific, mechanical criterion: the IndexedDB and WebExtension adapters and the Service Worker runtime stay experimental until their real-browser smoke tests are green in a **required** CI gate. The [browser-surface promotion gate](documentation/roadmap-to-1.0.md#browser-surface-promotion-gate) documents how the `browser-smoke` CI job flips from non-blocking to required, and why real-browser coverage — not fake-IndexedDB or stubbed-`chrome.storage` unit tests — is the evidence that moves them to stable.
 
 ## Durability Guarantee
 
@@ -41,8 +56,10 @@ Weft's durability promise is checkpoint-level and explicit:
 
 - Every `yield*` boundary is persisted before the workflow advances to the next durable step.
 - `Engine.create()` recovers by default after registering workflow definitions, so fresh processes resume persisted running workflows without a separate boot hook.
-- Recovery starts a new generator and rebuilds its execution using durable operation results. Ordinary code between those operations runs again.
+- Recovery resumes from the last checkpoint position instead of replaying the workflow from the beginning.
 - External activity side effects still need idempotency keys, provider lookup, verifier logic, or external write fencing. Without that, a crash after the external side effect but before Weft commits the activity result can dispatch the activity again. Weft exposes `workflowExecutionToken` and per-attempt `activityAttemptToken` values so databases you control can reject stale writes from older attempts or replaced runs.
+
+The full [Durability Guarantee](documentation/architecture/durability-guarantee.md) separates what is guaranteed today from the Tier-0 activity-reconciliation work that narrows the remaining crash window.
 
 ## Hello, World
 
@@ -50,7 +67,7 @@ The smallest useful Weft program has four moving pieces: a storage backend, a na
 
 ```typescript
 import { Engine, workflow } from '@lostgradient/weft';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
 
 type WelcomeInput = {
   name: string;
@@ -67,7 +84,7 @@ const welcome = workflow({ name: 'welcome' })
   });
 
 const engine = await Engine.create({
-  storage: new BunSQLiteStorage('./weft.db'),
+  storage: new SQLiteStorage('./weft.db'),
   workflows: { welcome },
 });
 
@@ -78,13 +95,13 @@ const result = await handle.result();
 
 That's the core loop: `workflow({ name })` is a **chained builder** that co-locates the workflow's side-effecting steps inside `.activities({...})`, and `.execute(fn)` seals it all together and returns a `WorkflowDefinition`. Inside the generator, `ctx.run('formatGreeting', input)` autocompletes from the workflow's own activity table, typechecks the input, and infers the output. Every `yield*` is a checkpoint boundary; `handle.result()` waits for the output. Checkpoints are written to `./weft.db`, so running workflows survive process crashes.
 
-`Engine.create()` does the registration dance for you: it constructs the engine and registers each workflow in the `workflows` map, pulling in all the activities each workflow declares. It then **recovers by default**—`engine.recoverAll()` runs after registration, so any workflows still running from a previous process pick up where they left off. That's the point of durable storage, so you don't have to ask for it. Pass `recover: false` to opt out (handy for tests, for `ScopedStorage`-isolated engines, or when you want to inspect a store before migrating it). Durability is separate: each step is persisted before it commits no matter what `recover` is set to—`recover` only decides whether _this_ engine resumes that persisted work on boot. If a host owns recovery but still needs durable timers, use `startScheduler: true`; otherwise `recover: false` also leaves the real-time scheduler stopped. By default (`ownership: 'none'`) run a single engine per durable store: pointing two at the same store is uncoordinated and can double-resume a workflow. To share one store across engines, select `ownership: 'workflow-lease'`, which claims each workflow for exactly one engine before its generator runs. `await engine.claimHolder(workflowId)` gives any engine sharing that store a cross-process read of a workflow's current claim—`{ heldByThisProcess, heldByAnyProcess }`, or `undefined` when there is no durable claim record at all—so a maintenance pass on one instance can check whether another instance still holds a workflow before touching its state. See [Shared-store ownership](documentation/guides/shared-store-ownership.md#cross-process-claim-visibility) for the exact consistency guarantee and its staleness caveat.
+`Engine.create()` does the registration dance for you: it constructs the engine and registers each workflow in the `workflows` map, pulling in all the activities each workflow declares. It then **recovers by default** — `engine.recoverAll()` runs after registration, so any workflows still running from a previous process pick up where they left off. That's the point of durable storage, so you don't have to ask for it. Pass `recover: false` to opt out (handy for tests, for `ScopedStorage`-isolated engines, or when you want to inspect a store before migrating it). Durability is separate: each step is persisted before it commits no matter what `recover` is set to — `recover` only decides whether _this_ engine resumes that persisted work on boot. If a host owns recovery but still needs durable timers, use `startScheduler: true`; otherwise `recover: false` also leaves the real-time scheduler stopped. By default (`ownership: 'none'`) run a single engine per durable store: pointing two at the same store is uncoordinated and can double-resume a workflow. To share one store across engines, select `ownership: 'workflow-lease'`, which claims each workflow for exactly one engine before its generator runs.
 
 Passing an explicitly empty workflow map is the same default-registry boot shape as omitting `workflows`: `Engine.create({ workflows: {} })` recovers after registration and returns an engine whose TypeScript type is compatible with default-registry consumers such as `serve({ engine })`. Use a non-empty `workflows` map when you want TypeScript to narrow `engine.start(...)` to the registered names.
 
-Serverless hosts that cannot keep process-local intervals alive can set `backgroundTasks: 'manual'` and call `await engine.runMaintenance(now)` from an alarm or Cron wake-up to drive timers, delayed starts, update-response cleanup, retention, and alert evaluation. This is also the deterministic drive for `engine.schedule()`'s recurring cron/interval poller—`runMaintenance(now)` fires any schedule due at `now` exactly the way a real-time process would, so a manual-clock test or a `backgroundTasks: 'manual'` host never needs a separate mechanism to advance recurring schedules. Await each maintenance cycle before starting another one so host-driven ticks do not overlap.
+Serverless hosts that cannot keep process-local intervals alive can set `backgroundTasks: 'manual'` and call `await engine.runMaintenance()` from an alarm or Cron wake-up to drive timers, scheduled starts, update-response cleanup, retention, and alert evaluation. Await each maintenance cycle before starting another one so host-driven ticks do not overlap.
 
-If you'd rather wire things up by hand—useful for tests, isolating engines onto separate storage scopes via `ScopedStorage`, or adding new workflows after the engine starts up—`new Engine({ storage })`, `engine.register(workflow)` or `engine.registerWorkflows({ ... })`, and `await engine.recoverAll()` are the underlying primitives. Each `engine.register(workflow)` call returns the engine with that workflow's name and types baked in, so `engine.start('welcome', ...)` autocompletes immediately.
+If you'd rather wire things up by hand — useful for tests, isolating engines onto separate storage scopes via `ScopedStorage`, or adding new workflows after the engine starts up — `new Engine({ storage })`, `engine.register(workflow)` or `engine.registerWorkflows({ ... })`, and `await engine.recoverAll()` are the underlying primitives. Each `engine.register(workflow)` call returns the engine with that workflow's name and types baked in, so `engine.start('welcome', ...)` autocompletes immediately.
 
 When a workflow needs a live host capability that cannot be checkpointed, pass it as per-run `services`:
 
@@ -92,19 +109,19 @@ When a workflow needs a live host capability that cannot be checkpointed, pass i
 const handle = await engine.start('welcome', { name: 'Steve' }, { services: { crmClient } });
 ```
 
-Inside inline workflows, read that value from `ctx.services` and narrow it to your application type. Weft never writes the service object into checkpoints; it persists only a presence marker so `Engine.create({ resolveWorkflowServices })` can rebuild the service value during fresh-process recovery before the generator advances. Scheduled runs also carry `schedule.id` and, when the grid timestamp is retained, `schedule.occurrence` into the resolver across recovery, so host services can branch on schedule origin without duplicating that identity in workflow input. Do not use `services` for durable data, and do not pass it in Worker execution mode—non-serializable values cannot cross to a Worker.
+Inside inline workflows, read that value from `ctx.services` and narrow it to your application type. Weft never writes the service object into checkpoints; it persists only a presence marker so `Engine.create({ resolveWorkflowServices })` can rebuild the service value during fresh-process recovery before the generator advances. Scheduled runs also carry `schedule.id` and, when the grid timestamp is retained, `schedule.occurrence` into the resolver across recovery, so host services can branch on schedule origin without duplicating that identity in workflow input. Do not use `services` for durable data, and do not pass it in Worker execution mode — non-serializable values cannot cross to a Worker.
 
 When recovery also needs to rebuild live host surfaces such as progress emitters or adapters, opt out of automatic recovery first with `Engine.create({ recover: false, ... })`, then call `await engine.recoverAll({ onRecoveredWorkflow })` after any host surfaces are ready. Weft awaits the hook after services are re-provided and before the recovered generator advances, and a hook failure fails only that recovered run with a system failure category.
 
-> [!NOTE] The chained builder also accepts `.signals({...})`, `.updates({...})`, `.queries({...})`, and `.searchAttributes({...})`. Each can be called at most once before `.execute(fn)`; the type system flips a phantom flag so a duplicate call fails to typecheck, and the runtime mirrors the same invariant. These maps don't introduce new runtime gating—they're type hints that thread into `ctx.run()`, `ctx.waitForSignal()`, `ctx.waitForUpdate()`, and friends so your editor autocompletes and your code typechecks. The underlying dispatch paths are unchanged.
+> [!NOTE] The chained builder also accepts `.signals({...})`, `.updates({...})`, `.queries({...})`, and `.searchAttributes({...})`. Each can be called at most once before `.execute(fn)`; the type system flips a phantom flag so a duplicate call fails to typecheck, and the runtime mirrors the same invariant. These maps don't introduce new runtime gating — they're type hints that thread into `ctx.run()`, `ctx.waitForSignal()`, `ctx.waitForUpdate()`, and friends so your editor autocompletes and your code typechecks. The underlying dispatch paths are unchanged.
 
-> [!NOTE] `MemoryStorage` (also exported from `@lostgradient/weft`) is fine for tests and ephemeral scripts, but it lives in process memory—a crash takes the checkpoints with it. Use a persistent backend like `BunSQLiteStorage` whenever durability actually matters.
+> [!NOTE] `MemoryStorage` (also exported from `@lostgradient/weft`) is fine for tests and ephemeral scripts, but it lives in process memory—a crash takes the checkpoints with it. Use a persistent backend like `SQLiteStorage` whenever durability actually matters.
 
 ## How It Works
 
-A **checkpoint** records the engine’s step counter, durable context state, operation results, and recovery metadata. It does not capture the JavaScript generator object, closures, or arbitrary local variables. Recovery creates a new generator and feeds it previously recorded outcomes until it reaches unfinished work.
+Weft uses a **checkpoint model**, not a replay model. At each `yield*`, the engine snapshots the workflow's current state, including live local variables and the generator position, then resumes from that snapshot after a crash. The checkpoint is the source of truth for "where am I and what do I know."
 
-Keep the sequence of durable operations compatible with the stored run. Reading the clock, generating a random value, or performing I/O directly between operations can change a branch when that code runs again. Put side effects in activities and use `ctx.memo()` for values that must remain stable across recovery. Worker execution also checks stored operation signatures before reusing cached results. A completed external effect can still repeat if the process dies before its result is committed, so activities need their own idempotency or reconciliation strategy.
+Because recovery never re-executes the workflow from the beginning, your workflow code does not inherit replay determinism rules. `Date.now()`, `Math.random()`, dynamic imports, and normal TypeScript control flow are all fine; side effects still belong in activities. The [Checkpoint vs. Replay architecture note](documentation/architecture/checkpoint-versus-replay.md) covers the full design and tradeoffs.
 
 ## Core Concepts
 
@@ -112,7 +129,7 @@ Keep the sequence of durable operations compatible with the stored run. Reading 
 | --- | --- |
 | **Workflow** | A generator function the engine drives to completion. Every `yield*` is a checkpoint. |
 | **Activity** | A named unit of side-effecting work registered with the engine and dispatched by a workflow with `ctx.run(activity, input)`. |
-| **Checkpoint** | Persisted engine state and operation results used to rebuild execution after a restart. |
+| **Checkpoint** | A serialized snapshot of a workflow's position and local variables, written at every yield. |
 | **Signal** | A fire-and-forget message sent _into_ a running workflow. Workflows pause at `ctx.waitForSignal()` until one arrives. |
 | **Update** | A request-response message sent into a running workflow. The caller blocks until the workflow returns a result. |
 | **Query** | A read-only request sent with `engine.query()` or `handle.query()` to inspect workflow state without mutating it. |
@@ -148,7 +165,7 @@ const checkout = workflow({ name: 'checkout' })
   });
 ```
 
-If `scheduleShipping` fails, `sendConfirmation`'s result is recorded in the parent operation's cache entry before the error is thrown into the workflow. If the workflow catches and yields again (e.g., to retry shipping or compensate), the next checkpoint persists that entry—a resumed run reuses the confirmation result instead of sending a duplicate email.
+If `scheduleShipping` fails, `sendConfirmation`'s result is recorded in the parent operation's cache entry before the error is thrown into the workflow. If the workflow catches and yields again (e.g., to retry shipping or compensate), the next checkpoint persists that entry—a resumed run reuses the confirmation result instead of sending a duplicate email. See the [parallel execution guide](documentation/guides/parallel-execution.md) for the precise failure-semantics contract, including the catch-and-yield requirement.
 
 ### Durable Timers and Signals
 
@@ -195,33 +212,6 @@ const quorum = workflow({ name: 'quorum' })
   });
 ```
 
-### Recurring Schedules
-
-`engine.schedule(type, input, spec, options?)` creates a durable cron or fixed-interval schedule and returns a `ScheduleHandle` with `pause()`, `resume()`, `cancel()`, `update(spec, options?)`, and `describe()`. Under `backgroundTasks: 'manual'`, recurring schedules fire through the exact same drive as durable timers: `engine.runMaintenance(now)` evaluates due schedules against `now`, so a serverless host or a manual-clock test advances a schedule the same way it advances a `ctx.sleep`—no separate mechanism is needed.
-
-`handle.pause()`, `handle.resume()`, and `handle.cancel()`—and their `Engine.pauseSchedule()`/`resumeSchedule()`/`cancelSchedule()` equivalents—accept an optional second argument of caller-supplied operations that commit atomically with the schedule's status transition. This is for a consumer keeping its own durable projection (a search index, an audit log, a mirrored record in another store) in step with the engine's schedule state: without it, the consumer's own write is fire-and-forget after the engine's commit, and a crash or a rejected write between the two leaves them observably out of sync.
-
-```typescript
-const handle = await engine.schedule('daily-report', null, '0 9 * * *', { id: 'daily-report' });
-const projectionKey = 'app:reports:daily-report:paused';
-
-await handle.pause({
-  // Put/delete operations against the CALLER's OWN keys, committed in the
-  // same storage batch as the schedule's `status: 'paused'` write.
-  additionalOperations: [
-    { type: 'put', key: projectionKey, value: new TextEncoder().encode('true') },
-  ],
-  // Optional expected-value guards, also on the caller's own keys. If any
-  // condition no longer holds, the ENTIRE commit—the caller's operations AND
-  // the schedule state transition—is rejected, and neither lands.
-  extraConditions: [{ key: projectionKey, expectedValue: null }],
-  // Optional: distinguish "my own guard went stale" from any other failure.
-  onExtraConditionsLost: () => new Error('daily-report projection guard was stale'),
-});
-```
-
-`additionalOperations` and `extraConditions` are the same `BatchOperation`/`ConditionalBatchCondition` shapes storage backends use elsewhere, so no new vocabulary is needed to reach for this. Keep caller keys outside Weft's reserved prefixes (see `WEFT_RESERVED_KEY_PREFIXES`)—an `app:`-prefixed namespace, as in the example, is the documented convention.
-
 ### Live Workflow Events
 
 Workflow handles expose lifecycle events through `addEventListener`, and client handles can open a live tail for progress UIs or operators. `LocalClient` reads from the in-process engine stream; `HttpClient` defaults to the per-workflow `/v1/workflows/:id/watch` WebSocket channel when the runtime can carry authentication headers, and falls back to fetch-based SSE at `/v1/workflows/:id/events/sse` when it cannot. Both transports run history catch-up on connect and reconnect, so `addEventListener`, `client.tail(id)`, and `handle.tail()` are push-based rather than a polling loop. JSON-RPC clients can subscribe over WebSocket with `weft.workflows.subscribe` for one workflow or `weft.events.subscribe` for the fleet-wide event feed. Client code that receives a workflow id from another process can call `client.getHandle(id)` to re-attach a `ClientHandle` or get `null` when the run does not exist.
@@ -238,8 +228,6 @@ for await (const event of tail) {
 ```
 
 The tail is single-consumer and stops on terminal workflow events or `tail.close()`. Pass `eventTransport: 'websocket'` to require WebSocket, `eventTransport: 'sse'` to require SSE, or `HttpClientOptions.webSocketFactory` to provide a runtime-specific WebSocket constructor.
-
-Underneath the client-facing tail sits `FleetEventFeed`, the server-side primitive `createFleetEventFeed(engine.storage)` builds and `HandlerOptions.fleetEventFeed` consumes to drive `/v1/events/sse`. Its `replay()` method accepts an optional `workflowId` to serve only that workflow's retained fleet events instead of the entire retained log: `feed.replay({ workflowId })` scans the `fleet-event-by-workflow:` secondary index that `append()`, `retain()`, and `Engine.purge()` already maintain, then reads each matching envelope directly by its sequence — cost is proportional to that workflow's own retained events, not the size of the fleet-wide feed. This is the answer for a maintenance job that needs to know whether any retained event still exists for a given workflow id, without replaying and filtering the whole feed per candidate. A workflow-scoped `replay()` carries the exact same guarantees as the unfiltered one: it reads from a consistent retention snapshot (retrying if `retain()` interleaves with the scan), honors `fromCursor` and `limit` identically, and emits the same `fleet:gap` envelope — with the same `firstRetainedSequence` — when the requested cursor predates the current retention floor. A workflow event concurrently removed by `retain()` or by `Engine.purge()` (both delete a `fleet-event:` record together with its by-workflow index entry in one atomic batch) is simply omitted rather than reported as corruption — `purge()` never advances the retention floor, so that determination checks the index entry itself rather than the watermark.
 
 ### Idempotent Starts and Signal-With-Start
 
@@ -262,31 +250,9 @@ For stable-id re-sync flows, `engine.startOrSignal()` can replace a terminal pri
 
 When a workflow drains signals with `ctx.race([ctx.waitForSignal(name), ctx.sleep(0)])` and then returns, use that stable `id`, a deterministic per-event `signalId`, and `onTerminalConflict: 'start-new'` for the corresponding `startOrSignal` calls. Delivery is serialized against terminal completion, so a signal arriving across the completion boundary is consumed by the current run or handed to its successor; a positive drain window is not needed for correctness.
 
-### Two-Phase Start: `prepare()` / `launch()`
-
-`engine.start()` commits the initial durable record and begins execution in one call. Use `engine.prepare()` instead when your own contract requires that durable record to exist — readable via `engine.get()` or `engine.list()` — before your own start hook returns, and paying that hook's latency inside the durable commit (or starting first and compensating with a cancel) isn't acceptable.
-
-```typescript
-const prepared = await engine.prepare('onboarding', { name: 'Steve' });
-
-// The record is already committed and durably readable here — status
-// 'pending', no execution yet.
-const record = await engine.get(prepared.id);
-console.log(record?.status); // 'pending'
-
-// Begin execution once you're ready. Same ownership and lease semantics as
-// engine.start(): the claim is acquired at prepare() time, not here.
-const handle = await prepared.launch();
-console.log(await handle.result());
-```
-
-Never call `launch()`? Call `handle.abandon()` to discard the prepared run instead of leaving it `'pending'` forever. It records a terminal `'cancelled'` transition — tagged `PREPARED_WORKFLOW_ABANDONED_REASON` on `WorkflowState.terminationReason`, distinguishable from an ordinary mid-run `engine.cancel()` — so no orphaned live workflow is left behind. `abandon()` is idempotent; `launch()` and `abandon()` each throw if the other already ran.
-
-`options.idempotencyKey` and `options.startAt`/`options.startAfter` are not supported by `prepare()` — the former has no prepared-but-uncommitted equivalent to converge on, and the latter is a second, conflicting "when does this launch" mechanism. Use `engine.start()` for either.
-
 ### Durable Application Command Mailbox
 
-Signals are workflow control. When the thing receiving a command is an application _resource_ rather than a workflow run—an agent taking steering input, a resource fielding requests from a peer service—`Mailbox` gives it a durable, strictly FIFO command queue with real receipts.
+Signals are workflow control. When the thing receiving a command is an application _resource_ rather than a workflow run — an agent taking steering input, a resource fielding requests from a peer service — `Mailbox` gives it a durable, strictly FIFO command queue with real receipts.
 
 ```typescript
 import { Mailbox, MemoryStorage } from '@lostgradient/weft';
@@ -312,13 +278,13 @@ if (claimed.status === 'claimed' && admission.status === 'admitted') {
 }
 ```
 
-Admission returns a receipt that, on a persistent backend such as `BunSQLiteStorage`, survives process restart; `MemoryStorage` above keeps the example self-contained and is gone with the process. Idempotency binds to `(caller, target, kind, payloadDigest)`, so an exact retry returns the original receipt and a conflicting reuse of the key returns a stable conflict without touching the original. Claims are attempt-fenced, so two consumers sharing one durable store can never both hold a valid claim _on the same command_—delivery is strictly FIFO, but a later command may be claimed while an earlier one is still in flight, so completion order is up to the consumers. Cancellation is durable before it reaches anyone, and reports honestly whether cleanup is still outstanding rather than claiming an uncooperative handler stopped.
+Admission returns a receipt that, on a persistent backend such as `BunSQLiteStorage`, survives process restart; `MemoryStorage` above keeps the example self-contained and is gone with the process. Idempotency binds to `(caller, target, kind, payloadDigest)`, so an exact retry returns the original receipt and a conflicting reuse of the key returns a stable conflict without touching the original. Claims are attempt-fenced, so two consumers sharing one durable store can never both hold a valid claim _on the same command_ — delivery is strictly FIFO, but a later command may be claimed while an earlier one is still in flight, so completion order is up to the consumers. Cancellation is durable before it reaches anyone, and reports honestly whether cleanup is still outstanding rather than claiming an uncooperative handler stopped.
 
-Delivery intent, ordering, ownership, and disposition are durable; external side effects are not made exactly-once.
+Delivery intent, ordering, ownership, and disposition are durable; external side effects are not made exactly-once. See [Application Mailbox](documentation/guides/mailbox.md).
 
 ### Durable Application Delivery Outbox
 
-The mailbox is for commands coming _in_ to a resource. For work going _out_—a webhook, a notification, a message to a peer service—`Outbox` is the matching primitive: a durable, at-least-once delivery queue whose enqueue, attempt leases, transport outcomes, retry schedule, cancellation, and dead-letter state are all durable and observable, without ever confusing a transport write with an acknowledgement.
+The mailbox is for commands coming _in_ to a resource. For work going _out_ — a webhook, a notification, a message to a peer service — `Outbox` is the matching primitive: a durable, at-least-once delivery queue whose enqueue, attempt leases, transport outcomes, retry schedule, cancellation, and dead-letter state are all durable and observable, without ever confusing a transport write with an acknowledgement.
 
 ```typescript
 import { Outbox, MemoryStorage } from '@lostgradient/weft';
@@ -350,7 +316,7 @@ const delivered = await outbox.deliverNext();
 if (delivered.status === 'settled') console.log(delivered.receipt.state); // 'acknowledged'
 ```
 
-Every attempt is durably marked `attempting` _before_ the adapter is called, so a crash before the send is a safe retry and a crash after it is an unknown outcome—which is parked or dead-lettered by explicit policy, and retried automatically only when the delivery carries stable external idempotency evidence. Returning from `send()` never settles anything by itself; the outbox commits the matching disposition, fenced on the attempt.
+Every attempt is durably marked `attempting` _before_ the adapter is called, so a crash before the send is a safe retry and a crash after it is an unknown outcome — which is parked or dead-lettered by explicit policy, and retried automatically only when the delivery carries stable external idempotency evidence. Returning from `send()` never settles anything by itself; the outbox commits the matching disposition, fenced on the attempt. See [Application Outbox](documentation/guides/outbox.md).
 
 ### Search Attributes
 
@@ -377,9 +343,7 @@ const orders = await engine.list({
 });
 ```
 
-Workflow visibility extends the same list surface with operator filters for `idPrefix`, failure categories, created/updated/deadline ranges, and status arrays. Use `engine.aggregate()` or `GET /api/v1/workflows/aggregate` for grouped counts by status, type, failure category, or a search attribute.
-
-In this workspace, run `bun scripts/rebuild-workflow-visibility-indexes.ts --storage <database-path>` from `packages/weft` with writers paused. If the command exits with `3`, keep writers paused and rerun the same command: the saved cursor stays before the first conflicting workflow. This copy no longer requires the source guide's drop-and-rebuild workaround after a conflict. A successful run writes the watermark only after all remaining workflows are indexed.
+Workflow visibility extends the same list surface with operator filters for `idPrefix`, failure categories, created/updated/deadline ranges, and status arrays. Use `engine.aggregate()` or `GET /api/v1/workflows/aggregate` for grouped counts by status, type, failure category, or a search attribute. Existing Bun SQLite deployments should run the [workflow visibility backfill](documentation/guides/workflow-visibility-backfill.md) before relying on the indexed fast path for older workflows.
 
 Failure-category filters use the current execution taxonomy only: `application`, `timeout`, `cancellation`, `resource`, and `system`. Older category names from pre-1.0 experiments are dropped during decode and are not expanded in list or aggregate filters.
 
@@ -391,7 +355,7 @@ As of June 12, 2026, [Temporal's public human-approval example](https://docs.tem
 
 ```typescript
 import { Engine, workflow } from '@lostgradient/weft';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
 
 type PaymentRequest = {
   orderId: string;
@@ -426,28 +390,29 @@ const paymentWorkflow = workflow({ name: 'payment' })
   });
 ```
 
-If the process crashes after the approval decision is checkpointed, the reviewer is not asked again. The `chargeCard` activity is still an at-least-once side effect: if the payment provider accepts the charge and the process crashes before Weft commits the activity result, recovery can run `chargeCard` again. Pass an idempotency key, provider transaction lookup, or equivalent verifier to the payment provider.
+If the process crashes after the approval decision is checkpointed, the reviewer is not asked again. The `chargeCard` activity is still an at-least-once side effect: if the payment provider accepts the charge and the process crashes before Weft commits the activity result, recovery can run `chargeCard` again. Pass an idempotency key, provider transaction lookup, or equivalent verifier to the payment provider; the [activities guide](documentation/guides/activities.md#per-call-options) explains that boundary in more detail.
 
 ### Pluggable Storage
 
 A small `Storage` interface over string keys and `Uint8Array` values: five required methods (`get`, `put`, `delete`, `scan`, `batch`) plus optional capabilities (`conditionalBatch`, `has`, `deletePrefix`) that adapters can implement when their backend supports them. Built-in adapters:
 
 - **`MemoryStorage`** for development and tests
-- **`BunSQLiteStorage`** for SQLite persistence on Bun
-- **`NodeSQLiteStorage`** for SQLite persistence on Node.js via `better-sqlite3`
-- **`LMDBStorage`** for embedded high-throughput workloads; accepts a `durability: 'relaxed'` option that skips `fsync` on every commit, trading crash durability for write latency—use it for test fixtures, not production storage. `capabilities().persistence` reports `'ephemeral'` for a relaxed-durability instance (instead of `'local'`), so `assertDurableStorageForRecovery()` correctly rejects it
-- **`TursoStorage`** for distributed libSQL deployments
-- **`NeonStorage`** for durable remote Neon/Postgres deployments
-- **`IndexedDBStorage`** for browser environments
-- **`WebExtensionStorage`** for extension contexts using `browser.storage` or `chrome.storage`
-- **`HTTPStorage`** for remote storage over Weft's HTTP storage routes
+- **`SQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite`) for SQLite persistence; Bun resolves to `BunSQLiteStorage`, Node resolves to `NodeSQLiteStorage`
+- **`BunSQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite/bun`) for an explicit Bun SQLite override
+- **`NodeSQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite/node`) for an explicit Node.js SQLite override via `better-sqlite3`
+- **`LMDBStorage`** (subpath `@lostgradient/weft/storage/lmdb`) for embedded high-throughput workloads; accepts a `durability: 'relaxed'` option that skips `fsync` on every commit, trading crash durability for write latency—use it for test fixtures, not production storage. `capabilities().persistence` reports `'ephemeral'` for a relaxed-durability instance (instead of `'local'`), so `assertDurableStorageForRecovery()` correctly rejects it
+- **`TursoStorage`** (subpath `@lostgradient/weft/storage/turso`) for distributed libSQL deployments
+- **`NeonStorage`** (subpath `@lostgradient/weft/storage/neon`) for durable remote Neon/Postgres deployments
+- **`IndexedDBStorage`** (subpath `@lostgradient/weft/storage/indexeddb`) for browser environments
+- **`WebExtensionStorage`** (subpath `@lostgradient/weft/storage/web-extension`) for extension contexts using `browser.storage` or `chrome.storage`
+- **`HTTPStorage`** (subpath `@lostgradient/weft/storage/http`) for remote storage over Weft's HTTP storage routes
 - **`CompressedStorage`** wrapper for transparent `gzip` or `brotli` compression
 
 Bring your own backend by implementing the interface—five methods is enough.
 
-For demos and local-first prototypes, `resolveDefaultStorage()` from `@lostgradient/weft` picks a durable default for the current runtime: SQLite under Bun or Node, `WebExtensionStorage` in extension contexts, and `IndexedDBStorage` in browsers and Service Workers. It deliberately throws instead of falling back to `MemoryStorage`, so a "default" engine does not silently lose checkpoints after a restart. Use `resolveStorage({ type: 'auto' })` only when an ephemeral fallback is acceptable.
+For demos and local-first prototypes, `resolveDefaultStorage()` from `@lostgradient/weft/storage/auto` picks a durable default for the current runtime: SQLite under Bun or Node, `WebExtensionStorage` in extension contexts, and `IndexedDBStorage` in browsers and Service Workers. It deliberately throws instead of falling back to `MemoryStorage`, so a "default" engine does not silently lose checkpoints after a restart. Use `resolveStorage({ type: 'auto' })` only when an ephemeral fallback is acceptable.
 
-Production recovery needs one engine process per durable store. Use a local durable adapter (`BunSQLiteStorage` or `LMDBStorage`) when the service owns its disk, or `NeonStorage` when the deployment wants managed Postgres durability and point-in-time restore. In either case, validate the store at boot with `assertDurableStorageForRecovery()` and enforce the singleton topology in infrastructure.
+Production recovery needs one engine process per durable store. Use a local durable adapter (`SQLiteStorage` or `LMDBStorage`) when the service owns its disk, or `NeonStorage` when the deployment wants managed Postgres durability and point-in-time restore. In either case, validate the store at boot with `assertDurableStorageForRecovery()` and enforce the singleton topology in infrastructure; the [singleton service deployment guide](documentation/guides/singleton-service-deployment.md) covers the checklist and the optional warn-only second-instance detector.
 
 For long-running workflows, `history.retentionWindow` can compact old event-log records behind the latest checkpoint while preserving verification through a durable watermark. `history.maxEvents` remains a lifetime circuit breaker even after compaction. Use `payloadSize.maxBytes` when operators need an admission-time cap on workflow inputs, signal payloads, and activity results before those values reach storage.
 
@@ -457,19 +422,17 @@ For long-running workflows, `history.retentionWindow` can compact old event-log 
 
 ```typescript
 import { Engine } from '@lostgradient/weft';
-import { serve } from '@lostgradient/weft';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { serve } from '@lostgradient/weft/server';
+import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
 
-const engine = new Engine({ storage: new BunSQLiteStorage('./weft.db') });
+const engine = new Engine({ storage: new SQLiteStorage('./weft.db') });
 engine.register(checkoutWorkflow);
 
 await using server = serve({ engine, port: 7233 });
 // server.url is e.g. "http://0.0.0.0:7233"
 ```
 
-Endpoints under `/api/v1/` cover the full lifecycle: start workflows, list, signal, update, query, cancel, fork, and stream events. JSON-RPC over WebSocket also exposes workflow and fleet event subscriptions for operator UIs that need live state without polling. Content negotiation supports JSON and MessagePack. The server can also mount an externally supplied dashboard shell at known page routes.
-
-The durable workflow catalog records installed manifests and an active revision. Catalog activation does not load code or replace an eagerly registered function. With revision-specific `workflowSource()` registrations, lazy execution resolves the selected source and persists its revision so recovery can request that exact definition. The [workflow revision guide](documentation/guides/workflow-revisions.md) covers loading, guarded activation, pinned schedules, retention, and generated client contracts.
+Endpoints under `/api/v1/` cover the full lifecycle: start workflows, list, signal, update, query, cancel, fork, and stream events. JSON-RPC over WebSocket also exposes workflow and fleet event subscriptions for operator UIs that need live state without polling. Content negotiation supports JSON and MessagePack. `engine.workflows` and the matching `/v1/registry/` operations expose the durable workflow catalog for admin tooling — install a revision's manifest and activate it as the advertised active revision — bookkeeping only, never workflow execution routing; see [`workflow-versioning.md`](documentation/guides/workflow-versioning.md#engineworkflows-public-catalog-control). `workflowSource()` pairs a typed, serializable source descriptor with a never-serialized loader capability, so one workflow can register lazily while another stays eagerly registered; `engine.registerSource()` records the candidate without importing it, and `engine.resolveWorkflowSource()` (or its `engine.workflows.preload()` alias) loads, validates, and installs it into the same catalog with single-flight deduplication per `(name, revision)`. Every execution entry point — `start()`, `startOrSignal()`, `schedule()`, `fork()`, `resume()`, and recovery — awaits resolution for a lazy type before running any handler code, with bounded diagnostics and process-local events for the load pipeline; see [Engine Integration](documentation/guides/workflow-versioning.md#engine-integration-wft-1516). The server can also mount an externally supplied dashboard shell at known page routes; see the [server guide](documentation/guides/server.md#external-dashboard-mounting) for the hosting contract.
 
 ### Remote Workers
 
@@ -497,7 +460,7 @@ await worker.connect();
 
 The core engine runs inside a Web Worker, with a Service Worker acting as the durable persistence layer over `IndexedDB`. Browser-compatible workflow logic ships across server and browser without modification—useful for offline-first apps that need durable client-side workflows. Activities, storage adapters, and other environment-bound pieces still need browser-safe implementations: use `IndexedDBStorage`, `WebExtensionStorage`, or `resolveDefaultStorage()` instead of SQLite storage, swap server-only activities for `fetch`-based equivalents, and so on.
 
-Service Worker deployments can import `ServiceWorkerScheduler` from `@lostgradient/weft` and wire timer wakeups through `onTimerFired: (entry) => engine.fireTimer(entry)`.
+Service Worker deployments can import `ServiceWorkerScheduler` from `@lostgradient/weft/service-worker` and wire timer wakeups through `onTimerFired: (entry) => engine.fireTimer(entry)`. See the [Service Worker guide](documentation/guides/service-worker.md) for the browser runtime wiring and Periodic Background Sync fallback pattern.
 
 ### Observability
 
@@ -524,7 +487,7 @@ Inside workflow code, `ctx.log` emits structured console records with `workflowI
 `TestEngine` swaps the production engine in tests and gives you a virtual clock. `engine.advanceTime('1 hour')` jumps timers forward without waiting; `engine.mock(activity, fake)` swaps in fake activity implementations with type-checked signatures, call recording, and per-call overrides.
 
 ```typescript
-import { TestEngine } from '@lostgradient/weft';
+import { TestEngine } from '@lostgradient/weft/testing';
 import { expect, test } from 'bun:test';
 
 test('onboarding completes after a day', async () => {
@@ -543,28 +506,11 @@ test('onboarding completes after a day', async () => {
 });
 ```
 
-An inline workflow's first turn (and any turn deferred behind it) is normally flushed through a `MessageChannel` `postMessage` — a real event-loop macrotask with no fake-timer injection point. Construct the engine with `inlineLaunchScheduling: 'manual'` to opt out: the engine never constructs that channel and never self-schedules a flush, so a queued start only advances when you call `engine.flushInlineLaunches()`. This drives the exact same code path the scheduled flush uses — no step execution is skipped — so a multi-step workflow can run to completion under fake timers with no real macrotask.
-
-```typescript
-import { Engine, MemoryStorage } from '@lostgradient/weft';
-
-const engine = new Engine({
-  storage: new MemoryStorage(),
-  inlineLaunchScheduling: 'manual',
-});
-engine.register(onboardingWorkflow);
-
-const handle = await engine.start('onboarding', { name: 'Steve' });
-// Nothing has run yet — the queued first turn is waiting.
-await engine.flushInlineLaunches();
-console.log(await handle.result());
-```
-
 For chaos testing, `withChaos()` wraps activities with configurable transient failures, timeouts, and non-retryable errors so you can prove your retry policies actually work.
 
-### Application packaging
+### Single-Binary Distribution
 
-Weft exports source for its consuming applications to compile, and its `weft` and `weft-mcp` command-line entry points execute directly from this workspace. Library workspaces do not produce distribution artifacts.
+`bun build --compile` produces standalone executables for darwin-arm64, darwin-x64, linux-x64, linux-arm64, and windows-x64. The engine, server, and your workflow code embed into a single file with zero runtime dependencies—download, run, done.
 
 ### Error Handling
 
@@ -576,11 +522,11 @@ import { isWeftError } from '@lostgradient/weft';
 try {
   await engine.start('checkout', { orderId: 'order-1' }, { id: 'order-1' });
 } catch (error) {
-  if (!isWeftError(error)) throw error; // not ours—rethrow
+  if (!isWeftError(error)) throw error; // not ours — rethrow
 
   switch (error.code) {
     case 'WorkflowAlreadyExistsError':
-      // idempotent retry—already running
+      // idempotent retry — already running
       break;
     case 'WorkflowNotRegisteredError':
       throw error; // a programming error, not a runtime condition
@@ -590,7 +536,7 @@ try {
 }
 ```
 
-`isWeftError` is an `instanceof` check—the right tool in the common case where the error came from the same module instance. If an error can reach you across a realm or a duplicate module load (multiple copies of `@lostgradient/weft` in one process), `instanceof` is unreliable; use `isWeftErrorLike` to narrow the caught value structurally:
+`isWeftError` is an `instanceof` check — the right tool in the common case where the error came from the same module instance. If an error can reach you across a realm or a duplicate module load (multiple copies of `@lostgradient/weft` in one process), `instanceof` is unreliable; use `isWeftErrorLike` to narrow the caught value structurally:
 
 ```typescript
 import { isWeftErrorLike } from '@lostgradient/weft';
@@ -610,11 +556,27 @@ function isMissingWorkflow(error: unknown): boolean {
 }
 ```
 
-The exported `WeftErrorCode` union lists every code that belongs to a public, exported error class; those codes are stable contract and safe to `switch` on exhaustively. Errors that are internal to Weft also extend `WeftError` but carry codes intentionally left out of `WeftErrorCode`—`isWeftErrorCode` and `isWeftErrorLike` return `false` for them—so internal codes may change between releases without breaking your types.
+The exported `WeftErrorCode` union lists every code that belongs to a public, exported error class; those codes are stable contract and safe to `switch` on exhaustively. Errors that are internal to Weft also extend `WeftError` but carry codes intentionally left out of `WeftErrorCode` — `isWeftErrorCode` and `isWeftErrorLike` return `false` for them — so internal codes may change between releases without breaking your types.
 
-## Workspace usage
+## Installation
 
-Declare `"@lostgradient/weft": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@lostgradient/weft`; the consumer compiles it. Shared external versions come from the root Bun catalog.
+```bash
+bun add @lostgradient/weft
+```
+
+Storage backends and adapters are exported under subpaths so they only load when imported:
+
+```typescript
+import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
+import { LMDBStorage } from '@lostgradient/weft/storage/lmdb';
+import { TursoStorage } from '@lostgradient/weft/storage/turso';
+import { NeonStorage } from '@lostgradient/weft/storage/neon';
+import { IndexedDBStorage } from '@lostgradient/weft/storage/indexeddb';
+import { WebExtensionStorage } from '@lostgradient/weft/storage/web-extension';
+import { HTTPStorage } from '@lostgradient/weft/storage/http';
+```
+
+The `bun` runtime version `1.3.13` or later is required.
 
 ## Step API for `async`/`await` Users
 
@@ -636,25 +598,50 @@ Each `ctx.step()` is a checkpoint boundary. Completed steps replay from storage 
 
 ## Weft vs. Temporal
 
-[Temporal describes workflow recovery in terms of deterministic command replay](https://github.com/temporalio/documentation/blob/main/docs/encyclopedia/event-history/python.mdx). Weft also re-executes workflow code during recovery, but its implementation here reconstructs a generator from checkpointed operation results and durable context state. Neither model makes arbitrary side effects between durable operations safe to repeat.
+| Concept | Temporal | Weft |
+| --- | --- | --- |
+| Core mental model | Replay determinism | Generators pause and resume |
+| Workflow language | Go, Java, TypeScript, Python, .NET, Ruby, PHP | TypeScript only (activities can be any language via `RemoteWorker`) |
+| Activity invocation | `proxyActivities()` + type import | `yield* ctx.run('activityName', input)` (declared in `.activities({...})`) |
+| Timer | Deterministic `workflow.sleep()` | `yield* ctx.sleep("1 hour")` |
+| Signal | `setHandler` + `condition` | `yield* ctx.waitForSignal(name)` |
+| Human review | Signals/queries/updates as [message-passing primitives](https://docs.temporal.io/develop/typescript/workflows/message-passing) | `yield* ctx.review(...)` with [durable review request](src/core/review/index.ts) and decision APIs |
+| Versioning | `patched()` / `deprecatePatch()` | Stored and registered versions are strict recovery guards |
+| Long-running workflows | `continueAsNew()` | None needed (checkpoint size is bounded by live state, not history length) |
+| Dev environment | Docker Compose + Temporal server | `bun add @lostgradient/weft` |
+| Bundling | Webpack for workflow sandbox | None |
 
-For this workspace, the relevant Weft boundaries are concrete:
-
-- Workflows use the TypeScript generator API; remote activities use the versioned worker protocol.
-- The server runtime uses Bun. Browser engine hosts have their own storage and scheduling requirements.
-- Workflow revision routing, strict definition-version checks, and Operative’s observational version stamp are separate contracts; start with the [revision guide](documentation/guides/workflow-revisions.md).
-- Event-log compaction does not remove the lifetime `history.maxEvents` circuit breaker. Size limits and retention still need an operating policy for long-running workflows.
-
-The [TypeScript workflow decision](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md) explains why this repository keeps one workflow runtime while allowing polyglot activities.
+> Weft is for teams whose primary backend language is TypeScript. If you need workflows in multiple languages, [Temporal](https://temporal.io) is the right answer. For the design rationale, see [ADR 0001 — Workflows Are TypeScript-Only by Design](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md).
+>
+> Weft's server runtime is Bun-only for this launch line. If you need the workflow server itself to run as a Node-native process, evaluate [Temporal](https://temporal.io).
 
 ## Documentation
 
-- [Workflow revisions, compatibility, and lazy loading](documentation/guides/workflow-revisions.md)
-- [Shared-store ownership and crash takeover](documentation/guides/shared-store-ownership.md)
-- [Remote task recovery, adoption, and retention](documentation/guides/remote-task-recovery.md)
-- [Remote workers](documentation/guides/remote-workers.md)
-- [Application mailbox](documentation/guides/application-mailbox.md)
-- [Worker API](documentation/reference/api-workers.md)
-- [Remote-worker wire protocol](documentation/reference/remote-worker-protocol.md)
-- [TypeScript workflows and polyglot activities](documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md)
-- [Corvidae workspace commands](../../README.md)
+Getting started:
+
+- [Installation](documentation/getting-started/installation.md)
+- [Hello World](documentation/getting-started/hello-world.md)
+- [Transports](documentation/getting-started/transports.md)
+
+Guides:
+
+- [Workflows](documentation/guides/workflows.md), [Activities](documentation/guides/activities.md), [Storage](documentation/guides/storage.md), [Server](documentation/guides/server.md)
+- [Signals and Queries](documentation/guides/signals-and-queries.md), [Synchronous Updates](documentation/guides/synchronous-updates.md)
+- [Durable Timers](documentation/guides/durable-timers.md), [Timeouts](documentation/guides/timeouts.md), [Parallel Execution](documentation/guides/parallel-execution.md)
+- [Search Attributes](documentation/guides/search-attributes.md), [Workflow Visibility Backfill](documentation/guides/workflow-visibility-backfill.md), [State](documentation/guides/state.md), [Session State](documentation/guides/session-state.md), [Events](documentation/guides/events.md)
+- [Interceptors](documentation/guides/interceptors.md), [Observability](documentation/guides/observability.md), [Testing](documentation/guides/testing.md)
+- [Workflow Versioning](documentation/guides/workflow-versioning.md), [Remote Workers](documentation/guides/remote-workers.md), [Service Worker](documentation/guides/service-worker.md), [Resource Management](documentation/guides/resource-management.md), [Concurrency: Mutex and Semaphore](documentation/guides/concurrency.md), [Application Mailbox](documentation/guides/mailbox.md), [Application Outbox](documentation/guides/outbox.md)
+
+Architecture and reference:
+
+- [Design Philosophy](documentation/architecture/design-philosophy.md), [Durability Guarantee](documentation/architecture/durability-guarantee.md), [Checkpoint vs. Replay](documentation/architecture/checkpoint-versus-replay.md), [Web Standards](documentation/architecture/web-standards.md)
+- [Temporal Comparison](documentation/architecture/temporal-comparison.md), [Inngest Comparison](documentation/architecture/inngest-comparison.md), [Browser Runtime](documentation/architecture/browser-runtime.md), [Web Workers](documentation/architecture/web-workers.md), [Single Binary](documentation/architecture/single-binary.md)
+- [API Reference](documentation/reference/) (Engine, Context, Storage, Server, Workers, Testing, Events, Errors, Interceptors, Observability, CLI, Configuration, Types)
+
+Contributing:
+
+- [Development Setup](documentation/contributing/development-setup.md), [Documentation Maintenance](documentation/contributing/documentation-maintenance.md), [Subprocess Durability Tests](documentation/contributing/subprocess-durability-tests.md), [Architecture Decisions](documentation/contributing/architecture-decisions.md)
+
+## License
+
+MIT

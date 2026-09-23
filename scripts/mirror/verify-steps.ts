@@ -2,6 +2,7 @@ import { join } from 'node:path';
 
 import {
   importableSpecifiers,
+  nodeImportableSpecifiers,
   resolveTool,
   tarballFilename,
   type SmokeTestPackage,
@@ -49,7 +50,9 @@ export type VerifyStepKind =
   | 'typecheck-private'
   | 'write-consumer-project'
   | 'consumer-install'
-  | 'consumer-run';
+  | 'consumer-run'
+  | 'consumer-run-node'
+  | 'prepack';
 
 /** One command `verifyTarget` runs, or the rendered workflow's job runs as a step. */
 export interface VerifyStep {
@@ -134,7 +137,7 @@ function consumerManifest(packages: readonly SmokeTestPackage[]): string {
   )}\n`;
 }
 
-/** The consumer smoke-test project's `smoke.ts`, byte-identical to what `runConsumerSmokeTest` writes. */
+/** The consumer smoke-test project's `smoke.mjs`, byte-identical to what `runConsumerSmokeTest` writes. */
 function consumerSmokeScript(specifiers: readonly string[]): string {
   return (
     `${specifiers.map((specifier, index) => `import * as module${index} from '${specifier}';`).join('\n')}\n` +
@@ -148,12 +151,81 @@ function consumerSmokeScript(specifiers: readonly string[]): string {
 }
 
 /**
- * The ordered verification steps for one target: install, then per published package build,
- * typecheck, pack and packaging checks, then per checkable private workspace typecheck, then the
- * consumer smoke test. Mirrors `verifyTarget`'s own comment on why the order is what it is: the
- * root install first because everything after it depends on a satisfied `node_modules`, then one
- * package at a time rather than a root fan-out, because this list verifies exactly what the plan
- * emits and nothing the target's own root scripts might additionally include.
+ * Raised when the published packages cannot be put in an order that builds every dependency before
+ * its consumers — today, only because their intra-target edges form a cycle.
+ *
+ * This is a hard failure, and deliberately one that reaches further than verification. `planSurface`
+ * renders `mirror-verify.yaml` from the same `published` list whenever it has a `targetDirectory` to
+ * read the release workflow from — which every `stageSurface` does — so a cycle refuses the *plan*
+ * there, not just the run: a target whose packages depend on each other circularly has no build
+ * order at all,
+ * and a plan that emitted a workflow claiming otherwise would be a workflow that cannot pass. The
+ * alternative — ordering what can be ordered and leaving the rest in discovery order — is the
+ * defect COR-1289 fixes, reintroduced quietly for the one case where it is guaranteed to bite.
+ */
+export class VerifyStepOrderError extends Error {}
+
+/**
+ * The published packages, reordered so every package follows the packages it depends on.
+ *
+ * Kahn's algorithm, taking every package whose dependencies are already satisfied in each round and
+ * keeping them in the caller's discovery order within the round. Stability matters: discovery order
+ * is what the step list used before COR-1289 and what every target with no intra-target edges still
+ * gets, so a target that never had the defect sees no change at all.
+ */
+function orderByDependencies(published: readonly PublishedPackage[]): readonly PublishedPackage[] {
+  const byPublicName = new Map(published.map((entry) => [entry.publicName, entry]));
+  for (const entry of published) {
+    for (const dependency of entry.dependsOn) {
+      if (byPublicName.has(dependency)) continue;
+      // `surface.ts` narrows `dependsOn` to the published set before it ever reaches here, so a
+      // stranger means the two halves disagree about what this target publishes — a defect to
+      // surface, not one to route around by ignoring the edge and ordering as if it were absent.
+      throw new VerifyStepOrderError(
+        `${entry.publicName} depends on ${dependency}, which this target does not publish; dependsOn is expected to name only published packages of the same target`,
+      );
+    }
+  }
+
+  const ordered: PublishedPackage[] = [];
+  const built = new Set<string>();
+  let remaining = [...published];
+  while (remaining.length > 0) {
+    const ready = remaining.filter((entry) =>
+      entry.dependsOn.every((dependency) => built.has(dependency)),
+    );
+    if (ready.length === 0) {
+      const edges = remaining.flatMap((entry) =>
+        entry.dependsOn.map((dependency) => `  ${entry.publicName} -> ${dependency}`),
+      );
+      throw new VerifyStepOrderError(
+        `These published packages depend on each other in a cycle, so no build order satisfies them: ${remaining
+          .map((entry) => entry.publicName)
+          .join(', ')}\n${edges.join('\n')}`,
+      );
+    }
+    ordered.push(...ready);
+    for (const entry of ready) built.add(entry.publicName);
+    remaining = remaining.filter((entry) => !ready.includes(entry));
+  }
+  return ordered;
+}
+
+/**
+ * The ordered verification steps for one target: install, then every published package's build,
+ * then every one's typecheck, then per package pack and packaging checks, then per checkable
+ * private workspace typecheck, then the consumer smoke test. Mirrors `verifyTarget`'s own comment
+ * on why the order is what it is: the root install first because everything after it depends on a
+ * satisfied `node_modules`, then one package at a time rather than a root fan-out, because this
+ * list verifies exactly what the plan emits and nothing the target's own root scripts might
+ * additionally include.
+ *
+ * COR-1289 split the per-package loop into phases and reordered the packages within them. A
+ * package's `typecheck` resolves an edge to a sibling in the same target through that sibling's
+ * `exports`, which name `dist/`; interleaving build and typecheck per package therefore type-checks
+ * the first package against siblings that have not been built yet. Building everything first is
+ * what closes that, and `orderByDependencies` is what makes "everything" reachable — a dependency
+ * later in discovery order than its consumer has to build earlier than it.
  */
 export function buildVerifySteps(
   inputs: VerifyStepsInputs,
@@ -169,24 +241,46 @@ export function buildVerifySteps(
   ];
 
   const tarballsDirectory = join(env.scratchDirectory, 'tarballs');
-  const smokeTestPackages: SmokeTestPackage[] = [];
+  const tarballFor = (entry: PublishedPackage): string =>
+    join(tarballsDirectory, tarballFilename(entry.publicName, entry.version));
+  const ordered = orderByDependencies(inputs.published);
 
-  for (const entry of inputs.published) {
-    const cwd = env.resolveDirectory(entry.directory);
+  for (const entry of ordered) {
     steps.push({
       kind: 'build',
       description: `build ${entry.publicName}`,
-      cwd,
+      cwd: env.resolveDirectory(entry.directory),
       command: ['bun', 'run', 'build'],
       publicName: entry.publicName,
     });
+  }
+
+  for (const entry of ordered) {
     steps.push({
       kind: 'typecheck-published',
       description: `typecheck ${entry.publicName}`,
-      cwd,
+      cwd: env.resolveDirectory(entry.directory),
       command: ['bun', 'run', 'typecheck'],
       publicName: entry.publicName,
     });
+    // COR-1192: the release workflow runs `bun run prepack` right before `npm publish`, and the first
+    // tagged release failed there — twice — on gates nothing before the tag had run. Whatever the
+    // published package's recorded `prepack` is, it runs here too, so a tag cannot be the first
+    // place it executes. Only for a package whose surface records the script; the surface is the
+    // ruling about the published scripts and is what the sync writes onto the manifest.
+    if (typeof entry.entry.build?.scripts?.['prepack'] === 'string') {
+      steps.push({
+        kind: 'prepack',
+        description: `prepack ${entry.publicName}`,
+        cwd: env.resolveDirectory(entry.directory),
+        command: ['bun', 'run', 'prepack'],
+        publicName: entry.publicName,
+      });
+    }
+  }
+
+  for (const entry of ordered) {
+    const cwd = env.resolveDirectory(entry.directory);
     steps.push({
       kind: 'pack',
       description: `pack ${entry.publicName}`,
@@ -202,7 +296,7 @@ export function buildVerifySteps(
       ],
       publicName: entry.publicName,
     });
-    const tarball = join(tarballsDirectory, tarballFilename(entry.publicName, entry.version));
+    const tarball = tarballFor(entry);
     steps.push({
       kind: 'publint',
       description: `publint ${entry.publicName}`,
@@ -219,8 +313,18 @@ export function buildVerifySteps(
       publicName: entry.publicName,
       tarball,
     });
-    smokeTestPackages.push({ publicName: entry.publicName, tarball, exports: entry.exports });
   }
+
+  // Discovery order, not the build order above. Nothing about importing a packed tarball depends on
+  // the order the tarballs were produced in — every pack has already run by the time the consumer
+  // project is written — and `sync.ts` reports the smoke test's specifiers with `specifiersFor`,
+  // which reads `published` as the caller passed it. Deriving this list from `ordered` instead would
+  // make the reported specifiers disagree with the ones the script actually imports.
+  const smokeTestPackages: SmokeTestPackage[] = inputs.published.map((entry) => ({
+    publicName: entry.publicName,
+    tarball: tarballFor(entry),
+    exports: entry.exports,
+  }));
 
   for (const entry of inputs.privateWorkspaces) {
     if (!entry.emitsTypeScript) continue;
@@ -237,6 +341,9 @@ export function buildVerifySteps(
   const specifiers = smokeTestPackages.flatMap((entry) =>
     importableSpecifiers(entry.publicName, entry.exports),
   );
+  const nodeSpecifiers = smokeTestPackages.flatMap((entry) =>
+    nodeImportableSpecifiers(entry.publicName, entry.exports),
+  );
   steps.push({
     kind: 'write-consumer-project',
     description: 'write the consumer smoke-test project',
@@ -244,7 +351,8 @@ export function buildVerifySteps(
     command: [],
     files: {
       'package.json': consumerManifest(smokeTestPackages),
-      'smoke.ts': consumerSmokeScript(specifiers),
+      'smoke.mjs': consumerSmokeScript(specifiers),
+      'smoke-node.mjs': consumerSmokeScript(nodeSpecifiers),
     },
   });
   steps.push({
@@ -257,7 +365,19 @@ export function buildVerifySteps(
     kind: 'consumer-run',
     description: `import ${specifiers.length} specifier(s) from the packed tarballs`,
     cwd: consumerDirectory,
-    command: ['bun', 'run', 'smoke.ts'],
+    command: ['bun', 'run', 'smoke.mjs'],
+  });
+  // Under node as well (COR-1192): the packed 0.26.0 tarball imported under bun and failed under
+  // node, because Bun's bundler rewrites an inlined CommonJS dependency's `require` to
+  // `import.meta.require`, which only bun defines. The script is plain JavaScript so both
+  // runtimes execute the same script shape; node's list omits the subpaths whose export map is
+  // bun's alone (`types` + `bun`), which node correctly refuses. A resolution node cannot make
+  // for a subpath it should is a red step.
+  steps.push({
+    kind: 'consumer-run-node',
+    description: `import ${nodeSpecifiers.length} specifier(s) from the packed tarballs under node`,
+    cwd: consumerDirectory,
+    command: ['node', 'smoke-node.mjs'],
   });
 
   return steps;

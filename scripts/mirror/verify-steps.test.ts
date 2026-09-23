@@ -1,8 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 
+import { committedPlans } from './committed-plans.ts';
+
 import { tarballFilename } from './packaging.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
-import { buildVerifySteps, type VerifyEnvironment } from './verify-steps.ts';
+import {
+  buildVerifySteps,
+  VerifyStepOrderError,
+  type VerifyEnvironment,
+  type VerifyStepKind,
+} from './verify-steps.ts';
 
 const published: PublishedPackage[] = [
   {
@@ -13,6 +20,7 @@ const published: PublishedPackage[] = [
     exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
     files: ['dist'],
     version: '1.2.3',
+    dependsOn: [],
   },
 ];
 
@@ -70,7 +78,91 @@ describe('buildVerifySteps', () => {
       'write-consumer-project',
       'consumer-install',
       'consumer-run',
+      'consumer-run-node',
     ]);
+  });
+
+  test('a package is built before the packages that depend on it, whatever order discovery found them in', () => {
+    // COR-1289: `armorer` comes first in discovery order and depends on `@lostgradient/cryptography`,
+    // which comes second. A typecheck resolves an intra-target dependency through its `exports` →
+    // `dist/`, so building in discovery order leaves `cryptography` with no `dist/` when `armorer`
+    // is type-checked and the step fails with `Cannot find module '@lostgradient/cryptography'`.
+    const dependentFirst: PublishedPackage[] = [
+      {
+        workspace: '@lostgradient/armorer',
+        directory: 'packages/armorer',
+        publicName: 'armorer',
+        entry: {} as PublishedPackage['entry'],
+        exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+        files: ['dist'],
+        version: '2.0.0',
+        dependsOn: ['@lostgradient/cryptography'],
+      },
+      {
+        workspace: '@lostgradient/cryptography',
+        directory: 'packages/cryptography',
+        publicName: '@lostgradient/cryptography',
+        entry: {} as PublishedPackage['entry'],
+        exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+        files: ['dist'],
+        version: '1.2.3',
+        dependsOn: [],
+      },
+    ];
+    const steps = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: dependentFirst, privateWorkspaces: [] },
+      localEnvironment(),
+    );
+    const indexOf = (kind: VerifyStepKind, publicName: string): number =>
+      steps.findIndex((step) => step.kind === kind && step.publicName === publicName);
+    const dependencyBuild = indexOf('build', '@lostgradient/cryptography');
+    expect(dependencyBuild).toBeGreaterThan(-1);
+    expect(dependencyBuild).toBeLessThan(indexOf('build', 'armorer'));
+    expect(dependencyBuild).toBeLessThan(indexOf('typecheck-published', 'armorer'));
+    // The phase split itself, which is what makes the ordering sufficient rather than merely
+    // necessary: every build runs before any typecheck, so no typecheck can resolve a sibling's
+    // `exports` against a `dist/` that a later build was going to produce.
+    const kinds = steps.map((step) => step.kind);
+    expect(kinds.lastIndexOf('build')).toBeLessThan(kinds.indexOf('typecheck-published'));
+  });
+
+  test('a dependency cycle between two published packages is refused, naming both', () => {
+    const cyclic: PublishedPackage[] = [
+      {
+        workspace: '@lostgradient/armorer',
+        directory: 'packages/armorer',
+        publicName: 'armorer',
+        entry: {} as PublishedPackage['entry'],
+        exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+        files: ['dist'],
+        version: '2.0.0',
+        dependsOn: ['@lostgradient/cryptography'],
+      },
+      {
+        workspace: '@lostgradient/cryptography',
+        directory: 'packages/cryptography',
+        publicName: '@lostgradient/cryptography',
+        entry: {} as PublishedPackage['entry'],
+        exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+        files: ['dist'],
+        version: '1.2.3',
+        dependsOn: ['armorer'],
+      },
+    ];
+    let thrown: unknown;
+    try {
+      buildVerifySteps(
+        { installCommand: ['bun', 'install'], published: cyclic, privateWorkspaces: [] },
+        localEnvironment(),
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(VerifyStepOrderError);
+    const message = thrown instanceof Error ? thrown.message : '';
+    expect(message).toContain('armorer');
+    expect(message).toContain('@lostgradient/cryptography');
+    expect(message).toContain('cycle');
   });
 
   test('a private workspace that emits no TypeScript gets no typecheck step', () => {
@@ -168,11 +260,12 @@ describe('buildVerifySteps', () => {
     );
     const localWrite = local.find((step) => step.kind === 'write-consumer-project');
     const workflowWrite = workflow.find((step) => step.kind === 'write-consumer-project');
-    // `smoke.ts` only lists import specifiers, never a path, so it really is byte-identical.
+    // `smoke.mjs` only lists import specifiers, never a path, so it really is byte-identical.
     // `package.json` is not — its `file:` dependency embeds the tarball's path, which legitimately
     // differs by scratch directory — so only its *structure*, not its bytes, is compared.
-    expect(localWrite?.files?.['smoke.ts']).toBe(workflowWrite?.files?.['smoke.ts']);
-    expect(localWrite?.files?.['smoke.ts']).toContain("from '@lostgradient/cryptography'");
+    expect(localWrite?.files?.['smoke.mjs']).toBe(workflowWrite?.files?.['smoke.mjs']);
+    expect(localWrite?.files?.['smoke.mjs']).toContain("from '@lostgradient/cryptography'");
+    expect(localWrite?.files?.['smoke-node.mjs']).toBe(workflowWrite?.files?.['smoke-node.mjs']);
     const localManifest = JSON.parse(localWrite?.files?.['package.json'] ?? '{}') as {
       dependencies: Record<string, string>;
     };
@@ -193,5 +286,106 @@ describe('buildVerifySteps', () => {
     const workflowInstall = workflow.find((step) => step.kind === 'consumer-install');
     expect(localInstall?.command).toEqual(['bun', 'install', '--offline']);
     expect(localInstall?.command).toEqual(workflowInstall?.command);
+  });
+});
+
+/**
+ * COR-1192. The packed 0.26.0 tarball imported cleanly under bun and failed under node
+ * (`import.meta.require` from an inlined CommonJS dependency), and the emitted workflow was green
+ * because its smoke test ran under bun alone. The consumer script is plain JavaScript and runs
+ * under both runtimes, one step each, bun first, so a runtime-specific resolution failure is a
+ * red check rather than a release surprise.
+ */
+describe('the consumer smoke test runs under node as well as bun', () => {
+  const steps = buildVerifySteps(
+    { installCommand: ['bun', 'install', '--frozen-lockfile'], published, privateWorkspaces: [] },
+    localEnvironment(),
+  );
+
+  test('writes a plain-JavaScript smoke script both runtimes can execute', () => {
+    const write = steps.find((step) => step.kind === 'write-consumer-project');
+    expect(Object.keys(write?.files ?? {}).toSorted()).toEqual([
+      'package.json',
+      'smoke-node.mjs',
+      'smoke.mjs',
+    ]);
+    expect(write?.files?.['smoke.mjs']).not.toMatch(/:\s*\w+\s*[=;)]/);
+  });
+
+  test('runs it under bun and then under node, after the consumer install', () => {
+    const kinds = steps.map((step) => step.kind);
+    const install = kinds.indexOf('consumer-install');
+    const bun = kinds.indexOf('consumer-run');
+    const node = kinds.indexOf('consumer-run-node');
+    expect(install).toBeGreaterThan(-1);
+    expect(bun).toBeGreaterThan(install);
+    expect(node).toBeGreaterThan(bun);
+    expect(steps[bun]?.command).toEqual(['bun', 'run', 'smoke.mjs']);
+    expect(steps[node]?.command).toEqual(['node', 'smoke-node.mjs']);
+    expect(steps[node]?.cwd).toBe(steps[bun]?.cwd);
+  });
+
+  test('a subpath exported for bun alone is imported under bun and left out under node', () => {
+    const first = published[0];
+    if (first === undefined) throw new Error('the fixture has no published package');
+    const bunOnly = {
+      ...first,
+      exports: {
+        ...first.exports,
+        './bun-only': { types: './dist/bun-only.d.ts', bun: './dist/bun-only.js' },
+      },
+    } as (typeof published)[number];
+    const write = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: [bunOnly], privateWorkspaces: [] },
+      localEnvironment(),
+    ).find((step) => step.kind === 'write-consumer-project');
+    expect(write?.files?.['smoke.mjs']).toContain(`from '${first.publicName}/bun-only'`);
+    expect(write?.files?.['smoke-node.mjs']).not.toContain('/bun-only');
+    expect(write?.files?.['smoke-node.mjs']).toContain(`from '${first.publicName}'`);
+  });
+});
+
+/**
+ * COR-1192. `release.yaml` runs `bun run prepack` right before `npm publish`; the first tagged
+ * release failed there twice on gates nothing before the tag had run. A published package whose
+ * surface records a `prepack` script gets a step for it, after its typecheck and before its pack.
+ */
+describe('prepack runs in verification when the surface records it', () => {
+  test('a package with a recorded prepack gets the step between typecheck and pack; one without does not', () => {
+    const first = published[0];
+    if (first === undefined) throw new Error('the fixture has no published package');
+    const withPrepack = {
+      ...first,
+      entry: {
+        ...first.entry,
+        build: {
+          ...first.entry.build,
+          scripts: { ...first.entry.build?.scripts, prepack: 'bun run build' },
+        },
+      },
+    };
+    const without = {
+      ...first,
+      entry: { ...first.entry, build: { ...first.entry.build, scripts: {} } },
+    };
+    const steps = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: [withPrepack], privateWorkspaces: [] },
+      localEnvironment(),
+    );
+    const kinds = steps.map((step) => step.kind);
+    expect(kinds.indexOf('prepack')).toBeGreaterThan(kinds.indexOf('typecheck-published'));
+    expect(kinds.indexOf('prepack')).toBeLessThan(kinds.indexOf('pack'));
+    expect(steps[kinds.indexOf('prepack')]?.command).toEqual(['bun', 'run', 'prepack']);
+    const bare = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: [without], privateWorkspaces: [] },
+      localEnvironment(),
+    );
+    expect(bare.map((step) => step.kind)).not.toContain('prepack');
+  });
+
+  test('weft’s committed surface records a prepack, so its rendered workflow runs it', async () => {
+    const { plan } = committedPlans.weft;
+    const weft = plan.published.find((entry) => entry.publicName === '@lostgradient/weft');
+    expect(weft?.entry.build.scripts['prepack']).toContain('verify:exports');
   });
 });

@@ -7,6 +7,7 @@ import {
   planManifests,
   publicNameFor,
   readExistingManifest,
+  targetHasCatalog as targetCanHoldCatalog,
   type ManifestPlan,
   type PlanOptions,
 } from './manifests.ts';
@@ -21,7 +22,13 @@ import {
   type SurfaceExportsMap,
 } from './package-surface.ts';
 import { checkParity, loadRegistryBaseline, type ParityResult } from './registry-baseline.ts';
-import { assertSingleOwner, planSource, type EmittedWorkspace, type SourcePlan } from './source.ts';
+import {
+  applyVersionConstants,
+  assertSingleOwner,
+  planSource,
+  type EmittedWorkspace,
+  type SourcePlan,
+} from './source.ts';
 import { assertNoSourceEscapes } from './target-resolvability.ts';
 import {
   assertTypeScriptEdgeClosed,
@@ -84,6 +91,22 @@ export interface PublishedPackage {
    * rendered `mirror-verify.yaml` workflow do.
    */
   version: string;
+  /**
+   * The public names of the other *published* packages in this target that this one depends on.
+   *
+   * COR-1289: verification builds and type-checks each published package in its own directory, and
+   * a typecheck resolves an edge to a sibling package through that sibling's `exports`, which point
+   * at `dist/`. A sibling that has not been built yet has no `dist/`, so the typecheck fails with
+   * `Cannot find module '@lostgradient/<dependency>'` — which is exactly what agent-bureau hit,
+   * `armorer` being first in discovery order with four unbuilt dependencies behind it. Recording
+   * the edges here is what lets `verify-steps.ts` order the step list by them instead of by the
+   * order the workspace walk happened to find directories in.
+   *
+   * Taken from `planManifests`'s `intraTargetEdges`, narrowed to the published set: an edge to a
+   * private workspace in the same target is a real `workspace:*` edge but not a build order — a
+   * private workspace is never packed and ships its source, so there is no `dist/` to wait for.
+   */
+  dependsOn: string[];
 }
 
 /**
@@ -227,7 +250,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   const baseline = await loadRegistryBaseline();
   const root = (await Bun.file(join(options.corvidaeRoot, 'package.json')).json()) as JsonObject;
   const catalog = isJsonObject(root['catalog']) ? (root['catalog'] as Record<string, string>) : {};
-  const targetHasCatalog = options.target === 'cinder';
+  const targetHasCatalog = targetCanHoldCatalog(options.target);
 
   const components = await discoverComponents();
 
@@ -291,6 +314,8 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
       exports: resolved.exports,
       files: resolved.files,
       version: manifestVersion(manifest, resolved.publicName),
+      // Filled once the loop knows the whole published set; see below.
+      dependsOn: [],
     });
 
     parity.push(checkParity(baseline, resolved.publicName, resolved.exports));
@@ -306,6 +331,17 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     );
   }
 
+  // COR-1289: narrow the transform's own intra-target edges to the edges between published
+  // packages. Deferred until the loop is done for the same reason `emitsTypeScript` is below —
+  // a package's dependency can be discovered after the package itself, which is the whole defect
+  // being fixed, so the published set is only complete once every workspace has been walked.
+  const publishedNames = new Set(published.map((entry) => entry.publicName));
+  for (const entry of published) {
+    entry.dependsOn = (manifestPlan.intraTargetEdges.get(entry.workspace) ?? []).filter((name) =>
+      publishedNames.has(name),
+    );
+  }
+
   const typescript = await planTypeScriptConfiguration({
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
@@ -316,6 +352,9 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   assertTypeScriptEdgeClosed(manifestPlan.droppedEdges, typescript);
 
   const source = await planSource(options.corvidaeRoot, emittedWorkspaces, options.targetDirectory);
+  // COR-1192: the exported version literal follows the composed manifest's `version`, which
+  // `published` has just resolved, so tag, manifest and `VERSION` agree at every sync.
+  applyVersionConstants(source.files, published);
   for (const entry of privateWorkspaces) {
     entry.emitsTypeScript = source.typeScriptWorkspaces.includes(entry.workspace);
   }

@@ -8,7 +8,9 @@ import {
   extractWorkflowInstalls,
   installFlags,
   InstallParityError,
+  readReleaseWorkflowBunVersion,
   readWorkflowInstalls,
+  resolveReleaseWorkflowFile,
   type WorkflowInstall,
 } from './install-parity.ts';
 
@@ -187,6 +189,68 @@ describe('readWorkflowInstalls', () => {
     const directory = mkdtempSync(join(tmpdir(), 'mirror-install-parity-'));
     try {
       expect(await readWorkflowInstalls(directory)).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * COR-1287: which spelling a target uses for its release workflow is the target's business, and
+ * until this issue it was a default parameter that happened to be right for the two targets that
+ * existed. GitHub Actions accepts both extensions; weft and cinder carry `release.yaml`,
+ * stevekinney/agent-bureau carries `release.yml`.
+ */
+describe('resolveReleaseWorkflowFile', () => {
+  /** A clone carrying exactly the named workflow files, each with a real-shaped Bun pin. */
+  function cloneWith(names: readonly string[]): string {
+    const directory = mkdtempSync(join(tmpdir(), 'mirror-release-workflow-'));
+    const workflows = join(directory, '.github', 'workflows');
+    mkdirSync(workflows, { recursive: true });
+    for (const name of names) {
+      writeFileSync(join(workflows, name), '        with:\n          bun-version: 1.4.0\n');
+    }
+    return directory;
+  }
+
+  it('finds either spelling, and reads the pin out of whichever one is there', async () => {
+    for (const name of ['release.yaml', 'release.yml']) {
+      const directory = cloneWith([name]);
+      try {
+        expect(await resolveReleaseWorkflowFile(directory)).toBe(name);
+        expect(await readReleaseWorkflowBunVersion(directory)).toBe('1.4.0');
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('refuses a clone carrying both rather than letting probe order decide', async () => {
+    const directory = cloneWith(['release.yaml', 'release.yml']);
+    try {
+      await expect(resolveReleaseWorkflowFile(directory)).rejects.toThrow(InstallParityError);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a clone carrying neither, naming both spellings it looked for', async () => {
+    const directory = cloneWith([]);
+    try {
+      await expect(resolveReleaseWorkflowFile(directory)).rejects.toThrow(
+        /neither release\.yaml nor release\.yml/,
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('still honours a filename a caller names explicitly', async () => {
+    const directory = cloneWith(['release.yml']);
+    try {
+      await expect(readReleaseWorkflowBunVersion(directory, 'release.yaml')).rejects.toThrow(
+        /release\.yaml does not exist/,
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

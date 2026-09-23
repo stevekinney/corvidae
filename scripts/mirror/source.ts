@@ -252,6 +252,11 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
   ],
   '@lostgradient/weft': [
     {
+      paths: ['README.md'],
+      reason:
+        "The package's published front page, shipped through its `files` array (COR-1192). `target-owned.json` has always said per-package READMEs are the transform's, but nothing emitted one, so weft's public README lived only on the target and drifted (it carried a release literal). Corvidae's copy is now that front page — no version literal in it; the manifest and `VERSION` carry the version — and it is emitted with the source it describes.",
+    },
+    {
       paths: ['scripts/lib/workflow-visibility-backfill.ts'],
       reason:
         'Imported by `src/core/engine/list-candidate-resolution.test.ts` and `src/storage/bun-sql-workflow-visibility-backfill.test.ts`.',
@@ -330,46 +335,70 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
  * no source to validate is not a workspace — and the flag means "there is emitted source worth
  * type-checking", which these files are not the evidence for.
  */
+/**
+ * Files whose single exported version literal the transform rewrites to the composed manifest's
+ * `version`, one per workspace, target-relative to the workspace directory.
+ *
+ * COR-1192. A published manifest's `version` is target-owned and the transform never writes it;
+ * `src/version.ts` is emitted source. Left alone, the next sync after a target bump would ship
+ * corvidae's stale literal beside the bumped manifest, against the release contract that tag,
+ * manifest and exported `VERSION` agree. The manifest plan already resolves the version every
+ * emitted manifest carries, so the constant is derived from it at emission: parity by
+ * construction, at every sync, with the target's `verify-release-version.ts` left as the tag gate.
+ * The alternative measured first — `version.ts` importing `package.json` — has weft's `Bun.build`
+ * inline the whole manifest object into every bundle for one string. Declared explicitly rather
+ * than by filename convention, so a workspace that stores its version some other way is a visible
+ * omission here rather than a silent miss.
+ */
+export const versionConstants: Readonly<Record<string, string>> = {
+  '@lostgradient/weft': 'src/version.ts',
+};
+
+/** The one shape a declared version file may have: any leading comment, then the export. */
+const versionConstantShape = /^([\s\S]*?)export const VERSION = '([^']*)';\n$/;
+
+/**
+ * Rewrite each declared version file in `files` to its package's composed version, in place.
+ *
+ * Returns the target-relative paths rewritten. A declared file the plan does not carry, or one
+ * whose content is not exactly the documented export, is a refusal: the rewrite exists so the
+ * literal can never disagree with the manifest, and a shape it cannot see through would let it.
+ */
+export function applyVersionConstants(
+  files: Record<string, string | Uint8Array>,
+  published: readonly { workspace: string; directory: string; version: string }[],
+): string[] {
+  const rewritten: string[] = [];
+  for (const entry of published) {
+    const declared = versionConstants[entry.workspace];
+    if (declared === undefined) continue;
+    const path = `${entry.directory}/${declared}`;
+    const current = files[path];
+    if (current === undefined) {
+      throw new SourceEmissionError(
+        `${entry.workspace} declares ${declared} as its version constant in versionConstants, but the plan emits no ${path}`,
+      );
+    }
+    const text = typeof current === 'string' ? current : new TextDecoder().decode(current);
+    const match = versionConstantShape.exec(text);
+    if (!match) {
+      throw new SourceEmissionError(
+        `${entry.workspace}'s ${path} is declared as a version constant but is not shaped as \`export const VERSION = '<version>';\` after an optional comment; the transform refuses to guess where the version lives`,
+      );
+    }
+    const next = `${match[1]}export const VERSION = '${entry.version}';\n`;
+    files[path] = typeof current === 'string' ? next : new TextEncoder().encode(next);
+    rewritten.push(path);
+  }
+  return rewritten.toSorted();
+}
+
 export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
   '@lostgradient/weft': [
-    {
-      paths: [
-        'scripts/check-catalog-completeness.ts',
-        'scripts/check-definition-vocabulary.ts',
-        'scripts/check-engine-internals-field-access.ts',
-        'scripts/check-implementation-file-sizes.test.ts',
-        'scripts/check-implementation-file-sizes.ts',
-        'scripts/check-import-cycles.ts',
-        'scripts/check-internal-imports.ts',
-        'scripts/check-lint-disables.test.ts',
-        'scripts/check-lint-disables.ts',
-        'scripts/check-revision-keyed-lookups.test.ts',
-        'scripts/check-revision-keyed-lookups.ts',
-        'scripts/check-type-ergonomics.ts',
-      ],
-      reason:
-        'The nine gates corvidae’s own `lint` script runs, plus the three that have tests. `check-catalog-drift.ts` is absent on purpose: corvidae rejected that gate, and because nothing prunes, the target’s copy would survive a sync — dropping its stage from the target’s `lint` and deleting the script is a target-side edit, not an emission.',
-    },
-    {
-      paths: ['scripts/check-coverage.ts', 'scripts/check-coverage.test.ts', 'bunfig.toml'],
-      reason:
-        'The coverage gate corvidae’s own `test:coverage` script runs (COR coverage-gate adoption). Its allowance registry is line-keyed against corvidae’s own source, not upstream’s, so unlike the nine lint gates above it is not a target-drift check: it is the mechanism that makes a coverage regression fail here, on corvidae’s tree, instead of at the next sync against the target’s stale copy. Declared with its test because the test exercises the layering, ignore-pattern, and LCOV-parsing invariants the gate depends on. `bunfig.toml` travels with them rather than in `additionalSourceRoots`: `check-coverage.ts` imports it directly (`import bunfig from "../bunfig.toml"`) so `[test].coveragePathIgnorePatterns` stays a single source of truth instead of a hand-rolled parse that could drift from the file Bun itself reads, and it is also read by every other `bun test` invocation in the target — the same file, not an import-only dependency, which is why it sits with the gate it configures rather than in the imported-but-not-owned table. `packages/weft/bunfig.toml` sits outside `src/`, so without this declaration COR-1221’s source boundary would leave it unemitted, the two copies would drift, and the emitted target would run the coverage gate — and its `[test].pathIgnorePatterns` test discovery — against corvidae’s stale rules.',
-    },
-    {
-      paths: ['scripts/benchmarks/environment-configuration.test.ts'],
-      reason:
-        "The coverage gate's own dependency, one layer removed (COR coverage-gate adoption): `additionalSourceRoots` already declares `scripts/benchmarks/environment-configuration.ts` (imported by `benchmark-environment.ts`, which `src/storage/bun-sql-benchmark.test.ts` imports), but nothing emitted imports this file's own test — it exists solely to unit-test that module directly. Without declaring it, corvidae's own `bun run test:coverage` discovers and runs it by directory-wide `bun test` convention (keeping the module's coverage complete here), while the target's copy of the module has no accompanying test at all and the coverage gate fails against the emitted tree even though it passes against corvidae's. Self-contained: imports only `bun:test` and the already-declared `./environment-configuration.ts`.",
-    },
-    {
-      paths: [
-        '.oxlintrc.json',
-        'documentation/contributing/implementation-file-sizes.md',
-        'documentation/import-cycle-allowlist.json',
-        'documentation/internal-imports-allowlist.json',
-      ],
-      reason:
-        'What those gates judge against. `check-import-cycles.ts` and `check-internal-imports.ts` each read their allowlist by literal path, `check-implementation-file-sizes.test.ts` reads the contributor document, and `.oxlintrc.json` holds the per-file `max-lines` and `complexity` overrides the lint gate applies. The target carries its own copy of all but the document — the allowlists at 213 and 3 bytes, `.oxlintrc.json` at 11,189 — and a sync replaces them, which is the point rather than a side effect: they describe corvidae’s source, and so does the `src/` tree landing beside them.',
-    },
+    // Under COR-1286's demotion the target runs no lint, coverage or documentation gate of its own
+    // — those run in corvidae alone — so the nine `check-*.ts` gates, `check-coverage.ts` with its
+    // test and `bunfig.toml`, the benchmark environment test and the allowlists they judged against
+    // are no longer emitted. `target-owned.json` retires the target's copies instead.
     {
       paths: [
         'scripts/generate-operation-client.test.ts',
