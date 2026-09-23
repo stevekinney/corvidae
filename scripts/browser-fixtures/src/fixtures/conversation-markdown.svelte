@@ -67,7 +67,7 @@
   }
   pre {
     white-space: pre-wrap;
-    border: 1px solid var(--cinder-border-subtle);
+    border: 1px solid var(--cinder-border);
     padding: 1rem;
   }
 </style>

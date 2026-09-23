@@ -168,9 +168,11 @@ describe('RelativeTime', () => {
       originalClearTimeout(timer)) as typeof window.clearTimeout;
 
     try {
-      const view = render(RelativeTime, { date: Date.now() - 10_000 });
-      expect(scheduledDelays.at(-1)).toBeGreaterThan(400);
-      expect(scheduledDelays.at(-1)).toBeLessThan(700);
+      const renderedAt = Date.now();
+      const view = render(RelativeTime, { date: renderedAt - 10_000 });
+      const elapsed = Date.now() - renderedAt;
+      expect(scheduledDelays.at(-1)).toBeGreaterThan(500 - elapsed - 5);
+      expect(scheduledDelays.at(-1)).toBeLessThanOrEqual(500);
       view.unmount();
     } finally {
       window.setTimeout = originalSetTimeout;

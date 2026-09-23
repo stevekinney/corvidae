@@ -982,7 +982,7 @@ test.describe('chat harness — submit and reply', () => {
       await harness.locator('.chat-input-send').click();
 
       await expect(harness.locator('[data-role="user"]')).toContainText('What is alpha?');
-      await expectLoggedEvent(harness, 'onsubmit');
+      await expectLoggedEvent(harness, 'onSubmit');
       // Auto-reply (default on) eventually lands an assistant message.
       await expect(harness.locator('[data-role="assistant"]')).toBeVisible({ timeout: 5_000 });
     } finally {
@@ -1103,9 +1103,9 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
         await expect(assistant.locator('.chat-message-streaming-progress')).toBeVisible();
         const partialText = await messageBodyText(assistant);
 
-        // Click Stop: it preserves the partial content and fires onstopgenerating.
+        // Click Stop: it preserves the partial content and fires onStopGenerating.
         await stop.click();
-        await expectLoggedEvent(harness, 'onstopgenerating');
+        await expectLoggedEvent(harness, 'onStopGenerating');
         await expect(harness.locator('.chat-input-send[data-stop]')).toHaveCount(0);
         // Exactly one assistant message remains (no stray blank/duplicate).
         await expect(harness.locator('[data-role="assistant"]')).toHaveCount(1);
@@ -1812,14 +1812,14 @@ test.describe('chat harness — copy, edit, retry', () => {
     }
   });
 
-  test('retry appears on a failed message and fires onretry', async ({ browser }) => {
+  test('retry appears on a failed message and fires onRetry', async ({ browser }) => {
     const { harness, dispose } = await openHarness(browser);
     try {
       await harness.locator('[data-testid="seed-failed"]').click();
       const retry = harness.locator('.chat-message-retry').first();
       await expect(retry).toBeVisible();
       await retry.click();
-      await expectLoggedEvent(harness, 'onretry');
+      await expectLoggedEvent(harness, 'onRetry');
     } finally {
       await dispose();
     }
@@ -1843,7 +1843,7 @@ test.describe('chat harness — copy, edit, retry', () => {
       expect(retryBox.height).toBeLessThanOrEqual(36);
       await retry.focus();
       await page.keyboard.press('Enter');
-      await expectLoggedEvent(harness, 'onretry');
+      await expectLoggedEvent(harness, 'onRetry');
 
       await harness.locator('[data-testid="seed-thread"]').click();
       const userMessage = harness.locator('[data-role="user"]').filter({
@@ -1897,13 +1897,13 @@ test.describe('chat harness — scroll, unread, jump', () => {
       });
       await expect.poll(async () => timeline.evaluate((element) => element.scrollTop)).toBe(0);
       await expect(harness.locator('.chat-jump-button')).toBeVisible({ timeout: 5_000 });
-      await expectLoggedEvent(harness, 'onscrollstatechange');
+      await expectLoggedEvent(harness, 'onScrollStateChange');
     } finally {
       await dispose();
     }
   });
 
-  test('jump-to-latest scrolls back to the bottom and fires onjumptolatest', async ({
+  test('jump-to-latest scrolls back to the bottom and fires onJumpToLatest', async ({
     browser,
   }) => {
     const { harness, dispose } = await openHarness(browser);
@@ -1916,7 +1916,7 @@ test.describe('chat harness — scroll, unread, jump', () => {
       const jump = harness.locator('.chat-jump-button');
       await expect(jump).toBeVisible({ timeout: 5_000 });
       await jump.click();
-      await expectLoggedEvent(harness, 'onjumptolatest');
+      await expectLoggedEvent(harness, 'onJumpToLatest');
     } finally {
       await dispose();
     }
@@ -2640,7 +2640,7 @@ test.describe('chat harness — attachments', () => {
         await expect(send).toBeEnabled();
         await send.click();
         await expect(
-          harness.locator('[data-testid="event-log-entry"][data-event="onsubmit"]').first(),
+          harness.locator('[data-testid="event-log-entry"][data-event="onSubmit"]').first(),
         ).toHaveAttribute('data-payload', '{"content":"","attachments":1}');
         await expect(chat.locator('.chat-input-attachment-wrapper')).toHaveCount(0);
       } finally {
@@ -2690,7 +2690,7 @@ test.describe('chat harness — attachments', () => {
     }
   });
 
-  test('an accepted file fires onattachmentadd; a disallowed file fires onattachmentfailure', async ({
+  test('an accepted file fires onAttachmentAdd; a disallowed file fires onAttachmentFailure', async ({
     browser,
   }) => {
     const { harness, dispose } = await openHarness(browser);
@@ -2702,21 +2702,21 @@ test.describe('chat harness — attachments', () => {
         mimeType: 'image/png',
         buffer: validPng,
       });
-      await expectLoggedEvent(harness, 'onattachmentadd');
+      await expectLoggedEvent(harness, 'onAttachmentAdd');
 
-      // Disallowed MIME → the composer's own validation fires onattachmentfailure.
+      // Disallowed MIME → the composer's own validation fires onAttachmentFailure.
       await fileInput.setInputFiles({
         name: 'evil.exe',
         mimeType: 'application/x-msdownload',
         buffer: Buffer.from([0x4d, 0x5a]),
       });
-      await expectLoggedEvent(harness, 'onattachmentfailure');
+      await expectLoggedEvent(harness, 'onAttachmentFailure');
     } finally {
       await dispose();
     }
   });
 
-  test('dragging a file onto the chat surface fires onattachmentadd', async ({ browser }) => {
+  test('dragging a file onto the chat surface fires onAttachmentAdd', async ({ browser }) => {
     const { page, harness, dispose } = await openHarness(browser);
     try {
       await page.evaluate(() => {
@@ -2733,7 +2733,7 @@ test.describe('chat harness — attachments', () => {
         );
       });
 
-      await expectLoggedEvent(harness, 'onattachmentadd');
+      await expectLoggedEvent(harness, 'onAttachmentAdd');
       await expect(harness.locator('.chat-attachment-preview')).toContainText('dragged.txt');
     } finally {
       await dispose();
@@ -3056,7 +3056,7 @@ test.describe('chat harness — composer acceptance matrix', () => {
       await expect(send).toHaveAttribute('aria-label', 'Send message');
       await send.tap();
       await expect(
-        harness.locator('[data-testid="event-log-entry"][data-event="onsubmit"]').first(),
+        harness.locator('[data-testid="event-log-entry"][data-event="onSubmit"]').first(),
       ).toHaveAttribute('data-payload', '{"content":"","attachments":1}');
       await expect
         .poll(() =>

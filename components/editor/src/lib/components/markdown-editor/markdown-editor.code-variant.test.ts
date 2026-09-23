@@ -35,7 +35,7 @@ describe('MarkdownEditor raw mode composes Textarea variant="code"', () => {
           id: 'code-variant-editor',
           label: 'Code variant editor',
           mode: 'source',
-          showToolbar: false,
+          toolbarEnabled: false,
           value: '# Heading',
         },
       });
@@ -68,9 +68,9 @@ describe('MarkdownEditor raw mode composes Textarea variant="code"', () => {
           id: 'code-variant-editor-live',
           label: 'Code variant editor',
           mode: 'source',
-          showToolbar: false,
+          toolbarEnabled: false,
           value: '',
-          onchange: (next: string) => {
+          onValueChange: (next: string) => {
             lastChange = next;
           },
         },
@@ -101,7 +101,7 @@ describe('MarkdownEditor raw mode composes Textarea variant="code"', () => {
           id: 'code-variant-editor-imperative',
           label: 'Code variant editor',
           mode: 'source',
-          showToolbar: false,
+          toolbarEnabled: false,
           value: 'original',
         },
       });
@@ -126,7 +126,7 @@ describe('MarkdownEditor raw mode composes Textarea variant="code"', () => {
           id: 'code-variant-editor-readonly',
           label: 'Code variant editor',
           mode: 'source',
-          showToolbar: false,
+          toolbarEnabled: false,
           value: 'locked content',
           readonly: true,
         },
@@ -150,7 +150,7 @@ describe('MarkdownEditor raw mode composes Textarea variant="code"', () => {
           id: 'code-variant-editor-a11y',
           label: 'Prompt source',
           mode: 'source',
-          showToolbar: false,
+          toolbarEnabled: false,
           value: '',
           'aria-describedby': 'external-hint',
         },

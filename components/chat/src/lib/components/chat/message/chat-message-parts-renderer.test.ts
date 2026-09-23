@@ -285,7 +285,7 @@ describe('renderer — per-part rendering', () => {
             resolutionInFlight: false,
           },
         ],
-        onapprovalresolve: () => {},
+        onApprovalResolve: () => {},
       },
     });
     const dialog = container.querySelector('[data-cinder-tool-approval]');

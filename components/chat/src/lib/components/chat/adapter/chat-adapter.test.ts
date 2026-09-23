@@ -267,7 +267,7 @@ describe('ChatAdapter — command equivalence', () => {
     const { container, instance } = mountChat({
       id: 'chat-cb-retry',
       conversation: failedConversation(),
-      onretry: (id: string) => retried.push(id),
+      onRetry: (id: string) => retried.push(id),
     });
 
     clickRetry(container);
@@ -462,7 +462,7 @@ describe('ChatAdapter — command equivalence', () => {
       id: 'chat-retry-after-settle',
       conversation: failedConversation(),
       adapter,
-      onadaptererror: () => {},
+      onAdapterError: () => {},
     });
     const chat = instance as unknown as ChatRetryImperative;
 
@@ -481,9 +481,9 @@ describe('ChatAdapter — command equivalence', () => {
     unmount(instance);
   });
 
-  test('an ASYNC onretry callback (no adapter) is single-flighted for the same in-flight id', async () => {
+  test('an ASYNC onRetry callback (no adapter) is single-flighted for the same in-flight id', async () => {
     // #1235 review follow-up — an async function is assignable to the
-    // void-returning `onretry` type, and dispatchCommand discards the
+    // void-returning `onRetry` type, and dispatchCommand discards the
     // callback's return value. The dispatch layer must still hold the
     // in-flight token until the async handler SETTLES (not just until it is
     // invoked), so two rapid retries for the same id run the handler once.
@@ -495,7 +495,7 @@ describe('ChatAdapter — command equivalence', () => {
     const { instance } = mountChat({
       id: 'chat-async-callback-retry-single-flight',
       conversation: failedConversation(),
-      onretry: async () => {
+      onRetry: async () => {
         calls += 1;
         await retryFinished;
       },
@@ -563,7 +563,7 @@ describe('ChatAdapter — command equivalence', () => {
       id: 'chat-precedence',
       conversation: failedConversation(),
       adapter,
-      onretry: (id: string) => callbackRetried.push(id),
+      onRetry: (id: string) => callbackRetried.push(id),
     });
 
     clickRetry(container);
@@ -592,7 +592,7 @@ describe('ChatAdapter — command equivalence', () => {
       id: 'chat-sync-method',
       conversation: failedConversation(),
       adapter,
-      onretry: (id: string) => callbackRetried.push(id),
+      onRetry: (id: string) => callbackRetried.push(id),
     });
 
     clickRetry(container);
@@ -603,7 +603,7 @@ describe('ChatAdapter — command equivalence', () => {
     unmount(instance);
   });
 
-  test('an adapter command rejection routes to onadaptererror', async () => {
+  test('an adapter command rejection routes to onAdapterError', async () => {
     const errors: Array<{ command: string; error: unknown }> = [];
     const adapter: ChatAdapter = {
       sendMessage: async () => {},
@@ -615,7 +615,7 @@ describe('ChatAdapter — command equivalence', () => {
       id: 'chat-error',
       conversation: failedConversation(),
       adapter,
-      onadaptererror: (event: { command: string; error: unknown }) => errors.push(event),
+      onAdapterError: (event: { command: string; error: unknown }) => errors.push(event),
     });
 
     clickRetry(container);
@@ -630,7 +630,7 @@ describe('ChatAdapter — command equivalence', () => {
     unmount(instance);
   });
 
-  test('retry affordance still renders for an adapter-only consumer (no onretry)', () => {
+  test('retry affordance still renders for an adapter-only consumer (no onRetry)', () => {
     const adapter: ChatAdapter = { sendMessage: async () => {}, retryMessage: async () => {} };
     const { container, instance } = mountChat({
       id: 'chat-adapter-only',
@@ -650,9 +650,9 @@ describe('ChatAdapter — command equivalence', () => {
     unmount(instance);
   });
 
-  test('a synchronously-throwing adapter command routes to onadaptererror', async () => {
+  test('a synchronously-throwing adapter command routes to onAdapterError', async () => {
     // The adapter method throws synchronously (e.g. "not connected") rather than
-    // rejecting a promise. The dispatcher must still route it to onadaptererror,
+    // rejecting a promise. The dispatcher must still route it to onAdapterError,
     // not let it escape.
     const errors: Array<{ command: string; error: unknown }> = [];
     const adapter = {
@@ -665,7 +665,7 @@ describe('ChatAdapter — command equivalence', () => {
       id: 'chat-sync-throw',
       conversation: failedConversation(),
       adapter,
-      onadaptererror: (event: { command: string; error: unknown }) => errors.push(event),
+      onAdapterError: (event: { command: string; error: unknown }) => errors.push(event),
     });
 
     clickRetry(container);
@@ -679,7 +679,7 @@ describe('ChatAdapter — command equivalence', () => {
     unmount(instance);
   });
 
-  test('sendMessage: the adapter takes precedence over onsubmit (via an empty-state prompt)', async () => {
+  test('sendMessage: the adapter takes precedence over onSubmit (via an empty-state prompt)', async () => {
     // An empty-state prompt button submits a message — a deterministic submit
     // path that needs no composer. Proves submit routes through the dispatcher
     // with adapter precedence, the same as retry.
@@ -705,7 +705,7 @@ describe('ChatAdapter — command equivalence', () => {
       conversation,
       adapter,
       emptyPrompts: ['Hello there'],
-      onsubmit: (event: { message: MessageInput }) => submitted.push(event),
+      onSubmit: (event: { message: MessageInput }) => submitted.push(event),
     });
 
     const prompt = container.querySelector<HTMLButtonElement>('.chat-empty-prompt');
@@ -714,14 +714,14 @@ describe('ChatAdapter — command equivalence', () => {
     flushSync();
     await Promise.resolve();
 
-    // Adapter handled the send; onsubmit did NOT also fire.
+    // Adapter handled the send; onSubmit did NOT also fire.
     expect(sent).toEqual([{ content: 'Hello there' }]);
     expect(submitted).toEqual([]);
 
     unmount(instance);
   });
 
-  test('sendMessage: falls back to onsubmit when no adapter is present', () => {
+  test('sendMessage: falls back to onSubmit when no adapter is present', () => {
     const submitted: Array<{ message: MessageInput }> = [];
     const conversation: ConversationHistory = {
       schemaVersion: 4,
@@ -737,7 +737,7 @@ describe('ChatAdapter — command equivalence', () => {
       id: 'chat-send-callback',
       conversation,
       emptyPrompts: ['Just callback'],
-      onsubmit: (event: { message: MessageInput }) => submitted.push(event),
+      onSubmit: (event: { message: MessageInput }) => submitted.push(event),
     });
 
     container.querySelector<HTMLButtonElement>('.chat-empty-prompt')!.click();
@@ -763,7 +763,7 @@ describe('ChatAdapter — command equivalence', () => {
       id: 'chat-send-callback-throw',
       conversation,
       emptyPrompts: ['Rejected send'],
-      onsubmit: () => {
+      onSubmit: () => {
         throw new Error('consumer rejected send');
       },
     });
@@ -1831,11 +1831,11 @@ describe('ChatAdapter — push forwarding', () => {
       id: 'chat-forward',
       conversation,
       adapter,
-      onpushmessage: (message: Message) => pushedMessages.push(message),
-      ontypingchange: (participants: TypingParticipant[]) => {
+      onPushMessage: (message: Message) => pushedMessages.push(message),
+      onTypingChange: (participants: TypingParticipant[]) => {
         typing = participants;
       },
-      onreadreceipt: (event: { messageId: string; readAt: string }) => receipts.push(event),
+      onReadReceipt: (event: { messageId: string; readAt: string }) => receipts.push(event),
     });
 
     const incoming: Message = {
@@ -1932,7 +1932,7 @@ describe('ChatAdapter — tool approval', () => {
       id: 'chat-approve-success',
       conversation: actionRequiredConversation(),
       adapter,
-      onapprovalresolve: (callId: string, resolution: ApprovalResolution) => {
+      onApprovalResolve: (callId: string, resolution: ApprovalResolution) => {
         resolvedViaCallback.push({ callId, resolution });
       },
     });
@@ -1952,7 +1952,7 @@ describe('ChatAdapter — tool approval', () => {
     unmount(instance);
   });
 
-  test('approval rolls back and surfaces onadaptererror when the adapter rejects', async () => {
+  test('approval rolls back and surfaces onAdapterError when the adapter rejects', async () => {
     const errors: Array<{ command: string; error: unknown }> = [];
     const resolvedViaCallback: unknown[] = [];
     const adapter: ChatAdapter = {
@@ -1965,10 +1965,10 @@ describe('ChatAdapter — tool approval', () => {
       id: 'chat-approve-reject',
       conversation: actionRequiredConversation(),
       adapter,
-      onapprovalresolve: (callId: string, resolution: ApprovalResolution) => {
+      onApprovalResolve: (callId: string, resolution: ApprovalResolution) => {
         resolvedViaCallback.push({ callId, resolution });
       },
-      onadaptererror: (event: { command: string; error: unknown }) => errors.push(event),
+      onAdapterError: (event: { command: string; error: unknown }) => errors.push(event),
     });
 
     approvalButton(container, 'Approve').click();
@@ -1996,7 +1996,7 @@ describe('ChatAdapter — tool approval', () => {
       id: 'chat-approve-still-pending',
       conversation: actionRequiredConversation(),
       adapter,
-      onapprovalresolve: (callId: string, resolution: ApprovalResolution) => {
+      onApprovalResolve: (callId: string, resolution: ApprovalResolution) => {
         resolvedViaCallback.push({ callId, resolution });
       },
     });
@@ -2023,7 +2023,7 @@ describe('ChatAdapter — tool approval', () => {
       id: 'chat-deny-sync-throw',
       conversation: actionRequiredConversation(),
       adapter,
-      onadaptererror: (event: { command: string; error: unknown }) => errors.push(event),
+      onAdapterError: (event: { command: string; error: unknown }) => errors.push(event),
     });
 
     approvalButton(container, 'Deny').click();
@@ -2042,7 +2042,7 @@ describe('ChatAdapter — tool approval', () => {
     const { container, instance } = mountChat({
       id: 'chat-approve-callback',
       conversation: actionRequiredConversation(),
-      onapprovalresolve: (callId: string, resolution: ApprovalResolution) => {
+      onApprovalResolve: (callId: string, resolution: ApprovalResolution) => {
         approved.push({ callId, resolution });
       },
     });
@@ -2096,14 +2096,14 @@ describe('ChatAdapter — tool approval', () => {
     const { container, instance } = mountChat({
       id: 'chat-approval-callback-retry-after-reject',
       conversation: actionRequiredConversation(),
-      onapprovalresolve: async (_callId: string, resolution: ApprovalResolution) => {
+      onApprovalResolve: async (_callId: string, resolution: ApprovalResolution) => {
         calls.push(resolution);
         if (rejectOnce) {
           rejectOnce = false;
           throw new Error('callback failed');
         }
       },
-      onadaptererror: (event: { command: string; error: unknown }) => errors.push(event),
+      onAdapterError: (event: { command: string; error: unknown }) => errors.push(event),
     });
 
     approvalButton(container, 'Approve').click();
@@ -2135,7 +2135,7 @@ describe('ChatAdapter — tool approval', () => {
     const { container, instance } = mountChat({
       id: 'chat-approval-callback-pending-retry',
       conversation: actionRequiredConversation(),
-      onapprovalresolve: (_callId: string, resolution: ApprovalResolution) => {
+      onApprovalResolve: (_callId: string, resolution: ApprovalResolution) => {
         calls.push(resolution);
         return calls.length === 1 ? 'pending' : undefined;
       },
@@ -2164,10 +2164,10 @@ describe('ChatAdapter — tool approval', () => {
     const { container, instance } = mountChat({
       id: 'chat-approval-callback-sync-throw',
       conversation: actionRequiredConversation(),
-      onapprovalresolve: () => {
+      onApprovalResolve: () => {
         throw new Error('callback exploded');
       },
-      onadaptererror: (event: { command: string; error: unknown }) => errors.push(event),
+      onAdapterError: (event: { command: string; error: unknown }) => errors.push(event),
     });
 
     approvalButton(container, 'Deny').click();
@@ -2205,7 +2205,7 @@ describe('ChatAdapter — tool approval', () => {
       props: {
         initial: actionRequiredConversation(),
         adapter: oldAdapter,
-        onadaptererror: (event: { command: string; error: unknown }) => errors.push(event),
+        onAdapterError: (event: { command: string; error: unknown }) => errors.push(event),
       },
     }) as unknown as SwitchFixtureInstance;
     flushSync();
@@ -2250,7 +2250,7 @@ describe('ChatAdapter — tool approval', () => {
       props: {
         initial: actionRequiredConversation('same-conversation', 'Approve staging?'),
         adapter,
-        onadaptererror: (event: { command: string; error: unknown }) => errors.push(event),
+        onAdapterError: (event: { command: string; error: unknown }) => errors.push(event),
       },
     }) as unknown as SwitchFixtureInstance;
     flushSync();

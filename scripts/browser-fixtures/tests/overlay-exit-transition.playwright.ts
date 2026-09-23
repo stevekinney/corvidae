@@ -148,6 +148,57 @@ test('Tooltip renders data-cinder-closing during its exit transition, then hides
   await expect(tip).toBeHidden();
 });
 
+/**
+ * COR-1219: removing a focused Tooltip trigger through Svelte state — not a
+ * raw DOM removal, which never exercises the same code path — is the actual
+ * repro. A native `focusout` fires SYNCHRONOUSLY as a side effect of the
+ * browser detaching the still-focused element, landing while Svelte is mid
+ * `destroy_effect` for the block being closed; writing `$state` there used to
+ * throw `state_unsafe_mutation`. Each mode below presses "r" on the FOCUSED
+ * trigger itself (never a separate "remove" button, which would blur it
+ * first and hide the tooltip through the ordinary path before anything is
+ * removed) so focus never leaves the element until the instant it is torn
+ * down — the same shape as COR-1203's Send/Stop swap.
+ */
+for (const mode of ['wrapped', 'detached'] as const) {
+  test(`focused tooltip triggers can unmount without state mutations (${mode})`, async ({
+    page,
+  }) => {
+    const pageErrors: string[] = [];
+    const consoleProblems: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error' || message.type() === 'warning') {
+        consoleProblems.push(`${message.type()}: ${message.text()}`);
+      }
+    });
+
+    await openFixture(page, 'tooltip', { snapshot: false });
+
+    const trigger = page.getByTestId(`teardown-${mode}-trigger`);
+    const tip = page.getByText(`${mode === 'wrapped' ? 'Wrapped' : 'Detached'} teardown tooltip`);
+
+    await trigger.focus();
+    await expect(tip).toBeVisible();
+    const tooltipId = await tip.getAttribute('id');
+
+    await trigger.press('r');
+
+    await expect(trigger).toHaveCount(0);
+    await expect(tip).toBeHidden();
+    expect(pageErrors).toEqual([]);
+    expect(consoleProblems).toEqual([]);
+
+    // No control anywhere on the page should still describe the removed panel.
+    const staleDescribedBy = await page.evaluate((id) => {
+      return [...document.querySelectorAll('[aria-describedby]')].some((element) =>
+        (element.getAttribute('aria-describedby') ?? '').split(/\s+/).includes(id ?? ''),
+      );
+    }, tooltipId);
+    expect(staleDescribedBy).toBe(false);
+  });
+}
+
 test('HoverCard renders data-cinder-closing during its exit transition, then unmounts, and a reopen mid-close survives (CIN-376 defect fix)', async ({
   page,
 }) => {

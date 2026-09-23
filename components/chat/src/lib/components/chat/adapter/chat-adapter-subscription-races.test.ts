@@ -128,13 +128,13 @@ const mountedFixtures = new Set<Fixture>();
 function mountFixture(
   initial: ConversationHistory,
   currentAdapter: ChatAdapter,
-  onpushmessage: (message: Message) => void,
+  onPushMessage: (message: Message) => void,
 ): MountedFixture {
   const target = document.createElement('div');
   document.body.append(target);
   const instance = mount(AdapterSwitchFixture, {
     target,
-    props: { initial, adapter: currentAdapter, onpushmessage },
+    props: { initial, adapter: currentAdapter, onPushMessage },
   });
   mountedFixtures.add(instance);
   return { instance, target };

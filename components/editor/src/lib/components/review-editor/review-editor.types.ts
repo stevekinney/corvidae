@@ -74,17 +74,17 @@ export type ReviewEditorProps = {
   /** Additional CSS classes. */
   class?: string;
   /** Called when content changes. */
-  onchange?: (value: string) => void;
+  onValueChange?: (value: string) => void;
   /** Called when user initiates thread creation. */
-  onthreadcreate?: (event: ThreadCreateEvent) => void;
+  onThreadCreate?: (event: ThreadCreateEvent) => void;
   /** Called when a thread is deleted. */
-  onthreaddelete?: (event: ThreadDeleteEvent) => void;
+  onThreadDelete?: (event: ThreadDeleteEvent) => void;
   /** Called when a comment is created in an existing thread. */
-  oncommentcreate?: (event: CommentCreateEvent) => void;
+  onCommentCreate?: (event: CommentCreateEvent) => void;
   /** Called when a comment is updated. */
-  oncommentupdate?: (event: CommentUpdateEvent) => void;
+  onCommentUpdate?: (event: CommentUpdateEvent) => void;
   /** Called when a comment is deleted. */
-  oncommentdelete?: (event: CommentDeleteEvent) => void;
+  onCommentDelete?: (event: CommentDeleteEvent) => void;
 
   /**
    * Snapshot mode for visual regression testing.

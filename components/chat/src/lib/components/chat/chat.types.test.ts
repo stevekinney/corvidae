@@ -160,10 +160,10 @@ test('Chat artifact override uses the resolved public artifact type', () => {
   const artifactOverride = {
     id: 'consumer-chat',
     conversation,
-    onartifactopen: (resolvedArtifact: ResolvedChatArtifact) => resolvedArtifact.id,
+    onArtifactOpen: (resolvedArtifact: ResolvedChatArtifact) => resolvedArtifact.id,
   } satisfies ChatComponentProps;
 
-  expect(artifactOverride.onartifactopen(artifact)).toBe('artifact-source-message');
+  expect(artifactOverride.onArtifactOpen(artifact)).toBe('artifact-source-message');
 });
 
 test('published tool-call artifact example uses a single artifact panel owner', () => {

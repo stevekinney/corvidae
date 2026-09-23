@@ -58,11 +58,11 @@
     /** Called when thread is deleted */
     ondelete?: (threadId: string) => void;
     /** Called when a new comment is created */
-    oncommentcreate?: (threadId: string, body: string) => void;
+    onCommentCreate?: (threadId: string, body: string) => void;
     /** Called when a comment is updated */
-    oncommentupdate?: (threadId: string, commentId: string, body: string) => void;
+    onCommentUpdate?: (threadId: string, commentId: string, body: string) => void;
     /** Called when a comment is deleted */
-    oncommentdelete?: (threadId: string, commentId: string) => void;
+    onCommentDelete?: (threadId: string, commentId: string) => void;
   };
 </script>
 
@@ -87,9 +87,9 @@
     ignoreClickOutsideRefs,
     onclose,
     ondelete,
-    oncommentcreate,
-    oncommentupdate,
-    oncommentdelete,
+    onCommentCreate,
+    onCommentUpdate,
+    onCommentDelete,
   }: ThreadPopoverProps = $props();
 
   const isReadonly = $derived(mode === 'readonly');
@@ -132,7 +132,7 @@
    * restoration prefers `restoreFallback` over the element that opened the
    * popover.
    *
-   * Without it, a consumer whose `onthreaddelete` is server-backed gets the bug
+   * Without it, a consumer whose `onThreadDelete` is server-backed gets the bug
    * back: the popover closes as soon as the request is made, the sidebar item is
    * still on screen awaiting the response, so restoration hands focus back to it
    * — and then it unmounts, dropping focus on `<body>` with the fallback never
@@ -147,15 +147,15 @@
   }
 
   function handleCommentUpdate(commentId: string, body: string) {
-    oncommentupdate?.(thread.id, commentId, body);
+    onCommentUpdate?.(thread.id, commentId, body);
   }
 
   function handleCommentDelete(commentId: string) {
-    oncommentdelete?.(thread.id, commentId);
+    onCommentDelete?.(thread.id, commentId);
   }
 
   function handleCommentCreate(body: string) {
-    oncommentcreate?.(thread.id, body);
+    onCommentCreate?.(thread.id, body);
   }
 
   /** Whether this is a document-level comment */

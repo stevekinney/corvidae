@@ -10,7 +10,10 @@ test.each([
       '--conditions',
       condition,
       '--eval',
-      `import { shouldLogDevelopmentWarnings } from ${JSON.stringify(new URL('./commands.ts', import.meta.url).href)}; console.log(shouldLogDevelopmentWarnings());`,
+      // `process.stdout.write(String(…))`, not `console.log(boolean)`: Bun colors a
+      // logged boolean whenever FORCE_COLOR is inherited, which wraps "true" in
+      // ANSI escapes that compare unequal to the plain expected string.
+      `import { shouldLogDevelopmentWarnings } from ${JSON.stringify(new URL('./commands.ts', import.meta.url).href)}; process.stdout.write(String(shouldLogDevelopmentWarnings()));`,
     ],
     { env: { ...process.env, NODE_ENV: nodeEnvironment } },
   );

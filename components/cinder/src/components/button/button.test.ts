@@ -18,6 +18,13 @@ describe('Button rendering', () => {
     expect(container.querySelector('button')).toBeNull();
   });
 
+  test('a standalone Button (no ButtonGroup ancestor) does not carry the group styling-contract attribute (COR-459)', () => {
+    const { container } = render(Button, { props: { label: 'click me' } });
+    expect(container.querySelector('button')?.hasAttribute('data-cinder-button-group-item')).toBe(
+      false,
+    );
+  });
+
   test('button applies variant + size as data attributes', () => {
     const { container } = render(Button, {
       props: { label: 'tag', variant: 'danger', size: 'lg' },

@@ -190,6 +190,157 @@ describe('history loading across conversation identity changes', () => {
     });
   });
 
+  test('combined conversation and adapter changes together release old loading so the replacement can start', async () => {
+    let resolveOldLoad: ((result: { hasMore: boolean }) => void) | undefined;
+    let newLoadCalled = false;
+    const oldAdapter = {
+      sendMessage: async () => {},
+      loadOlderMessages: async () =>
+        new Promise<{ hasMore: boolean }>((resolve) => {
+          resolveOldLoad = resolve;
+        }),
+    };
+    const newAdapter = {
+      sendMessage: async () => {},
+      loadOlderMessages: async () => {
+        newLoadCalled = true;
+        return { hasMore: true };
+      },
+    };
+    const { container, rerender } = render(Chat, {
+      props: {
+        id: 'history-combined-change',
+        conversation: conversation('old-history'),
+        adapter: oldAdapter,
+      },
+    });
+    const trigger = await waitFor(() => {
+      const element = container.querySelector<HTMLButtonElement>(
+        '[data-cinder-history-trigger] button',
+      );
+      if (!element) throw new Error('history trigger did not render');
+      return element;
+    });
+    await fireEvent.click(trigger);
+    // Both identity fields change in the SAME rerender — the ownership check
+    // must catch this as one combined switch, not rely on only one of the
+    // two fields changing to trip the identity-changed branch.
+    await rerender({
+      id: 'history-combined-change',
+      conversation: conversation('new-history'),
+      adapter: newAdapter,
+    });
+    const replacementTrigger = container.querySelector<HTMLButtonElement>(
+      '[data-cinder-history-trigger] button',
+    );
+    if (!replacementTrigger) throw new Error('replacement history trigger did not render');
+    await fireEvent.click(replacementTrigger);
+    expect(newLoadCalled).toBe(true);
+    resolveOldLoad?.({ hasMore: false });
+  });
+
+  test('callback-based onLoadHistory: a stale resolve does not affect the new conversation state', async () => {
+    let resolveOldLoad: (() => void) | undefined;
+    let newLoadCalled = false;
+    const { container, rerender } = render(Chat, {
+      props: {
+        id: 'history-callback-identity-success',
+        conversation: conversation('old-history'),
+        onLoadHistory: () =>
+          new Promise<void>((resolve) => {
+            resolveOldLoad = resolve;
+          }),
+        moreHistoryAvailable: true,
+      },
+    });
+    const trigger = await waitFor(() => {
+      const element = container.querySelector<HTMLButtonElement>(
+        '[data-cinder-history-trigger] button',
+      );
+      if (!element) throw new Error('history trigger did not render');
+      return element;
+    });
+    await fireEvent.click(trigger);
+
+    await rerender({
+      id: 'history-callback-identity-success',
+      conversation: conversation('new-history'),
+      onLoadHistory: async () => {
+        newLoadCalled = true;
+      },
+      moreHistoryAvailable: true,
+    });
+    const newTrigger = container.querySelector<HTMLButtonElement>(
+      '[data-cinder-history-trigger] button',
+    );
+    if (!newTrigger) throw new Error('new history trigger did not render');
+    await fireEvent.click(newTrigger);
+    expect(newLoadCalled).toBe(true);
+    resolveOldLoad?.();
+
+    await waitFor(() => {
+      const currentTrigger = container.querySelector<HTMLButtonElement>(
+        '[data-cinder-history-trigger] button',
+      );
+      expect(currentTrigger).not.toBeNull();
+      expect(currentTrigger?.disabled).toBe(false);
+    });
+  });
+
+  test('callback-based onLoadHistory: a stale rejection does not reach the new conversation, but a current rejection still rejects', async () => {
+    let rejectOldLoad: ((error: Error) => void) | undefined;
+    const uncaught: unknown[] = [];
+    const handleWindowRejection = (event: PromiseRejectionEvent) => {
+      uncaught.push(event.reason);
+    };
+    window.addEventListener('unhandledrejection', handleWindowRejection);
+    try {
+      const { container, rerender } = render(Chat, {
+        props: {
+          id: 'history-callback-identity-rejection',
+          conversation: conversation('old-history'),
+          onLoadHistory: () =>
+            new Promise<void>((_resolve, reject) => {
+              rejectOldLoad = reject;
+            }),
+          moreHistoryAvailable: true,
+        },
+      });
+      const trigger = await waitFor(() => {
+        const element = container.querySelector<HTMLButtonElement>(
+          '[data-cinder-history-trigger] button',
+        );
+        if (!element) throw new Error('history trigger did not render');
+        return element;
+      });
+      await fireEvent.click(trigger);
+
+      await rerender({
+        id: 'history-callback-identity-rejection',
+        conversation: conversation('new-history'),
+        onLoadHistory: async () => ({}) as unknown as void,
+        moreHistoryAvailable: true,
+      });
+      // The stale rejection must not surface as an unhandled rejection through
+      // the new conversation's boundary (it is fenced the same way an adapter
+      // rejection is), and must not disable or otherwise mutate the new
+      // request's trigger.
+      rejectOldLoad?.(new Error('stale onLoadHistory failure'));
+      await tick();
+      await Promise.resolve();
+      await tick();
+
+      expect(uncaught).toHaveLength(0);
+      const currentTrigger = container.querySelector<HTMLButtonElement>(
+        '[data-cinder-history-trigger] button',
+      );
+      expect(currentTrigger).not.toBeNull();
+      expect(currentTrigger?.disabled).toBe(false);
+    } finally {
+      window.removeEventListener('unhandledrejection', handleWindowRejection);
+    }
+  });
+
   test('does not report a stale rejection through the new conversation boundary', async () => {
     let rejectOldLoad: ((error: Error) => void) | undefined;
     const adapterErrors: { command: string; error: unknown }[] = [];
@@ -210,7 +361,7 @@ describe('history loading across conversation identity changes', () => {
         conversation: conversation('old-history'),
         adapter: oldAdapter,
         moreHistoryAvailable: true,
-        onadaptererror: (event: { command: string; error: unknown }) => {
+        onAdapterError: (event: { command: string; error: unknown }) => {
           adapterErrors.push(event);
         },
       },
@@ -229,7 +380,7 @@ describe('history loading across conversation identity changes', () => {
       conversation: conversation('new-history'),
       adapter: newAdapter,
       moreHistoryAvailable: true,
-      onadaptererror: (event: { command: string; error: unknown }) => {
+      onAdapterError: (event: { command: string; error: unknown }) => {
         adapterErrors.push(event);
       },
     });

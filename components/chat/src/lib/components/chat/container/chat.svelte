@@ -115,35 +115,35 @@
     row,
     messagePart,
     markdownNode,
-    onrollback,
+    onRollback,
     viewportAttachment,
     typingParticipants,
     readReceipts,
     adapter,
-    onadaptererror,
-    onpushmessage,
-    ontypingchange,
-    onreadreceipt,
-    onsubmit,
-    onretry,
-    onedit,
-    onartifactopen,
-    onapprovalresolve,
+    onAdapterError,
+    onPushMessage,
+    onTypingChange,
+    onReadReceipt,
+    onSubmit,
+    onRetry,
+    onEdit,
+    onArtifactOpen,
+    onApprovalResolve,
     messageReasoning,
     messageSteps,
     messageSuggestions,
     onSuggestionSelect,
     style,
     onLoadHistory,
-    onstopgenerating,
-    onjumptolatest,
-    onscrollstatechange,
-    onunreadindicatorchange,
+    onStopGenerating,
+    onJumpToLatest,
+    onScrollStateChange,
+    onUnreadIndicatorChange,
     onExpandedChange,
-    onattachmentadd,
-    onattachmentremove,
-    onattachmentfailure,
-    oncomposerinput,
+    onAttachmentAdd,
+    onAttachmentRemove,
+    onAttachmentFailure,
+    onComposerInput,
     oncomposerkeydown,
     oncomposerselectionchange,
     oncomposerblur,
@@ -275,12 +275,12 @@
   const commandActions = useChatCommandActions({
     getAdapter: () => adapter,
     getMessages: () => messages,
-    getOnAdapterError: () => onadaptererror,
-    getOnSubmit: () => onsubmit,
-    getOnRetry: () => onretry,
-    getOnEdit: () => onedit,
-    getOnApprovalResolve: () => onapprovalresolve,
-    getOnStop: () => onstopgenerating,
+    getOnAdapterError: () => onAdapterError,
+    getOnSubmit: () => onSubmit,
+    getOnRetry: () => onRetry,
+    getOnEdit: () => onEdit,
+    getOnApprovalResolve: () => onApprovalResolve,
+    getOnStop: () => onStopGenerating,
     invalidateHistory: () => getHistoryRestoration().invalidate(),
     afterSubmit: (editing) => {
       if (!editing) {
@@ -325,7 +325,7 @@
       // Update the bindable props at the mutation site rather than via a $effect.
       updateUnreadCountBinding(event.unreadCount);
       updateNewMessageIndicatorVisibleBinding(event.newMessageIndicatorVisible);
-      onunreadindicatorchange?.(event);
+      onUnreadIndicatorChange?.(event);
     },
   });
 
@@ -435,7 +435,7 @@
   });
 
   $effect(() => {
-    if (onartifactopen || (selectedArtifactId !== undefined && selectedArtifact === undefined)) {
+    if (onArtifactOpen || (selectedArtifactId !== undefined && selectedArtifact === undefined)) {
       selectedArtifactId = undefined;
     }
   });
@@ -471,8 +471,8 @@
   }
 
   function openArtifact(artifact: ResolvedChatArtifact): void {
-    if (onartifactopen) {
-      onartifactopen(artifact);
+    if (onArtifactOpen) {
+      onArtifactOpen(artifact);
       return;
     }
     selectedArtifactId = artifact.id;
@@ -480,7 +480,7 @@
 
   function confirmRollback(): void {
     if (!rollbackMessageId) return;
-    onrollback?.(rollbackMessageId);
+    onRollback?.(rollbackMessageId);
     rollbackMessageId = null;
   }
   let hasMounted = $state(false);
@@ -517,7 +517,7 @@
     reclaimFocusIfRowDetached();
     autoScroll.resetPrependSuppression();
     updateAtBottomBinding(event.atBottom);
-    onscrollstatechange?.(event);
+    onScrollStateChange?.(event);
   }
 
   function virtualSpacerOffsetTop(): number {
@@ -570,7 +570,7 @@
     restorePendingHistoryScroll: (pending) =>
       getHistoryRestoration().restorePendingHistoryScroll(pending),
     correctAnchorAfterSettle: (requestId) => getHistoryRestoration().correctAfterSettle(requestId),
-    onAdapterError: (event) => onadaptererror?.(event),
+    onAdapterError: (event) => onAdapterError?.(event),
     flushSync,
     tick,
   });
@@ -749,10 +749,10 @@
   }
 
   // A retry/edit affordance shows when EITHER a callback OR the adapter can
-  // handle it — so an adapter-only consumer (no `onretry`/`onedit`) still gets
+  // handle it — so an adapter-only consumer (no `onRetry`/`onEdit`) still gets
   // working buttons, and a callback-only consumer is unchanged.
-  const canRetry = $derived(onretry !== undefined || adapter?.retryMessage !== undefined);
-  const canEdit = $derived(onedit !== undefined || adapter?.editMessage !== undefined);
+  const canRetry = $derived(onRetry !== undefined || adapter?.retryMessage !== undefined);
+  const canEdit = $derived(onEdit !== undefined || adapter?.editMessage !== undefined);
 
   // Stable bottom-sentinel attachment. Wrapping useIntersection in $derived (matching
   // load-more) means the IntersectionObserver is only torn down + recreated when
@@ -827,9 +827,9 @@
   useChatAdapterSubscription({
     getAdapter: () => adapter,
     getConversationId: () => conversationId,
-    getOnMessage: () => onpushmessage,
-    getOnTypingChange: () => ontypingchange,
-    getOnReadReceipt: () => onreadreceipt,
+    getOnMessage: () => onPushMessage,
+    getOnTypingChange: () => onTypingChange,
+    getOnReadReceipt: () => onReadReceipt,
     getStreamingActions: () => streamingState,
     getTypingActions: () => typingIndicatorState,
     getReceiptActions: () => readReceiptsState,
@@ -878,7 +878,7 @@
       scrollState.setAtBottom(true);
       updateAtBottomBinding(true);
       unreadState.markAllAsRead();
-      onjumptolatest?.();
+      onJumpToLatest?.();
       // Park focus on the timeline, NOT on the bottom row. A virtualized row is
       // a recycled window slot: the virtualizer's next window pass (a
       // post-mount remeasurement that shifts the offsets, or any subsequent
@@ -902,7 +902,7 @@
 
     scrollState.jumpToLatest(viewport, () => {
       unreadState.markAllAsRead();
-      onjumptolatest?.();
+      onJumpToLatest?.();
     });
   }
 
@@ -1361,7 +1361,7 @@
   /**
    * Programmatically retry a failed message — the same guarded dispatch as the
    * UI Retry button. A call for a message id whose retry is still in flight is
-   * ignored, so the adapter's `retryMessage` command (or the `onretry`
+   * ignored, so the adapter's `retryMessage` command (or the `onRetry`
    * callback) never double-fires for the same id regardless of entry point.
    */
   export function retryMessage(messageId: string): void {
@@ -1446,7 +1446,7 @@
 
 <ChatArtifactLayout
   instanceId={`${id}-artifact`}
-  open={!onartifactopen && selectedArtifact !== undefined}
+  open={!onArtifactOpen && selectedArtifact !== undefined}
   panelTitle={selectedArtifact?.title}
   onclose={() => (selectedArtifactId = undefined)}
   class={className}
@@ -1586,10 +1586,10 @@
           toolCallPairs={pairs}
           {messagePart}
           {markdownNode}
-          onretry={allowRetry && canRetry ? handleRetry : undefined}
-          onedit={allowEditing && canEdit ? handleEdit : undefined}
+          onRetry={allowRetry && canRetry ? handleRetry : undefined}
+          onEdit={allowEditing && canEdit ? handleEdit : undefined}
           oneditingchange={(editing) => handleEditingChange(message.id, editing)}
-          onrollback={onrollback ? (messageId) => (rollbackMessageId = messageId) : undefined}
+          onRollback={onRollback ? (messageId) => (rollbackMessageId = messageId) : undefined}
           rollbackDiscarded={rollbackBoundaryIndex >= 0 &&
             (messageIndexById.get(message.id) ?? -1) >= rollbackBoundaryIndex}
           showDefaultActions={allowCopy}
@@ -1605,7 +1605,7 @@
             ? commandActions.approvalResolutionInFlightIds
             : undefined}
           {toolCallPresentation}
-          onapprovalresolve={canResolveToolApproval ? handleApprovalResolve : undefined}
+          onApprovalResolve={canResolveToolApproval ? handleApprovalResolve : undefined}
           reasoning={derivedReasoning}
           entries={derivedEntries}
           steps={derivedSteps}
@@ -1789,7 +1789,7 @@
         unreadCount={unreadState.unreadCount}
         displayUnreadCount={unreadState.displayUnreadCount}
         hasLargeCount={unreadState.hasLargeCount}
-        onjumptolatest={handleJumpToLatest}
+        onJumpToLatest={handleJumpToLatest}
       />
 
       <!-- Input Area -->
@@ -1802,7 +1802,7 @@
           sending={streaming}
           {allowAttachments}
           onstop={streaming ? handleStopGenerating : undefined}
-          {oncomposerinput}
+          {onComposerInput}
           {oncomposerkeydown}
           {oncomposerselectionchange}
           {oncomposerblur}
@@ -1811,9 +1811,9 @@
           {composerAriaControls}
           {composerAriaActiveDescendant}
           {composerAriaAutocomplete}
-          {onattachmentadd}
-          {onattachmentremove}
-          {onattachmentfailure}
+          {onAttachmentAdd}
+          {onAttachmentRemove}
+          {onAttachmentFailure}
         />
       </div>
     </div>

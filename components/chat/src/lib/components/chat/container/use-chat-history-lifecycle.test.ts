@@ -233,6 +233,10 @@ describe('chat history lifecycle owner', () => {
     expect(fixture.state.isLoading).toBe(false);
     expect(fixture.state.adapterHasMore).toBeUndefined();
     expect(fixture.errors).toHaveLength(0);
+    // COR-196: disposal after entry (loadHistory has already started) and
+    // before release (the adapter promise resolves later) must not publish
+    // through the scroll-restoration callback either.
+    expect(fixture.restored).toHaveLength(0);
   });
 
   test('active callback failures retain their rejection semantics', async () => {
@@ -308,5 +312,9 @@ describe('chat history lifecycle owner', () => {
     await loading;
 
     expectDisposed(fixture);
+    // COR-196: disposal here lands mid-flight, after the adapter has already
+    // resolved (entry) but before the deferred tick releases (release) — no
+    // scroll-restoration callback should fire for it either.
+    expect(fixture.restored).toHaveLength(0);
   });
 });

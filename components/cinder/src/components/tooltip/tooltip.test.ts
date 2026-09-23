@@ -316,6 +316,62 @@ describe('Tooltip', () => {
     trigger.remove();
   });
 
+  test('a pending show is cleared, not left to fire later, when triggerRef is swapped away before it resolves (COR-1219)', async () => {
+    // Neither `handleFocusOut` nor a native DOM event runs here — the trigger
+    // is swapped by reference, not removed or blurred, which is exactly why
+    // the effect's OWN cleanup (not an event handler) has to cancel a still-
+    // pending show. Without it the original 100ms timer fires regardless and
+    // shows a tooltip anchored to whichever element the ref points to by then.
+    const first = document.createElement('button');
+    const second = document.createElement('button');
+    document.body.append(first, second);
+
+    const view = render(Tooltip, { props: { text: 'Tooltip content', triggerRef: first } });
+    jest.useFakeTimers();
+    try {
+      await fireEvent.mouseEnter(first);
+      // `data-cinder-visible` mirrors `visible` directly (via
+      // `exitState.renderPanel`), independent of floating-ui positioning —
+      // the pending show hasn't resolved yet, so it isn't present.
+      expect(queryTooltip()?.hasAttribute('data-cinder-visible')).toBe(false);
+
+      await view.rerender({ text: 'Tooltip content', triggerRef: second });
+      jest.advanceTimersByTime(100);
+      await tick();
+
+      expect(queryTooltip()?.hasAttribute('data-cinder-visible')).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+
+    view.unmount();
+    first.remove();
+    second.remove();
+  });
+
+  test('a pending focus show is cleared rather than reopening detached content when the trigger is cleared before it resolves (COR-1219)', async () => {
+    const trigger = document.createElement('button');
+    document.body.append(trigger);
+
+    const view = render(Tooltip, { props: { text: 'Tooltip content', triggerRef: trigger } });
+    jest.useFakeTimers();
+    try {
+      await fireEvent.focusIn(trigger);
+      expect(queryTooltip()?.hasAttribute('data-cinder-visible')).toBe(false);
+
+      await view.rerender({ text: 'Tooltip content', triggerRef: null });
+      jest.advanceTimersByTime(100);
+      await tick();
+
+      expect(queryTooltip()?.hasAttribute('data-cinder-visible')).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+
+    view.unmount();
+    trigger.remove();
+  });
+
   test('focusable trigger inside wrapper has aria-describedby that matches the tooltip id', () => {
     const { container } = render(Tooltip, {
       props: {

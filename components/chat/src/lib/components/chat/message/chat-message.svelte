@@ -43,13 +43,13 @@
     /** Called when expanded state changes */
     onExpandedChange?: ((expanded: boolean) => void) | undefined;
     /** Called when retry is requested on a failed message */
-    onretry?: ((messageId: string) => void) | undefined;
+    onRetry?: ((messageId: string) => void) | undefined;
     /** Called when user edits a message (fires with new content). Only applies to user messages. */
-    onedit?: ((event: { messageId: string; content: string }) => void) | undefined;
+    onEdit?: ((event: { messageId: string; content: string }) => void) | undefined;
     /** Called when this message enters or leaves edit mode. */
     oneditingchange?: ((editing: boolean) => void) | undefined;
     /** Requests a previewed, confirmed rollback from this user message. */
-    onrollback?: ((messageId: string) => void) | undefined;
+    onRollback?: ((messageId: string) => void) | undefined;
     /** Visually marks this row as content that a pending rollback will discard. */
     rollbackDiscarded?: boolean;
     /** UI-only approval states keyed by tool-call id. */
@@ -57,7 +57,7 @@
     /** Tool-call ids currently submitting a resolution. */
     approvalResolutionInFlightIds?: ReadonlySet<string> | undefined;
     /** Called when the user resolves an action-required approval. */
-    onapprovalresolve?:
+    onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
     toolCallPresentation?: import('../utilities/types.ts').ToolCallPresentation | undefined;
     /**
@@ -134,14 +134,14 @@
     toolActivityActive = true,
     overrideContent,
     onExpandedChange,
-    onretry,
-    onedit,
+    onRetry,
+    onEdit,
     oneditingchange,
-    onrollback,
+    onRollback,
     rollbackDiscarded = false,
     approvalStates,
     approvalResolutionInFlightIds,
-    onapprovalresolve,
+    onApprovalResolve,
     toolCallPresentation,
     reasoning,
     entries,
@@ -163,7 +163,7 @@
   let editContent = $state('');
   let editPointerCapture: { pointerId: number; clientX: number; clientY: number } | undefined;
   const editPointerDragThreshold = 8;
-  const canEdit = $derived(message.role === 'user' && onedit !== undefined && !streaming);
+  const canEdit = $derived(message.role === 'user' && onEdit !== undefined && !streaming);
 
   function startEditing() {
     editContent = textContent;
@@ -213,7 +213,7 @@
   function saveEdit() {
     const trimmedContent = editContent.trim();
     if (trimmedContent && trimmedContent !== textContent) {
-      onedit?.({ messageId: message.id, content: trimmedContent });
+      onEdit?.({ messageId: message.id, content: trimmedContent });
     }
     isEditing = false;
     editContent = '';
@@ -429,7 +429,7 @@
           {markdownNode}
           expanded={toolCallExpanded}
           onToggle={toggleToolCallExpanded}
-          {onapprovalresolve}
+          {onApprovalResolve}
           {reasoningExpanded}
           {onreasoning}
           {stepsExpanded}
@@ -452,7 +452,7 @@
       <ChatMessagePartsRenderer parts={imageParts} {messageId} />
     {/if}
 
-    {#if isFailed && onretry}
+    {#if isFailed && onRetry}
       <div class="chat-message-failed-actions">
         <span class="chat-message-failed-label" role="alert">Failed to send</span>
         <Button
@@ -462,7 +462,7 @@
           variant="ghost-danger"
           iconOnly
           label="Retry"
-          onclick={() => onretry(message.id)}
+          onclick={() => onRetry(message.id)}
         >
           <RotateCcw class="cinder-icon-xs" />
         </Button>
@@ -487,7 +487,7 @@
     </div>
   {/if}
 
-  {#if !isEditing && (actions || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onrollback))}
+  {#if !isEditing && (actions || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onRollback))}
     <footer class="chat-message-footer" role="none">
       <div class="chat-message-actions" role="group" aria-label="Message actions">
         {#if actions}
@@ -520,11 +520,11 @@
             <Pencil class="cinder-icon-xs" />
           </button>
         {/if}
-        {#if message.role === 'user' && onrollback}
+        {#if message.role === 'user' && onRollback}
           <button
             type="button"
             class="chat-message-action-button chat-message-rollback-button"
-            onclick={() => onrollback?.(message.id)}
+            onclick={() => onRollback?.(message.id)}
             aria-label="Rollback conversation to this message"
           >
             <RotateCcw class="cinder-icon-xs" />

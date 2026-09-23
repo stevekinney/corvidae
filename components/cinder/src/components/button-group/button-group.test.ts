@@ -2,13 +2,28 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
-import { requiredInstance, requiredValue, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  renderThenHydrate,
+  requiredInstance,
+  requiredValue,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: ButtonGroup } = await import('./button-group.svelte');
 const { default: RuntimeButtonGroup } = await import('./button-group-javascript-consumer.svelte');
+const { default: ButtonGroupButtonsFixture } =
+  await import('../../test/fixtures/button-group-buttons-fixture.svelte');
+
+const buttonGroupButtonsFixturePath = new URL(
+  '../../test/fixtures/button-group-buttons-fixture.svelte',
+  import.meta.url,
+).pathname;
+await prepareSvelteServerSource(buttonGroupButtonsFixturePath);
 
 afterEach(() => cleanup());
 
@@ -297,6 +312,69 @@ describe('ButtonGroup', () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(newButton.hasAttribute('data-cinder-button-group-item')).toBe(true);
+  });
+
+  test('SSR markup carries the styling-contract attribute on Button children before {@attach} runs (COR-459)', async () => {
+    const html = await renderSvelteOnServer(buttonGroupButtonsFixturePath, { label: 'Actions' });
+    // Two <Button> children — Button renders this attribute itself, from the
+    // ButtonGroup context read during its own initialization, so it is present
+    // in the static markup a server produces before any client-only
+    // {@attach} mutation observer has ever run.
+    const matches = html.match(/data-cinder-button-group-item="[^"]+"/g) ?? [];
+    expect(matches).toHaveLength(2);
+  });
+
+  test('styling-contract attribute persists across hydration with no removal or re-add (COR-459)', async () => {
+    const result = await renderThenHydrate(
+      ButtonGroupButtonsFixture,
+      buttonGroupButtonsFixturePath,
+      { label: 'Actions' },
+    );
+
+    try {
+      expect(result.ssrHtml).toMatch(/data-cinder-button-group-item="[^"]+"/);
+
+      const buttons = Array.from(result.container.querySelectorAll('.cinder-button'));
+      expect(buttons).toHaveLength(2);
+
+      const ssrValues = buttons.map((button) =>
+        button.getAttribute('data-cinder-button-group-item'),
+      );
+      expect(ssrValues.every((value) => typeof value === 'string' && value.length > 0)).toBe(true);
+
+      // Watch for ANY mutation of the attribute (a removal or a re-add would
+      // both show up here) once the client-only {@attach} mutation observer
+      // mounts and runs its first sync() pass after hydration.
+      let attributeMutationCount = 0;
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.attributeName === 'data-cinder-button-group-item') {
+            attributeMutationCount += 1;
+          }
+        }
+      });
+      for (const button of buttons) {
+        observer.observe(button, {
+          attributes: true,
+          attributeFilter: ['data-cinder-button-group-item'],
+        });
+      }
+
+      // MutationObserver callbacks (both the test's own observer above and
+      // {@attach}'s internal one) are batched as microtasks — flush them the
+      // same way the existing dynamic-children tests in this file do.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      observer.disconnect();
+      expect(attributeMutationCount).toBe(0);
+
+      const postHydrationValues = buttons.map((button) =>
+        button.getAttribute('data-cinder-button-group-item'),
+      );
+      expect(postHydrationValues).toEqual(ssrValues);
+    } finally {
+      await result.cleanup();
+    }
   });
 
   test('button group styles stretch dropdown participants for split-button composition', async () => {

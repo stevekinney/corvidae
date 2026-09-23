@@ -14,7 +14,7 @@ Import components by name. The root entry loads the required Cinder and editor s
   let source = $state('# Notes');
 </script>
 
-<MarkdownEditor id="post-body" value={source} onchange={(next) => (source = next)} />
+<MarkdownEditor id="post-body" value={source} onValueChange={(next) => (source = next)} />
 ```
 
 `id` is required because it supplies the component's accessibility identifiers.

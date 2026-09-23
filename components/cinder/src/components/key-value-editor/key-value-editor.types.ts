@@ -1,5 +1,12 @@
 import type { HTMLAttributes } from 'svelte/elements';
-export type KeyValueEntry = { key: string; value: string };
+/**
+ * A single editable row. `id` is an immutable identity, independent of the
+ * editable `key`/`value` text — it must be unique within one editor's
+ * `entries`, but two rows may otherwise share equal `key`/`value` text.
+ * Consumers own minting `id` for rows they supply; the editor mints one
+ * itself for a row added through "Add pair".
+ */
+export type KeyValueEntry = { id: string; key: string; value: string };
 export type KeyValueEditorProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /**
    * The editable list of key/value rows. Bindable. Defaults to `[]`.

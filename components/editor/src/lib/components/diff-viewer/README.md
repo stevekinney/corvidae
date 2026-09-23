@@ -43,8 +43,8 @@ The copy is always a full-document unified diff of the original vs. the current 
 | `readonly` | `boolean` | no | — | Whether the viewer is read-only (hides revert buttons) |
 | `viewMode` | `"unified"` \| `"final"` \| `"original"` | no | — | Bindable: reactive access to current view mode. Parent components can bind to control or observe the view mode. |
 | `hunks` | `(opaque)` | no | — | Bindable: reactive access to computed hunks. Parent components can bind to this to reactively access hunk data. Not expressible in JSON Schema; see the component types for the signature. |
-| `onrevertall` | `(opaque)` | no | — | Called when user wants to revert all changes Not expressible in JSON Schema; see the component types for the signature. |
-| `onreverthunk` | `(opaque)` | no | — | Called when user wants to revert a specific hunk Not expressible in JSON Schema; see the component types for the signature. |
+| `onRevertAll` | `(opaque)` | no | — | Called when user wants to revert all changes Not expressible in JSON Schema; see the component types for the signature. |
+| `onRevertHunk` | `(opaque)` | no | — | Called when user wants to revert a specific hunk Not expressible in JSON Schema; see the component types for the signature. |
 | `toolbar` | `(opaque)` | no | — | Override the entire toolbar for advanced customization. When provided, replaces the default toolbar completely. Not expressible in JSON Schema; see the component types for the signature. |
 | `toolbarActions` | `(opaque)` | no | — | Additional toolbar actions rendered in the toolbar-right section. Use this to inject custom buttons (e.g., export actions) without replacing the entire toolbar. Not expressible in JSON Schema; see the component types for the signature. |
 

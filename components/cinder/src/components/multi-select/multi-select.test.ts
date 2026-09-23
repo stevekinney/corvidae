@@ -329,7 +329,7 @@ describe('MultiSelect', () => {
     });
   });
 
-  test('empty list row is exposed as a disabled option', async () => {
+  test('empty filtered list exposes zero option elements and one status description outside the listbox (COR-499)', async () => {
     const { container } = render(MultiSelect, {
       id: 'fruits',
       items,
@@ -341,10 +341,63 @@ describe('MultiSelect', () => {
     if (!filter) throw new Error('filter input not found');
     await fireEvent.input(filter, { target: { value: 'zzz' } });
 
+    // Semantic assertion, not a fake-disabled-option check: no option
+    // elements exist at all while the filtered set is empty.
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(0);
+
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]');
     const empty = container.querySelector('.cinder-multi-select__empty');
-    expect(empty?.getAttribute('role')).toBe('option');
-    expect(empty?.getAttribute('aria-disabled')).toBe('true');
-    expect(empty?.getAttribute('aria-selected')).toBe('false');
+    expect(empty?.getAttribute('role')).toBe('status');
+    expect(listbox?.getAttribute('aria-describedby')).toBe(empty?.id);
+    expect(empty?.closest('[role="listbox"]')).toBeNull();
+    expect(filter.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
+  test('Arrow and Enter cannot select or emit while the filtered list is empty (COR-499)', async () => {
+    let changeCount = 0;
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+      onValueChange: () => {
+        changeCount += 1;
+      },
+    });
+
+    await openMenu(container);
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    await fireEvent.input(filter, { target: { value: 'zzz' } });
+
+    await fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    await fireEvent.keyDown(filter, { key: 'ArrowUp' });
+    await fireEvent.keyDown(filter, { key: 'Enter' });
+
+    expect(changeCount).toBe(0);
+    expect(filter.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
+  test('clearing the filter restores options with no stale empty description (COR-499)', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      filterable: true,
+    });
+
+    await openMenu(container);
+    const filter = container.querySelector<HTMLInputElement>('.cinder-multi-select__filter');
+    if (!filter) throw new Error('filter input not found');
+    await fireEvent.input(filter, { target: { value: 'zzz' } });
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(0);
+
+    await fireEvent.input(filter, { target: { value: '' } });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('[role="option"]').length).toBe(items.length);
+    });
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]');
+    expect(listbox?.hasAttribute('aria-describedby')).toBe(false);
+    expect(container.querySelector('.cinder-multi-select__empty')).toBeNull();
   });
 
   test('filter input has an accessible name and space does not toggle selection', async () => {
@@ -852,7 +905,7 @@ describe('MultiSelect', () => {
     if (!filter) throw new Error('filter input not found');
     await fireEvent.input(filter, { target: { value: 'zzz' } });
 
-    const status = container.querySelector('.cinder-multi-select__sr-status');
+    const status = container.querySelector('.cinder-multi-select__empty');
     expect(status?.getAttribute('role')).toBe('status');
     expect(status?.textContent).toContain('No matching options');
   });

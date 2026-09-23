@@ -182,3 +182,54 @@ describe('ChoiceGrid column layout', () => {
     expect(gridItems.length).toBe(3);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Compact size (COR-330)
+// ---------------------------------------------------------------------------
+
+describe('ChoiceGrid size', () => {
+  test('omitting size preserves current appearance: no data-cinder-size attribute anywhere', () => {
+    const { container } = render(Wrapper, { ariaLabel: 'Choices', items });
+    expect(container.querySelector('.cinder-choice-grid')?.hasAttribute('data-cinder-size')).toBe(
+      false,
+    );
+    for (const item of container.querySelectorAll('.cinder-choice-grid-item')) {
+      expect(item.hasAttribute('data-cinder-size')).toBe(false);
+    }
+  });
+
+  test('size="sm" is propagated from the grid root to every item', () => {
+    const { container } = render(Wrapper, { ariaLabel: 'Choices', items, size: 'sm' });
+    expect(container.querySelector('.cinder-choice-grid')?.getAttribute('data-cinder-size')).toBe(
+      'sm',
+    );
+    const gridItems = container.querySelectorAll('.cinder-choice-grid-item');
+    expect(gridItems.length).toBe(3);
+    for (const item of gridItems) {
+      expect(item.getAttribute('data-cinder-size')).toBe('sm');
+    }
+  });
+
+  test('size="sm" defaults minColumnWidth to 6rem for columns="responsive"', () => {
+    const { container } = render(Wrapper, { ariaLabel: 'Choices', items, size: 'sm' });
+    const root = container.querySelector<HTMLElement>('.cinder-choice-grid');
+    expect(root?.style.getPropertyValue('--cinder-grid-min-item-width')).toBe('6rem');
+  });
+
+  test('an explicit minColumnWidth wins over the size="sm" default', () => {
+    const { container } = render(Wrapper, {
+      ariaLabel: 'Choices',
+      items,
+      size: 'sm',
+      minColumnWidth: '8rem',
+    });
+    const root = container.querySelector<HTMLElement>('.cinder-choice-grid');
+    expect(root?.style.getPropertyValue('--cinder-grid-min-item-width')).toBe('8rem');
+  });
+
+  test('without size="sm", minColumnWidth keeps defaulting to 10rem', () => {
+    const { container } = render(Wrapper, { ariaLabel: 'Choices', items });
+    const root = container.querySelector<HTMLElement>('.cinder-choice-grid');
+    expect(root?.style.getPropertyValue('--cinder-grid-min-item-width')).toBe('10rem');
+  });
+});

@@ -73,7 +73,9 @@ test('allocates usable ports from concurrent processes', async () => {
     const environment = {};
     const { PORT } = browserPorts(['PORT'], environment);
     const listener = Bun.listen({ hostname: '127.0.0.1', port: PORT, socket: { data() {} } });
-    console.log(PORT);
+    // Not console.log(PORT): an inherited FORCE_COLOR wraps a logged number in
+    // ANSI escapes, which Number() then parses as NaN in the parent.
+    process.stdout.write(PORT + '\\n');
     await Bun.stdin.text();
     listener.stop();
   `;

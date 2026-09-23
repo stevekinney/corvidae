@@ -27,7 +27,7 @@ describe('ChatConversationHeader SSR safety', () => {
   test('server compilation renders with no DOM globals', async () => {
     const html = await renderSvelteOnServer(sourcePath, {
       conversation: conversation(),
-      showExportActions: false,
+      exportActionsVisible: false,
     });
 
     expect(html).toContain('Server-safe header');

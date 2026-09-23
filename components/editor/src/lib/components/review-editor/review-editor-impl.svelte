@@ -85,12 +85,12 @@
     placeholder = 'Start writing...',
     name,
     class: className,
-    onchange,
-    onthreadcreate,
-    onthreaddelete,
-    oncommentcreate,
-    oncommentupdate,
-    oncommentdelete,
+    onValueChange,
+    onThreadCreate,
+    onThreadDelete,
+    onCommentCreate,
+    onCommentUpdate,
+    onCommentDelete,
     snapshotMode = false,
   }: ReviewEditorProps = $props();
 
@@ -128,7 +128,7 @@
   let editorViewReady = $state(false);
 
   // `editorViewReady` is a latch set true by `handleSelectionChange`/the
-  // `MarkdownEditor` `onready` callback below, but nothing symmetrically
+  // `MarkdownEditor` `onReady` callback below, but nothing symmetrically
   // cleared it when the editor view unmounted (cinder#1301): switching to the
   // Diff or Summary tab destroys the `MarkdownEditor` instance behind the
   // `{#if activeView === 'editor'}` branch, `editorRef` unbinds back to
@@ -885,7 +885,7 @@
   // Handle content changes
   function handleChange(newValue: string) {
     value = newValue;
-    onchange?.(newValue);
+    onValueChange?.(newValue);
   }
 
   function handleEditorBodyChange(newBody: string) {
@@ -1384,11 +1384,11 @@
   export function reset(): void {
     // Revert content
     value = original;
-    onchange?.(original);
+    onValueChange?.(original);
 
     // Clear all threads
     for (const thread of threads) {
-      onthreaddelete?.({ threadId: thread.id });
+      onThreadDelete?.({ threadId: thread.id });
     }
 
     // Clear UI state
@@ -1479,7 +1479,7 @@
       authorId: currentUserId,
       mentions: mentions.length > 0 ? mentions : undefined,
     };
-    onthreadcreate?.(event);
+    onThreadCreate?.(event);
 
     // Clear state. Remember the range so the selection ProseMirror restores on
     // refocus does not re-open the popover over the text just commented on.
@@ -1583,7 +1583,7 @@
       authorId,
       mentions: mentions.length > 0 ? mentions : undefined,
     };
-    onthreadcreate?.(event);
+    onThreadCreate?.(event);
 
     announce('Comment added');
     return requestId;
@@ -1620,7 +1620,7 @@
       authorId,
       mentions: mentions.length > 0 ? mentions : undefined,
     };
-    onthreadcreate?.(event);
+    onThreadCreate?.(event);
 
     announce('Document comment added');
     return requestId;
@@ -1642,7 +1642,7 @@
     const thread = threads.find((t) => t.id === threadId);
     if (!thread) return;
 
-    onthreaddelete?.({ threadId });
+    onThreadDelete?.({ threadId });
   }
 
   /**
@@ -1652,7 +1652,7 @@
    * - Editor is in readonly mode (mode === 'readonly')
    * - No threads exist
    *
-   * Fires onthreaddelete for each thread.
+   * Fires onThreadDelete for each thread.
    */
   export function clearAllThreads(): void {
     if (mode === 'readonly') return;
@@ -1660,7 +1660,7 @@
 
     // Fire delete event for each thread
     for (const thread of threads) {
-      onthreaddelete?.({ threadId: thread.id });
+      onThreadDelete?.({ threadId: thread.id });
     }
 
     // Clear any active selection state
@@ -1696,7 +1696,7 @@
     const mentions = extractMentions(body);
     const requestId = generateId();
 
-    oncommentcreate?.({
+    onCommentCreate?.({
       requestId,
       threadId,
       body,
@@ -1728,7 +1728,7 @@
 
     const mentions = extractMentions(body);
 
-    oncommentupdate?.({
+    onCommentUpdate?.({
       threadId,
       commentId,
       body,
@@ -1756,7 +1756,7 @@
     const comment = thread?.comments.find((c) => c.id === commentId);
     if (!comment || (soft && comment.deletedAt)) return;
 
-    oncommentdelete?.({ threadId, commentId, soft });
+    onCommentDelete?.({ threadId, commentId, soft });
     announce('Comment deleted');
   }
 
@@ -1811,7 +1811,7 @@
       const requestId = generateId();
 
       // Fire the create event
-      onthreadcreate?.({
+      onThreadCreate?.({
         requestId,
         anchor,
         body,
@@ -2085,7 +2085,7 @@
     readonly={isReadonly}
     onRevertAll={() => {
       value = original;
-      onchange?.(original);
+      onValueChange?.(original);
       announce('All changes reverted');
     }}
     {commentCount}
@@ -2140,9 +2140,9 @@
             readonly={isReadonly}
             {placeholder}
             {snapshotMode}
-            showToolbar={false}
-            onchange={handleChange}
-            onready={() => {
+            toolbarEnabled={false}
+            onValueChange={handleChange}
+            onReady={() => {
               if (!editorViewReady) {
                 editorViewReady = true;
               }
@@ -2158,15 +2158,15 @@
             {placeholder}
             plugins={[anchorPlugin]}
             {snapshotMode}
-            showToolbar={false}
-            ontoolbarcontextchange={(context) => (editorToolbarContext = context)}
-            onchange={handleEditorBodyChange}
-            onready={() => {
+            toolbarEnabled={false}
+            onToolbarContextChange={(context) => (editorToolbarContext = context)}
+            onValueChange={handleEditorBodyChange}
+            onReady={() => {
               if (!editorViewReady) {
                 editorViewReady = true;
               }
             }}
-            onselectionchange={handleSelectionChange}
+            onSelectionChange={handleSelectionChange}
           />
         {/if}
       </div>
@@ -2198,7 +2198,7 @@
             value={summaryContent}
             mode="wysiwyg"
             readonly
-            showToolbar={false}
+            toolbarEnabled={false}
             placeholder=""
           />
         {:else}
@@ -2221,7 +2221,7 @@
       {activeThreadId}
       readonly={isReadonly}
       onthreadselect={handleSidebarThreadSelect}
-      onthreaddelete={deleteThread}
+      onThreadDelete={deleteThread}
       onclearall={clearAllThreads}
       onadddocumentcomment={handleAddDocumentComment}
     />
@@ -2239,9 +2239,9 @@
       ignoreClickOutsideRefs={[activeSidebarRowElement, ...sidebarRemoveControlRefs]}
       onclose={handlePopoverClose}
       ondelete={handlePopoverDelete}
-      oncommentcreate={handlePopoverCommentCreate}
-      oncommentupdate={handlePopoverCommentUpdate}
-      oncommentdelete={handlePopoverCommentDelete}
+      onCommentCreate={handlePopoverCommentCreate}
+      onCommentUpdate={handlePopoverCommentUpdate}
+      onCommentDelete={handlePopoverCommentDelete}
     />
   {/if}
 

@@ -23,6 +23,10 @@ The range-mode labels include the slider's `label` so a screen reader that annou
 
 When the slider is composed inside `<FormField>`, the field's label is linked via `aria-labelledby` and the per-thumb `aria-label` is suppressed so accessible-name computation has a single unambiguous source. In range mode, each thumb's `aria-labelledby` references both the field label and a visually hidden qualifier span (`{label-id} {qualifier-id}`) so that the "minimum value" / "maximum value" distinction is preserved.
 
+### `headerVisible` and `displayValue` never touch accessible names
+
+`headerVisible={false}` (COR-327) hides only the visible `.cinder-slider__label` span in the header row — it has no effect on `accessibleNameFor()`, the function backing both `aria-label` and the range thumbs' hidden qualifier text. A thumb's accessible name always comes from `label`, and range thumbs stay identified as "minimum value" / "maximum value" regardless of `headerVisible`. Likewise, `displayValue` only reformats the visible value text; it never reaches `aria-valuetext`, which is driven solely by `valueText` (see [Content Guidance](#content-guidance)).
+
 ## Keyboard Interactions
 
 | Key                     | Behavior                                      |
@@ -78,4 +82,5 @@ Native form `reset` is not handled internally: a hidden input does not participa
 
 - The `label` prop is required. A slider without an accessible name is unusable for assistive technology.
 - Provide `valueText` whenever the raw number is not self-evident — prices, dates, percentages of an unusual base, etc.
+- `displayValue` is a purely visual formatter for the header's value text. It does not substitute for `valueText`: if the sighted value text needs formatting (a compact "7 notes · C4–B4" label, for example), assume the announced value still needs its own `valueText` unless the raw number is already self-evident to a screen-reader user.
 - For sliders with fewer than ~10 discrete values, prefer a `select`, `radio-group`, or `segmented-control`. Sliders are better for continuous ranges or coarse "feel" adjustments.

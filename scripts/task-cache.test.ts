@@ -79,7 +79,7 @@ test('an inherited TURBO_FORCE cannot make a fixture re-execute instead of resto
     await createWorkspace(directory);
     // `executions.txt` is gitignored so it is not hashed as an input; a counted
     // execution must not be what invalidates the next lookup.
-    await Bun.write(join(directory, '.gitignore'), 'node_modules/\nexecutions.txt\n');
+    await Bun.write(join(directory, '.gitignore'), 'node_modules/\n.turbo/\nexecutions.txt\n');
     const packageDirectory = join(directory, 'packages/base');
     await Bun.write(
       join(packageDirectory, 'package.json'),
@@ -188,7 +188,12 @@ async function createWorkspace(directory: string): Promise<void> {
       workspaces: ['packages/*', 'components/*', 'applications/*', 'internal/*'],
     }),
   );
-  await Bun.write(join(directory, '.gitignore'), 'node_modules/\n');
+  // Turbo writes each task's log to `<package>/.turbo/turbo-<task>.log` after the
+  // task runs. Unignored, that log is hashed as an input of the next run, so a
+  // second invocation always misses and the restoration tests count a second
+  // execution. The repository's own `.gitignore` excludes `.turbo/`; so must
+  // every fixture's.
+  await Bun.write(join(directory, '.gitignore'), 'node_modules/\n.turbo/\n');
   await Bun.write(join(directory, 'turbo.json'), Bun.file(join(root, 'turbo.json')));
   await Bun.write(
     join(directory, 'internal/typescript/package.json'),
@@ -289,7 +294,7 @@ test('application check caches restore generated inputs without restoring build 
     await createWorkspace(directory);
     await Bun.write(
       join(directory, '.gitignore'),
-      'node_modules/\n.hutch/\n.svelte-kit/\n.playwright/\nbuild/\nexecutions.txt\n',
+      'node_modules/\n.turbo/\n.hutch/\n.svelte-kit/\n.playwright/\nbuild/\nexecutions.txt\n',
     );
     // Electrobun projects its SDK into `.hutch/devkit` rather than generating
     // `.svelte-kit`, but the property under test is unchanged: a task that
@@ -357,7 +362,10 @@ test('root browser test caches restore their generated catalogs and follow provi
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-browser-cache-'));
   try {
     await createWorkspace(directory);
-    await Bun.write(join(directory, '.gitignore'), 'node_modules/\n.playwright/\nexecutions.txt\n');
+    await Bun.write(
+      join(directory, '.gitignore'),
+      'node_modules/\n.turbo/\n.playwright/\nexecutions.txt\n',
+    );
     const manifestPath = join(directory, 'package.json');
     const manifest = await Bun.file(manifestPath).json();
     await Bun.write(

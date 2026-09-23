@@ -12,8 +12,8 @@
  * nothing at runtime, so it is trivially SSR-safe.
  *
  * The adapter is always optional. When omitted, Chat behaves exactly as it does
- * with its plain callback props (`onsubmit` / `onretry` / `onedit` /
- * `onstopgenerating`); the internal command dispatcher routes both paths
+ * with its plain callback props (`onSubmit` / `onRetry` / `onEdit` /
+ * `onStopGenerating`); the internal command dispatcher routes both paths
  * identically (adapter method first, callback fallback).
  *
  * @module
@@ -104,7 +104,7 @@ export type ChatToolApprovalResolution = 'resolved' | 'pending';
  * Only `sendMessage` is required; everything else is optional so an adapter can
  * opt into exactly the capabilities its transport supports. Command methods
  * return `Promise<void>` — Chat awaits them and routes any failure (a rejected
- * promise OR a synchronous throw from the method) to `onadaptererror` rather
+ * promise OR a synchronous throw from the method) to `onAdapterError` rather
  * than swallowing it.
  *
  * The optional `resolveToolApproval` (consumed by the approval card) and

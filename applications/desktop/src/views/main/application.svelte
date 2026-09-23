@@ -98,7 +98,7 @@
       {adapter}
       {streaming}
       scrollFadeVisible
-      onadaptererror={handleAdapterError}
+      onAdapterError={handleAdapterError}
     />
   </div>
 </main>
@@ -117,7 +117,7 @@
     align-items: center;
     padding-block: var(--cinder-space-3);
     padding-inline: var(--cinder-space-4);
-    border-block-end: 1px solid var(--cinder-border-subtle);
+    border-block-end: 1px solid var(--cinder-border-muted);
   }
 
   .titlebar h1 {

@@ -147,7 +147,7 @@ describe('ChatMessage — tool-call rendering', () => {
     const { container } = render(ChatMessage, {
       props: {
         message: userMessage(),
-        onedit: () => {},
+        onEdit: () => {},
       },
     });
 

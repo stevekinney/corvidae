@@ -196,6 +196,20 @@ describe('Carousel', () => {
     }
   });
 
+  test('reduced motion hides the autoplay rotation control entirely, not merely its behavior', () => {
+    // Not just "does not advance" (covered above) — the control itself must
+    // not exist. A visible Play/Pause toggle for rotation that reduced motion
+    // has already disabled would be a lie: nothing it does can start rotation
+    // running again.
+    const restoreMatchMedia = installMatchMediaMock(true);
+    try {
+      const { container } = render(Carousel, { slides, autoplay: true, autoplayInterval: 100 });
+      expect(container.querySelector('.cinder-carousel__control--pause')).toBeNull();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   // Characterization tests (Phase 0 of the blossom-carousel gap-closing plan).
   // These pin the *contract* — what settles, when the index updates, when the
   // outgoing slide stops being interactive, and the current always-on loop

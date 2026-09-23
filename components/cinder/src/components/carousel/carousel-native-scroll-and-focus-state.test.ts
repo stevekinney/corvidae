@@ -195,6 +195,72 @@ describe('Carousel', () => {
     expectActiveSlide(container, 0);
   });
 
+  test('leaves carousel shortcuts to a textarea in slide content', () => {
+    const { container } = render(Carousel, { slides });
+    const activeSlide = requiredInstance(
+      container.querySelector('article.cinder-carousel__slide'),
+      HTMLElement,
+    );
+    const textarea = document.createElement('textarea');
+    activeSlide.append(textarea);
+    textarea.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowLeft',
+      bubbles: true,
+      cancelable: true,
+    });
+
+    textarea.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expectActiveSlide(container, 0);
+  });
+
+  test('leaves carousel shortcuts to a select in slide content', () => {
+    const { container } = render(Carousel, { slides });
+    const activeSlide = requiredInstance(
+      container.querySelector('article.cinder-carousel__slide'),
+      HTMLElement,
+    );
+    const select = document.createElement('select');
+    select.append(document.createElement('option'), document.createElement('option'));
+    activeSlide.append(select);
+    select.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: 'Home',
+      bubbles: true,
+      cancelable: true,
+    });
+
+    select.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expectActiveSlide(container, 0);
+  });
+
+  test('leaves carousel shortcuts to contenteditable slide content', () => {
+    const { container } = render(Carousel, { slides });
+    const activeSlide = requiredInstance(
+      container.querySelector('article.cinder-carousel__slide'),
+      HTMLElement,
+    );
+    const editable = document.createElement('div');
+    editable.contentEditable = 'true';
+    editable.tabIndex = 0;
+    activeSlide.append(editable);
+    editable.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: 'End',
+      bubbles: true,
+      cancelable: true,
+    });
+
+    editable.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expectActiveSlide(container, 0);
+  });
+
   test('leaves carousel shortcuts to nested keyboard widgets', () => {
     const { container } = render(Carousel, { slides });
     const activeSlide = requiredInstance(
