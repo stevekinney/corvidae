@@ -41,3 +41,4 @@ local.env
 tmp/
 .DS_Store
 .idea/
+/.claude/worktrees
