@@ -9,6 +9,7 @@ export type {
   DataGridColumnPinning,
   DataGridColumnSizing,
   DataGridDensity,
+  DataGridEditType,
   DataGridProps,
   DataGridSelectionMode,
   DataGridSelectionModel,

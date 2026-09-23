@@ -14,13 +14,33 @@ Purpose: ARIA data grid foundation for spreadsheet-like datasets with explicit r
 ## Avoid when
 
 - You only need a semantic read-only table — use DataTable or the Table family instead.
-- You need resize handles, drag-to-reorder controls, or editing today — DataGrid does not provide them yet.
+- You need resize handles or drag-to-reorder controls — DataGrid does not provide them yet.
 
 ## Keyboard and focus
 
 The grid owns the root tab stop and moves the active cell with keyboard commands. Do not put body cells directly in the tab order unless the component documents that behavior.
 
 Keep focus indicators visible. If you wrap or restyle DataGrid, verify the focused element remains visually apparent in default and forced-colors modes.
+
+## Editing
+
+Only columns marked `editable: true` accept edit mode. DataGrid renders its own Input in place of the read-only value while a cell is editing, so the edit surface always carries the same text-field semantics as every other Cinder Input.
+
+| Key | While focused, not editing | While editing |
+| --- | --- | --- |
+| `Enter` | Enters edit mode on an editable cell. | Commits the draft and moves the active cell to the same column in the next row. |
+| Double-click | Enters edit mode on an editable cell. | — |
+| A single printable character (no Ctrl/Meta/Alt) | Enters edit mode with that character as the initial draft. | Ordinary text input — reaches the Input's cursor. |
+| `Escape` | Existing behavior (collapses selection to the active cell). | Cancels: restores the original value without calling `onCellEdit`. |
+| `Tab` / `Shift+Tab` | Existing grid cell-to-cell navigation. | Commits and moves to the next cell (`Shift+Tab` moves to the previous cell). |
+| Arrow keys, `Home`, `End`, `PageUp`, `PageDown` | Existing grid navigation. | Not intercepted by the grid — they reach the Input's text cursor. |
+| Blurring the Input (e.g. clicking elsewhere) | — | Commits. |
+
+Focus management: entering edit mode moves real DOM focus into the Input. Committing (Enter, Tab) or canceling (Escape) moves real DOM focus back to the grid root, which keeps `aria-activedescendant` pointing at the resulting active cell — the same focus model the grid already uses for click- and arrow-driven navigation. A blur-triggered commit (clicking elsewhere) does not force focus back into the grid, since focus has already moved to wherever the user clicked.
+
+Editing identity is tracked by stable row key plus column key, not by visual row or column index, so a sort or a virtualization re-render while a cell is being edited does not lose or relocate the edit. If the edited row or column is removed from the grid (filtered out, deleted, or hidden) the edit is canceled automatically.
+
+A column that supplies a custom `cell` snippet keeps using that snippet while editing — it receives `editing: true` in its `DataGridCellContext` and is responsible for its own edit UI (built from Cinder's own Input, not a bespoke `<input>`) if it wants one.
 
 ## Row headers
 

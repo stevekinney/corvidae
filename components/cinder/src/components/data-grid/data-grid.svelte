@@ -9,8 +9,9 @@
    * @tag spreadsheet
    * @useWhen Rendering interactive tabular data that will need grid behavior such as selection, virtualization, resizing, or editing.
    * @useWhen You need role=grid semantics instead of native table semantics.
+   * @useWhen You need inline cell editing backed by Cinder's own Input, with commit/cancel keyboard behavior handled for you.
    * @avoidWhen You only need a semantic read-only table — use DataTable or the Table family instead.
-   * @avoidWhen You need resize handles, drag-to-reorder controls, or editing today — DataGrid does not provide them yet.
+   * @avoidWhen You need resize handles or drag-to-reorder controls — DataGrid does not provide them yet.
    * @related data-table, table
    */
   export type {
@@ -20,6 +21,7 @@
     DataGridColumnPinning,
     DataGridColumnSizing,
     DataGridDensity,
+    DataGridEditType,
     DataGridProps,
     DataGridSelectionMode,
     DataGridSelectionModel,
@@ -37,13 +39,24 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { copyToClipboard } from '../../utilities/clipboard.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
+  import Input from '../input/input.svelte';
   import {
     DataGridColumnModel,
     getDataGridColumnValue,
     type ResolvedDataGridColumn,
   } from './_internal/column-model.svelte.ts';
+  import {
+    DataGridEditModel,
+    resolveDataGridEditCommitValue,
+    resolveDataGridEditType,
+    type DataGridEditCellIdentity,
+  } from './_internal/edit-model.svelte.ts';
   import type { DataGridCellCoordinate } from './_internal/geometry.ts';
-  import { dataGridKeyToAction } from './_internal/keyboard-model.ts';
+  import {
+    dataGridKeyToAction,
+    getAdjacentCellIndex,
+    isPrintableCharacterKeydown,
+  } from './_internal/keyboard-model.ts';
   import { DataGridSelectionModel as InternalDataGridSelectionModel } from './_internal/selection-model.svelte.ts';
   import {
     getActiveDataGridSortModel,
@@ -87,6 +100,7 @@
     onSelectionModelChange,
     sortModel = $bindable([]),
     onSortModelChange,
+    onCellEdit,
     rowClass,
     getRowAriaLabel,
     class: className,
@@ -201,11 +215,22 @@
   };
   const delegateBodyEvents: Attachment<HTMLElement> = (node) => {
     node.addEventListener('click', handleBodyClick);
+    node.addEventListener('dblclick', handleBodyDoubleClick);
     node.addEventListener('keydown', handleBodyKeydown);
     return () => {
       node.removeEventListener('click', handleBodyClick);
+      node.removeEventListener('dblclick', handleBodyDoubleClick);
       node.removeEventListener('keydown', handleBodyKeydown);
     };
+  };
+  const focusEditingInput: Attachment<HTMLInputElement> = (node) => {
+    node.focus();
+    const cursorPosition = node.value.length;
+    try {
+      node.setSelectionRange(cursorPosition, cursorPosition);
+    } catch {
+      // Selection ranges aren't supported for every input `type` (e.g. "number").
+    }
   };
   const virtualRows = $derived(rowVirtualizer.virtualRows);
   const virtualColumns = $derived(rowVirtualizer.virtualColumns);
@@ -300,6 +325,8 @@
     rowIds: () => rowDomIds,
     columnKeys: () => columnKeys,
   });
+  const editModel = new DataGridEditModel();
+  let suppressNextEditBlur = false;
   const activeRowIndex = $derived(
     sortedKeyedRows.length > 0 ? Math.min(requestedActiveRowIndex, sortedKeyedRows.length - 1) : 0,
   );
@@ -483,6 +510,7 @@
     if (!isInitialSelectionReconciliation && !didSelectionGeometryChange) return;
 
     selectionState.reconcile(activeCellCoordinates);
+    editModel.reconcile(rowDomIds, columnKeys);
     if (!didSelectionGeometryChange) return;
 
     syncRequestedActiveCell();
@@ -797,6 +825,12 @@
     handleCellClick(event, cell.rowId, cell.rowDomId, cell.columnKey, cell.rowIndex);
   }
 
+  function handleBodyDoubleClick(event: MouseEvent): void {
+    const cell = getCellEventDetail(event);
+    if (!cell) return;
+    beginEditCell(cell.rowDomId, cell.columnKey);
+  }
+
   function handleCellKeydown(
     event: KeyboardEvent,
     rowId: string,
@@ -850,6 +884,99 @@
     };
   }
 
+  function getEditingInputId(cell: DataGridEditCellIdentity): string {
+    return `${getCellId(cell.rowKey, cell.columnKey)}-editor`;
+  }
+
+  function beginEditCell(rowKey: string, columnKey: string, initialDraft?: string): void {
+    if (editModel.editingCell) return;
+    const column = columnModel.renderColumns.find((item) => item.key === columnKey);
+    if (!column?.editable) return;
+    const rowRecord = keyedRows.find((item) => item.rowKey === rowKey);
+    if (!rowRecord) return;
+
+    const value = getDataGridColumnValue(rowRecord.row, column);
+    const draft = initialDraft ?? formatDataGridValue(value);
+    editModel.begin({ rowKey, columnKey }, draft, value);
+  }
+
+  function endEditing(refocusGrid: boolean): void {
+    suppressNextEditBlur = true;
+    if (refocusGrid) gridElement?.focus({ preventScroll: true });
+    editModel.end();
+  }
+
+  function cancelEdit(): void {
+    if (!editModel.editingCell) return;
+    endEditing(true);
+  }
+
+  function commitEdit(options: {
+    refocusGrid: boolean;
+    moveToNextRow?: boolean;
+    moveTabDirection?: number;
+  }): void {
+    const cell = editModel.editingCell;
+    if (!cell) return;
+
+    const rowRecord = keyedRows.find((item) => item.rowKey === cell.rowKey);
+    const column = columnModel.renderColumns.find((item) => item.key === cell.columnKey);
+    if (rowRecord && column) {
+      const editType = resolveDataGridEditType(column.editType, editModel.originalValue);
+      const result = resolveDataGridEditCommitValue(editType, editModel.draftValue);
+      if (result.committed) onCellEdit?.(rowRecord.row, column.key, result.value);
+    }
+
+    const rowIndex = sortedKeyedRows.findIndex((item) => item.rowKey === cell.rowKey);
+    const columnIndex = columnModel.renderColumns.findIndex((item) => item.key === cell.columnKey);
+    if (options.moveToNextRow && rowIndex >= 0 && columnIndex >= 0) {
+      moveActiveCell(rowIndex + 1, columnIndex);
+    } else if (options.moveTabDirection !== undefined && rowIndex >= 0 && columnIndex >= 0) {
+      const target = getAdjacentCellIndex(
+        rowIndex,
+        columnIndex,
+        columnModel.renderColumns.length,
+        sortedKeyedRows.length,
+        options.moveTabDirection,
+      );
+      if (target) moveActiveCell(target.rowIndex, target.columnIndex);
+    }
+
+    endEditing(options.refocusGrid);
+  }
+
+  function handleEditInputBlur(cell: DataGridEditCellIdentity): void {
+    if (suppressNextEditBlur) {
+      suppressNextEditBlur = false;
+      return;
+    }
+    if (!editModel.isEditing(cell)) return;
+    commitEdit({ refocusGrid: false });
+  }
+
+  function handleEditingKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelEdit();
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      commitEdit({ refocusGrid: true, moveToNextRow: true });
+      return;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      event.stopPropagation();
+      commitEdit({ refocusGrid: true, moveTabDirection: event.shiftKey ? -1 : 1 });
+    }
+    // Every other key (arrows, Home/End, PageUp/PageDown, printable
+    // characters, ...) is intentionally left alone so it reaches the
+    // editing Input's own text cursor instead of grid navigation.
+  }
+
   function handleKeydown(event: KeyboardEvent): void {
     if (consumerOnKeydown) {
       (consumerOnKeydown as (event: KeyboardEvent) => void)(event);
@@ -858,9 +985,29 @@
     if (event.target instanceof Element && event.target.closest('.cinder-data-grid__sort-button')) {
       return;
     }
+
+    if (editModel.editingCell) {
+      handleEditingKeydown(event);
+      return;
+    }
+
     if (isInteractiveEventTarget(event)) return;
 
     if (sortedKeyedRows.length === 0 || columnModel.renderColumns.length === 0) return;
+
+    const activeColumn = columnModel.renderColumns[activeColumnIndex];
+    if (activeColumn?.editable && activeRowDomId !== undefined) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        beginEditCell(activeRowDomId, activeColumn.key);
+        return;
+      }
+      if (isPrintableCharacterKeydown(event)) {
+        event.preventDefault();
+        beginEditCell(activeRowDomId, activeColumn.key, event.key);
+        return;
+      }
+    }
 
     const action = dataGridKeyToAction(event, {
       activeRowIndex,
@@ -1021,6 +1168,8 @@
           {@const cellCoordinates = { rowId: rowDomId, columnKey: column.key }}
           {@const isSelectedCell = selectionState.isCellSelected(cellCoordinates)}
           {@const isAnchorCell = selectionState.isAnchorCell(cellCoordinates)}
+          {@const editCellIdentity = { rowKey: rowDomId, columnKey: column.key }}
+          {@const isEditingCell = editModel.isEditing(editCellIdentity)}
           <div
             id={cellId}
             class="cinder-data-grid__cell"
@@ -1032,14 +1181,27 @@
             data-cinder-active={activeCellId === cellId ? 'true' : undefined}
             data-cinder-selected={isSelectedCell ? '' : undefined}
             data-cinder-anchor={isAnchorCell ? 'true' : undefined}
+            data-cinder-editable={column.editable ? 'true' : undefined}
+            data-cinder-editing={isEditingCell ? 'true' : undefined}
             data-cinder-row-id={rowId}
             data-cinder-row-dom-id={rowDomId}
             data-cinder-column-key={column.key}
             data-cinder-row-index={rowIndex}
             style={getCellStyle(column)}
           >
-            {#if column.cell}
-              {@render column.cell({ row, value, editing: false })}
+            {#if isEditingCell && !column.cell}
+              {@const editType = resolveDataGridEditType(column.editType, editModel.originalValue)}
+              <Input
+                id={getEditingInputId(editCellIdentity)}
+                type={editType}
+                bind:value={editModel.draftValue}
+                inputAttachment={focusEditingInput}
+                class="cinder-data-grid__cell-editor-input"
+                aria-label={typeof column.header === 'string' ? column.header : undefined}
+                onblur={() => handleEditInputBlur(editCellIdentity)}
+              />
+            {:else if column.cell}
+              {@render column.cell({ row, value, editing: isEditingCell })}
             {:else}
               {formatDataGridValue(value)}
             {/if}

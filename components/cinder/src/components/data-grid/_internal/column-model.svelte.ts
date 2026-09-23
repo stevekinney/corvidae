@@ -5,6 +5,7 @@ import type {
   DataGridColumnPin,
   DataGridColumnPinning,
   DataGridColumnSizing,
+  DataGridEditType,
   DataGridSortComparator,
 } from '../data-grid.types.ts';
 
@@ -17,6 +18,8 @@ export type DataGridValueColumn<TRow> = {
   sortable?: boolean;
   sortComparator?: DataGridSortComparator<TRow>;
   getValue?: (row: TRow) => unknown;
+  editable?: boolean;
+  editType?: DataGridEditType;
 };
 
 export type ResolvedDataGridColumn<TRow> = DataGridValueColumn<TRow> & {
@@ -153,6 +156,8 @@ function resolveColumn<TRow>(
   if (column.sortable !== undefined) resolvedColumn.sortable = column.sortable;
   if (column.sortComparator !== undefined) resolvedColumn.sortComparator = column.sortComparator;
   if (column.getValue !== undefined) resolvedColumn.getValue = column.getValue;
+  if (column.editable !== undefined) resolvedColumn.editable = column.editable;
+  if (column.editType !== undefined) resolvedColumn.editType = column.editType;
 
   if (pin !== undefined) return { ...resolvedColumn, pin };
 

@@ -203,6 +203,49 @@
       inset 0 0 0 calc(max(2px, var(--cinder-ring-width)) + 2px) var(--cinder-ring-color);
   }
 
+  /* The Input's FormFieldFrame wrapper is sized to fill the cell it
+     replaces, in place of the cell's own now-zeroed padding. */
+  .cinder-data-grid__cell[data-cinder-editing] {
+    padding: 0;
+    overflow: visible;
+  }
+
+  .cinder-data-grid__cell[data-cinder-editing] .cinder-form-field {
+    display: flex;
+    align-items: stretch;
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  .cinder-data-grid__cell[data-cinder-editing] .cinder-form-field__control {
+    inline-size: 100%;
+  }
+
+  .cinder-data-grid__cell[data-cinder-editing] .cinder-form-field__error {
+    display: none;
+  }
+
+  .cinder-data-grid__cell-editor-input {
+    inline-size: 100%;
+    block-size: 100%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--cinder-surface-raised);
+    font: inherit;
+    color: inherit;
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+  }
+
+  .cinder-data-grid__cell-editor-input:focus-visible {
+    /* cinder-focus-ring-owner: parent — the editing cell is always the
+       active cell, so .cinder-data-grid__cell[data-cinder-active] already
+       paints the ring; the input's own ring would double it up. */
+    outline: none;
+    box-shadow: none;
+  }
+
   .cinder-data-grid__header-cell[data-cinder-pin],
   .cinder-data-grid__cell[data-cinder-pin] {
     position: sticky;

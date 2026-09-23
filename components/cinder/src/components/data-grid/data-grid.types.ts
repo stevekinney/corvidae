@@ -17,9 +17,20 @@ export type DataGridSortComparator<TRow, TValue = unknown> = {
   compare(leftValue: TValue, rightValue: TValue, leftRow: TRow, rightRow: TRow): number;
 }['compare'];
 
+/**
+ * Input `type` used for an editable column's edit surface. See
+ * `DataGridColumnDef.editType`.
+ */
+export type DataGridEditType = 'text' | 'number';
+
 export type DataGridCellContext<TRow, TValue = unknown> = {
   row: TRow;
   value: TValue;
+  /**
+   * `true` exactly for the single cell currently in edit mode (see
+   * `DataGridColumnDef.editable`); `false` for every other cell, including
+   * every cell in a non-editable column.
+   */
   editing: boolean;
 };
 
@@ -31,8 +42,11 @@ type DataGridBaseColumnDef<TRow> = {
   /** Header content rendered in the columnheader cell. */
   header: string | Snippet;
   /**
-   * Custom body cell renderer. The `editing` flag is currently always false
-   * because DataGrid renders read-only cells.
+   * Custom body cell renderer. `editing` is `true` while this exact cell is
+   * in edit mode and `false` otherwise (see `editable`). DataGrid's
+   * built-in edit surface (Cinder's Input) only replaces the default
+   * formatted-value rendering; a column that supplies `cell` is
+   * responsible for its own edit UI when `editing` is `true`.
    */
   cell?: Snippet<[DataGridCellContext<TRow>]>;
   /** Initial pixel width. Defaults to 150. */
@@ -51,6 +65,18 @@ type DataGridBaseColumnDef<TRow> = {
   rowHeader?: boolean;
   /** Enables header-click sorting for this column. */
   sortable?: boolean;
+  /**
+   * Enables inline editing for this column. Editable cells enter edit mode
+   * on Enter, double-click, or by typing a printable character while the
+   * cell is focused (not yet editing). Defaults to `false`.
+   */
+  editable?: boolean;
+  /**
+   * Input `type` for this column's edit surface (Cinder's Input). Defaults
+   * to `'number'` when the cell's current value is a `number`, otherwise
+   * `'text'`. Only meaningful when `editable` is `true`.
+   */
+  editType?: DataGridEditType;
 };
 
 type DataGridSortableColumnDef<TRow, TValue> = DataGridBaseColumnDef<TRow> & {
@@ -115,6 +141,16 @@ export type DataGridProps<TRow = Record<string, unknown>> = Omit<
   sortModel?: DataGridSortModel;
   /** Called after the user changes sort order and DataGrid updates `sortModel`. */
   onSortModelChange?: (sortModel: DataGridSortModel) => void;
+  /**
+   * Called after an in-grid cell edit commits (Enter, Tab, or blurring the
+   * edit input) on an editable column. `value` is typed for the column's
+   * resolved `editType`: a `number` column emits a `number`, or `undefined`
+   * for an empty draft — never `NaN` — and leaves the original value
+   * uncommitted for a draft that fails to parse as a number; every other
+   * column emits the edited `string`. DataGrid never mutates the `rows`
+   * prop — apply `value` to your own data from this callback.
+   */
+  onCellEdit?: (row: TRow, columnKey: string, value: unknown) => void;
   /** Additional class names merged onto the root grid. */
   class?: string;
   /** Additional class names for body rows. */

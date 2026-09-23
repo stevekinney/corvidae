@@ -83,6 +83,12 @@ const schema = {
         description: 'Stable row identity used for ARIA ids and row-scoped state.',
       },
       {
+        name: 'onCellEdit',
+        reason: 'function-or-snippet',
+        description:
+          "Called after an in-grid cell edit commits (Enter, Tab, or blurring the\nedit input) on an editable column. `value` is typed for the column's\nresolved `editType`: a `number` column emits a `number`, or `undefined`\nfor an empty draft — never `NaN` — and leaves the original value\nuncommitted for a draft that fails to parse as a number; every other\ncolumn emits the edited `string`. DataGrid never mutates the `rows`\nprop — apply `value` to your own data from this callback.",
+      },
+      {
         name: 'onSelectionModelChange',
         reason: 'function-or-snippet',
         description: 'Called when row selection changes through cell interaction.',
