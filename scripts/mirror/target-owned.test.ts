@@ -727,6 +727,22 @@ describe('retiring a directory the target still carries', () => {
       'packages/gateway',
       'packages/integration',
       'packages/interoperability',
+      // The target's own test trees and the configurations that type-check them: stale forks of
+      // corvidae's tests, which run in corvidae alone (COR-1286's ruling). Found by the agent-bureau
+      // staging proof of 2026-09-23, where they were every typecheck failure outside `src`.
+      'packages/armorer/test',
+      'packages/conversationalist/test',
+      'packages/lifecycle/test',
+      'packages/memory/test',
+      'packages/operative/test',
+      'packages/skills/test',
+      'packages/armorer/tsconfig.test.json',
+      'packages/bureau/tsconfig.test.json',
+      'packages/conversationalist/tsconfig.test.json',
+      'packages/lifecycle/tsconfig.test.json',
+      'packages/memory/tsconfig.test.json',
+      'packages/operative/tsconfig.test.json',
+      'packages/skills/tsconfig.test.json',
     ]);
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
     for (const entry of policy.retired.entries) {

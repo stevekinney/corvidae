@@ -483,6 +483,84 @@
         "target": "agent-bureau",
         "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/interoperability` and have to stop. This one has a second, harder out-of-band half the other four do not: six surviving package manifests — armorer, bureau, conversationalist, memory, operative and skills — declare `\"interoperability\": \"workspace:*\"`. Corvidae carries no workspace of that name under any spelling, so those edges are the target's own and `composeDependencies` keeps them (rule 2); once this directory is gone they resolve against the registry, where the name 404s, and a staged install fails. Verified against a clone on 2026-09-21. The cleanup pull request has to drop those six edges, and `dependencies` is not a key the transform can author on its behalf.",
         "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/armorer/test",
+        "target": "agent-bureau",
+        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/conversationalist/test",
+        "target": "agent-bureau",
+        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/lifecycle/test",
+        "target": "agent-bureau",
+        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/memory/test",
+        "target": "agent-bureau",
+        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/operative/test",
+        "target": "agent-bureau",
+        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/skills/test",
+        "target": "agent-bureau",
+        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/armorer/tsconfig.test.json",
+        "target": "agent-bureau",
+        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/bureau/tsconfig.test.json",
+        "target": "agent-bureau",
+        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/conversationalist/tsconfig.test.json",
+        "target": "agent-bureau",
+        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/lifecycle/tsconfig.test.json",
+        "target": "agent-bureau",
+        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/memory/tsconfig.test.json",
+        "target": "agent-bureau",
+        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/operative/tsconfig.test.json",
+        "target": "agent-bureau",
+        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
+        "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/skills/tsconfig.test.json",
+        "target": "agent-bureau",
+        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
+        "issue": "COR-1287"
       }
     ]
   },
