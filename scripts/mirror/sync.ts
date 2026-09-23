@@ -170,6 +170,49 @@ export async function git(directory: string, ...arguments_: string[]): Promise<s
   return result.stdout;
 }
 
+/**
+ * Run one git command under a caller-supplied environment rather than the ambient one `git`
+ * builds through `gitEnvironment()` — the one case this module needs it is a credentialed push,
+ * where the environment has to carry a bearer token `gitEnvironment()` knows nothing about. Errors
+ * the same way `git` does, so a caller can treat the two interchangeably.
+ */
+export async function gitWithEnvironment(
+  directory: string,
+  environment: Record<string, string | undefined>,
+  ...arguments_: string[]
+): Promise<string> {
+  const result = await runCommand(['git', ...arguments_], { cwd: directory, env: environment });
+  if (result.exitCode !== 0) {
+    throw new SyncError(
+      `git ${arguments_.join(' ')} failed in ${directory} (exit ${result.exitCode}):\n${result.stderr}${result.stdout}`,
+    );
+  }
+  return result.stdout;
+}
+
+/**
+ * Compose `gitEnvironment` with a git credential environment (`GitHubApi`'s `pushEnvironment` or
+ * `accountPushEnvironment` in `github-api.ts`), so the credential's own `GIT_CONFIG_COUNT` cannot
+ * clobber the hook neutralization `gitEnvironment` appends.
+ *
+ * The two functions each produce a self-contained `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/
+ * `GIT_CONFIG_VALUE_0` triple, because neither knows about the other. Spreading the credential
+ * over an already-built `gitEnvironment()` result — `{ ...gitEnvironment(), ...credential }`,
+ * which is what this replaced — overwrites index 0 and the count wholesale, silently discarding
+ * the `core.hooksPath` entry `gitEnvironment` appended there and leaving a push made under this
+ * environment able to run whatever `pre-push` hook a target committed, exactly the class of thing
+ * `gitEnvironment`'s own docstring warns a hooks-path change would otherwise miss. Merging the
+ * credential into the *base* environment first and calling `gitEnvironment` on the result is the
+ * fix: `gitEnvironment` reads the inherited count off its own `environment` parameter and appends
+ * after it, so the credential lands at index 0 and hooksPath lands at index 1, and git sees both.
+ */
+export function credentialedGitEnvironment(
+  credential: Record<string, string>,
+  environment: Record<string, string | undefined> = Bun.env,
+): Record<string, string | undefined> {
+  return gitEnvironment({ ...environment, ...credential });
+}
+
 export interface CloneOptions {
   /** A path or URL. A local bare repository is what keeps a run offline. */
   remote: string;
@@ -304,7 +347,7 @@ async function isTargetOwnedCommit(
  * Every declared build input of the workspaces this target receives, as target-relative paths:
  * the files a hand commit may touch that no `target-owned.json` glob names.
  */
-async function declaredBuildInputs(target: string): Promise<Set<string>> {
+export async function declaredBuildInputs(target: string): Promise<Set<string>> {
   const surface = await loadPackageSurface();
   const files = new Set<string>();
   for (const [workspace, entry] of Object.entries(surface.packages)) {
@@ -685,6 +728,36 @@ export interface SyncOptions {
   installArguments?: readonly string[] | undefined;
   /** The checkout whose devDependencies supply publint and attw; defaults to this one. */
   toolsRoot?: string | undefined;
+  /**
+   * Open a pull request instead of pushing straight to the branch that was cloned.
+   *
+   * COR-1195: a workflow dispatch syncs a real target this way so the target's own emitted
+   * `mirror-verify.yaml` runs against the exact diff before anything reaches its default branch,
+   * rather than being pushed there sight unseen. Supplying this turns the final push into a push
+   * of a new branch under `pushEnvironment`'s credential, followed by `openPullRequest` — nothing
+   * else in the pipeline changes: the same clone, the same foreign-commit guard (so a hand release
+   * commit on the target's default branch is still permitted and still an ancestor of the sync
+   * commit, exactly as it is on the direct-push path), the same stage and the same verification.
+   */
+  pullRequest?: PullRequestOptions | undefined;
+}
+
+export interface PullRequestOptions {
+  /** The branch created for the sync commit and pushed; the target's default branch is untouched. */
+  branch: string;
+  /**
+   * Resolves the credential the branch is pushed under. Composed with `gitEnvironment` through
+   * `credentialedGitEnvironment` rather than used as-is, so hook neutralization survives the push.
+   */
+  pushEnvironment: () => Promise<Record<string, string>>;
+  /** Opens the pull request once the branch has been pushed. */
+  openPullRequest: (info: {
+    branch: string;
+    /** The target's default branch, read from the clone before the sync branch was created. */
+    base: string;
+    commit: string;
+    changed: readonly string[];
+  }) => Promise<{ number: number; htmlUrl: string }>;
 }
 
 export interface SyncResult {
@@ -699,6 +772,8 @@ export interface SyncResult {
   /** COR-1229: public names seeded from `package-map.json`'s `lastPublishedVersion`, not `0.0.0`. */
   seededFromPackageMap: string[];
   verification: VerifyResult;
+  /** Present only when `SyncOptions.pullRequest` was supplied and something changed. */
+  pullRequest?: { number: number; htmlUrl: string };
 }
 
 /**
@@ -721,6 +796,19 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     target: options.target,
     targetOwnedFiles: await declaredBuildInputs(options.target),
   });
+
+  // Read before the sync branch is created below, and only in pull-request mode: it is the base
+  // a pull request opens against, and the direct-push path never needs it because it pushes back
+  // to whatever branch is already checked out.
+  let base: string | undefined;
+  if (options.pullRequest !== undefined) {
+    const currentBranch = await git(clone, 'rev-parse', '--abbrev-ref', 'HEAD');
+    base = currentBranch.trim();
+  }
+  // Created after the guard and before the transform, so every hand commit already on the
+  // target's default branch is an ancestor of the sync branch by construction, exactly as it
+  // would be on the branch the direct-push path commits to.
+  if (options.pullRequest) await git(clone, 'checkout', '-b', options.pullRequest.branch);
 
   const { plan } = await stageSurface({
     corvidaeRoot: options.corvidaeRoot,
@@ -771,6 +859,37 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   );
   const head = await git(clone, 'rev-parse', 'HEAD');
   const commit = head.trim();
+
+  if (options.pullRequest) {
+    const credential = await options.pullRequest.pushEnvironment();
+    await gitWithEnvironment(
+      clone,
+      credentialedGitEnvironment(credential),
+      'push',
+      'origin',
+      `HEAD:refs/heads/${options.pullRequest.branch}`,
+    );
+    const pullRequest = await options.pullRequest.openPullRequest({
+      branch: options.pullRequest.branch,
+      // `base` was read before the sync branch was created and is always set alongside
+      // `options.pullRequest`; the `?? ''` only satisfies the type checker.
+      base: base ?? '',
+      commit,
+      changed,
+    });
+    return {
+      decision: 'pushed',
+      target: options.target,
+      directory: clone,
+      changed,
+      commit,
+      firstPublish: plan.firstPublish,
+      seededFromPackageMap: plan.seededFromPackageMap,
+      verification,
+      pullRequest,
+    };
+  }
+
   await git(clone, 'push', 'origin', 'HEAD');
 
   return {

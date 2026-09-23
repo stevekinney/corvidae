@@ -12,6 +12,7 @@ import {
   BuildInputError,
   cloneTarget,
   collectMissingBuildInputs,
+  credentialedGitEnvironment,
   findForeignCommits,
   ForeignCommitError,
   git,
@@ -19,6 +20,7 @@ import {
   provenanceTrailer,
   runSync,
   SyncError,
+  type PullRequestOptions,
   type SyncResult,
 } from './sync.ts';
 
@@ -57,6 +59,39 @@ describe('gitEnvironment', () => {
       expect(environment['GIT_CONFIG_COUNT']).toBe('1');
       expect(environment['GIT_CONFIG_KEY_0']).toBe('core.hooksPath');
     }
+  });
+});
+
+describe('credentialedGitEnvironment', () => {
+  /**
+   * `{ ...gitEnvironment(), ...credential }` — what a credentialed push used to compose — lets
+   * the credential's own `GIT_CONFIG_COUNT: '1'`/`GIT_CONFIG_KEY_0` overwrite `gitEnvironment`'s
+   * `core.hooksPath` entry wholesale, silently un-neutralizing hooks on exactly the git command
+   * that pushes into a target. This is the regression test for the fix: both the credential and
+   * the hook neutralization have to survive, at different indices.
+   */
+  test('appends hook neutralization after the credential rather than overwriting it', () => {
+    const credential = {
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+      GIT_CONFIG_VALUE_0: 'Authorization: Bearer token',
+    };
+    const environment = credentialedGitEnvironment(credential, {});
+    expect(environment['GIT_CONFIG_COUNT']).toBe('2');
+    expect(environment['GIT_CONFIG_KEY_0']).toBe('http.https://github.com/.extraHeader');
+    expect(environment['GIT_CONFIG_VALUE_0']).toBe('Authorization: Bearer token');
+    expect(environment['GIT_CONFIG_KEY_1']).toBe('core.hooksPath');
+    expect(environment['GIT_CONFIG_VALUE_1']).toBe('/dev/null');
+    expect(environment['GIT_CONFIG_GLOBAL']).toBe('/dev/null');
+    expect(environment['GIT_CONFIG_SYSTEM']).toBe('/dev/null');
+  });
+
+  test('carries the base environment through, not just the credential', () => {
+    const environment = credentialedGitEnvironment(
+      { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'a', GIT_CONFIG_VALUE_0: 'b' },
+      { PATH: '/usr/bin' },
+    );
+    expect(environment['PATH']).toBe('/usr/bin');
   });
 });
 
@@ -496,6 +531,131 @@ describe('the mirror sync against a fake remote', () => {
         expect(
           await readFile(join(second.directory, 'packages/cryptography/src/index.ts'), 'utf8'),
         ).toBe(changedSource);
+      });
+    },
+    endToEndTimeout,
+  );
+});
+
+/**
+ * COR-1195: the workflow-dispatch path never pushes straight to a target's default branch. It
+ * commits on a fresh branch and opens a pull request instead, so the target's own emitted
+ * `mirror-verify.yaml` gates the exact diff before anything reaches `main`. `pushEnvironment` and
+ * `openPullRequest` are faked here rather than driven through a real `GitHubApi`: the credential
+ * composition itself is `credentialedGitEnvironment`'s own test above, and opening a pull request
+ * over HTTP is `github-api.test.ts`'s. What this harness can prove that neither of those can is
+ * the ordering `runSync` itself is responsible for — the branch is created, the target's default
+ * branch is never written to, and `openPullRequest` sees the branch that was actually pushed.
+ */
+function fakePullRequest(branch: string): {
+  options: PullRequestOptions;
+  opened: { branch: string; base: string; commit: string; changed: readonly string[] }[];
+} {
+  const opened: { branch: string; base: string; commit: string; changed: readonly string[] }[] = [];
+  return {
+    opened,
+    options: {
+      branch,
+      pushEnvironment: async () => ({}),
+      openPullRequest: async (info) => {
+        opened.push(info);
+        return { number: 7, htmlUrl: `https://github.com/stevekinney/agent-bureau/pull/7` };
+      },
+    },
+  };
+}
+
+describe('runSync in pull-request mode', () => {
+  test(
+    'commits on a new branch, leaves the default branch untouched, and opens a pull request',
+    async () => {
+      await withHarness(async (harness) => {
+        const { options, opened } = fakePullRequest('mirror-sync-abc123');
+        const result = await runSync({
+          corvidaeRoot: harness.corvidae,
+          target: 'agent-bureau',
+          remote: harness.remote,
+          directory: harness.runDirectory('pull-request'),
+          scratchDirectory: join(harness.scratch, 'pull-request'),
+          corvidaeCommit: 'corvidae-pull-request',
+          pullRequest: options,
+        });
+
+        expect(result.decision).toBe('pushed');
+        // `commit` is only ever absent on a skip, and the assertion just above ruled that out;
+        // narrowed explicitly so the comparisons below type-check against a plain `string`
+        // rather than `string | undefined`.
+        if (!result.commit) throw new Error('expected runSync to report a commit');
+        const commit = result.commit;
+        expect(result.pullRequest).toEqual({
+          number: 7,
+          htmlUrl: 'https://github.com/stevekinney/agent-bureau/pull/7',
+        });
+        expect(opened).toHaveLength(1);
+        expect(opened[0]?.branch).toBe('mirror-sync-abc123');
+        expect(opened[0]?.base).toBe('main');
+        expect(opened[0]?.commit).toBe(commit);
+        expect(opened[0]?.changed.length).toBeGreaterThan(0);
+
+        // `main` never moved: only the seed commit from `withHarness` is on it.
+        const mainCommitCount = await git(harness.remote, 'rev-list', '--count', 'main');
+        expect(mainCommitCount.trim()).toBe('1');
+        const mainHead = await git(harness.remote, 'rev-parse', 'main');
+
+        // The sync branch exists on the remote, its tip is the commit `openPullRequest` was
+        // told about, and it carries the provenance trailer and the mirror's own identity —
+        // exactly as the direct-push path's commit does.
+        const branchHead = await git(harness.remote, 'rev-parse', 'refs/heads/mirror-sync-abc123');
+        expect(branchHead.trim()).toBe(commit);
+        expect(branchHead.trim()).not.toBe(mainHead.trim());
+        const message = await git(
+          harness.remote,
+          'log',
+          '-1',
+          '--format=%B',
+          'refs/heads/mirror-sync-abc123',
+        );
+        expect(message).toContain(`${provenanceTrailer}: corvidae-pull-request`);
+        const author = await git(
+          harness.remote,
+          'log',
+          '-1',
+          '--format=%an <%ae>',
+          'refs/heads/mirror-sync-abc123',
+        );
+        expect(author.trim()).toBe(
+          'lost-gradient-mirror-sync[bot] <331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com>',
+        );
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    'opens nothing when the transform produces no change',
+    async () => {
+      await withHarness(async (harness) => {
+        // Sync once directly so the target already carries corvidae's bytes, leaving the second,
+        // pull-request-mode run with nothing to change.
+        await sync(harness, 'seed-first');
+
+        const { options, opened } = fakePullRequest('mirror-sync-noop');
+        const result = await runSync({
+          corvidaeRoot: harness.corvidae,
+          target: 'agent-bureau',
+          remote: harness.remote,
+          directory: harness.runDirectory('pull-request-noop'),
+          scratchDirectory: join(harness.scratch, 'pull-request-noop'),
+          corvidaeCommit: 'corvidae-pull-request-noop',
+          pullRequest: options,
+        });
+
+        expect(result.decision).toBe('skip');
+        expect(result.pullRequest).toBeUndefined();
+        expect(opened).toEqual([]);
+        // No sync branch was ever pushed.
+        const branches = await git(harness.remote, 'branch', '--list', 'mirror-sync-noop');
+        expect(branches.trim()).toBe('');
       });
     },
     endToEndTimeout,
