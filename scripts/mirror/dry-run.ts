@@ -28,6 +28,7 @@ import {
 
 import {
   assertNoForeignCommits,
+  credentialedGitEnvironment,
   gitEnvironment,
   provenanceTrailer,
   stageSurface,
@@ -307,7 +308,7 @@ export async function seedScratchRepository(options: {
   // held `workflows: write` since 2026-09-21, because the transform emits
   // `.github/workflows/mirror-verify.yaml` (COR-1286); the seed keeps the account path anyway so
   // the App's first write to the scratch repository is the one the run measures.
-  const pushEnvironment = { ...environment, ...(await options.api.accountPushEnvironment()) };
+  const pushEnvironment = credentialedGitEnvironment(await options.api.accountPushEnvironment());
   await runGit(
     run,
     workDirectory,
@@ -386,7 +387,7 @@ export async function transformAndOpenPullRequest(options: {
     '--message',
     `Mirror dry run for ${options.target}\n\n${provenanceTrailer}: ${options.corvidaeCommit}`,
   );
-  const pushEnvironment = { ...environment, ...(await options.api.pushEnvironment()) };
+  const pushEnvironment = credentialedGitEnvironment(await options.api.pushEnvironment());
   await runGit(run, workDirectory, pushEnvironment, 'push', 'origin', `HEAD:refs/heads/${branch}`);
   const pullRequest = await options.api.createPullRequest({
     fullName: options.scratchRepository,

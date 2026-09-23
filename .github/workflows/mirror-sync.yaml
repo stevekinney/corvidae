@@ -1,0 +1,88 @@
+# Runs corvidae's mirror sync (COR-1195). AGENTS.md's publishing/CI/CD prohibition names exactly
+# one exception: scripts/mirror/ and this file. Do not add a second workflow file, and do not add
+# publishing, CI/CD or Git-hook automation anywhere else in this workspace.
+#
+# Two jobs, one `bun scripts/mirror/mirror-sync-action.ts` invocation each:
+#
+# - `drift-report` runs on the weekly schedule, once per target in a matrix. It performs the whole
+#   transform against a fresh clone of the real target and reports whether that target is behind,
+#   pushing nothing. It reads a public repository over HTTPS, so it needs no credential at all.
+# - `open-pull-request` runs only on a manual dispatch, for the one target the dispatch names. It
+#   commits the transform on a new branch and opens a pull request in the target through the
+#   mirror GitHub App's installation token — never a push to the target's own default branch, so
+#   the target's own emitted mirror-verify.yaml gates the exact diff before anything lands there.
+#
+# Authentication is the App installation token only. GitHub's own default workflow credential is
+# never named here: this file's `permissions:` block scopes it down to what `actions/checkout`
+# needs to read corvidae itself, and every write into a target goes through
+# `MIRROR_APP_PRIVATE_KEY` instead.
+name: mirror-sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which mirror to open a pull request for
+        type: choice
+        required: true
+        options:
+          - weft
+          - cinder
+          - agent-bureau
+
+  schedule:
+    # Monday 06:17 UTC. An off-hour, off-the-hour time, so this does not compete with every other
+    # scheduled workflow across GitHub for the same minute.
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  drift-report:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: mirror-sync-report-${{ matrix.target }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [weft, cinder, agent-bureau]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Report drift for ${{ matrix.target }}
+        run: bun scripts/mirror/mirror-sync-action.ts --mode report --target ${{ matrix.target }} --work ${{ runner.temp }}/mirror-sync-report
+
+  open-pull-request:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: mirror-sync-dispatch-${{ inputs.target }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Open a pull request for ${{ inputs.target }}
+        env:
+          MIRROR_APP_PRIVATE_KEY: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}
+        run: bun scripts/mirror/mirror-sync-action.ts --mode dispatch --target ${{ inputs.target }} --corvidae-commit ${{ github.sha }} --work ${{ runner.temp }}/mirror-sync-dispatch --scratch ${{ runner.temp }}/mirror-sync-scratch
