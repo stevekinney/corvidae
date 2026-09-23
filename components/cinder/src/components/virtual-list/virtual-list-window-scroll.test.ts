@@ -208,6 +208,45 @@ describe('VirtualList — windowScroll', () => {
     }
   });
 
+  test('picks up content above the list changing size without any resize', async () => {
+    // An image loading or an accordion collapsing above the list moves its top
+    // edge without resizing the window or the list's own box, so neither resize
+    // path fires. The scroll that follows has to notice the move on its own.
+    const restoreInnerHeight = withInnerHeight(200);
+    try {
+      const { container } = render(VirtualList, {
+        items: localMakeItems(5_000),
+        itemHeight: 20,
+        windowScroll: true,
+        overscan: 0,
+        row: localRowSnippet(),
+        'aria-label': 'Events',
+      });
+
+      await waitFor(() => expect(renderedRows(container).length).toBeGreaterThan(0));
+      const list = requiredInstance(container.querySelector('.cinder-virtual-list'), HTMLElement);
+
+      // 500px of content appears above the list. The rect is viewport-relative,
+      // so it moves up as the window scrolls.
+      list.getBoundingClientRect = () =>
+        new DOMRect(0, 500 - window.scrollY, list.clientWidth || 100, 100);
+
+      window.scrollTo(0, 700);
+      window.dispatchEvent(new Event('scroll'));
+      await nextAnimationFrame();
+      await tick();
+
+      // 200px into the list — row 10 — not row 35, which a stale zero offset
+      // would read from `scrollY` alone.
+      await waitFor(() =>
+        expect(renderedRows(container).some((node) => node.dataset['index'] === '10')).toBe(true),
+      );
+      expect(renderedRows(container).some((node) => node.dataset['index'] === '35')).toBe(false);
+    } finally {
+      restoreInnerHeight();
+    }
+  });
+
   test('scrollToIndex scrolls the window rather than the internal container', async () => {
     let listRef: VirtualListRef | undefined;
     const restoreInnerHeight = withInnerHeight(200);

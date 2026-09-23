@@ -120,10 +120,10 @@ export type VirtualListProps<Item = unknown> = Omit<
    *   list's own offset in the document, so a list that starts partway down
    *   the page (below a header, other content) windows correctly relative to
    *   ITS top edge rather than the page's. That document offset is
-   *   re-measured on window resize and whenever the component's own resize
-   *   observer fires; content that changes size elsewhere on the page without
-   *   triggering either of those — an accordion above the list collapsing,
-   *   say — can leave it stale until the next one does.
+   *   re-measured on window resize, whenever the component's own resize
+   *   observer fires, and on the animation frame after a window scroll — so
+   *   content above the list that changes size without resizing anything,
+   *   an accordion collapsing, say, is picked up by the next scroll.
    * - `scrollToIndex` and keyboard navigation scroll the window
    *   (`window.scrollTo`) rather than an internal element.
    * - The container keeps `tabindex="0"` by default, but it is no longer a

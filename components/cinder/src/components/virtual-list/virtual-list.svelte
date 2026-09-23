@@ -1607,6 +1607,13 @@
     const element = scrollElement;
     if (!element) return;
     processScrollOffsetChange(element, event.timeStamp);
+    // Content above the list can change size without resizing the window or the
+    // list itself — an image loading, an accordion collapsing — which moves the
+    // list's top edge and leaves `documentOffset` stale. Re-deriving it here would
+    // force a layout on the scroll frame, so it is queued onto the next animation
+    // frame instead, where the browser is about to lay out anyway; the batcher
+    // collapses every scroll event in that frame into one read.
+    scheduleWindowMeasurement();
   }
 
   /**
