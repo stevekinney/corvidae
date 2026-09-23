@@ -67,6 +67,38 @@ async function typeAndSettle(container: HTMLElement, value: string): Promise<voi
   await flushLiveRegion();
 }
 
+describe('DataGrid search — match highlighting outranks selection styling', () => {
+  test('search-match background/ring beat, not just tie, the selected-cell styling in both themes and forced-colors', async () => {
+    const css = await Bun.file(new URL('./data-grid.css', import.meta.url)).text();
+
+    // A bare `.cinder-data-grid__cell--search-match` (specificity 0,1,0)
+    // loses outright to `.cinder-data-grid__cell[data-cinder-selected]`
+    // (0,2,0) — which is exactly what the active/anchor cell a search
+    // navigation just landed on always also is — silently hiding the
+    // match highlight on the one cell a searching user is looking at. The
+    // doubled compound below matches that specificity so declaration
+    // order (asserted below) decides the tie instead.
+    expect(css).toContain('.cinder-data-grid__cell.cinder-data-grid__cell--search-match {');
+    expect(css).toContain('.cinder-data-grid__cell.cinder-data-grid__cell--search-match-current {');
+
+    const selectedIndex = css.indexOf('.cinder-data-grid__cell[data-cinder-selected] {');
+    const searchMatchIndex = css.indexOf(
+      '.cinder-data-grid__cell.cinder-data-grid__cell--search-match {',
+    );
+    expect(selectedIndex).toBeGreaterThan(-1);
+    expect(searchMatchIndex).toBeGreaterThan(selectedIndex);
+
+    const forcedColorsSelectedIndex = css.lastIndexOf(
+      '.cinder-data-grid__cell[data-cinder-selected] {',
+    );
+    const forcedColorsSearchMatchIndex = css.lastIndexOf(
+      '.cinder-data-grid__cell.cinder-data-grid__cell--search-match {',
+    );
+    expect(forcedColorsSelectedIndex).toBeGreaterThan(selectedIndex);
+    expect(forcedColorsSearchMatchIndex).toBeGreaterThan(forcedColorsSelectedIndex);
+  });
+});
+
 describe('DataGrid search — pure helpers', () => {
   test('matches every column value case-insensitively, in sorted row × rendered column order', () => {
     const entries = rows.map((row) => ({ row, rowDomId: row.id }));
@@ -96,6 +128,26 @@ describe('DataGrid search — pure helpers', () => {
     expect(formatDataGridSearchStatus(undefined, 0)).toBe('No matches');
     expect(formatDataGridSearchStatus(2, 12)).toBe('Match 3 of 12');
     expect(formatDataGridSearchStatus(undefined, 1)).toBe('1 match');
+  });
+
+  test('matches non-string cell values by the same string form the cell renders (numbers, dates)', () => {
+    type Shipment = { id: string; total: number; shippedAt: Date };
+    const shipments: Shipment[] = [
+      { id: 's-1', total: 1250, shippedAt: new Date('2026-01-15T00:00:00.000Z') },
+      { id: 's-2', total: 40, shippedAt: new Date('2020-01-01T00:00:00.000Z') },
+    ];
+    const shipmentColumns: DataGridColumnDef<Shipment>[] = [
+      { key: 'total', header: 'Total' },
+      { key: 'shippedAt', header: 'Shipped' },
+    ];
+    const entries = shipments.map((row) => ({ row, rowDomId: row.id }));
+
+    expect(getDataGridSearchMatches(entries, shipmentColumns, '1250')).toEqual([
+      { rowId: 's-1', columnKey: 'total', rowIndex: 0, columnIndex: 0 },
+    ]);
+    expect(getDataGridSearchMatches(entries, shipmentColumns, '2026-01-15')).toEqual([
+      { rowId: 's-1', columnKey: 'shippedAt', rowIndex: 0, columnIndex: 1 },
+    ]);
   });
 });
 
@@ -468,5 +520,51 @@ describe('DataGrid search — coexists with editing and sorting', () => {
           .toSorted(),
       ).toEqual(['Ada Lovelace', 'ada fan']),
     );
+  });
+
+  test('an unrelated re-render does not reset the user’s position among matches', async () => {
+    const editableColumns: DataGridColumnDef<Order>[] = [
+      { key: 'customer', header: 'Customer' },
+      { key: 'note', header: 'Note', editable: true },
+    ];
+
+    const { container, rerender } = render(OrderDataGrid, {
+      rows,
+      columns: editableColumns,
+      getRowId: getOrderId,
+      search: true,
+      'aria-label': 'Orders',
+    });
+
+    await typeAndSettle(container, 'ada');
+    expect(currentMatchCell(container)?.textContent?.trim()).toBe('Ada Lovelace');
+
+    const nextButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Next match"]',
+    );
+    if (!nextButton) throw new Error('Expected a "Next match" button');
+    await fireEvent.click(nextButton);
+    await waitFor(() => expect(currentMatchCell(container)?.textContent?.trim()).toBe('ada fan'));
+    await flushLiveRegion();
+    expect(liveRegionText(container)).toContain('Match 2 of 2');
+
+    // A re-render caused by something unrelated to the search — a new
+    // `rows` array from committing an edit on a row that has nothing to do
+    // with the "ada" query — must not silently snap the user back to the
+    // first match or move the active cell out from under them.
+    const unrelatedRows = rows.map((row, index) =>
+      index === 2 ? { ...row, note: 'updated' } : row,
+    );
+    await rerender({
+      rows: unrelatedRows,
+      columns: editableColumns,
+      getRowId: getOrderId,
+      search: true,
+      'aria-label': 'Orders',
+    });
+
+    await flushLiveRegion();
+    expect(currentMatchCell(container)?.textContent?.trim()).toBe('ada fan');
+    expect(liveRegionText(container)).toContain('Match 2 of 2');
   });
 });

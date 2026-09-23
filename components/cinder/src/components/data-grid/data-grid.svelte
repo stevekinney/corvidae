@@ -480,6 +480,10 @@
   let searchQuery = $state('');
   let debouncedSearchQuery = $state('');
   let currentSearchMatchIndex = $state<number | undefined>();
+  // Plain (non-reactive) bookkeeping for the settle effect below — see its
+  // comment for why these must not be `$state`.
+  let previousDebouncedSearchQuery: string | undefined;
+  let currentSearchMatchTrackedKey: string | undefined;
 
   const searchToolbarAriaLabel = $derived(
     resolvedAriaLabel ? `${resolvedAriaLabel} toolbar` : 'Grid toolbar',
@@ -528,12 +532,32 @@
     return () => clearTimeout(timeoutId);
   });
 
-  // Once the debounced query settles, jump to (and announce) the first
-  // match. Also re-fires when `searchMatches` itself changes for a reason
-  // other than typing — an edit commit or a sort that changes which cells
-  // match — so the live region and the current-match highlight both stay
-  // accurate; see the module doc for why this coexists with editing and
-  // sorting instead of needing separate wiring for each.
+  // Sets both the reactive current-match index and the plain tracked key
+  // the effect below uses to re-find "the same match" across a recompute
+  // that isn't a new search.
+  function setCurrentSearchMatch(
+    index: number | undefined,
+    matches: readonly DataGridSearchMatch[],
+  ): void {
+    currentSearchMatchIndex = index;
+    const match = index !== undefined ? matches[index] : undefined;
+    currentSearchMatchTrackedKey = match ? getDataGridSearchMatchKey(match) : undefined;
+  }
+
+  // Once the debounced query *actually settles on a new value*, jump to
+  // (and announce) the first match — that's the only case that should move
+  // the active cell or speak through the live region. `searchMatches` can
+  // also recompute for reasons that have nothing to do with the user
+  // typing — an edit commit or a sort changes row/column order — and this
+  // effect still re-fires then (it reads `searchMatches`), but it must not
+  // react the same way: re-jumping the active cell and re-announcing on
+  // every unrelated data change would silently steal the user's place
+  // mid-navigation (e.g. hop back to match 1 of 12 because someone edited
+  // an unrelated cell three rows away). So on that path it only relocates
+  // the *same* logical match (by `rowId`/`columnKey`, since its array
+  // index may have moved) to keep the current-match highlight accurate,
+  // and falls back to no current match if that exact cell stopped
+  // matching — never picking a new one on the user's behalf.
   //
   // The `announce()` calls below are wrapped in `untrack()`. `announce`
   // does `liveRegionAnnouncementSequence += 1`, a read-then-write of that
@@ -549,16 +573,30 @@
     if (!search) return;
     const query = debouncedSearchQuery;
     const matches = searchMatches;
+    const isNewSearch = query !== previousDebouncedSearchQuery;
+    previousDebouncedSearchQuery = query;
+
     if (query.trim() === '') {
-      currentSearchMatchIndex = undefined;
+      setCurrentSearchMatch(undefined, matches);
       return;
     }
+
+    if (!isNewSearch) {
+      const trackedIndex = currentSearchMatchTrackedKey
+        ? matches.findIndex(
+            (match) => getDataGridSearchMatchKey(match) === currentSearchMatchTrackedKey,
+          )
+        : -1;
+      setCurrentSearchMatch(trackedIndex >= 0 ? trackedIndex : undefined, matches);
+      return;
+    }
+
     if (matches.length === 0) {
-      currentSearchMatchIndex = undefined;
+      setCurrentSearchMatch(undefined, matches);
       untrack(() => announce('No matches'));
       return;
     }
-    currentSearchMatchIndex = 0;
+    setCurrentSearchMatch(0, matches);
     const firstMatch = matches[0];
     if (firstMatch) moveActiveCell(firstMatch.rowIndex, firstMatch.columnIndex);
     untrack(() => announce(formatDataGridSearchStatus(0, matches.length)));
@@ -571,7 +609,7 @@
       searchMatches.length,
       direction,
     );
-    currentSearchMatchIndex = nextIndex;
+    setCurrentSearchMatch(nextIndex, searchMatches);
     const match = nextIndex !== undefined ? searchMatches[nextIndex] : undefined;
     if (match) moveActiveCell(match.rowIndex, match.columnIndex);
     announce(formatDataGridSearchStatus(nextIndex, searchMatches.length));

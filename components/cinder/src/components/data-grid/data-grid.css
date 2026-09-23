@@ -407,30 +407,26 @@
 
   /* Same warning-surface pair `.cinder-autocomplete__match` uses to
      highlight a matched substring — legible against either theme and
-     against the active row's raised surface. */
-  .cinder-data-grid__cell--search-match {
+     against the active row's raised surface.
+
+     The doubled `.cinder-data-grid__cell` compound raises this to the same
+     (0,2,0) specificity as `.cinder-data-grid__cell[data-cinder-selected]`
+     above, with this rule appearing later so it wins the tie — otherwise a
+     matched cell that is also the active/anchor cell (true for the current
+     match right after search navigation moves the active cell onto it, or
+     for any match inside a range selection) would have its search-match
+     background silently overridden by the selection background, and the
+     one cell a searching user is most likely to be looking at would show
+     no match highlight at all. */
+  .cinder-data-grid__cell.cinder-data-grid__cell--search-match {
     background: var(--cinder-status-warning-background);
     color: var(--cinder-status-warning-text);
   }
 
-  .cinder-data-grid__cell--search-match-current {
+  .cinder-data-grid__cell.cinder-data-grid__cell--search-match-current {
     box-shadow:
       var(--_cinder-data-grid-pin-shadow),
       inset 0 0 0 max(2px, var(--cinder-ring-width)) var(--cinder-accent-solid);
-  }
-
-  @media (forced-colors: active) {
-    .cinder-data-grid__cell--search-match {
-      forced-color-adjust: none;
-      background: Mark;
-      color: MarkText;
-    }
-
-    .cinder-data-grid__cell--search-match-current {
-      outline: 2px solid ButtonText;
-      outline-offset: -2px;
-      box-shadow: none;
-    }
   }
 
   @media (forced-colors: active) {
@@ -465,6 +461,23 @@
     .cinder-data-grid__header-cell[data-cinder-pin='right'],
     .cinder-data-grid__cell[data-cinder-pin='right'] {
       border-inline-start: 1px solid ButtonText;
+    }
+
+    /* Doubled compound, and declared after `[data-cinder-selected]` above,
+       so a matched cell that is also selected (true for the current match
+       right after search navigation moves the active cell onto it) still
+       shows as a match instead of being silently overridden by the
+       higher-specificity selected background. */
+    .cinder-data-grid__cell.cinder-data-grid__cell--search-match {
+      forced-color-adjust: none;
+      background: Mark;
+      color: MarkText;
+    }
+
+    .cinder-data-grid__cell.cinder-data-grid__cell--search-match-current {
+      outline: 2px solid ButtonText;
+      outline-offset: -2px;
+      box-shadow: none;
     }
   }
 }
