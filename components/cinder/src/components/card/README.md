@@ -46,10 +46,11 @@ A card becomes interactive when it receives `href` (the whole card renders as an
 | `title` | `string` | no | — | Primary heading text rendered inside the card's header region. |
 | `tone` | `"default"` \| `"danger"` | no | — | Container risk treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions. |
 | `variant` | `"card"` \| `"well"` | no | — | Visual container style. `card` is raised; `well` is flatter and inset. |
-| `children` | `(opaque)` | yes | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
+| `children` | `(opaque)` | yes | — | Basic card with no generated header. Not expressible in JSON Schema; see the component types for the signature. |
 | `footer` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
-| `header` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
+| `header` | `(opaque)` | no | — | Card with a custom header snippet — full control over header content. Not expressible in JSON Schema; see the component types for the signature. |
 | `onclick` | `(opaque)` | no | — | Click handler that makes the entire card a button. Not expressible in JSON Schema; see the component types for the signature. |
+| `type` | `(opaque)` | no | — | A prop whose shape is not captured by the JSON schema; see the component types for the exact signature. |
 
 <!-- generated:props:end -->
 
