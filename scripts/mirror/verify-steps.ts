@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import {
+  consumerManifest,
   importableSpecifiers,
   nodeImportableSpecifiers,
   resolveTool,
@@ -117,24 +118,6 @@ function attwCommand(env: VerifyEnvironment, tarball: string): readonly string[]
     'cjs-resolves-to-esm',
     'no-resolution',
   ];
-}
-
-/** The consumer smoke-test project's `package.json`, byte-identical to what `runConsumerSmokeTest` writes. */
-function consumerManifest(packages: readonly SmokeTestPackage[]): string {
-  const dependencies = Object.fromEntries(
-    packages.map((entry) => [entry.publicName, `file:${entry.tarball}`]),
-  );
-  return `${JSON.stringify(
-    {
-      name: 'mirror-consumer-smoke-test',
-      version: '0.0.0',
-      private: true,
-      type: 'module',
-      dependencies,
-    },
-    undefined,
-    2,
-  )}\n`;
 }
 
 /** The consumer smoke-test project's `smoke.mjs`, byte-identical to what `runConsumerSmokeTest` writes. */
@@ -324,6 +307,7 @@ export function buildVerifySteps(
     publicName: entry.publicName,
     tarball: tarballFor(entry),
     exports: entry.exports,
+    dependsOn: entry.dependsOn,
   }));
 
   for (const entry of inputs.privateWorkspaces) {
