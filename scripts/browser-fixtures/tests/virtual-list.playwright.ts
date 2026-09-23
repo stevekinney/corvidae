@@ -583,3 +583,104 @@ test.describe('Virtual list - pinned horizontal sticky header stays unclipped', 
     expect(headerBox.y + headerBox.height).toBeLessThanOrEqual(listBox.y + listBox.height + 1);
   });
 });
+
+/**
+ * COR-374: coalesces held keyboard navigation during a smooth scroll.
+ *
+ * With `stickyItems` and `smoothScroll` both set, each keypress used to
+ * resolve its destination from the live scroll position, which lags a
+ * running `scrollTo({ behavior: 'smooth' })` animation — a second press
+ * arriving before the first had visibly moved read the same leading row,
+ * resolved the same destination, and superseded the running animation
+ * outright. N held presses could advance as few as one row.
+ *
+ * This needs a real browser: the bug only exists once an actual smooth-scroll
+ * animation is in flight, which happy-dom cannot reproduce (its own
+ * `Element.scroll` applies a `behavior: 'smooth'` write on a deferred timer
+ * rather than animating it — see the component's unit tests, which exploit
+ * exactly that gap for the invalidation cases that DON'T need real motion).
+ */
+test.describe('Virtual list - COR-374 coalesces held keyboard navigation during a smooth scroll', () => {
+  const mountSelector = '#example-mount-sticky-headers-smooth-scroll';
+  // The fixture's rows and its one 40px header sharing the same height, so a
+  // coalesced step is exactly one `itemHeight` regardless of which row it
+  // starts from.
+  const itemHeight = 40;
+
+  test('N rapid ArrowDown presses advance N rows, not fewer', async ({ componentPage }) => {
+    const page = await componentPage.open({
+      entry: getEntry('virtual-list'),
+      theme: lightTheme,
+      viewport: desktopViewport,
+      fixtureName: 'assertion',
+    });
+    const list = page.locator(`${mountSelector} .cinder-virtual-list`);
+    await expect(list).toBeVisible();
+    await expect
+      .poll(() => renderedIndices(page, mountSelector).then((indices) => indices.length))
+      .toBeGreaterThan(0);
+
+    // Starts unscrolled, with the sticky header over the leading edge — a
+    // known, deterministic starting row rather than one this test would have
+    // to re-derive from measured geometry.
+    expect(await list.evaluate((element) => element.scrollTop)).toBe(0);
+    await list.focus();
+
+    const presses = 10;
+    for (let index = 0; index < presses; index += 1) {
+      await page.keyboard.press('ArrowDown');
+      // Real, short intervals — fast enough that a smooth-scroll animation
+      // from an earlier press is very likely still running when a later one
+      // lands, which is the exact condition this coalescing exists for.
+      // Slower than this and every press would already see the previous
+      // one's settled position, a real repro but not one that reliably
+      // exercises the in-flight case at all.
+      await page.waitForTimeout(40);
+    }
+
+    // The final, settled position — never anything read mid-animation, so
+    // this carries no timing sensitivity of its own. One `itemHeight` per
+    // press, with a generous poll window per this ticket's "design with
+    // margins" note; none of the rows crossed are sticky (the next header
+    // is far past row `presses`), so no header-skip arithmetic complicates
+    // the expected value.
+    await expect
+      .poll(async () => list.evaluate((element) => element.scrollTop), { timeout: 3_000 })
+      .toBe(presses * itemHeight);
+
+    // And steady — not a snapshot mid-way through a correction that would
+    // have drifted the value a moment later.
+    await page.waitForTimeout(250);
+    expect(await list.evaluate((element) => element.scrollTop)).toBe(presses * itemHeight);
+  });
+
+  test('a slower, deliberate press-by-press sequence still advances one row at a time', async ({
+    componentPage,
+  }) => {
+    // The non-adversarial control: pressing well past every animation's own
+    // settle time must keep behaving exactly as it always has. Coalescing
+    // must never change the OUTCOME of navigation that was never actually
+    // interrupted — only how it survives being interrupted.
+    const page = await componentPage.open({
+      entry: getEntry('virtual-list'),
+      theme: lightTheme,
+      viewport: desktopViewport,
+      fixtureName: 'assertion',
+    });
+    const list = page.locator(`${mountSelector} .cinder-virtual-list`);
+    await expect(list).toBeVisible();
+    await expect
+      .poll(() => renderedIndices(page, mountSelector).then((indices) => indices.length))
+      .toBeGreaterThan(0);
+
+    await list.focus();
+
+    for (let index = 0; index < 3; index += 1) {
+      await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(async () => list.evaluate((element) => element.scrollTop), { timeout: 3_000 })
+        .toBe((index + 1) * itemHeight);
+      await page.waitForTimeout(150);
+    }
+  });
+});
