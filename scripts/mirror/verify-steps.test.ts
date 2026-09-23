@@ -389,3 +389,46 @@ describe('prepack runs in verification when the surface records it', () => {
     expect(weft?.entry.build.scripts['prepack']).toContain('verify:exports');
   });
 });
+
+describe('the consumer manifest resolves intra-target siblings from this run (COR-1292)', () => {
+  function consumerManifestFor(packages: PublishedPackage[]): Record<string, unknown> {
+    const steps = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: packages, privateWorkspaces: [] },
+      localEnvironment(),
+    );
+    const write = steps.find((step) => step.kind === 'write-consumer-project');
+    return JSON.parse(write?.files?.['package.json'] ?? '{}') as Record<string, unknown>;
+  }
+
+  // A packed tarball rewrites its `workspace:*` edge to a registry range. For a first publish that
+  // range names a version the registry does not have yet, so without an override the consumer's
+  // install fetches the sibling from npm and gets a 404 (agent-bureau's cryptography, cinder's
+  // weft-ui). Bun honors an `overrides` entry pointing at a `file:` tarball for such a sibling;
+  // measured under Bun 1.4.0 and 1.4.2 on 2026-09-23.
+  test('a sibling another published package depends on is overridden to its own tarball', () => {
+    const armorer: PublishedPackage = {
+      ...published[0]!,
+      workspace: 'armorer',
+      directory: 'packages/armorer',
+      publicName: 'armorer',
+      version: '2.4.0',
+      dependsOn: ['@lostgradient/cryptography'],
+    };
+    const manifest = consumerManifestFor([armorer, published[0]!]);
+    const dependencies = manifest['dependencies'] as Record<string, string>;
+    expect(manifest['overrides']).toEqual({
+      '@lostgradient/cryptography': dependencies['@lostgradient/cryptography'],
+    });
+    expect(dependencies['@lostgradient/cryptography']).toBe(
+      `file:/scratch/tarballs/${tarballFilename('@lostgradient/cryptography', '1.2.3')}`,
+    );
+  });
+
+  test('a target with no intra-target edge renders no overrides key at all', () => {
+    expect('overrides' in consumerManifestFor(published)).toBe(false);
+  });
+
+  test("weft's committed plan renders no overrides key, so its rendered workflow is unchanged", () => {
+    expect('overrides' in consumerManifestFor(committedPlans.weft.plan.published)).toBe(false);
+  });
+});

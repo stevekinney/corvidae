@@ -23,6 +23,19 @@ import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
 
 /**
+ * Weft's recorded release and the range an edge into it renders as. Read from the real map rather
+ * than written as a literal: these tests assert the rule that a cross-target edge follows
+ * `lastPublishedVersion`, and a literal turned every weft release into six test edits.
+ */
+const realPackageMap = await loadPackageMap();
+const weftDisposition = realPackageMap.workspaces['@lostgradient/weft'];
+if (weftDisposition?.disposition !== 'publish-as' || !weftDisposition.lastPublishedVersion) {
+  throw new Error('package-map.json must record @lostgradient/weft as published');
+}
+const weftRecordedVersion = weftDisposition.lastPublishedVersion;
+const weftRange = `^${weftRecordedVersion}`;
+
+/**
  * A throwaway corvidae tree. Workspace names are real ones so `dispositionFor` resolves against
  * the committed map — the map is the input under test, not something to restate in a fixture —
  * while the dependency edges are pared down to the ones each assertion needs.
@@ -362,7 +375,7 @@ describe('workspace and catalog resolution', () => {
   test('the monorepo target keeps its catalog and its internal workspace edges', async () => {
     const plan = await planFor('cinder');
     const root = parse(plan, 'package.json');
-    expect(root['catalog']).toEqual({ ...catalog, '@lostgradient/weft': '^0.25.0' });
+    expect(root['catalog']).toEqual({ ...catalog, '@lostgradient/weft': weftRange });
     expect(parse(plan, 'packages/components/package.json')['dependencies']).toEqual({
       '@lostgradient/markdown': 'workspace:*',
       svelte: 'catalog:',
@@ -382,13 +395,13 @@ describe('workspace and catalog resolution', () => {
     expect(dependencies['@lostgradient/weft']).toBe('catalog:');
     expect(
       (parse(plan, 'package.json')['catalog'] as Record<string, string>)['@lostgradient/weft'],
-    ).toBe('^0.25.0');
+    ).toBe(weftRange);
   });
 
   test('the agent-bureau target inlines its edge into weft, having no catalog to hold it', async () => {
     const plan = await planFor('agent-bureau');
     expect(parse(plan, 'packages/operative/package.json')['dependencies']).toEqual({
-      '@lostgradient/weft': '^0.25.0',
+      '@lostgradient/weft': weftRange,
       zod: '^4.6.5',
     });
     expect(parse(plan, 'package.json')['catalog']).toBeUndefined();
@@ -609,7 +622,7 @@ describe('composition against a manifest the target already carries', () => {
         'internal/*',
       ]);
       const emittedCatalog = root['catalog'] as Record<string, string>;
-      expect(emittedCatalog['@lostgradient/weft']).toBe('^0.25.0');
+      expect(emittedCatalog['@lostgradient/weft']).toBe(weftRange);
       expect(emittedCatalog['svelte']).toBe(catalog.svelte);
     });
   });
@@ -657,7 +670,7 @@ describe('composition against a manifest the target already carries', () => {
     async () => {
       await withTree({ 'package.json': { name: 'weft-monorepo' } }, async (targetDirectory) => {
         const plan = await planFor('weft', { targetDirectory });
-        expect(parse(plan, 'packages/weft/package.json')['version']).toBe('0.25.0');
+        expect(parse(plan, 'packages/weft/package.json')['version']).toBe(weftRecordedVersion);
         expect(plan.seededFromPackageMap).toEqual(['@lostgradient/weft']);
         expect(plan.firstPublish).toEqual([]);
       });
@@ -666,7 +679,7 @@ describe('composition against a manifest the target already carries', () => {
 
   test('COR-1229: no target clone at all seeds the same way as an incomplete one', async () => {
     const plan = await planFor('weft');
-    expect(parse(plan, 'packages/weft/package.json')['version']).toBe('0.25.0');
+    expect(parse(plan, 'packages/weft/package.json')['version']).toBe(weftRecordedVersion);
     expect(plan.seededFromPackageMap).toEqual(['@lostgradient/weft']);
     expect(plan.firstPublish).toEqual([]);
   });

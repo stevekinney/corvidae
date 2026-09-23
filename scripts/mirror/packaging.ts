@@ -311,6 +311,39 @@ export interface SmokeTestPackage {
   publicName: string;
   tarball: string;
   exports: SurfaceExportsMap;
+  /** Published packages of the same target this one depends on, by public name. */
+  dependsOn?: readonly string[] | undefined;
+}
+
+/**
+ * The consumer smoke-test project's `package.json`: the one writer both the sync's step list and
+ * `runConsumerSmokeTest` use, so the two cannot drift.
+ *
+ * Every published package is a `file:` dependency on its tarball. That alone is not enough for a
+ * first publish (COR-1292): a packed tarball rewrites its `workspace:*` edge to a registry range,
+ * and for a sibling published in this same run the registry has no such version yet, so the
+ * install fetched it from npm and got a 404. Each package another one depends on is therefore
+ * also overridden to its own tarball. The `overrides` key is written only when such an edge
+ * exists, so a single-package target like weft renders exactly what it always did.
+ */
+export function consumerManifest(packages: readonly SmokeTestPackage[]): string {
+  const tarballs = new Map(packages.map((entry) => [entry.publicName, `file:${entry.tarball}`]));
+  const dependencies = Object.fromEntries(tarballs);
+  const siblings = new Set(
+    packages.flatMap((entry) => (entry.dependsOn ?? []).filter((name) => tarballs.has(name))),
+  );
+  const overrides = Object.fromEntries(
+    [...siblings].toSorted().map((name) => [name, tarballs.get(name) ?? '']),
+  );
+  const manifest = {
+    name: 'mirror-consumer-smoke-test',
+    version: '0.0.0',
+    private: true,
+    type: 'module',
+    dependencies,
+    ...(siblings.size > 0 ? { overrides } : {}),
+  };
+  return `${JSON.stringify(manifest, undefined, 2)}\n`;
 }
 
 export interface SmokeTestOptions {
@@ -342,13 +375,7 @@ export async function runConsumerSmokeTest({
 }: SmokeTestOptions): Promise<SmokeTestResult> {
   const project = join(directory, 'consumer');
   await mkdir(project, { recursive: true });
-  const dependencies = Object.fromEntries(
-    packages.map((entry) => [entry.publicName, `file:${entry.tarball}`]),
-  );
-  await Bun.write(
-    join(project, 'package.json'),
-    `${JSON.stringify({ name: 'mirror-consumer-smoke-test', version: '0.0.0', private: true, type: 'module', dependencies }, undefined, 2)}\n`,
-  );
+  await Bun.write(join(project, 'package.json'), consumerManifest(packages));
 
   const specifiers = packages.flatMap((entry) =>
     importableSpecifiers(entry.publicName, entry.exports),

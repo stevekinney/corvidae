@@ -447,6 +447,16 @@ describe('the committed workspaces', () => {
     'the %s plan emits corvidae’s source byte-for-byte',
     async (target) => {
       const { plan } = committedPlans[target];
+      // A declared version constant is the one sanctioned difference: the transform rewrites its
+      // literal to the composed manifest's version (COR-1192), which differs from corvidae's own
+      // literal whenever the target's release is newer. It must still match byte-for-byte
+      // everywhere else.
+      const versionFiles = new Map(
+        plan.published.flatMap((entry) => {
+          const declared = versionConstants[entry.workspace];
+          return declared === undefined ? [] : [[`${entry.directory}/${declared}`, entry.version]];
+        }),
+      );
       const mismatches: string[] = [];
       for (const [path, contents] of Object.entries(plan.source.files)) {
         const workspace = plan.emitted
@@ -458,8 +468,20 @@ describe('the committed workspaces', () => {
         }
         const corvidaePath = `${workspace.corvidaeDirectory}${path.slice(workspace.targetDirectory.length)}`;
         const onDisk = await Bun.file(join(corvidaeRoot, corvidaePath)).bytes();
+        const composedVersion = versionFiles.get(path);
+        const expected =
+          composedVersion === undefined
+            ? Buffer.from(onDisk)
+            : Buffer.from(
+                new TextDecoder()
+                  .decode(onDisk)
+                  .replace(
+                    /export const VERSION = '[^']*';\n$/,
+                    `export const VERSION = '${composedVersion}';\n`,
+                  ),
+              );
         const emitted = Buffer.from(contents);
-        if (Buffer.compare(Buffer.from(onDisk), emitted) !== 0) {
+        if (Buffer.compare(expected, emitted) !== 0) {
           mismatches.push(`${path}: differs from corvidae’s ${corvidaePath}`);
         }
       }
