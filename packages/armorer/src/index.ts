@@ -112,9 +112,14 @@ export {
   lazy,
   withContext,
 } from './create-tool';
+// `NamedTool` is what `createTool` returns, so it belongs on the top-level surface for the same
+// reason as `SerializedToolDefinition` above: a downstream package whose exported function
+// infers a tool's type must be able to name it in its declarations. Operative's tool factories
+// did, and their declarations failed with TS2883 until it was exported (COR-1291).
 export type {
   AsyncToolMetadataInput,
   CreateToolOptions,
+  NamedTool,
   SyncToolMetadataInput,
   ToolMetadataInput,
   WithContext,
