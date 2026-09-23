@@ -118,7 +118,7 @@ Column resizing and reordering are both off by default so an existing grid rende
 - **Reordering (pointer).** Dragging a header cell past the midpoint of a sibling shows a drop indicator and reorders on drop. **Reordering is constrained to within the same pin group** — a column can only change position among columns that share its `pin` value (unpinned columns never reorder in front of or behind a pinned column, and the two pinned groups never mix). A small movement below the drag threshold is still treated as a click, so sorting a sortable column is unaffected.
 - **Reordering (keyboard).** Ctrl/Cmd+Shift+ArrowLeft/Right moves the focused header column one position within its pin group.
 - **Virtualized columns.** Both gestures work with `virtualizeColumns` — the column virtualizer is told about every resize so its measured track sizes and total width stay correct, not just the resized cell's own CSS width.
-- **Right-to-left.** The resize handle still sits at the header cell's trailing edge (which is the visual left in RTL) and pointer-drag direction is inverted automatically so dragging toward the column's interior always widens it, matching LTR. Reordering direction is unaffected — drop-side detection uses screen-space `left`/`right`, not logical start/end.
+- **Right-to-left.** The resize handle still sits at the header cell's trailing edge (which is the visual left in RTL) and pointer-drag direction is inverted automatically so dragging toward the column's interior always widens it, matching LTR. Reordering is inverted the same way — dragging toward the visual left in RTL moves a column later in `columnOrder`, not earlier, so a drop always lands on the side of the target the pointer is actually over.
 
 ### Keyboard and focus contract
 

@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import type { Component } from 'svelte';
 
 import { renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
@@ -581,6 +581,52 @@ describe('DataGrid row virtualization', () => {
       expect(totalWidthAfter).not.toBe(totalWidthBefore);
     } finally {
       restoreMeasurement();
+    }
+  });
+
+  test('COR-1131 regression: a grid that opts out of virtualizeColumns never subscribes the column virtualizer', async () => {
+    // The resize/reorder work added an $effect that re-syncs the column
+    // virtualizer's measured widths (`resizeColumn`) whenever resolved
+    // column widths change. `resizeColumn` subscribes to the underlying
+    // `@tanstack/virtual-core` virtualizer, which lazily creates both
+    // virtualizers and attaches their ResizeObserver/scroll listeners on
+    // first subscription — so calling it unconditionally would force that
+    // eager setup onto every DataGrid, not just ones that opt into
+    // `virtualizeColumns`, breaking "a grid that doesn't opt in renders
+    // exactly as before."
+    const { DataGridVirtualizationAdapter } =
+      await import('./_internal/virtualization-adapter.svelte.ts');
+    const resizeColumnSpy = spyOn(DataGridVirtualizationAdapter.prototype, 'resizeColumn');
+    try {
+      const columnCount = 5;
+      const { container, rerender } = render(LogDataGrid, {
+        rows: makeMetricRows(3, columnCount),
+        columns: makeMetricColumns(columnCount),
+        getRowId: getLogRowId,
+        'aria-label': 'Metrics',
+      });
+      await waitFor(() => expect(gridCells(container).length).toBeGreaterThan(0));
+
+      // Also re-render with a `columnSizing` change, the exact kind of
+      // update the effect reacts to — it still must not subscribe.
+      await rerender({
+        rows: makeMetricRows(3, columnCount),
+        columns: makeMetricColumns(columnCount),
+        columnSizing: { metric1: 260 },
+        getRowId: getLogRowId,
+        'aria-label': 'Metrics',
+      });
+      await waitFor(() =>
+        expect(
+          container
+            .querySelector<HTMLElement>('[data-cinder-column-key="metric1"]')
+            ?.style.getPropertyValue('--_cinder-data-grid-column-width'),
+        ).toBe('260px'),
+      );
+
+      expect(resizeColumnSpy).not.toHaveBeenCalled();
+    } finally {
+      resizeColumnSpy.mockRestore();
     }
   });
 

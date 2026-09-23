@@ -135,12 +135,29 @@
     opacity: 0.5;
   }
 
+  /*
+   * `data-cinder-drop-indicator` names the resulting array-order position
+   * ("before" or "after" this header), not a physical screen side — in a
+   * right-to-left grid the physical left/right edges are swapped, since the
+   * first column in order renders at the physical right. The `:dir(rtl)`
+   * overrides below flip the painted edge to match, mirroring how
+   * `updateColumnDragTarget` already inverts which side of a target counts
+   * as "before" for right-to-left pointer drags.
+   */
   .cinder-data-grid__header-cell[data-cinder-drop-indicator='before'] {
     box-shadow: inset 2px 0 0 0 var(--cinder-ring-color);
   }
 
   .cinder-data-grid__header-cell[data-cinder-drop-indicator='after'] {
     box-shadow: inset -2px 0 0 0 var(--cinder-ring-color);
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-drop-indicator='before']:dir(rtl) {
+    box-shadow: inset -2px 0 0 0 var(--cinder-ring-color);
+  }
+
+  .cinder-data-grid__header-cell[data-cinder-drop-indicator='after']:dir(rtl) {
+    box-shadow: inset 2px 0 0 0 var(--cinder-ring-color);
   }
 
   .cinder-data-grid__resize-handle {

@@ -247,7 +247,16 @@
   // `columnSizing` update or a pointer/keyboard resize would otherwise
   // leave the virtualized column tracks and total width stale even though
   // the resized cell's own CSS width is already correct.
+  //
+  // Gated on `shouldVirtualizeColumns`: `resizeColumn()` subscribes to the
+  // underlying `@tanstack/virtual-core` virtualizer, which lazily creates
+  // both virtualizers and attaches their `ResizeObserver`/scroll listeners
+  // on first subscription. Running this unconditionally would force that
+  // eager setup on every DataGrid, including ones that never enable
+  // `virtualizeColumns`, breaking the "renders exactly as before" contract
+  // for grids that haven't opted in.
   $effect(() => {
+    if (!shouldVirtualizeColumns) return;
     columnModel.unpinnedColumns.forEach((column, index) => {
       rowVirtualizer.resizeColumn(index, column.width);
     });
@@ -820,7 +829,22 @@
     }
 
     const midpoint = (closest.left + closest.right) / 2;
-    const dropSide: 'before' | 'after' = clientX < midpoint ? 'before' : 'after';
+    // `dropSide` names the resulting *array-order* position ('before' or
+    // 'after' `closest.key`), which `reorderColumnKeyBeforeOrAfter` expects.
+    // In RTL, the first key in that array renders at the physical *right*,
+    // so a pointer physically left of the target's midpoint lands *after*
+    // it in order — the mirror image of LTR. Without this, a right-to-left
+    // drag would land the dropped column on the opposite side from where
+    // the pointer visually is, inverted the same way pointer-resize's delta
+    // would be without its own RTL adjustment.
+    const isPhysicallyBeforeMidpoint = clientX < midpoint;
+    const dropSide: 'before' | 'after' = isRightToLeft
+      ? isPhysicallyBeforeMidpoint
+        ? 'after'
+        : 'before'
+      : isPhysicallyBeforeMidpoint
+        ? 'before'
+        : 'after';
     columnDragState = { ...columnDragState, targetKey: closest.key, dropSide };
   }
 

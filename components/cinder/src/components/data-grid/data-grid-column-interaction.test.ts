@@ -250,6 +250,38 @@ describe('DataGrid column reordering (COR-1132)', () => {
     expect(onColumnOrderChange.mock.calls[0]?.[0]).toEqual(['status', 'customer', 'total']);
   });
 
+  test('COR-1132 regression: a right-to-left drag drops on the side the pointer is actually over', async () => {
+    // In RTL, columns render right-to-left, so the physical left-to-right
+    // layout is the reverse of `columnOrder`: total, status, customer.
+    // Dragging "status" toward the physical left (toward "total") should
+    // move it later in `columnOrder`, landing after "total" — the mirror
+    // image of the LTR case, the same way pointer-resize already inverts
+    // its delta for RTL.
+    const onColumnOrderChange = mock((_next: readonly string[]) => {});
+    const { container } = render(OrderDataGrid, {
+      rows,
+      columns,
+      reorderableColumns: true,
+      onColumnOrderChange,
+      getRowId: getOrderId,
+      style: 'direction: rtl;',
+      'aria-label': 'Orders',
+    });
+
+    const restore = measureHeaderCells({ total: 100, status: 120, customer: 180 });
+    const source = headerCell(container, 'status');
+    stubPointerCapture(source);
+
+    await fireEvent.pointerDown(source, { pointerId: 1, clientX: 160, clientY: 10 });
+    // Cross the drag threshold moving toward "total" (physical left in RTL).
+    await fireEvent.pointerMove(source, { pointerId: 1, clientX: 20, clientY: 10 });
+    await fireEvent.pointerUp(source, { pointerId: 1, clientX: 20, clientY: 10 });
+    restore();
+
+    expect(onColumnOrderChange).toHaveBeenCalledTimes(1);
+    expect(onColumnOrderChange.mock.calls[0]?.[0]).toEqual(['customer', 'total', 'status']);
+  });
+
   test('a small pointer movement below the drag threshold still allows the sort click through', async () => {
     const onSortModelChange = mock((_next: unknown) => {});
     const onColumnOrderChange = mock((_next: readonly string[]) => {});
