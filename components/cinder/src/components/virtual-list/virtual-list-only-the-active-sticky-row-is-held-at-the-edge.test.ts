@@ -108,24 +108,14 @@ describe('VirtualList — only the active sticky row is held at the edge', () =>
     expect(source).not.toContain("[data-cinder-sticky='true'] {\n    z-index: 1;");
   });
 
-  test('keeps a pinned horizontal row at its own height', async () => {
-    // A cascade and layout outcome, so the rule's shape is what is assertable here.
-    //
-    // Under `horizontal` the root's block-size is auto and the in-flow window takes
-    // its height from the rows. A pinned row is out of flow, so it no longer counts
-    // toward that height — and anchoring BOTH block edges then sizes it to a height
-    // computed without it. A sticky row taller than its neighbours was squashed to
-    // theirs and its content clipped, at the moment it crossed the window boundary.
-    const source = await Bun.file(new URL('./virtual-list.css', import.meta.url).pathname).text();
-    const horizontalPinned = source.slice(
-      source.indexOf(
-        "[data-cinder-orientation='horizontal']\n    .cinder-virtual-list__row[data-cinder-sticky='true'][data-cinder-sticky-pinned='true']",
-      ),
-    );
-    const rule = horizontalPinned.slice(0, horizontalPinned.indexOf('}'));
-    expect(rule).toContain('inset-block-start: 0');
-    expect(rule).not.toContain('inset-block: 0');
-  });
+  // The cascade outcome this used to pin structurally — that a pinned horizontal
+  // row's rule anchors only `inset-block-start`, not both block edges, so the row
+  // keeps its own height once it leaves flow — is now exercised behaviourally in a
+  // real browser, where `position` and `overflow` actually compute. See
+  // `scripts/browser-fixtures/tests/virtual-list.playwright.ts`'s pinned-header suite
+  // (COR-376), which scrolls the `horizontal-sticky-header-clip` fixture until its
+  // taller header pins and asserts its full box stays visible inside the list's own
+  // box.
 
   test('scopes sticky positioning to the active row', async () => {
     // A cascade outcome, which happy-dom does not compute — the rule's shape is the

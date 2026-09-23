@@ -107,6 +107,7 @@
     classifyRtlScrollType,
     domWritingDirectionReader,
     normalizeInlineScrollOffset,
+    resolveObservedCrossAxisSize,
     resolveObservedMainAxisSize,
     resolveRowLayoutDescriptor,
     resolveWritingDirection,
@@ -277,6 +278,22 @@
   let previousCrossExtent = 0;
 
   /**
+   * Measured cross-axis (block, under `horizontal`) extent of every sticky row that
+   * has ever been observed, keyed by index. A plain `Map`, like the measurement
+   * store's own cache, with a separate `$state` version counter driving reactivity —
+   * the sticky-item count is small, so per-key subscription overhead is not the
+   * concern the main-axis cache avoids; this just follows the same shape.
+   *
+   * Populated independently of `dynamicSize`: `resolveObservedMainAxisSize`/
+   * `handleRowResize` only ever read the MAIN axis, and only while `dynamicSize` is
+   * on, but a pinned header can need its cross-axis extent fed back under `horizontal`
+   * with fixed-height rows too (see `handleStickyCrossAxisResize`).
+   */
+  let stickyCrossAxisSizes = new Map<number, number>();
+  let stickyCrossAxisVersion = $state(0);
+  let stickyCrossAxisResizeObserver: ResizeObserver | undefined;
+
+  /**
    * `horizontal` as it actually applies. `windowScroll` does not compose with
    * it — windowing the window's own horizontal scroll is not supported — so
    * this silently degrades to vertical whenever both are set, rather than the
@@ -395,6 +412,25 @@
     if (activeStickyIndex >= virtualWindow.startIndex && activeStickyIndex < virtualWindow.endIndex)
       return null;
     return activeStickyIndex;
+  });
+
+  /**
+   * The pinned row's measured cross-axis extent, under `horizontal` only — the
+   * dimension the CSS sidecar cannot size from flow once the row leaves it.
+   *
+   * `pinnedStickyIndex` going out of flow (`position: absolute`) drops it out of the
+   * flex layout the window's auto cross-size is otherwise computed from — see
+   * `resolveWindowStyle` — so a pinned header taller than the rows around it is
+   * clipped by the root's `overflow-y: hidden` unless that height is fed back
+   * explicitly. Reads
+   * `stickyCrossAxisSizes`, populated by `handleStickyCrossAxisResize` — not
+   * `locateRowSize`, which is the MAIN-axis table `dynamicSize` builds and does not
+   * exist in fixed mode, where this example lives.
+   */
+  const pinnedRowCrossAxisSize = $derived.by(() => {
+    void stickyCrossAxisVersion;
+    if (!isHorizontal || pinnedStickyIndex === null) return 0;
+    return stickyCrossAxisSizes.get(pinnedStickyIndex) ?? 0;
   });
 
   /**
@@ -1007,6 +1043,28 @@
   });
 
   /**
+   * Drops cached cross-axis sizes for indexes that are no longer sticky, mirroring
+   * the main-axis prune above. Keyed by INDEX rather than row key — unlike the
+   * measurement store, which must survive a prepend shifting every index — because
+   * this cache only ever needs the currently pinned row's extent, and a stale entry
+   * left behind by a reordered sticky set is simply never read again once its index
+   * drops out of `stickyIndexSet`.
+   */
+  $effect(() => {
+    const currentStickyIndexes = stickyIndexSet;
+    const itemCount = items.length;
+    if (stickyCrossAxisSizes.size === 0) return;
+    let removedAny = false;
+    for (const index of stickyCrossAxisSizes.keys()) {
+      if (index >= itemCount || !currentStickyIndexes.has(index)) {
+        stickyCrossAxisSizes.delete(index);
+        removedAny = true;
+      }
+    }
+    if (removedAny) stickyCrossAxisVersion += 1;
+  });
+
+  /**
    * Drops cached sizes when dynamic mode is switched off.
    *
    * Rows are no longer observed while fixed mode runs, so a row that changes
@@ -1254,6 +1312,29 @@
   }
 
   /**
+   * Inline style for the in-flow window: its leading offset, plus — under
+   * `horizontal`, once a sticky row is pinned out of flow — a minimum block size
+   * reserving the pinned row's own measured extent.
+   *
+   * Under `horizontal` the window is a flex container (see the CSS sidecar) whose
+   * own block-size is `auto`: the browser derives it from its IN-FLOW children. That
+   * is every rendered row while a sticky row is still inside the window, but the row
+   * leaves flow the instant it pins (`position: absolute`, so the rule holding it
+   * there can anchor one edge without squashing it to the others' height) — and from
+   * then on the window's auto cross-size is computed only from its remaining flow
+   * siblings. A pinned header taller than they are is clipped by the root's
+   * `overflow-y: hidden` unless this minimum stands in for the space it no longer
+   * contributes.
+   */
+  function resolveWindowStyle(): string {
+    const declarations = [`${rowLayout.offsetProperty}:${virtualWindow.leadingSize}px`];
+    if (pinnedRowCrossAxisSize > 0) {
+      declarations.push(`min-block-size:${pinnedRowCrossAxisSize}px`);
+    }
+    return `${declarations.join(';')};`;
+  }
+
+  /**
    * Inline style for one row: its main-axis size under fixed sizing, plus the offset
    * that pins it when it is the active sticky row outside the window.
    *
@@ -1350,6 +1431,8 @@
     if (velocityIdleTimer !== undefined) clearTimeout(velocityIdleTimer);
     rowResizeObserver?.disconnect();
     rowResizeObserver = undefined;
+    stickyCrossAxisResizeObserver?.disconnect();
+    stickyCrossAxisResizeObserver = undefined;
     measurementStore.reset();
     previousOffsets = undefined;
     windowMeasurementBatcher?.dispose();
@@ -1930,6 +2013,67 @@
     };
   }
 
+  /**
+   * Reads each observed sticky row's CROSS-axis extent into `stickyCrossAxisSizes`.
+   * Unlike `handleRowResize`, this runs whether or not `dynamicSize` is on — a fixed-
+   * height horizontal list with a taller sticky header needs this exactly as much as
+   * a dynamic one does.
+   */
+  function handleStickyCrossAxisResize(entries: readonly ResizeObserverEntry[]): void {
+    for (const entry of entries) {
+      const element = entry.target as HTMLElement;
+      const rawIndex = element.dataset['cinderVirtualIndex'];
+      if (rawIndex === undefined) continue;
+      const index = Number.parseInt(rawIndex, 10);
+      if (!Number.isInteger(index) || index < 0 || index >= items.length) continue;
+      const crossAxisSize = resolveObservedCrossAxisSize(
+        entry.borderBoxSize?.[0],
+        entry.contentRect,
+        'horizontal',
+      );
+      if (!Number.isFinite(crossAxisSize) || crossAxisSize < 0) continue;
+      const previousSize = stickyCrossAxisSizes.get(index);
+      if (previousSize !== undefined && Math.abs(previousSize - crossAxisSize) < 0.01) continue;
+      stickyCrossAxisSizes.set(index, crossAxisSize);
+      stickyCrossAxisVersion += 1;
+    }
+  }
+
+  /**
+   * Observes one mounted row's cross-axis extent, but only while it is sticky and
+   * the list is `horizontal` — the one combination the window's own in-flow sizing
+   * cannot account for once the row pins and leaves flow. Reading `isHorizontal` and
+   * `stickyIndexSet` here, rather than gating the attachment in the template, is what
+   * lets this re-run and unobserve on its own when either changes, the same way
+   * `observeRow` reacts to `dynamicSize` — see the effect that tears down on
+   * component destroy for why neither observer needs to be disconnected by hand on a
+   * prop change.
+   *
+   * A second, separate `ResizeObserver` rather than reusing `rowResizeObserver`:
+   * that one is created lazily only under `dynamicSize`, and `handleRowResize` reads
+   * only the main axis — folding this in would mean gating its every entry on which
+   * axis the caller wanted, for two callbacks that already do not share a cache.
+   */
+  function observeStickyCrossAxis(node: HTMLElement): (() => void) | undefined {
+    if (!isHorizontal) return undefined;
+    const rawIndex = node.dataset['cinderVirtualIndex'];
+    const index = rawIndex === undefined ? Number.NaN : Number.parseInt(rawIndex, 10);
+    if (!Number.isInteger(index) || !stickyIndexSet.has(index)) return undefined;
+    if (!stickyCrossAxisResizeObserver) {
+      const ResizeObserverConstructor =
+        typeof document !== 'undefined' && node.ownerDocument === document
+          ? globalThis.ResizeObserver
+          : node.ownerDocument.defaultView?.ResizeObserver;
+      if (typeof ResizeObserverConstructor !== 'function') return undefined;
+      stickyCrossAxisResizeObserver = new ResizeObserverConstructor(handleStickyCrossAxisResize);
+    }
+    const observer = stickyCrossAxisResizeObserver;
+    observer.observe(node, { box: 'border-box' });
+    return () => {
+      observer.unobserve(node);
+    };
+  }
+
   function currentLocator(): VirtualItemLocator {
     const table = offsets?.offsets;
     if (dynamicSize && table) {
@@ -2152,10 +2296,7 @@
     style={`${rowLayout.sizeProperty}:${virtualWindow.totalSize}px;`}
     aria-hidden={items.length === 0 ? 'true' : undefined}
   >
-    <div
-      class="cinder-virtual-list__window"
-      style={`${rowLayout.offsetProperty}:${virtualWindow.leadingSize}px;`}
-    >
+    <div class="cinder-virtual-list__window" style={resolveWindowStyle()}>
       {#each renderedItems as virtualItem (virtualItem.key)}
         <div
           class="cinder-virtual-list__row"
@@ -2172,6 +2313,7 @@
             : undefined}
           style={resolveRowStyle(virtualItem.index, virtualItem.size)}
           {@attach observeRow}
+          {@attach observeStickyCrossAxis}
         >
           {@render row(virtualItem.item, {
             index: virtualItem.index,
