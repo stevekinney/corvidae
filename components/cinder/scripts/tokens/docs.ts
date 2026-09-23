@@ -10,6 +10,16 @@ import type { ValueResolver } from './resolve.ts';
 import { serializeEntryValue } from './value-entry.ts';
 
 const MARKDOWN_PLUGINS = [markdownPlugin];
+// The root `.prettierrc` overrides `*.md` with `proseWrap: 'never'`. Without the
+// same override here, a table wider than `printWidth` is column-aligned by the
+// generator but left compact by `format:check`, so `tokens:check` and
+// `format:check` cannot both pass on the committed `tokens.md`.
+const MARKDOWN_OPTIONS = {
+  ...PRETTIER_OPTIONS,
+  proseWrap: 'never',
+  parser: 'markdown',
+  plugins: MARKDOWN_PLUGINS,
+} as const;
 
 /**
  * `\r?\n` rather than `\n`: the repository has no `.gitattributes` pinning
@@ -237,7 +247,7 @@ export async function renderDocTable(
   });
   const raw = `${header}${rows.join('\n')}\n`;
   assertPrettierResolvesToRoot();
-  return format(raw, { ...PRETTIER_OPTIONS, parser: 'markdown', plugins: MARKDOWN_PLUGINS });
+  return format(raw, MARKDOWN_OPTIONS);
 }
 
 /**
@@ -378,9 +388,5 @@ export async function buildTokensDocMarkdown(
   // reformats on commit, `tokens:generate -- --check` regenerates without
   // that formatting, and CI reports drift on a file nobody edited.
   assertPrettierResolvesToRoot();
-  return format(rewritten, {
-    ...PRETTIER_OPTIONS,
-    parser: 'markdown',
-    plugins: MARKDOWN_PLUGINS,
-  });
+  return format(rewritten, MARKDOWN_OPTIONS);
 }

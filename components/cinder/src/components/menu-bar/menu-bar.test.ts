@@ -786,4 +786,188 @@ describe('MenuBar', () => {
       outsideButton.remove();
     }
   });
+
+  // COR-454: open/active menu identity is stored by menu.id, not array index,
+  // so reordering, inserting, removing, or disabling a menu no longer strands
+  // the wrong menu as "active" or "open".
+  describe('COR-454: menu identity across menus prop reconciliation', () => {
+    test('keeps an open menu open, focused, and its DOM ids stable when another menu is inserted before it', async () => {
+      const menus = fileEditViewMenus().slice(0, 2); // [file, edit], both enabled
+      const { getByRole, rerender } = render(MenuBar, { props: { menus } });
+      const edit = getByRole('menuitem', { name: 'Edit' });
+
+      edit.focus();
+      await fireEvent.keyDown(edit, { key: 'ArrowDown' });
+      await tick();
+
+      expect(edit.getAttribute('aria-expanded')).toBe('true');
+      const editTriggerId = edit.id;
+      const undoId = getByRole('menuitem', { name: 'Undo' }).id;
+
+      await rerender({
+        menus: [
+          { id: 'view', label: 'View', items: [{ id: 'zoom-in', label: 'Zoom In' }] },
+          ...menus,
+        ],
+      });
+      await tick();
+
+      const editAfter = getByRole('menuitem', { name: 'Edit' });
+      expect(editAfter.id).toBe(editTriggerId);
+      expect(editAfter.getAttribute('aria-expanded')).toBe('true');
+      expect(getByRole('menuitem', { name: 'Undo' }).id).toBe(undoId);
+
+      // Arrow navigation continues from Edit's new (last) position: View is now
+      // first, so ArrowRight from within Edit's open popup wraps to View.
+      await fireEvent.keyDown(getByRole('menuitem', { name: 'Undo' }), { key: 'ArrowRight' });
+      await tick();
+      expect(getByRole('menuitem', { name: 'View' }).getAttribute('aria-expanded')).toBe('true');
+      expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Zoom In' }));
+    });
+
+    test('submenu trigger and submenu item ids stay stable when a menu is inserted before their parent', async () => {
+      const menus = fileEditViewMenus();
+      const { getByRole, rerender } = render(MenuBar, { props: { menus } });
+
+      await fireEvent.click(getByRole('menuitem', { name: 'File' }));
+      await tick();
+      const submenuTrigger = getByRole('menuitem', { name: 'Open Recent' });
+      await fireEvent.keyDown(submenuTrigger, { key: 'ArrowRight' });
+      await tick();
+
+      const submenuTriggerId = submenuTrigger.id;
+      const submenuItemId = getByRole('menuitem', { name: 'Cinder workspace' }).id;
+
+      await rerender({
+        menus: [
+          { id: 'window', label: 'Window', items: [{ id: 'minimize', label: 'Minimize' }] },
+          ...menus,
+        ],
+      });
+      await tick();
+
+      const submenuTriggerAfter = getByRole('menuitem', { name: 'Open Recent' });
+      expect(submenuTriggerAfter.id).toBe(submenuTriggerId);
+      expect(getByRole('menuitem', { name: 'Cinder workspace' }).id).toBe(submenuItemId);
+    });
+
+    test('disabling the open menu in place forward-scans to the next enabled menu, moves focus, and fires no onSelect', async () => {
+      const onSelect = mock(() => {});
+      const menus = [
+        { id: 'file', label: 'File', items: [{ id: 'new', label: 'New' }] },
+        { id: 'edit', label: 'Edit', items: [{ id: 'undo', label: 'Undo', onSelect }] },
+        { id: 'view', label: 'View', items: [{ id: 'zoom-in', label: 'Zoom In' }] },
+      ];
+      const { getByRole, queryByRole, rerender } = render(MenuBar, { props: { menus } });
+      const edit = getByRole('menuitem', { name: 'Edit' });
+
+      edit.focus();
+      await fireEvent.keyDown(edit, { key: 'ArrowDown' });
+      await tick();
+      expect(edit.getAttribute('aria-expanded')).toBe('true');
+
+      await rerender({ menus: [menus[0]!, { ...menus[1]!, disabled: true }, menus[2]!] });
+      await tick();
+      await tick();
+
+      const view = getByRole('menuitem', { name: 'View' });
+      const editAfter = getByRole('menuitem', { name: 'Edit' });
+
+      expect(editAfter.getAttribute('aria-expanded')).toBe('false');
+      expect(editAfter.getAttribute('tabindex')).toBe('-1');
+      expect(view.getAttribute('tabindex')).toBe('0');
+      expect(document.activeElement).toBe(view);
+      expect(queryByRole('menuitem', { name: 'Undo' })).toBeNull();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    test('removing the open menu entirely forward-scans from its former visual position', async () => {
+      const menus = [
+        { id: 'file', label: 'File', items: [{ id: 'new', label: 'New' }] },
+        { id: 'edit', label: 'Edit', items: [{ id: 'undo', label: 'Undo' }] },
+        { id: 'view', label: 'View', items: [{ id: 'zoom-in', label: 'Zoom In' }] },
+      ];
+      const { getByRole, rerender } = render(MenuBar, { props: { menus } });
+      const edit = getByRole('menuitem', { name: 'Edit' });
+
+      edit.focus();
+      await fireEvent.keyDown(edit, { key: 'ArrowDown' });
+      await tick();
+
+      await rerender({ menus: [menus[0]!, menus[2]!] });
+      await tick();
+      await tick();
+
+      const view = getByRole('menuitem', { name: 'View' });
+      expect(view.getAttribute('tabindex')).toBe('0');
+      expect(document.activeElement).toBe(view);
+    });
+
+    test('removing or disabling the active-but-unopened menu falls back to the first enabled menu, unchanged', async () => {
+      const menus = [
+        { id: 'file', label: 'File', items: [{ id: 'new', label: 'New' }] },
+        { id: 'edit', label: 'Edit', items: [{ id: 'undo', label: 'Undo' }] },
+        { id: 'view', label: 'View', items: [{ id: 'zoom-in', label: 'Zoom In' }] },
+      ];
+      const { getByRole, rerender } = render(MenuBar, { props: { menus } });
+      const edit = getByRole('menuitem', { name: 'Edit' });
+
+      edit.focus();
+      await fireEvent.keyDown(edit, { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(getByRole('menuitem', { name: 'View' }));
+
+      await rerender({ menus: [menus[0]!, menus[1]!] });
+      await tick();
+
+      expect(getByRole('menuitem', { name: 'File' }).getAttribute('tabindex')).toBe('0');
+    });
+
+    test('closes with no focusable trigger when no enabled menu remains after an update', async () => {
+      const menus = [{ id: 'file', label: 'File', items: [{ id: 'new', label: 'New' }] }];
+      const { getByRole, container, rerender } = render(MenuBar, { props: { menus } });
+      const file = getByRole('menuitem', { name: 'File' });
+
+      file.focus();
+      await fireEvent.keyDown(file, { key: 'ArrowDown' });
+      await tick();
+      expect(file.getAttribute('aria-expanded')).toBe('true');
+
+      await rerender({ menus: [{ ...menus[0]!, disabled: true }] });
+      await tick();
+      await tick();
+
+      expect(file.getAttribute('aria-expanded')).toBe('false');
+      expect(container.querySelector('[tabindex="0"]')).toBeNull();
+    });
+
+    test('does not move focus when it was outside the disabled menu trigger and popup', async () => {
+      const menus = [
+        { id: 'file', label: 'File', items: [{ id: 'new', label: 'New' }] },
+        { id: 'edit', label: 'Edit', items: [{ id: 'undo', label: 'Undo' }] },
+        { id: 'view', label: 'View', items: [{ id: 'zoom-in', label: 'Zoom In' }] },
+      ];
+      const { getByRole, rerender } = render(MenuBar, { props: { menus } });
+      const edit = getByRole('menuitem', { name: 'Edit' });
+
+      edit.focus();
+      await fireEvent.keyDown(edit, { key: 'ArrowDown' });
+      await tick();
+      expect(edit.getAttribute('aria-expanded')).toBe('true');
+
+      const outsideButton = document.createElement('button');
+      document.body.append(outsideButton);
+      try {
+        // Focus leaves the open popup, but the debounced focusin guard hasn't
+        // resolved its own tick().then() yet when the disabling update lands.
+        outsideButton.focus();
+        await rerender({ menus: [menus[0]!, { ...menus[1]!, disabled: true }, menus[2]!] });
+        await tick();
+        await tick();
+
+        expect(document.activeElement).toBe(outsideButton);
+      } finally {
+        outsideButton.remove();
+      }
+    });
+  });
 });

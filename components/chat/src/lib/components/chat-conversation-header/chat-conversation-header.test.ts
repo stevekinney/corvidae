@@ -69,7 +69,7 @@ describe('ChatConversationHeader', () => {
       props: {
         conversation: conversation(),
         headingLevel: 3,
-        showExportActions: false,
+        exportActionsVisible: false,
       },
     });
 
@@ -109,7 +109,7 @@ describe('ChatConversationHeader', () => {
           },
         }),
         headingLevel: 4,
-        showExportActions: false,
+        exportActionsVisible: false,
         class: 'custom-header',
       },
     });
@@ -127,7 +127,7 @@ describe('ChatConversationHeader', () => {
         conversation: conversation({
           metadata: {},
         }),
-        showExportActions: false,
+        exportActionsVisible: false,
       },
     });
 
@@ -141,7 +141,7 @@ describe('ChatConversationHeader', () => {
     const { container } = render(ChatConversationHeader, {
       props: {
         conversation: conversation(),
-        showExportActions: false,
+        exportActionsVisible: false,
         actions: actionSnippet(),
       },
     });

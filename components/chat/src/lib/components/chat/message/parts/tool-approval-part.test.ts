@@ -81,7 +81,7 @@ describe('ToolApprovalPart', () => {
     const { getByRole } = render(ToolApprovalPart, {
       props: {
         part: pendingPart(),
-        onapprovalresolve: (toolCallId, resolution) => {
+        onApprovalResolve: (toolCallId, resolution) => {
           resolutions.push({ toolCallId, resolution });
         },
       },
@@ -100,7 +100,7 @@ describe('ToolApprovalPart', () => {
     const { getByRole, getByLabelText } = render(ToolApprovalPart, {
       props: {
         part: pendingPart(),
-        onapprovalresolve: (toolCallId, resolution) => {
+        onApprovalResolve: (toolCallId, resolution) => {
           resolutions.push({ toolCallId, resolution });
         },
       },
@@ -135,7 +135,7 @@ describe('ToolApprovalPart', () => {
     before.focus();
 
     const { container, getByRole } = render(ToolApprovalPart, {
-      props: { part: pendingPart(), onapprovalresolve: () => undefined },
+      props: { part: pendingPart(), onApprovalResolve: () => undefined },
     });
 
     expect(document.activeElement).toBe(before);
@@ -150,38 +150,38 @@ describe('ToolApprovalPart', () => {
   });
 
   test('Escape forwards cancel with remember false while pending', async () => {
-    const onapprovalresolve = mock(() => undefined);
+    const onApprovalResolve = mock(() => undefined);
     const { container } = render(ToolApprovalPart, {
-      props: { part: pendingPart(), onapprovalresolve },
+      props: { part: pendingPart(), onApprovalResolve },
     });
 
     const card = container.querySelector('[data-cinder-tool-approval]');
     card && (await fireEvent.keyDown(card, { key: 'Escape' }));
     flushSync();
 
-    expect(onapprovalresolve).toHaveBeenCalledWith('call-1', {
+    expect(onApprovalResolve).toHaveBeenCalledWith('call-1', {
       decision: 'cancel',
       remember: false,
     });
   });
 
   test('does not forward resolutions for in-flight or terminal cards', async () => {
-    const onapprovalresolve = mock(() => undefined);
+    const onApprovalResolve = mock(() => undefined);
     const inFlight = render(ToolApprovalPart, {
-      props: { part: pendingPart({ resolutionInFlight: true }), onapprovalresolve },
+      props: { part: pendingPart({ resolutionInFlight: true }), onApprovalResolve },
     });
     expect(inFlight.queryByRole('button', { name: 'Approve' })).toBeNull();
     inFlight.unmount();
 
     const terminal = render(ToolApprovalPart, {
-      props: { part: pendingPart({ state: 'approved' }), onapprovalresolve },
+      props: { part: pendingPart({ state: 'approved' }), onApprovalResolve },
     });
     expect(terminal.queryByRole('button', { name: 'Approve' })).toBeNull();
     const card = terminal.container.querySelector('[data-cinder-tool-approval]');
     card && (await fireEvent.keyDown(card, { key: 'Escape' }));
     flushSync();
 
-    expect(onapprovalresolve).toHaveBeenCalledTimes(0);
+    expect(onApprovalResolve).toHaveBeenCalledTimes(0);
   });
 
   test('keeps presentation in Cinder instead of local approval styles', async () => {

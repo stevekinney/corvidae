@@ -197,6 +197,66 @@ describe('Carousel', () => {
     expectActiveSlide(container, 1);
   });
 
+  test('a pointer-invoked pause stays paused through an intervening focus transition', async () => {
+    // `onFocusIn` only ever PAUSES (userPaused = true); nothing in a focus
+    // transition can revert an already-paused rotation. This exercises the
+    // full transition explicitly, named for the acceptance criterion, rather
+    // than relying on that being an incidental side effect of another test.
+    jest.useFakeTimers();
+    const { container } = render(Carousel, { slides, autoplay: true, autoplayInterval: 50 });
+    const root = requiredInstance(container.querySelector('.cinder-carousel'), HTMLElement);
+    const rotationButton = requiredInstance(
+      container.querySelector('.cinder-carousel__control--pause'),
+      HTMLButtonElement,
+    );
+    await tick();
+
+    await fireEvent.pointerDown(rotationButton, { pointerId: 7, pointerType: 'mouse', button: 0 });
+    await fireEvent.click(rotationButton, { detail: 1 });
+    expect(rotationButton.textContent).toBe('Play');
+
+    await fireEvent.focusOut(rotationButton, { relatedTarget: root });
+    await fireEvent.focusIn(root);
+    jest.advanceTimersByTime(150);
+    await tick();
+    expectActiveSlide(container, 0);
+    expect(rotationButton.textContent).toBe('Play');
+
+    await fireEvent.focusOut(root);
+    jest.advanceTimersByTime(150);
+    await tick();
+    expectActiveSlide(container, 0);
+    expect(rotationButton.textContent).toBe('Play');
+  });
+
+  test('keyboard Play restarts rotation with focus retained on the control', async () => {
+    jest.useFakeTimers();
+    const { container } = render(Carousel, { slides, autoplay: true, autoplayInterval: 50 });
+    const rotationButton = requiredInstance(
+      container.querySelector('.cinder-carousel__control--pause'),
+      HTMLButtonElement,
+    );
+    await tick();
+
+    // Tabbing to the control already pauses it (focus entry — see the
+    // sticky-pause test above), with no click involved yet.
+    rotationButton.focus();
+    await fireEvent.focusIn(rotationButton);
+    expect(rotationButton.textContent).toBe('Play');
+    expect(document.activeElement).toBe(rotationButton);
+
+    // Restart. Activation via keyboard (Enter/Space) dispatches a click with
+    // `detail: 0` and never moves focus off the button itself.
+    await fireEvent.click(rotationButton, { detail: 0 });
+    expect(rotationButton.textContent).toBe('Pause');
+    expect(document.activeElement).toBe(rotationButton);
+
+    jest.advanceTimersByTime(50);
+    await tick();
+    expectActiveSlide(container, 1);
+    expect(document.activeElement).toBe(rotationButton);
+  });
+
   test('control: without pausing, elapsing one interval DOES advance autoplay', async () => {
     // Proves the harness above can actually detect advancement — without this, a broken
     // pause toggle and a broken test harness would look identical. Uses a long interval and

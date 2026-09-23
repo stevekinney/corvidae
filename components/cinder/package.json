@@ -6,13 +6,15 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun run check:prop-conventions",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src scripts",
     "tokens:check": "bun scripts/tokens/validate-corpus.ts && bun scripts/tokens/generate-artifacts.ts --check",
     "tokens:generate": "bun scripts/tokens/generate-artifacts.ts",
+    "tokens:audit": "bun scripts/check-component-css-token-usage.ts",
     "components:check": "bun scripts/generate-component-artifacts.ts --check",
     "components:generate": "bun scripts/generate-component-artifacts.ts",
+    "check:prop-conventions": "bun scripts/check-prop-conventions.ts src/components ../chat/src/lib/components ../editor/src/lib/components",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
     "knowledge": "bun scripts/knowledge/index.ts"
   },
@@ -20,20 +22,21 @@
     "@floating-ui/dom": "catalog:",
     "@lostgradient/markdown": "workspace:*",
     "@shikijs/engine-oniguruma": "catalog:",
+    "@shikijs/langs": "catalog:",
+    "@shikijs/themes": "catalog:",
     "@shikijs/types": "catalog:",
     "@tanstack/virtual-core": "catalog:",
     "ajv": "catalog:",
     "ajv-formats": "catalog:",
     "culori": "catalog:",
     "esm-env": "catalog:",
+    "json-schema-library": "catalog:",
     "libphonenumber-js": "catalog:",
     "lucide-svelte": "catalog:",
     "qrcode": "catalog:",
     "shiki": "catalog:",
     "svelte": "catalog:",
-    "zod": "catalog:",
-    "@shikijs/langs": "catalog:",
-    "@shikijs/themes": "catalog:"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@lostgradient/typescript": "workspace:*",

@@ -109,12 +109,12 @@ function region(container: HTMLElement, level: 'polite' | 'assertive'): HTMLElem
   return result;
 }
 
-function renderChat(current: Conversation, onapprovalresolve?: (id: string) => void) {
+function renderChat(current: Conversation, onApprovalResolve?: (id: string) => void) {
   return render(Chat, {
     props: {
       id: `chat-${current.id}`,
       conversation: current,
-      ...(onapprovalresolve ? { onapprovalresolve } : {}),
+      ...(onApprovalResolve ? { onApprovalResolve } : {}),
     },
   });
 }

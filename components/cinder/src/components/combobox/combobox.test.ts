@@ -599,7 +599,7 @@ describe('Combobox filtering', () => {
     expect(option.closest('.cinder-combobox.compact')).not.toBeNull();
   });
 
-  test('typing with no matches renders the empty state', async () => {
+  test('typing with no matches renders the empty state with zero option elements (COR-499)', async () => {
     const { container } = render(Combobox, { id: 'fruit', options: fruits });
     const input = requiredInstance(container.querySelector(`#fruit`), HTMLInputElement);
     input.style.setProperty('--cinder-surface', 'hotpink');
@@ -607,11 +607,16 @@ describe('Combobox filtering', () => {
     await fireEvent.focus(input);
     await fireEvent.input(input, { target: { value: 'zzz' } });
     await waitFor(() => {
-      expect(container.querySelector('[role="option"]:not([aria-disabled="true"])')).toBeNull();
+      // Semantic assertion, not a fake-disabled-option check: no option
+      // elements exist at all — enabled or disabled — while the result set
+      // is empty.
+      expect(container.querySelector('[role="option"]')).toBeNull();
       const emptyState = container.querySelector('.cinder-combobox__empty');
       const panel = emptyState?.closest('.cinder-popover') as HTMLElement | null;
       expect(emptyState?.textContent?.trim()).toBe('No results');
-      expect(emptyState?.getAttribute('aria-selected')).toBe('false');
+      expect(emptyState?.hasAttribute('role')).toBe(false);
+      expect(emptyState?.hasAttribute('aria-selected')).toBe(false);
+      expect(emptyState?.hasAttribute('aria-disabled')).toBe(false);
       expect(emptyState?.closest('[role="listbox"]')?.id).toBe('fruit-listbox');
       // The portaled empty panel preserves the `.cinder-combobox` root-scoped
       // styling hook (AGENTS.md § Conventions), so a consumer override such as
@@ -623,6 +628,81 @@ describe('Combobox filtering', () => {
       expect(input.getAttribute('aria-expanded')).toBe('true');
       expect(input.getAttribute('aria-controls')).toBe('fruit-listbox');
     });
+  });
+
+  test('the empty result set is described by one status region outside the listbox (COR-499)', async () => {
+    const { container } = render(Combobox, { id: 'fruit', options: fruits });
+    const input = requiredInstance(container.querySelector('#fruit'), HTMLInputElement);
+    await fireEvent.focus(input);
+    await fireEvent.input(input, { target: { value: 'zzz' } });
+    await waitFor(() => {
+      expect(container.querySelector('.cinder-combobox__empty[data-cinder-active]')).not.toBeNull();
+    });
+
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy).not.toBeNull();
+    const ids = describedBy!.split(/\s+/);
+    const statusElement = document.body.querySelector('.cinder-combobox__empty-status');
+    expect(statusElement).not.toBeNull();
+    expect(ids).toContain(statusElement!.id);
+    expect(statusElement?.getAttribute('role')).toBe('status');
+    expect(statusElement?.textContent?.trim()).toBe('No results');
+    // Exactly one status region announces "No results" — it must not also be
+    // nested inside the `role="listbox"` panel (that panel's fake option was
+    // the COR-499 defect: two elements duplicating the same announcement).
+    expect(statusElement?.closest('[role="listbox"]')).toBeNull();
+    // No aria-activedescendant while the result set is empty.
+    expect(input.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
+  test('Arrow and Enter cannot select or emit a value change while the result set is empty (COR-499)', async () => {
+    let changeCount = 0;
+    const { container } = render(Combobox, {
+      id: 'fruit',
+      options: fruits,
+      onValueChange: () => {
+        changeCount += 1;
+      },
+    });
+    const input = requiredInstance(container.querySelector('#fruit'), HTMLInputElement);
+    await fireEvent.focus(input);
+    await fireEvent.input(input, { target: { value: 'zzz' } });
+    await waitFor(() => {
+      expect(container.querySelector('.cinder-combobox__empty[data-cinder-active]')).not.toBeNull();
+    });
+
+    await fireEvent.keyDown(input, { key: 'ArrowDown' });
+    await fireEvent.keyDown(input, { key: 'ArrowUp' });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(changeCount).toBe(0);
+    expect(input.value).toBe('zzz');
+    expect(input.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
+  test('clearing the filter restores options, active-descendant navigation, and selection, with no stale empty description (COR-499)', async () => {
+    const { container } = render(Combobox, { id: 'fruit', options: fruits });
+    const input = requiredInstance(container.querySelector('#fruit'), HTMLInputElement);
+    await fireEvent.focus(input);
+    await fireEvent.input(input, { target: { value: 'zzz' } });
+    await waitFor(() => {
+      expect(container.querySelector('.cinder-combobox__empty[data-cinder-active]')).not.toBeNull();
+    });
+
+    // Clearing the filter re-arms the roving index to the first enabled
+    // option (handleInput's own setActiveIndex(firstEnabledFilteredIndex())),
+    // the same as typing any other filter text — no extra ArrowDown needed.
+    await fireEvent.input(input, { target: { value: '' } });
+
+    const option = await findOption('Apple');
+    await waitFor(() => {
+      expect(input.getAttribute('aria-activedescendant')).toBe(option.id);
+    });
+    const describedByAfterClear = input.getAttribute('aria-describedby') ?? '';
+    expect(describedByAfterClear.split(/\s+/)).not.toContain(`${input.id}-empty-status`);
+
+    await fireEvent.mouseDown(option);
+    expect(input.value).toBe('Apple');
   });
 
   test('a custom instance class survives on the portaled empty panel', async () => {

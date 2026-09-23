@@ -24,7 +24,7 @@ const schema = {
       enum: ['wysiwyg', 'source'],
       description: 'Editor display mode (two-way bindable)',
     },
-    showModeToggle: {
+    modeToggleVisible: {
       type: 'boolean',
       description: 'Show an inline toggle for switching between WYSIWYG and raw Markdown',
     },
@@ -36,7 +36,7 @@ const schema = {
       type: 'boolean',
       description: 'Read-only mode',
     },
-    showToolbar: {
+    toolbarEnabled: {
       type: 'boolean',
       description: 'Show formatting toolbar (DEP-37)',
     },
@@ -55,35 +55,35 @@ const schema = {
   metadata: {
     unsupportedProps: [
       {
-        name: 'onchange',
+        name: 'onValueChange',
         reason: 'function-or-snippet',
         description: 'Called when content changes',
       },
       {
-        name: 'oncommentshortcut',
+        name: 'onCommentShortcut',
         reason: 'function-or-snippet',
         description: 'Called when comment shortcut (Ctrl-Alt-c) is pressed (DEP-47)',
       },
       {
-        name: 'onmodechange',
+        name: 'onModeChange',
         reason: 'function-or-snippet',
         description: 'Called when editor mode changes',
       },
       {
-        name: 'onready',
+        name: 'onReady',
         reason: 'function-or-snippet',
         description: 'Called when the editor is ready (Milkdown initialized)',
       },
       {
-        name: 'onselectionchange',
+        name: 'onSelectionChange',
         reason: 'function-or-snippet',
         description: 'Called when selection changes (stub for DEP-39)',
       },
       {
-        name: 'ontoolbarcontextchange',
+        name: 'onToolbarContextChange',
         reason: 'function-or-snippet',
         description:
-          'Notified whenever the toolbar context changes.\n\nUse this to host the formatting controls somewhere this component does not\nrender — for example folding them into a surrounding application toolbar so\nthe editor does not stack a second bar of its own. Pair it with\n`showToolbar={false}`.',
+          'Notified whenever the toolbar context changes.\n\nUse this to host the formatting controls somewhere this component does not\nrender — for example folding them into a surrounding application toolbar so\nthe editor does not stack a second bar of its own. Pair it with\n`toolbarEnabled={false}`.',
       },
       {
         name: 'placeholderCompletion',

@@ -286,7 +286,7 @@
       id="fixture-basic-chat"
       conversation={basicConversation}
       capabilities={{ attachments: false }}
-      onsubmit={handleSubmit}
+      onSubmit={handleSubmit}
     />
   </div>
 
@@ -296,7 +296,7 @@
       conversation={approvalConversation}
       capabilities={{ attachments: false }}
       {adapter}
-      onapprovalresolve={handleApprovalResolve}
+      onApprovalResolve={handleApprovalResolve}
     />
     <pre data-testid="approval-resolution-log">{JSON.stringify(approvalResolutions)}</pre>
   </div>
@@ -316,7 +316,7 @@
           id="fixture-conversation-layout-chat"
           conversation={activeConversation}
           capabilities={{ attachments: false }}
-          onsubmit={handleSubmit}
+          onSubmit={handleSubmit}
         >
           {#snippet header()}
             <ChatConversationHeader conversation={activeConversation} />
@@ -380,7 +380,7 @@
         conversation={pairedConversation}
         capabilities={{ attachments: false }}
         {adapter}
-        onartifactopen={(artifact) => (externalSelectedArtifact = artifact)}
+        onArtifactOpen={(artifact) => (externalSelectedArtifact = artifact)}
       >
         {#snippet messageActions(context: ChatRowContext)}
           {#if context.artifact}

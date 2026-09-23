@@ -44,7 +44,7 @@ export interface AnchorManagerOptions {
   onAnchorClick: (threadId: string, event: MouseEvent) => void;
   /** Announce threads whose quoted text is no longer present. */
   onOrphanedThreads?: (updates: AnchorUpdate[]) => void;
-  // NOTE: there is deliberately no `onthreaddelete` here. It existed to report
+  // NOTE: there is deliberately no `onThreadDelete` here. It existed to report
   // the thread this manager deleted when re-anchoring failed; re-anchoring now
   // orphans instead of deleting (cinder#1284), so the callback would never fire.
   // Keeping it would be worse than removing it — a consumer wiring cleanup to an
