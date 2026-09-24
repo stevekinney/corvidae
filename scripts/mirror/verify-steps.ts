@@ -2,9 +2,11 @@ import { join } from 'node:path';
 
 import {
   consumerManifest,
+  importableSpecifierEntries,
   importableSpecifiers,
-  nodeImportableSpecifiers,
+  nodeImportableSpecifierEntries,
   resolveTool,
+  smokeScript,
   tarballFilename,
   type SmokeTestPackage,
 } from './packaging.ts';
@@ -119,19 +121,6 @@ function attwCommand(env: VerifyEnvironment, tarball: string): readonly string[]
     'cjs-resolves-to-esm',
     'no-resolution',
   ];
-}
-
-/** The consumer smoke-test project's `smoke.mjs`, byte-identical to what `runConsumerSmokeTest` writes. */
-function consumerSmokeScript(specifiers: readonly string[]): string {
-  return (
-    `${specifiers.map((specifier, index) => `import * as module${index} from '${specifier}';`).join('\n')}\n` +
-    `const loaded = [${specifiers.map((_, index) => `module${index}`).join(', ')}];\n` +
-    `for (const [index, module] of loaded.entries()) {\n` +
-    `  if (typeof module !== 'object' || module === null) {\n` +
-    `    throw new Error(\`\${${JSON.stringify(specifiers)}[index]} did not resolve to a module\`);\n` +
-    `  }\n` +
-    `}\n`
-  );
 }
 
 /**
@@ -374,11 +363,11 @@ export function buildVerifySteps(
   }
 
   const consumerDirectory = join(env.scratchDirectory, 'consumer');
-  const specifiers = smokeTestPackages.flatMap((entry) =>
-    importableSpecifiers(entry.publicName, entry.exports),
+  const specifierEntries = smokeTestPackages.flatMap((entry) =>
+    importableSpecifierEntries(entry.publicName, entry.exports),
   );
-  const nodeSpecifiers = smokeTestPackages.flatMap((entry) =>
-    nodeImportableSpecifiers(entry.publicName, entry.exports),
+  const nodeSpecifierEntries = smokeTestPackages.flatMap((entry) =>
+    nodeImportableSpecifierEntries(entry.publicName, entry.exports),
   );
   steps.push({
     kind: 'write-consumer-project',
@@ -387,8 +376,8 @@ export function buildVerifySteps(
     command: [],
     files: {
       'package.json': consumerManifest(smokeTestPackages),
-      'smoke.mjs': consumerSmokeScript(specifiers),
-      'smoke-node.mjs': consumerSmokeScript(nodeSpecifiers),
+      'smoke.mjs': smokeScript(specifierEntries),
+      'smoke-node.mjs': smokeScript(nodeSpecifierEntries),
     },
   });
   steps.push({
@@ -399,7 +388,7 @@ export function buildVerifySteps(
   });
   steps.push({
     kind: 'consumer-run',
-    description: `import ${specifiers.length} specifier(s) from the packed tarballs`,
+    description: `import ${specifierEntries.length} specifier(s) from the packed tarballs`,
     cwd: consumerDirectory,
     command: ['bun', 'run', 'smoke.mjs'],
   });
@@ -411,7 +400,7 @@ export function buildVerifySteps(
   // for a subpath it should is a red step.
   steps.push({
     kind: 'consumer-run-node',
-    description: `import ${nodeSpecifiers.length} specifier(s) from the packed tarballs under node`,
+    description: `import ${nodeSpecifierEntries.length} specifier(s) from the packed tarballs under node`,
     cwd: consumerDirectory,
     command: ['node', 'smoke-node.mjs'],
   });

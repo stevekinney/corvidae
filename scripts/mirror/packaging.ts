@@ -1,7 +1,11 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { ExportTarget, SurfaceExportsMap } from './package-surface.ts';
+import {
+  flattenExportTarget,
+  type ExportTarget,
+  type SurfaceExportsMap,
+} from './package-surface.ts';
 
 /**
  * What a packed tarball is checked with before anything published leaves the mirror.
@@ -263,39 +267,117 @@ function indent(text: string): string {
  * importable specifier and is skipped; `./package.json` is data, not a module. Everything else is
  * something somebody downstream will write in an import statement.
  */
+
+/** One subpath's specifier, and whether its resolved target needs a JSON import attribute. */
+export interface ImportableSpecifier {
+  specifier: string;
+  /** Whether every runtime-reachable leaf of this subpath's export target is a `.json` file. */
+  json: boolean;
+}
+
+/** Every subpath's `[subpath, target]` pair a consumer could actually import. */
+function importableSubpathEntries(exports: SurfaceExportsMap): [string, ExportTarget][] {
+  return Object.entries(exports).filter(
+    ([subpath]) => !subpath.includes('*') && subpath !== './package.json',
+  );
+}
+
+function specifierFor(publicName: string, subpath: string): string {
+  return subpath === '.' ? publicName : `${publicName}/${subpath.slice(2)}`;
+}
+
+const sortBySpecifier = (a: ImportableSpecifier, b: ImportableSpecifier): number =>
+  a.specifier < b.specifier ? -1 : a.specifier > b.specifier ? 1 : 0;
+
+/**
+ * Whether one subpath's export target resolves exclusively to `.json` file(s) — the file Node
+ * refuses to load without `with { type: 'json' }` on the importing statement (`ERR_IMPORT_ATTRIBUTE_MISSING`,
+ * verified against Node 26 and Bun 1.4.2). Decided from the target's own leaves, via the same
+ * {@link flattenExportTarget} `checkTargetCoverage` already reads, rather than from the subpath's
+ * spelling — a `*.examples.json` sidecar and a `./manifest` subpath both resolve to a plain-string
+ * `.json` target, and cinder's own generator (`jsonSidecarExport`) instead emits a conditional
+ * `{ import, default }` object naming the same `.json` file twice.
+ *
+ * A `types` leaf never votes: it names a `.d.ts` declaration nothing ever imports as a module, so
+ * a subpath like `{ types: './x.d.ts', default: './x.json' }` is still JSON-only. A target whose
+ * remaining leaves disagree — some `.json`, some not — has no single correct attribute for one
+ * import statement, which is a defect in the exports map this surfaces rather than routes around.
+ */
+function exportsResolveToJson(publicName: string, subpath: string, target: ExportTarget): boolean {
+  const leaves = flattenExportTarget(target).filter(
+    ([condition]) =>
+      condition !== 'types' && !condition.startsWith('types.') && !condition.startsWith('types['),
+  );
+  const jsonLeaves = leaves.filter(([, file]) => file.endsWith('.json'));
+  if (jsonLeaves.length === 0) return false;
+  if (jsonLeaves.length === leaves.length) return true;
+  const named = subpath === '.' ? publicName : `${publicName}${subpath.slice(1)}`;
+  throw new PackagingError(
+    `${named} resolves to both a .json file and a non-.json file depending on which condition ` +
+      `an importer's resolver picks, so one import statement's attribute cannot be correct for ` +
+      `both: ${leaves.map(([condition, file]) => `${condition} -> ${file}`).join(', ')}`,
+  );
+}
+
 /** The consumer smoke script: import every specifier and refuse one that is not a module. */
-export function smokeScript(specifiers: readonly string[]): string {
+export function smokeScript(specifiers: readonly ImportableSpecifier[]): string {
   return (
-    `${specifiers.map((specifier, index) => `import * as module${index} from '${specifier}';`).join('\n')}\n` +
+    `${specifiers
+      .map((entry, index) =>
+        entry.json
+          ? `import * as module${index} from '${entry.specifier}' with { type: 'json' };`
+          : `import * as module${index} from '${entry.specifier}';`,
+      )
+      .join('\n')}\n` +
     `const loaded = [${specifiers.map((_, index) => `module${index}`).join(', ')}];\n` +
     `for (const [index, module] of loaded.entries()) {\n` +
     `  if (typeof module !== 'object' || module === null) {\n` +
-    `    throw new Error(\`\${${JSON.stringify(specifiers)}[index]} did not resolve to a module\`);\n` +
+    `    throw new Error(\`\${${JSON.stringify(specifiers.map((entry) => entry.specifier))}[index]} did not resolve to a module\`);\n` +
     `  }\n` +
     `}\n`
   );
 }
 
+/** Every importable specifier of an emitted `exports` map, paired with its JSON-attribute need. */
+export function importableSpecifierEntries(
+  publicName: string,
+  exports: SurfaceExportsMap,
+): ImportableSpecifier[] {
+  return importableSubpathEntries(exports)
+    .map(([subpath, target]) => ({
+      specifier: specifierFor(publicName, subpath),
+      json: exportsResolveToJson(publicName, subpath, target),
+    }))
+    .toSorted(sortBySpecifier);
+}
+
 export function importableSpecifiers(publicName: string, exports: SurfaceExportsMap): string[] {
-  return Object.keys(exports)
-    .filter((subpath) => !subpath.includes('*') && subpath !== './package.json')
-    .map((subpath) => (subpath === '.' ? publicName : `${publicName}/${subpath.slice(2)}`))
-    .toSorted();
+  return importableSpecifierEntries(publicName, exports).map((entry) => entry.specifier);
 }
 
 /**
- * The subset of {@link importableSpecifiers} node can resolve: a subpath whose export target is a
- * string, or whose conditions include one node honours (`node`, `import`, `require`, `default`),
- * recursively. A `types` + `bun` entry — weft's `./storage/sqlite/bun` and `./storage/testing` —
- * is bun's alone by design, and importing it under node is `ERR_PACKAGE_PATH_NOT_EXPORTED`, which
- * would be the smoke test refusing a correct export map rather than a broken one.
+ * The subset of {@link importableSpecifierEntries} node can resolve: a subpath whose export target
+ * is a string, or whose conditions include one node honours (`node`, `import`, `require`,
+ * `default`), recursively. A `types` + `bun` entry — weft's `./storage/sqlite/bun` and
+ * `./storage/testing` — is bun's alone by design, and importing it under node is
+ * `ERR_PACKAGE_PATH_NOT_EXPORTED`, which would be the smoke test refusing a correct export map
+ * rather than a broken one.
  */
+export function nodeImportableSpecifierEntries(
+  publicName: string,
+  exports: SurfaceExportsMap,
+): ImportableSpecifier[] {
+  return importableSubpathEntries(exports)
+    .filter(([, target]) => resolvesUnderNode(target))
+    .map(([subpath, target]) => ({
+      specifier: specifierFor(publicName, subpath),
+      json: exportsResolveToJson(publicName, subpath, target),
+    }))
+    .toSorted(sortBySpecifier);
+}
+
 export function nodeImportableSpecifiers(publicName: string, exports: SurfaceExportsMap): string[] {
-  return Object.keys(exports)
-    .filter((subpath) => !subpath.includes('*') && subpath !== './package.json')
-    .filter((subpath) => resolvesUnderNode(exports[subpath]))
-    .map((subpath) => (subpath === '.' ? publicName : `${publicName}/${subpath.slice(2)}`))
-    .toSorted();
+  return nodeImportableSpecifierEntries(publicName, exports).map((entry) => entry.specifier);
 }
 
 const nodeConditions = ['node', 'import', 'require', 'default'] as const;
@@ -377,17 +459,18 @@ export async function runConsumerSmokeTest({
   await mkdir(project, { recursive: true });
   await Bun.write(join(project, 'package.json'), consumerManifest(packages));
 
-  const specifiers = packages.flatMap((entry) =>
-    importableSpecifiers(entry.publicName, entry.exports),
+  const specifierEntries = packages.flatMap((entry) =>
+    importableSpecifierEntries(entry.publicName, entry.exports),
   );
-  if (specifiers.length === 0) {
+  if (specifierEntries.length === 0) {
     throw new PackagingError('The smoke test was given no importable specifier to check');
   }
-  const nodeSpecifiers = packages.flatMap((entry) =>
-    nodeImportableSpecifiers(entry.publicName, entry.exports),
+  const nodeSpecifierEntries = packages.flatMap((entry) =>
+    nodeImportableSpecifierEntries(entry.publicName, entry.exports),
   );
-  await Bun.write(join(project, 'smoke.mjs'), smokeScript(specifiers));
-  await Bun.write(join(project, 'smoke-node.mjs'), smokeScript(nodeSpecifiers));
+  const specifiers = specifierEntries.map((entry) => entry.specifier);
+  await Bun.write(join(project, 'smoke.mjs'), smokeScript(specifierEntries));
+  await Bun.write(join(project, 'smoke-node.mjs'), smokeScript(nodeSpecifierEntries));
 
   assertSucceeded(
     await runCommand(['bun', 'install', ...installArguments], { cwd: project }),
@@ -395,11 +478,11 @@ export async function runConsumerSmokeTest({
   );
   assertSucceeded(
     await runCommand(['bun', 'run', 'smoke.mjs'], { cwd: project }),
-    `importing ${specifiers.length} specifier(s) from the packed tarballs`,
+    `importing ${specifierEntries.length} specifier(s) from the packed tarballs`,
   );
   assertSucceeded(
     await runCommand(['node', 'smoke-node.mjs'], { cwd: project }),
-    `importing ${nodeSpecifiers.length} specifier(s) from the packed tarballs under node`,
+    `importing ${nodeSpecifierEntries.length} specifier(s) from the packed tarballs under node`,
   );
   return { directory: project, specifiers };
 }

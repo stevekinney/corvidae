@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { committedPlans } from './committed-plans.ts';
 
-import { tarballFilename } from './packaging.ts';
+import { importableSpecifierEntries, tarballFilename } from './packaging.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
 import {
   buildVerifySteps,
@@ -611,5 +611,108 @@ describe('the consumer manifest resolves intra-target siblings from this run (CO
 
   test("weft's committed plan renders no overrides key, so its rendered workflow is unchanged", () => {
     expect('overrides' in consumerManifestFor(committedPlans.weft.plan.published)).toBe(false);
+  });
+});
+
+/**
+ * COR-1196. Node refuses to load a `.json` export target without `with { type: 'json' }` on the
+ * import statement (`ERR_IMPORT_ATTRIBUTE_MISSING`), which failed `consumer-run-node` on cinder's
+ * real `chat-composer-popover.examples.json` sidecar. `buildVerifySteps` writes `smoke.mjs`/
+ * `smoke-node.mjs` through `packaging.ts`'s single `smokeScript`, so this is also the parity test:
+ * there is only one writer left, rather than two hand-kept-identical copies.
+ */
+describe('the smoke script attaches the JSON import attribute where it is needed (COR-1196)', () => {
+  function packageWithJsonSubpaths(): PublishedPackage {
+    return {
+      ...published[0]!,
+      exports: {
+        '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+        // The plain-string shape `package-surface.json` vendors for chat's/editor's
+        // `*.examples.json` sidecars.
+        './manifest': './dist/manifest.json',
+        // The conditional shape cinder's own `jsonSidecarExport` generates.
+        './examples': {
+          import: './dist/widget.examples.json',
+          default: './dist/widget.examples.json',
+        },
+      },
+    };
+  }
+
+  test('the module import is unchanged; both json subpaths carry the attribute, in local and rendered-workflow environments alike', () => {
+    for (const environment of [localEnvironment(), workflowEnvironment()]) {
+      const steps = buildVerifySteps(
+        {
+          installCommand: ['bun', 'install'],
+          published: [packageWithJsonSubpaths()],
+          privateWorkspaces: [],
+        },
+        environment,
+      );
+      const write = steps.find((step) => step.kind === 'write-consumer-project');
+      const smoke = write?.files?.['smoke.mjs'] ?? '';
+      expect(smoke).toContain(`import * as module0 from '${published[0]!.publicName}';\n`);
+      expect(smoke).toContain(
+        `import * as module1 from '${published[0]!.publicName}/examples' with { type: 'json' };\n`,
+      );
+      expect(smoke).toContain(
+        `import * as module2 from '${published[0]!.publicName}/manifest' with { type: 'json' };\n`,
+      );
+      // `smoke-node.mjs` resolves the same three subpaths under node's conditions (`import`/
+      // `default`), so it carries the identical three lines.
+      expect(write?.files?.['smoke-node.mjs']).toBe(smoke);
+    }
+  });
+
+  test('the "plain JavaScript both runtimes can execute" guard still holds with the JSON attribute present', () => {
+    // `with { type: 'json' }` must not trip the guard (verify-steps.test.ts's own regex above)
+    // that keeps this script free of TypeScript-only syntax the way a stray `: word)`/`: word;`
+    // annotation would.
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install'],
+        published: [packageWithJsonSubpaths()],
+        privateWorkspaces: [],
+      },
+      localEnvironment(),
+    );
+    const smoke = steps.find((step) => step.kind === 'write-consumer-project')?.files?.[
+      'smoke.mjs'
+    ];
+    expect(smoke).toContain("with { type: 'json' }");
+    expect(smoke).not.toMatch(/:\s*\w+\s*[=;)]/);
+  });
+
+  test("cinder's committed plan: every .json-target specifier carries the attribute, every other specifier does not", () => {
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install', '--frozen-lockfile'],
+        published: committedPlans.cinder.plan.published,
+        privateWorkspaces: [],
+      },
+      localEnvironment(),
+    );
+    const smoke =
+      steps.find((step) => step.kind === 'write-consumer-project')?.files?.['smoke.mjs'] ?? '';
+    const entries = committedPlans.cinder.plan.published.flatMap((entry) =>
+      importableSpecifierEntries(entry.publicName, entry.exports),
+    );
+    const jsonSpecifiers = entries.filter((entry) => entry.json).map((entry) => entry.specifier);
+    const plainSpecifiers = entries.filter((entry) => !entry.json).map((entry) => entry.specifier);
+    // The real regression: cinder's committed plan carries hundreds of `.json` sidecars, including
+    // COR-1196's own `chat-composer-popover.examples.json` (`@lostgradient/chat`'s vendored
+    // plain-string shape) and cinder's own generated conditional `{ import, default }` shape — not
+    // a synthetic fixture standing in for either.
+    expect(jsonSpecifiers).toContain('@lostgradient/chat/composer-popover/examples');
+    expect(jsonSpecifiers).toContain('@lostgradient/cinder/access-gate/examples');
+    expect(jsonSpecifiers.length).toBeGreaterThan(100);
+    expect(plainSpecifiers).toContain('@lostgradient/chat');
+    expect(plainSpecifiers).toContain('@lostgradient/cinder');
+    for (const specifier of jsonSpecifiers) {
+      expect(smoke).toContain(`from '${specifier}' with { type: 'json' };`);
+    }
+    for (const specifier of plainSpecifiers) {
+      expect(smoke).not.toContain(`from '${specifier}' with`);
+    }
   });
 });

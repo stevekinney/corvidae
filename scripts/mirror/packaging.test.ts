@@ -6,10 +6,13 @@ import { join } from 'node:path';
 import {
   assertTarballsPublishable,
   checkTarball,
+  importableSpecifierEntries,
   importableSpecifiers,
+  nodeImportableSpecifierEntries,
   PackagingError,
   packWorkspace,
   runConsumerSmokeTest,
+  smokeScript,
   type TarballReport,
 } from './packaging.ts';
 
@@ -93,6 +96,35 @@ function subpathPackage(name: string): PackageFiles {
   };
 }
 
+/**
+ * A package with one JSON subpath alongside its module subpath — the real shape of cinder's
+ * `*.examples.json` sidecars (COR-1196). `./data` is a plain-string `.json` target, the same shape
+ * `package-surface.json` vendors for chat's/editor's examples sidecars; `withRootExports`-style
+ * conditional objects are covered separately in the "JSON import attribute" unit tests above.
+ */
+function jsonSubpathPackage(name: string): PackageFiles {
+  return {
+    'package.json': `${JSON.stringify(
+      {
+        name,
+        version: '1.0.0',
+        type: 'module',
+        license: 'MIT',
+        exports: {
+          '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+          './data': './dist/data.json',
+        },
+        files: ['dist'],
+      },
+      undefined,
+      2,
+    )}\n`,
+    'dist/index.js': 'export const answer = 42;\n',
+    'dist/index.d.ts': 'export declare const answer: number;\n',
+    'dist/data.json': `${JSON.stringify({ answer: 42 })}\n`,
+  };
+}
+
 async function withPackage(
   files: PackageFiles,
   body: (directory: string, scratch: string) => Promise<void>,
@@ -119,6 +151,65 @@ describe('importable specifiers', () => {
         './package.json': './package.json',
       }),
     ).toEqual(['@lostgradient/weft', '@lostgradient/weft/storage']);
+  });
+});
+
+/**
+ * COR-1196. Node refuses a `.json` export target without `with { type: 'json' }` on the importing
+ * statement (`ERR_IMPORT_ATTRIBUTE_MISSING`) — cinder's `*.examples.json` sidecars are exactly this
+ * shape. `importableSpecifierEntries`/`nodeImportableSpecifierEntries` decide the attribute from the
+ * export target's own leaves (`flattenExportTarget`, which `package-surface.ts` already exports for
+ * `checkTargetCoverage`), not from the subpath's spelling, and have to handle both real shapes: a
+ * plain-string `.json` target (chat's/editor's vendored `package-surface.json` entries) and a
+ * conditional `{ import, default }` object naming the same `.json` file twice (cinder's own
+ * `jsonSidecarExport`).
+ */
+describe('the JSON import attribute (COR-1196)', () => {
+  const exports = {
+    '.': './dist/index.js',
+    './manifest': './dist/manifest.json',
+    './examples': { import: './dist/widget.examples.json', default: './dist/widget.examples.json' },
+    './package.json': './package.json',
+  };
+
+  test('a plain-string .json target and a conditional-object .json target are both flagged; the module subpath is not', () => {
+    const entries = importableSpecifierEntries('@fixture/widgets', exports);
+    expect(entries).toEqual([
+      { specifier: '@fixture/widgets', json: false },
+      { specifier: '@fixture/widgets/examples', json: true },
+      { specifier: '@fixture/widgets/manifest', json: true },
+    ]);
+  });
+
+  test('node-importable entries carry the same json flags, since both json targets resolve under import/default', () => {
+    expect(nodeImportableSpecifierEntries('@fixture/widgets', exports)).toEqual(
+      importableSpecifierEntries('@fixture/widgets', exports),
+    );
+  });
+
+  test('a `types` leaf never votes: a subpath typed as .d.ts but resolving to .json is still json-only', () => {
+    const entries = importableSpecifierEntries('@fixture/typed', {
+      './data': { types: './dist/data.d.ts', default: './dist/data.json' },
+    });
+    expect(entries).toEqual([{ specifier: '@fixture/typed/data', json: true }]);
+  });
+
+  test('a subpath whose conditions disagree about .json has no single correct attribute and is a hard failure', () => {
+    expect(() =>
+      importableSpecifierEntries('@fixture/mixed', {
+        './ambiguous': { import: './dist/ambiguous.json', require: './dist/ambiguous.js' },
+      }),
+    ).toThrow(PackagingError);
+  });
+
+  test('the smoke script imports exactly the json entries with the attribute, everything else unchanged', () => {
+    const entries = importableSpecifierEntries('@fixture/widgets', exports);
+    const script = smokeScript(entries);
+    expect(script).toContain(
+      "import * as module0 from '@fixture/widgets';\n" +
+        "import * as module1 from '@fixture/widgets/examples' with { type: 'json' };\n" +
+        "import * as module2 from '@fixture/widgets/manifest' with { type: 'json' };\n",
+    );
   });
 });
 
@@ -370,4 +461,32 @@ describe('the consumer smoke test', () => {
       }),
     ).rejects.toThrow(/no importable specifier/);
   });
+
+  // COR-1196. Before the fix, `smoke-node.mjs` wrote `import * as module1 from
+  // '@fixture/json-widget/data';` with no attribute; node refuses that for a `.json` target with
+  // `ERR_IMPORT_ATTRIBUTE_MISSING`, which `consumer-run-node` surfaced against the real
+  // `chat-composer-popover.examples.json` sidecar. This runs both the bun and the node import for
+  // real against a packed tarball, so it is the reproduction, not just an assertion on generated text.
+  test('a .json subpath installs and imports cleanly under both bun and node', async () => {
+    await withPackage(jsonSubpathPackage('@fixture/json-widget'), async (directory, scratch) => {
+      const tarball = await packWorkspace({
+        packageDirectory: directory,
+        destination: join(scratch, 'tarballs'),
+      });
+      const result = await runConsumerSmokeTest({
+        directory: scratch,
+        packages: [
+          {
+            publicName: '@fixture/json-widget',
+            tarball,
+            exports: {
+              '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+              './data': './dist/data.json',
+            },
+          },
+        ],
+      });
+      expect(result.specifiers).toEqual(['@fixture/json-widget', '@fixture/json-widget/data']);
+    });
+  }, 60_000);
 });
