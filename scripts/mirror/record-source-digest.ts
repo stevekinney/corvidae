@@ -1,3 +1,7 @@
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, relative, sep } from 'node:path';
+
 import { targetDirectoryFor } from './layout-map.ts';
 import { discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
@@ -74,40 +78,60 @@ export async function commitExists(
 }
 
 /**
- * One file's text at a commit, or `undefined` when the path does not exist there.
+ * Extract `targetDirectory`'s tree at `commit` into `destination`, as two commands total
+ * (`git archive`, then `tar -x`) rather than one subprocess per file.
  *
- * Read as text (`git show <commit>:<path>`, which `packaging.ts`'s `runCommand` decodes as
- * UTF-8), not as bytes: none of the three dependencies a cross-target edge names today carries a
- * non-text source file (`packages/testing`'s PNG fixture is the one binary file in this checkout's
- * digest-scoped source, and `packages/testing` has no cross-target dependent). A future dependency
- * that does would need this read as bytes instead — `git cat-file blob <commit>:<path>` through a
- * raw-bytes-reading spawn rather than `runCommand`'s text-decoding one — which this module does
- * not attempt, on the premise that inventing it now for a case that cannot occur yet is worse than
- * a loud, specific failure (a text/binary mismatch would surface as every byte differing, which
- * `compareAgainstCommit` already reports by name) the day it actually does.
+ * The first version of this comparison called `git show <commit>:<path>` once per corvidae file —
+ * correct, but `operative` alone digests 381 files, and a real sync's `bun run test:self` timed
+ * out a test built on it at bun's default 5-second per-test budget (198s CI total across a much
+ * larger job's worth of contention wasn't the problem; ~380 sequential subprocess spawns for one
+ * package was). Measured: `git archive` + `tar -x` for the same 321-file `operative@0.12.0` tree
+ * takes under 100ms combined. `--format=tar` rather than piping `git archive`'s stdout directly
+ * into `tar -x` is deliberate: `CommandRunner` is one argv array and a `cwd`, with no shell
+ * pipeline between two spawns, so the archive is written to a file and extracted as a second,
+ * independent step — still two subprocesses, not the hundreds this replaces.
  */
-export async function readFileAtCommit(
-  directory: string,
+async function extractCommitDirectory(
+  targetRepositoryDirectory: string,
   commit: string,
-  path: string,
-  runner: CommandRunner = runCommand,
-): Promise<string | undefined> {
-  const result = await runner(['git', 'show', `${commit}:${path}`], { cwd: directory });
-  return result.exitCode === 0 ? result.stdout : undefined;
+  targetDirectory: string,
+  destination: string,
+  runner: CommandRunner,
+): Promise<void> {
+  const archivePath = join(destination, 'commit.tar');
+  const archiveResult = await runner(
+    ['git', 'archive', '--format=tar', `--output=${archivePath}`, commit, '--', targetDirectory],
+    { cwd: targetRepositoryDirectory },
+  );
+  if (archiveResult.exitCode !== 0) {
+    throw new RegistryVerificationError(
+      `git archive ${commit} -- ${targetDirectory} in ${targetRepositoryDirectory} exited ${archiveResult.exitCode}\n${archiveResult.stdout}${archiveResult.stderr}`,
+    );
+  }
+  const extractResult = await runner(['tar', '-xf', archivePath, '-C', destination], {
+    cwd: destination,
+  });
+  if (extractResult.exitCode !== 0) {
+    throw new RegistryVerificationError(
+      `extracting ${archivePath} exited ${extractResult.exitCode}\n${extractResult.stdout}${extractResult.stderr}`,
+    );
+  }
 }
 
-/** Every path under `prefix` a commit's tree carries, target-relative, or `[]` if the prefix has none. */
-export async function listFilesAtCommit(
-  directory: string,
-  commit: string,
-  prefix: string,
-  runner: CommandRunner = runCommand,
-): Promise<string[]> {
-  const result = await runner(['git', 'ls-tree', '-r', '--name-only', commit, '--', prefix], {
-    cwd: directory,
-  });
-  if (result.exitCode !== 0) return [];
-  return result.stdout.split('\n').filter((line) => line.length > 0);
+/** Every file under `root`, relative to it, in a stable order — a plain recursive directory walk. */
+async function walkDirectory(root: string): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true, recursive: true }).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    },
+  );
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    files.push(relative(root, join(entry.parentPath, entry.name)).split(sep).join('/'));
+  }
+  return files.toSorted();
 }
 
 export interface SourceComparison {
@@ -142,6 +166,12 @@ export function sourceComparisonIsClean(comparison: SourceComparison): boolean {
  * this module can enumerate wholesale from a commit's tree without also reading every other
  * top-level file a target's own tooling might keep beside the package, most of which are that
  * target's own and not this comparison's business.
+ *
+ * Both directions read from a single `extractCommitDirectory` extraction rather than one `git`
+ * invocation per file, and compare raw bytes rather than decoded text — `extractCommitDirectory`'s
+ * own doc comment has the reason (and the measurement) for the first change; the second follows
+ * from it for free, since reading an extracted file off disk carries no text-decoding step the way
+ * a subprocess's captured stdout did.
  */
 export async function compareAgainstCommit(
   corvidaeFiles: readonly DigestedFile[],
@@ -172,37 +202,45 @@ export async function compareAgainstCommit(
   const differing: string[] = [];
   const corvidaePaths = new Set(corvidaeFiles.map((file) => file.path));
 
-  for (const file of corvidaeFiles) {
-    const text = await readFileAtCommit(
+  const scratch = await mkdtemp(join(tmpdir(), 'corvidae-commit-extract-'));
+  try {
+    await extractCommitDirectory(
       targetRepositoryDirectory,
       commit,
-      `${targetDirectory}/${file.path}`,
+      targetDirectory,
+      scratch,
       runner,
     );
-    if (text === undefined) {
-      missingInCommit.push(file.path);
-      continue;
+    const extractedRoot = join(scratch, targetDirectory);
+
+    for (const file of corvidaeFiles) {
+      const candidate = Bun.file(join(extractedRoot, file.path));
+      if (!(await candidate.exists())) {
+        missingInCommit.push(file.path);
+        continue;
+      }
+      const committed = new Uint8Array(await candidate.arrayBuffer());
+      if (Buffer.compare(Buffer.from(file.bytes), Buffer.from(committed)) !== 0) {
+        differing.push(file.path);
+      }
     }
-    if (text !== new TextDecoder().decode(file.bytes)) differing.push(file.path);
+
+    const srcAtCommit = await walkDirectory(join(extractedRoot, 'src'));
+    const extraInCommit = srcAtCommit
+      .map((path) => `src/${path}`)
+      .filter(
+        (path) =>
+          !corvidaePaths.has(path) && !isDigestExcluded(path) && !excludedFromExtra.has(path),
+      );
+
+    return {
+      missingInCommit: missingInCommit.toSorted(),
+      extraInCommit: extraInCommit.toSorted(),
+      differing: differing.toSorted(),
+    };
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
   }
-
-  const srcAtCommit = await listFilesAtCommit(
-    targetRepositoryDirectory,
-    commit,
-    `${targetDirectory}/src`,
-    runner,
-  );
-  const extraInCommit = srcAtCommit
-    .map((path) => path.slice(`${targetDirectory}/`.length))
-    .filter(
-      (path) => !corvidaePaths.has(path) && !isDigestExcluded(path) && !excludedFromExtra.has(path),
-    );
-
-  return {
-    missingInCommit: missingInCommit.toSorted(),
-    extraInCommit: extraInCommit.toSorted(),
-    differing: differing.toSorted(),
-  };
 }
 
 export interface RecordOptions {

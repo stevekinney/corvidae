@@ -8,8 +8,6 @@ import {
   commitExists,
   compareAgainstCommit,
   fetchGitHead,
-  listFilesAtCommit,
-  readFileAtCommit,
   recordSourceDigest,
   RegistryVerificationError,
   sourceComparisonIsClean,
@@ -101,40 +99,6 @@ describe('git-history readers, against a real fixture repository', () => {
       ]);
       expect(await commitExists(scratch, sha!)).toBe(true);
       expect(await commitExists(scratch, '0'.repeat(40))).toBe(false);
-    });
-  });
-
-  test('readFileAtCommit reads a file’s text at a commit, and undefined for one that never existed there', async () => {
-    await withScratch(async (scratch) => {
-      const [sha] = await buildFixtureRepository(scratch, [
-        { files: { 'packages/example/src/index.ts': 'export const x = 1;\n' }, message: 'first' },
-      ]);
-      expect(await readFileAtCommit(scratch, sha!, 'packages/example/src/index.ts')).toBe(
-        'export const x = 1;\n',
-      );
-      expect(
-        await readFileAtCommit(scratch, sha!, 'packages/example/src/missing.ts'),
-      ).toBeUndefined();
-    });
-  });
-
-  test('listFilesAtCommit lists every path under a prefix at a commit', async () => {
-    await withScratch(async (scratch) => {
-      const [sha] = await buildFixtureRepository(scratch, [
-        {
-          files: {
-            'packages/example/src/index.ts': 'export const x = 1;\n',
-            'packages/example/src/nested/helper.ts': 'export const y = 2;\n',
-            'packages/example/README.md': '# Example\n',
-          },
-          message: 'first',
-        },
-      ]);
-      const files = await listFilesAtCommit(scratch, sha!, 'packages/example/src');
-      expect(files.toSorted()).toEqual([
-        'packages/example/src/index.ts',
-        'packages/example/src/nested/helper.ts',
-      ]);
     });
   });
 });
