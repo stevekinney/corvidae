@@ -225,6 +225,11 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         'The DOM harness twenty-six route suites under `src/routes/` import. It is the single largest escape in the workspace and the reason weft-ui belongs in this table at all.',
     },
     {
+      paths: ['tests/setup.ts'],
+      reason:
+        "`bunfig.toml` preloads this (`preload = [\"./tests/setup.ts\"]`), and it is where the `declare module 'bun:test'` augmentation adding `@testing-library/jest-dom`'s matchers to `expect(...)` lives. Every `src/routes/` suite that calls a jest-dom matcher (`toBeInTheDocument` and its siblings) type-checks against that augmentation — an edge `assertNoSourceEscapes` cannot see, since a module augmentation is not an import specifier the emitted route suites reference by name, only an ambient declaration they rely on being in scope. Undeclared, the target's own `typecheck-private` step for weft-ui failed with one `Property 'toBeInTheDocument' does not exist on type 'Assertion<...>'`-shaped error per real matcher call site. Not declared alongside `dom-test-support.ts` from the start because nobody had run weft-ui's typecheck against a synced target clone until COR-1196 round 11's C1 did.",
+    },
+    {
       paths: [
         'fixtures/async-activity.ts',
         'fixtures/children.ts',

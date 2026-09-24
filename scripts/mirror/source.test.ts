@@ -63,6 +63,25 @@ function weftDeclarationFixture(omitted?: string): Record<string, string> {
   );
 }
 
+/**
+ * `@lostgradient/weft-ui`'s `bunfig.toml` preloads `tests/setup.ts` (`preload =
+ * ["./tests/setup.ts"]`), which is where the `declare module 'bun:test'` augmentation adding
+ * `@testing-library/jest-dom`'s matchers to `expect(...)` lives. Every one of the twenty-six
+ * `src/routes/` suites that calls a jest-dom matcher (`toBeInTheDocument`, and
+ * friends) type-checks against that augmentation, but `tests/setup.ts` was never declared in
+ * `additionalSourceRoots['@lostgradient/weft-ui']` — only its sibling `tests/dom-test-support.ts`
+ * was — so the file never shipped to the cinder target, and the target's own
+ * `typecheck-private` step for weft-ui failed with six `Property 'toBeInTheDocument' does not
+ * exist on type 'Assertion<...>'`-shaped errors, one per matcher call site the augmentation would
+ * otherwise cover.
+ */
+describe('weft-ui’s bun:test preload ships with its source', () => {
+  test('the real cinder plan emits tests/setup.ts', () => {
+    const { plan } = committedPlans.cinder;
+    expect(Object.keys(plan.files)).toContain('packages/weft-ui/tests/setup.ts');
+  });
+});
+
 describe('the documents a workspace declares', () => {
   /**
    * The declared set has to be closed under links, which is a fourth kind of edge and the third
