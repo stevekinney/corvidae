@@ -185,6 +185,7 @@ export const appFixtureDeclarations = {
   'chat-conversation-header': ['assertion'],
   'chat-conversation-list': ['assertion'],
   'diff-viewer': ['assertion'],
+  'diff-review': ['assertion'],
 } as const satisfies Record<string, readonly string[]>;
 
 export function declaredAppFixtureNames(component: string): readonly string[] {

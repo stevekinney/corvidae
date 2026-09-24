@@ -1,0 +1,112 @@
+/// <reference lib="dom" />
+import { describe, expect, test } from 'bun:test';
+
+import { setupHappyDom } from '@lostgradient/testing';
+import type { DiffReviewState } from '../../diff-review-state/index.ts';
+import { createDiffReviewState, reduceDiffReviewState } from '../../diff-review-state/index.ts';
+
+setupHappyDom();
+
+const { render, fireEvent } = await import('@testing-library/svelte');
+const { default: DiffReviewComments } = await import('./diff-review-comments.svelte');
+
+function stateWithTwoComments(): DiffReviewState {
+  const created = createDiffReviewState([
+    {
+      targetId: 't1',
+      kind: 'markdown',
+      label: 'README.md',
+      original: 'a',
+      current: 'b',
+      normalizeInputs: false,
+    },
+  ]);
+  if (!created.ok) throw new Error('fixture setup failed');
+  const withOpen = reduceDiffReviewState(created.value, {
+    id: 'open-1',
+    type: 'create-comment',
+    targetId: 't1',
+    anchor: { kind: 'file', fileOccurrence: 0 },
+    body: 'Please clarify this section.',
+  });
+  if (!withOpen.ok) throw new Error('fixture setup failed');
+  const withResolved = reduceDiffReviewState(withOpen.value, {
+    id: 'resolved-1',
+    type: 'create-comment',
+    targetId: 't1',
+    anchor: { kind: 'file', fileOccurrence: 0 },
+    body: 'Already addressed.',
+  });
+  if (!withResolved.ok) throw new Error('fixture setup failed');
+  const resolved = reduceDiffReviewState(withResolved.value, {
+    type: 'resolve-comment',
+    id: 'resolved-1',
+  });
+  if (!resolved.ok) throw new Error('fixture setup failed');
+  return resolved.value;
+}
+
+describe('DiffReview component comments panel: default filter', () => {
+  test('shows every saved comment, including resolved ones, by default', () => {
+    const state = stateWithTwoComments();
+    const { container } = render(DiffReviewComments, { state, onStateChange: () => {} });
+    expect(container.querySelectorAll('.diff-review-comment-item')).toHaveLength(2);
+    expect(container.textContent).toContain('Please clarify this section.');
+    expect(container.textContent).toContain('Already addressed.');
+  });
+
+  test('"Unresolved only" hides resolved comments', async () => {
+    const state = stateWithTwoComments();
+    const { container, getByText } = render(DiffReviewComments, { state, onStateChange: () => {} });
+    await fireEvent.click(getByText('Unresolved only'));
+    expect(container.querySelectorAll('.diff-review-comment-item')).toHaveLength(1);
+    expect(container.textContent).toContain('Please clarify this section.');
+    expect(container.textContent).not.toContain('Already addressed.');
+  });
+});
+
+describe('DiffReview component comments panel: mutations', () => {
+  test('resolving an open comment calls onStateChange with it marked resolved', async () => {
+    const state = stateWithTwoComments();
+    let latest: DiffReviewState = state;
+    const { getAllByText } = render(DiffReviewComments, {
+      state,
+      onStateChange: (next: DiffReviewState) => {
+        latest = next;
+      },
+    });
+    await fireEvent.click(getAllByText('Resolve')[0]!);
+    const comment = latest.comments.find((c) => c.id === 'open-1');
+    expect(comment?.resolved).toBe(true);
+  });
+
+  test('clicking Delete does not remove the comment until a confirmation is granted', async () => {
+    const state = stateWithTwoComments();
+    let latest: DiffReviewState = state;
+    const { getAllByText } = render(DiffReviewComments, {
+      state,
+      onStateChange: (next: DiffReviewState) => {
+        latest = next;
+      },
+    });
+    await fireEvent.click(getAllByText('Delete')[0]!);
+    // Not deleted yet -- onStateChange is never called just from opening the
+    // confirmation; the real confirm/cancel interaction is covered by the
+    // browser fixture (ConfirmDialog owns its own <dialog> focus trap, which
+    // this harness cannot exercise -- see diff-viewer.test.ts's file header
+    // for the same environment limitation).
+    expect(latest.comments).toHaveLength(2);
+  });
+
+  test('readonly hides mutating controls but keeps the filter available', () => {
+    const state = stateWithTwoComments();
+    const { container, queryByText } = render(DiffReviewComments, {
+      state,
+      onStateChange: () => {},
+      readonly: true,
+    });
+    expect(queryByText('Resolve')).toBeNull();
+    expect(queryByText('Delete')).toBeNull();
+    expect(container.querySelector('.diff-review-comments-filter')).not.toBeNull();
+  });
+});
