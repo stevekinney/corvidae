@@ -11,6 +11,7 @@
     DiffReviewComments,
     DiffViewer,
     createDiffReviewState,
+    reduceDiffReviewState,
   } from '@lostgradient/editor';
   import type {
     DiffReviewComment,
@@ -18,6 +19,14 @@
     DiffReviewTargetInput,
   } from '@lostgradient/editor';
   import { SourceDiffViewer } from '@lostgradient/cinder';
+
+  // COR-511 / DR-8 review-states coverage (empty, binary, truncated,
+  // invalid-target, current/outdated/removed navigation, and mid-session
+  // staleness) is gated behind `?states=1` so the baseline fixture-scenario
+  // tests above don't pay for an extra ~100KB padded document and several
+  // extra mounts on every page load.
+  const statesScenarioEnabled =
+    new URLSearchParams(globalThis.location.search).get('states') === '1';
 
   // `DiffViewer`'s and `SourceDiffViewer`'s own `*Ref` types aren't part of
   // either package's public export surface (only the components themselves
@@ -128,6 +137,145 @@ diff --git a/src/two.ts b/src/two.ts
     }
     standaloneSourceViewerRef?.focusAnchor(comment.anchor);
   }
+
+  // -- Scenario: empty session (no targets at all) --------------------------
+  let emptyState = $state(initialState([]));
+
+  // -- Scenario: a file with no changed lines --------------------------------
+  const noChangeTargets: DiffReviewTargetInput[] = [
+    {
+      targetId: 'same',
+      kind: 'markdown',
+      label: 'same.md',
+      original: 'identical',
+      current: 'identical',
+      normalizeInputs: false,
+    },
+  ];
+  let noChangeState = $state(initialState(noChangeTargets));
+
+  // -- Scenario: a binary file in a source patch -----------------------------
+  const binaryPatch = `diff --git a/image.png b/image.png
+index 1111111..2222222 100644
+Binary files a/image.png and b/image.png differ
+`;
+  const binaryTargets: DiffReviewTargetInput[] = [
+    { targetId: 'binary', kind: 'source', label: 'Binary update', patch: binaryPatch },
+  ];
+  let binaryState = $state(initialState(binaryTargets));
+
+  // -- Scenario: a patch past SourceDiffViewer's default 1000-row render
+  // limit, to exercise its own truncation notice from inside DiffReview -----
+  function buildTruncatedPatch(): string {
+    const lines: string[] = [
+      'diff --git a/large.ts b/large.ts',
+      '--- a/large.ts',
+      '+++ b/large.ts',
+    ];
+    const hunkSize = 1200;
+    lines.push(`@@ -1,${hunkSize} +1,${hunkSize} @@`);
+    for (let i = 1; i <= hunkSize; i += 1) {
+      lines.push(`-old line ${i}`);
+      lines.push(`+new line ${i}`);
+    }
+    return `${lines.join('\n')}\n`;
+  }
+  const truncatedTargets: DiffReviewTargetInput[] = [
+    { targetId: 'large', kind: 'source', label: 'Large refactor', patch: buildTruncatedPatch() },
+  ];
+  let truncatedState = $state(initialState(truncatedTargets));
+
+  // -- Scenario: an invalid-target update, then a corrected one --------------
+  const invalidToggleValidTargets: DiffReviewTargetInput[] = [
+    {
+      targetId: 'toggle',
+      kind: 'markdown',
+      label: 'toggle.md',
+      original: 'before',
+      current: 'after',
+      normalizeInputs: false,
+    },
+  ];
+  let invalidToggleTargets = $state<DiffReviewTargetInput[]>(invalidToggleValidTargets);
+  let invalidToggleState = $state(initialState(invalidToggleValidTargets));
+  function breakInvalidToggleTargets(): void {
+    invalidToggleTargets = [
+      { ...invalidToggleValidTargets[0], kind: 'nonsense' },
+    ] as unknown as DiffReviewTargetInput[];
+  }
+  function fixInvalidToggleTargets(): void {
+    invalidToggleTargets = invalidToggleValidTargets;
+  }
+
+  // -- Scenario: current -> outdated -> removed comment navigation ----------
+  const navOriginal = 'Install with npm.';
+  const navCurrentA = 'Install with npm or bun.';
+  const navCurrentB = 'Install with yarn.';
+  const navValidTarget: DiffReviewTargetInput = {
+    targetId: 'nav',
+    kind: 'markdown',
+    label: 'nav.md',
+    original: navOriginal,
+    current: navCurrentA,
+    normalizeInputs: true,
+  };
+  let navTargets = $state<DiffReviewTargetInput[]>([navValidTarget]);
+  let navState = $state(initialState([navValidTarget]));
+  /** Real host behavior: a live content/removal change dispatches `set-targets`
+   * against the current state before the new `targets` prop is applied, so
+   * `diff-review-state` latches existing comments outdated/removed exactly as
+   * the contract specifies -- DiffReview itself never does this on the host's
+   * behalf. */
+  function changeNavContent(): void {
+    const next = [{ ...navValidTarget, current: navCurrentB }];
+    const result = reduceDiffReviewState(navState, { type: 'set-targets', targets: next });
+    if (!result.ok) return;
+    navTargets = next;
+    navState = result.value;
+  }
+  function removeNavTarget(): void {
+    const result = reduceDiffReviewState(navState, { type: 'set-targets', targets: [] });
+    if (!result.ok) return;
+    navTargets = [];
+    navState = result.value;
+  }
+
+  // -- Scenario: mid-session staleness (manual-tier, >100KB) -----------------
+  // Mirrors the `diff-viewer.svelte` fixture's own stale-annotation scenario:
+  // start below every tier threshold with a saved comment visible, then grow
+  // the document past the 100KB manual-tier boundary without ever calling
+  // `set-targets` in a way that discards it (only the content grows).
+  const staleOriginal = 'keep\nold middle\nkeep end';
+  const staleCurrentBase = 'keep\nCHANGED\nkeep end';
+  const stalePadding = 'Padding line.\n'.repeat(8000); // > 100,000 chars
+  let staleLargeMode = $state(false);
+  const staleCurrent = $derived(
+    staleLargeMode ? `${staleCurrentBase}\n${stalePadding}` : staleCurrentBase,
+  );
+  const staleValidTarget = $derived<DiffReviewTargetInput>({
+    targetId: 'stale',
+    kind: 'markdown',
+    label: 'stale.md',
+    original: staleOriginal,
+    current: staleCurrent,
+    normalizeInputs: false,
+  });
+  const staleTargets = $derived([staleValidTarget]);
+  let staleState = $state(
+    initialState([
+      {
+        targetId: 'stale',
+        kind: 'markdown',
+        label: 'stale.md',
+        original: staleOriginal,
+        current: staleCurrentBase,
+        normalizeInputs: false,
+      },
+    ]),
+  );
+  function growStaleDocument(): void {
+    staleLargeMode = true;
+  }
 </script>
 
 <div id="example-mount-markdown-pair">
@@ -176,3 +324,58 @@ diff --git a/src/two.ts b/src/two.ts
     onNavigate={navigateStandaloneSourceDiffViewer}
   />
 </div>
+
+{#if statesScenarioEnabled}
+  <div id="example-mount-empty">
+    <DiffReview targets={[]} state={emptyState} onStateChange={(next) => (emptyState = next)} />
+  </div>
+
+  <div id="example-mount-no-change">
+    <DiffReview
+      targets={noChangeTargets}
+      state={noChangeState}
+      onStateChange={(next) => (noChangeState = next)}
+    />
+  </div>
+
+  <div id="example-mount-binary">
+    <DiffReview
+      targets={binaryTargets}
+      state={binaryState}
+      onStateChange={(next) => (binaryState = next)}
+    />
+  </div>
+
+  <div id="example-mount-truncated">
+    <DiffReview
+      targets={truncatedTargets}
+      state={truncatedState}
+      onStateChange={(next) => (truncatedState = next)}
+    />
+  </div>
+
+  <div id="example-mount-invalid-toggle">
+    <button type="button" onclick={breakInvalidToggleTargets}>Break targets</button>
+    <button type="button" onclick={fixInvalidToggleTargets}>Fix targets</button>
+    <DiffReview
+      targets={invalidToggleTargets}
+      state={invalidToggleState}
+      onStateChange={(next) => (invalidToggleState = next)}
+    />
+  </div>
+
+  <div id="example-mount-navigation">
+    <button type="button" onclick={changeNavContent}>Change content</button>
+    <button type="button" onclick={removeNavTarget}>Remove target</button>
+    <DiffReview targets={navTargets} state={navState} onStateChange={(next) => (navState = next)} />
+  </div>
+
+  <div id="example-mount-stale">
+    <button type="button" onclick={growStaleDocument}>Make document large</button>
+    <DiffReview
+      targets={staleTargets}
+      state={staleState}
+      onStateChange={(next) => (staleState = next)}
+    />
+  </div>
+{/if}
