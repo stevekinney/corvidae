@@ -14,6 +14,12 @@
     };
 
   const editable = new URLSearchParams(globalThis.location.search).get('editable') === '1';
+  // COR-514 review: gated behind a query param (matching `editable` above) so
+  // the default assertion-fixture snapshot/axe sweep (`component-sweep.ts`)
+  // and the unrelated `data-ready`/toolbar-metrics checks in
+  // `components.playwright.ts` never see this scenario's extra mount or its
+  // large (>100KB) padded document.
+  const staleScenarioEnabled = new URLSearchParams(globalThis.location.search).get('stale') === '1';
 
   function incrementWindowCounter(key: '__diffViewerActionCount' | '__diffViewerRevertAllCount') {
     const state = window as DiffViewerFixtureWindow;
@@ -82,6 +88,24 @@ The first version includes authentication, a dashboard, and CSV export tools.
   function handleFocusOldLine2() {
     focusAnchorResult = focusAnchorRef?.focusAnchor({ side: 'old', startLine: 2 }) ?? null;
   }
+
+  // COR-514 review: real (non-synthetic) coverage for "while diff computation
+  // is stale, creating line comments is disabled ... and saved comments
+  // remain available" (DR-4 acceptance). A manual-tier (>100KB) document
+  // never auto-recomputes on further edits -- `scheduleCompute` only flips
+  // `isStale` -- so appending padding to `staleCurrent` after the first
+  // compute leaves the same three rows on screen, now stale, without a
+  // reactive re-render race to work around.
+  const staleAnnotationOriginal = 'keep\nold middle\nkeep end';
+  const staleAnnotationCurrentBase = 'keep\nCHANGED\nkeep end';
+  const staleAnnotationPadding = 'Padding line.\n'.repeat(8000); // > 100_000 chars
+  let staleLargeMode = $state(false);
+  const staleAnnotationCurrent = $derived(
+    staleLargeMode
+      ? `${staleAnnotationCurrentBase}\n${staleAnnotationPadding}`
+      : staleAnnotationCurrentBase,
+  );
+  let staleSelection: DiffViewerAnnotationSelection | null = $state(null);
 </script>
 
 <DiffViewer {original} {current} readonly={!editable} onRevertAll={handleRevertAll}>
@@ -124,3 +148,20 @@ The first version includes authentication, a dashboard, and CSV export tools.
   <output id="focus-anchor-view-mode">{focusAnchorViewMode}</output>
   <output id="focus-anchor-result">{JSON.stringify(focusAnchorResult)}</output>
 </div>
+
+{#if staleScenarioEnabled}
+  <div id="example-mount-stale-annotation">
+    <DiffViewer
+      original={staleAnnotationOriginal}
+      current={staleAnnotationCurrent}
+      annotationSelection={staleSelection}
+      onAnnotationSelectionChange={(next) => (staleSelection = next)}
+    >
+      {#snippet lineAnnotation({ side, line })}
+        <span data-testid="stale-saved-comment">Saved comment: {side}:{line}</span>
+      {/snippet}
+    </DiffViewer>
+    <Button size="xs" onclick={() => (staleLargeMode = true)}>Make document large</Button>
+    <output id="stale-annotation-result">{JSON.stringify(staleSelection)}</output>
+  </div>
+{/if}

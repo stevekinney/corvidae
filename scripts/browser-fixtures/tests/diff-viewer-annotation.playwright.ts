@@ -161,4 +161,80 @@ test.describe('Diff review — DiffViewer annotation hooks', () => {
     const focused = control(page, 'example-mount-focus-anchor', 'old', 2);
     await expect(focused).toBeFocused();
   });
+
+  test('a committed annotation selection survives diff-change navigation and a view-mode toggle', async ({
+    page,
+  }) => {
+    const mountId = 'example-mount-annotation-first';
+    const result = page.locator('#annotation-first-result');
+
+    await control(page, mountId, 'new', 3).click();
+    await expect(result).toContainText('"startLine":3');
+
+    // `]` (next change) and Ctrl+Shift+D (cycle view mode) are this
+    // DiffViewer instance's own keyboard shortcuts (bound on its root
+    // element, not the window -- see `handleKeydown` in diff-viewer.svelte).
+    // Sending them to the just-clicked control keeps focus inside the
+    // instance without depending on which element the click itself left
+    // focused.
+    await control(page, mountId, 'new', 3).focus();
+    await page.keyboard.press(']');
+    await page.keyboard.press('Control+Shift+D');
+
+    // Neither diff-change navigation (`userSelectedIndex`) nor a view-mode
+    // toggle is wired to clear or resync the controlled annotation
+    // selection -- it stays exactly what the host last committed until the
+    // host itself changes it.
+    await expect(result).toContainText('"startLine":3');
+    await expect(result).toContainText('"side":"new"');
+  });
+});
+
+test.describe('Diff review — DiffViewer stale-diff annotation gating', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`${fixtureRoute('diff-viewer')}&stale=1`, { waitUntil: 'load' });
+    await page.waitForSelector('#example-mount-stale-annotation .diff-viewer', {
+      state: 'visible',
+      timeout: 20_000,
+    });
+  });
+
+  test('going stale mid-session disables existing controls with a visible explanation; recompute re-enables them, and a saved marker stays visible throughout', async ({
+    page,
+  }) => {
+    const mountId = 'example-mount-stale-annotation';
+    const surface = page.locator(`#${mountId} .diff-viewer`);
+    const target = control(page, mountId, 'new', 2);
+    const savedMarker = page.locator(`#${mountId} [data-testid="stale-saved-comment"]`).first();
+
+    // Realtime tier: the small document computes immediately, with an
+    // enabled control and a saved-comment marker already on screen.
+    await expect(surface).toHaveAttribute('data-ready', 'true');
+    await expect(target).toBeEnabled();
+    await expect(savedMarker).toBeVisible();
+
+    // Push the document over the manual-tier threshold. `scheduleCompute`
+    // for the manual tier only flips `isStale` -- it does not recompute --
+    // so the same three rows (and the same marker) stay rendered, now stale.
+    await page.getByRole('button', { name: 'Make document large' }).click();
+    await expect(surface).not.toHaveAttribute('data-ready', 'true');
+    await expect(target).toBeDisabled();
+    await expect(page.locator(`#${mountId}`)).toContainText(
+      'The diff is outdated. Recompute it to add a new comment; existing comments remain available.',
+    );
+    // Saved comments remain available while creation is disabled.
+    await expect(savedMarker).toBeVisible();
+
+    // Recompute (the toolbar's manual-tier "Compute Diff" trigger) clears
+    // staleness and re-enables creation on the (newly recomputed) rows.
+    await page.getByRole('button', { name: 'Compute Diff' }).click();
+    await expect(surface).toHaveAttribute('data-ready', 'true', { timeout: 10_000 });
+
+    const resultBefore = await page.locator('#stale-annotation-result').textContent();
+    expect(resultBefore).toBe('null');
+    const reenabled = page.locator(`#${mountId} [data-cinder-annotation-control]:not(:disabled)`);
+    await expect(reenabled.first()).toBeVisible();
+    await reenabled.first().click();
+    await expect(page.locator('#stale-annotation-result')).not.toHaveText('null');
+  });
 });
