@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { flushSync, tick } from 'svelte';
+  import { tick } from 'svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { truncate } from '../../utilities/truncate.ts';
@@ -444,19 +444,10 @@
     announce('Switched to diff view');
     if (comment.anchor.kind !== 'range') return;
     const anchor = comment.anchor;
-    // `activeView === 'diff'` is an `{:else if}` branch: navigating here from another tab
-    // DESTROYS and remounts `DiffViewer` (not merely hides it), so `diffViewerRef` is `undefined`
-    // until that fresh instance's own mount effect runs and its `bind:ref` propagates back up. A
-    // single microtask `tick()` is not reliably enough turns of the scheduler for a freshly
-    // mounted child's own effect to have already flowed a bindable prop back to this scope --
-    // `flushSync` (mirroring `DiffViewer`'s own identical `flushPendingUpdates` helper) forces
-    // every pending update, including that mount effect, to apply before `diffViewerRef` is read.
-    try {
-      flushSync();
-    } catch {
-      // Already inside a synchronous flush -- nothing further to force here.
-    }
-    diffViewerRef?.focusAnchor({ side: anchor.side, startLine: anchor.startLine });
+    void tick().then(() => {
+      diffViewerRef?.focusAnchor({ side: anchor.side, startLine: anchor.startLine });
+      return undefined;
+    });
   }
 
   function handleDiffCommentAction(action: DiffReviewAction): void {
@@ -2508,18 +2499,34 @@
             <p class="review-editor-diff-composer-location">
               {formatDiffReviewCommentLocation(activeDiffDraft)}
             </p>
+            {#if isReadonly}
+              <!-- Reaching a nonempty draft's composer while read-only is now possible through
+                   the drafts inventory's "Open" action (COR-512 / DR-7 follow-up), which the
+                   shared `DiffReviewDraftsInventory` leaf always shows regardless of `readonly`
+                   (only its own Save/Discard are hidden). Before this, `activeDiffDraftId` could
+                   only be set from `onAnnotationSelectionChange`, which is never wired when
+                   read-only -- so this branch was previously unreachable there. Native disabled
+                   controls plus visible explanatory text, per contract ("Use native disabled
+                   buttons/inputs with nearby visible explanatory text"). -->
+              <p class="review-editor-diff-composer-readonly-note">
+                Enable editing to change or save this draft.
+              </p>
+            {/if}
             <textarea
               aria-label="Diff comment"
               value={activeDiffDraft.body}
+              disabled={isReadonly}
               oninput={(event) => updateDiffComposerBody(event.currentTarget.value)}></textarea>
             <div class="review-editor-diff-composer-actions">
               <Button
                 onclick={saveDiffComposer}
-                disabled={activeDiffDraft.body.trim().length === 0}
+                disabled={isReadonly || activeDiffDraft.body.trim().length === 0}
               >
                 Save
               </Button>
-              <Button variant="ghost" onclick={closeDiffComposer}>Cancel</Button>
+              <Button variant="ghost" onclick={closeDiffComposer}
+                >{isReadonly ? 'Close' : 'Cancel'}</Button
+              >
             </div>
           </div>
         {/if}
@@ -2642,6 +2649,12 @@
   .review-editor-diff-composer-actions {
     display: flex;
     gap: var(--cinder-space-2, 0.5rem);
+  }
+
+  .review-editor-diff-composer-readonly-note {
+    margin: 0;
+    font-size: var(--cinder-text-xs, 0.75rem);
+    color: var(--cinder-text-muted, #666);
   }
 
   /*

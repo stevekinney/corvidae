@@ -148,4 +148,64 @@ test.describe('Diff review — ReviewEditor integration', () => {
     await expect(focused).toHaveAttribute('data-cinder-side', 'old');
     await expect(focused).toHaveAttribute('data-cinder-line', anchorLine);
   });
+
+  test('cancelling the composer preserves the draft in the Unsaved drafts inventory, and Discard removes it', async ({
+    page,
+  }) => {
+    const mount = page.locator('#example-mount-diff-comments');
+    await mount.getByRole('tab', { name: 'Diff' }).click();
+
+    const removedRow = mount.locator('.diff-row', { has: page.locator('.diff-line-removed') });
+    const control = removedRow.locator('[data-cinder-annotation-control][data-cinder-side="old"]');
+    await expect(control).toBeVisible();
+    await control.click();
+
+    // Type a nonempty body, then CANCEL rather than Save. Contract: "Cancel preserves an existing
+    // draft; only the explicitly confirmed discard action deletes nonempty text." Cancelling
+    // closes the composer but must not silently drop the text.
+    await mount.getByLabel('Diff comment', { exact: true }).fill('Half-written thought.');
+    await mount.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(mount.getByLabel('Diff comment', { exact: true })).toHaveCount(0);
+
+    // The draft survives, visible and recoverable in the persistent "Unsaved drafts" inventory --
+    // not merely present in state with no way back to it.
+    const inventory = mount.getByRole('region', { name: 'Unsaved drafts' });
+    await expect(inventory).toBeVisible();
+    await expect(inventory).toContainText('Half-written thought.');
+
+    // Discard actually removes it.
+    await inventory.getByRole('button', { name: 'Discard', exact: true }).click();
+    await expect(mount.getByRole('region', { name: 'Unsaved drafts' })).toHaveCount(0);
+  });
+
+  test('opening a pending draft while read-only renders a disabled composer with an explanatory note', async ({
+    page,
+  }) => {
+    const mount = page.locator('#example-mount-diff-comments');
+    await mount.getByRole('tab', { name: 'Diff' }).click();
+
+    // Create a draft and cancel, exactly as above, leaving it recoverable in the inventory.
+    const removedRow = mount.locator('.diff-row', { has: page.locator('.diff-line-removed') });
+    const control = removedRow.locator('[data-cinder-annotation-control][data-cinder-side="old"]');
+    await expect(control).toBeVisible();
+    await control.click();
+    await mount.getByLabel('Diff comment', { exact: true }).fill('Half-written thought.');
+    await mount.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    // Switch the host to read-only, THEN open the now-orphaned draft from the inventory. Before
+    // this fix, `activeDiffDraftId` could only ever be set from `onAnnotationSelectionChange`
+    // (never wired while read-only), so this composer state was previously unreachable there --
+    // the drafts inventory's "Open" action (COR-512 / DR-7 review follow-up) makes it reachable,
+    // and it must render fully disabled rather than live.
+    await mount.locator('#toggle-readonly').click();
+    const inventory = mount.getByRole('region', { name: 'Unsaved drafts' });
+    await inventory.getByRole('button', { name: 'Open', exact: true }).click();
+
+    const composer = mount.getByLabel('Diff comment', { exact: true });
+    await expect(composer).toBeVisible();
+    await expect(composer).toBeDisabled();
+    await expect(mount.getByText('Enable editing to change or save this draft.')).toBeVisible();
+    const saveButton = mount.getByRole('button', { name: 'Save', exact: true });
+    await expect(saveButton).toBeDisabled();
+  });
 });

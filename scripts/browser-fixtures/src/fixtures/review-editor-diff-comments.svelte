@@ -43,6 +43,12 @@
   if (!created.ok) throw new Error('Fixture setup failed: invalid diff-review target.');
   let diffReviewState = $state<DiffReviewState>(created.value);
 
+  // Host-controlled readonly toggle, purely for the Playwright spec that proves a pending draft
+  // opened from the "Unsaved drafts" inventory while read-only renders a disabled composer with
+  // an explanatory note (COR-512 / DR-7 review follow-up) -- `mode='readonly'` cannot be reached
+  // any other way from a real user gesture once a draft already exists.
+  let readonly = $state(false);
+
   let threads = $state<Thread[]>([
     {
       id: 'thread-1',
@@ -70,8 +76,12 @@
 </script>
 
 <div id="example-mount-diff-comments" style="min-height: 34rem;">
+  <button type="button" id="toggle-readonly" onclick={() => (readonly = !readonly)}>
+    {readonly ? 'Enable editing' : 'Make read-only'}
+  </button>
   <ReviewEditor
     id="review-editor-diff-comments"
+    mode={readonly ? 'readonly' : 'edit'}
     {original}
     bind:value
     bind:threads
