@@ -260,14 +260,6 @@ function indent(text: string): string {
     .join('\n');
 }
 
-/**
- * The specifiers a consumer can import, derived from an emitted `exports` map.
- *
- * A subpath pattern resolves to whatever matches it rather than to one module, so it is not an
- * importable specifier and is skipped; `./package.json` is data, not a module. Everything else is
- * something somebody downstream will write in an import statement.
- */
-
 /** One subpath's specifier, and whether its resolved target needs a JSON import attribute. */
 export interface ImportableSpecifier {
   specifier: string;
@@ -359,6 +351,13 @@ export function importableSpecifierEntries(
     .toSorted(sortBySpecifier);
 }
 
+/**
+ * The specifiers a consumer can import, derived from an emitted `exports` map.
+ *
+ * A subpath pattern resolves to whatever matches it rather than to one module, so it is not an
+ * importable specifier and is skipped; `./package.json` is data, not a module. Everything else is
+ * something somebody downstream will write in an import statement.
+ */
 export function importableSpecifiers(publicName: string, exports: SurfaceExportsMap): string[] {
   return importableSpecifierEntries(publicName, exports).map((entry) => entry.specifier);
 }
