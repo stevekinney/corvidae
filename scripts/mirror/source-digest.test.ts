@@ -3,8 +3,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { corvidaeRoot } from './committed-plans.ts';
+import { corvidaeRoot, packageMapWithCurrentDigests } from './committed-plans.ts';
 import { mirrorTargets } from './manifests.ts';
+import { loadPackageMap, type PackageMap } from './package-map.ts';
 import {
   assertEdgeNotStale,
   collectDigestedFiles,
@@ -304,28 +305,58 @@ describe('assertEdgeNotStale', () => {
 });
 
 /**
- * The guard fires against corvidae's real, committed `package-map.json` — not just against
- * synthetic fixtures. `committed-plans.ts` deliberately overlays a fresh digest onto every
- * `publish-as` entry so the rest of the mirror suite can build a plan without also exercising this
- * refusal; this proves the refusal is real by building the same two plans *without* that overlay,
- * against the actual unrecorded map, the way a real sync (`sync.ts`, with no override) would.
- *
- * `weft` is absent from this table on purpose: it has no cross-target dependency of its own (its
- * one internal edge, to `@lostgradient/typescript`, is a dropped private-workspace edge, never a
- * `publishedRangeFor` call), so `planSurface({ corvidaeRoot, target: 'weft' })` succeeds today
- * with no digest recorded for anything.
+ * The guard against corvidae's real workspaces and real cross-target edges. These assertions hold
+ * whatever is recorded in `package-map.json` today, so recording a digest never turns them red:
+ * the committed file is what an override-free sync reads, and a real edge refuses exactly when its
+ * dependency's recorded digest is missing or no longer matches the source.
  */
-describe('the guard against the real, unrecorded package-map.json', () => {
-  test.each([...mirrorTargets].filter((target) => target !== 'weft'))(
-    'planSurface for %s refuses with no packageMap override',
+describe('the guard against the real workspaces', () => {
+  const outcome = (plan: Promise<unknown>): Promise<string> =>
+    plan.then(
+      () => 'planned',
+      (error: unknown) => `refused: ${(error as Error).message}`,
+    );
+
+  test.each([...mirrorTargets])(
+    'planSurface for %s reads the committed package-map.json when given no override',
     async (target) => {
-      await expect(planSurface({ corvidaeRoot, target })).rejects.toThrow(
-        StaleCrossTargetEdgeError,
+      const committed = await loadPackageMap();
+      expect(await outcome(planSurface({ corvidaeRoot, target }))).toBe(
+        await outcome(planSurface({ corvidaeRoot, target, packageMap: committed })),
       );
     },
   );
 
-  test('planSurface for weft succeeds with no packageMap override', async () => {
-    await expect(planSurface({ corvidaeRoot, target: 'weft' })).resolves.toBeDefined();
-  });
+  const withDigest = async (
+    workspace: string,
+    sourceDigest: string | undefined,
+  ): Promise<PackageMap> => {
+    const map = await packageMapWithCurrentDigests();
+    const entry = map.workspaces[workspace];
+    if (entry?.disposition !== 'publish-as') throw new Error(`${workspace} is not published`);
+    const { sourceDigest: _current, ...rest } = entry;
+    const updated = sourceDigest === undefined ? rest : { ...rest, sourceDigest };
+    return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
+  };
+
+  test.each([
+    ['agent-bureau', '@lostgradient/weft'],
+    ['cinder', 'conversationalist'],
+  ] as const)(
+    '%s plans when %s is current and refuses when it is not',
+    async (target, dependency) => {
+      const current = await packageMapWithCurrentDigests();
+      expect(await outcome(planSurface({ corvidaeRoot, target, packageMap: current }))).toBe(
+        'planned',
+      );
+      for (const packageMap of [
+        await withDigest(dependency, undefined),
+        await withDigest(dependency, '0'.repeat(64)),
+      ]) {
+        const refusal = planSurface({ corvidaeRoot, target, packageMap });
+        await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
+        await expect(refusal).rejects.toThrow(dependency);
+      }
+    },
+  );
 });

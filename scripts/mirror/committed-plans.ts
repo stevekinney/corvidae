@@ -62,7 +62,7 @@ export interface CommittedPlan {
  * `source-digest.test.ts` — which is where a reader should look to see today's cross-target edges
  * actually fail, since this fixture is built specifically so they do not.
  */
-async function packageMapWithCurrentDigests(): Promise<PackageMap> {
+export async function packageMapWithCurrentDigests(): Promise<PackageMap> {
   const map = await loadPackageMap();
   const workspaces = await discoverWorkspaces(corvidaeRoot);
   const overlaid: PackageMap['workspaces'] = {};
