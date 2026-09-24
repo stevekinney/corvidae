@@ -437,6 +437,18 @@
         "issue": "COR-1286"
       },
       {
+        "directory": "packages/components/scripts/tokens/generate-artifacts.test.ts",
+        "target": "cinder",
+        "reason": "The target's stale monolithic test of `scripts/tokens/generate-artifacts.ts`, imported nothing emitted reaches. Corvidae replaced it with a per-concern split test suite under the same directory (`generate-artifacts-check.test.ts`, `generate-artifacts-heading.test.ts`, `generate-artifacts-render.test.ts`, `generate-artifacts-table.test.ts` and siblings) that tests the same module by importing it directly rather than through this filename, so there is no corvidae file to declare under this path — the split happened before COR-1196 and this name was simply never re-created. Left in place, the target's `tsconfig.check.json` type-checks it against corvidae's now-declared `generate-artifacts.ts`/`generate.ts` (`source.ts`'s `validationInputs`) and fails on names (`CorpusEntry`, and the rest) those modules no longer export. Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-1196"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/generate.test.ts",
+        "target": "cinder",
+        "reason": "The target's stale monolithic test of `scripts/tokens/generate.ts`, for the same reason and by the same split as `generate-artifacts.test.ts` above: corvidae's per-concern suite (`generate-check.test.ts`, `generate-color-*.test.ts`, `generate-context-*.test.ts`, `generate-corpus-validation.test.ts`, `generate-css-*.test.ts`, `generate-serialization-*.test.ts`, `generate-alias-resolution.test.ts`) replaces it without reusing this filename. Sixteen of its imports (`assertOverrideScopeConsistency`, `buildResolvedContexts`, `collectEntries` and the rest) no longer exist on corvidae's `generate.ts`, which `source.ts`'s `validationInputs` now declares and every sync overwrites.",
+        "issue": "COR-1196"
+      },
+      {
         "directory": ".github/workflows/ci.yml",
         "target": "agent-bureau",
         "reason": "COR-1286's ruling, applied to the third target: a mirror runs one transform-emitted verification workflow (`mirror-verify.yaml`, whose jobs are exactly `verifyTarget`'s steps) plus the target's existing release workflow, unchanged. `ci.yml` is agent-bureau's pull-request CI gate that `mirror-verify.yaml` replaces; its jobs (`validate`, `coverage-and-package-shape`, `lifecycle-contract`, `crash-conformance-smoke`, `runtime-matrix`) run target-side tooling `verifyTarget` does not exercise, and four of the five reach packages this same pull request retires, so the file becomes dead CI once the mirror opens its own PR-time workflow. Note the `.yml` spelling: it is the target's, and `resolveReleaseWorkflowFile` is what keeps the transform reading the target's own filenames rather than weft's.",

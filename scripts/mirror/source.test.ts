@@ -162,13 +162,15 @@ describe('the files that check cinder’s emitted source', () => {
     (cluster) => cluster.paths,
   );
 
-  test('every declared path is emitted, all twenty-three of them', () => {
+  test('every declared path is emitted, all thirty-one of them', () => {
     const { plan } = committedPlans.cinder;
     const missing = declared.filter(
       (path) => plan.files[`packages/components/${path}`] === undefined,
     );
     expect(missing).toEqual([]);
-    expect(declared.length).toBe(23);
+    // 23 before COR-1196's `generate-artifacts.ts`/`docs.ts` closure (7 files) and
+    // `scripts/preload.ts` (1 file) declarations.
+    expect(declared.length).toBe(31);
   });
 
   test('the generator family goes as a set, since its entry point imports the rest', () => {
@@ -197,9 +199,15 @@ describe('the files that check cinder’s emitted source', () => {
     // `generate-root-metadata-exports.ts` writes a generated file's source as a string literal,
     // and that literal's own `from '../../components.json'` reads as an import edge to a regex
     // that does not parse an AST — it is a string this script emits, not an import this script
-    // makes, and `findSourceEscapes`'s real parser does not see it as one either.
+    // makes, and `findSourceEscapes`'s real parser does not see it as one either. `generate-
+    // artifacts.ts` (COR-1196) has the same shape: it writes the generated token registry
+    // module's own source as a template literal, and that literal's first line is
+    // `import registry from './registry.generated.json' with { type: 'json' };` — text this
+    // script emits into `src/tokens/registry.generated.ts`, not an import `generate-artifacts.ts`
+    // itself makes.
     const knownNonImports = new Set([
       'scripts/generate-root-metadata-exports.ts -> ../../components.json',
+      'scripts/tokens/generate-artifacts.ts -> ./registry.generated.json',
     ]);
     const unresolved: string[] = [];
     for (const path of declared) {
@@ -272,10 +280,16 @@ describe('what counts as source', () => {
         'components/editor/src/node_modules/installed/index.js': 'module.exports = {};\n',
         'components/editor/coverage-ratchet.json': '{"lines":90}\n',
         'components/editor/README.md': '# editor\n',
+        // `validationInputs['@lostgradient/editor']` declares `scripts/preload.ts` (COR-1196), so
+        // `planSource` now requires it to exist wherever `editorWorkspace` is planned — including
+        // this fixture, which is otherwise about the `src/` emission rule, not about validation
+        // inputs at all.
+        'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
         const plan = await planSource(root, [editorWorkspace]);
         expect(Object.keys(plan.files).toSorted()).toEqual([
+          'packages/editor/scripts/preload.ts',
           'packages/editor/src/lib/index.ts',
           'packages/editor/src/lib/nested/helper.ts',
         ]);
@@ -290,6 +304,9 @@ describe('what counts as source', () => {
       {
         'components/editor/src/index.ts': 'export const editor = true;\n',
         'components/editor/scripts/build.ts': 'export const build = true;\n',
+        // See the fixture above: `validationInputs['@lostgradient/editor']` (COR-1196) requires
+        // `scripts/preload.ts` wherever this workspace is planned.
+        'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
         const plan = await planSource(root, [
@@ -304,6 +321,7 @@ describe('what counts as source', () => {
         // what `assertBuildInputsPresent` checks for in the clone rather than inventing here.
         expect(Object.keys(plan.files).toSorted()).toEqual([
           'packages/editor/scripts/build.ts',
+          'packages/editor/scripts/preload.ts',
           'packages/editor/src/index.ts',
         ]);
       },
@@ -501,6 +519,10 @@ describe('a remapped workspace on disk', () => {
           extends: '@lostgradient/typescript/browser.json',
         })}\n`,
         'components/editor/src/lib/index.ts': source,
+        // `validationInputs['@lostgradient/editor']` (COR-1196) declares `scripts/preload.ts`;
+        // `planSurface` refuses a plan for this workspace without it, same as the two `planSource`
+        // fixtures above.
+        'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
         const plan = await planSurface({ corvidaeRoot: root, target: 'cinder' });

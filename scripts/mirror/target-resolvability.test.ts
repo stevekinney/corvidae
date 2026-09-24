@@ -305,6 +305,10 @@ describe('a declared additional source root', () => {
         'components/editor/src/compose.test.ts':
           "import { settles } from '../test/helpers/async-assertions.ts';\nexport const used = settles;\n",
         'components/editor/test/helpers/async-assertions.ts': 'export const settles = true;\n',
+        // `validationInputs['@lostgradient/editor']` declares `scripts/preload.ts` (COR-1196), so
+        // `planSource` requires it wherever this workspace name is planned, even in a fixture
+        // that is otherwise about an unrelated escape.
+        'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
         const plan = await planSource(root, [
