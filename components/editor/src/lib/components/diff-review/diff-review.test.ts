@@ -321,10 +321,10 @@ describe('DiffReview component shell: export scope', () => {
 
     let capturedBlob: Blob | undefined;
     const originalCreateObjectURL = URL.createObjectURL;
-    URL.createObjectURL = ((blob: Blob) => {
+    URL.createObjectURL = (blob: Blob): string => {
       capturedBlob = blob;
       return 'blob:diff-review-test';
-    }) as typeof URL.createObjectURL;
+    };
     try {
       await fireEvent.click(getByText('Download Markdown'));
     } finally {

@@ -46,7 +46,7 @@ No fixture function here is copied or reimplemented; every row names a test that
 | Normalized Markdown never labeled raw; `rawMapping: {status:'unavailable', reason:'normalization'}` | `diff-viewer.annotation.test.ts` — `coordinate space and raw mapping` |
 | Ambiguous/front-matter-only locations offer file comments with field context, not line comments | `diff-viewer.annotation-hooks.test.ts` |
 | Stale diff disables line creation only; saved comments remain available | `diff-viewer.annotation-hooks.test.ts` |
-| Two instances remain independent | `diff-viewer.annotation-hooks.test.ts` |
+| Two instances remain independent, no shared control ID | `scripts/browser-fixtures/tests/diff-viewer-annotation.playwright.ts` — `an annotation selection in one instance never affects a second instance`, `the two instances never share a control id` |
 | DR-6 consumes only this public API | `diff-review/diff-review-renderer.test.ts` (COR-509) asserts against `DiffViewer`'s public `focusAnchor`/`annotationSelection` only |
 
 ## Export literalness (COR-513)
@@ -67,12 +67,14 @@ No fixture function here is copied or reimplemented; every row names a test that
 | Edge case | Test |
 | --- | --- |
 | Comment-to-anchor navigation for current comments, including a Markdown→source target-kind crossing | `diff-review/diff-review-navigation.test.ts` |
-| Outdated/removed comments focus captured detail instead of a stale anchor; unavailable anchors marked visibly | `diff-review/diff-review-navigation.test.ts`, `diff-review-comments/diff-review-comments.test.ts` |
+| Outdated/removed comments focus captured detail instead of a stale anchor; unavailable anchors marked visibly | `diff-review/diff-review-navigation.test.ts` — `"Go to" on an outdated comment focuses its own captured detail, never the diff`, `"Go to" on a removed comment ... focuses captured detail and shows "Removed"`, `"Go to" on a current comment whose anchor has no focus target ... is marked unavailable` |
 | Invalid `targets` update: structured error shown, last-valid state retained | `diff-review/diff-review-error-states.test.ts` |
-| Renderer failure: scoped `<svelte:boundary>` recovery on switching targets, not just first-catch | `diff-review/diff-review-renderer.test.ts`, `diff-review/diff-review-error-states.test.ts` |
+| Renderer failure: scoped `<svelte:boundary>` recovery on switching targets, not just first-catch | `diff-review/diff-review-renderer.test.ts` — `a target that throws while rendering shows a local, scoped error instead of crashing`, `reports the failure via onRendererFailedChange, and recovers when switched to a working target` |
 | "No commentable patch lines" | `diff-review/diff-review-error-states.test.ts` |
 | Inline saved-comment markers render for CURRENT comments only (mixed current/outdated on one file) | `diff-review/diff-review-renderer.test.ts` |
 | Keyboard matrix (file list, filter, Reviewed, toolbar, drafts inventory, comment actions, delete-confirmation focus return) | `diff-review/diff-review-keyboard.test.ts` |
-| Narrow stacked layout with labelled landmark regions | `diff-review/diff-review.test.ts`, `diff-review.a11y.md` |
+| Narrow stacked layout with labelled landmark regions | `diff-review/diff-review-keyboard.test.ts` — `DiffReview component shell: narrow stacked layout with labelled regions` |
 | Copy-all includes hidden-file and resolved/outdated comments; clipboard failure leaves download/state intact | `diff-review/diff-review.test.ts`; browser-level clipboard success/failure in `scripts/browser-fixtures/tests/diff-review.playwright.ts` |
-| Drafts survive target switching, path filtering, mode changes, and remount with restored state | `diff-review/diff-review-drafts-inventory.test.ts`, `diff-review/diff-review.test.ts` |
+| Drafts survive navigating to a different target/file (state-level) | `diff-review-state/reduce-drafts.test.ts` — `draft text and selection survive navigating to a different target/file` |
+| A partially written comment survives a path-filter change and remount (component-level) | `diff-review/diff-review.test.ts` — `a partially written comment survives a path-filter change and remount` |
+| Hidden (filtered-out) drafts surface in the drafts inventory with Open/Save/Discard | `diff-review/diff-review-drafts-inventory.test.ts` |
