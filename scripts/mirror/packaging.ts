@@ -398,6 +398,29 @@ function exportsResolveToJson(publicName: string, subpath: string, target: Expor
   );
 }
 
+/**
+ * Whether one subpath's export target resolves exclusively to `.css` file(s) — a file Node refuses
+ * to import at all, with no import-attribute escape the way `.json` has: `import * as m from
+ * '@lostgradient/chat/styles'` throws `ERR_UNKNOWN_FILE_EXTENSION` under Node (verified against
+ * Node 26), while Bun 1.4.2 imports the same specifier natively as a bundled CSS module, no
+ * attribute required. Decided from the target's own leaves, the same way `exportsResolveToJson`
+ * is, and for the same reason: `./styles` and its five siblings on `@lostgradient/chat` are real
+ * `.css`-resolving subpaths today, found when `consumer-run-node` (`verify-steps.ts`) tried to
+ * import one and hit exactly that error.
+ */
+function exportsResolveToCss(publicName: string, subpath: string, target: ExportTarget): boolean {
+  const leaves = flattenExportTarget(target).filter(([condition]) => !isTypesCondition(condition));
+  const cssLeaves = leaves.filter(([, file]) => file.endsWith('.css'));
+  if (cssLeaves.length === 0) return false;
+  if (cssLeaves.length === leaves.length) return true;
+  const named = subpath === '.' ? publicName : `${publicName}${subpath.slice(1)}`;
+  throw new PackagingError(
+    `${named} resolves to both a .css file and a non-.css file depending on which condition an ` +
+      `importer's resolver picks, so whether Node can import it at all cannot be answered once: ` +
+      leaves.map(([condition, file]) => `${condition} -> ${file}`).join(', '),
+  );
+}
+
 /** The consumer smoke script: import every specifier and refuse one that is not a module. */
 export function smokeScript(specifiers: readonly ImportableSpecifier[]): string {
   return (
@@ -444,10 +467,15 @@ export function importableSpecifiers(publicName: string, exports: SurfaceExports
 /**
  * The subset of {@link importableSpecifierEntries} node can resolve: a subpath whose export target
  * is a string, or whose conditions include one node honours (`node`, `import`, `require`,
- * `default`), recursively. A `types` + `bun` entry — weft's `./storage/sqlite/bun` and
- * `./storage/testing` — is bun's alone by design, and importing it under node is
- * `ERR_PACKAGE_PATH_NOT_EXPORTED`, which would be the smoke test refusing a correct export map
- * rather than a broken one.
+ * `default`), recursively, and whose target is not `.css` — Node cannot import that under any
+ * condition, unlike `.json`, which only needs an import attribute this list still carries in its
+ * `json` flag. A `types` + `bun` entry — weft's `./storage/sqlite/bun` and `./storage/testing` — is
+ * bun's alone by design, and importing it under node is `ERR_PACKAGE_PATH_NOT_EXPORTED`, which
+ * would be the smoke test refusing a correct export map rather than a broken one; a `.css` subpath
+ * is excluded for the same reason, with `ERR_UNKNOWN_FILE_EXTENSION` in place of that error.
+ * `exportsResolveToCss` decides it, not the subpath's own spelling, for the same reason
+ * `exportsResolveToJson` reads leaves instead of guessing from `./styles`: nothing here assumes a
+ * package names its CSS subpaths predictably.
  */
 export function nodeImportableSpecifierEntries(
   publicName: string,
@@ -455,6 +483,7 @@ export function nodeImportableSpecifierEntries(
 ): ImportableSpecifier[] {
   return importableSubpathEntries(exports)
     .filter(([, target]) => resolvesUnderNode(target))
+    .filter(([subpath, target]) => !exportsResolveToCss(publicName, subpath, target))
     .map(([subpath, target]) => ({
       specifier: specifierFor(publicName, subpath),
       json: exportsResolveToJson(publicName, subpath, target),

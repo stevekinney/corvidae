@@ -146,6 +146,36 @@ function jsonSubpathPackage(name: string): PackageFiles {
   };
 }
 
+/**
+ * A package with one CSS subpath alongside its module subpath — the real shape of
+ * `@lostgradient/chat`'s `./styles` and five siblings (COR-1196). `./styles` is a conditional
+ * object naming the same `.css` file under `types` and `default`, the shape `package-surface.json`
+ * actually carries for chat's real entries.
+ */
+function cssSubpathPackage(name: string): PackageFiles {
+  return {
+    'package.json': `${JSON.stringify(
+      {
+        name,
+        version: '1.0.0',
+        type: 'module',
+        license: 'MIT',
+        exports: {
+          '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+          './styles': { types: './dist/index.css.d.ts', default: './dist/index.css' },
+        },
+        files: ['dist'],
+      },
+      undefined,
+      2,
+    )}\n`,
+    'dist/index.js': 'export const answer = 42;\n',
+    'dist/index.d.ts': 'export declare const answer: number;\n',
+    'dist/index.css': '.fixture { color: red; }\n',
+    'dist/index.css.d.ts': 'declare const styles: string;\nexport default styles;\n',
+  };
+}
+
 async function withPackage(
   files: PackageFiles,
   body: (directory: string, scratch: string) => Promise<void>,
@@ -241,6 +271,63 @@ describe('the JSON import attribute (COR-1196)', () => {
         "import * as module1 from '@fixture/widgets/examples' with { type: 'json' };\n" +
         "import * as module2 from '@fixture/widgets/manifest' with { type: 'json' };\n",
     );
+  });
+});
+
+/**
+ * COR-1196. `@lostgradient/chat`'s `./styles` and five sibling subpaths resolve to a `.css` file —
+ * verified against `package-surface.json`'s real entry — and Node refuses to import a `.css` file
+ * under any condition (`ERR_UNKNOWN_FILE_EXTENSION`, no import-attribute escape the way `.json`
+ * has), while Bun imports the same specifier natively as a bundled CSS module (verified against
+ * Bun 1.4.2). `nodeImportableSpecifierEntries` excludes a CSS-resolving subpath instead of tagging
+ * it, since there is no way for Node to import it at all rather than a way that needs an attribute.
+ */
+describe('CSS subpaths, which Node cannot import at all (COR-1196)', () => {
+  const exports = {
+    '.': './dist/index.js',
+    './styles': { types: './dist/index.css.d.ts', default: './dist/index.css' },
+    './package.json': './package.json',
+  };
+
+  test('a css-resolving subpath is importable under bun', () => {
+    const entries = importableSpecifierEntries('@fixture/widgets', exports);
+    expect(entries).toEqual([
+      { specifier: '@fixture/widgets', json: false },
+      { specifier: '@fixture/widgets/styles', json: false },
+    ]);
+  });
+
+  test('the same subpath is absent from the node-importable set entirely', () => {
+    const entries = nodeImportableSpecifierEntries('@fixture/widgets', exports);
+    expect(entries).toEqual([{ specifier: '@fixture/widgets', json: false }]);
+  });
+
+  test('a `types` leaf never votes: a subpath typed as .d.ts but resolving to .css is still css-only', () => {
+    const entries = nodeImportableSpecifierEntries('@fixture/typed', {
+      './styles': { types: './dist/styles.d.ts', default: './dist/styles.css' },
+    });
+    expect(entries).toEqual([]);
+  });
+
+  test('a subpath whose conditions disagree about .css has no single correct answer and is a hard failure', () => {
+    expect(() =>
+      nodeImportableSpecifierEntries('@fixture/mixed', {
+        './ambiguous': { import: './dist/ambiguous.css', require: './dist/ambiguous.js' },
+      }),
+    ).toThrow(PackagingError);
+  });
+
+  test('the bun smoke script imports the css subpath with no import attribute', () => {
+    const script = smokeScript(importableSpecifierEntries('@fixture/widgets', exports));
+    expect(script).toContain(
+      "import * as module0 from '@fixture/widgets';\n" +
+        "import * as module1 from '@fixture/widgets/styles';\n",
+    );
+  });
+
+  test('the node smoke script never mentions the css subpath at all', () => {
+    const script = smokeScript(nodeImportableSpecifierEntries('@fixture/widgets', exports));
+    expect(script).not.toContain('styles');
   });
 });
 
@@ -520,6 +607,36 @@ describe('the consumer smoke test', () => {
         ],
       });
       expect(result.specifiers).toEqual(['@fixture/json-widget', '@fixture/json-widget/data']);
+    });
+  }, 60_000);
+
+  // COR-1196. Before the fix, `smoke-node.mjs` wrote `import * as module1 from
+  // '@fixture/css-widget/styles';` with no way to make it importable at all; node refuses a
+  // `.css` file under any condition with `ERR_UNKNOWN_FILE_EXTENSION`, which `consumer-run-node`
+  // surfaced against `@lostgradient/chat`'s real `./styles` subpath. This runs both the bun and
+  // the node import for real against a packed tarball: bun's script imports the css subpath and
+  // succeeds, node's never mentions it and succeeds for a different reason — there was nothing
+  // there to fail on.
+  test('a .css subpath installs and imports under bun; node never attempts it', async () => {
+    await withPackage(cssSubpathPackage('@fixture/css-widget'), async (directory, scratch) => {
+      const tarball = await packWorkspace({
+        packageDirectory: directory,
+        destination: join(scratch, 'tarballs'),
+      });
+      const result = await runConsumerSmokeTest({
+        directory: scratch,
+        packages: [
+          {
+            publicName: '@fixture/css-widget',
+            tarball,
+            exports: {
+              '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+              './styles': { types: './dist/index.css.d.ts', default: './dist/index.css' },
+            },
+          },
+        ],
+      });
+      expect(result.specifiers).toEqual(['@fixture/css-widget', '@fixture/css-widget/styles']);
     });
   }, 60_000);
 });
