@@ -14,11 +14,9 @@
       "reason": "Already published under this name. Ships standalone from stevekinney/weft."
     },
     "@lostgradient/weft-ui": {
-      "disposition": "publish-as",
-      "name": "@lostgradient/weft-ui",
-      "basis": "settled",
-      "lastPublishedVersion": null,
-      "reason": "Name is settled, but `npm view @lostgradient/weft-ui` returns 404 \u2014 the manifest carries 0.1.0 and no `private` flag, yet it was never published. COR-1194 records that its trusted-publisher registration was never completed. Treat the first monorepo release as a first publish, not a re-publish."
+      "disposition": "private-workspace",
+      "basis": "held-for-api-design",
+      "reason": "The repository owner ruled 2026-09-23 (COR-1196) that weft-ui ships to the cinder mirror as unpublished source rather than as a published package. `scripts/mirror/package-surface.json` recorded a surface for an old `dist/mount.js` bundle whose build scripts corvidae does not carry, while corvidae's source (`components/weft-ui/src/index.ts`) now exports a `WeftConsole` Svelte component \u2014 the recorded surface described a package that no longer exists. `npm view @lostgradient/weft-ui` still returns 404 and COR-1194 records its trusted-publisher registration as never completed, so this ruling changes nothing on the registry. A separate issue is to design its public API before any publish; the `@lostgradient/weft-ui` name stays available for that publish."
     },
     "@lostgradient/operative": {
       "disposition": "publish-as",
