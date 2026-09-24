@@ -55,6 +55,10 @@ describe('DiffReview export: an input where the existing source-line map interpo
       startLine: 3,
       endLine: 3,
       coordinateSpace: 'normalized-markdown',
+      hunkOccurrence: 0,
+      selectedText: 'q',
+      contextBefore: ['p'],
+      contextAfter: ['r'],
     });
   });
 });

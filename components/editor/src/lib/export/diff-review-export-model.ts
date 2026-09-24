@@ -31,24 +31,12 @@ import { DIFF_REVIEW_EXPORT_SCHEMA_VERSION } from './diff-review-export-types.js
 
 const DEFAULT_REVIEW_TITLE = 'Review feedback';
 
-/** Up to two available context lines are quoted on each side, per the contract — the state
- * itself may retain up to three, captured for a margin the export intentionally trims from. */
-const QUOTED_CONTEXT_LINES = 2;
-
 function diffExportId(commentId: string): string {
   return JSON.stringify(['diff', commentId]);
 }
 
 function documentExportId(targetId: string, threadId: string): string {
   return JSON.stringify(['document', targetId, threadId]);
-}
-
-function quoteFor(comment: DiffReviewComment): string | null {
-  if (comment.anchor.kind === 'file') return null;
-  const { contextBefore, contextAfter, selectedText } = comment.anchor;
-  const before = contextBefore.slice(-QUOTED_CONTEXT_LINES);
-  const after = contextAfter.slice(0, QUOTED_CONTEXT_LINES);
-  return [...before, selectedText, ...after].join('\n');
 }
 
 function toDiffRecord(
@@ -62,6 +50,7 @@ function toDiffRecord(
     commentId: comment.id,
     targetId: comment.targetId,
     current: liveTargetIds.has(comment.targetId),
+    targetKind: capturedContext.targetKind,
     targetLabel: capturedContext.targetLabel,
     repositoryLabel: capturedContext.repositoryLabel ?? null,
     baseRevisionLabel: capturedContext.baseRevisionLabel ?? null,
@@ -79,9 +68,12 @@ function toDiffRecord(
             startLine: anchor.startLine,
             endLine: anchor.endLine,
             coordinateSpace: anchor.coordinateSpace,
+            hunkOccurrence: anchor.hunkOccurrence,
+            selectedText: anchor.selectedText,
+            contextBefore: anchor.contextBefore,
+            contextAfter: anchor.contextAfter,
           },
     rawMapping: capturedContext.rawMapping,
-    quoted: quoteFor(comment),
     body: comment.body,
     resolved: comment.resolved,
     outdated: comment.outdated,
@@ -148,6 +140,7 @@ function toDocumentRecord(
     targetId: thread.targetId,
     threadId: thread.threadId,
     createdAt: thread.createdAt,
+    anchor: thread.anchor,
     messages,
   };
 }

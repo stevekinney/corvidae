@@ -17,6 +17,7 @@
       "commentId": "comment-on-removed",
       "targetId": "gone",
       "current": false,
+      "targetKind": "source",
       "targetLabel": "src/deleted.ts",
       "repositoryLabel": null,
       "baseRevisionLabel": null,
@@ -31,7 +32,6 @@
       "rawMapping": {
         "status": "exact"
       },
-      "quoted": null,
       "body": "This whole file is being removed; please confirm nothing depends on it.",
       "resolved": false,
       "outdated": true,

@@ -11,12 +11,15 @@
 
 import type { DiffReviewError, DiffReviewResult } from '../diff-review-state/index.js';
 import type {
+  DiffReviewExportDocumentAnchor,
   DiffReviewExportDocumentThread,
   DiffReviewExportDocumentThreadMessage,
 } from './diff-review-export-types.js';
 
-const THREAD_KEYS = ['targetId', 'threadId', 'createdAt', 'messages'];
+const THREAD_KEYS = ['targetId', 'threadId', 'createdAt', 'anchor', 'messages'];
 const MESSAGE_KEYS = ['id', 'body', 'createdAt', 'deletedAt'];
+const DOCUMENT_ANCHOR_KEYS = ['kind'];
+const DOCUMENT_TEXT_ANCHOR_KEYS = ['kind', 'quote', 'prefix', 'suffix'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -71,6 +74,56 @@ function validateMessage(
   };
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+/**
+ * The existing-document anchor variant (contract, "Agent export contract"): `'document'` for a
+ * document-level comment, or `'document-text'` with its TextQuoteSelector fields for a
+ * text-anchored one. This schema is DR-5's to define in full; DR-7 supplies real values for it
+ * without extending the shape.
+ */
+function validateDocumentAnchor(
+  value: unknown,
+  path: string,
+): DiffReviewResult<DiffReviewExportDocumentAnchor> {
+  if (!isRecord(value)) return fail(path, 'anchor must be an object.');
+  const kind = value['kind'];
+  if (kind === 'document') {
+    const unknownKey = findUnknownKey(value, DOCUMENT_ANCHOR_KEYS);
+    if (unknownKey !== undefined) {
+      return fail(`${path}/${unknownKey}`, `Unknown key '${unknownKey}'.`);
+    }
+    return { ok: true, value: { kind: 'document' } };
+  }
+  if (kind === 'document-text') {
+    const unknownKey = findUnknownKey(value, DOCUMENT_TEXT_ANCHOR_KEYS);
+    if (unknownKey !== undefined) {
+      return fail(`${path}/${unknownKey}`, `Unknown key '${unknownKey}'.`);
+    }
+    if (typeof value['quote'] !== 'string') {
+      return fail(`${path}/quote`, 'quote must be a string.');
+    }
+    if (!isNullableString(value['prefix'])) {
+      return fail(`${path}/prefix`, 'prefix must be a string or null.');
+    }
+    if (!isNullableString(value['suffix'])) {
+      return fail(`${path}/suffix`, 'suffix must be a string or null.');
+    }
+    return {
+      ok: true,
+      value: {
+        kind: 'document-text',
+        quote: value['quote'],
+        prefix: value['prefix'],
+        suffix: value['suffix'],
+      },
+    };
+  }
+  return fail(`${path}/kind`, "kind must be 'document' or 'document-text'.");
+}
+
 function validateThread(
   value: unknown,
   path: string,
@@ -89,6 +142,11 @@ function validateThread(
   if (!isNonemptyString(value['createdAt'])) {
     return fail(`${path}/createdAt`, 'createdAt must be a nonempty string.');
   }
+  if (value['anchor'] === undefined) {
+    return fail(`${path}/anchor`, 'anchor is required.');
+  }
+  const anchor = validateDocumentAnchor(value['anchor'], `${path}/anchor`);
+  if (!anchor.ok) return anchor;
   if (!Array.isArray(value['messages'])) {
     return fail(`${path}/messages`, 'messages must be an array.');
   }
@@ -106,6 +164,7 @@ function validateThread(
       targetId: value['targetId'],
       threadId: value['threadId'],
       createdAt: value['createdAt'],
+      anchor: anchor.value,
       messages,
     },
   };

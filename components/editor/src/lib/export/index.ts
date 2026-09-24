@@ -35,6 +35,7 @@ export { DIFF_REVIEW_EXPORT_SCHEMA_VERSION } from './diff-review-export-types.js
 export type {
   DiffReviewExportAnchor,
   DiffReviewExportDiffRecord,
+  DiffReviewExportDocumentAnchor,
   DiffReviewExportDocumentMessageRecord,
   DiffReviewExportDocumentRecord,
   DiffReviewExportDocumentThread,

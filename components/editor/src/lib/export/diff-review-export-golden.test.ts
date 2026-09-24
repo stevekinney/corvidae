@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import Ajv from 'ajv';
 import { describe, expect, test } from 'bun:test';
 
 import type { DiffReviewState } from '../diff-review-state/index.js';
@@ -15,8 +16,12 @@ import {
   markdownTargetsFixture,
   twoSourceTargetsFixture,
 } from './diff-review-export-fixtures.js';
+import { diffReviewExportJsonSchema } from './diff-review-export-schema.js';
 import type { DiffReviewExportOptions } from './diff-review-export-types.js';
 import { exportDiffReviewJson, exportDiffReviewMarkdown } from './diff-review-export.js';
+
+const ajv = new Ajv({ allErrors: true });
+const validateJsonSchema = ajv.compile(diffReviewExportJsonSchema);
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__/diff-review');
 
@@ -65,6 +70,16 @@ describe('DiffReview export golden fixtures', () => {
       const result = exportDiffReviewJson(scenario.state, scenario.options);
       if (!result.ok) throw new Error(`expected ok, got ${JSON.stringify(result.error)}`);
       expect(result.value).toBe(golden(`${scenario.name}.json`));
+    });
+
+    // Every checked-in golden JSON, not only the 3 fixtures exercised directly in
+    // diff-review-export-json.test.ts, validates against the versioned contract — including the
+    // 'removed-target', 'empty-review', 'interpolating-source-line-map', and 'unresolved-only'
+    // scenarios, which that file's own schema test never covers.
+    test(`${scenario.name}.json validates against the versioned JSON Schema contract`, () => {
+      const parsed = JSON.parse(golden(`${scenario.name}.json`));
+      const valid = validateJsonSchema(parsed);
+      expect(valid, JSON.stringify(validateJsonSchema.errors)).toBe(true);
     });
   }
 

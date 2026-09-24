@@ -10,7 +10,7 @@
  * @module
  */
 
-import type { DiffReviewRawMapping } from '../diff-review-state/index.js';
+import type { DiffReviewRawMapping, DiffReviewTargetKind } from '../diff-review-state/index.js';
 
 /** Version 1 of the export document shape. There is no migration; a future incompatible shape
  * bumps this. */
@@ -41,6 +41,19 @@ export interface DiffReviewExportDocumentThreadMessage {
 }
 
 /**
+ * The existing-document anchor variant (contract, "Agent export contract": "existing document
+ * threads use an explicit `document-text` or document-level anchor variant"). `'document'` mirrors
+ * `comments/types.ts`'s own document-level anchor (no specific text); `'document-text'` carries the
+ * TextQuoteSelector fields (`quote`/`prefix`/`suffix`) `shared/anchor-types.ts` already anchors a
+ * live thread with, so a raw-source/normalized-markdown/existing-document-text coordinate can never
+ * be mislabeled as another. DR-5 owns this full shape; DR-7 only supplies real values for it (its
+ * own contract text: "does not defer or extend that schema").
+ */
+export type DiffReviewExportDocumentAnchor =
+  | { kind: 'document' }
+  | { kind: 'document-text'; quote: string; prefix: string | null; suffix: string | null };
+
+/**
  * One existing document-anchored thread. `targetId` is the host-supplied identifier for the
  * document/session the thread belongs to (distinct from a `DiffReviewState` target); it namespaces
  * the thread's export ID together with `threadId`, so a document thread ID and a diff comment ID
@@ -50,6 +63,7 @@ export interface DiffReviewExportDocumentThread {
   targetId: string;
   threadId: string;
   createdAt: string;
+  anchor: DiffReviewExportDocumentAnchor;
   messages: DiffReviewExportDocumentThreadMessage[];
 }
 
@@ -70,6 +84,19 @@ export type DiffReviewExportAnchor =
       startLine: number;
       endLine: number;
       coordinateSpace: 'raw-source' | 'normalized-markdown';
+      /** Zero-based, as captured. Retained so the JSON handoff loses none of the anchor's
+       * identifying coordinates ("Agent export contract": "captured anchor context without
+       * loss"). */
+      hunkOccurrence: number;
+      /** The exact selected text, uncombined with context ("Source excerpts are labeled as
+       * quoted material, separate from authored feedback"): the Markdown renderer derives its
+       * own two-line-trimmed quote from this and `contextBefore`/`contextAfter` rather than the
+       * model carrying two representations of the same excerpt that could drift apart. */
+      selectedText: string;
+      /** Every captured context line (up to three), untrimmed — the Markdown export quotes only
+       * the nearest two per side; JSON keeps the full captured excerpt. */
+      contextBefore: string[];
+      contextAfter: string[];
     };
 
 /** One exported diff-review comment. */
@@ -81,6 +108,7 @@ export interface DiffReviewExportDiffRecord {
   targetId: string;
   /** Whether `targetId` is still present in the exported state's live target list. */
   current: boolean;
+  targetKind: DiffReviewTargetKind;
   targetLabel: string;
   repositoryLabel: string | null;
   baseRevisionLabel: string | null;
@@ -91,12 +119,6 @@ export interface DiffReviewExportDiffRecord {
   newPath: string | null;
   anchor: DiffReviewExportAnchor;
   rawMapping: DiffReviewRawMapping;
-  /**
-   * The quoted excerpt (up to two available context lines on each side, joined with the
-   * selection, in source order) for a range anchor; `null` for a file anchor, which has no range
-   * to quote.
-   */
-  quoted: string | null;
   body: string;
   resolved: boolean;
   outdated: boolean;
@@ -119,6 +141,7 @@ export interface DiffReviewExportDocumentRecord {
   targetId: string;
   threadId: string;
   createdAt: string;
+  anchor: DiffReviewExportDocumentAnchor;
   messages: DiffReviewExportDocumentMessageRecord[];
 }
 

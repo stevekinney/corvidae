@@ -87,6 +87,26 @@ describe('DiffReview export JSON', () => {
     expect(raw.rawMapping).toEqual({ status: 'exact' });
   });
 
+  test('retains full captured anchor context without loss: target kind, hunk occurrence, and untrimmed selected/context text', () => {
+    // twoSourceTargetsFixture's "comment-resolved" captures three context lines on each side and
+    // hunk occurrence 0; the contract requires the JSON to retain this "without loss" — the
+    // Markdown export's two-line-trimmed quote must not be the only place this data survives.
+    const parsed = JSON.parse(unwrapJson(exportDiffReviewJson(twoSourceTargetsFixture)));
+    const resolved = parsed.records.find(
+      (r: { commentId?: string }) => r.commentId === 'comment-resolved',
+    );
+    expect(resolved.targetKind).toBe('source');
+    expect(resolved.anchor.hunkOccurrence).toBe(0);
+    expect(resolved.anchor.selectedText).toBe('function shared() {\n  return 1;\n}');
+    expect(resolved.anchor.contextBefore).toEqual(['// before-3', '// before-2', '// before-1']);
+    expect(resolved.anchor.contextAfter).toEqual(['// after-1', '// after-2', '// after-3']);
+
+    const fileComment = parsed.records.find(
+      (r: { commentId?: string }) => r.commentId === 'comment-file',
+    );
+    expect(fileComment.targetKind).toBe('source');
+  });
+
   describe('semantic completeness and Markdown/JSON agreement', () => {
     test('every saved comment appears exactly once in the default (all) export', () => {
       const parsed = JSON.parse(unwrapJson(exportDiffReviewJson(twoSourceTargetsFixture)));
@@ -105,8 +125,23 @@ describe('DiffReview export JSON', () => {
         expect(markdown).toContain(`### Comment ${record.commentId}`);
         expect(markdown).toContain(record.body);
         expect(markdown).toContain(record.snapshotId);
-        if (record.anchor.kind === 'range') {
+
+        // State: Markdown's resolved/outdated words agree with JSON's own booleans.
+        const expectedResolution = record.resolved ? 'resolved' : 'open';
+        const expectedCurrency = record.outdated ? 'outdated (verification needed)' : 'current';
+        expect(markdown).toContain(`State: ${expectedResolution}, ${expectedCurrency}`);
+
+        // Location: the anchor's discriminant and, for a range, its side and exact bounds.
+        if (record.anchor.kind === 'file') {
+          expect(markdown).toContain('Location: file comment');
+        } else {
           expect(markdown).toContain(record.anchor.coordinateSpace);
+          expect(markdown).toContain(`Location: ${record.anchor.side} side`);
+          const range =
+            record.anchor.startLine === record.anchor.endLine
+              ? `line ${record.anchor.startLine}`
+              : `lines ${record.anchor.startLine}–${record.anchor.endLine}`;
+          expect(markdown).toContain(range);
         }
       }
     });

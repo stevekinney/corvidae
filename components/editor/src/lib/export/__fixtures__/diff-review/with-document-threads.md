@@ -81,6 +81,7 @@ This branch is now dead code.
 
 Created: 2026-01-01T00:00:00.000Z
 ID: ["document","doc-1","thread-deleted-initial"]
+Location: document comment
 
 #### Message message-2
 
@@ -94,6 +95,13 @@ But this reply survives.
 
 Created: 2026-01-01T00:03:00.000Z
 ID: ["document","doc-2","thread-ordinary"]
+Location: document-text
+
+Quoted document text:
+
+```
+the exact document text this thread is anchored to
+```
 
 #### Message message-4
 

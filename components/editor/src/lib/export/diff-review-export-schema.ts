@@ -23,8 +23,46 @@ const diffAnchorSchema = {
         startLine: { type: 'integer', minimum: 1 },
         endLine: { type: 'integer', minimum: 1 },
         coordinateSpace: { enum: ['raw-source', 'normalized-markdown'] },
+        hunkOccurrence: { type: 'integer', minimum: 0 },
+        selectedText: { type: 'string' },
+        contextBefore: { type: 'array', items: { type: 'string' } },
+        contextAfter: { type: 'array', items: { type: 'string' } },
       },
-      required: ['kind', 'side', 'startLine', 'endLine', 'coordinateSpace'],
+      required: [
+        'kind',
+        'side',
+        'startLine',
+        'endLine',
+        'coordinateSpace',
+        'hunkOccurrence',
+        'selectedText',
+        'contextBefore',
+        'contextAfter',
+      ],
+      additionalProperties: false,
+    },
+  ],
+};
+
+/** The existing-document anchor variant (contract: "an explicit `document-text` or
+ * document-level anchor variant"). */
+const documentAnchorSchema = {
+  oneOf: [
+    {
+      type: 'object',
+      properties: { kind: { const: 'document' } },
+      required: ['kind'],
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      properties: {
+        kind: { const: 'document-text' },
+        quote: { type: 'string' },
+        prefix: { type: ['string', 'null'] },
+        suffix: { type: ['string', 'null'] },
+      },
+      required: ['kind', 'quote', 'prefix', 'suffix'],
       additionalProperties: false,
     },
   ],
@@ -55,6 +93,7 @@ const diffRecordSchema = {
     commentId: { type: 'string' },
     targetId: { type: 'string' },
     current: { type: 'boolean' },
+    targetKind: { enum: ['source', 'markdown'] },
     targetLabel: { type: 'string' },
     repositoryLabel: { type: ['string', 'null'] },
     baseRevisionLabel: { type: ['string', 'null'] },
@@ -65,7 +104,6 @@ const diffRecordSchema = {
     newPath: { type: ['string', 'null'] },
     anchor: diffAnchorSchema,
     rawMapping: rawMappingSchema,
-    quoted: { type: ['string', 'null'] },
     body: { type: 'string' },
     resolved: { type: 'boolean' },
     outdated: { type: 'boolean' },
@@ -78,6 +116,7 @@ const diffRecordSchema = {
     'commentId',
     'targetId',
     'current',
+    'targetKind',
     'targetLabel',
     'repositoryLabel',
     'baseRevisionLabel',
@@ -88,7 +127,6 @@ const diffRecordSchema = {
     'newPath',
     'anchor',
     'rawMapping',
-    'quoted',
     'body',
     'resolved',
     'outdated',
@@ -106,6 +144,7 @@ const documentRecordSchema = {
     targetId: { type: 'string' },
     threadId: { type: 'string' },
     createdAt: { type: 'string' },
+    anchor: documentAnchorSchema,
     messages: {
       type: 'array',
       items: {
@@ -120,7 +159,7 @@ const documentRecordSchema = {
       },
     },
   },
-  required: ['recordKind', 'exportId', 'targetId', 'threadId', 'createdAt', 'messages'],
+  required: ['recordKind', 'exportId', 'targetId', 'threadId', 'createdAt', 'anchor', 'messages'],
   additionalProperties: false,
 };
 

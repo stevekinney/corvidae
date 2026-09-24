@@ -17,6 +17,7 @@
       "commentId": "comment-trailing-newline",
       "targetId": "blank-lines",
       "current": true,
+      "targetKind": "source",
       "targetLabel": "src/blank.ts",
       "repositoryLabel": null,
       "baseRevisionLabel": null,
@@ -31,7 +32,6 @@
       "rawMapping": {
         "status": "exact"
       },
-      "quoted": null,
       "body": "Fix this please.\n",
       "resolved": false,
       "outdated": false,
@@ -44,6 +44,7 @@
       "commentId": "comment-empty-quote",
       "targetId": "blank-lines",
       "current": true,
+      "targetKind": "source",
       "targetLabel": "src/blank.ts",
       "repositoryLabel": null,
       "baseRevisionLabel": null,
@@ -57,12 +58,19 @@
         "side": "new",
         "startLine": 4,
         "endLine": 4,
-        "coordinateSpace": "raw-source"
+        "coordinateSpace": "raw-source",
+        "hunkOccurrence": 0,
+        "selectedText": "",
+        "contextBefore": [
+          "function f() {"
+        ],
+        "contextAfter": [
+          "  return 1;"
+        ]
       },
       "rawMapping": {
         "status": "exact"
       },
-      "quoted": "function f() {\n\n  return 1;",
       "body": "Blank line looks intentional.",
       "resolved": false,
       "outdated": false,

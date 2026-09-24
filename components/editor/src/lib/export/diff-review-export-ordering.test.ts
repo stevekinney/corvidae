@@ -240,6 +240,7 @@ describe('DiffReview export ordering', () => {
         targetId: 'doc',
         threadId: 'thread',
         createdAt: '2026-01-01T00:00:00.000Z',
+        anchor: { kind: 'document' },
         messages: [
           { id: 'b', body: 'second by id', createdAt: '2026-01-01T00:00:00.000Z' },
           { id: 'a', body: 'first by id', createdAt: '2026-01-01T00:00:00.000Z' },

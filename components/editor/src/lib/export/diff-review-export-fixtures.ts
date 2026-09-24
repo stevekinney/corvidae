@@ -439,8 +439,11 @@ export const emptyAndTrailingNewlineFixture: DiffReviewState = {
 
 // ============================================================================
 // Fixture I: existing document-anchored threads (DR-7's future projection
-// shape) — a deleted initial message with surviving replies, a fully deleted
-// thread, and an ordinary multi-message thread.
+// shape) — a deleted initial message with surviving replies (document-level
+// anchor), a fully deleted thread (document-text anchor), and an ordinary
+// multi-message thread (document-text anchor, exercising both variants the
+// contract requires: "an explicit `document-text` or document-level anchor
+// variant").
 // ============================================================================
 
 export const documentThreadsFixture: DiffReviewExportDocumentThread[] = [
@@ -448,6 +451,7 @@ export const documentThreadsFixture: DiffReviewExportDocumentThread[] = [
     targetId: 'doc-1',
     threadId: 'thread-deleted-initial',
     createdAt: '2026-01-01T00:00:00.000Z',
+    anchor: { kind: 'document' },
     messages: [
       {
         id: 'message-1',
@@ -466,6 +470,7 @@ export const documentThreadsFixture: DiffReviewExportDocumentThread[] = [
     targetId: 'doc-1',
     threadId: 'thread-fully-deleted',
     createdAt: '2026-01-01T00:02:00.000Z',
+    anchor: { kind: 'document-text', quote: 'a since-deleted quote', prefix: null, suffix: null },
     messages: [
       {
         id: 'message-3',
@@ -479,6 +484,12 @@ export const documentThreadsFixture: DiffReviewExportDocumentThread[] = [
     targetId: 'doc-2',
     threadId: 'thread-ordinary',
     createdAt: '2026-01-01T00:03:00.000Z',
+    anchor: {
+      kind: 'document-text',
+      quote: 'the exact document text this thread is anchored to',
+      prefix: 'context before the quote',
+      suffix: 'context after the quote',
+    },
     messages: [
       {
         id: 'message-5',

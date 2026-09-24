@@ -17,6 +17,7 @@
       "commentId": "comment-file",
       "targetId": "left",
       "current": true,
+      "targetKind": "source",
       "targetLabel": "src/shared.ts",
       "repositoryLabel": "org/repo",
       "baseRevisionLabel": "main",
@@ -31,7 +32,6 @@
       "rawMapping": {
         "status": "exact"
       },
-      "quoted": null,
       "body": "Please add a docstring here.",
       "resolved": false,
       "outdated": false,
@@ -44,6 +44,7 @@
       "commentId": "comment-resolved",
       "targetId": "left",
       "current": true,
+      "targetKind": "source",
       "targetLabel": "src/shared.ts",
       "repositoryLabel": "org/repo",
       "baseRevisionLabel": "main",
@@ -57,12 +58,23 @@
         "side": "new",
         "startLine": 10,
         "endLine": 12,
-        "coordinateSpace": "raw-source"
+        "coordinateSpace": "raw-source",
+        "hunkOccurrence": 0,
+        "selectedText": "function shared() {\n  return 1;\n}",
+        "contextBefore": [
+          "// before-3",
+          "// before-2",
+          "// before-1"
+        ],
+        "contextAfter": [
+          "// after-1",
+          "// after-2",
+          "// after-3"
+        ]
       },
       "rawMapping": {
         "status": "exact"
       },
-      "quoted": "// before-2\n// before-1\nfunction shared() {\n  return 1;\n}\n// after-1\n// after-2",
       "body": "Nice cleanup.",
       "resolved": true,
       "outdated": false,
@@ -75,6 +87,7 @@
       "commentId": "comment-outdated",
       "targetId": "right",
       "current": true,
+      "targetKind": "source",
       "targetLabel": "src/shared.ts",
       "repositoryLabel": "org/repo",
       "baseRevisionLabel": "main",
@@ -88,12 +101,15 @@
         "side": "old",
         "startLine": 5,
         "endLine": 5,
-        "coordinateSpace": "raw-source"
+        "coordinateSpace": "raw-source",
+        "hunkOccurrence": 0,
+        "selectedText": "return legacy();",
+        "contextBefore": [],
+        "contextAfter": []
       },
       "rawMapping": {
         "status": "exact"
       },
-      "quoted": "return legacy();",
       "body": "This branch is now dead code.",
       "resolved": false,
       "outdated": true,

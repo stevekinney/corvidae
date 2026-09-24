@@ -17,6 +17,7 @@
       "commentId": "comment-normalized",
       "targetId": "md-normalized",
       "current": true,
+      "targetKind": "markdown",
       "targetLabel": "README.md",
       "repositoryLabel": null,
       "baseRevisionLabel": null,
@@ -30,13 +31,16 @@
         "side": "new",
         "startLine": 3,
         "endLine": 3,
-        "coordinateSpace": "normalized-markdown"
+        "coordinateSpace": "normalized-markdown",
+        "hunkOccurrence": 0,
+        "selectedText": "Updated body.",
+        "contextBefore": [],
+        "contextAfter": []
       },
       "rawMapping": {
         "status": "unavailable",
         "reason": "normalization"
       },
-      "quoted": "Updated body.",
       "body": "Consider linking the migration guide.",
       "resolved": false,
       "outdated": false,
@@ -49,6 +53,7 @@
       "commentId": "comment-raw",
       "targetId": "md-raw",
       "current": true,
+      "targetKind": "markdown",
       "targetLabel": "CHANGELOG.md",
       "repositoryLabel": null,
       "baseRevisionLabel": null,
@@ -62,12 +67,15 @@
         "side": "old",
         "startLine": 8,
         "endLine": 9,
-        "coordinateSpace": "raw-source"
+        "coordinateSpace": "raw-source",
+        "hunkOccurrence": 0,
+        "selectedText": "## Unreleased\n- old entry",
+        "contextBefore": [],
+        "contextAfter": []
       },
       "rawMapping": {
         "status": "exact"
       },
-      "quoted": "## Unreleased\n- old entry",
       "body": "Keep this entry; it is still accurate.",
       "resolved": false,
       "outdated": false,

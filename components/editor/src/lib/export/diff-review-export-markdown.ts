@@ -16,6 +16,20 @@ const PREAMBLE =
   'Address open comments. Resolved comments are historical context. ' +
   'Verify outdated locations against current content before acting.';
 
+/** Up to two available context lines are quoted on each side, per the contract — the exported
+ * anchor may retain up to three, captured for a margin the export intentionally trims from. */
+const QUOTED_CONTEXT_LINES = 2;
+
+/** Derives the two-line-trimmed quoted excerpt from a range record's own anchor context, so
+ * Markdown never carries a second, independently-maintained copy of the quote. */
+function quoteFor(record: DiffReviewExportDiffRecord): string | null {
+  if (record.anchor.kind === 'file') return null;
+  const { contextBefore, contextAfter, selectedText } = record.anchor;
+  const before = contextBefore.slice(-QUOTED_CONTEXT_LINES);
+  const after = contextAfter.slice(0, QUOTED_CONTEXT_LINES);
+  return [...before, selectedText, ...after].join('\n');
+}
+
 function scopeLine(scope: DiffReviewExportModel['scope']): string {
   return scope === 'unresolved' ? 'Scope: unresolved only' : 'Scope: all saved comments';
 }
@@ -64,8 +78,9 @@ function renderDiffRecord(record: DiffReviewExportDiffRecord): string {
   lines.push(locationLine(record));
   lines.push('');
 
-  if (record.quoted !== null) {
-    lines.push('Quoted source:', '', literalFencedBlock(record.quoted), '');
+  const quoted = quoteFor(record);
+  if (quoted !== null) {
+    lines.push('Quoted source:', '', literalFencedBlock(quoted), '');
   }
 
   lines.push('Feedback:', '', literalFencedBlock(record.body));
@@ -93,14 +108,25 @@ function renderDiffSection(diffRecords: DiffReviewExportDiffRecord[]): string[] 
   return blocks;
 }
 
+function documentLocationLine(record: DiffReviewExportDocumentRecord): string {
+  return record.anchor.kind === 'document-text'
+    ? 'Location: document-text'
+    : 'Location: document comment';
+}
+
 function renderDocumentRecord(record: DiffReviewExportDocumentRecord): string {
   const lines: string[] = [
     `### Document thread ${record.threadId} (${record.targetId})`,
     '',
     `Created: ${record.createdAt}`,
     `ID: ${record.exportId}`,
+    documentLocationLine(record),
     '',
   ];
+
+  if (record.anchor.kind === 'document-text') {
+    lines.push('Quoted document text:', '', literalFencedBlock(record.anchor.quote), '');
+  }
 
   for (const message of record.messages) {
     lines.push(`#### Message ${message.id}`, '');

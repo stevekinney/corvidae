@@ -17,6 +17,7 @@
       "commentId": "comment-interpolated",
       "targetId": "interpolated-target",
       "current": true,
+      "targetKind": "markdown",
       "targetLabel": "interpolated.md",
       "repositoryLabel": null,
       "baseRevisionLabel": null,
@@ -30,13 +31,20 @@
         "side": "new",
         "startLine": 3,
         "endLine": 3,
-        "coordinateSpace": "normalized-markdown"
+        "coordinateSpace": "normalized-markdown",
+        "hunkOccurrence": 0,
+        "selectedText": "q",
+        "contextBefore": [
+          "p"
+        ],
+        "contextAfter": [
+          "r"
+        ]
       },
       "rawMapping": {
         "status": "unavailable",
         "reason": "normalization"
       },
-      "quoted": "p\nq\nr",
       "body": "Double-check this line after normalization.",
       "resolved": false,
       "outdated": false,
