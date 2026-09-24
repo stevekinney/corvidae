@@ -16,11 +16,11 @@ import type {
 import { validateDiffReviewTargetList } from './validate-targets.js';
 
 /**
- * Applies a validated new target list against the previous state: latches every comment whose
- * target changed content or disappeared as outdated (never un-latching an already-outdated
- * comment), drops reviewed markers for those same targets, and reconciles the current
- * selection. Comments and drafts for a removed target are retained untouched, by captured
- * context, per the contract.
+ * Applies a validated new target list against the previous state: latches every comment and
+ * draft whose target changed content or disappeared as outdated (never un-latching an
+ * already-outdated record), drops reviewed markers for those same targets, and reconciles the
+ * current selection. Comments and drafts for a removed target are otherwise retained untouched,
+ * by captured context, per the contract.
  */
 export function applySetTargets(
   state: DiffReviewState,
@@ -54,6 +54,10 @@ export function applySetTargets(
     changedOrRemoved.has(comment.targetId) ? { ...comment, outdated: true } : comment,
   );
 
+  const drafts = state.drafts.map((draft) =>
+    changedOrRemoved.has(draft.targetId) ? { ...draft, outdated: true } : draft,
+  );
+
   const reviewedMarkers = state.reviewedMarkers.filter(
     (marker) => !changedOrRemoved.has(marker.targetId),
   );
@@ -71,6 +75,7 @@ export function applySetTargets(
       ...state,
       targets: nextTargets,
       comments,
+      drafts,
       reviewedMarkers,
       selectedTargetId,
       selectedFileOccurrence,

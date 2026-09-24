@@ -22,6 +22,24 @@ describe('DiffReview state anchor validation', () => {
     expect(result).toEqual({ ok: true, value: { kind: 'file', fileOccurrence: 2 } });
   });
 
+  test('rejects an unknown key on a file anchor', () => {
+    const bad = { kind: 'file', fileOccurrence: 2, extra: 1 } as unknown as DiffReviewAnchor;
+    const result = validateDiffReviewAnchor(bad, '/anchor');
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'invalid-anchor', path: '/anchor/extra', message: expect.any(String) },
+    });
+  });
+
+  test('rejects an unknown key on a range anchor', () => {
+    const bad = { ...validRange, extra: 1 } as unknown as DiffReviewAnchor;
+    const result = validateDiffReviewAnchor(bad, '/anchor');
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'invalid-anchor', path: '/anchor/extra', message: expect.any(String) },
+    });
+  });
+
   test('accepts a valid range anchor', () => {
     const result = validateDiffReviewAnchor(validRange, '/anchor');
     expect(result).toEqual({ ok: true, value: validRange });

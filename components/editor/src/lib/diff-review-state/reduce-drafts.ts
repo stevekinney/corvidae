@@ -61,6 +61,7 @@ export function applyCreateDraft(
     body: action.body ?? '',
     createdAt: now,
     updatedAt: now,
+    outdated: false,
   };
 
   return { ok: true, value: { ...state, drafts: [...state.drafts, draft] } };
@@ -135,7 +136,9 @@ export function applySaveDraft(
 
   const liveTarget = state.targets.find((t) => t.targetId === draft.targetId);
   const outdated =
-    liveTarget === undefined || liveTarget.snapshotId !== draft.capturedContext.snapshotId;
+    draft.outdated ||
+    liveTarget === undefined ||
+    liveTarget.snapshotId !== draft.capturedContext.snapshotId;
 
   const now = clock();
   const comment: DiffReviewComment = {

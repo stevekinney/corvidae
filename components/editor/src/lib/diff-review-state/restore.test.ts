@@ -656,6 +656,54 @@ describe('DiffReview state restore', () => {
     }
   });
 
+  test('rejects an unknown key on a comment anchor', () => {
+    const serialized = seededState();
+    const comment = serialized.comments[0]!;
+    const malformed = {
+      ...serialized,
+      comments: [{ ...comment, anchor: { ...comment.anchor, extra: 1 } }],
+    };
+    const restored = restoreDiffReviewState(malformed, targets());
+    expect(restored.ok).toBe(false);
+    if (restored.ok) throw new Error('expected error');
+    expect(restored.error).toEqual({
+      code: 'invalid-anchor',
+      path: '/comments/0/anchor/extra',
+      message: expect.any(String),
+    });
+  });
+
+  test('restores a draft outdated flag and rejects a non-boolean one', () => {
+    const created = createDiffReviewState(targets());
+    if (!created.ok) throw new Error('fixture setup failed');
+    const withDraft = reduceDiffReviewState(created.value, {
+      type: 'create-draft',
+      draftId: 'd1',
+      targetId: 't1',
+      anchor: { kind: 'file', fileOccurrence: 0 },
+      body: 'In progress',
+    });
+    if (!withDraft.ok) throw new Error('fixture setup failed');
+    const serialized = serializeDiffReviewState(withDraft.value);
+    expect(serialized.drafts[0]?.outdated).toBe(false);
+
+    const restored = restoreDiffReviewState(serialized, targets());
+    expect(restored.ok).toBe(true);
+    if (!restored.ok) throw new Error('expected ok');
+    expect(restored.value.drafts[0]?.outdated).toBe(false);
+
+    const draft = serialized.drafts[0]!;
+    const malformed = { ...serialized, drafts: [{ ...draft, outdated: 'no' }] };
+    const malformedResult = restoreDiffReviewState(malformed, targets());
+    expect(malformedResult.ok).toBe(false);
+    if (malformedResult.ok) throw new Error('expected error');
+    expect(malformedResult.error).toEqual({
+      code: 'invalid-record',
+      path: '/drafts/0/outdated',
+      message: expect.any(String),
+    });
+  });
+
   test('rejects an empty targetId/snapshotId on a reviewed marker', () => {
     const created = createDiffReviewState(targets());
     if (!created.ok) throw new Error('fixture setup failed');

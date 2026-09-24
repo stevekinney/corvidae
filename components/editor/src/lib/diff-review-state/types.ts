@@ -153,6 +153,8 @@ export interface DiffReviewDraft {
   body: string;
   createdAt: string;
   updatedAt: string;
+  /** Latched once true, exactly like a comment's `outdated`. Never un-latches on revert. */
+  outdated: boolean;
 }
 
 // ============================================================================

@@ -27,6 +27,18 @@ function withComment(state: DiffReviewState, targetId: string): DiffReviewState 
   return result.value;
 }
 
+function withDraft(state: DiffReviewState, targetId: string): DiffReviewState {
+  const result = reduceDiffReviewState(state, {
+    type: 'create-draft',
+    draftId: `d-${targetId}`,
+    targetId,
+    anchor: fileAnchor,
+    body: 'Draft in progress',
+  });
+  if (!result.ok) throw new Error('fixture setup failed');
+  return result.value;
+}
+
 describe('DiffReview state target updates', () => {
   test('a content change latches every comment on that target as outdated', () => {
     let state = withComment(baseState(), 't1');
@@ -84,6 +96,57 @@ describe('DiffReview state target updates', () => {
     if (!reordered.ok) throw new Error('expected ok');
     expect(reordered.value.comments[0]?.outdated).toBe(false);
     expect(reordered.value.targets.map((t) => t.targetId)).toEqual(['t2', 't1']);
+  });
+
+  test('a content change latches every draft on that target as outdated, same as a comment', () => {
+    let state = withDraft(baseState(), 't1');
+    expect(state.drafts[0]?.outdated).toBe(false);
+
+    const changed = reduceDiffReviewState(state, {
+      type: 'set-targets',
+      targets: [
+        { kind: 'source', targetId: 't1', label: 'src/x.ts', patch: 'diff-1-changed' },
+        { kind: 'source', targetId: 't2', label: 'src/y.ts', patch: 'diff-2' },
+      ],
+    });
+    expect(changed.ok).toBe(true);
+    if (!changed.ok) throw new Error('expected ok');
+    expect(changed.value.drafts[0]?.outdated).toBe(true);
+  });
+
+  test('a draft outdated latch never un-latches when content reverts to the original', () => {
+    let state = withDraft(baseState(), 't1');
+
+    const changed = reduceDiffReviewState(state, {
+      type: 'set-targets',
+      targets: [
+        { kind: 'source', targetId: 't1', label: 'src/x.ts', patch: 'diff-1-changed' },
+        { kind: 'source', targetId: 't2', label: 'src/y.ts', patch: 'diff-2' },
+      ],
+    });
+    if (!changed.ok) throw new Error('expected ok');
+    state = changed.value;
+    expect(state.drafts[0]?.outdated).toBe(true);
+
+    const reverted = reduceDiffReviewState(state, {
+      type: 'set-targets',
+      targets: [
+        { kind: 'source', targetId: 't1', label: 'src/x.ts', patch: 'diff-1' },
+        { kind: 'source', targetId: 't2', label: 'src/y.ts', patch: 'diff-2' },
+      ],
+    });
+    expect(reverted.ok).toBe(true);
+    if (!reverted.ok) throw new Error('expected ok');
+    expect(reverted.value.drafts[0]?.outdated).toBe(true);
+
+    // Saving after a revert-then-relatch must still produce an outdated comment: the latch, not
+    // a snapshot-equality re-check, is what save-draft consults. `reverted.value` started this
+    // test with no comments, so the one comment present is the just-saved draft.
+    const saved = reduceDiffReviewState(reverted.value, { type: 'save-draft', draftId: 'd-t1' });
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) throw new Error('expected ok');
+    expect(saved.value.comments).toHaveLength(1);
+    expect(saved.value.comments[0]?.outdated).toBe(true);
   });
 
   test('a removed target remains represented by captured metadata in the comments list', () => {

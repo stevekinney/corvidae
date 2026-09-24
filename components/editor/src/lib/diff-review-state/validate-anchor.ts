@@ -15,8 +15,30 @@ import type { DiffReviewAnchor, DiffReviewResult } from './types.js';
 
 const MAX_CONTEXT_LINES = 3;
 
+const FILE_ANCHOR_KEYS = ['kind', 'fileOccurrence'];
+const RANGE_ANCHOR_KEYS = [
+  'kind',
+  'fileOccurrence',
+  'hunkOccurrence',
+  'side',
+  'startLine',
+  'endLine',
+  'coordinateSpace',
+  'selectedText',
+  'contextBefore',
+  'contextAfter',
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+/** Unknown object keys are rejected in versioned snapshots (and, for simplicity, live actions). */
+function findUnknownKey(
+  input: Record<string, unknown>,
+  allowed: readonly string[],
+): string | undefined {
+  return Object.keys(input).find((key) => !allowed.includes(key));
 }
 
 function isNonnegativeInteger(value: unknown): value is number {
@@ -35,6 +57,9 @@ function validateFileAnchor(
   input: Record<string, unknown>,
   path: string,
 ): DiffReviewResult<DiffReviewAnchor> {
+  const unknownKey = findUnknownKey(input, FILE_ANCHOR_KEYS);
+  if (unknownKey) return invalidResult(`${path}/${unknownKey}`, `Unknown key '${unknownKey}'.`);
+
   const fileOccurrence = input['fileOccurrence'];
   if (!isNonnegativeInteger(fileOccurrence)) {
     return invalidResult(`${path}/fileOccurrence`, 'fileOccurrence must be a nonnegative integer.');
@@ -46,6 +71,9 @@ function validateRangeAnchor(
   input: Record<string, unknown>,
   path: string,
 ): DiffReviewResult<DiffReviewAnchor> {
+  const unknownKey = findUnknownKey(input, RANGE_ANCHOR_KEYS);
+  if (unknownKey) return invalidResult(`${path}/${unknownKey}`, `Unknown key '${unknownKey}'.`);
+
   const fileOccurrence = input['fileOccurrence'];
   if (!isNonnegativeInteger(fileOccurrence)) {
     return invalidResult(`${path}/fileOccurrence`, 'fileOccurrence must be a nonnegative integer.');

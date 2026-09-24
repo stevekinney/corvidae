@@ -71,6 +71,7 @@ const DRAFT_KEYS = [
   'body',
   'createdAt',
   'updatedAt',
+  'outdated',
 ];
 const REVIEWED_MARKER_KEYS = ['targetId', 'snapshotId', 'fileOccurrence'];
 const CAPTURED_CONTEXT_KEYS = [
@@ -398,6 +399,10 @@ function validateDraft(
   const timestampError = validateTimestampOrder(createdAt, updatedAt, path);
   if (timestampError) return { ok: false, error: timestampError };
 
+  if (typeof value['outdated'] !== 'boolean') {
+    return fail('invalid-record', `${path}/outdated`, 'outdated must be a boolean.');
+  }
+
   return {
     ok: true,
     value: {
@@ -408,6 +413,7 @@ function validateDraft(
       body,
       createdAt,
       updatedAt,
+      outdated: value['outdated'],
     },
   };
 }

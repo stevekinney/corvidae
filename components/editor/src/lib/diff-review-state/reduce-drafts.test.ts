@@ -32,6 +32,7 @@ describe('DiffReview state drafts', () => {
       targetId: 't1',
       anchor: fileAnchor,
       body: '',
+      outdated: false,
     });
     expect(result.value.drafts[0]?.capturedContext.snapshotId).toBe(state.targets[0]!.snapshotId);
   });
