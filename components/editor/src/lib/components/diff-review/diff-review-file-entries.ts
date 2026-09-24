@@ -52,11 +52,30 @@ function countAnchored(
   ).length;
 }
 
+/**
+ * The number of changed (added/removed/modified) lines a file occurrence
+ * has, independent of any `DiffReviewState` -- shared by the file list's
+ * counts and by `DiffReviewRenderer`'s "No commentable patch lines" state,
+ * so the two can never disagree about what counts as commentable.
+ */
+export function getDiffReviewFileChangedLineCount(
+  target: DiffReviewTargetInput,
+  fileOccurrence: number,
+): number {
+  if (target.kind === 'markdown') {
+    const stats = getDiffStats(computeLineDiff(target.original, target.current));
+    return stats.added + stats.removed + stats.modified;
+  }
+  const descriptor = parseUnifiedPatch(target.patch).descriptors.find(
+    (candidate) => candidate.fileOccurrence === fileOccurrence,
+  );
+  return descriptor?.changedLineCount ?? 0;
+}
+
 function markdownFileEntries(
   target: Extract<DiffReviewTargetInput, { kind: 'markdown' }>,
   state: DiffReviewState,
 ): DiffReviewFileEntry[] {
-  const stats = getDiffStats(computeLineDiff(target.original, target.current));
   return [
     {
       targetId: target.targetId,
@@ -64,7 +83,7 @@ function markdownFileEntries(
       targetKind: 'markdown',
       fileOccurrence: 0,
       path: target.label,
-      changedLineCount: stats.added + stats.removed + stats.modified,
+      changedLineCount: getDiffReviewFileChangedLineCount(target, 0),
       commentCount: countAnchored(state.comments, target.targetId, 0),
       draftCount: countAnchored(state.drafts, target.targetId, 0),
       reviewed: isDiffReviewFileReviewed(state, target.targetId, 0),

@@ -12,8 +12,31 @@
     DiffViewer,
     createDiffReviewState,
   } from '@lostgradient/editor';
-  import type { DiffReviewState, DiffReviewTargetInput } from '@lostgradient/editor';
+  import type {
+    DiffReviewComment,
+    DiffReviewState,
+    DiffReviewTargetInput,
+  } from '@lostgradient/editor';
   import { SourceDiffViewer } from '@lostgradient/cinder';
+
+  // `DiffViewer`'s and `SourceDiffViewer`'s own `*Ref` types aren't part of
+  // either package's public export surface (only the components themselves
+  // are) -- these structural shapes cover exactly the two methods this
+  // fixture calls, matching each real ref's public shape by structure
+  // rather than reaching into either package's internal module path.
+  type FocusResult = { status: 'focused' | 'unavailable' };
+  type StandaloneDiffViewerRef = {
+    focusAnchor: (anchor: { side: 'old' | 'new'; startLine: number }) => FocusResult;
+  };
+  type StandaloneSourceDiffViewerRef = {
+    focusFile: (fileOccurrence: number) => FocusResult;
+    focusAnchor: (anchor: {
+      fileOccurrence: number;
+      hunkOccurrence: number;
+      side: 'old' | 'new';
+      startLine: number;
+    }) => FocusResult;
+  };
 
   function initialState(targets: DiffReviewTargetInput[]): DiffReviewState {
     const created = createDiffReviewState(targets);
@@ -80,6 +103,31 @@ diff --git a/src/two.ts b/src/two.ts
   // -- Standalone viewers + DiffReviewComments (no aggregate shell) -------
   let standaloneDiffViewerState = $state(initialState(markdownTargets));
   let standaloneSourceViewerState = $state(initialState(sourceTargets));
+  let standaloneDiffViewerRef = $state<StandaloneDiffViewerRef>();
+  let standaloneSourceViewerRef = $state<StandaloneSourceDiffViewerRef>();
+
+  /**
+   * Comment-to-anchor navigation (COR-509 / DR-6) for a standalone
+   * `DiffReviewComments` composed next to a bare `DiffViewer`: `onNavigate`
+   * only ever receives a CURRENT comment, so this calls straight through to
+   * the real viewer's own public `focusAnchor` -- no controller of any kind
+   * is copied here.
+   */
+  function navigateStandaloneDiffViewer(comment: DiffReviewComment): void {
+    if (comment.anchor.kind === 'file') return; // No per-file focus target on a Markdown pair.
+    standaloneDiffViewerRef?.focusAnchor({
+      side: comment.anchor.side,
+      startLine: comment.anchor.startLine,
+    });
+  }
+
+  function navigateStandaloneSourceDiffViewer(comment: DiffReviewComment): void {
+    if (comment.anchor.kind === 'file') {
+      standaloneSourceViewerRef?.focusFile(comment.anchor.fileOccurrence);
+      return;
+    }
+    standaloneSourceViewerRef?.focusAnchor(comment.anchor);
+  }
 </script>
 
 <div id="example-mount-markdown-pair">
@@ -107,17 +155,24 @@ diff --git a/src/two.ts b/src/two.ts
 </div>
 
 <div id="example-mount-standalone-diff-viewer">
-  <DiffViewer original={readmeOriginal} current={readmeCurrent} readonly />
+  <DiffViewer
+    original={readmeOriginal}
+    current={readmeCurrent}
+    readonly
+    bind:ref={standaloneDiffViewerRef}
+  />
   <DiffReviewComments
     state={standaloneDiffViewerState}
     onStateChange={(next) => (standaloneDiffViewerState = next)}
+    onNavigate={navigateStandaloneDiffViewer}
   />
 </div>
 
 <div id="example-mount-standalone-source-diff-viewer">
-  <SourceDiffViewer patch={sourcePatch} />
+  <SourceDiffViewer patch={sourcePatch} bind:ref={standaloneSourceViewerRef} />
   <DiffReviewComments
     state={standaloneSourceViewerState}
     onStateChange={(next) => (standaloneSourceViewerState = next)}
+    onNavigate={navigateStandaloneSourceDiffViewer}
   />
 </div>

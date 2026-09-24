@@ -13,8 +13,18 @@
 </script>
 
 <script lang="ts">
-  import { reduceDiffReviewState } from '../../diff-review-state/index.ts';
-  import type { DiffReviewDraft } from '../../diff-review-state/index.ts';
+  import { untrack } from 'svelte';
+
+  import type {
+    DiffReviewAnchor,
+    DiffReviewComment,
+    DiffReviewDraft,
+    DiffReviewTargetInput,
+  } from '../../diff-review-state/index.ts';
+  import {
+    reduceDiffReviewState,
+    validateDiffReviewTargetList,
+  } from '../../diff-review-state/index.ts';
   import { exportDiffReviewJson, exportDiffReviewMarkdown } from '../../export/index.ts';
   import { dispatchDiffReviewAction } from '../../utilities/diff-review-dispatch.ts';
   import { formatDiffReviewCommentLocation } from '../diff-review-comments/diff-review-comment-location.ts';
@@ -26,6 +36,7 @@
   import { filterDiffReviewFileEntries } from './diff-review-file-filter.ts';
   import DiffReviewFileList from './diff-review-file-list.svelte';
   import DiffReviewRenderer from './diff-review-renderer.svelte';
+  import type { DiffReviewRendererRef } from './diff-review-renderer.types.ts';
   import DiffReviewToolbar from './diff-review-toolbar.svelte';
   import type { DiffReviewExportScope } from './diff-review-toolbar.svelte';
   import type { DiffReviewProps } from './diff-review.types.ts';
@@ -52,10 +63,47 @@
   let activeDraftId = $state<string | null>(null);
   let resetToken = $state(0);
   let draftsOpen = $state(false);
+  let rendererRef = $state<DiffReviewRendererRef | undefined>(undefined);
+  let rendererFailed = $state(false);
+  /** Non-null while a comment-navigation focus attempt found no target to focus. */
+  let navigationUnavailable = $state(false);
+  /**
+   * Set by `navigateToComment` when the target/file switch it dispatched has
+   * not yet reached this component's own `state` prop (the host must accept
+   * `onStateChange` and pass the new state back down first). The effect
+   * below completes the focus once `reviewState` reflects that switch.
+   */
+  let pendingFocus = $state<{
+    targetId: string;
+    fileOccurrence: number;
+    anchor: DiffReviewAnchor;
+  } | null>(null);
 
-  const fileEntries = $derived(buildDiffReviewFileEntries(targets, reviewState));
+  /**
+   * `targets` is host-supplied live content, not validated by any reducer
+   * action -- an invalid update (COR-509 / DR-6, "invalid-target") must
+   * report a structured error without discarding the last good render.
+   */
+  const targetsValidation = $derived(validateDiffReviewTargetList(targets));
+  // An initial `targets` prop that is itself invalid has no prior good
+  // render to fall back to -- start from an empty list rather than the
+  // unvalidated value, or every derived computation below would still see
+  // the same malformed data this fallback exists to shield them from.
+  let lastValidTargets = $state<DiffReviewTargetInput[]>(
+    untrack(() => (targetsValidation.ok ? targetsValidation.value : [])),
+  );
+  $effect(() => {
+    if (targetsValidation.ok) lastValidTargets = targetsValidation.value;
+  });
+  const effectiveTargets = $derived(
+    targetsValidation.ok ? targetsValidation.value : lastValidTargets,
+  );
+
+  const fileEntries = $derived(buildDiffReviewFileEntries(effectiveTargets, reviewState));
   const visibleFileEntries = $derived(filterDiffReviewFileEntries(fileEntries, filterQuery));
-  const selectedTarget = $derived(targets.find((t) => t.targetId === reviewState.selectedTargetId));
+  const selectedTarget = $derived(
+    effectiveTargets.find((t) => t.targetId === reviewState.selectedTargetId),
+  );
   const exportGate = $derived(getDiffReviewExportGate(reviewState));
   const activeDraft = $derived(
     reviewState.drafts.find((draft) => draft.draftId === activeDraftId) ?? null,
@@ -115,7 +163,7 @@
   }
 
   function addFileComment(): void {
-    if (!reviewState.selectedTargetId) return;
+    if (!reviewState.selectedTargetId || rendererFailed) return;
     const fileOccurrence = reviewState.selectedFileOccurrence ?? 0;
     const draftId = crypto.randomUUID();
     const outcome = dispatchDiffReviewAction(
@@ -156,7 +204,7 @@
   }
 
   function openDraft(draft: DiffReviewDraft): void {
-    if (targets.some((target) => target.targetId === draft.targetId)) {
+    if (effectiveTargets.some((target) => target.targetId === draft.targetId)) {
       selectFile(draft.targetId, draft.anchor.fileOccurrence);
     }
     activeDraftId = draft.draftId;
@@ -187,9 +235,62 @@
       ? exportDiffReviewMarkdown(reviewState, options)
       : exportDiffReviewJson(reviewState, options);
   }
+
+  /**
+   * Focuses a CURRENT comment's anchor in the diff, through whichever
+   * viewer's public `focusAnchor`/`focusFile` handle `DiffReviewRenderer`
+   * currently exposes (COR-509 / DR-6, "comment-to-anchor navigation").
+   * `DiffReviewComments` only calls this for comments it has already
+   * classified as `current` -- an outdated or removed comment focuses its
+   * own captured-detail element locally and never reaches here.
+   */
+  function navigateToComment(comment: DiffReviewComment): void {
+    navigationUnavailable = false;
+    const alreadyShowing =
+      reviewState.selectedTargetId === comment.targetId &&
+      reviewState.selectedFileOccurrence === comment.anchor.fileOccurrence;
+    if (alreadyShowing) {
+      performFocus(comment.anchor);
+      return;
+    }
+    pendingFocus = {
+      targetId: comment.targetId,
+      fileOccurrence: comment.anchor.fileOccurrence,
+      anchor: comment.anchor,
+    };
+    selectFile(comment.targetId, comment.anchor.fileOccurrence);
+  }
+
+  function performFocus(anchor: DiffReviewAnchor): void {
+    const result =
+      anchor.kind === 'file'
+        ? rendererRef?.focusFile(anchor.fileOccurrence)
+        : rendererRef?.focusAnchor(anchor);
+    navigationUnavailable = (result ?? { status: 'unavailable' }).status === 'unavailable';
+  }
+
+  // Completes a navigation that first had to switch target/file: this only
+  // fires once `reviewState` (the host-controlled prop) reflects the switch
+  // `navigateToComment` dispatched above.
+  $effect(() => {
+    if (!pendingFocus) return;
+    if (reviewState.selectedTargetId !== pendingFocus.targetId) return;
+    if (reviewState.selectedFileOccurrence !== pendingFocus.fileOccurrence) return;
+    const anchor = pendingFocus.anchor;
+    pendingFocus = null;
+    performFocus(anchor);
+  });
 </script>
 
 <div class={['diff-review', className].filter(Boolean).join(' ')} {...rest}>
+  {#if !targetsValidation.ok}
+    <p class="diff-review-targets-error" role="alert">
+      Couldn't apply the latest targets ({targetsValidation.error.code} at
+      {targetsValidation.error.path || '/'}: {targetsValidation.error.message}). Showing the last
+      valid view.
+    </p>
+  {/if}
+
   <DiffReviewToolbar
     {filterQuery}
     onfilterchange={(query) => (filterQuery = query)}
@@ -212,14 +313,24 @@
 
     <main class="diff-review-diff" aria-label="Diff">
       {#if !readonly}
-        <button type="button" onclick={addFileComment}>Add file comment</button>
+        <button type="button" onclick={addFileComment} disabled={rendererFailed}>
+          Add file comment
+        </button>
+      {/if}
+      {#if navigationUnavailable}
+        <p class="diff-review-navigation-unavailable" role="status">
+          That comment's location isn't available in the current view.
+        </p>
       {/if}
       <DiffReviewRenderer
         target={selectedTarget}
+        state={reviewState}
         selectedFileOccurrence={reviewState.selectedFileOccurrence}
         {readonly}
         {resetToken}
-        onselectionchange={handleSelectionChange}
+        onSelectionChange={handleSelectionChange}
+        onRendererFailedChange={(failed) => (rendererFailed = failed)}
+        bind:ref={rendererRef}
       />
       {#if activeDraft}
         <div
@@ -258,7 +369,12 @@
           ondiscard={discardDraft}
         />
       {/if}
-      <DiffReviewComments state={reviewState} {onStateChange} {readonly} />
+      <DiffReviewComments
+        state={reviewState}
+        {onStateChange}
+        {readonly}
+        onNavigate={navigateToComment}
+      />
     </aside>
   </div>
 </div>

@@ -20,6 +20,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
+  import { classifyDiffReviewAnchorStatus } from '../diff-review/diff-review-anchor-status.ts';
   import { dispatchDiffReviewAction } from '../../utilities/diff-review-dispatch.ts';
   import DiffReviewCommentItem from './diff-review-comment-item.svelte';
   import { filterDiffReviewComments } from './diff-review-comments-filter.ts';
@@ -38,6 +39,7 @@
     onStateChange,
     readonly = false,
     defaultFilter = 'all',
+    onNavigate,
     class: className,
     ...rest
   }: DiffReviewCommentsProps = $props();
@@ -72,6 +74,17 @@
   function setReviewNote(body: string): void {
     dispatchDiffReviewAction(reviewState, { type: 'set-review-note', body }, onStateChange);
   }
+
+  /**
+   * Only a CURRENT comment ever reaches the host's `onNavigate` -- an
+   * outdated or removed one is handled entirely locally by
+   * `DiffReviewCommentItem` itself (focus its captured detail), per the
+   * contract's "never focus a current row" for either case.
+   */
+  function navigate(comment: (typeof visibleComments)[number]): void {
+    if (classifyDiffReviewAnchorStatus(reviewState, comment) !== 'current') return;
+    onNavigate?.(comment);
+  }
 </script>
 
 <section
@@ -101,11 +114,13 @@
       {#each visibleComments as comment (comment.id)}
         <DiffReviewCommentItem
           {comment}
+          status={classifyDiffReviewAnchorStatus(reviewState, comment)}
           {readonly}
           onedit={editComment}
           ondelete={deleteComment}
           onresolve={resolveComment}
           onreopen={reopenComment}
+          onnavigate={() => navigate(comment)}
         />
       {/each}
     </ul>

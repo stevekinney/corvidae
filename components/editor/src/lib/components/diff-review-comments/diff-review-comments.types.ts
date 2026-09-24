@@ -1,6 +1,6 @@
 import type { HTMLAttributes } from 'svelte/elements';
 
-import type { DiffReviewState } from '../../diff-review-state/index.ts';
+import type { DiffReviewComment, DiffReviewState } from '../../diff-review-state/index.ts';
 import type { DiffReviewCommentsFilter } from './diff-review-comments-filter.ts';
 
 export type { DiffReviewCommentsFilter } from './diff-review-comments-filter.ts';
@@ -26,5 +26,15 @@ export type DiffReviewCommentsProps = Omit<HTMLAttributes<HTMLElement>, 'class'>
   readonly?: boolean;
   /** Initial comment filter. Uncontrolled after mount — the person can change it locally. */
   defaultFilter?: DiffReviewCommentsFilter;
+  /**
+   * Called when a person activates a CURRENT comment's "Go to" action --
+   * never for an outdated or removed one, which instead moves focus to that
+   * comment's own captured-detail text in place. The host uses this to
+   * focus the comment's anchor in whichever diff viewer it owns (through
+   * that viewer's own public `focusAnchor`/`focusFile`, e.g.
+   * `DiffReview`'s internal `DiffReviewRenderer`, or a standalone viewer's
+   * own `ref` in a host that composes this panel next to one directly).
+   */
+  onNavigate?: (comment: DiffReviewComment) => void;
   class?: string;
 };

@@ -32,13 +32,15 @@ Reusable, resolution-aware comments panel for a `DiffReviewState` session (COR-5
 | `onStateChange` | `(next: DiffReviewState) => void` | Called after every successful edit/delete/resolve/reopen/review-note action. |
 | `readonly` | `boolean` | Disables every mutating control; viewing and filtering remain available. Default `false`. |
 | `defaultFilter` | `'all' \| 'unresolved'` | Initial filter. Uncontrolled after mount. Default `'all'`. |
+| `onNavigate` | `(comment: DiffReviewComment) => void` | Called when a person activates a **CURRENT** comment's "Go to" action — never for an outdated or removed one. The host wires this to whichever diff viewer it owns, calling that viewer's own public `focusAnchor`/`focusFile`. Optional; when omitted, "Go to" on a current comment is a no-op. |
 | `class` | `string` | Additional class merged onto the root `<section>`. |
 
 ## Behavior
 
 - Delete requires confirmation (`ConfirmDialog`) and is irreversible once confirmed — it removes the comment from state and from every subsequent export.
 - Edit/resolve/reopen/delete/review-note dispatch through `reduceDiffReviewState` (via the shared `dispatchDiffReviewAction` helper); a rejected action never calls `onStateChange` and leaves the panel's state untouched.
-- Outdated comments render an `Outdated` badge but are never hidden — they remain fully visible and editable/resolvable/deletable like any other comment.
+- Outdated comments render an `Outdated` badge but are never hidden — they remain fully visible and editable/resolvable/deletable like any other comment. A comment whose target has been removed entirely (not merely changed) renders `Removed` instead.
+- Every comment has a "Go to" action. For a `current` comment this calls `onNavigate`; this component classifies status itself (`diff-review-anchor-status.ts`, shared with `DiffReview`) so a standalone host never has to. For an `outdated`/`removed` comment, "Go to" instead moves DOM focus to that comment's own captured-detail text (its originally captured target label and path) and never calls `onNavigate` — the diff is never focused for a stale or gone anchor.
 
 ## Why `onStateChange`, not `onstatechange`
 

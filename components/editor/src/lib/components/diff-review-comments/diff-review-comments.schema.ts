@@ -35,6 +35,13 @@ const schema = {
         description:
           'Called whenever a comment/review-note action succeeds. See the prop doc for the\nlowercase-contract-to-camelCase naming note.',
       },
+      {
+        name: 'onNavigate',
+        reason: 'function-or-snippet',
+        required: false,
+        description:
+          'Called when a person activates a CURRENT comment\'s "Go to" action, never for an\noutdated or removed one.',
+      },
     ],
   },
 } satisfies ComponentSchema;

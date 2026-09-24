@@ -1,13 +1,23 @@
 <script lang="ts" module>
   import type { DiffReviewComment } from '../../diff-review-state/index.ts';
+  import type { DiffReviewAnchorStatus } from '../diff-review/diff-review-anchor-status.ts';
 
   export interface DiffReviewCommentItemProps {
     comment: DiffReviewComment;
+    status: DiffReviewAnchorStatus;
     readonly?: boolean;
     onedit: (id: string, body: string) => void;
     ondelete: (id: string) => void;
     onresolve: (id: string) => void;
     onreopen: (id: string) => void;
+    /**
+     * Activated by the "Go to" action for every status. The parent only
+     * forwards this to the host for a `current` comment -- for `outdated`/
+     * `removed`, this component instead moves DOM focus to its own
+     * captured-detail text and never calls it, so the diff is never focused
+     * for a stale or gone anchor.
+     */
+    onnavigate: () => void;
   }
 </script>
 
@@ -20,11 +30,13 @@
 
   let {
     comment,
+    status,
     readonly = false,
     onedit,
     ondelete,
     onresolve,
     onreopen,
+    onnavigate,
   }: DiffReviewCommentItemProps = $props();
 
   let isEditing = $state(false);
@@ -32,6 +44,17 @@
   // the live `comment.body` on every edit, so it never drifts stale.
   let draftBody = $state(untrack(() => comment.body));
   let confirmingDelete = $state(false);
+  let capturedDetailElement = $state<HTMLElement | undefined>(undefined);
+
+  function goTo(): void {
+    if (status === 'current') {
+      onnavigate();
+      return;
+    }
+    // Outdated/removed: focus the captured detail in place. Never call
+    // `onnavigate` -- the diff must never be focused for a stale anchor.
+    capturedDetailElement?.focus();
+  }
 
   function startEdit(): void {
     draftBody = comment.body;
@@ -56,12 +79,22 @@
     confirmingDelete = false;
     ondelete(comment.id);
   }
+
+  const capturedDetailText = $derived(
+    [
+      comment.capturedContext.targetLabel,
+      comment.capturedContext.newPath ?? comment.capturedContext.oldPath,
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(' · '),
+  );
 </script>
 
 <li
   class="diff-review-comment-item"
   data-outdated={comment.outdated}
   data-resolved={comment.resolved}
+  data-anchor-status={status}
 >
   <div class="diff-review-comment-item-meta">
     <span class="diff-review-comment-item-location">{formatDiffReviewCommentLocation(comment)}</span
@@ -71,12 +104,27 @@
         >Resolved</span
       >
     {/if}
-    {#if comment.outdated}
+    {#if status === 'removed'}
+      <span class="diff-review-comment-item-badge diff-review-comment-item-badge-outdated"
+        >Removed</span
+      >
+    {:else if status === 'outdated'}
       <span class="diff-review-comment-item-badge diff-review-comment-item-badge-outdated"
         >Outdated</span
       >
     {/if}
+    <button type="button" class="diff-review-comment-item-goto" onclick={goTo}>Go to</button>
   </div>
+
+  {#if status !== 'current'}
+    <p
+      class="diff-review-comment-item-captured-detail"
+      tabindex="-1"
+      bind:this={capturedDetailElement}
+    >
+      {status === 'removed' ? 'Originally at' : 'Captured at'}: {capturedDetailText}
+    </p>
+  {/if}
 
   {#if isEditing}
     <textarea
@@ -128,6 +176,16 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2, 0.5rem);
+    font-size: var(--cinder-text-xs, 0.75rem);
+    color: var(--cinder-text-muted, #666);
+  }
+
+  .diff-review-comment-item-goto {
+    margin-inline-start: auto;
+  }
+
+  .diff-review-comment-item-captured-detail {
+    margin: 0;
     font-size: var(--cinder-text-xs, 0.75rem);
     color: var(--cinder-text-muted, #666);
   }
