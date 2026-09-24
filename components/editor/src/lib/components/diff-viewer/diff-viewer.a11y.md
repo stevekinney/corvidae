@@ -55,4 +55,9 @@ Each add-comment control has an accessible name naming its side and line number 
 - Inspect the accessible name, role, and state in browser accessibility tools.
 - Check forced-colors mode when the component adds borders, focus rings, selected state, or status color.
 
+## Verification performed this session
+
+- **2026-09-24 (COR-511, commit `46de156b`):** the annotation-hook keyboard model documented above (range selection on both sides, Shift-click, Enter/Shift+Arrow/Escape, focus return, two-instance isolation, the default-no-annotation-props case, and stale-diff gating) is exercised end-to-end by `diff-viewer-annotation.playwright.ts` (Chromium via Playwright); this session added no new browser coverage to this component directly — it added light/dark theme, 320px-layout, and read-only-state axe checks to the composing `DiffReview` shell instead (`diff-review.a11y.md`). This file has no standalone theme/narrow-layout/axe browser test of its own yet.
+- **Human acceptance: not performed by any human.** The ratified contract (SHA-256 `ac837e3a…`) reserves DR-8 design/accessibility acceptance for Steve Kinney, covering "both viewer annotation interactions"; no agent may supply it. The COR-511 orchestrating session reports Steve waived this gate on 2026-09-23 ("Nothing needs my sign off"); Linear comment `a5463ac9-c4d0-455b-ba01-d30c3fcfdb9a` on COR-511 records the same. This record relies on that report and does not independently verify it — no contract amendment was filed. No VoiceOver or other manual screen-reader pass was run against this component in any session; the copy/status announcements above were verified with `role="status"` DOM assertions only.
+
 Related components: `diff-statistics`, `code-block`.

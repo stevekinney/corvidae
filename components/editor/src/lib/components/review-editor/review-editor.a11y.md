@@ -35,4 +35,9 @@ When ReviewEditor accepts snippets or arbitrary children, the caller owns the se
 - Inspect the accessible name, role, and state in browser accessibility tools.
 - Check forced-colors mode when the component adds borders, focus rings, selected state, or status color.
 
+## Verification performed this session
+
+- **2026-09-24 (COR-511, commit `46de156b`):** the diff-comments integration (create an old-side deletion comment in the diff tab, switch to the editor tab and back; the merged document/diff comments list; cross-tab navigation focus; cancel/discard of a pending draft into the Unsaved-drafts inventory; a disabled composer while read-only) is exercised end-to-end by `review-editor-diff-comments.playwright.ts` (Chromium via Playwright). This session added no new browser coverage to ReviewEditor directly, and it has no dedicated theme, 320px-layout, or automated-axe browser test of its own yet.
+- **Human acceptance: not performed by any human.** The ratified contract (SHA-256 `ac837e3a…`) reserves DR-8 design/accessibility acceptance for Steve Kinney, covering "ReviewEditor integration"; no agent may supply it. The COR-511 orchestrating session reports Steve waived this gate on 2026-09-23 ("Nothing needs my sign off"); Linear comment `a5463ac9-c4d0-455b-ba01-d30c3fcfdb9a` on COR-511 records the same. This record relies on that report and does not independently verify it — no contract amendment was filed. No VoiceOver or other manual screen-reader pass was run against this component in any session.
+
 Related components: `markdown-editor`.
