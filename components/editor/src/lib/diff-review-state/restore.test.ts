@@ -729,4 +729,133 @@ describe('DiffReview state restore', () => {
     if (snapshotIdResult.ok) throw new Error('expected error');
     expect(snapshotIdResult.error.path).toBe('/reviewedMarkers/0/snapshotId');
   });
+
+  test('rejects an unknown key on a target record', () => {
+    const serialized = seededState();
+    const malformed = {
+      ...serialized,
+      targets: [{ ...serialized.targets[0]!, extra: 1 }],
+    } as unknown as DiffReviewSerializedState;
+    const restored = restoreDiffReviewState(malformed, targets());
+    expect(restored.ok).toBe(false);
+    if (restored.ok) throw new Error('expected error');
+    expect(restored.error).toEqual({
+      code: 'invalid-record',
+      path: '/targets/0/extra',
+      message: expect.any(String),
+    });
+  });
+
+  test('rejects an unknown key nested in a draft record', () => {
+    const created = createDiffReviewState(targets());
+    if (!created.ok) throw new Error('fixture setup failed');
+    const withDraft = reduceDiffReviewState(created.value, {
+      type: 'create-draft',
+      draftId: 'd1',
+      targetId: 't1',
+      anchor: { kind: 'file', fileOccurrence: 0 },
+      body: 'In progress',
+    });
+    if (!withDraft.ok) throw new Error('fixture setup failed');
+    const serialized = serializeDiffReviewState(withDraft.value);
+    const malformed = {
+      ...serialized,
+      drafts: [{ ...serialized.drafts[0]!, extra: 1 }],
+    } as unknown as DiffReviewSerializedState;
+    const restored = restoreDiffReviewState(malformed, targets());
+    expect(restored.ok).toBe(false);
+    if (restored.ok) throw new Error('expected error');
+    expect(restored.error).toEqual({
+      code: 'invalid-record',
+      path: '/drafts/0/extra',
+      message: expect.any(String),
+    });
+  });
+
+  test('rejects an unknown key on a reviewed marker', () => {
+    const created = createDiffReviewState(targets());
+    if (!created.ok) throw new Error('fixture setup failed');
+    const reviewed = reduceDiffReviewState(created.value, {
+      type: 'set-reviewed',
+      targetId: 't1',
+      fileOccurrence: 0,
+      reviewed: true,
+    });
+    if (!reviewed.ok) throw new Error('fixture setup failed');
+    const serialized = serializeDiffReviewState(reviewed.value);
+    const malformed = {
+      ...serialized,
+      reviewedMarkers: [{ ...serialized.reviewedMarkers[0]!, extra: 1 }],
+    } as unknown as DiffReviewSerializedState;
+    const restored = restoreDiffReviewState(malformed, targets());
+    expect(restored.ok).toBe(false);
+    if (restored.ok) throw new Error('expected error');
+    expect(restored.error).toEqual({
+      code: 'invalid-record',
+      path: '/reviewedMarkers/0/extra',
+      message: expect.any(String),
+    });
+  });
+
+  test('rejects an unknown key on a comment capturedContext', () => {
+    const serialized = seededState();
+    const comment = serialized.comments[0]!;
+    const malformed = {
+      ...serialized,
+      comments: [{ ...comment, capturedContext: { ...comment.capturedContext, extra: 1 } }],
+    } as unknown as DiffReviewSerializedState;
+    const restored = restoreDiffReviewState(malformed, targets());
+    expect(restored.ok).toBe(false);
+    if (restored.ok) throw new Error('expected error');
+    expect(restored.error).toEqual({
+      code: 'invalid-record',
+      path: '/comments/0/capturedContext/extra',
+      message: expect.any(String),
+    });
+  });
+
+  test('rejects an unknown key on a captured-context rawMapping', () => {
+    const serialized = seededState();
+    const comment = serialized.comments[0]!;
+    const malformed = {
+      ...serialized,
+      comments: [
+        {
+          ...comment,
+          capturedContext: {
+            ...comment.capturedContext,
+            rawMapping: { ...comment.capturedContext.rawMapping, extra: 1 },
+          },
+        },
+      ],
+    } as unknown as DiffReviewSerializedState;
+    const restored = restoreDiffReviewState(malformed, targets());
+    expect(restored.ok).toBe(false);
+    if (restored.ok) throw new Error('expected error');
+    expect(restored.error).toEqual({
+      code: 'invalid-record',
+      path: '/comments/0/capturedContext/rawMapping/extra',
+      message: expect.any(String),
+    });
+  });
+
+  test("an unknown key nested in a missing target's captured context fails with missing-context", () => {
+    const serialized = seededState();
+    const comment = serialized.comments[0]!;
+    const malformed = {
+      ...serialized,
+      targets: [serialized.targets[1]!], // t1 (the comment's target) is gone
+      comments: [{ ...comment, capturedContext: { ...comment.capturedContext, extra: 1 } }],
+    } as unknown as DiffReviewSerializedState;
+    const restored = restoreDiffReviewState(malformed, [
+      { kind: 'source', targetId: 't2', label: 'src/y.ts', patch: 'diff-2' },
+    ]);
+    expect(restored.ok).toBe(false);
+    if (restored.ok) throw new Error('expected error');
+    expect(restored.error).toEqual({
+      code: 'missing-context',
+      path: '/comments/0/capturedContext/extra',
+      message: expect.any(String),
+    });
+  });
 });
