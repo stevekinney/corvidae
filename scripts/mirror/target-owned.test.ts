@@ -763,17 +763,20 @@ describe('retiring a directory the target still carries', () => {
       'packages/operative/tsconfig.test.json',
       'packages/skills/tsconfig.test.json',
     ]);
-    // COR-1196: the target's stale generate-component-examples.ts and its test predate
-    // corvidae's check-component-examples.ts/generate-root-metadata-exports.ts split and are
-    // superseded by validationInputs['@lostgradient/cinder'] in source.ts.
-    expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([
-      'packages/components/scripts/generate-component-examples.ts',
-      'packages/components/scripts/generate-component-examples.test.ts',
-    ]);
+    // COR-1196: the target's stale packages/components/scripts/generate-component-examples.ts
+    // is *not* retired, even though it fails the target's own tsconfig.check.json once a sync
+    // overwrites src/manifest.meta.ts with corvidae's copy (TS2305 on
+    // allowedExampleExclusionReasons, which corvidae's current manifest.meta.ts no longer
+    // exports). packages/chat/scripts/generate-component-artifacts.ts and
+    // packages/editor/scripts/generate-component-artifacts.ts — both target-owned, neither with
+    // a corvidae source — import types from it across the package boundary; retiring it turns
+    // one red tsc line into two broken active `components:check` gates. Left in place and red:
+    // an owner ruling on chat and editor's own generators, not a mirror-transform fix.
+    expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
     for (const entry of policy.retired.entries) {
-      expect(['weft', 'cinder', 'agent-bureau']).toContain(entry.target);
+      expect(['weft', 'agent-bureau']).toContain(entry.target);
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['COR-1192', 'COR-1196', 'COR-1286', 'COR-1287']).toContain(entry.issue);
+      expect(['COR-1192', 'COR-1286', 'COR-1287']).toContain(entry.issue);
     }
     // A retirement names exactly one repository, so no target's list may reach another's paths.
     for (const target of mirrorTargets) {

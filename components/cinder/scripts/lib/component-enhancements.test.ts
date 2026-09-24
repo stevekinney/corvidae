@@ -6,10 +6,22 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   componentEnhancementKey,
+  componentEnhancementOutputPaths,
   discoverComponentEnhancements,
 } from './component-enhancements.ts';
 
 describe('component enhancements', () => {
+  // COR-1196: the target's build.ts imports this alongside the two functions below, and
+  // corvidae's own copy dropped it before this fix — a regression this test would have caught.
+  it('computes the browser, declaration, and server outputs for one enhancement', () => {
+    const paths = componentEnhancementOutputPaths('/dist', 'second-editor');
+    expect(paths).toEqual({
+      browser: '/dist/components/second-editor/second-editor-enhancement.js',
+      types: '/dist/components/second-editor/second-editor-enhancement.d.ts',
+      server: '/dist/server/components/second-editor/second-editor-enhancement.js',
+    });
+  });
+
   it('discovers directly importable source for a second component', async () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), 'cinder-component-enhancement-'));
     const sourceRoot = join(fixtureRoot, 'src');
