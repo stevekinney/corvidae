@@ -9,9 +9,16 @@
   import { ReviewEditor, createDiffReviewState } from '@lostgradient/editor';
   import type { DiffReviewState, Thread } from '@lostgradient/editor';
 
+  // `original` has a bullet ("Ship the beta program") that `initialValue` drops entirely and no
+  // corresponding line replaces -- a genuine, isolated OLD-side deletion, not merely the old side
+  // of an unchanged/context row (which is also selectable, per the contract's "unchanged text
+  // rows are also commentable," but proves a different thing). It sits non-adjacent to the one
+  // line `initialValue` adds ("Ship CSV export"), so the line-diff reports them as an isolated
+  // `removed` row and an isolated `added` row, never a paired `modified` row.
   const original = `# Release notes
 
 - Ship login
+- Ship the beta program
 - Ship dashboard
 `;
 

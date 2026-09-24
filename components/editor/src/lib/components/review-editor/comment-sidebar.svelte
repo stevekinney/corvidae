@@ -39,7 +39,10 @@
      * (see `diff-review-comment-item.svelte`'s identical rule) -- those focus their own captured
      * detail in place instead. */
     onDiffCommentNavigate?: (comment: DiffReviewComment) => void;
-    /** Dispatches a diff-review mutation (delete/resolve/reopen) from this list. */
+    /** Dispatches a diff-review mutation (delete/resolve/reopen) from this list. Delete is only
+     * ever called after this component's own explicit inline confirmation -- never on the bare
+     * click of the row's Delete button (contract, Experience: "Deleting a new diff comment
+     * removes it from state and subsequent exports after an explicit confirmation"). */
     onDiffCommentAction?: (action: DiffReviewAction) => void;
     /** Additional CSS class */
     class?: string;
@@ -148,6 +151,29 @@
       return;
     }
     document.getElementById(capturedDetailId)?.focus();
+  }
+
+  /**
+   * Explicit confirmation before deleting a diff comment (contract, Experience: "Deleting a new
+   * diff comment removes it from state and subsequent exports after an explicit confirmation").
+   * This merged list is a separate implementation from `diff-review-comment-item.svelte` (which
+   * already gates its own delete behind a `ConfirmDialog`), so it independently needs this same
+   * guard rather than dispatching on a bare click. Tracks at most one row at a time, mirroring
+   * this file's own single-flight `showConfirmClear` pattern for "Clear all".
+   */
+  let confirmingDeleteDiffCommentId = $state<string | null>(null);
+
+  function requestDiffCommentDelete(commentId: string): void {
+    confirmingDeleteDiffCommentId = commentId;
+  }
+
+  function confirmDiffCommentDelete(commentId: string): void {
+    confirmingDeleteDiffCommentId = null;
+    onDiffCommentAction?.({ type: 'delete-comment', id: commentId });
+  }
+
+  function cancelDiffCommentDelete(): void {
+    confirmingDeleteDiffCommentId = null;
   }
 
   /** Get the first visible comment's body for preview */
@@ -443,11 +469,19 @@
                 variant="ghost"
                 size="xs"
                 aria-label="Delete diff comment: {formatDiffReviewCommentLocation(comment)}"
-                onclick={() => onDiffCommentAction?.({ type: 'delete-comment', id: comment.id })}
+                onclick={() => requestDiffCommentDelete(comment.id)}
               >
                 <Trash2 class="cinder-icon-sm" />
               </Button>
             </div>
+            <InlineConfirm
+              prompt="Delete this comment?"
+              confirmLabel="Delete"
+              destructive
+              open={confirmingDeleteDiffCommentId === comment.id}
+              onConfirm={() => confirmDiffCommentDelete(comment.id)}
+              onCancel={cancelDiffCommentDelete}
+            />
           {/if}
         </div>
       {/each}

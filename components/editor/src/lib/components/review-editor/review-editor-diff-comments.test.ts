@@ -407,4 +407,165 @@ describe('ReviewEditor diff comments: aggregate export', () => {
     expect(markdown.value).not.toContain('Resolved already.');
     expect(markdown.value).toContain('A document-anchored note.');
   });
+
+  test('the aggregate export distinguishes the two anchor domains: normalized-markdown for the diff record, document-text for the thread, and distinct domain-tagged IDs', () => {
+    const id = 'doc-aggregate-labels';
+    const withComment = apply(makeState(id, 'removed line\nkept line', 'kept line'), {
+      type: 'create-comment',
+      id: 'diff-comment-1',
+      targetId: id,
+      anchor: OLD_SIDE_ANCHOR,
+      body: 'This deletion looks intentional.',
+    });
+
+    const { component } = render(ReviewEditor, {
+      props: {
+        id,
+        original: 'removed line\nkept line',
+        value: 'kept line',
+        threads: [DOCUMENT_THREAD],
+        diffReviewState: withComment,
+      },
+    });
+
+    const json = component.exportAggregateReviewJson();
+    expect(json.ok).toBe(true);
+    if (!json.ok) return;
+    const parsed = JSON.parse(json.value) as {
+      records: Array<{
+        recordKind: string;
+        exportId: string;
+        anchor: { kind: string; coordinateSpace?: string };
+      }>;
+    };
+    expect(parsed.records).toHaveLength(2);
+    const diffRecord = parsed.records.find((record) => record.recordKind === 'diff');
+    const documentRecord = parsed.records.find((record) => record.recordKind === 'document');
+    expect(diffRecord?.anchor.coordinateSpace).toBe('normalized-markdown');
+    expect(documentRecord?.anchor.kind).toBe('document-text');
+    // Export IDs are domain-tagged tuples serialized as JSON strings (contract, "Identity,
+    // schema, and validation") -- the two record kinds must never collide, and this asserts both
+    // are actually tagged, not merely "different by accident of comment ID text."
+    expect(diffRecord?.exportId).toBe(JSON.stringify(['diff', 'diff-comment-1']));
+    expect(documentRecord?.exportId).toBe(JSON.stringify(['document', id, 'thread-1']));
+  });
+});
+
+describe('ReviewEditor diff comments: unsaved drafts inventory', () => {
+  /**
+   * Contract ("Drafts, modes, and ReviewEditor"): "Cancel preserves an existing draft; only the
+   * explicitly confirmed discard action deletes nonempty text," and every nonempty draft "must
+   * be saved or explicitly discarded" before ANY export scope is available. A draft is created
+   * entirely inside `review-editor-impl.svelte`'s own script state (`activeDiffDraftId` +
+   * dispatched `create-draft`/`update-draft` actions) -- the composer textarea that types into it
+   * is plain HTML, not part of the composed `DiffViewer` this harness cannot mount -- but the
+   * only way to REACH that state from a `diffReviewState` prop the host supplies is to inject a
+   * state that already contains a pending (nonempty-body) draft, exactly as a host reading back
+   * `onDiffReviewStateChange` after a real Cancel would. See
+   * `scripts/browser-fixtures/tests/review-editor-diff-comments.playwright.ts` for the real
+   * select-type-Cancel round trip through the actual composer in a real browser.
+   */
+  function stateWithPendingDraft(id: string): DiffReviewState {
+    const created = apply(makeState(id, 'removed line\nkept line', 'kept line'), {
+      type: 'create-draft',
+      draftId: 'draft-1',
+      targetId: id,
+      anchor: OLD_SIDE_ANCHOR,
+      oldPath: null,
+      newPath: null,
+    });
+    return apply(created, {
+      type: 'update-draft',
+      draftId: 'draft-1',
+      body: 'Half-written thought, cancelled before saving.',
+    });
+  }
+
+  test('a pending draft blocks aggregate export with drafts-pending, not an empty document', () => {
+    const id = 'doc-draft-blocks-export';
+    const { component } = render(ReviewEditor, {
+      props: { id, original: 'removed line\nkept line', value: 'kept line' },
+    });
+    // Enabling with a state that already contains the pending draft is equivalent, for the
+    // exporter's purposes, to the draft having been created live and then cancelled: the gate
+    // reads state, not history.
+    const withDraft = stateWithPendingDraft(id);
+    const rerendered = render(ReviewEditor, {
+      props: {
+        id,
+        original: 'removed line\nkept line',
+        value: 'kept line',
+        diffReviewState: withDraft,
+      },
+    });
+    const markdown = rerendered.component.exportAggregateReviewMarkdown();
+    expect(markdown).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'drafts-pending' }),
+    });
+    // The disabled-integration branch is a DIFFERENT error and must not be confused with this
+    // one -- the earlier `component` (no diffReviewState at all) still reports `invalid-record`.
+    expect(component.exportAggregateReviewMarkdown()).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'invalid-record' }),
+    });
+  });
+
+  test('renders the pending draft in an "Unsaved drafts" inventory, and Discard removes it and unblocks export', async () => {
+    const id = 'doc-draft-inventory';
+    let latest: DiffReviewState | undefined;
+    const { container, component } = render(ReviewEditor, {
+      props: {
+        id,
+        original: 'removed line\nkept line',
+        value: 'kept line',
+        diffReviewState: stateWithPendingDraft(id),
+        onDiffReviewStateChange: (next) => {
+          latest = next;
+        },
+      },
+    });
+    await flush();
+
+    const inventory = container.querySelector('.diff-review-drafts-inventory');
+    expect(inventory).not.toBeNull();
+    expect(inventory?.textContent).toContain('Half-written thought, cancelled before saving.');
+    expect(component.exportAggregateReviewMarkdown()).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'drafts-pending' }),
+    });
+
+    const discard = Array.from(inventory?.querySelectorAll('button') ?? []).find(
+      (button) => button.textContent?.trim() === 'Discard',
+    );
+    if (!discard) throw new Error('Expected a Discard button in the drafts inventory.');
+    discard.click();
+    await flush();
+
+    expect(latest?.drafts).toHaveLength(0);
+    expect(container.querySelector('.diff-review-drafts-inventory')).toBeNull();
+    const markdown = component.exportAggregateReviewMarkdown();
+    expect(markdown.ok).toBe(true);
+  });
+
+  test('readonly renders the inventory read-only: no Save/Discard controls', async () => {
+    const id = 'doc-draft-inventory-readonly';
+    const { container } = render(ReviewEditor, {
+      props: {
+        id,
+        original: 'removed line\nkept line',
+        value: 'kept line',
+        mode: 'readonly',
+        diffReviewState: stateWithPendingDraft(id),
+      },
+    });
+    await flush();
+    const inventory = container.querySelector('.diff-review-drafts-inventory');
+    expect(inventory).not.toBeNull();
+    expect(
+      Array.from(inventory?.querySelectorAll('button') ?? []).some(
+        (button) => button.textContent?.trim() === 'Discard',
+      ),
+    ).toBe(false);
+  });
 });

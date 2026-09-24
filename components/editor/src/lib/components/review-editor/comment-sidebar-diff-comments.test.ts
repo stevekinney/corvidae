@@ -261,3 +261,86 @@ describe('ReviewEditor diff comments: comment sidebar merged list — mutation a
     expect(container.querySelector('.diff-comment-row-actions')).toBeNull();
   });
 });
+
+describe('ReviewEditor diff comments: comment sidebar merged list — delete requires explicit confirmation', () => {
+  /**
+   * Contract (Experience): "Deleting a new diff comment removes it from state and subsequent
+   * exports after an explicit confirmation." `diff-review-comment-item.svelte` (the standalone
+   * `DiffReviewComments` leaf) already gates its own delete behind a `ConfirmDialog`; this row is
+   * a SEPARATE implementation (COR-512 / DR-7's own merged list), so it must independently honor
+   * the same rule rather than dispatching `delete-comment` on a bare click.
+   */
+  test('clicking Delete does not immediately dispatch delete-comment', async () => {
+    let dispatched: DiffReviewAction | undefined;
+    const { container } = render(CommentSidebar, {
+      props: {
+        id: 'sidebar-delete-1',
+        threads: [],
+        diffReviewState: stateWithCurrentComment(),
+        onDiffCommentAction: (action) => {
+          dispatched = action;
+        },
+      },
+    });
+    const deleteButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label^="Delete diff comment"]',
+    );
+    if (!deleteButton) throw new Error('Expected a delete button.');
+    await fireEvent.click(deleteButton);
+    expect(dispatched).toBeUndefined();
+  });
+
+  test('confirming the delete prompt dispatches delete-comment exactly once', async () => {
+    let dispatched: DiffReviewAction | undefined;
+    const { container } = render(CommentSidebar, {
+      props: {
+        id: 'sidebar-delete-2',
+        threads: [],
+        diffReviewState: stateWithCurrentComment(),
+        onDiffCommentAction: (action) => {
+          dispatched = action;
+        },
+      },
+    });
+    const deleteButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label^="Delete diff comment"]',
+    );
+    if (!deleteButton) throw new Error('Expected a delete button.');
+    await fireEvent.click(deleteButton);
+
+    const confirm = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Delete',
+    );
+    if (!confirm) throw new Error('Expected a confirmation Delete action.');
+    await fireEvent.click(confirm);
+
+    expect(dispatched).toEqual({ type: 'delete-comment', id: 'comment-current' });
+  });
+
+  test('cancelling the delete prompt never dispatches delete-comment', async () => {
+    let dispatched: DiffReviewAction | undefined;
+    const { container } = render(CommentSidebar, {
+      props: {
+        id: 'sidebar-delete-3',
+        threads: [],
+        diffReviewState: stateWithCurrentComment(),
+        onDiffCommentAction: (action) => {
+          dispatched = action;
+        },
+      },
+    });
+    const deleteButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label^="Delete diff comment"]',
+    );
+    if (!deleteButton) throw new Error('Expected a delete button.');
+    await fireEvent.click(deleteButton);
+
+    const cancel = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Cancel',
+    );
+    if (!cancel) throw new Error('Expected a Cancel action.');
+    await fireEvent.click(cancel);
+
+    expect(dispatched).toBeUndefined();
+  });
+});

@@ -34,19 +34,20 @@ test.describe('Diff review — ReviewEditor integration', () => {
     const mount = page.locator('#example-mount-diff-comments');
     await mount.getByRole('tab', { name: 'Diff' }).click();
 
-    // The fixture's diff has no removed line by default (it only adds a line) -- exercise the
-    // "old-side deletion" scenario by selecting the OLD side of a line that also exists on the
-    // new side, which is still a real old-side annotation control on `DiffViewer`'s own rendered
-    // unified diff (not anything this feature adds).
-    const control = mount
-      .locator('[data-cinder-annotation-control][data-cinder-side="old"]')
-      .first();
+    // The fixture's `original` has a bullet ("Ship the beta program") `initialValue` drops
+    // entirely -- a genuine, isolated old-side DELETION, distinct from the old side of an
+    // unchanged/context row (also selectable, per the contract's "unchanged text rows are also
+    // commentable," but a different code path in `diff-line.svelte`: the `removed` branch, not
+    // the `same` branch). Scope to the row that actually renders as removed so this cannot
+    // silently degrade back to a context-row selection.
+    const removedRow = mount.locator('.diff-row', { has: page.locator('.diff-line-removed') });
+    const control = removedRow.locator('[data-cinder-annotation-control][data-cinder-side="old"]');
     await expect(control).toBeVisible();
     await control.click();
 
     const composer = mount.getByLabel('Diff comment', { exact: true });
     await expect(composer).toBeVisible();
-    await composer.fill('This line moves to the dashboard section.');
+    await composer.fill('This bullet moves to a different section.');
     await mount.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(mount.getByLabel('Diff comment', { exact: true })).toHaveCount(0);
 
@@ -59,7 +60,7 @@ test.describe('Diff review — ReviewEditor integration', () => {
     await sidebarToggle.click();
     const diffRow = mount.locator('[data-anchor-kind="diff"]');
     await expect(diffRow).toHaveCount(1);
-    await expect(diffRow).toContainText('This line moves to the dashboard section.');
+    await expect(diffRow).toContainText('This bullet moves to a different section.');
     await expect(diffRow.locator('.diff-comment-kind-badge')).toHaveText('Diff · old');
   });
 
@@ -98,5 +99,53 @@ test.describe('Diff review — ReviewEditor integration', () => {
     await mount.getByRole('tab', { name: 'Editor' }).click();
     await mount.locator('.thread-item', { hasText: 'Ship login' }).click();
     await expect(mount.locator('[id$="-thread-popover"]')).toBeVisible();
+  });
+
+  test('navigating to a diff comment switches back from a mode that hides its side, and focuses its own control', async ({
+    page,
+  }) => {
+    const mount = page.locator('#example-mount-diff-comments');
+    await mount.getByRole('tab', { name: 'Diff' }).click();
+
+    // Create an OLD-side comment on the genuinely removed line, and capture its side/line --
+    // NOT its DOM id: `DiffViewer` scopes every control id to a per-mount `instanceId` (DR-3/DR-4,
+    // "scoped instance IDs"), and navigating away from the diff tab destroys this component
+    // entirely (an `{:else if}` branch, not a hide), so the id a fresh remount assigns the SAME
+    // logical control is deliberately a different string. Side/line identify the anchor itself.
+    const removedRow = mount.locator('.diff-row', { has: page.locator('.diff-line-removed') });
+    const control = removedRow.locator('[data-cinder-annotation-control][data-cinder-side="old"]');
+    await expect(control).toBeVisible();
+    const anchorLine = await control.getAttribute('data-cinder-line');
+    if (!anchorLine) throw new Error('Expected the annotation control to carry its line number.');
+    await control.click();
+    await mount.getByLabel('Diff comment', { exact: true }).fill('This bullet moves elsewhere.');
+    await mount.getByRole('button', { name: 'Save', exact: true }).click();
+
+    // Switch to Final mode, which hides every old-only (removed) row entirely -- the comment's
+    // own anchor is no longer visible in the diff at all, so navigating back to it MUST switch
+    // the mode, not just the tab (contract, `DiffViewerRef.focusAnchor`: "a `final`-mode viewer
+    // switches to `unified` to expose an `old`-side anchor").
+    const diffModeControls = mount.locator('.controls-diff-mode-inline');
+    await diffModeControls.getByRole('radio', { name: 'Final' }).click();
+    await expect(mount.locator('.diff-line-removed')).toHaveCount(0);
+
+    // Navigate away, open the merged list from the editor tab, and select the diff comment.
+    await mount.getByRole('tab', { name: 'Editor' }).click();
+    const sidebarToggle = mount.getByRole('button', { name: /comments?/i }).first();
+    await sidebarToggle.click();
+    await mount.locator('[data-diff-comment="true"]').click();
+
+    // The diff tab is selected, in a mode that exposes the old side again, AND focus actually
+    // lands on that comment's own control -- proving `focusAnchor` ran, not merely that the tab
+    // switched (a mount-time flush could leave `bind:ref` unpopulated and this would silently
+    // never fire; only asserting real focus catches that). Matched by side + line, since the
+    // freshly remounted `DiffViewer` assigns its controls a new `instanceId` prefix.
+    await expect(mount.getByRole('tab', { name: 'Diff', selected: true })).toBeVisible();
+    await expect(
+      diffModeControls.getByRole('radio', { name: 'Unified', checked: true }),
+    ).toBeVisible();
+    const focused = page.locator('[data-cinder-annotation-control]:focus');
+    await expect(focused).toHaveAttribute('data-cinder-side', 'old');
+    await expect(focused).toHaveAttribute('data-cinder-line', anchorLine);
   });
 });

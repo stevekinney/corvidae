@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { flushSync, tick } from 'svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { truncate } from '../../utilities/truncate.ts';
@@ -81,6 +81,7 @@
     DiffReviewAction,
     DiffReviewAnchor,
     DiffReviewComment,
+    DiffReviewDraft,
     DiffReviewError,
     DiffReviewResult,
     DiffReviewState,
@@ -88,6 +89,7 @@
   import { restoreDiffReviewState } from '../../diff-review-state/index.ts';
   import { dispatchDiffReviewAction } from '../../utilities/diff-review-dispatch.ts';
   import { formatDiffReviewCommentLocation } from '../diff-review-comments/diff-review-comment-location.ts';
+  import DiffReviewDraftsInventory from '../diff-review/diff-review-drafts-inventory.svelte';
   import {
     buildReviewEditorDiffReviewTarget,
     diffReviewStatesEqual,
@@ -353,7 +355,8 @@
 
   /** Mirrors `DiffReview`'s own `handleSelectionChange` (COR-509 / DR-6): a cleared selection
    * only closes the composer panel (an already-created draft stays in state, recoverable from
-   * the merged comment list), and a committed selection opens a new draft at that anchor. */
+   * the `Unsaved drafts` inventory below -- see `handleDiffDraftOpen`), and a committed
+   * selection opens a new draft at that anchor. */
   function handleDiffAnnotationSelectionChange(
     selection: DiffViewerAnnotationSelection | null,
   ): void {
@@ -403,6 +406,32 @@
   }
 
   /**
+   * Unsaved-drafts inventory (contract, "Drafts, modes, and ReviewEditor": "Cancel preserves an
+   * existing draft; only the explicitly confirmed discard action deletes nonempty text," and
+   * "All nonempty drafts ... appear in a persistent `Unsaved drafts` inventory with location,
+   * Open, Save, and Discard actions"). Cancelling the inline composer (`closeDiffComposer`) never
+   * deletes a nonempty draft -- without this, that draft would have no surviving UI path back
+   * into view, and every export scope stays `drafts-pending`-blocked with no visible way to
+   * clear it. `ReviewEditor` is a single-target, single-file host, so "Open" reduces to opening
+   * the diff tab and re-selecting that draft as the active composer; there is no file/target
+   * filter to clear.
+   */
+  function handleDiffDraftOpen(draft: DiffReviewDraft): void {
+    activeView = 'diff';
+    activeDiffDraftId = draft.draftId;
+  }
+
+  function handleDiffDraftSave(draftId: string): void {
+    const outcome = dispatchDiffReviewChange({ type: 'save-draft', draftId });
+    if (outcome.ok && draftId === activeDiffDraftId) closeDiffComposer();
+  }
+
+  function handleDiffDraftDiscard(draftId: string): void {
+    const outcome = dispatchDiffReviewChange({ type: 'discard-draft', draftId });
+    if (outcome.ok && draftId === activeDiffDraftId) closeDiffComposer();
+  }
+
+  /**
    * Only ever called for a CURRENT diff comment (contract, "Viewer selection and navigation" /
    * `DiffReviewComments`' identical `onNavigate` note): opens the diff tab, then focuses the
    * anchor through `DiffViewer`'s own public `focusAnchor`, which self-adjusts the bound
@@ -415,10 +444,19 @@
     announce('Switched to diff view');
     if (comment.anchor.kind !== 'range') return;
     const anchor = comment.anchor;
-    void tick().then(() => {
-      diffViewerRef?.focusAnchor({ side: anchor.side, startLine: anchor.startLine });
-      return undefined;
-    });
+    // `activeView === 'diff'` is an `{:else if}` branch: navigating here from another tab
+    // DESTROYS and remounts `DiffViewer` (not merely hides it), so `diffViewerRef` is `undefined`
+    // until that fresh instance's own mount effect runs and its `bind:ref` propagates back up. A
+    // single microtask `tick()` is not reliably enough turns of the scheduler for a freshly
+    // mounted child's own effect to have already flowed a bindable prop back to this scope --
+    // `flushSync` (mirroring `DiffViewer`'s own identical `flushPendingUpdates` helper) forces
+    // every pending update, including that mount effect, to apply before `diffViewerRef` is read.
+    try {
+      flushSync();
+    } catch {
+      // Already inside a synchronous flush -- nothing further to force here.
+    }
+    diffViewerRef?.focusAnchor({ side: anchor.side, startLine: anchor.startLine });
   }
 
   function handleDiffCommentAction(action: DiffReviewAction): void {
@@ -2239,6 +2277,28 @@
         document editing is unaffected.
       </p>
     </Callout>
+  {/if}
+
+  <!-- Unsaved diff-review drafts inventory (COR-512 / DR-7): "persistent" per the contract, so
+       it renders regardless of `activeView`, not only while the diff tab happens to be open --
+       otherwise a draft cancelled from the composer (which never deletes nonempty text) would be
+       invisible again the moment the person left the diff tab, with `drafts-pending` silently
+       blocking every export scope and no visible way back to it. `handleDiffDraftOpen` switches
+       to the diff tab itself when the person chooses "Open". Excludes `activeDiffDraftId`: that
+       one already has its own dedicated composer panel open (immediately, on `create-draft`,
+       before any text is typed) -- listing it here too would duplicate it under a second,
+       ambiguous "Save" control for the exact same draft. -->
+  {#if effectiveDiffReviewState}
+    {@const hiddenDrafts = effectiveDiffReviewState.drafts.filter(
+      (draft) => draft.draftId !== activeDiffDraftId,
+    )}
+    <DiffReviewDraftsInventory
+      drafts={hiddenDrafts}
+      readonly={isReadonly}
+      onopen={handleDiffDraftOpen}
+      onsave={handleDiffDraftSave}
+      ondiscard={handleDiffDraftDiscard}
+    />
   {/if}
 
   <!-- Hidden form inputs for FormData participation -->
