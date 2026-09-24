@@ -221,4 +221,66 @@ diff --git a/src/two.ts b/src/two.ts
     expect(control).not.toBeNull();
     expect(document.activeElement).toBe(control);
   });
+
+  test('navigating to a comment on a DIFFERENT TARGET KIND (Markdown -> source) mounts the new viewer and focuses it', async () => {
+    // The riskier case the file-occurrence test above doesn't cover: this
+    // swaps which *component* is mounted (DiffViewer -> SourceDiffViewer),
+    // not just which file a stable SourceDiffViewer instance shows.
+    const sourceTarget: DiffReviewTargetInput = {
+      targetId: 'patch',
+      kind: 'source',
+      label: 'Patch',
+      patch: `diff --git a/src/one.ts b/src/one.ts
+--- a/src/one.ts
++++ b/src/one.ts
+@@ -1,2 +1,2 @@
+-const a = 1;
++const a = 2;
+`,
+    };
+    const mixedTargets: DiffReviewTargetInput[] = [markdownTargets[0]!, sourceTarget];
+    const created = createDiffReviewState(mixedTargets);
+    if (!created.ok) throw new Error('fixture setup failed');
+    const commented = reduceDiffReviewState(created.value, {
+      type: 'create-comment',
+      targetId: 'patch',
+      anchor: {
+        kind: 'range',
+        fileOccurrence: 0,
+        hunkOccurrence: 0,
+        side: 'new',
+        startLine: 1,
+        endLine: 1,
+        coordinateSpace: 'raw-source',
+        selectedText: 'const a = 2;',
+        contextBefore: [],
+        contextAfter: [],
+      },
+      body: 'On the source target',
+    });
+    if (!commented.ok) throw new Error('fixture setup failed');
+    // Start on the Markdown target, not the comment's source target.
+    const startedState = selectFileZero(commented.value);
+    expect(startedState.selectedTargetId).toBe('t1');
+
+    let latest = startedState;
+    const { getByText, container, rerender } = render(DiffReview, {
+      targets: mixedTargets,
+      state: startedState,
+      onStateChange: (next: DiffReviewState) => {
+        latest = next;
+      },
+    });
+
+    await getByText('Go to').click();
+    expect(latest.selectedTargetId).toBe('patch');
+    await rerender({ targets: mixedTargets, state: latest, onStateChange: () => {} });
+
+    const control = container.querySelector(
+      '[data-cinder-annotation-control][data-cinder-file-occurrence="0"][data-cinder-side="new"][data-cinder-line="1"]',
+    );
+    expect(control).not.toBeNull();
+    expect(document.activeElement).toBe(control);
+    expect(container.querySelector('.diff-review-navigation-unavailable')).toBeNull();
+  });
 });

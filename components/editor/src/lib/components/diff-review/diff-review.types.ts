@@ -21,7 +21,11 @@ export type DiffReviewProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   onStateChange: (next: DiffReviewState) => void;
   /**
    * Disables every mutating control (comments, drafts, Reviewed, review
-   * note). Navigation, filtering, and export remain available.
+   * note). Navigation, filtering, and export remain available. A line-level
+   * comment's "Go to" always reports its anchor unavailable in this mode,
+   * per the underlying viewers' own contract (see README, "Comment-to-anchor
+   * navigation") -- file navigation and comment viewing themselves are not
+   * otherwise affected.
    * @default false
    */
   readonly?: boolean;
