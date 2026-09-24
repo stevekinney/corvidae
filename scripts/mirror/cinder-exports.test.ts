@@ -9,6 +9,7 @@ import {
   computeDeprecatedExperimentalAliases,
   computeExports,
   computeFiles,
+  computeRootExport,
   generateCinderSurface,
   legacyEntrySourcePath,
   orderedExportEntry,
@@ -68,6 +69,19 @@ describe('orderedExportEntry', () => {
     expect(orderedExportEntry({ default: './dist/index.js' })).toEqual({
       default: './dist/index.js',
     });
+  });
+});
+
+describe('computeRootExport', () => {
+  test('resolves import and default to the same compiled file', () => {
+    // publint --strict treats a root whose `import` and `default` name different files as a dual
+    // CJS/ESM publish and demands CommonJS-shaped types under `require`, which an ESM-only package
+    // cannot honestly supply. Bun and Node take `node`, bundlers take `browser` or `svelte`, so
+    // `import` only reaches generic resolvers, which get the compiled build like `default` does.
+    const root = computeRootExport();
+    expect(root.import).toBe(root.default);
+    expect(root.svelte).toBe('./src/index.ts');
+    expect(root.browser).toBe('./src/index.ts');
   });
 });
 
