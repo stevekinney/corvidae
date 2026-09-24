@@ -194,6 +194,16 @@ describe('the JSON import attribute (COR-1196)', () => {
     expect(entries).toEqual([{ specifier: '@fixture/typed/data', json: true }]);
   });
 
+  test('a `types` leaf nested under another condition never votes either, the shape `soundPackage` below and every dual-CJS/ESM entry in package-surface.json actually use', () => {
+    const entries = importableSpecifierEntries('@fixture/nested-typed', {
+      './data': {
+        import: { types: './dist/data.d.ts', default: './dist/data.json' },
+        require: { types: './dist/data.d.cts', default: './dist/data.json' },
+      },
+    });
+    expect(entries).toEqual([{ specifier: '@fixture/nested-typed/data', json: true }]);
+  });
+
   test('a subpath whose conditions disagree about .json has no single correct attribute and is a hard failure', () => {
     expect(() =>
       importableSpecifierEntries('@fixture/mixed', {

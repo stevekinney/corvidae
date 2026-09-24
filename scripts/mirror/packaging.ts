@@ -290,6 +290,17 @@ const sortBySpecifier = (a: ImportableSpecifier, b: ImportableSpecifier): number
   a.specifier < b.specifier ? -1 : a.specifier > b.specifier ? 1 : 0;
 
 /**
+ * Whether a `flattenExportTarget` condition path names the `types` condition at any depth —
+ * `types`, `types[0]`, or nested under another condition (`import.types`, the shape `soundPackage`
+ * in `packaging.test.ts` and every real dual-CJS/ESM entry in `package-surface.json` actually use).
+ * A plain `condition !== 'types'` check only catches the unnested case; every dot-joined segment
+ * has to be compared with its array-index suffix stripped.
+ */
+function isTypesCondition(condition: string): boolean {
+  return condition.split('.').some((segment) => segment.replace(/\[\d+\]$/, '') === 'types');
+}
+
+/**
  * Whether one subpath's export target resolves exclusively to `.json` file(s) — the file Node
  * refuses to load without `with { type: 'json' }` on the importing statement (`ERR_IMPORT_ATTRIBUTE_MISSING`,
  * verified against Node 26 and Bun 1.4.2). Decided from the target's own leaves, via the same
@@ -304,10 +315,7 @@ const sortBySpecifier = (a: ImportableSpecifier, b: ImportableSpecifier): number
  * import statement, which is a defect in the exports map this surfaces rather than routes around.
  */
 function exportsResolveToJson(publicName: string, subpath: string, target: ExportTarget): boolean {
-  const leaves = flattenExportTarget(target).filter(
-    ([condition]) =>
-      condition !== 'types' && !condition.startsWith('types.') && !condition.startsWith('types['),
-  );
+  const leaves = flattenExportTarget(target).filter(([condition]) => !isTypesCondition(condition));
   const jsonLeaves = leaves.filter(([, file]) => file.endsWith('.json'));
   if (jsonLeaves.length === 0) return false;
   if (jsonLeaves.length === leaves.length) return true;
@@ -374,10 +382,6 @@ export function nodeImportableSpecifierEntries(
       json: exportsResolveToJson(publicName, subpath, target),
     }))
     .toSorted(sortBySpecifier);
-}
-
-export function nodeImportableSpecifiers(publicName: string, exports: SurfaceExportsMap): string[] {
-  return nodeImportableSpecifierEntries(publicName, exports).map((entry) => entry.specifier);
 }
 
 const nodeConditions = ['node', 'import', 'require', 'default'] as const;
