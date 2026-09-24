@@ -273,6 +273,15 @@ export type {
   DataGridDensity,
   DataGridProps,
 } from './components/data-grid/index.ts';
+export {
+  parseDelimitedText,
+  resolveDelimitedTextColumnKeys,
+} from './components/data-grid/parse-delimited-text.ts';
+export type {
+  DelimitedTextRow,
+  ParseDelimitedTextOptions,
+  ParsedDelimitedText,
+} from './components/data-grid/parse-delimited-text.ts';
 
 export { default as DataTable } from './components/data-table/index.ts';
 export type {

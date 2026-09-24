@@ -1547,14 +1547,14 @@
       "tags": ["grid", "data", "spreadsheet"],
       "useWhen": [
         "Rendering interactive tabular data that will need grid behavior such as selection, virtualization, resizing, or editing.",
-        "You need role=grid semantics instead of native table semantics."
+        "You need role=grid semantics instead of native table semantics.",
+        "You need inline cell editing backed by Cinder's own Input, with commit/cancel keyboard behavior handled for you.",
+        "You need opt-in pointer- and keyboard-driven column resizing or reordering (`resizableColumns` / `reorderableColumns`).",
+        "You need opt-in toolbar search/zoom controls, or `zoom` scaling row/header height, column width, and text."
       ],
       "avoidWhen": [
         {
           "reason": "You only need a semantic read-only table — use DataTable or the Table family instead."
-        },
-        {
-          "reason": "You need resize handles, drag-to-reorder controls, or editing today — DataGrid does not provide them yet."
         }
       ],
       "related": ["data-table", "table"],

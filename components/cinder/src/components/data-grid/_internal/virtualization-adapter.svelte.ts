@@ -132,6 +132,22 @@ export class DataGridVirtualizationAdapter implements DataGridVirtualWindow {
     this.#update();
   }
 
+  /**
+   * Tells the column virtualizer that the unpinned column at `index` is now
+   * `size` px wide (COR-1131). `@tanstack/virtual-core` only recomputes an
+   * item's cached size from `getColumnWidth` on an explicit
+   * `resizeItem`/`measureElement` call — a plain option change is not
+   * enough — so a controlled `columnSizing` update or a pointer/keyboard
+   * resize must call this or the virtualized column tracks and total width
+   * go stale even though the resized cell's own CSS width is correct.
+   */
+  resizeColumn(index: number, size: number): void {
+    if (typeof window === 'undefined') return;
+    this.#subscribe();
+    this.#syncOptions();
+    this.#columnVirtualizer?.resizeItem(index, size);
+  }
+
   scrollToRow(index: number, options: ScrollToOptions = { align: 'auto' }): void {
     this.#subscribe();
     this.#syncOptions();
