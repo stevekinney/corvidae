@@ -29,7 +29,7 @@ import { buildReviewEditorDiffReviewTarget } from './review-editor-diff-review.t
 
 setupHappyDom();
 
-const { cleanup, render } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: ReviewEditor } = await import('./review-editor.svelte');
 
 afterEach(() => {
@@ -263,6 +263,78 @@ describe('ReviewEditor diff comments: content-change latch', () => {
     expect(latest?.comments[0]?.outdated).toBe(true);
     // The comment is retained, not dropped, by the latch.
     expect(latest?.comments).toHaveLength(1);
+  });
+
+  test('a committed original (baseline) change also immediately latches diff comments on that target outdated', async () => {
+    const id = 'doc-latch-original';
+    const withComment = apply(makeState(id, 'original text', 'current text'), {
+      type: 'create-comment',
+      id: 'comment-1',
+      targetId: id,
+      anchor: OLD_SIDE_ANCHOR,
+      body: 'Please double-check this.',
+    });
+
+    let latest: DiffReviewState | undefined;
+    const { rerender } = render(ReviewEditor, {
+      props: {
+        id,
+        original: 'original text',
+        value: 'current text',
+        diffReviewState: withComment,
+        onDiffReviewStateChange: (next) => {
+          latest = next;
+        },
+      },
+    });
+    await flush();
+    expect(withComment.comments[0]?.outdated).toBe(false);
+
+    // Only the BASELINE changes here -- `value` is untouched. The target's content identity is
+    // still derived from both, so this alone must latch every comment on it outdated.
+    await rerender({ original: 'a completely different baseline' });
+    await flush();
+
+    expect(latest).toBeDefined();
+    expect(latest?.comments[0]?.outdated).toBe(true);
+    expect(latest?.comments).toHaveLength(1);
+  });
+});
+
+describe("ReviewEditor diff comments: mode='readonly' drives the same mutation restrictions", () => {
+  test('a readonly ReviewEditor renders no diff-comment mutation controls, and export remains available', async () => {
+    const id = 'doc-readonly';
+    const withComment = apply(makeState(id, 'removed line\nkept line', 'kept line'), {
+      type: 'create-comment',
+      id: 'comment-1',
+      targetId: id,
+      anchor: OLD_SIDE_ANCHOR,
+      body: 'Please double-check this.',
+    });
+
+    const { container, component } = render(ReviewEditor, {
+      props: {
+        id,
+        original: 'removed line\nkept line',
+        value: 'kept line',
+        mode: 'readonly',
+        diffReviewState: withComment,
+      },
+    });
+    await flush();
+
+    const toggle = container.querySelector<HTMLButtonElement>(`#${id}-sidebar-toggle`);
+    if (!toggle) throw new Error('Expected the comments sidebar toggle.');
+    await fireEvent.click(toggle);
+
+    const diffRow = container.querySelector('[data-anchor-kind="diff"]');
+    expect(diffRow).not.toBeNull();
+    expect(container.querySelector('.diff-comment-row-actions')).toBeNull();
+
+    // Read-only drives the same MUTATION restrictions -- navigation, viewing, and export remain
+    // available (contract, "readonly defaults false ... navigation, filters, viewing comments,
+    // and valid exports remain available").
+    expect(component.exportAggregateReviewMarkdown().ok).toBe(true);
   });
 });
 
