@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
-import type { MirrorTarget } from './manifests.ts';
+import { mirrorTargets, type MirrorTarget } from './manifests.ts';
 import {
   additionalSourceRoots,
   applyVersionConstants,
@@ -54,13 +54,20 @@ const weftDeclarations: readonly string[] = [
   ...(validationInputs['@lostgradient/weft'] ?? []).flatMap((cluster) => cluster.paths),
 ];
 
-/** Those declarations as fixture files, minus whichever the caller wants missing. */
+/**
+ * Those declarations as fixture files, minus whichever the caller wants missing, plus the
+ * README `readPackageReadme` now emits unconditionally rather than by declaration (it is no
+ * longer one of `weftDeclarations`, so `omitted` never applies to it).
+ */
 function weftDeclarationFixture(omitted?: string): Record<string, string> {
-  return Object.fromEntries(
-    weftDeclarations
-      .filter((path) => path !== omitted)
-      .map((path) => [`packages/weft/${path}`, `// ${path}\n`]),
-  );
+  return {
+    ...Object.fromEntries(
+      weftDeclarations
+        .filter((path) => path !== omitted)
+        .map((path) => [`packages/weft/${path}`, `// ${path}\n`]),
+    ),
+    'packages/weft/README.md': '# Weft\n',
+  };
 }
 
 describe('the documents a workspace declares', () => {
@@ -279,6 +286,8 @@ describe('what counts as source', () => {
         'components/editor/src/AGENTS.md': '# Not source\n',
         'components/editor/src/node_modules/installed/index.js': 'module.exports = {};\n',
         'components/editor/coverage-ratchet.json': '{"lines":90}\n',
+        // `readPackageReadme` emits this unconditionally, regardless of `src/` — it is otherwise
+        // absent from this fixture's assertions, which are about the `src/` emission rule.
         'components/editor/README.md': '# editor\n',
         // `validationInputs['@lostgradient/editor']` declares `scripts/preload.ts` (COR-1196), so
         // `planSource` now requires it to exist wherever `editorWorkspace` is planned — including
@@ -289,6 +298,7 @@ describe('what counts as source', () => {
       async (root) => {
         const plan = await planSource(root, [editorWorkspace]);
         expect(Object.keys(plan.files).toSorted()).toEqual([
+          'packages/editor/README.md',
           'packages/editor/scripts/preload.ts',
           'packages/editor/src/lib/index.ts',
           'packages/editor/src/lib/nested/helper.ts',
@@ -358,7 +368,7 @@ describe('what counts as source', () => {
     await withTree(
       {
         'packages/weft/src/index.ts': 'export const weft = true;\n',
-        ...weftDeclarationFixture('README.md'),
+        ...weftDeclarationFixture('scripts/lib/workflow-visibility-backfill.ts'),
       },
       async (root) => {
         const plan = planSource(root, [
@@ -369,7 +379,7 @@ describe('what counts as source', () => {
           },
         ]);
         await expect(plan).rejects.toThrow(SourceEmissionError);
-        await expect(plan).rejects.toThrow('README.md');
+        await expect(plan).rejects.toThrow('scripts/lib/workflow-visibility-backfill.ts');
       },
     );
   });
@@ -414,6 +424,110 @@ describe('what counts as source', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+});
+
+describe('the per-package README every workspace carries', () => {
+  /**
+   * The defect this closes: before `readPackageReadme` existed, a workspace's README shipped only
+   * if someone declared it in `additionalSourceRoots` — which only `@lostgradient/weft` ever did
+   * (COR-1192). `@lostgradient/cryptography`, `@lostgradient/embeddings` and
+   * `@lostgradient/tool-protocol` all carry a `README.md` in corvidae and none of them was
+   * declared, so their mirrored packages never received one. This asserts the general behavior
+   * directly against a workspace name nothing declares, rather than against one of those three, so
+   * it keeps failing the same way even if a future declaration is added for one of them.
+   */
+  test('is emitted even though nothing declares it in additionalSourceRoots', async () => {
+    expect(additionalSourceRoots['@lostgradient/cryptography']).toBeUndefined();
+    await withTree(
+      {
+        'packages/cryptography/src/index.ts': 'export const cryptography = true;\n',
+        'packages/cryptography/README.md': '# Cryptography\n',
+      },
+      async (root) => {
+        const plan = await planSource(root, [
+          {
+            workspace: '@lostgradient/cryptography',
+            corvidaeDirectory: 'packages/cryptography',
+            targetDirectory: 'packages/cryptography',
+          },
+        ]);
+        expect(Object.keys(plan.files).toSorted()).toEqual([
+          'packages/cryptography/README.md',
+          'packages/cryptography/src/index.ts',
+        ]);
+        expect(new TextDecoder().decode(plan.files['packages/cryptography/README.md'])).toBe(
+          '# Cryptography\n',
+        );
+      },
+    );
+  });
+
+  test('a workspace with no README.md is skipped, not refused', async () => {
+    await withTree(
+      { 'packages/cryptography/src/index.ts': 'export const cryptography = true;\n' },
+      async (root) => {
+        const plan = await planSource(root, [
+          {
+            workspace: '@lostgradient/cryptography',
+            corvidaeDirectory: 'packages/cryptography',
+            targetDirectory: 'packages/cryptography',
+          },
+        ]);
+        expect(Object.keys(plan.files)).toEqual(['packages/cryptography/src/index.ts']);
+      },
+    );
+  });
+
+  test('is not part of ownedPrefixes, so a sync never prunes it', async () => {
+    await withTree(
+      {
+        'packages/cryptography/src/index.ts': 'export const cryptography = true;\n',
+        'packages/cryptography/README.md': '# Cryptography\n',
+      },
+      async (root) => {
+        const plan = await planSource(root, [
+          {
+            workspace: '@lostgradient/cryptography',
+            corvidaeDirectory: 'packages/cryptography',
+            targetDirectory: 'packages/cryptography',
+          },
+        ]);
+        expect(plan.ownedPrefixes).toEqual(['packages/cryptography/src']);
+      },
+    );
+  });
+
+  /**
+   * The claim `readPackageReadme`'s doc comment makes — that corvidae carries a README in every
+   * workspace, which is what makes skipping a missing one safe rather than a silent gap — checked
+   * against the real tree for every workspace every target actually emits, rather than trusted as
+   * prose.
+   */
+  test.each([...mirrorTargets])(
+    'every workspace the %s target emits has a README in its plan',
+    async (target) => {
+      const { plan } = committedPlans[target];
+      const missing: string[] = [];
+      for (const workspace of plan.emitted) {
+        const carriesSource = await Bun.file(
+          join(corvidaeRoot, workspace.corvidaeDirectory, 'README.md'),
+        ).exists();
+        if (!carriesSource) {
+          missing.push(
+            `${workspace.workspace}: corvidae has no README.md at ${workspace.corvidaeDirectory}`,
+          );
+          continue;
+        }
+        const planned = plan.source.files[`${workspace.targetDirectory}/README.md`];
+        if (planned === undefined) {
+          missing.push(
+            `${workspace.workspace}: not emitted at ${workspace.targetDirectory}/README.md`,
+          );
+        }
+      }
+      expect(missing).toEqual([]);
+    },
+  );
 });
 
 describe('what a sync prunes', () => {
