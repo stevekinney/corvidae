@@ -1,7 +1,8 @@
 import { readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
-import { isSourceFile, sourceTree } from './source.ts';
+import { filesCoverPath, loadPackageSurface } from './package-surface.ts';
+import { additionalSourceRoots, isSourceFile, sourceTree, versionConstants } from './source.ts';
 
 /**
  * A corvidae-side fingerprint of one published workspace's shipped source, and the guard that
@@ -33,15 +34,12 @@ export interface DigestScope {
   corvidaeRoot: string;
   /** Corvidae-relative directory of the workspace being digested. */
   corvidaeDirectory: string;
+  /** The `@lostgradient/*` (or unscoped) workspace name, used to look up `additionalSourceRoots`. */
+  workspace: string;
 }
 
 export interface DigestedFile {
-  /**
-   * Path relative to the workspace directory for `src/**` and `README.md`, or the fixed name
-   * `../LICENSE` for the one file this digest reads from outside the workspace. The prefix is
-   * deliberate: `LICENSE` at the workspace's own `src/LICENSE` and the repository's shared
-   * `LICENSE` must never collide in the sorted, hashed file list.
-   */
+  /** Path relative to the workspace directory — the same shape the emitted plan itself uses. */
   path: string;
   bytes: Uint8Array;
 }
@@ -97,45 +95,82 @@ async function collectSourceFiles(root: string): Promise<string[]> {
   return files.toSorted();
 }
 
+/** The one declared path this digest never counts, regardless of `additionalSourceRoots`. */
+const excludedDeclaredPath = 'README.md';
+
+/**
+ * Whether `path` (workspace-relative) is something the workspace's own `package-surface.json`
+ * entry actually publishes, for filtering a declared `additionalSourceRoots` path down to the
+ * ones that ship.
+ *
+ * Two cases read as "cannot tell, so do not filter it out": no recorded surface at all (a private
+ * workspace never has one, and this module runs for those too) and a generator-resolved `files`
+ * array (only `@lostgradient/cinder` uses one today, which `resolveSurface` cannot compute without
+ * discovered components — machinery this module has no reason to pull in for a case no current
+ * cross-target dependency hits). Both fall through to "include it": a declared path wrongly kept
+ * only makes the digest sensitive to a file that never actually ships, which is a false refusal on
+ * an edit nobody would call staleness; a shipped path wrongly dropped is the failure this whole
+ * mechanism exists to prevent.
+ */
+async function isPublishedByPackageSurface(workspace: string, path: string): Promise<boolean> {
+  const surface = await loadPackageSurface();
+  const entry = surface.packages[workspace];
+  if (entry === undefined) return true;
+  if (!Array.isArray(entry.files)) return true;
+  return filesCoverPath(entry.files, path);
+}
+
 /**
  * Every file that goes into one workspace's digest: its `src/` tree (minus tests and fixtures),
- * its own `README.md` when it carries one, and the repository's shared `LICENSE`.
+ * plus whichever of its declared `additionalSourceRoots` entries actually ship, minus the two
+ * exclusions below — the same shape `source.ts`'s `readSourceTree` and `readAdditionalSourceRoots`
+ * emit as a package's actual shipped source, narrowed to what changes what a consumer gets.
  *
- * These three are exactly what `source.ts` and `manifests.ts` emit for a published workspace
- * outside its manifest and its build output — `src/**` through `readSourceTree`, `README.md`
- * through `readPackageReadme`, `LICENSE` through `planManifests`'s per-package fan-out — which is
- * the point: the digest's scope is "the source that, if it changed, would change what the next
- * publish ships," not an independent guess at what matters. `package.json` is deliberately absent:
- * it is composed against each target's own existing manifest rather than emitted verbatim, so
- * hashing it would make the digest track target-side drift (a target's own scripts, a dependency
- * bump) that has nothing to do with whether the *source* moved. `additionalSourceRoots`,
- * `validationInputs` and declared build inputs are absent too — every current entry belongs to
- * `@lostgradient/weft` or `@lostgradient/cinder`/`@lostgradient/editor`, neither of which is a
- * cross-target dependency today, so extending the scope to them has no real edge to validate
- * against yet; a future one that does needs this list widened, and the missing-digest refusal below
- * is what makes that omission loud rather than silently wrong.
+ * `README.md` is excluded unconditionally, even when a workspace declares it (`@lostgradient/weft`
+ * does) — it is documentation, not code a consumer imports, and including it made an unrelated
+ * docs edit refuse every cross-target edge to a package that had not actually changed (COR-1196
+ * round 11). `LICENSE` was never a candidate here: it is fanned out from corvidae's repository
+ * root by `manifests.ts`, not declared per workspace, so it was never part of this walk.
+ *
+ * The path `versionConstants` names for this workspace, when it declares one, is excluded too —
+ * `applyVersionConstants` rewrites that file's version literal to the *target's* composed manifest
+ * version before anything publishes, the one deliberate, already-documented difference between
+ * corvidae's own copy and what ships (`source.test.ts`'s "the committed workspaces" describe block
+ * carves out exactly this exception when comparing emitted bytes against disk). Hashing corvidae's
+ * unrewritten literal would make every publish look like a content change, which it is not.
+ *
+ * A declared path that is not actually published — `@lostgradient/weft`'s four `documentation/*.md`
+ * entries, declared only because `src/worker/protocol.test.ts` reads them by literal path, and
+ * absent from weft's `files: ["dist", "README.md", "LICENSE"]` — is filtered out by
+ * `isPublishedByPackageSurface`, for the same reason `README.md` is: it is real, but it is not
+ * source a consumer's install ships, so a change to it is not the staleness this guard checks for.
  */
 export async function collectDigestedFiles({
   corvidaeRoot,
   corvidaeDirectory,
+  workspace,
 }: DigestScope): Promise<DigestedFile[]> {
   const workspaceRoot = join(corvidaeRoot, corvidaeDirectory);
   const files: DigestedFile[] = [];
+  const excludedPath = versionConstants[workspace];
 
   const sourceRoot = join(workspaceRoot, sourceTree);
   for (const path of await collectSourceFiles(sourceRoot)) {
+    const relativePath = `${sourceTree}/${path}`;
+    if (relativePath === excludedPath) continue;
     const bytes = new Uint8Array(await Bun.file(join(sourceRoot, path)).arrayBuffer());
-    files.push({ path: `${sourceTree}/${path}`, bytes });
+    files.push({ path: relativePath, bytes });
   }
 
-  const readme = Bun.file(join(workspaceRoot, 'README.md'));
-  if (await readme.exists()) {
-    files.push({ path: 'README.md', bytes: new Uint8Array(await readme.arrayBuffer()) });
-  }
-
-  const licence = Bun.file(join(corvidaeRoot, 'LICENSE'));
-  if (await licence.exists()) {
-    files.push({ path: '../LICENSE', bytes: new Uint8Array(await licence.arrayBuffer()) });
+  for (const declared of additionalSourceRoots[workspace] ?? []) {
+    for (const path of declared.paths) {
+      if (path === excludedDeclaredPath || path === excludedPath) continue;
+      if (!(await isPublishedByPackageSurface(workspace, path))) continue;
+      const absolute = join(workspaceRoot, path);
+      const file = Bun.file(absolute);
+      if (!(await file.exists())) continue;
+      files.push({ path, bytes: new Uint8Array(await file.arrayBuffer()) });
+    }
   }
 
   return files.toSorted((left, right) => left.path.localeCompare(right.path));

@@ -79,6 +79,7 @@ async function packageMapWithCurrentDigests(): Promise<PackageMap> {
     const sourceDigest = await computeSourceDigest({
       corvidaeRoot,
       corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
     });
     overlaid[name] = { ...entry, sourceDigest };
   }

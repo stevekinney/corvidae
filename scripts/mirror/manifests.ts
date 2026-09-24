@@ -821,7 +821,11 @@ export async function planManifests({
     if (dispositions.get(workspace.name)?.disposition !== 'publish-as') continue;
     currentDigests.set(
       workspace.name,
-      await computeSourceDigest({ corvidaeRoot, corvidaeDirectory: workspace.directory }),
+      await computeSourceDigest({
+        corvidaeRoot,
+        corvidaeDirectory: workspace.directory,
+        workspace: workspace.name,
+      }),
     );
   }
 

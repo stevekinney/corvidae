@@ -50,7 +50,7 @@ describe('isDigestExcluded', () => {
 });
 
 describe('collectDigestedFiles', () => {
-  test('reads src/, minus tests and fixtures, plus README.md and the root LICENSE', async () => {
+  test('reads src/, minus tests and fixtures — no README, no LICENSE', async () => {
     await withTree(
       {
         LICENSE: 'MIT License\n',
@@ -63,28 +63,112 @@ describe('collectDigestedFiles', () => {
         const files = await collectDigestedFiles({
           corvidaeRoot: root,
           corvidaeDirectory: 'packages/example',
+          workspace: '@lostgradient/example',
         });
-        expect(files.map((file) => file.path).toSorted()).toEqual([
-          '../LICENSE',
-          'README.md',
-          'src/index.ts',
-        ]);
+        expect(files.map((file) => file.path)).toEqual(['src/index.ts']);
       },
     );
   });
 
-  test('a workspace with no README.md carries no README entry', async () => {
+  /**
+   * COR-1196 round 11: a package's README and the repository's LICENSE are documentation, not
+   * code a consumer imports, and were dropped from the digest's scope after including them made
+   * an unrelated docs edit refuse every cross-target edge to a package that had not actually
+   * changed. `@lostgradient/weft` declares `README.md` in `additionalSourceRoots` (round 11
+   * restored that declaration alongside dropping README from this scope), so this proves the
+   * exclusion is unconditional — by path, not by whether something declares it.
+   */
+  test('a workspace’s declared README.md never counts, even though additionalSourceRoots names it', async () => {
     await withTree(
       {
-        LICENSE: 'MIT License\n',
-        'packages/example/src/index.ts': 'export const example = true;\n',
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        'packages/weft/README.md': '# Weft\n',
       },
       async (root) => {
         const files = await collectDigestedFiles({
           corvidaeRoot: root,
-          corvidaeDirectory: 'packages/example',
+          corvidaeDirectory: 'packages/weft',
+          workspace: '@lostgradient/weft',
         });
-        expect(files.map((file) => file.path)).not.toContain('README.md');
+        // Every other `additionalSourceRoots['@lostgradient/weft']` entry — including the
+        // `documentation/*.md` cluster, which `isPublishedByPackageSurface` would also filter out
+        // since weft's `files` array is `["dist", "README.md", "LICENSE"]` — is missing from this
+        // fixture and skipped rather than refused, so only `src/index.ts` remains.
+        expect(files.map((file) => file.path)).toEqual(['src/index.ts']);
+      },
+    );
+  });
+
+  test('a declared file the workspace does not carry is skipped, not refused', async () => {
+    await withTree(
+      { 'packages/weft/src/index.ts': 'export const weft = true;\n' },
+      async (root) => {
+        const files = await collectDigestedFiles({
+          corvidaeRoot: root,
+          corvidaeDirectory: 'packages/weft',
+          workspace: '@lostgradient/weft',
+        });
+        expect(files.map((file) => file.path)).toEqual(['src/index.ts']);
+      },
+    );
+  });
+
+  test('a workspace with no additionalSourceRoots entry only carries src/', async () => {
+    await withTree(
+      { 'packages/example/src/index.ts': 'export const example = true;\n' },
+      async (root) => {
+        const files = await collectDigestedFiles({
+          corvidaeRoot: root,
+          corvidaeDirectory: 'packages/example',
+          workspace: '@lostgradient/example',
+        });
+        expect(files.map((file) => file.path)).toEqual(['src/index.ts']);
+      },
+    );
+  });
+
+  /**
+   * `@lostgradient/weft` declares `documentation/guides/remote-task-recovery.md` and three sibling
+   * documents in `additionalSourceRoots` because `src/worker/protocol.test.ts` reads them by
+   * literal path, but weft's real `package-surface.json` entry publishes only
+   * `["dist", "README.md", "LICENSE"]` — `documentation/` is not in it. A declared file real,
+   * present, but not actually shipped should not make the digest sensitive to it.
+   */
+  test('a declared file real package-surface.json excludes from `files` does not count', async () => {
+    await withTree(
+      {
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        'packages/weft/documentation/guides/remote-task-recovery.md': '# Recovery\n',
+      },
+      async (root) => {
+        const files = await collectDigestedFiles({
+          corvidaeRoot: root,
+          corvidaeDirectory: 'packages/weft',
+          workspace: '@lostgradient/weft',
+        });
+        expect(files.map((file) => file.path)).toEqual(['src/index.ts']);
+      },
+    );
+  });
+
+  /**
+   * `versionConstants['@lostgradient/weft']` is `src/version.ts` — the file
+   * `applyVersionConstants` rewrites to the target's composed manifest version before anything
+   * publishes. Corvidae's own unrewritten copy is not what shipped, so it never counts.
+   */
+  test('the workspace’s versionConstants file is excluded, wherever the src/ walk finds it', async () => {
+    await withTree(
+      {
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        'packages/weft/src/version.ts': "export const VERSION = '0.0.0';\n",
+      },
+      async (root) => {
+        const files = await collectDigestedFiles({
+          corvidaeRoot: root,
+          corvidaeDirectory: 'packages/weft',
+          workspace: '@lostgradient/weft',
+        });
+        expect(files.map((file) => file.path)).toEqual(['src/index.ts']);
       },
     );
   });
@@ -120,43 +204,55 @@ describe('hashDigestedFiles', () => {
 });
 
 describe('computeSourceDigest', () => {
+  const scope = (root: string) => ({
+    corvidaeRoot: root,
+    corvidaeDirectory: 'packages/example',
+    workspace: '@lostgradient/example',
+  });
+
   test('is deterministic for the same tree', async () => {
-    await withTree(
-      { LICENSE: 'MIT\n', 'packages/example/src/index.ts': 'export const x = 1;\n' },
-      async (root) => {
-        const scope = { corvidaeRoot: root, corvidaeDirectory: 'packages/example' };
-        expect(await computeSourceDigest(scope)).toBe(await computeSourceDigest(scope));
-      },
-    );
+    await withTree({ 'packages/example/src/index.ts': 'export const x = 1;\n' }, async (root) => {
+      expect(await computeSourceDigest(scope(root))).toBe(await computeSourceDigest(scope(root)));
+    });
   });
 
   test('changes when a non-excluded source file changes', async () => {
-    await withTree(
-      { LICENSE: 'MIT\n', 'packages/example/src/index.ts': 'export const x = 1;\n' },
-      async (root) => {
-        const scope = { corvidaeRoot: root, corvidaeDirectory: 'packages/example' };
-        const before = await computeSourceDigest(scope);
-        await Bun.write(join(root, 'packages/example/src/index.ts'), 'export const x = 2;\n');
-        expect(await computeSourceDigest(scope)).not.toBe(before);
-      },
-    );
+    await withTree({ 'packages/example/src/index.ts': 'export const x = 1;\n' }, async (root) => {
+      const before = await computeSourceDigest(scope(root));
+      await Bun.write(join(root, 'packages/example/src/index.ts'), 'export const x = 2;\n');
+      expect(await computeSourceDigest(scope(root))).not.toBe(before);
+    });
   });
 
   test('is unaffected by a test file changing', async () => {
     await withTree(
       {
-        LICENSE: 'MIT\n',
         'packages/example/src/index.ts': 'export const x = 1;\n',
         'packages/example/src/index.test.ts': 'test("a", () => {});\n',
       },
       async (root) => {
-        const scope = { corvidaeRoot: root, corvidaeDirectory: 'packages/example' };
-        const before = await computeSourceDigest(scope);
+        const before = await computeSourceDigest(scope(root));
         await Bun.write(
           join(root, 'packages/example/src/index.test.ts'),
           'test("a changed", () => {});\n',
         );
-        expect(await computeSourceDigest(scope)).toBe(before);
+        expect(await computeSourceDigest(scope(root))).toBe(before);
+      },
+    );
+  });
+
+  test('is unaffected by README.md or LICENSE changing', async () => {
+    await withTree(
+      {
+        LICENSE: 'MIT\n',
+        'packages/example/README.md': '# Example\n',
+        'packages/example/src/index.ts': 'export const x = 1;\n',
+      },
+      async (root) => {
+        const before = await computeSourceDigest(scope(root));
+        await Bun.write(join(root, 'LICENSE'), 'MIT License\n\nCopyright (c) 2027\n');
+        await Bun.write(join(root, 'packages/example/README.md'), '# Example, rewritten\n');
+        expect(await computeSourceDigest(scope(root))).toBe(before);
       },
     );
   });
