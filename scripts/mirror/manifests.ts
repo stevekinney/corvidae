@@ -7,7 +7,8 @@ import {
   type DeferredLayout,
   type WorkspaceLayout,
 } from './layout-map.ts';
-import { dispositionFor, type WorkspaceDisposition } from './package-map.ts';
+import { dispositionFor, type PackageMap, type WorkspaceDisposition } from './package-map.ts';
+import { assertEdgeNotStale, computeSourceDigest } from './source-digest.ts';
 import type { EmittedWorkspace } from './source.ts';
 import {
   keysFor,
@@ -240,8 +241,20 @@ export function publicNameFor(workspace: string, disposition: WorkspaceDispositi
   return workspace;
 }
 
-/** The published range a cross-target edge resolves to, which only a published package has. */
-function publishedRangeFor(workspace: string, disposition: WorkspaceDisposition): string {
+/**
+ * The published range a cross-target edge resolves to, which only a published package has.
+ *
+ * Refuses via `assertEdgeNotStale` (source-digest.ts) before handing back a range: `^lastPublishedVersion`
+ * alone says the edge is *resolvable*, not that it is *current* — the dependency's published
+ * source and corvidae's own copy of it can diverge, and nothing else in this file would notice.
+ * `context.currentDigests` is populated once per `planManifests` call, before this can run, because
+ * digesting is file I/O and everything between here and `rewriteWorkspaceManifest` is synchronous.
+ */
+function publishedRangeFor(
+  workspace: string,
+  disposition: WorkspaceDisposition,
+  context: RewriteContext,
+): string {
   if (disposition.disposition !== 'publish-as') {
     throw new ManifestTransformError(`${workspace} is not published, so it has no range`);
   }
@@ -250,6 +263,19 @@ function publishedRangeFor(workspace: string, disposition: WorkspaceDisposition)
       `${workspace} ships from a different target but has never been published, so an edge to it cannot be expressed as a range; publish it first or move it into the same target`,
     );
   }
+  const currentDigest = context.currentDigests.get(workspace);
+  if (currentDigest === undefined) {
+    throw new ManifestTransformError(
+      `${workspace}: no source digest was computed for it before resolving cross-target edges. This is an internal error in planManifests, which must digest every publish-as workspace before rewriting any dependency block.`,
+    );
+  }
+  assertEdgeNotStale({
+    workspace,
+    publicName: disposition.name,
+    version: disposition.lastPublishedVersion,
+    recordedDigest: disposition.sourceDigest,
+    currentDigest,
+  });
   return `^${disposition.lastPublishedVersion}`;
 }
 
@@ -260,6 +286,12 @@ interface RewriteContext {
   /** Public names, keyed by corvidae name, for every workspace on disk. */
   publicNames: ReadonlyMap<string, string>;
   dispositions: ReadonlyMap<string, WorkspaceDisposition>;
+  /**
+   * Every publish-as workspace's current source digest, keyed by corvidae name and computed once
+   * before the rewrite loop starts (source-digest.ts). `publishedRangeFor` reads from this rather
+   * than digesting on demand because it is called from a synchronous rewrite chain.
+   */
+  currentDigests: ReadonlyMap<string, string>;
   /** Catalog entries this target must declare, accumulated as cross-target edges are resolved. */
   requiredCatalog: Map<string, string>;
   /** Edges dropped because the other end does not exist downstream, reported rather than silent. */
@@ -320,7 +352,7 @@ function resolveInternalEdge(
     return undefined;
   }
 
-  const range = publishedRangeFor(dependency, disposition);
+  const range = publishedRangeFor(dependency, disposition, context);
   if (!targetDefinitions[context.target].catalog) return [publicName, range];
   context.requiredCatalog.set(publicName, range);
   return [publicName, 'catalog:'];
@@ -663,6 +695,14 @@ export interface PlanOptions {
   /** A clone of the target repository, read for the keys the target owns. Optional on a fresh target. */
   targetDirectory?: string | undefined;
   policy?: TargetOwnedPolicy | undefined;
+  /**
+   * `package-map.json`, overridden. Every production call (`sync.ts`, `dry-run.ts`) omits this and
+   * reads the committed file, so a real sync always resolves a cross-target edge's staleness
+   * against what is actually recorded there. `committed-plans.ts` and `manifests.test.ts` pass one
+   * that overlays a computed `sourceDigest` onto every `publish-as` entry — see `dispositionFor`'s
+   * own doc comment in `package-map.ts` for why.
+   */
+  packageMap?: PackageMap | undefined;
 }
 
 /**
@@ -742,6 +782,7 @@ export async function planManifests({
   target,
   targetDirectory,
   policy,
+  packageMap,
 }: PlanOptions): Promise<ManifestPlan> {
   const resolvedPolicy = policy ?? (await loadTargetOwnedPolicy());
   const root = (await Bun.file(join(corvidaeRoot, 'package.json')).json()) as JsonObject;
@@ -757,7 +798,7 @@ export async function planManifests({
     // `dispositionFor` throws `PackageMapError` naming the workspace. Letting it propagate is the
     // point: an unmapped workspace must stop the sync rather than be skipped. `layoutFor` throws
     // the same way for a workspace with no recorded target directory.
-    const disposition = await dispositionFor(workspace.name);
+    const disposition = await dispositionFor(workspace.name, packageMap);
     dispositions.set(workspace.name, disposition);
     if (disposition.disposition === 'exclude') continue;
     publicNames.set(workspace.name, publicNameFor(workspace.name, disposition));
@@ -769,11 +810,27 @@ export async function planManifests({
   }
   assertPublicNamesUnique(publicNames);
 
+  // Every publish-as workspace's current source digest, computed once before any dependency
+  // block is rewritten. `publishedRangeFor` (via `assertEdgeNotStale`) needs one for any workspace
+  // that turns out to be a cross-target dependency, but which ones those are is not known until
+  // the rewrite loop below reads each consumer's own manifest — so every publish-as workspace is
+  // digested up front rather than the smaller set actually crossing a target boundary. The count
+  // is small (a dozen or so today) and the digest itself is a handful of file reads per workspace.
+  const currentDigests = new Map<string, string>();
+  for (const workspace of workspaces) {
+    if (dispositions.get(workspace.name)?.disposition !== 'publish-as') continue;
+    currentDigests.set(
+      workspace.name,
+      await computeSourceDigest({ corvidaeRoot, corvidaeDirectory: workspace.directory }),
+    );
+  }
+
   const context: RewriteContext = {
     target,
     catalog,
     publicNames,
     dispositions,
+    currentDigests,
     requiredCatalog: new Map(),
     dropped: [],
     intraTargetEdges: new Map(),
