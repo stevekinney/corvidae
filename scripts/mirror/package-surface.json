@@ -645,6 +645,14 @@
           "import": "./dist/comments/types.js",
           "default": "./dist/comments/types.js"
         },
+        "./diff-review-state": {
+          "types": "./dist/diff-review-state/index.d.ts",
+          "bun": "./src/lib/diff-review-state/index.ts",
+          "browser": "./src/lib/diff-review-state/index.ts",
+          "svelte": "./src/lib/diff-review-state/index.ts",
+          "import": "./dist/diff-review-state/index.js",
+          "default": "./dist/diff-review-state/index.js"
+        },
         "./export": {
           "types": "./dist/export/index.d.ts",
           "bun": "./src/lib/export/index.ts",

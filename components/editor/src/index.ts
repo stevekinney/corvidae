@@ -27,6 +27,7 @@ export * from './lib/components/review-editor/index.ts';
 export { default as ReviewEditor } from './lib/components/review-editor/index.ts';
 export * from './lib/components/review-editor/review-editor.schema.ts';
 export * from './lib/components/review-editor/review-editor.variables.ts';
+export * from './lib/diff-review-state/index.ts';
 export * from './lib/editor/index.ts';
 export * from './lib/editor/test-utilities.ts';
 export * from './lib/export/index.ts';
