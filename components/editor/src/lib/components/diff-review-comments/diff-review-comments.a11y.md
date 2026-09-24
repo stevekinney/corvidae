@@ -34,4 +34,17 @@ Every control is a native, keyboard-operable element (`<button>`, `<textarea>`) 
 - **2026-09-24 (COR-511, commit `46de156b`):** no new automated coverage was added directly against this component this session; it is exercised indirectly (composed inside `DiffReview`) by the light/dark-theme and 320px-narrow-layout axe checks recorded in `diff-review.a11y.md`. It has no standalone-mount axe, theme, or narrow-layout browser test of its own, and no DiffReviewComments-level two-instance-isolation browser test (only unit coverage exists for the behaviors listed above).
 - **Human acceptance: not performed by any human.** The ratified contract (SHA-256 `ac837e3a…`) reserves DR-8 design/accessibility acceptance for Steve Kinney; no agent may supply it. The COR-511 orchestrating session reports Steve waived this gate on 2026-09-23 ("Nothing needs my sign off"); Linear comment `a5463ac9-c4d0-455b-ba01-d30c3fcfdb9a` on COR-511 records the same. This record relies on that report and does not independently verify it — no contract amendment was filed. No VoiceOver or other manual screen-reader pass was run against this component in any session; do not read anything above as a substitute for one.
 
+## 2026-09-24 (COR-511 continuation, commit `2f3a76a6`), agent-verified, no human review
+
+This component is exercised exclusively composed inside `DiffReview` (it has no standalone example mount of its own in the browser-fixture harness); every case below is recorded in full in `diff-review.a11y.md` and only summarized here. New real-browser coverage (Chromium via Playwright, no source defect found):
+
+- **Comment-to-anchor navigation** for `current`/`outdated`/`removed` comments, including the negative "an outdated/removed comment never focuses a current diff control" assertion and the file-anchor "navigation unavailable" `role="status"` path — `diff-review-navigation.playwright.ts`.
+- **Delete confirmation via real `Escape`**, not merely a simulated click, returning real focus to the "Delete" button — `diff-review-keyboard-matrix.playwright.ts`.
+- **Two-instance isolation**: a saved comment, the "Unresolved only" filter's `aria-pressed` state, and the "Review note" field's id/value are each independent across four mounts sharing this component's own instance-scoped id generation (`$props.id()`) — `diff-review-isolation.playwright.ts`.
+- The hidden-draft inventory's Open/Save/Discard actions and the export-gate `role="status"` text are DiffReview-owned, not this component's, and are recorded in `diff-review.a11y.md`.
+
+This still has no standalone-mount theme/320px/axe browser test of its own; it remains covered only indirectly through `DiffReview`'s own theme/layout checks.
+
+**Human acceptance: waived, not performed, by Steve Kinney.** Linear comment `a5463ac9-c4d0-455b-ba01-d30c3fcfdb9a` on COR-511, read directly by this agent with `list_comments`: "Human acceptance gate waived by Steve Kinney (2026-09-23) … 'Nothing needs my sign off.'" No human reviewed this work. VoiceOver was not driven in this session.
+
 Related components: `diff-review`, `review-editor`.

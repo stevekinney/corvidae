@@ -60,4 +60,15 @@ Each add-comment control has an accessible name naming its side and line number 
 - **2026-09-24 (COR-511, commit `46de156b`):** the annotation-hook keyboard model documented above (range selection on both sides, Shift-click, Enter/Shift+Arrow/Escape, focus return, two-instance isolation, the default-no-annotation-props case, and stale-diff gating) is exercised end-to-end by `diff-viewer-annotation.playwright.ts` (Chromium via Playwright); this session added no new browser coverage to this component directly — it added light/dark theme, 320px-layout, and read-only-state axe checks to the composing `DiffReview` shell instead (`diff-review.a11y.md`). This file has no standalone theme/narrow-layout/axe browser test of its own yet.
 - **Human acceptance: not performed by any human.** The ratified contract (SHA-256 `ac837e3a…`) reserves DR-8 design/accessibility acceptance for Steve Kinney, covering "both viewer annotation interactions"; no agent may supply it. The COR-511 orchestrating session reports Steve waived this gate on 2026-09-23 ("Nothing needs my sign off"); Linear comment `a5463ac9-c4d0-455b-ba01-d30c3fcfdb9a` on COR-511 records the same. This record relies on that report and does not independently verify it — no contract amendment was filed. No VoiceOver or other manual screen-reader pass was run against this component in any session; the copy/status announcements above were verified with `role="status"` DOM assertions only.
 
+## 2026-09-24 (COR-511 continuation, commit `2f3a76a6`), agent-verified, no human review
+
+No new browser coverage was added against this component's own fixture directly. It gained two forms of new coverage composed through `DiffReview` (both recorded in full in `diff-review.a11y.md`, Chromium via Playwright, no source defect found):
+
+- **Mid-session staleness composed inside DiffReview**: growing a Markdown target's content past the 100KB manual-tier threshold shows this component's own "The diff is outdated. Recompute it to add a new comment; existing comments remain available." explanation and disables line-level annotation controls exactly as `diff-viewer-annotation.playwright.ts`'s own stale-diff describe block already proved directly against this component — `diff-review-error-states.playwright.ts` proves the composed path reaches the same behavior with no divergence.
+- **Comment-to-anchor navigation's negative case**: an outdated/removed comment's "Go to" never focuses one of this component's own `[data-cinder-annotation-control]` elements — `diff-review-navigation.playwright.ts`.
+
+This file still has no standalone theme/narrow-layout/axe browser test of its own; that gap remains open (DiffReview's own composed shell has that coverage — see `diff-review.a11y.md`).
+
+**Human acceptance: waived, not performed, by Steve Kinney.** Linear comment `a5463ac9-c4d0-455b-ba01-d30c3fcfdb9a` on COR-511, read directly by this agent with `list_comments`: "Human acceptance gate waived by Steve Kinney (2026-09-23) … 'Nothing needs my sign off.'" No human reviewed this work. VoiceOver was not driven in this session.
+
 Related components: `diff-statistics`, `code-block`.
