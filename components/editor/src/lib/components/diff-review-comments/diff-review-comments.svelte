@@ -46,6 +46,10 @@
   // `defaultFilter` seeds this, so it deliberately does not track later
   // prop changes.
   let filter = $state<DiffReviewCommentsFilter>(untrack(() => defaultFilter));
+  // Instance-unique id so two `DiffReviewComments` mounts on one page never
+  // collide on the review-note label association.
+  const instanceId = $props.id();
+  const reviewNoteId = `diff-review-review-note-${instanceId}`;
 
   const visibleComments = $derived(filterDiffReviewComments(reviewState.comments, filter));
 
@@ -108,9 +112,9 @@
   {/if}
 
   <div class="diff-review-comments-note">
-    <label for="diff-review-review-note">Review note</label>
+    <label for={reviewNoteId}>Review note</label>
     <textarea
-      id="diff-review-review-note"
+      id={reviewNoteId}
       value={reviewState.reviewNote}
       disabled={readonly}
       onchange={(event) => setReviewNote(event.currentTarget.value)}></textarea>

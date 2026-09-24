@@ -22,13 +22,15 @@
   }
 
   // -- Scenario 1: a single Markdown pair --------------------------------
+  const readmeOriginal = '# Project Plan\n\nShip login and a dashboard.';
+  const readmeCurrent = '# Project Plan\n\nShip login, a dashboard, and CSV export.';
   const markdownTargets: DiffReviewTargetInput[] = [
     {
       targetId: 'readme',
       kind: 'markdown',
       label: 'README.md',
-      original: '# Project Plan\n\nShip login and a dashboard.',
-      current: '# Project Plan\n\nShip login, a dashboard, and CSV export.',
+      original: readmeOriginal,
+      current: readmeCurrent,
       normalizeInputs: true,
     },
   ];
@@ -105,11 +107,7 @@ diff --git a/src/two.ts b/src/two.ts
 </div>
 
 <div id="example-mount-standalone-diff-viewer">
-  <DiffViewer
-    original={markdownTargets[0].original}
-    current={markdownTargets[0].current}
-    readonly
-  />
+  <DiffViewer original={readmeOriginal} current={readmeCurrent} readonly />
   <DiffReviewComments
     state={standaloneDiffViewerState}
     onStateChange={(next) => (standaloneDiffViewerState = next)}

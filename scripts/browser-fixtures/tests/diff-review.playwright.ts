@@ -69,7 +69,7 @@ test.describe('Diff review — Markdown/JSON downloads', () => {
     expect(download.suggestedFilename()).toBe('review.md');
     const path = await download.path();
     expect(path).not.toBeNull();
-    const bytes = await Bun.file(path!).text();
+    const bytes = await Bun.file(path).text();
     expect(bytes).toContain('# Review feedback');
     expect(bytes.endsWith('\n')).toBe(true);
   });
@@ -83,7 +83,7 @@ test.describe('Diff review — Markdown/JSON downloads', () => {
     expect(download.suggestedFilename()).toBe('review.json');
     const path = await download.path();
     expect(path).not.toBeNull();
-    const raw = await Bun.file(path!).arrayBuffer();
+    const raw = await Bun.file(path).arrayBuffer();
     const bytes = new Uint8Array(raw);
     expect(bytes[0]).not.toBe(0xef); // no UTF-8 BOM
     const parsed = JSON.parse(new TextDecoder('utf-8').decode(bytes)) as { schemaVersion: number };

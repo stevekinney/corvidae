@@ -110,3 +110,26 @@ describe('DiffReview component comments panel: mutations', () => {
     expect(container.querySelector('.diff-review-comments-filter')).not.toBeNull();
   });
 });
+
+describe('DiffReview component comments panel: multiple instances', () => {
+  test('two mounted instances never share a review-note label/input id', () => {
+    // Regression: the review-note field used a hardcoded id, so two
+    // instances on one page (e.g. two standalone-viewer examples) broke
+    // label association and produced invalid duplicate-id HTML.
+    const first = render(DiffReviewComments, {
+      state: stateWithTwoComments(),
+      onStateChange: () => {},
+    });
+    const second = render(DiffReviewComments, {
+      state: stateWithTwoComments(),
+      onStateChange: () => {},
+    });
+
+    const firstTextarea = first.container.querySelector('textarea');
+    const secondTextarea = second.container.querySelector('textarea');
+    expect(firstTextarea?.id).not.toBe('');
+    expect(firstTextarea?.id).not.toBe(secondTextarea?.id);
+    // Each label still resolves to its own instance's textarea, scoped by container.
+    expect(first.container.querySelector(`label[for="${firstTextarea?.id}"]`)).not.toBeNull();
+  });
+});
