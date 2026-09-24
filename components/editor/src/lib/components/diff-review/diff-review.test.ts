@@ -271,6 +271,74 @@ describe('DiffReview component shell: export gating', () => {
   });
 });
 
+describe('DiffReview component shell: export scope', () => {
+  test('Download Markdown includes a resolved comment and a comment on a path-filtered-out file (COR-509 / DR-6)', async () => {
+    // Contract: "Copy-all includes comments from hidden files and
+    // resolved/outdated groups ... regardless of navigation or filters."
+    // `getExportContent` must pass the FULL review state to the exporter,
+    // never the path-filtered `visibleFileEntries` view -- this exercises
+    // that through the real toolbar UI, not just the pure exporter (which
+    // COR-513 already covers in isolation).
+    const created = createdState(twoFileTargets);
+    const withResolved = reduceDiffReviewState(created, {
+      type: 'create-comment',
+      id: 'c-visible',
+      targetId: 't1',
+      anchor: { kind: 'file', fileOccurrence: 0 },
+      body: 'On the visible file.',
+    });
+    if (!withResolved.ok) throw new Error('fixture setup failed');
+    const resolved = reduceDiffReviewState(withResolved.value, {
+      type: 'resolve-comment',
+      id: 'c-visible',
+    });
+    if (!resolved.ok) throw new Error('fixture setup failed');
+    const withHidden = reduceDiffReviewState(resolved.value, {
+      type: 'create-comment',
+      id: 'c-hidden',
+      targetId: 't1',
+      anchor: { kind: 'file', fileOccurrence: 1 },
+      body: 'On the file the filter hides.',
+    });
+    if (!withHidden.ok) throw new Error('fixture setup failed');
+
+    const { container, getByLabelText, getByText } = render(DiffReview, {
+      targets: twoFileTargets,
+      state: withHidden.value,
+      onStateChange: () => {},
+    });
+
+    // Narrow the file *navigation list* to `src/one.ts` only -- the filter
+    // only scopes the nav panel (the diff surface below still renders the
+    // whole patch); `src/two.ts`'s comment must still make it into export.
+    await fireEvent.input(getByLabelText('Filter files by path'), {
+      target: { value: 'one' },
+    });
+    const nav = container.querySelector('.diff-review-files');
+    if (!nav) throw new Error('file navigation not found');
+    expect(nav.querySelectorAll('.diff-review-file-list-item')).toHaveLength(1);
+    expect(nav.textContent).not.toContain('src/two.ts');
+
+    let capturedBlob: Blob | undefined;
+    const originalCreateObjectURL = URL.createObjectURL;
+    URL.createObjectURL = ((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:diff-review-test';
+    }) as typeof URL.createObjectURL;
+    try {
+      await fireEvent.click(getByText('Download Markdown'));
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+    }
+
+    if (!capturedBlob) throw new Error('Download Markdown did not build a Blob.');
+    const content = await capturedBlob.text();
+    expect(content).toContain('On the visible file.');
+    expect(content).toContain('resolved');
+    expect(content).toContain('On the file the filter hides.');
+  });
+});
+
 describe('DiffReview component shell: reviewed markers', () => {
   test('checking Reviewed dispatches set-reviewed for exactly that target/file', async () => {
     const state = createdState(twoFileTargets);

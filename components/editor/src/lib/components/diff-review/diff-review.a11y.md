@@ -1,5 +1,7 @@
 # DiffReview · accessibility
 
+DiffReview's nearest neighbors are `DiffViewer` and `SourceDiffViewer`. It is admitted as its own component under the behavior-first admission bar because neither viewer, alone or side by side, provides multi-target file navigation, comment lifecycle (create/edit/delete/resolve/reopen), a drafts inventory, reviewed markers, or Markdown/JSON export -- DiffReview composes their public annotation hooks with `diff-review-state` and the export functions to add that behavior without duplicating either viewer's rendering or reaching into a private controller.
+
 ## Pattern
 
 DiffReview packages a higher-level workflow (file navigation, diff comparison, comment creation, drafts, export). Confirm the composed controls, labels, states, and keyboard path match the domain task instead of treating the visual shell as the accessibility contract.

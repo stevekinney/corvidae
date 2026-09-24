@@ -1,5 +1,7 @@
 # DiffReviewComments · accessibility
 
+DiffReviewComments' nearest neighbor is ReviewEditor's own document-thread comment UI. It is admitted as a distinct component because diff comments anchor to old/new diff-line coordinates from `diff-review-state`, not ProseMirror positions, and never assume an author identity the way ReviewEditor's thread model does; it reuses ReviewEditor's composer/action conventions (resolve, reopen, delete-with-confirmation) without importing its ProseMirror-specific anchoring.
+
 ## Pattern
 
 Purpose: reusable, resolution-aware comments panel for a `DiffReviewState` session -- every saved comment by default, with an unresolved filter and a review note.
