@@ -151,6 +151,107 @@ describe('the files that check a workspace’s emitted source', () => {
   });
 });
 
+/**
+ * COR-1196: cinder's artifact generator, declared under `validationInputs` because
+ * `packages/components/scripts/build.ts` reaches it through a `bun run components:check`
+ * shell-out — invisible to `assertNoSourceEscapes`'s import-specifier scan — rather than through
+ * an import edge.
+ */
+describe('the files that check cinder’s emitted source', () => {
+  const declared = (validationInputs['@lostgradient/cinder'] ?? []).flatMap(
+    (cluster) => cluster.paths,
+  );
+
+  test('every declared path is emitted, all twenty-three of them', () => {
+    const { plan } = committedPlans.cinder;
+    const missing = declared.filter(
+      (path) => plan.files[`packages/components/${path}`] === undefined,
+    );
+    expect(missing).toEqual([]);
+    expect(declared.length).toBe(23);
+  });
+
+  test('the generator family goes as a set, since its entry point imports the rest', () => {
+    expect(declared).toContain('scripts/generate-component-artifacts.ts');
+    expect(declared).toContain('scripts/component-artifact-operations.ts');
+    expect(declared).toContain('scripts/generate-manifest.ts');
+    // Already emitted by `additionalSourceRoots`, so not repeated here.
+    expect(declared).not.toContain('scripts/lib/discover-components.ts');
+    expect(declared).not.toContain('scripts/validation-utilities.ts');
+  });
+
+  /**
+   * `validationInputs`' own promise is narrower than `additionalSourceRoots`': these files are
+   * "emitted, not walked for imports" by the planner, so a missing member of the closure is not
+   * caught by declaring the entry point alone — the entry point's own missing import would refuse
+   * the plan (the test above), but a transitively-missing one two hops down would not. This walks
+   * the declared set's own relative imports and asserts every resolved specifier is itself either
+   * declared here, emitted from `src/`, or emitted by `additionalSourceRoots` — the same question
+   * `findSourceEscapes` asks of an import edge, asked here of a set the planner does not scan for
+   * one.
+   */
+  test('the declared set is closed under its own relative imports', () => {
+    const { plan } = committedPlans.cinder;
+    const emitted = new Set(Object.keys(plan.files));
+    const importPattern = /(?:from\s+['"](\.[^'"]+)['"])|(?:import\(\s*['"](\.[^'"]+)['"]\s*\))/g;
+    // `generate-root-metadata-exports.ts` writes a generated file's source as a string literal,
+    // and that literal's own `from '../../components.json'` reads as an import edge to a regex
+    // that does not parse an AST — it is a string this script emits, not an import this script
+    // makes, and `findSourceEscapes`'s real parser does not see it as one either.
+    const knownNonImports = new Set([
+      'scripts/generate-root-metadata-exports.ts -> ../../components.json',
+    ]);
+    const unresolved: string[] = [];
+    for (const path of declared) {
+      const target = `packages/components/${path}`;
+      const contents = plan.files[target];
+      if (contents === undefined) continue; // reported by the test above
+      const text = typeof contents === 'string' ? contents : new TextDecoder().decode(contents);
+      for (const match of text.matchAll(importPattern)) {
+        const specifier = match[1] ?? match[2];
+        if (specifier === undefined) continue;
+        if (knownNonImports.has(`${path} -> ${specifier}`)) continue;
+        const resolved = normalize(join(dirname(target), specifier));
+        // A specifier can omit its extension (`moduleResolution: bundler` resolves it), so a miss
+        // on the literal path is retried with `.ts` before it counts as unresolved.
+        if (emitted.has(resolved) || emitted.has(`${resolved}.ts`)) continue;
+        unresolved.push(`${target} -> ${specifier}`);
+      }
+    }
+    expect(unresolved).toEqual([]);
+  });
+
+  test('a declared check corvidae no longer carries is a refusal, not a silent skip', async () => {
+    const omitted = 'scripts/generate-manifest.ts';
+    const cinderDeclarations = [
+      ...(additionalSourceRoots['@lostgradient/cinder'] ?? []).flatMap((cluster) => cluster.paths),
+      ...declared,
+    ];
+    await withTree(
+      {
+        'components/cinder/src/index.ts': 'export const cinder = true;\n',
+        ...Object.fromEntries(
+          cinderDeclarations
+            .filter((path) => path !== omitted)
+            .map((path) => [`components/cinder/${path}`, `// ${path}\n`]),
+        ),
+      },
+      async (root) => {
+        const plan = planSource(root, [
+          {
+            workspace: '@lostgradient/cinder',
+            corvidaeDirectory: 'components/cinder',
+            targetDirectory: 'packages/components',
+          },
+        ]);
+        await expect(plan).rejects.toThrow(SourceEmissionError);
+        await expect(plan).rejects.toThrow(omitted);
+        await expect(plan).rejects.toThrow('validationInputs');
+      },
+    );
+  });
+});
+
 describe('what counts as source', () => {
   test('the repository-operating files are not source, wherever they sit', () => {
     expect(isSourceFile('index.ts')).toBe(true);

@@ -387,6 +387,37 @@ export function applyVersionConstants(
 }
 
 export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
+  '@lostgradient/cinder': [
+    {
+      paths: [
+        'scripts/check-component-examples.test.ts',
+        'scripts/check-component-examples.ts',
+        'scripts/check-placeholder-docs.test.ts',
+        'scripts/check-placeholder-docs.ts',
+        'scripts/component-artifact-operations.test.ts',
+        'scripts/component-artifact-operations.ts',
+        'scripts/discover-component-directories.ts',
+        'scripts/generate-component-artifacts.ts',
+        'scripts/generate-component-constraints.ts',
+        'scripts/generate-component-schema.test.ts',
+        'scripts/generate-component-schema.ts',
+        'scripts/generate-component-variables.test.ts',
+        'scripts/generate-component-variables.ts',
+        'scripts/generate-manifest.test.ts',
+        'scripts/generate-manifest.ts',
+        'scripts/generate-root-metadata-exports.test.ts',
+        'scripts/generate-root-metadata-exports.ts',
+        'scripts/lib/component-enhancements.test.ts',
+        'scripts/lib/component-enhancements.ts',
+        'scripts/manifest.test-support.ts',
+        'scripts/render-component-readme.test.ts',
+        'scripts/render-component-readme.ts',
+        'scripts/token-namespaces.ts',
+      ],
+      reason:
+        "`packages/components/scripts/build.ts` shells out to `bun run components:check`, which `package.json` maps to `scripts/generate-component-artifacts.ts --check && bun run check:placeholder-docs`; the target's `tsconfig.check.json` also type-checks all of `scripts/`. Both are invisible to `assertNoSourceEscapes`, which reads import specifiers out of an AST and never sees a `bun run` shell-out to another package script. The target's own copy of the generator predates COR-1189's `check-component-examples.ts`/`generate-root-metadata-exports.ts` split — it still imports `allowedExampleExclusionReasons` from `src/manifest.meta.ts`, which corvidae's current `src/manifest.meta.ts` no longer exports — so a sync that only overwrites `src/` runs the target's stale generator against corvidae's newer source and the build fails. It goes as a set or not at all, same as weft's `generate-operation-client.ts` below: `generate-component-artifacts.ts` imports every other file here (dynamically, so `tsc` still resolves each specifier even though only the reached branch runs at `--check` time), and each `.test.ts` sibling is declared alongside its implementation so the emitted set does not leave a test behind that no longer matches what it tests. `scripts/lib/discover-components.ts`, `scripts/lib/prettier-resolution.ts`, `scripts/lib/read-json-file.ts`, `scripts/generate-component-metadata.ts` and `scripts/validation-utilities.ts` are not repeated here: this closure reaches all five, but `additionalSourceRoots` above already emits them. `check-placeholder-docs.ts` is declared even though its own content is currently byte-identical to the target's — it is still read by path from `src/components/`, not imported, so nothing else here would catch it drifting the next time either copy changes.",
+    },
+  ],
   '@lostgradient/weft': [
     // Under COR-1286's demotion the target runs no lint, coverage or documentation gate of its own
     // — those run in corvidae alone — so the nine `check-*.ts` gates, `check-coverage.ts` with its

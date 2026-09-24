@@ -763,11 +763,17 @@ describe('retiring a directory the target still carries', () => {
       'packages/operative/tsconfig.test.json',
       'packages/skills/tsconfig.test.json',
     ]);
-    expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
+    // COR-1196: the target's stale generate-component-examples.ts and its test predate
+    // corvidae's check-component-examples.ts/generate-root-metadata-exports.ts split and are
+    // superseded by validationInputs['@lostgradient/cinder'] in source.ts.
+    expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([
+      'packages/components/scripts/generate-component-examples.ts',
+      'packages/components/scripts/generate-component-examples.test.ts',
+    ]);
     for (const entry of policy.retired.entries) {
-      expect(['weft', 'agent-bureau']).toContain(entry.target);
+      expect(['weft', 'cinder', 'agent-bureau']).toContain(entry.target);
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['COR-1192', 'COR-1286', 'COR-1287']).toContain(entry.issue);
+      expect(['COR-1192', 'COR-1196', 'COR-1286', 'COR-1287']).toContain(entry.issue);
     }
     // A retirement names exactly one repository, so no target's list may reach another's paths.
     for (const target of mirrorTargets) {
