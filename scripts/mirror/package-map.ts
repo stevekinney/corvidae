@@ -27,6 +27,14 @@ const publishAsSchema = z.object({
   /** `null` where the name has never been published, which the surface-parity gate must treat as a first publish. */
   lastPublishedVersion: z.string().min(1).nullable(),
   requiredBy: z.array(z.string().min(1)).min(1).optional(),
+  /**
+   * A hex SHA-256 digest of corvidae's published source for this workspace, as it stood at
+   * `lastPublishedVersion`'s publish — see `source-digest.ts` for what it covers and
+   * `record-source-digest.ts` for how it is recorded. Absent for every entry until something has
+   * recorded one; `manifests.ts`'s `assertEdgeNotStale` treats absence as a refusal for any
+   * cross-target edge to this workspace, not as "assume it still matches."
+   */
+  sourceDigest: z.string().min(1).optional(),
 });
 
 const privateWorkspaceSchema = z.object({
@@ -142,10 +150,21 @@ export async function coverageReport(root: string): Promise<CoverageReport> {
  *
  * This is the call the transform makes per workspace. It names the offending workspace so the
  * failure is actionable without reading the map.
+ *
+ * `map` is an optional override, the same shape `loadTargetOwnedPolicy` and `loadPackageSurface`
+ * already accept for the two sibling documents — every production call omits it and reads the
+ * committed file. `committed-plans.ts` and `manifests.test.ts`'s `planFor` helper pass one that
+ * overlays a freshly computed `sourceDigest` onto every `publish-as` entry, so the many tests that
+ * build a full plan for an unrelated assertion are not incidentally testing
+ * `assertEdgeNotStale`'s refusal against the real, currently-unrecorded map — that refusal is
+ * tested directly, against the real map, in `source-digest.test.ts`.
  */
-export async function dispositionFor(workspace: string): Promise<WorkspaceDisposition> {
-  const map = await loadPackageMap();
-  const entry = map.workspaces[workspace];
+export async function dispositionFor(
+  workspace: string,
+  map?: PackageMap,
+): Promise<WorkspaceDisposition> {
+  const resolved = map ?? (await loadPackageMap());
+  const entry = resolved.workspaces[workspace];
   if (!entry) {
     throw new PackageMapError(
       `${workspace} has no disposition in package-map.json; add one of publish-as, private-workspace, or exclude before syncing`,

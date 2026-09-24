@@ -264,6 +264,7 @@ describe('a declared additional source root', () => {
         'components/weft-ui/src/routes/runs.test.ts':
           "import { dom } from '../../tests/dom-test-support';\nexport const used = dom;\n",
         'components/weft-ui/tests/dom-test-support.ts': 'export const dom = true;\n',
+        'components/weft-ui/tests/setup.ts': 'export {};\n',
         ...declaredFixtures,
       },
       async (root) => {
@@ -284,6 +285,7 @@ describe('a declared additional source root', () => {
           "import { dom } from '../../tests/dom-test-support';\nexport const used = dom;\n",
         'components/weft-ui/tests/dom-test-support.ts': "export { dom } from '../vendor/dom.ts';\n",
         'components/weft-ui/vendor/dom.ts': 'export const dom = true;\n',
+        'components/weft-ui/tests/setup.ts': 'export {};\n',
         ...declaredFixtures,
       },
       async (root) => {

@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 
-import type { MirrorTarget } from './manifests.ts';
+import { discoverWorkspaces, type MirrorTarget } from './manifests.ts';
+import { loadPackageMap, type PackageMap } from './package-map.ts';
+import { computeSourceDigest } from './source-digest.ts';
 import { planSurface, type SurfacePlan } from './surface.ts';
 import { findSourceEscapes, type SourceEscape } from './target-resolvability.ts';
 
@@ -45,8 +47,47 @@ export interface CommittedPlan {
   escapes: SourceEscape[];
 }
 
-async function build(target: MirrorTarget): Promise<CommittedPlan> {
-  const plan = await planSurface({ corvidaeRoot, target });
+/**
+ * `package-map.json`, with every `publish-as` entry's `sourceDigest` overlaid to corvidae's
+ * current digest for it, computed once and shared by every target's `build()` below.
+ *
+ * This fixture already rests on treating the committed tree as ground truth: `the committed
+ * workspaces` in `source.test.ts` asserts every byte `planSource` emits for a real workspace is
+ * the byte corvidae itself wrote. Overlaying "corvidae's current source is what would be recorded
+ * as published" is the same assumption applied to `assertEdgeNotStale` (source-digest.ts) instead
+ * of to emission — it is what lets `surface.test.ts`, `target-resolvability.test.ts` and
+ * `source.test.ts` keep testing what they were built to test (source emission, TypeScript
+ * configuration, coverage) without every one of them also incidentally exercising the digest
+ * guard's refusal. That refusal is tested directly, against the real, unoverlaid map, in
+ * `source-digest.test.ts` — which is where a reader should look to see today's cross-target edges
+ * actually fail, since this fixture is built specifically so they do not.
+ */
+async function packageMapWithCurrentDigests(): Promise<PackageMap> {
+  const map = await loadPackageMap();
+  const workspaces = await discoverWorkspaces(corvidaeRoot);
+  const overlaid: PackageMap['workspaces'] = {};
+  for (const [name, entry] of Object.entries(map.workspaces)) {
+    if (entry.disposition !== 'publish-as') {
+      overlaid[name] = entry;
+      continue;
+    }
+    const workspace = workspaces.find((candidate) => candidate.name === name);
+    if (workspace === undefined) {
+      overlaid[name] = entry;
+      continue;
+    }
+    const sourceDigest = await computeSourceDigest({
+      corvidaeRoot,
+      corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
+    });
+    overlaid[name] = { ...entry, sourceDigest };
+  }
+  return { ...map, workspaces: overlaid };
+}
+
+async function build(target: MirrorTarget, packageMap: PackageMap): Promise<CommittedPlan> {
+  const plan = await planSurface({ corvidaeRoot, target, packageMap });
   return { plan, escapes: findSourceEscapes(plan.files) };
 }
 
@@ -55,8 +96,10 @@ async function build(target: MirrorTarget): Promise<CommittedPlan> {
  * `Record<MirrorTarget, …>` literal is what makes a third target a type error here rather than a
  * silently unplanned target in whichever test iterates `mirrorTargets`.
  */
+const packageMapForFixtures = await packageMapWithCurrentDigests();
+
 export const committedPlans: Readonly<Record<MirrorTarget, CommittedPlan>> = {
-  cinder: await build('cinder'),
-  weft: await build('weft'),
-  'agent-bureau': await build('agent-bureau'),
+  cinder: await build('cinder', packageMapForFixtures),
+  weft: await build('weft', packageMapForFixtures),
+  'agent-bureau': await build('agent-bureau', packageMapForFixtures),
 };

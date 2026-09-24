@@ -262,7 +262,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   const emittedWorkspaces: EmittedWorkspace[] = [];
 
   for (const workspace of manifestPlan.emitted) {
-    const disposition = await dispositionFor(workspace.workspace);
+    const disposition = await dispositionFor(workspace.workspace, options.packageMap);
     if (disposition.disposition === 'exclude') continue;
 
     const path = `${workspace.targetDirectory}/package.json`;

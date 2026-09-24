@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
-import type { MirrorTarget } from './manifests.ts';
+import { type MirrorTarget } from './manifests.ts';
 import {
   additionalSourceRoots,
   applyVersionConstants,
@@ -62,6 +62,25 @@ function weftDeclarationFixture(omitted?: string): Record<string, string> {
       .map((path) => [`packages/weft/${path}`, `// ${path}\n`]),
   );
 }
+
+/**
+ * `@lostgradient/weft-ui`'s `bunfig.toml` preloads `tests/setup.ts` (`preload =
+ * ["./tests/setup.ts"]`), which is where the `declare module 'bun:test'` augmentation adding
+ * `@testing-library/jest-dom`'s matchers to `expect(...)` lives. Every one of the twenty-six
+ * `src/routes/` suites that calls a jest-dom matcher (`toBeInTheDocument`, and
+ * friends) type-checks against that augmentation, but `tests/setup.ts` was never declared in
+ * `additionalSourceRoots['@lostgradient/weft-ui']` — only its sibling `tests/dom-test-support.ts`
+ * was — so the file never shipped to the cinder target, and the target's own
+ * `typecheck-private` step for weft-ui failed with six `Property 'toBeInTheDocument' does not
+ * exist on type 'Assertion<...>'`-shaped errors, one per matcher call site the augmentation would
+ * otherwise cover.
+ */
+describe('weft-ui’s bun:test preload ships with its source', () => {
+  test('the real cinder plan emits tests/setup.ts', () => {
+    const { plan } = committedPlans.cinder;
+    expect(Object.keys(plan.files)).toContain('packages/weft-ui/tests/setup.ts');
+  });
+});
 
 describe('the documents a workspace declares', () => {
   /**
@@ -279,6 +298,8 @@ describe('what counts as source', () => {
         'components/editor/src/AGENTS.md': '# Not source\n',
         'components/editor/src/node_modules/installed/index.js': 'module.exports = {};\n',
         'components/editor/coverage-ratchet.json': '{"lines":90}\n',
+        // Not declared anywhere and outside `src/`, so it must stay behind: a package-root
+        // README is target-owned by default and `@lostgradient/editor` declares no opt-in.
         'components/editor/README.md': '# editor\n',
         // `validationInputs['@lostgradient/editor']` declares `scripts/preload.ts` (COR-1196), so
         // `planSource` now requires it to exist wherever `editorWorkspace` is planned — including
@@ -413,6 +434,54 @@ describe('what counts as source', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('a package-root README.md is target-owned unless declared', () => {
+  /**
+   * The rule COR-1196 round 10 settled on after a reverted attempt at the opposite: a
+   * package-root `README.md` ships from corvidae only for a workspace that declares it in
+   * `additionalSourceRoots`, the same as any other file outside `src/`. Every corvidae workspace's
+   * own README is internal documentation — `workspace:*` install instructions, references to the
+   * corvidae root — that would overwrite a target's public npm front page if emitted blindly.
+   * `@lostgradient/weft` is the one declared exception (`source.ts`); this pins the general rule
+   * directly against an undeclared workspace, so it keeps failing the same way regardless of
+   * which workspace a future declaration might add.
+   */
+  test('an undeclared workspace’s README.md is never emitted, even when corvidae carries one', async () => {
+    expect(additionalSourceRoots['@lostgradient/cryptography']).toBeUndefined();
+    await withTree(
+      {
+        'packages/cryptography/src/index.ts': 'export const cryptography = true;\n',
+        'packages/cryptography/README.md': '# Cryptography\n',
+      },
+      async (root) => {
+        const plan = await planSource(root, [
+          {
+            workspace: '@lostgradient/cryptography',
+            corvidaeDirectory: 'packages/cryptography',
+            targetDirectory: 'packages/cryptography',
+          },
+        ]);
+        expect(Object.keys(plan.files)).toEqual(['packages/cryptography/src/index.ts']);
+      },
+    );
+  });
+
+  test('@lostgradient/weft’s declared README.md is still emitted', async () => {
+    await withTree(
+      { ...weftDeclarationFixture(), 'packages/weft/src/index.ts': 'export const weft = true;\n' },
+      async (root) => {
+        const plan = await planSource(root, [
+          {
+            workspace: '@lostgradient/weft',
+            corvidaeDirectory: 'packages/weft',
+            targetDirectory: 'packages/weft',
+          },
+        ]);
+        expect(Object.keys(plan.files)).toContain('packages/weft/README.md');
+      },
+    );
   });
 });
 

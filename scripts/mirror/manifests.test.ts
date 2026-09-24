@@ -17,7 +17,8 @@ import {
   type ManifestPlan,
   type MirrorTarget,
 } from './manifests.ts';
-import { loadPackageMap, PackageMapError } from './package-map.ts';
+import { loadPackageMap, PackageMapError, type PackageMap } from './package-map.ts';
+import { computeSourceDigest } from './source-digest.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
@@ -136,6 +137,41 @@ function parse(plan: ManifestPlan, path: string): Record<string, unknown> {
   return JSON.parse(contents) as Record<string, unknown>;
 }
 
+/**
+ * `package-map.json`, with every `publish-as` entry's `sourceDigest` overlaid to its digest as
+ * `root` (a fixture tree, not real corvidae) currently stands.
+ *
+ * Every test here plans a synthetic tree against the *real* map — `dispositionFor` resolving
+ * against the committed map is deliberate, per this file's own fixture comment above — so a fixture
+ * consuming `@lostgradient/weft` cross-target hits `assertEdgeNotStale` unless something records a
+ * digest that matches. Overlaying the fixture's own current digest is that something: this file's
+ * tests are about manifest composition and rewriting, not about the digest guard, which has its
+ * own tests in `source-digest.test.ts` against the real map.
+ */
+async function packageMapWithCurrentDigests(root: string): Promise<PackageMap> {
+  const map = await loadPackageMap();
+  const workspaces = await discoverWorkspaces(root);
+  const overlaid: PackageMap['workspaces'] = {};
+  for (const [name, entry] of Object.entries(map.workspaces)) {
+    if (entry.disposition !== 'publish-as') {
+      overlaid[name] = entry;
+      continue;
+    }
+    const workspace = workspaces.find((candidate) => candidate.name === name);
+    if (workspace === undefined) {
+      overlaid[name] = entry;
+      continue;
+    }
+    const sourceDigest = await computeSourceDigest({
+      corvidaeRoot: root,
+      corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
+    });
+    overlaid[name] = { ...entry, sourceDigest };
+  }
+  return { ...map, workspaces: overlaid };
+}
+
 async function planFor(
   target: MirrorTarget,
   options: { targetDirectory?: string; extra?: Record<string, unknown> } = {},
@@ -146,6 +182,7 @@ async function planFor(
       corvidaeRoot: root,
       target,
       targetDirectory: options.targetDirectory,
+      packageMap: await packageMapWithCurrentDigests(root),
     });
   });
   if (!plan) throw new Error('plan was not produced');
@@ -417,7 +454,11 @@ describe('workspace and catalog resolution', () => {
         },
       }),
       async (root) => {
-        const plan = await planManifests({ corvidaeRoot: root, target: 'weft' });
+        const plan = await planManifests({
+          corvidaeRoot: root,
+          target: 'weft',
+          packageMap: await packageMapWithCurrentDigests(root),
+        });
         expect(parse(plan, 'packages/weft/package.json')['dependencies']).toEqual({
           '@lostgradient/cinder': '^0.26.2',
         });

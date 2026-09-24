@@ -225,6 +225,11 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         'The DOM harness twenty-six route suites under `src/routes/` import. It is the single largest escape in the workspace and the reason weft-ui belongs in this table at all.',
     },
     {
+      paths: ['tests/setup.ts'],
+      reason:
+        "`bunfig.toml` preloads this (`preload = [\"./tests/setup.ts\"]`), and it is where the `declare module 'bun:test'` augmentation adding `@testing-library/jest-dom`'s matchers to `expect(...)` lives. Every `src/routes/` suite that calls a jest-dom matcher (`toBeInTheDocument` and its siblings) type-checks against that augmentation — an edge `assertNoSourceEscapes` cannot see, since a module augmentation is not an import specifier the emitted route suites reference by name, only an ambient declaration they rely on being in scope. Undeclared, the target's own `typecheck-private` step for weft-ui failed with one `Property 'toBeInTheDocument' does not exist on type 'Assertion<...>'`-shaped error per real matcher call site. Not declared alongside `dom-test-support.ts` from the start because nobody had run weft-ui's typecheck against a synced target clone until COR-1196 round 11's C1 did.",
+    },
+    {
       paths: [
         'fixtures/async-activity.ts',
         'fixtures/children.ts',
@@ -247,7 +252,7 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
     {
       paths: ['README.md'],
       reason:
-        "The package's published front page, shipped through its `files` array (COR-1192). `target-owned.json` has always said per-package READMEs are the transform's, but nothing emitted one, so weft's public README lived only on the target and drifted (it carried a release literal). Corvidae's copy is now that front page — no version literal in it; the manifest and `VERSION` carry the version — and it is emitted with the source it describes.",
+        "The package's published front page, shipped through its `files` array (COR-1192). A package-root `README.md` is target-owned by default (`target-owned.json`'s root entry) — every other workspace's is internal documentation (`workspace:*` install instructions, references to the corvidae root and to sibling private workspaces) that would overwrite a target's own public npm front page if it were emitted blindly, which is exactly what an earlier, reverted version of this entry's generalization did (COR-1196 round 10). Weft's is the one exception the owner ruled on: it carries no internal reference, was written for npm from the start, and nothing emitted one until this declaration closed the gap COR-1192 found — weft's public README lived only on the target and drifted (it carried a release literal). Corvidae's copy is now that front page — no version literal in it; the manifest and `VERSION` carry the version — and it is emitted with the source it describes. A workspace that wants the same treatment declares its own `README.md` entry here, by name, the way this one does; `packaging.ts`'s `checkReadmePublicity` is the check that catches a declaration (or a future blanket emission) shipping a README that still reads as internal.",
     },
     {
       paths: ['scripts/lib/workflow-visibility-backfill.ts'],
