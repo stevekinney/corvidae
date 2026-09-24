@@ -164,6 +164,34 @@ describe('DiffViewer: stale diff disables line-comment creation', () => {
     expect(control?.disabled).toBe(true);
     expect(getByText('The diff is outdated. Recompute it to add a new comment.')).toBeTruthy();
   });
+
+  test('a saved comment rendered through lineAnnotation stays visible next to a disabled control', () => {
+    const { getByTestId } = render(DiffLine, {
+      diff: { type: 'added', text: 'new line' },
+      viewMode: 'unified',
+      annotationTargets: [
+        {
+          side: 'new',
+          line: 1,
+          id: 'control-new-1',
+          label: 'Add comment on added line 1',
+          disabled: true,
+          disabledReason: 'The diff is outdated. Recompute it to add a new comment.',
+          onactivate: () => {},
+          onkeydown: () => {},
+        },
+      ],
+      // A saved comment marker the host renders regardless of whether new
+      // comments can currently be created -- staleness gates creation only.
+      lineAnnotation: createRawSnippet<[{ side: string; line: number }]>((context) => ({
+        render: () =>
+          `<span data-testid="saved-comment">Saved comment on ${context().side}:${context().line}</span>`,
+        setup: () => {},
+      })),
+    });
+
+    expect(getByTestId('saved-comment').textContent).toBe('Saved comment on new:1');
+  });
 });
 
 describe('DiffViewer: lineAnnotation snippet', () => {
