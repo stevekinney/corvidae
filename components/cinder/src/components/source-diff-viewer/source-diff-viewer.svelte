@@ -33,7 +33,7 @@
 </script>
 
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { flushSync, untrack } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
   import {
@@ -81,12 +81,17 @@
   let annotationOrigin: SourceDiffAnnotationPoint | null = $state(null);
   let annotationPendingEnd: SourceDiffAnnotationPoint | null = $state(null);
   let annotationRejectionMessage: string | null = $state(null);
-  // Tracked by reference, not reactively: lets the controlled-prop sync effect
-  // below tell "the host echoed exactly what we just emitted" (ignore — our
-  // own `annotationOrigin` is already correct, including for a backward
-  // shift-click range whose `startLine` is not the true origin) apart from
-  // "the host supplied a genuinely different selection" (e.g. DiffReview
-  // navigating to another comment — resync origin to it).
+  // Compared by VALUE (via `selectionsEqual` below), not reactively and never
+  // by reference: lets the controlled-prop sync effect tell "the host echoed
+  // exactly what we just emitted" (ignore — our own `annotationOrigin` is
+  // already correct, including for a backward shift-click range whose
+  // `startLine` is not the true origin) apart from "the host supplied a
+  // genuinely different selection" (e.g. DiffReview navigating to another
+  // comment — resync origin to it). Reference equality would fail here even
+  // for a true echo: a host that stores the emitted selection in `$state`
+  // (the ordinary Svelte 5 controlled-prop pattern) gets back a new reactive
+  // proxy wrapping the same values, never the exact object this component
+  // passed to `onAnnotationSelectionChange`.
   let lastEmittedSelection: SourceDiffAnnotationSelection | null = null;
 
   const parsedPatch = $derived(parseUnifiedPatch(patch, { maxLines }));
@@ -119,7 +124,11 @@
   });
 
   $effect(() => {
-    if (annotationSelection === undefined || annotationSelection === lastEmittedSelection) return;
+    if (
+      annotationSelection === undefined ||
+      selectionsEqual(annotationSelection, lastEmittedSelection)
+    )
+      return;
 
     if (annotationSelection === null) {
       annotationOrigin = null;
@@ -151,6 +160,41 @@
 
   function normalizeAriaLabel(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  function contextLinesEqual(a: readonly string[], b: readonly string[]): boolean {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+  }
+
+  /**
+   * Structural equality for two annotation selections. Used instead of `===`
+   * to recognize a controlled-prop echo of our own emission even when the
+   * host round-tripped it through `$state` (see `lastEmittedSelection`
+   * above), which wraps the value in a new reactive proxy.
+   */
+  function selectionsEqual(
+    a: SourceDiffAnnotationSelection | null | undefined,
+    b: SourceDiffAnnotationSelection | null | undefined,
+  ): boolean {
+    // Never compare `a === b` directly: one side may be a `$state` proxy and
+    // the other the plain object it wraps (see `lastEmittedSelection` above).
+    // Svelte's dev build warns on exactly that comparison
+    // (`state_proxy_equality_mismatch`), so every field is compared instead.
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return (
+      a.fileOccurrence === b.fileOccurrence &&
+      a.hunkOccurrence === b.hunkOccurrence &&
+      a.side === b.side &&
+      a.startLine === b.startLine &&
+      a.endLine === b.endLine &&
+      a.coordinateSpace === b.coordinateSpace &&
+      a.selectedText === b.selectedText &&
+      a.oldPath === b.oldPath &&
+      a.newPath === b.newPath &&
+      contextLinesEqual(a.contextBefore, b.contextBefore) &&
+      contextLinesEqual(a.contextAfter, b.contextAfter)
+    );
   }
 
   function controlId(point: SourceDiffAnnotationPoint): string {
@@ -250,7 +294,25 @@
     }
   }
 
+  /**
+   * Forces any pending reactive update (e.g. a controlled `activeFileOccurrence`
+   * change made in the same host event handler as this call) to apply before
+   * `focusFile`/`focusAnchor` query the DOM. Both methods are synchronous and
+   * return their result immediately, so a host cannot `await tick()` between
+   * "change what's rendered" and "focus it" — without this, the query below
+   * would still see the pre-update DOM.
+   */
+  function flushPendingUpdates(): void {
+    try {
+      flushSync();
+    } catch {
+      // Already inside a synchronous flush (e.g. called from an `$effect`):
+      // the DOM is already current, so there is nothing to force.
+    }
+  }
+
   function focusFile(fileOccurrence: number): SourceDiffViewerFocusResult {
+    flushPendingUpdates();
     const header = rootElement?.querySelector<HTMLElement>(
       `[data-cinder-file-header][data-cinder-file-occurrence="${fileOccurrence}"]`,
     );
@@ -264,6 +326,7 @@
       startLine: number;
     },
   ): SourceDiffViewerFocusResult {
+    flushPendingUpdates();
     const control = rootElement?.querySelector<HTMLElement>(
       `#${CSS.escape(
         controlId({

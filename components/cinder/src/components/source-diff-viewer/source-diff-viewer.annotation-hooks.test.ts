@@ -429,6 +429,47 @@ describe('SourceDiffViewer: controlled annotationSelection as the extension orig
   });
 });
 
+describe('SourceDiffViewer: annotationSelection survives $state round-trips', () => {
+  test('a backward shift-click range keeps the true origin after the selection round-trips through $state', async () => {
+    const { default: AnnotationSelectionHarness } =
+      await import('./source-diff-viewer-annotation-selection-harness.svelte');
+    const { container, getByTestId } = render(AnnotationSelectionHarness, { patch: onePatch });
+
+    // Origin at line 3 (the highest line), then shift-click backward to line
+    // 1: the contiguous range is 1-3, but the true origin stays line 3 — the
+    // harness echoes the emitted selection back in through `$state`, which
+    // wraps it in a new proxy object before the component reads it back as
+    // `annotationSelection`.
+    await fireEvent.click(control(container, 'new', 3));
+    await fireEvent.click(control(container, 'new', 1), { shiftKey: true });
+    await tick();
+    expect(getByTestId('selection-readout').textContent?.trim()).toBe('1-3');
+
+    // A further shift-click to line 2 must extend from the true origin (3),
+    // producing 2-3 — not from the echoed range's `startLine` (1), which
+    // would incorrectly produce 1-2.
+    await fireEvent.click(control(container, 'new', 2), { shiftKey: true });
+    await tick();
+
+    const status = container.querySelector('.cinder-source-diff-viewer__annotation-status');
+    expect(status?.textContent?.trim()).toBe('');
+    expect(getByTestId('selection-readout').textContent?.trim()).toBe('2-3');
+  });
+});
+
+describe('SourceDiffViewer: focusFile/focusAnchor after a synchronous prop change', () => {
+  test('focusFile succeeds for a file revealed by the same synchronous activeFileOccurrence change', async () => {
+    const { default: ActiveFileFocusHarness } =
+      await import('./source-diff-viewer-active-file-focus-harness.svelte');
+    const { getByTestId } = render(ActiveFileFocusHarness, { patch: twoFilePatch });
+    await tick();
+
+    await fireEvent.click(getByTestId('switch-and-focus'));
+
+    expect(getByTestId('focus-result').textContent).toBe('focused');
+  });
+});
+
 describe('SourceDiffViewer: two-instance isolation', () => {
   test('selecting in one instance does not affect another, and control IDs never collide', async () => {
     let firstSelection: SourceDiffAnnotationSelection | null | undefined;

@@ -65,7 +65,8 @@ const schema = {
       {
         name: 'lineAnnotation',
         reason: 'function-or-snippet',
-        description: "Rendered next to each commentable row's add-comment control.",
+        description:
+          "Rendered next to each commentable row's add-comment control. Like that\ncontrol, it only appears when `onAnnotationSelectionChange` is also\nsupplied — pass both to render per-line annotation markers.",
       },
       {
         name: 'onAnnotationSelectionChange',

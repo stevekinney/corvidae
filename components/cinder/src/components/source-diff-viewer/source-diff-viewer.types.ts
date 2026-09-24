@@ -180,7 +180,11 @@ export type SourceDiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'
   activeFileOccurrence?: number | null;
   /** Rendered next to each file's header, alongside its file-level annotation controls. */
   fileAnnotation?: Snippet<[SourceDiffFileAnnotationContext]>;
-  /** Rendered next to each commentable row's add-comment control. */
+  /**
+   * Rendered next to each commentable row's add-comment control. Like that
+   * control, it only appears when `onAnnotationSelectionChange` is also
+   * supplied — pass both to render per-line annotation markers.
+   */
   lineAnnotation?: Snippet<[SourceDiffLineAnnotationContext]>;
   /**
    * Controlled current annotation selection. Distinct from ordinary diff
