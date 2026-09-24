@@ -67,19 +67,27 @@ test.describe('Diff review — keyboard matrix: toolbar and file list', () => {
     }
   });
 
-  test('Space toggles the Reviewed checkbox from the keyboard', async ({ page }) => {
+  test('Space toggles the Reviewed checkbox from the keyboard, with no separate status/alert announcement', async ({
+    page,
+  }) => {
     const mount = page.locator('#example-mount-markdown-pair');
     const reviewed = mount.getByLabel('Reviewed');
+    const statusOrAlertNodes = mount.locator('[role="status"], [role="alert"]');
     await expect(reviewed).not.toBeChecked();
+    const before = await statusOrAlertNodes.count();
+
     // Native checkbox semantics announce the checked-state change to
     // assistive technology on their own; the contract does not additionally
-    // require a separate live-region announcement here, and none exists --
-    // this asserts the DOM state Space actually produces, once.
+    // require a separate live-region announcement here, and this proves none
+    // exists -- Space only ever flips the DOM `checked` state, never adds or
+    // changes a `role="status"`/`role="alert"` node.
     await reviewed.focus();
     await page.keyboard.press('Space');
     await expect(reviewed).toBeChecked();
+    await expect(statusOrAlertNodes).toHaveCount(before);
     await page.keyboard.press('Space');
     await expect(reviewed).not.toBeChecked();
+    await expect(statusOrAlertNodes).toHaveCount(before);
   });
 
   test('Enter activates a file list button exactly like a click', async ({ page }) => {

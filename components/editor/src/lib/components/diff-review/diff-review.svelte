@@ -63,6 +63,9 @@
   let activeDraftId = $state<string | null>(null);
   let resetToken = $state(0);
   let draftsOpen = $state(false);
+  /** Set by `openDraft`; the effect below focuses the composer once it is in the DOM. */
+  let composerFocusRequested = $state(false);
+  let composerTextareaElement = $state<HTMLTextAreaElement | undefined>(undefined);
   let rendererRef = $state<DiffReviewRendererRef | undefined>(undefined);
   let rendererFailed = $state(false);
   /** Non-null while a comment-navigation focus attempt found no target to focus. */
@@ -203,12 +206,27 @@
     if (outcome.ok) closeComposer();
   }
 
+  /**
+   * Opening a hidden draft (COR-511 / DR-8 review follow-up; contract:
+   * "Open clears only the necessary filters and focuses its composer").
+   * Clearing `filterQuery` unconditionally would discard a filter the host
+   * still needs for an unrelated reason -- it is cleared only when it is
+   * itself the reason the draft's own file entry isn't currently visible.
+   * `fileEntries` lists every target's files regardless of selection, so
+   * this check needs no `reviewState` round-trip through `onStateChange`.
+   */
   function openDraft(draft: DiffReviewDraft): void {
     if (effectiveTargets.some((target) => target.targetId === draft.targetId)) {
       selectFile(draft.targetId, draft.anchor.fileOccurrence);
     }
     activeDraftId = draft.draftId;
     draftsOpen = true;
+    const ownEntryVisible = filterDiffReviewFileEntries(fileEntries, filterQuery).some(
+      (entry) =>
+        entry.targetId === draft.targetId && entry.fileOccurrence === draft.anchor.fileOccurrence,
+    );
+    if (!ownEntryVisible) filterQuery = '';
+    composerFocusRequested = true;
   }
 
   function saveDraft(draftId: string): void {
@@ -280,6 +298,15 @@
     pendingFocus = null;
     performFocus(anchor);
   });
+
+  // Focuses the composer once `openDraft` has requested it and the composer
+  // textarea is actually in the DOM (it renders inside `{#if activeDraft}`,
+  // so on a first open the element does not exist yet in the same tick).
+  $effect(() => {
+    if (!composerFocusRequested || !composerTextareaElement) return;
+    composerTextareaElement.focus();
+    composerFocusRequested = false;
+  });
 </script>
 
 <div class={['diff-review', className].filter(Boolean).join(' ')} {...rest}>
@@ -341,19 +368,33 @@
           <p class="diff-review-composer-location">
             {formatDiffReviewCommentLocation(activeDraft)}
           </p>
+          {#if readonly}
+            <!-- Reaching a nonempty draft's composer while read-only is possible through the
+                 drafts inventory's "Open" action, which always renders regardless of `readonly`
+                 (only its own Save/Discard are hidden) -- native disabled controls plus visible
+                 explanatory text, per the contract ("Use native disabled buttons/inputs with
+                 nearby visible explanatory text"; "If read-only mode has nonempty drafts, export
+                 stays blocked and explains that the host must enable editing to save/discard
+                 them"). Mirrors ReviewEditor's own diff-comment composer for the identical case. -->
+            <p class="diff-review-composer-readonly-note">
+              Enable editing to change or save this draft.
+            </p>
+          {/if}
           <textarea
             aria-label="Comment"
             value={activeDraft.body}
+            disabled={readonly}
+            bind:this={composerTextareaElement}
             oninput={(event) => updateComposerBody(event.currentTarget.value)}></textarea>
           <div class="diff-review-composer-actions">
             <button
               type="button"
               onclick={saveComposer}
-              disabled={activeDraft.body.trim().length === 0}
+              disabled={readonly || activeDraft.body.trim().length === 0}
             >
               Save
             </button>
-            <button type="button" onclick={closeComposer}>Cancel</button>
+            <button type="button" onclick={closeComposer}>{readonly ? 'Close' : 'Cancel'}</button>
           </div>
         </div>
       {/if}

@@ -166,3 +166,47 @@ test.describe('Diff review — mid-session staleness', () => {
     await expect(control).toBeEnabled({ timeout: 10_000 });
   });
 });
+
+test.describe('Diff review — read-only with a nonempty draft', () => {
+  test.beforeEach(async ({ page }) => {
+    await goto(page);
+  });
+
+  test('switching to read-only with an existing draft keeps export blocked and disables the composer with an explanatory note', async ({
+    page,
+  }) => {
+    const mount = page.locator('#example-mount-readonly-toggle');
+    const composer = mount.locator('.diff-review-composer');
+
+    // Create a draft while still editable, then cancel (leaving it nonempty
+    // and recoverable, per the contract's "Cancel preserves an existing
+    // draft").
+    await mount.locator('[data-cinder-annotation-control][data-cinder-side="new"]').first().click();
+    await mount.getByLabel('Comment', { exact: true }).fill('Written before read-only.');
+    await composer.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    const gate = mount.locator('.diff-review-toolbar-gate[role="status"]');
+    await expect(gate).toHaveCount(1);
+
+    // Switch to read-only with that draft still pending.
+    await mount.getByRole('button', { name: 'Make read-only' }).click();
+
+    // Contract: "If read-only mode has nonempty drafts, export stays
+    // blocked and explains that the host must enable editing to save/
+    // discard them."
+    await expect(gate).toHaveCount(1);
+    await expect(mount.getByText('Copy review')).toHaveCount(0);
+
+    // Open the now-read-only draft from the inventory: the composer must
+    // render fully disabled with a visible explanation, matching what
+    // ReviewEditor's own diff-comment composer already does for the
+    // identical case (`review-editor-diff-comments.playwright.ts`).
+    await mount.getByRole('button', { name: 'Review drafts' }).click();
+    await mount.getByRole('button', { name: 'Open', exact: true }).click();
+
+    await expect(composer.getByLabel('Comment', { exact: true })).toBeVisible();
+    await expect(composer.getByLabel('Comment', { exact: true })).toBeDisabled();
+    await expect(mount.getByText('Enable editing to change or save this draft.')).toBeVisible();
+    await expect(composer.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  });
+});

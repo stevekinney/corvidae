@@ -121,6 +121,12 @@ test.describe('Diff review — hidden-draft inventory', () => {
         '[data-cinder-annotation-control][data-cinder-side="new"][data-cinder-line="1"]',
       ),
     ).toBeVisible();
+    // Contract: "Open clears only the necessary filters and focuses its
+    // composer." The path filter was still "zzz-no-match" (hiding every file
+    // entry) when Open was clicked -- the opened draft's own file must be
+    // visible again, and DOM focus must actually land in the composer.
+    await expect(mount.locator('.diff-review-file-list-item')).not.toHaveCount(0);
+    await expect(composer).toBeFocused();
 
     // -- Save it: the gate drops back to the singular count. ----------------
     await composerPanel.getByRole('button', { name: 'Save', exact: true }).click();

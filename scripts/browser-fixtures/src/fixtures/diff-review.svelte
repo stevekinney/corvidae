@@ -276,6 +276,25 @@ Binary files a/image.png and b/image.png differ
   function growStaleDocument(): void {
     staleLargeMode = true;
   }
+
+  // -- Scenario: toggling readonly on a session with an existing draft ------
+  // (COR-511 / DR-8; contract: "If read-only mode has nonempty drafts,
+  // export stays blocked and explains that the host must enable editing to
+  // save/discard them.") A host-controlled toggle, matching the pattern the
+  // `review-editor-diff-comments` fixture already uses for the same case.
+  const readonlyToggleTarget: DiffReviewTargetInput = {
+    targetId: 'readonly-toggle',
+    kind: 'markdown',
+    label: 'readonly-toggle.md',
+    original: 'Ship login.',
+    current: 'Ship login and dashboard.',
+    normalizeInputs: true,
+  };
+  let readonlyToggleState = $state(initialState([readonlyToggleTarget]));
+  let readonlyToggleReadonly = $state(false);
+  function toggleReadonlyToggleMode(): void {
+    readonlyToggleReadonly = !readonlyToggleReadonly;
+  }
 </script>
 
 <div id="example-mount-markdown-pair">
@@ -376,6 +395,18 @@ Binary files a/image.png and b/image.png differ
       targets={staleTargets}
       state={staleState}
       onStateChange={(next) => (staleState = next)}
+    />
+  </div>
+
+  <div id="example-mount-readonly-toggle">
+    <button type="button" onclick={toggleReadonlyToggleMode}>
+      {readonlyToggleReadonly ? 'Enable editing' : 'Make read-only'}
+    </button>
+    <DiffReview
+      targets={[readonlyToggleTarget]}
+      state={readonlyToggleState}
+      onStateChange={(next) => (readonlyToggleState = next)}
+      readonly={readonlyToggleReadonly}
     />
   </div>
 {/if}
