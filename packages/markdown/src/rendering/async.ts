@@ -10,6 +10,6 @@ export {
   initializeWorkerHighlighter,
   renderMarkdownAsync,
   terminateMarkdownWorker,
-} from './render-async.ts';
+} from './render-async.js';
 
-export type { RenderOptions, RenderResult } from './types.ts';
+export type { RenderOptions, RenderResult } from './types.js';
