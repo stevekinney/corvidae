@@ -756,6 +756,49 @@ describe('composition against a manifest the target already carries', () => {
       expect((cinder['scripts'] as Record<string, string>)['prepare']).toBe('cd ../.. && husky');
     });
   });
+
+  test(
+    'COR-1196: an existing manifest missing a version is seeded like a new one, ' +
+      'not left without one',
+    async () => {
+      const versioned: Record<string, unknown> = {};
+      for (const manifest of Object.values(workspaces)) {
+        if (manifest['name'] === '@lostgradient/weft') continue;
+        if (manifest['name'] === '@lostgradient/weft-ui') continue;
+        const layout = await layoutFor(String(manifest['name']));
+        if (layout.disposition !== 'emit') continue;
+        versioned[`${layout.targetDirectory}/package.json`] = {
+          name: manifest['name'],
+          version: '1.2.3',
+        };
+      }
+      // `@lostgradient/testing` is COR-1196's real example: a private workspace the target
+      // already has a manifest for — named `@cinder/testing`, the real target's own spelling —
+      // but whose manifest has never carried a `version` key at all.
+      versioned['packages/testing/package.json'] = { name: '@cinder/testing', private: true };
+      await withTree(versioned, async (targetDirectory) => {
+        const plan = await planFor('cinder', {
+          targetDirectory,
+          extra: {
+            'packages/testing/package.json': {
+              name: '@lostgradient/testing',
+              private: true,
+              dependencies: { svelte: 'catalog:' },
+            },
+          },
+        });
+        const testing = parse(plan, 'packages/testing/package.json');
+        expect(testing['version']).toBe('0.0.0');
+        // Not a first publish and not seeded from the package map: the target already has *a*
+        // manifest for this workspace, just not a versioned one — a third case neither list
+        // describes.
+        expect(plan.firstPublish).not.toContain('@lostgradient/testing');
+        expect(plan.seededFromPackageMap).not.toContain('@lostgradient/testing');
+        const cinder = parse(plan, 'packages/components/package.json');
+        expect(cinder['version']).toBe('1.2.3');
+      });
+    },
+  );
 });
 
 /**
