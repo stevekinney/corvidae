@@ -14,6 +14,7 @@ import { loadPackageSurface, missingBuildInputs } from './package-surface.ts';
 import {
   assertSucceeded,
   assertTarballsPublishable,
+  checkReadmePublicity,
   defaultToolsRoot,
   PackagingError,
   runCommand,
@@ -662,11 +663,18 @@ export async function verifyTarget({
       case 'attw': {
         assertSucceeded(result, `resolving attw for ${step.publicName}`);
         const pending = reportsByPublicName.get(step.publicName ?? '');
+        // `checkTarball` folds this in for a direct caller (`publish-rehearsal.ts`, every test in
+        // `packaging.test.ts`), but this assembly bypasses `checkTarball` entirely — the steps
+        // above are real shell commands `buildVerifySteps` also renders into `mirror-verify.yaml`,
+        // and `publint`/`attw` are read off their own step results rather than invoked here. A
+        // README-publicity check has no external tool to shell out to, so it runs directly, at the
+        // same point `attw`'s result completes this report, rather than as its own rendered step.
         reports.push({
           publicName: step.publicName ?? '',
           tarball: step.tarball ?? '',
           publint: pending?.publint ?? result,
           typeResolution: result,
+          readme: await checkReadmePublicity(step.tarball ?? ''),
         });
         break;
       }

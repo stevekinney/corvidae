@@ -1,4 +1,5 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
@@ -187,6 +188,76 @@ export interface TarballReport {
   tarball: string;
   publint: CommandResult;
   typeResolution: CommandResult;
+  readme: ReadmePublicityResult;
+}
+
+export type ReadmePublicityProblem =
+  { kind: 'missing' } | { kind: 'internal-marker'; marker: string };
+
+export interface ReadmePublicityResult {
+  ok: boolean;
+  problem?: ReadmePublicityProblem;
+}
+
+/**
+ * Substrings that mark a README as corvidae's own internal documentation rather than a package's
+ * public npm front page.
+ *
+ * Verified against every README this checkout carries for a `publish-as` workspace: `cinder`,
+ * `cryptography`, `operative`, `conversationalist` and `armorer` each contain both `workspace:*`
+ * (the Bun-workspace install instruction only an internal consumer would need) and `Corvidae` (the
+ * capitalized project name, naming the repository these packages ship from) — weft's contains
+ * neither, because COR-1192 wrote it for npm from the start with no internal reference. Either
+ * marker alone is enough to flag a README, so a page that drops one but keeps the other still
+ * refuses.
+ */
+const internalReadmeMarkers = ['workspace:*', 'Corvidae'] as const;
+
+/** The first internal-documentation marker a README's text contains, or `undefined` if it has none. */
+export function findInternalReadmeMarker(text: string): string | undefined {
+  return internalReadmeMarkers.find((marker) => text.includes(marker));
+}
+
+/** Read `README.md` out of a packed tarball, or `undefined` when the tarball carries none. */
+async function readReadmeFromTarball(
+  tarball: string,
+  runner: CommandRunner,
+): Promise<string | undefined> {
+  const scratch = await mkdtemp(join(tmpdir(), 'corvidae-readme-check-'));
+  try {
+    const result = await runner(['tar', '-xzf', tarball, '-C', scratch, 'package/README.md'], {
+      cwd: scratch,
+    });
+    if (result.exitCode !== 0) return undefined;
+    const file = Bun.file(join(scratch, 'package/README.md'));
+    if (!(await file.exists())) return undefined;
+    return await file.text();
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Refuse a packed tarball whose `README.md` is missing or still reads as corvidae's internal
+ * documentation.
+ *
+ * The declaration `source.ts`'s `additionalSourceRoots['@lostgradient/weft']` doc comment points
+ * to is what decides *whether* a package-root README ships at all (COR-1196 round 11 reversed an
+ * earlier blanket-emission attempt, after it overwrote several targets' public npm front pages
+ * with corvidae's internal one). That declaration is still a human decision, made once, that can
+ * be wrong for a new package or reintroduced incorrectly later — this is the check that catches
+ * the actual artifact at the boundary that matters, the packed tarball, the same one `publint` and
+ * `attw` already read below.
+ */
+export async function checkReadmePublicity(
+  tarball: string,
+  runner: CommandRunner = runCommand,
+): Promise<ReadmePublicityResult> {
+  const text = await readReadmeFromTarball(tarball, runner);
+  if (text === undefined) return { ok: false, problem: { kind: 'missing' } };
+  const marker = findInternalReadmeMarker(text);
+  if (marker !== undefined) return { ok: false, problem: { kind: 'internal-marker', marker } };
+  return { ok: true };
 }
 
 /**
@@ -232,16 +303,24 @@ export async function checkTarball(
     ],
     { cwd: toolsRoot },
   );
-  return { publicName, tarball, publint, typeResolution };
+  const readme = await checkReadmePublicity(tarball);
+  return { publicName, tarball, publint, typeResolution, readme };
 }
 
-/** Every report whose `publint` or `attw` run failed, named together in one message. */
+/** Every report whose `publint`, `attw` or README-publicity check failed, named together in one message. */
 export function assertTarballsPublishable(reports: readonly TarballReport[]): void {
   const lines: string[] = [];
   for (const report of reports) {
     if (report.publint.exitCode !== 0) {
       lines.push(`  ${report.publicName}: publint exited ${report.publint.exitCode}`);
       lines.push(indent(report.publint.stdout || report.publint.stderr));
+    }
+    if (!report.readme.ok) {
+      lines.push(
+        report.readme.problem?.kind === 'missing'
+          ? `  ${report.publicName}: README.md is missing from the packed tarball`
+          : `  ${report.publicName}: README.md still reads as corvidae's internal documentation (contains "${report.readme.problem?.marker}")`,
+      );
     }
     if (report.typeResolution.exitCode !== 0) {
       lines.push(`  ${report.publicName}: attw exited ${report.typeResolution.exitCode}`);

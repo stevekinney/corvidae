@@ -245,6 +245,11 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
   ],
   '@lostgradient/weft': [
     {
+      paths: ['README.md'],
+      reason:
+        "The package's published front page, shipped through its `files` array (COR-1192). A package-root `README.md` is target-owned by default (`target-owned.json`'s root entry) — every other workspace's is internal documentation (`workspace:*` install instructions, references to the corvidae root and to sibling private workspaces) that would overwrite a target's own public npm front page if it were emitted blindly, which is exactly what an earlier, reverted version of this entry's generalization did (COR-1196 round 10). Weft's is the one exception the owner ruled on: it carries no internal reference, was written for npm from the start, and nothing emitted one until this declaration closed the gap COR-1192 found — weft's public README lived only on the target and drifted (it carried a release literal). Corvidae's copy is now that front page — no version literal in it; the manifest and `VERSION` carry the version — and it is emitted with the source it describes. A workspace that wants the same treatment declares its own `README.md` entry here, by name, the way this one does; `packaging.ts`'s `checkReadmePublicity` is the check that catches a declaration (or a future blanket emission) shipping a README that still reads as internal.",
+    },
+    {
       paths: ['scripts/lib/workflow-visibility-backfill.ts'],
       reason:
         'Imported by `src/core/engine/list-candidate-resolution.test.ts` and `src/storage/bun-sql-workflow-visibility-backfill.test.ts`.',
@@ -653,69 +658,6 @@ async function readDeclaredBuildInputs(
   }
 }
 
-/** A workspace's own published front page, read from its root rather than its `src/` tree. */
-const packageReadmeName = 'README.md';
-
-/**
- * A workspace's `README.md`, emitted with its source whenever corvidae carries one.
- *
- * `target-owned.json`'s root `README.md` entry has always said the per-package copy is the
- * transform's, not the target's — corvidae carries a README in every workspace and the targets
- * ship it through their `files` arrays. Until COR-1192, nothing actually emitted one: the `src/`
- * walk never reaches a package-root file, so only a workspace that declared `README.md` in
- * `additionalSourceRoots` got a fresh copy, and COR-1192 declared exactly one — weft's — closing
- * the gap for that workspace alone while every other one kept whatever stale copy the target
- * already had (or none: `packages/cryptography`, `packages/embeddings` and `packages/tool-protocol`
- * had never received one). This is the general form of that fix, the same way `manifests.ts` fans
- * the root `LICENSE` into every emitted package directory (COR-1183) rather than asking each
- * workspace to declare it — a published front page is metadata every package carries, not an
- * import-graph escape the way the declarations in `additionalSourceRoots` are, so it does not
- * belong in that table. Weft's own entry there is removed as part of this change; this function is
- * now what the `the weft package README` test in `source.test.ts` exercises.
- *
- * Unconditional across published and private workspaces alike, and independent of whether
- * `package-surface.json`'s `files` array happens to list `README.md` for a published package:
- * `files` governs what npm ships in the tarball, not whether the mirror repository itself carries
- * the page. A published package whose `files` omits it (`@lostgradient/chat`, `@lostgradient/editor`
- * today) still gets its README written into the target's source tree; npm simply will not publish
- * it, which is a `package-surface.json` question, not this one.
- *
- * Read through `readInto`, not copied as raw bytes, because it is markdown and
- * `formatEmittedFile` has to run it through the *target's* prettier the same way every other
- * emitted document does — corvidae's `proseWrap: "never"` override does not always match a
- * target's own configuration, and a target that refuses unformatted markdown would fail
- * `format:check` on a README byte-identical to corvidae's own otherwise-clean copy.
- *
- * Missing is a skip, not a refusal, unlike `readAdditionalSourceRoots` and `readValidationInputs`.
- * Both of those name paths only a human declares, so a missing one means the declaration has gone
- * stale and ought to fail loudly. This name is never declared — it is inferred for every
- * workspace — so a skip lets a workspace scaffolded before its README lands still plan, the same
- * way `readDeclaredBuildInputs` leaves a build input the target still owns. The committed-tree
- * test in `source.test.ts` asserts every emitted workspace across all three targets carries one
- * today, which is what keeps the skip from silently becoming permanent for a workspace that should
- * have one.
- *
- * Outside `ownedPrefixes`, so the file is written and never pruned — the same treatment every
- * other declared, non-`src/` file already receives. A workspace that deletes its README keeps
- * whichever copy the target already has rather than losing it to a sync that cannot tell a
- * deliberate removal from an oversight.
- */
-async function readPackageReadme(
-  corvidaeRoot: string,
-  workspace: EmittedWorkspace,
-  plan: SourcePlan,
-  targetDirectory: string | undefined,
-): Promise<void> {
-  const absolute = join(corvidaeRoot, workspace.corvidaeDirectory, packageReadmeName);
-  if (!(await Bun.file(absolute).exists())) return;
-  await readInto(
-    plan,
-    absolute,
-    `${workspace.targetDirectory}/${packageReadmeName}`,
-    targetDirectory,
-  );
-}
-
 /**
  * Plan every emitted workspace's source at its target path.
  *
@@ -745,7 +687,6 @@ export async function planSource(
     if (inTree || declared) plan.typeScriptWorkspaces.push(workspace.workspace);
     await readValidationInputs(corvidaeRoot, workspace, plan, targetDirectory);
     await readDeclaredBuildInputs(corvidaeRoot, workspace, plan, targetDirectory);
-    await readPackageReadme(corvidaeRoot, workspace, plan, targetDirectory);
   }
   plan.ownedPrefixes.sort();
   plan.executable.sort();
