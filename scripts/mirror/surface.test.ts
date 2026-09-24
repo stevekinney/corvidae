@@ -63,13 +63,11 @@ const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
   // COR-1287: the agent-bureau target's ten packages each resolve every subpath their emitted
   // manifest names, so it joins weft with nothing accepted.
   'agent-bureau': [],
-  cinder: [
-    // The two promoted components' deprecated shims: `src/components/experimental/` is absent
-    // here, and only the bare component entry narrows — each one's `/schema`, `/variables` and
-    // `/styles` facets resolve against the promoted component. Accepted rather than restored.
-    '@lostgradient/cinder ./experimental/json-viewer',
-    '@lostgradient/cinder ./experimental/message',
-  ],
+  // COR-1196: the two promoted components' deprecated shims were once accepted here as
+  // unresolved, which left the cinder plan unpublishable: stageSurface's assertPublishable refused
+  // it outright. Published cinder 0.26.2 exports both `./experimental/*` subpaths, so dropping them
+  // would break consumers; the shims now live in corvidae and the target joins the others.
+  cinder: [],
 };
 
 describe('published dependency edges', () => {
