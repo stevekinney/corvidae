@@ -14,6 +14,12 @@
       "title": "Bounded source diff viewer",
       "description": "Large patches can cap rendered diff rows while preserving the total count.",
       "code": "<script lang=\"ts\">\n  import { SourceDiffViewer } from '@lostgradient/cinder';\n\n  const patch = `diff --git a/src/generated.txt b/src/generated.txt\n--- a/src/generated.txt\n+++ b/src/generated.txt\n@@ -1,6 +1,6 @@\n unchanged\n-old one\n+new one\n-old two\n+new two\n unchanged\n`;\n</script>\n\n<SourceDiffViewer {patch} maxLines={4} />\n"
+    },
+    {
+      "id": "annotation-hooks",
+      "title": "Optional annotation hooks",
+      "description": "A controlled annotationSelection lets a host build line-comment UI without SourceDiffViewer importing editor or Markdown runtime code.",
+      "code": "<script lang=\"ts\">\n  import { SourceDiffViewer, type SourceDiffAnnotationSelection } from '@lostgradient/cinder';\n\n  const patch = `diff --git a/src/cache.ts b/src/cache.ts\n--- a/src/cache.ts\n+++ b/src/cache.ts\n@@ -1,2 +1,2 @@\n-cache.set(key, result);\n+cache.set(key, result, { ttl: 60 });\n return result;\n`;\n\n  let selection: SourceDiffAnnotationSelection | null = $state(null);\n</script>\n\n<SourceDiffViewer\n  {patch}\n  annotationSelection={selection}\n  onAnnotationSelectionChange={(next) => (selection = next)}\n/>\n"
     }
   ]
 }
