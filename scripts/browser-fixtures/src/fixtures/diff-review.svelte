@@ -109,6 +109,9 @@ diff --git a/src/two.ts b/src/two.ts
   ];
   let mixedState = $state(initialState(mixedTargets));
 
+  // -- Scenario 4: a read-only session (COR-511 / DR-8 read-only-state coverage) --
+  let readonlyState = $state(initialState(markdownTargets));
+
   // -- Standalone viewers + DiffReviewComments (no aggregate shell) -------
   let standaloneDiffViewerState = $state(initialState(markdownTargets));
   let standaloneSourceViewerState = $state(initialState(sourceTargets));
@@ -318,6 +321,15 @@ Binary files a/image.png and b/image.png differ
     targets={mixedTargets}
     state={mixedState}
     onStateChange={(next) => (mixedState = next)}
+  />
+</div>
+
+<div id="example-mount-readonly">
+  <DiffReview
+    targets={markdownTargets}
+    state={readonlyState}
+    onStateChange={(next) => (readonlyState = next)}
+    readonly
   />
 </div>
 

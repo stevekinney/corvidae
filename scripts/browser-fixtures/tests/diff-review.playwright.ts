@@ -37,6 +37,7 @@ test.describe('Diff review — fixture scenarios', () => {
     await expect(page.locator('#example-mount-markdown-pair')).toBeVisible();
     await expect(page.locator('#example-mount-multi-file-source')).toBeVisible();
     await expect(page.locator('#example-mount-mixed-target')).toBeVisible();
+    await expect(page.locator('#example-mount-readonly')).toBeVisible();
     await expect(page.locator('#example-mount-standalone-diff-viewer')).toBeVisible();
     await expect(page.locator('#example-mount-standalone-source-diff-viewer')).toBeVisible();
 
@@ -120,6 +121,25 @@ test.describe('Diff review — Markdown/JSON downloads', () => {
     expect(bytes[0]).not.toBe(0xef); // no UTF-8 BOM
     const parsed = JSON.parse(new TextDecoder('utf-8').decode(bytes)) as { schemaVersion: number };
     expect(parsed.schemaVersion).toBe(1);
+  });
+});
+
+test.describe('Diff review — read-only state', () => {
+  test.beforeEach(async ({ page }) => {
+    await goto(page);
+  });
+
+  test('a read-only session hides comment-creation controls but keeps export available', async ({
+    page,
+  }) => {
+    const mount = page.locator('#example-mount-readonly');
+    await expect(mount.getByRole('button', { name: 'Add file comment' })).toHaveCount(0);
+    await expect(
+      mount.locator('[data-cinder-annotation-control][data-cinder-side="new"]'),
+    ).toHaveCount(0);
+    // Export remains available in a read-only session: it reads state, it does not mutate it.
+    await expect(mount.getByText('Copy review')).toBeVisible();
+    await expect(mount.getByText('Download Markdown')).toBeVisible();
   });
 });
 
