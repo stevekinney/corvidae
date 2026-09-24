@@ -41,7 +41,7 @@ Aggregate single- and multi-target diff review (COR-509 / DR-6): a file list wit
 
 ## Renderer selection
 
-A Markdown target renders through `DiffViewer`; a source-patch target renders through Cinder's `SourceDiffViewer`, scoped to the currently selected file via `activeFileOccurrence`. Both are wired through their public `annotationSelection`/`onAnnotationSelectionChange` hooks; `DiffReview` converts each viewer's selection into a `DiffReviewRangeAnchor` (`diff-review-annotation-bridge.ts`) before dispatching `create-comment`.
+A Markdown target renders through `DiffViewer`; a source-patch target renders through Cinder's `SourceDiffViewer`, scoped to the currently selected file via `activeFileOccurrence`. Both are wired through their public `annotationSelection`/`onAnnotationSelectionChange` hooks; `DiffReview` converts each viewer's selection into a `DiffReviewRangeAnchor` (`diff-review-annotation-bridge.ts`) and immediately dispatches `create-draft` with it — the composer is a live view over that draft, not a local text buffer, so a partially written comment survives target switching, filtering, mode changes, and remount exactly like any other draft. Save dispatches `save-draft` (converting it into a real comment); Cancel only closes the composer panel and does **not** discard the draft, which remains recoverable from the drafts inventory.
 
 ## Layout
 

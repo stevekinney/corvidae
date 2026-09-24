@@ -53,6 +53,38 @@ test.describe('Diff review — fixture scenarios', () => {
   });
 });
 
+test.describe('Diff review — comment creation', () => {
+  test.beforeEach(async ({ page }) => {
+    await goto(page);
+  });
+
+  test('selecting a changed line, typing feedback, and saving creates a real comment', async ({
+    page,
+  }) => {
+    const mount = page.locator('#example-mount-markdown-pair');
+    // The fixture's Markdown pair changes exactly one line; its "new" side
+    // annotation control is DiffViewer's own real add-comment control (see
+    // diff-viewer-annotation.playwright.ts), not anything DiffReview adds.
+    const control = mount
+      .locator('[data-cinder-annotation-control][data-cinder-side="new"]')
+      .first();
+    await control.click();
+
+    const composer = mount.getByLabel('Comment', { exact: true });
+    await expect(composer).toBeVisible();
+    await composer.fill('Please tighten this sentence.');
+    await mount.getByText('Save', { exact: true }).click();
+
+    // The composer closes and the new comment is visible in the panel.
+    await expect(mount.getByLabel('Comment', { exact: true })).toHaveCount(0);
+    await expect(mount.locator('.diff-review-comment-item')).toContainText(
+      'Please tighten this sentence.',
+    );
+    // The file list's comment count reflects the real saved comment.
+    await expect(mount.locator('.diff-review-file-list-counts')).toContainText('1 comment');
+  });
+});
+
 test.describe('Diff review — Markdown/JSON downloads', () => {
   test.beforeEach(async ({ page }) => {
     await goto(page);

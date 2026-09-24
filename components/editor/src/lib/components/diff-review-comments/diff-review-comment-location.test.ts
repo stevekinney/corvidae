@@ -78,4 +78,17 @@ describe('DiffReview component comment location label', () => {
     };
     expect(formatDiffReviewCommentLocation(comment)).toBe('Patch');
   });
+
+  test('accepts a DiffReviewDraft (same anchor/capturedContext shape, no id/body/resolved)', () => {
+    // The composer reuses this formatter to name the file/side/range above
+    // its textarea, before the draft is ever saved as a comment.
+    const { id, body, createdAt, updatedAt, resolved, outdated, ...draftShaped } = baseComment();
+    void id;
+    void body;
+    void createdAt;
+    void updatedAt;
+    void resolved;
+    void outdated;
+    expect(formatDiffReviewCommentLocation(draftShaped)).toBe('src/two.ts');
+  });
 });

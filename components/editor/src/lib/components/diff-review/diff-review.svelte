@@ -17,6 +17,7 @@
   import type { DiffReviewDraft } from '../../diff-review-state/index.ts';
   import { exportDiffReviewJson, exportDiffReviewMarkdown } from '../../export/index.ts';
   import { dispatchDiffReviewAction } from '../../utilities/diff-review-dispatch.ts';
+  import { formatDiffReviewCommentLocation } from '../diff-review-comments/diff-review-comment-location.ts';
   import DiffReviewComments from '../diff-review-comments/diff-review-comments.svelte';
   import type { DiffReviewAnnotationBridgeResult } from './diff-review-annotation-bridge.ts';
   import DiffReviewDraftsInventory from './diff-review-drafts-inventory.svelte';
@@ -221,7 +222,14 @@
         onselectionchange={handleSelectionChange}
       />
       {#if activeDraft}
-        <div class="diff-review-composer" role="group" aria-label="New comment">
+        <div
+          class="diff-review-composer"
+          role="group"
+          aria-label={`New comment on ${formatDiffReviewCommentLocation(activeDraft)}`}
+        >
+          <p class="diff-review-composer-location">
+            {formatDiffReviewCommentLocation(activeDraft)}
+          </p>
           <textarea
             aria-label="Comment"
             value={activeDraft.body}

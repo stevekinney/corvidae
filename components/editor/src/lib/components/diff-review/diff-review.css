@@ -49,6 +49,13 @@
     margin-top: var(--cinder-space-2);
   }
 
+  .diff-review-composer-location {
+    margin: 0;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
   .diff-review-composer-actions {
     display: flex;
     gap: var(--cinder-space-2);
