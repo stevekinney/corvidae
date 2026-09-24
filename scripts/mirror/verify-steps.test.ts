@@ -402,9 +402,11 @@ describe('the consumer manifest resolves intra-target siblings from this run (CO
 
   // A packed tarball rewrites its `workspace:*` edge to a registry range. For a first publish that
   // range names a version the registry does not have yet, so without an override the consumer's
-  // install fetches the sibling from npm and gets a 404 (agent-bureau's cryptography, cinder's
-  // weft-ui). Bun honors an `overrides` entry pointing at a `file:` tarball for such a sibling;
-  // measured under Bun 1.4.0 and 1.4.2 on 2026-09-23.
+  // install fetches the sibling from npm and gets a 404 (agent-bureau's cryptography, embeddings,
+  // lifecycle and tool-protocol; COR-1196 moved cinder's other example, weft-ui, to
+  // `private-workspace`, so it no longer packs a tarball at all). Bun honors an `overrides` entry
+  // pointing at a `file:` tarball for such a sibling; measured under Bun 1.4.0 and 1.4.2 on
+  // 2026-09-23.
   test('a sibling another published package depends on is overridden to its own tarball', () => {
     const armorer: PublishedPackage = {
       ...published[0]!,

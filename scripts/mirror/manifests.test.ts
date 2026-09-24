@@ -431,13 +431,46 @@ describe('workspace and catalog resolution', () => {
         'packages/weft/package.json': {
           name: '@lostgradient/weft',
           private: true,
-          dependencies: { '@lostgradient/weft-ui': 'workspace:*' },
+          // `@lostgradient/cryptography` carries `lastPublishedVersion: null` in the real map, so
+          // it has nothing to seed a range from. `@lostgradient/weft-ui` used to be this fixture's
+          // example of the same fact; COR-1196 moved it to `private-workspace`, which refuses a
+          // cross-target edge for a different reason (see the next test), so this one needs a
+          // `publish-as` package that has genuinely never published instead.
+          dependencies: { '@lostgradient/cryptography': 'workspace:*' },
+        },
+        'packages/cryptography/package.json': {
+          name: '@lostgradient/cryptography',
+          private: true,
         },
       }),
       async (root) => {
         const plan = planManifests({ corvidaeRoot: root, target: 'weft' });
         await expect(plan).rejects.toThrow(ManifestTransformError);
         await expect(plan).rejects.toThrow(/never been published/);
+      },
+    );
+  });
+
+  test('a cross-target edge to a private workspace outside development-only tooling is refused', async () => {
+    // COR-1196: `@lostgradient/weft-ui` is `private-workspace` with basis `held-for-api-design`
+    // in the real map, not `development-only`, so an edge to it cannot be silently dropped the
+    // way `@lostgradient/typescript`'s devDependencies edge can (see "the weft target drops its
+    // development-only edge" above). Nothing in the real tree declares this edge — this pins the
+    // refusal the code path takes if one ever did, which was previously untested.
+    await withTree(
+      corvidaeFixture({
+        'packages/weft/package.json': {
+          name: '@lostgradient/weft',
+          private: true,
+          dependencies: { '@lostgradient/weft-ui': 'workspace:*' },
+        },
+      }),
+      async (root) => {
+        const plan = planManifests({ corvidaeRoot: root, target: 'weft' });
+        await expect(plan).rejects.toThrow(ManifestTransformError);
+        await expect(plan).rejects.toThrow(
+          /only a devDependencies edge to development-only tooling can be dropped/,
+        );
       },
     );
   });
@@ -656,12 +689,19 @@ describe('composition against a manifest the target already carries', () => {
   });
 
   test('a never-published workspace with no target clone is seeded at 0.0.0 and reported', async () => {
-    // `@lostgradient/weft-ui` carries `lastPublishedVersion: null` in the real map, so it has nothing
-    // to seed from and falls back to the pre-COR-1229 behaviour.
-    const plan = await planFor('cinder');
-    expect(parse(plan, 'packages/weft-ui/package.json')['version']).toBe('0.0.0');
-    expect(plan.firstPublish).toContain('@lostgradient/weft-ui');
-    expect(plan.seededFromPackageMap).not.toContain('@lostgradient/weft-ui');
+    // `@lostgradient/cryptography` carries `lastPublishedVersion: null` in the real map, so it has
+    // nothing to seed from and falls back to the pre-COR-1229 behaviour. `@lostgradient/weft-ui`
+    // used to be this test's example of a `publish-as` package with no seed; COR-1196 moved it to
+    // `private-workspace`, which has no `lastPublishedVersion` to be null in the first place, so it
+    // no longer demonstrates this mechanism.
+    const plan = await planFor('agent-bureau', {
+      extra: {
+        'packages/cryptography/package.json': { name: '@lostgradient/cryptography', private: true },
+      },
+    });
+    expect(parse(plan, 'packages/cryptography/package.json')['version']).toBe('0.0.0');
+    expect(plan.firstPublish).toContain('@lostgradient/cryptography');
+    expect(plan.seededFromPackageMap).not.toContain('@lostgradient/cryptography');
   });
 
   test(
@@ -688,8 +728,10 @@ describe('composition against a manifest the target already carries', () => {
     const versioned: Record<string, unknown> = {};
     for (const manifest of Object.values(workspaces)) {
       if (manifest['name'] === '@lostgradient/weft') continue;
-      // `@lostgradient/weft-ui` is the fixture's stand-in for the four the map records as never
-      // published, so it is the one workspace the target clone deliberately does not carry.
+      // `@lostgradient/weft-ui` is `private-workspace` in the real map (COR-1196) with no
+      // `lastPublishedVersion` to seed from, so it is the one workspace the target clone
+      // deliberately does not carry — the property this test pins (only the truly-missing one
+      // counts as a first publish) holds regardless of a workspace's publish disposition.
       if (manifest['name'] === '@lostgradient/weft-ui') continue;
       const layout = await layoutFor(String(manifest['name']));
       // The clone is the target's tree, so its manifests sit at the target's own paths.

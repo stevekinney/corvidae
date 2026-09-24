@@ -205,7 +205,6 @@
       },
       "peerDependencies": {
         "@libsql/client": "^0.17.2",
-        "@lostgradient/weft-ui": "^0.1.0",
         "@neondatabase/serverless": "^1.1.0",
         "@opentelemetry/api": "^1.0.0",
         "better-sqlite3": "^12.8.0",
@@ -226,49 +225,6 @@
         },
         "engines": {
           "bun": ">=1.3.13"
-        }
-      }
-    },
-    "@lostgradient/weft-ui": {
-      "publicName": "@lostgradient/weft-ui",
-      "provenance": {
-        "repository": "weft",
-        "path": "packages/weft-ui",
-        "commit": "9ddc15c882e5e2c9ab70489e63e947b988c5961e",
-        "version": "0.1.0"
-      },
-      "exports": {
-        ".": {
-          "types": "./dist/mount.d.ts",
-          "default": "./dist/mount.js"
-        },
-        "./dist/*": "./dist/*"
-      },
-      "files": ["dist", "LICENSE", "README.md"],
-      "build": {
-        "scripts": {
-          "build": "vite build && bun run check:styles && bun scripts/build-mount.ts && bun run check:bundle"
-        },
-        "toolchain": {
-          "vite": "catalog:",
-          "@sveltejs/vite-plugin-svelte": "catalog:",
-          "svelte": "catalog:"
-        },
-        "requiredInputs": [
-          "vite.config.ts",
-          "scripts/build-mount.ts",
-          "scripts/check-bundle-size.ts",
-          "scripts/check-cinder-styles.ts"
-        ],
-        "sourceRoot": "src",
-        "packedBy": "files"
-      },
-      "peerDependencies": {
-        "@lostgradient/weft": "^0.25.0"
-      },
-      "manifestFields": {
-        "engines": {
-          "bun": ">=1.4.0"
         }
       }
     },
