@@ -644,6 +644,13 @@ export async function verifyTarget({
         assertSucceeded(result, `packing ${step.publicName}`);
         break;
       }
+      case 'pack-relocate': {
+        assertSucceeded(
+          result,
+          `staging ${step.publicName}'s packed tarball into the shared tarballs directory`,
+        );
+        break;
+      }
       case 'publint': {
         assertSucceeded(result, `resolving publint for ${step.publicName}`);
         reportsByPublicName.set(step.publicName ?? '', {

@@ -46,6 +46,7 @@ export type VerifyStepKind =
   | 'build'
   | 'typecheck-published'
   | 'pack'
+  | 'pack-relocate'
   | 'publint'
   | 'attw'
   | 'typecheck-private'
@@ -224,6 +225,33 @@ export function buildVerifySteps(
   ];
 
   const tarballsDirectory = join(env.scratchDirectory, 'tarballs');
+  /**
+   * Whether this package's tarball is produced by its own `scripts/pack-for-publish.ts` rather
+   * than a plain `bun pm pack`. Mirrors `package-surface.json`'s `build.packedBy` (see
+   * `surface.ts`'s {@link isExpectedPackRewrite}): `@lostgradient/cinder`, `chat`, `editor` and
+   * `markdown` keep `./src/**` targets in non-`bun` `exports` conditions in their committed
+   * manifests, which only `pack-for-publish.ts` rewrites to `dist` equivalents before packing.
+   * Packing those four with a bare `bun pm pack` — what this function did before COR-1196 —
+   * ships the untransformed manifest, so `publint`/`attw` read a tarball whose `exports` point at
+   * source the tarball never contains and every affected subpath 404s. `entry.entry.build` is
+   * `undefined` in synthetic fixtures that stub `entry` (see `verify-steps.test.ts`), so this
+   * reads optionally rather than asserting the field is always populated.
+   */
+  const packedByPackScript = (entry: PublishedPackage): boolean =>
+    entry.entry.build?.packedBy === 'pack-script';
+  /**
+   * Every published package's tarball ends up under the shared scratch `tarballsDirectory`,
+   * whichever way it was packed — `publint`/`attw` (below) and the consumer smoke-test project
+   * (`consumerManifest`) all read from here, and `LocalVerifyEnvironmentOptions` keeps it outside
+   * the clone deliberately, so git never sees it. `pack-for-publish.ts` cannot be pointed at it
+   * directly: every one of the four repositories' own copies hardcodes `bun pm pack`'s
+   * `--destination` as the package root (see `packForPublish`/`runPackCommand`), because that is
+   * also where the *real* release pipeline (`publish-release.ts`) expects to find it. A
+   * `pack-script` package's pack step therefore writes into its own package directory first, same
+   * as release does, and a `pack-relocate` step immediately after moves it here — see the pack
+   * loop below. The filename convention is identical either way: `tarballFilename` matches every
+   * `pack-for-publish.ts`'s own `getPackFileName`/`tarballFileName` helper byte for byte.
+   */
   const tarballFor = (entry: PublishedPackage): string =>
     join(tarballsDirectory, tarballFilename(entry.publicName, entry.version));
   const ordered = orderByDependencies(inputs.published);
@@ -264,21 +292,45 @@ export function buildVerifySteps(
 
   for (const entry of ordered) {
     const cwd = env.resolveDirectory(entry.directory);
+    const packScript = packedByPackScript(entry);
     steps.push({
       kind: 'pack',
       description: `pack ${entry.publicName}`,
       cwd,
-      command: [
-        'bun',
-        'pm',
-        'pack',
-        '--ignore-scripts',
-        '--quiet',
-        '--destination',
-        tarballsDirectory,
-      ],
+      // `--ignore-scripts` on the plain-`bun pm pack` branch is deliberate — see `packaging.ts`'s
+      // `packWorkspace` — and does not apply to `pack-for-publish.ts`: that script IS the packing
+      // step, invoked directly rather than through a lifecycle hook `bun pm pack` would run.
+      command: packScript
+        ? ['bun', 'run', 'scripts/pack-for-publish.ts']
+        : ['bun', 'pm', 'pack', '--ignore-scripts', '--quiet', '--destination', tarballsDirectory],
       publicName: entry.publicName,
     });
+    if (packScript) {
+      // `pack-for-publish.ts` always writes into its own package directory (see `tarballFor`'s
+      // comment above), so its output has to be moved into the shared `tarballsDirectory` before
+      // `publint`/`attw`/the consumer project — which all read `tarballFor(entry)` — can find it.
+      // Two argv-only steps rather than one `mkdir -p ... && mv ...`: `VerifyStep.command` is
+      // real argv locally (`Bun.spawn`, no shell) but a flat, naively-joined `run:` line in the
+      // rendered workflow (`mirror-verify-workflow.ts`'s `renderStep`) — a shell operator embedded
+      // in one argv element would run fine locally and render as a broken, unquoted command in the
+      // workflow. `mkdir -p` is idempotent, so repeating it once per pack-script package costs
+      // nothing.
+      const packedTarballName = tarballFilename(entry.publicName, entry.version);
+      steps.push({
+        kind: 'pack-relocate',
+        description: `prepare the shared tarballs directory for ${entry.publicName}`,
+        cwd,
+        command: ['mkdir', '-p', tarballsDirectory],
+        publicName: entry.publicName,
+      });
+      steps.push({
+        kind: 'pack-relocate',
+        description: `move ${entry.publicName}'s packed tarball into the shared tarballs directory`,
+        cwd,
+        command: ['mv', packedTarballName, join(tarballsDirectory, packedTarballName)],
+        publicName: entry.publicName,
+      });
+    }
     const tarball = tarballFor(entry);
     steps.push({
       kind: 'publint',
