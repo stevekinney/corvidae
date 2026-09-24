@@ -75,6 +75,7 @@ export const appFixtureDeclarations = {
   'functional-residual': ['assertion'],
   'review-editor-accessibility': ['assertion'],
   'review-editor-comments': ['assertion'],
+  'review-editor-diff-comments': ['assertion'],
   'review-editor-readonly': ['assertion'],
   'review-editor-scroll': ['assertion'],
   banner: ['assertion'],

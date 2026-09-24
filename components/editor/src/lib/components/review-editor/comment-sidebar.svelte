@@ -1,5 +1,10 @@
 <script lang="ts" module>
   import type { Thread } from '../../comments/index.ts';
+  import type {
+    DiffReviewAction,
+    DiffReviewComment,
+    DiffReviewState,
+  } from '../../diff-review-state/index.ts';
 
   type ThreadSelectionOptions = {
     openPopover?: boolean;
@@ -22,6 +27,20 @@
     onThreadDelete?: (threadId: string) => void;
     /** Callback when user submits a document-level comment */
     onadddocumentcomment?: (body: string) => void;
+    /**
+     * ReviewEditor's opt-in diff-review session (COR-512 / DR-7). Absent by default -- when
+     * undefined, this renders exactly as before: no diff rows, same DOM. When supplied, every
+     * saved diff comment renders as one more row in this SAME list, alongside the document
+     * threads above, each carrying `data-anchor-kind="diff"` and its own side/file badge so the
+     * two anchor domains stay visually and structurally distinguished within the one list.
+     */
+    diffReviewState?: DiffReviewState | undefined;
+    /** Activated by a CURRENT diff comment's "Go to diff" action; never for outdated/removed
+     * (see `diff-review-comment-item.svelte`'s identical rule) -- those focus their own captured
+     * detail in place instead. */
+    onDiffCommentNavigate?: (comment: DiffReviewComment) => void;
+    /** Dispatches a diff-review mutation (delete/resolve/reopen) from this list. */
+    onDiffCommentAction?: (action: DiffReviewAction) => void;
     /** Additional CSS class */
     class?: string;
   };
@@ -47,6 +66,8 @@
   } from '@lostgradient/cinder';
 
   import { getVisibleComments, isDocumentAnchor } from '../../comments/index.ts';
+  import { classifyDiffReviewAnchorStatus } from '../diff-review/diff-review-anchor-status.ts';
+  import { formatDiffReviewCommentLocation } from '../diff-review-comments/diff-review-comment-location.ts';
   import CommentComposer from './comment-composer.svelte';
 
   let {
@@ -58,6 +79,9 @@
     onclearall,
     onThreadDelete,
     onadddocumentcomment,
+    diffReviewState,
+    onDiffCommentNavigate,
+    onDiffCommentAction,
     class: className,
   }: CommentSidebarProps = $props();
 
@@ -103,6 +127,28 @@
 
   /** All visible threads (for count and clear all) */
   const visibleThreads = $derived([...documentThreads, ...textThreads]);
+
+  /** Every saved diff comment (COR-512 / DR-7), rendered as a third group in this same list.
+   * `undefined` when the host has not enabled diff review -- see the prop doc. */
+  const diffComments = $derived(diffReviewState?.comments ?? []);
+  const totalCommentCount = $derived(visibleThreads.length + diffComments.length);
+
+  function diffCommentKindLabel(comment: DiffReviewComment): string {
+    return comment.anchor.kind === 'file' ? 'Diff · file' : `Diff · ${comment.anchor.side}`;
+  }
+
+  /** Mirrors `DiffReviewCommentItem`'s own `goTo` rule: only a CURRENT comment navigates the
+   * diff viewer. An outdated/removed comment instead moves DOM focus to its own captured-detail
+   * text, rendered in place below -- never suggesting a current anchor for a stale one. */
+  function handleDiffCommentGoTo(comment: DiffReviewComment, capturedDetailId: string): void {
+    if (!diffReviewState) return;
+    const status = classifyDiffReviewAnchorStatus(diffReviewState, comment);
+    if (status === 'current') {
+      onDiffCommentNavigate?.(comment);
+      return;
+    }
+    document.getElementById(capturedDetailId)?.focus();
+  }
 
   /** Get the first visible comment's body for preview */
   function getPreview(thread: Thread): string {
@@ -177,7 +223,7 @@
     <div class="sidebar-label-group">
       <MessageSquare class="cinder-icon-sm" />
       <h2 class="sidebar-title">Comments</h2>
-      <span class="thread-count">{visibleThreads.length}</span>
+      <span class="thread-count">{totalCommentCount}</span>
     </div>
 
     {#if !readonly}
@@ -255,7 +301,7 @@
   {/if}
 
   <div class="thread-list" role="list" aria-label="Comment threads">
-    {#if visibleThreads.length === 0}
+    {#if totalCommentCount === 0}
       <div class="empty-state">
         <p class="empty-message">No comments yet</p>
         <p class="empty-hint">Select text or click + to add a comment</p>
@@ -334,6 +380,74 @@
             >
               <Trash2 class="cinder-icon-sm" />
             </Button>
+          {/if}
+        </div>
+      {/each}
+
+      <!-- Diff comments (COR-512 / DR-7): a third group in this same list, distinguished from
+           the document threads above by `data-anchor-kind="diff"` and their own side/file badge. -->
+      {#each diffComments as comment (comment.id)}
+        {@const status = diffReviewState
+          ? classifyDiffReviewAnchorStatus(diffReviewState, comment)
+          : 'removed'}
+        {@const capturedDetailId = `${id}-diff-comment-detail-${comment.id}`}
+        <div class="thread-row" role="listitem" data-anchor-kind="diff" data-diff-status={status}>
+          <button
+            type="button"
+            class="thread-item"
+            data-diff-comment="true"
+            onclick={() => handleDiffCommentGoTo(comment, capturedDetailId)}
+            aria-label="Go to diff comment: {formatDiffReviewCommentLocation(comment)}"
+          >
+            <div class="thread-document-label">
+              <span class="diff-comment-kind-badge">{diffCommentKindLabel(comment)}</span>
+              {#if comment.resolved}
+                <span class="diff-comment-status-badge diff-comment-status-resolved">Resolved</span>
+              {/if}
+              {#if status === 'removed'}
+                <span class="diff-comment-status-badge diff-comment-status-outdated">Removed</span>
+              {:else if status === 'outdated'}
+                <span class="diff-comment-status-badge diff-comment-status-outdated">Outdated</span>
+              {/if}
+            </div>
+            <p class="thread-preview">{formatDiffReviewCommentLocation(comment)}</p>
+            <p class="thread-preview">{truncate(comment.body, 80)}</p>
+          </button>
+          {#if status !== 'current'}
+            <p id={capturedDetailId} class="diff-comment-captured-detail" tabindex="-1">
+              {status === 'removed' ? 'Originally at' : 'Captured at'}:
+              {formatDiffReviewCommentLocation(comment)}
+            </p>
+          {/if}
+          {#if !readonly}
+            <div class="diff-comment-row-actions">
+              {#if comment.resolved}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onclick={() => onDiffCommentAction?.({ type: 'reopen-comment', id: comment.id })}
+                >
+                  Reopen
+                </Button>
+              {:else}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onclick={() => onDiffCommentAction?.({ type: 'resolve-comment', id: comment.id })}
+                >
+                  Resolve
+                </Button>
+              {/if}
+              <Button
+                class="thread-remove"
+                variant="ghost"
+                size="xs"
+                aria-label="Delete diff comment: {formatDiffReviewCommentLocation(comment)}"
+                onclick={() => onDiffCommentAction?.({ type: 'delete-comment', id: comment.id })}
+              >
+                <Trash2 class="cinder-icon-sm" />
+              </Button>
+            </div>
           {/if}
         </div>
       {/each}
@@ -542,6 +656,40 @@
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  .diff-comment-kind-badge {
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-muted, #666);
+  }
+
+  .diff-comment-status-badge {
+    border-radius: var(--cinder-radius-sm, 4px);
+    padding: 0 0.375rem;
+    font-size: var(--cinder-text-xs);
+  }
+
+  .diff-comment-status-resolved {
+    background: var(--cinder-status-success-subtle, #e6f4ea);
+    color: var(--cinder-status-success-solid, #1a7f37);
+  }
+
+  .diff-comment-status-outdated {
+    background: var(--cinder-status-warning-subtle, #fff4e5);
+    color: var(--cinder-status-warning-solid, #9a6700);
+  }
+
+  .diff-comment-captured-detail {
+    margin: 0 var(--cinder-space-3, 0.75rem) var(--cinder-space-2, 0.5rem);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted, #666);
+  }
+
+  .diff-comment-row-actions {
+    display: flex;
+    gap: var(--cinder-space-1);
+    padding-inline-end: var(--cinder-space-2, 0.5rem);
   }
 
   .thread-document-label {
