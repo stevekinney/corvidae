@@ -2,6 +2,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 
+import { serializeJson } from './json-formatting.ts';
 import { targetDirectoryFor } from './layout-map.ts';
 import { discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
@@ -378,7 +379,12 @@ export async function run(argv: readonly string[]): Promise<number> {
     const mapFile = new URL('./package-map.json', import.meta.url);
     const current = JSON.parse(await Bun.file(mapFile).text()) as PackageMap;
     const updated = withRecordedDigest(current, workspace, result.digest);
-    await Bun.write(mapFile, `${JSON.stringify(updated, undefined, 2)}\n`);
+    // Formatted the way the repository's prettier formats it, so recording a digest changes only
+    // the digest rather than reflowing every array in the file.
+    await Bun.write(
+      mapFile,
+      await serializeJson(updated, corvidaeRoot, 'scripts/mirror/package-map.json'),
+    );
     process.stdout.write(
       `Recorded sourceDigest for ${workspace} (${result.publicName}@${result.version}, gitHead ${result.gitHead}): ${result.digest}\n` +
         (result.previouslyRecorded ? `Previous digest was ${result.previouslyRecorded}\n` : ''),
