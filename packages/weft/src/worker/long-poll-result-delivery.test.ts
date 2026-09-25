@@ -19,6 +19,7 @@ import {
   LongPollResultDelivery,
   type LongPollTaskResultBody,
 } from './long-poll-result-delivery.ts';
+import { TaskResultOutbox } from './task-result-outbox.ts';
 
 function completedResult(overrides: Partial<LongPollTaskResultBody> = {}): LongPollTaskResultBody {
   return {
@@ -304,5 +305,39 @@ describe('LongPollResultDelivery', () => {
     // that no timer survived, with no real wall-clock wait.
     await advanceTimersByTime(100);
     expect(fetchMock.mock.calls.length).toBe(countAtDispose);
+  });
+
+  it('full and shouldWarnFull delegate to the injected outbox (COR-235 backpressure)', async () => {
+    let releaseResponses: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      releaseResponses = resolve;
+    });
+    const fetchMock = mock(async () => {
+      await held;
+      return jsonResponse({ ok: true, disposition: 'applied' });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    // A ceiling of 1 (like task-result-outbox.test.ts's own `shouldWarnFull`
+    // coverage) reproduces the real MAX_BUFFERED_TASK_RESULTS backpressure
+    // `LongPollWorker#atCapacity()` (long-poll.ts) checks, without buffering
+    // 1,000 entries: `deliver()` resolves once the first attempt's round
+    // trip completes, but that response is held above, so the entry stays
+    // buffered while both assertions below run.
+    const delivery = new LongPollResultDelivery(
+      { resultUrl: 'http://server/result' },
+      new TaskResultOutbox(1),
+    );
+    const deliverPromise = delivery.deliver(completedResult());
+    await waitForCondition(() => fetchMock.mock.calls.length === 1, { timeoutMs: 1_000 });
+
+    expect(delivery.full).toBe(true);
+    expect(delivery.shouldWarnFull()).toBe(true);
+    expect(delivery.shouldWarnFull()).toBe(false);
+
+    releaseResponses?.();
+    await deliverPromise;
+    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 1_000 });
+    expect(delivery.full).toBe(false);
   });
 });
