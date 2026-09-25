@@ -549,7 +549,15 @@ describe('handleTaskResultRequest', () => {
     );
 
     expect(response?.status).toBe(403);
-    expect(await response?.json()).toEqual({ error: 'Forbidden' });
+    // COR-1271: a permanent rejection carries the correlated identity in the
+    // error body, mirroring the WebSocket transport's `protocolError`, so a
+    // caller can tell which submission was rejected instead of only that
+    // *something* was `403`.
+    expect(await response?.json()).toEqual({
+      error: 'Forbidden',
+      operationId: 'op-begin-completion-cas-loss',
+      attemptToken: 'attempt-token',
+    });
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining(
         'Failed to commit task result for "op-begin-completion-cas-loss" through the durable ledger:',
