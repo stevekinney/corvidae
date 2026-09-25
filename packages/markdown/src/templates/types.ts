@@ -162,41 +162,65 @@ export interface NormalizedPlaceholderDefinitions extends PlaceholderCatalogResu
   readonly enabled: boolean;
 }
 
-/** A parsed {{...}} token with source offsets */
+/**
+ * A parsed `{{...}}` token with original source offsets.
+ *
+ * `kind` is `placeholder` for a syntactically complete token, whose `path`
+ * may still fail validation, and `malformed` for an unclosed token or a
+ * nested or triple-brace span.
+ */
 export interface PlaceholderToken {
-  /** The full raw text including delimiters (e.g., "{{ input.x }}") */
+  /** The full raw source text of the token, including delimiters (e.g. `{{ input.x }}`). */
   raw: string;
-  /** The trimmed path body (may be empty for malformed tokens) */
+  /**
+   * The body without surrounding spaces or tabs. For a malformed token it is
+   * the text after an unclosed opener, or empty for a nested or triple-brace span.
+   */
   path: string;
-  /** Inclusive start offset in the source text */
+  /** Zero-based, inclusive UTF-16 start offset in the original source. */
   startOffset: number;
-  /** Exclusive end offset in the source text */
+  /** Zero-based, exclusive UTF-16 end offset in the original source. */
   endOffset: number;
-  /** Whether the token has a closing }} */
-  closed: boolean;
+  /** Whether the token is syntactically complete or malformed. */
+  kind: 'placeholder' | 'malformed';
 }
 
-/** A single validation problem */
-export interface PlaceholderValidationIssue {
-  /** The token that caused the issue */
-  token: PlaceholderToken;
-  /** Exact string reason */
-  reason: 'malformed_token' | 'invalid_path_format' | 'unknown_placeholder';
+/**
+ * How replacement values enter the filled Markdown source.
+ *
+ * - `text` (default): every replacement is encoded with character
+ *   references so it renders as literal text.
+ * - `markdown`: string values are inserted raw and may add Markdown
+ *   structure; every other JSON value still uses the literal encoding.
+ */
+export type PlaceholderValueMode = 'text' | 'markdown';
+
+/**
+ * What happens when any issue is found.
+ *
+ * - `preserve` (default): unresolved tokens stay in the output unchanged and
+ *   the issues are returned.
+ * - `error`: throw a {@link PlaceholderTemplateError} with the issues and no
+ *   partial result.
+ */
+export type PlaceholderUnresolvedMode = 'preserve' | 'error';
+
+/** Required options for placeholder resolution and template rendering. */
+export interface PlaceholderResolutionOptions {
+  /** The allowlist of fillable paths; only declared paths are ever substituted. */
+  readonly definitions: PlaceholderDefinitions;
+  /** How replacement values enter the output. Defaults to `'text'`. */
+  readonly valueMode?: PlaceholderValueMode;
+  /** How unresolved tokens and other issues are handled. Defaults to `'preserve'`. */
+  readonly unresolved?: PlaceholderUnresolvedMode;
 }
 
-/** Full validation output */
-export interface PlaceholderValidationResult {
-  validTokens: PlaceholderToken[];
-  invalidTokens: PlaceholderToken[];
-  issues: PlaceholderValidationIssue[];
-}
-
-/** Output from resolveTemplatePlaceholders */
+/** Output from `resolveTemplatePlaceholders` in preserve mode. */
 export interface PlaceholderResolutionResult {
-  /** The resolved text with placeholders replaced */
-  text: string;
-  /** Validation issues found during resolution (when candidate paths provided) */
-  issues: PlaceholderValidationIssue[];
+  /** The filled Markdown source; unresolved tokens keep their original text. */
+  readonly text: string;
+  /** Ordered, deduplicated diagnostics that never include supplied values. */
+  readonly issues: readonly PlaceholderDiagnostic[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
