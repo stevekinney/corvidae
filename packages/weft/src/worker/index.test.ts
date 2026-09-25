@@ -2822,6 +2822,16 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
               input: 'hi',
             }),
           );
+        } else if (idx === 1) {
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-fence',
+              attemptToken: 'fence-token',
+              activityName: 'orders.echo',
+              input: 'fence',
+            }),
+          );
         }
       },
       { rejectTaskResults: true },
@@ -2852,12 +2862,31 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
     });
 
     // A subsequent reconnect must not resend the permanently-rejected
-    // result — the server never sends another `task` for it, so any
-    // `taskResult` frame on registration 1 could only be a resend.
+    // result. Proving that absence needs an observed barrier rather than a
+    // fixed sleep, for the same reason as the fence-task rewrite above: a
+    // fixed window either passes trivially (the drop already happened
+    // synchronously before this line) or races an unspecified round-trip.
+    //
+    // Fence instead: op-fence is a SEPARATE task dispatched only on this
+    // reconnect's registration, so the worker cannot even start executing it
+    // until after any (wrongly) resent op-permanently-rejected result has
+    // already been handed to the same WebSocket for sending — a single
+    // connection delivers a sender's messages to the receiver in the order
+    // they were sent. Once the server has recorded op-fence's own
+    // taskResult, any op-permanently-rejected resend that will ever arrive
+    // from this reconnect has already arrived.
     await worker.disconnect();
     await worker.connect();
-    await sleepForTesting(50);
-    expect(harness.framesFor(1).some((m) => m.type === 'taskResult')).toBe(false);
+    await waitForCondition(
+      () =>
+        harness.framesFor(1).some((m) => m.type === 'taskResult' && m.operationId === 'op-fence'),
+      { timeoutMs: 1_000, label: 'fence task result' },
+    );
+    expect(
+      harness
+        .framesFor(1)
+        .some((m) => m.type === 'taskResult' && m.operationId === 'op-permanently-rejected'),
+    ).toBe(false);
 
     await worker.disconnect();
   });
