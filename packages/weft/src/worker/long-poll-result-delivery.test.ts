@@ -9,7 +9,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 
-import { waitForCondition } from '../testing/fake-timers.test-support.ts';
+import {
+  advanceTimersByTime,
+  restoreRealTimers,
+  useFakeTimers,
+  waitForCondition,
+} from '../testing/fake-timers.test-support.ts';
 import {
   LongPollResultDelivery,
   type LongPollTaskResultBody,
@@ -42,6 +47,7 @@ describe('LongPollResultDelivery', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    restoreRealTimers();
   });
 
   it('retains a result until the disposition response is actually read, not merely until the POST resolves', async () => {
@@ -219,6 +225,8 @@ describe('LongPollResultDelivery', () => {
   });
 
   it('suspend() cancels every scheduled retry — no further POST fires afterward', async () => {
+    useFakeTimers();
+
     let callCount = 0;
     const fetchMock = mock(() => {
       callCount += 1;
@@ -239,10 +247,12 @@ describe('LongPollResultDelivery', () => {
 
     // Not a timing-margin race: suspend() calls the platform's clearTimeout
     // synchronously and deterministically before this wait even starts, so a
-    // cancelled timer literally cannot fire afterward — this wait only rules
-    // out the (impossible-if-correct) case of the timer never having been
-    // cancelled at all, comfortably past its original 10ms delay.
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // cancelled timer literally cannot fire afterward. Advance the fake clock
+    // well past the entry's own 10ms retry delay instead of waiting on the
+    // wall clock — a real timer that somehow survived cancellation would
+    // fire well within this advance, so the assertion stays a proof rather
+    // than a race, at zero wall-clock cost.
+    await advanceTimersByTime(100);
     expect(fetchMock.mock.calls.length).toBe(countAtSuspend);
     // The entry is still buffered — suspend() does not discard it.
     expect(delivery.unacknowledgedCount).toBe(1);
@@ -271,6 +281,8 @@ describe('LongPollResultDelivery', () => {
   });
 
   it('dispose() discards buffered entries and cancels retries', async () => {
+    useFakeTimers();
+
     const fetchMock = mock(() => Promise.resolve(new Response('Server Error', { status: 500 })));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -287,8 +299,10 @@ describe('LongPollResultDelivery', () => {
 
     const countAtDispose = fetchMock.mock.calls.length;
     // Same deterministic-cancellation reasoning as suspend()'s test above —
-    // dispose() calls suspend() (clearTimeout) before this wait starts.
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // dispose() calls suspend() (clearTimeout) before this advance starts.
+    // Advancing the fake clock past the entry's 10ms retry delay is a proof
+    // that no timer survived, with no real wall-clock wait.
+    await advanceTimersByTime(100);
     expect(fetchMock.mock.calls.length).toBe(countAtDispose);
   });
 });
