@@ -329,4 +329,72 @@ describe('validate-diff-review-registry runValidator failure paths', () => {
       await rm(tarballDirectory, { recursive: true, force: true });
     }
   });
+
+  test('an optional --markdown-tarball is hashed and reported instead of the registry range', async () => {
+    const evidenceDirectory = await mkdtemp(join(tmpdir(), 'diff-review-evidence-'));
+    const tarballDirectory = await mkdtemp(join(tmpdir(), 'diff-review-tarball-'));
+    const cinderTarballPath = join(tarballDirectory, 'cinder.tgz');
+    const editorTarballPath = join(tarballDirectory, 'editor.tgz');
+    const markdownTarballPath = join(tarballDirectory, 'markdown.tgz');
+    await Bun.write(cinderTarballPath, 'cinder bytes\n');
+    await Bun.write(editorTarballPath, 'editor bytes\n');
+    await Bun.write(markdownTarballPath, 'markdown bytes\n');
+
+    // Install succeeds; every probe prints one passing `PROBE` line naming the script that ran,
+    // so the happy-path parsing/mapping in each probe runner is exercised without a real `bun
+    // install`/`Bun.build`/Playwright. Hydration is left to fail (`Bun.build` cannot resolve
+    // anything from a directory with no real `node_modules`) — its bundling-failure branch is
+    // exactly what this covers, and it does not open a browser to get there.
+    const fakeProbes: Spawner = async (command): Promise<SpawnResult> => {
+      if (command[1] === 'install') return { exitCode: 0, stdout: '', stderr: '' };
+      const script = command[2] ?? '';
+      if (script.endsWith('.no-editor-probe.mjs')) {
+        return {
+          exitCode: 0,
+          stdout: `PROBE ${JSON.stringify({ id: 'no-editor', status: 'pass' })}\n`,
+          stderr: '',
+        };
+      }
+      if (script.endsWith('.aggregate-export-probe.mjs')) {
+        return {
+          exitCode: 0,
+          stdout: `PROBE ${JSON.stringify({ id: 'aggregate-export', status: 'pass' })}\n`,
+          stderr: '',
+        };
+      }
+      // import-style and ssr probes both report one specifier as passing.
+      return {
+        exitCode: 0,
+        stdout: `PROBE ${JSON.stringify({ id: '@lostgradient/example', status: 'pass', resolvedPaths: { '@lostgradient/example': 'file:///node_modules/@lostgradient/example/dist/index.js' } })}\n`,
+        stderr: '',
+      };
+    };
+
+    try {
+      const manifest = await runValidator(
+        {
+          cinderTarball: cinderTarballPath,
+          editorTarball: editorTarballPath,
+          evidenceDirectory,
+          markdownTarball: markdownTarballPath,
+        },
+        { spawn: fakeProbes },
+      );
+
+      expect(manifest.markdownTarball).toEqual({
+        path: markdownTarballPath,
+        sha256: await sha256File(markdownTarballPath),
+      });
+      const noEditor = manifest.cases.find((c) => c.id === 'plain-cinder/no-editor');
+      expect(noEditor?.status).toBe('pass');
+      const aggregateExport = manifest.cases.find((c) => c.id === 'aggregate/export');
+      expect(aggregateExport?.status).toBe('pass');
+      const hydrationFailures = manifest.cases.filter((c) => c.id.endsWith('/hydration'));
+      expect(hydrationFailures.length).toBeGreaterThan(0);
+      for (const hydration of hydrationFailures) expect(hydration.status).toBe('fail');
+    } finally {
+      await rm(evidenceDirectory, { recursive: true, force: true });
+      await rm(tarballDirectory, { recursive: true, force: true });
+    }
+  });
 });
