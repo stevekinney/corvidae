@@ -1,9 +1,32 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 const root = join(import.meta.dir, '..');
 
+/**
+ * Every nested oxlint configuration a workspace carries, root-relative.
+ *
+ * A nested `.oxlintrc.json` replaces the root policy for every file beneath it rather than merging
+ * with it, so a synthetic file under `packages/weft/` is governed by `packages/weft/.oxlintrc.json`
+ * and nothing in the root file reaches it. `lintImport` recreates that layout in its temporary tree
+ * by linking each of these at the same relative location, then lets oxlint discover them. Read from
+ * the tree rather than listed by hand, so a workspace that adopts its own configuration is exercised
+ * here without anyone remembering to add it.
+ */
+const nestedConfigurations = [
+  ...new Bun.Glob('*/*/.oxlintrc.json').scanSync({ cwd: root, dot: true, onlyFiles: true }),
+].filter((path) => !path.startsWith('node_modules/') && !path.startsWith('.'));
+
+/**
+ * Lint one synthetic file with whichever configuration governs its path in the real tree.
+ *
+ * No `--config` is passed: an explicit configuration disables oxlint's nested discovery, which
+ * would make every path answer to the root policy whether or not the root policy governs it. The
+ * temporary directory sits under the root, so oxlint finds the root `.oxlintrc.json` from its
+ * working directory, and `nestedConfigurations` are linked (not copied) into the same relative
+ * locations, so a weft-pathed file is judged by the live `packages/weft/.oxlintrc.json`.
+ */
 async function lintImport(
   source: string,
   relativePath = 'consumer.ts',
@@ -11,6 +34,11 @@ async function lintImport(
 ): Promise<{ exitCode: number; output: string }> {
   const directory = await mkdtemp(join(root, '.lint-policy-'));
   try {
+    for (const configuration of nestedConfigurations) {
+      const link = join(directory, configuration);
+      await mkdir(dirname(link), { recursive: true });
+      await symlink(join(root, configuration), link);
+    }
     const path = join(directory, relativePath);
     await Bun.write(path, source);
     await Bun.write(join(directory, 'accepted.ts'), 'export const accepted = true;\n');
@@ -34,8 +62,6 @@ async function lintImport(
     const process = Bun.spawn(
       [
         join(root, 'node_modules/.bin/oxlint'),
-        '--config',
-        join(root, '.oxlintrc.json'),
         '--deny-warnings',
         ...(typeAware ? ['--type-aware', '--tsconfig', configurationPath] : []),
         directory,
@@ -82,6 +108,23 @@ for (const [path, maximum] of [
     expect(rejected.output).toContain(`complexity of ${maximum + 1}`);
   });
 }
+
+test('weft-pathed files answer to the nested weft configuration, not the root policy', async () => {
+  expect(nestedConfigurations).toContain('packages/weft/.oxlintrc.json');
+  // Weft caps complexity at 10 where the root allows 100, so the same function is accepted
+  // under a root-governed path and rejected under a weft one only if discovery reached the
+  // nested file.
+  const branches = Array.from(
+    { length: 10 },
+    (_, index) => `if (value === ${index}) return ${index};`,
+  ).join('\n');
+  const source = `export function classify(value) { ${branches}\nreturn -1; }`;
+  const rootGoverned = await lintImport(source, 'packages/example/src/consumer.ts');
+  expect(rootGoverned.exitCode, rootGoverned.output).toBe(0);
+  const weftGoverned = await lintImport(source, 'packages/weft/src/consumer.ts');
+  expect(weftGoverned.exitCode, weftGoverned.output).toBe(1);
+  expect(weftGoverned.output).toContain('complexity of 11');
+});
 
 test('the root import rule accepts stylesheet side effects', async () => {
   const result = await lintImport("import './component.css';\n");
