@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
 import { lstat, mkdtemp, readdir, readlink, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
+
+import { sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
 const componentLibraries = ['cinder', 'chat', 'editor', 'weft-ui'];
@@ -344,7 +347,10 @@ describe('internal workspace architecture', () => {
       expect(manifest.name).toBe(publicWorkspaceName(library));
       expect(manifest.private).toBe(true);
       expect(manifest.type).toBe('module');
-      expect(manifest.exports).toEqual({ '.': './src/index.ts' });
+      expect(
+        sourceExportViolations(manifest.exports, (path) => existsSync(join(root, directory, path))),
+        `${library} exports`,
+      ).toEqual([]);
       expect(await Bun.file(join(root, directory, 'src/index.ts')).exists()).toBe(true);
       for (const command of ['lint', 'lint:fix', 'test', 'typecheck']) {
         expect(manifest.scripts?.[command], `${library}: ${command}`).toBeString();

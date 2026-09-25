@@ -5,6 +5,16 @@ import { createEditorKeymap } from './keymap-plugin.ts';
 import { preloadLazyPluginRuntime } from './milkdown-plugin-runtime.js';
 import { createTemplateCompletionPlugin } from './template-completion-plugin.ts';
 import { createTemplateInvalidDecorationPlugin } from './template-invalid-decoration-plugin.ts';
+import {
+  createPlaceholderConfigurationTransaction,
+  createTemplatePlaceholderConfigurationPlugin,
+  readPlaceholderConfiguration,
+} from './template-placeholder-configuration-plugin.ts';
+import {
+  resolvePlaceholderConfiguration,
+  type PlaceholderEditorConfiguration,
+  type ResolvedPlaceholderConfiguration,
+} from './template-placeholder-configuration.ts';
 
 import { applyReadonlyAria } from './editor-lifecycle.ts';
 import type { EditorConfig, EditorState } from './types.js';
@@ -95,25 +105,28 @@ function withAriaLabel(
   return { ...attributes, 'aria-label': ariaLabel };
 }
 
+/**
+ * Install the placeholder plugins on every editor. They stay inert until a
+ * configuration enables them, so configuration can arrive or change after
+ * mount without recreating the editor.
+ */
 function addOptionalPlugins(
   builder: EditorBuilder,
-  placeholderCompletion: EditorConfig['placeholderCompletion'],
-  placeholderDecoration: EditorConfig['placeholderDecoration'],
+  initialPlaceholders: ResolvedPlaceholderConfiguration,
+  config: Pick<EditorConfig, 'placeholderListboxId' | 'onPlaceholderStatusChange'>,
   plugins: NonNullable<EditorConfig['plugins']>,
 ): EditorBuilder {
-  if (placeholderCompletion) {
-    builder = builder.use(createTemplateCompletionPlugin(() => placeholderCompletion));
-  }
-  if (placeholderDecoration) {
-    builder = builder.use(
-      createTemplateInvalidDecorationPlugin(
-        () => placeholderDecoration.candidates,
-        placeholderDecoration.invalidClassName
-          ? () => placeholderDecoration.invalidClassName!
-          : undefined,
-      ),
-    );
-  }
+  builder = builder
+    .use(createTemplatePlaceholderConfigurationPlugin(initialPlaceholders))
+    .use(
+      createTemplateCompletionPlugin({
+        ...(config.placeholderListboxId ? { listboxId: config.placeholderListboxId } : {}),
+        ...(config.onPlaceholderStatusChange
+          ? { onStatusChange: config.onPlaceholderStatusChange }
+          : {}),
+      }),
+    )
+    .use(createTemplateInvalidDecorationPlugin(initialPlaceholders));
   for (const plugin of plugins) builder = builder.use(plugin);
   return builder;
 }
@@ -166,6 +179,7 @@ function configureView(
     },
   });
   if (readonly) view.setProps({ editable: () => false });
+  view.dom.setAttribute('aria-multiline', 'true');
   applyReadonlyAria(view, readonly);
   if (ariaLabel) view.dom.setAttribute('aria-label', ariaLabel);
 }
@@ -210,8 +224,7 @@ export async function createEditor(
     onlinkshortcut,
     onCommentShortcut,
     plugins = [],
-    placeholderCompletion,
-    placeholderDecoration,
+    placeholders,
   } = config;
   const resolvedAriaLabel =
     typeof ariaLabel === 'string' && ariaLabel.trim().length > 0 ? ariaLabel.trim() : undefined;
@@ -255,10 +268,11 @@ export async function createEditor(
     onmarkdownupdated,
     onselectionchange,
   );
+  let installedPlaceholders: PlaceholderEditorConfiguration | undefined = placeholders;
   const editor = await addOptionalPlugins(
     builder,
-    placeholderCompletion,
-    placeholderDecoration,
+    resolvePlaceholderConfiguration(placeholders),
+    config,
     plugins,
   ).create();
 
@@ -305,6 +319,14 @@ export async function createEditor(
       } finally {
         isExternalUpdate = false;
       }
+    },
+
+    setPlaceholderConfiguration(next: PlaceholderEditorConfiguration | undefined) {
+      if (isDestroyed || next === installedPlaceholders) return;
+      installedPlaceholders = next;
+      const resolved = resolvePlaceholderConfiguration(next);
+      if (resolved === readPlaceholderConfiguration(view.state)) return;
+      view.dispatch(createPlaceholderConfigurationTransaction(view.state, resolved));
     },
 
     clearPendingTimers() {

@@ -1,6 +1,9 @@
 import type {
+  JsonObject,
   PlaceholderCompletionConfiguration,
   PlaceholderDecorationConfiguration,
+  PlaceholderDefinitions,
+  PlaceholderDiagnostic,
 } from '@lostgradient/markdown';
 import type { MilkdownPlugin } from '@milkdown/ctx';
 import type { Ctx } from '@milkdown/kit/ctx';
@@ -43,6 +46,35 @@ export interface ToolbarContext {
   linkPopoverOpen: boolean;
 }
 
+/**
+ * Placeholder configuration: the high-level `placeholderDefinitions` or the
+ * low-level `placeholderCompletion`/`placeholderDecoration` pair, never both.
+ */
+export type MarkdownEditorPlaceholderProps =
+  | {
+      /**
+       * Allowed placeholders, as a JSON Schema or explicit candidates. Drives
+       * completion, invalid-token decoration and diagnostics from one catalog.
+       * Replacing the object updates the live editor without recreating it.
+       */
+      placeholderDefinitions?: PlaceholderDefinitions | undefined;
+      placeholderCompletion?: undefined;
+      placeholderDecoration?: undefined;
+    }
+  | {
+      placeholderDefinitions?: undefined;
+      /**
+       * Placeholder completion configuration (DEP-583).
+       * When provided, enables inline suggestion menu for {{…}} tokens in WYSIWYG mode.
+       */
+      placeholderCompletion?: PlaceholderCompletionConfiguration | undefined;
+      /**
+       * Placeholder decoration configuration (DEP-583).
+       * When provided, decorates invalid {{…}} tokens with CSS class and data attributes.
+       */
+      placeholderDecoration?: PlaceholderDecorationConfiguration | undefined;
+    };
+
 export type MarkdownEditorProps = Omit<
   HTMLAttributes<HTMLDivElement>,
   'id' | 'class' | 'onchange' | 'onselectionchange'
@@ -84,16 +116,18 @@ export type MarkdownEditorProps = Omit<
   plugins?: MilkdownPlugin[];
 
   /**
-   * Placeholder completion configuration (DEP-583).
-   * When provided, enables inline suggestion menu for {{…}} tokens in WYSIWYG mode.
+   * Placeholder values for filled preview. Never used for completion, and never
+   * included in a diagnostic. Supplying values without `placeholderDefinitions`,
+   * or values that are not a plain JSON object, reports a configuration diagnostic.
    */
-  placeholderCompletion?: PlaceholderCompletionConfiguration;
+  placeholderValues?: JsonObject | undefined;
 
   /**
-   * Placeholder decoration configuration (DEP-583).
-   * When provided, decorates invalid {{…}} tokens with CSS class and data attributes.
+   * Called with the ordered placeholder diagnostics whenever that list changes.
+   * Token ranges index the Markdown `value`. Called with `[]` only to clear
+   * earlier diagnostics.
    */
-  placeholderDecoration?: PlaceholderDecorationConfiguration;
+  onPlaceholderDiagnosticsChange?: (diagnostics: readonly PlaceholderDiagnostic[]) => void;
 
   // =========================================================================
   // Snippet-based Extensibility
@@ -141,4 +175,4 @@ export type MarkdownEditorProps = Omit<
    * ProseMirror state, or any prop controlled by `readonly` / `mode`.
    */
   snapshotMode?: boolean;
-};
+} & MarkdownEditorPlaceholderProps;

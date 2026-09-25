@@ -1,274 +1,218 @@
 /**
- * Exhaustive tests for template placeholder domain logic.
- * DEP-582: Pure functions with no ProseMirror or DOM dependencies.
- * DEP-625: Comprehensive security tests for prototype pollution and XSS prevention.
+ * Security tests for placeholder resolution.
+ * DEP-625: Prototype pollution prevention: reserved and malformed paths never
+ * resolve, only declared own data properties are read, and unresolved tokens
+ * stay visible instead of becoming empty text.
  */
 
 import { describe, expect, it } from 'bun:test';
 
-import { resolveTemplatePlaceholders } from './template-placeholders.js';
+import {
+  parsePlaceholderTokens,
+  resolveTemplatePlaceholders,
+  validatePlaceholderTokens,
+} from './template-placeholders.js';
+import type { JsonObject, PlaceholderResolutionOptions } from './types.js';
+
+function declare(...paths: string[]): PlaceholderResolutionOptions {
+  return { definitions: { candidates: paths.map((path) => ({ path })) } };
+}
+
+/** Codes reported for a single-run template scanned without Markdown context. */
+function tokenCodes(text: string, ...paths: string[]): string[] {
+  return validatePlaceholderTokens(
+    parsePlaceholderTokens(text),
+    paths.map((path) => ({ path })),
+  ).map((issue) => issue.code);
+}
+
+const RESERVED_PATHS = [
+  '__proto__',
+  'constructor',
+  'prototype',
+  'user.__proto__.isAdmin',
+  'data.constructor.prototype',
+  '__defineGetter__',
+  '__defineSetter__',
+  '__lookupGetter__',
+  '__lookupSetter__',
+  'hasOwnProperty',
+  'isPrototypeOf',
+  'propertyIsEnumerable',
+  'toString',
+  'toLocaleString',
+  'valueOf',
+  '__PROTO__',
+  'Constructor',
+  'PROTOTYPE',
+  'ToStRiNg',
+  'user.__PROTO__.isAdmin',
+  '__custom__',
+  'user.__secret__.data',
+  'a.b.__proto__.c.d',
+];
 
 describe('DEP-625: Prototype pollution prevention', () => {
   describe('reserved segment blocking', () => {
-    it('blocks __proto__ access', () => {
-      const result = resolveTemplatePlaceholders('{{__proto__}}', {});
-      expect(result.text).toBe('');
+    it.each(RESERVED_PATHS)('reports blocked_path for {{%s}}', (path) => {
+      expect(tokenCodes(`{{${path}}}`, 'user.name')).toEqual(['blocked_path']);
     });
 
-    it('blocks constructor access', () => {
-      const result = resolveTemplatePlaceholders('{{constructor}}', {});
-      expect(result.text).toBe('');
+    it.each([
+      'constructor',
+      'prototype',
+      'hasOwnProperty',
+      'isPrototypeOf',
+      'propertyIsEnumerable',
+      'toString',
+      'toLocaleString',
+      'valueOf',
+      'Constructor',
+      'PROTOTYPE',
+      'ToStRiNg',
+      'data.constructor.prototype',
+      '__defineGetter',
+    ])('keeps {{%s}} unresolved in the resolver with a blocked_path issue', (path) => {
+      const template = `Value: {{${path}}}`;
+      const result = resolveTemplatePlaceholders(
+        template,
+        { data: { value: 42 } },
+        declare('data'),
+      );
+
+      expect(result.text).toBe(template);
+      expect(result.issues.map((issue) => [issue.code, issue.path])).toEqual([
+        ['blocked_path', path],
+      ]);
     });
 
-    it('blocks prototype access', () => {
-      const result = resolveTemplatePlaceholders('{{prototype}}', {});
-      expect(result.text).toBe('');
+    it.each(['__proto__', 'user.__proto__.isAdmin', '__custom__', 'a.b.__proto__.c.d'])(
+      'never resolves {{%s}} even where Markdown emphasis splits the token',
+      (path) => {
+        const template = `{{${path}}}`;
+        const result = resolveTemplatePlaceholders(
+          template,
+          { user: { name: 'Alice' }, a: { b: { c: { d: 'value' } } } },
+          declare('user.name', 'a.b.c.d'),
+        );
+
+        expect(result.text).toBe(template);
+        expect(result.issues.length).toBeGreaterThan(0);
+        expect(
+          result.issues.every((issue) => ['blocked_path', 'malformed_token'].includes(issue.code)),
+        ).toBe(true);
+      },
+    );
+
+    it('blocks reserved segments even when they exist as own data', () => {
+      const maliciousData = Object.create(null) as JsonObject;
+      maliciousData['constructor'] = 'evil';
+
+      const result = resolveTemplatePlaceholders('{{constructor}}', maliciousData, declare('name'));
+
+      expect(result.text).toBe('{{constructor}}');
+      expect(result.issues.map((issue) => issue.code)).toEqual(['blocked_path']);
     });
 
-    it('blocks nested __proto__ path (user.__proto__.isAdmin)', () => {
-      const result = resolveTemplatePlaceholders('{{user.__proto__.isAdmin}}', {
-        user: { name: 'Alice' },
-      });
-      expect(result.text).toBe('');
-    });
+    it('rejects reserved paths in the definitions instead of declaring them', () => {
+      const result = resolveTemplatePlaceholders(
+        '{{constructor}}',
+        {},
+        { definitions: { candidates: [{ path: 'constructor' }] } },
+      );
 
-    it('blocks nested constructor.prototype path', () => {
-      const result = resolveTemplatePlaceholders('{{data.constructor.prototype}}', {
-        data: { value: 42 },
-      });
-      expect(result.text).toBe('');
-    });
-
-    it('blocks __defineGetter__ access', () => {
-      const result = resolveTemplatePlaceholders('{{__defineGetter__}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks __defineSetter__ access', () => {
-      const result = resolveTemplatePlaceholders('{{__defineSetter__}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks __lookupGetter__ access', () => {
-      const result = resolveTemplatePlaceholders('{{__lookupGetter__}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks __lookupSetter__ access', () => {
-      const result = resolveTemplatePlaceholders('{{__lookupSetter__}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks hasOwnProperty access', () => {
-      const result = resolveTemplatePlaceholders('{{hasOwnProperty}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks isPrototypeOf access', () => {
-      const result = resolveTemplatePlaceholders('{{isPrototypeOf}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks propertyIsEnumerable access', () => {
-      const result = resolveTemplatePlaceholders('{{propertyIsEnumerable}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks toString access', () => {
-      const result = resolveTemplatePlaceholders('{{toString}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks toLocaleString access', () => {
-      const result = resolveTemplatePlaceholders('{{toLocaleString}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks valueOf access', () => {
-      const result = resolveTemplatePlaceholders('{{valueOf}}', {});
-      expect(result.text).toBe('');
+      expect(result.text).toBe('{{constructor}}');
+      expect(result.issues.map((issue) => [issue.code, issue.location.kind])).toEqual([
+        ['blocked_path', 'definition'],
+      ]);
     });
   });
 
-  describe('case-insensitive reserved segment blocking', () => {
-    it('blocks __PROTO__ (uppercase)', () => {
-      const result = resolveTemplatePlaceholders('{{__PROTO__}}', {});
-      expect(result.text).toBe('');
-    });
+  describe('malformed path blocking', () => {
+    it.each(['user..name', '.user.name', 'user.name.', 'user...name', '1user', 'first-name', ''])(
+      'reports invalid_path_format for {{%s}} and keeps it unresolved',
+      (path) => {
+        const template = `{{${path}}}`;
+        const result = resolveTemplatePlaceholders(
+          template,
+          { user: { name: 'Alice' } },
+          declare('user.name'),
+        );
 
-    it('blocks Constructor (mixed case)', () => {
-      const result = resolveTemplatePlaceholders('{{Constructor}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks PROTOTYPE (uppercase)', () => {
-      const result = resolveTemplatePlaceholders('{{PROTOTYPE}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks ToStRiNg (mixed case)', () => {
-      const result = resolveTemplatePlaceholders('{{ToStRiNg}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks nested case-variant path (user.__PROTO__.isAdmin)', () => {
-      const result = resolveTemplatePlaceholders('{{user.__PROTO__.isAdmin}}', {
-        user: { name: 'Alice' },
-      });
-      expect(result.text).toBe('');
-    });
+        expect(result.text).toBe(template);
+        expect(result.issues.map((issue) => issue.code)).toEqual(['invalid_path_format']);
+      },
+    );
   });
 
-  describe('dunder property blocking', () => {
-    it('blocks any segment starting with __ (custom dunder)', () => {
-      const result = resolveTemplatePlaceholders('{{__custom__}}', {});
-      expect(result.text).toBe('');
-    });
+  describe('inherited properties never resolve', () => {
+    it('does not read inherited members of a nested plain object', () => {
+      const result = resolveTemplatePlaceholders('{{a.missing}}', { a: {} }, declare('a.missing'));
 
-    it('blocks nested path with dunder segment (user.__secret__.data)', () => {
-      const result = resolveTemplatePlaceholders('{{user.__secret__.data}}', {
-        user: { name: 'Alice' },
+      expect(result).toEqual({
+        text: '{{a.missing}}',
+        issues: [
+          {
+            code: 'missing_value',
+            message: expect.any(String),
+            path: 'a.missing',
+            location: { kind: 'token', startOffset: 0, endOffset: 13 },
+          },
+        ],
       });
-      expect(result.text).toBe('');
     });
 
-    it('blocks __proto__ via dunder prefix check', () => {
-      const result = resolveTemplatePlaceholders('{{__proto__}}', {});
-      expect(result.text).toBe('');
-    });
+    it('treats an object with an inherited prototype as invalid data', () => {
+      const inherited = Object.create({ name: 'inherited' }) as JsonObject;
+      const result = resolveTemplatePlaceholders(
+        '{{user.name}}',
+        { user: inherited },
+        declare('user.name'),
+      );
 
-    it('blocks __defineGetter__ via dunder prefix check', () => {
-      const result = resolveTemplatePlaceholders('{{__defineGetter__}}', {});
-      expect(result.text).toBe('');
-    });
-  });
-
-  describe('empty segment blocking', () => {
-    it('blocks empty segments from double dots (user..name)', () => {
-      const result = resolveTemplatePlaceholders('{{user..name}}', {
-        user: { name: 'Alice' },
-      });
-      expect(result.text).toBe('');
-    });
-
-    it('blocks leading dot (.user.name)', () => {
-      const result = resolveTemplatePlaceholders('{{.user.name}}', {
-        user: { name: 'Alice' },
-      });
-      expect(result.text).toBe('');
-    });
-
-    it('blocks trailing dot (user.name.)', () => {
-      const result = resolveTemplatePlaceholders('{{user.name.}}', {
-        user: { name: 'Alice' },
-      });
-      expect(result.text).toBe('');
-    });
-
-    it('blocks multiple consecutive dots (user...name)', () => {
-      const result = resolveTemplatePlaceholders('{{user...name}}', {
-        user: { name: 'Alice' },
-      });
-      expect(result.text).toBe('');
+      expect(result.text).toBe('{{user.name}}');
+      expect(result.issues.map((issue) => issue.code)).toEqual(['invalid_value']);
     });
   });
 
   describe('legitimate paths still resolve', () => {
-    it('resolves valid simple path', () => {
-      const result = resolveTemplatePlaceholders('{{name}}', { name: 'Alice' });
-      expect(result.text).toBe('Alice');
-    });
-
-    it('resolves valid nested path', () => {
-      const result = resolveTemplatePlaceholders('{{user.name}}', {
-        user: { name: 'Alice' },
+    it.each([
+      ['name', { name: 'Alice' }, 'Alice'],
+      ['user.name', { user: { name: 'Alice' } }, 'Alice'],
+      ['a.b.c.d', { a: { b: { c: { d: 'value' } } } }, 'value'],
+      ['user_data.field_name', { user_data: { field_name: 'test' } }, 'test'],
+      ['_private.data', { _private: { data: 'secret' } }, 'secret'],
+      ['_value', { _value: 42 }, '42'],
+      ['constructor_id', { constructor_id: '12345' }, '12345'],
+      ['my_constructor', { my_constructor: 'Builder' }, 'Builder'],
+    ])('resolves {{%s}}', (path, values, expected) => {
+      expect(resolveTemplatePlaceholders(`{{${path}}}`, values, declare(path))).toEqual({
+        text: expected,
+        issues: [],
       });
-      expect(result.text).toBe('Alice');
-    });
-
-    it('resolves deeply nested path (3+ levels)', () => {
-      const result = resolveTemplatePlaceholders('{{a.b.c.d}}', {
-        a: { b: { c: { d: 'value' } } },
-      });
-      expect(result.text).toBe('value');
-    });
-
-    it('resolves path with underscores (user_data.field_name)', () => {
-      const result = resolveTemplatePlaceholders('{{user_data.field_name}}', {
-        user_data: { field_name: 'test' },
-      });
-      expect(result.text).toBe('test');
-    });
-
-    it('resolves path starting with underscore (_private.data)', () => {
-      const result = resolveTemplatePlaceholders('{{_private.data}}', {
-        _private: { data: 'secret' },
-      });
-      expect(result.text).toBe('secret');
-    });
-
-    it('resolves legitimate single underscore properties', () => {
-      const result = resolveTemplatePlaceholders('{{_value}}', { _value: 42 });
-      expect(result.text).toBe('42');
-    });
-  });
-
-  describe('edge cases', () => {
-    it('returns empty string for null context with reserved segment', () => {
-      const result = resolveTemplatePlaceholders('{{__proto__}}', {});
-      expect(result.text).toBe('');
-    });
-
-    it('blocks reserved segments even when they exist in data', () => {
-      // Even if someone manages to set these keys, they should not resolve
-      const maliciousData = Object.create(null);
-      maliciousData.constructor = 'evil';
-      const result = resolveTemplatePlaceholders('{{constructor}}', maliciousData);
-      expect(result.text).toBe('');
-    });
-
-    it('blocks reserved segments in complex nested paths', () => {
-      const result = resolveTemplatePlaceholders('{{a.b.__proto__.c.d}}', {
-        a: { b: { c: { d: 'value' } } },
-      });
-      expect(result.text).toBe('');
-    });
-
-    it('allows properties that contain reserved words but are not exact matches', () => {
-      const result = resolveTemplatePlaceholders('{{constructor_id}}', {
-        constructor_id: '12345',
-      });
-      expect(result.text).toBe('12345');
-    });
-
-    it('allows properties that end with reserved words', () => {
-      const result = resolveTemplatePlaceholders('{{my_constructor}}', {
-        my_constructor: 'Builder',
-      });
-      expect(result.text).toBe('Builder');
     });
   });
 
   describe('multiple tokens with mixed valid and blocked paths', () => {
-    it('resolves valid paths and blocks reserved segments in same template', () => {
+    it('resolves valid paths and keeps blocked ones visible in the same template', () => {
       const result = resolveTemplatePlaceholders(
-        '{{name}} is {{age}} years old and {{__proto__}} is blocked',
-        {
-          name: 'Alice',
-          age: 30,
-        },
+        '{{name}} is {{age}} years old and {{constructor}} is blocked',
+        { name: 'Alice', age: 30 },
+        declare('name', 'age'),
       );
-      expect(result.text).toBe('Alice is 30 years old and  is blocked');
+
+      expect(result.text).toBe('Alice is 30 years old and {{constructor}} is blocked');
+      expect(result.issues.map((issue) => issue.code)).toEqual(['blocked_path']);
     });
 
-    it('handles template with all blocked segments', () => {
-      const result = resolveTemplatePlaceholders('{{__proto__}} {{constructor}} {{prototype}}', {});
-      expect(result.text).toBe('  ');
-    });
-
-    it('handles template with all valid segments', () => {
-      const result = resolveTemplatePlaceholders('{{a}} {{b}} {{c}}', { a: '1', b: '2', c: '3' });
-      expect(result.text).toBe('1 2 3');
+    it('resolves a template with only valid tokens', () => {
+      expect(
+        resolveTemplatePlaceholders(
+          '{{a}} {{b}} {{c}}',
+          { a: '1', b: '2', c: '3' },
+          declare('a', 'b', 'c'),
+        ),
+      ).toEqual({ text: '1 2 3', issues: [] });
     });
   });
 });
