@@ -2665,7 +2665,9 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
     const allFrames: any[] = [];
     // Deliver the task only on the first registration so a later reconnect
     // cannot re-deliver it; any second taskResult would have to come from the
-    // outbox re-flushing an already-acknowledged result.
+    // outbox re-flushing an already-acknowledged result. The second
+    // registration also gets its own, differently-named "fence" task — see
+    // the negative-assertion barrier below.
     const harness = createReconnectServer(
       (ws, idx) => {
         if (idx === 0) {
@@ -2676,6 +2678,16 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
               attemptToken: 'attempt-token',
               activityName: 'orders.echo',
               input: 'hi',
+            }),
+          );
+        } else if (idx === 1) {
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-fence',
+              attemptToken: 'fence-token',
+              activityName: 'orders.echo',
+              input: 'fence',
             }),
           );
         }
@@ -2708,11 +2720,33 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
       label: 'result acknowledged',
     });
 
-    // A subsequent reconnect must not re-flush an already-acknowledged result.
+    // A subsequent reconnect must not re-flush an already-acknowledged
+    // result. Proving that absence needs an observed barrier, not a raw
+    // sleep — a fixed window either passes trivially (nothing to race:
+    // op-immediate's flush, if it wrongly fired, already ran synchronously
+    // inside #handleRegisterAck before connect() even resolved) or is
+    // genuinely racing the localhost round-trip that lets the harness
+    // record it, in which case a fixed delay is a guess at that round-trip's
+    // length, not proof of it.
+    //
+    // Fence instead: op-fence is a SEPARATE task dispatched only after this
+    // registration's ack, so the worker cannot even start executing it until
+    // after any (wrongly) flushed op-immediate resend has already been
+    // handed to the same WebSocket for sending — a single connection
+    // delivers a sender's messages to the receiver in the order they were
+    // sent. Once the server has recorded op-fence's own taskResult, any
+    // op-immediate resend that will ever arrive from this reconnect has
+    // already arrived.
     await worker.disconnect();
     await worker.connect();
-    await sleepForTesting(50);
-    const total = harness.allFrames().filter((m) => m.type === 'taskResult').length;
+    await waitForCondition(
+      () =>
+        harness.framesFor(1).some((m) => m.type === 'taskResult' && m.operationId === 'op-fence'),
+      { timeoutMs: 1_000, label: 'fence task result' },
+    );
+    const total = harness
+      .allFrames()
+      .filter((m) => m.type === 'taskResult' && m.operationId === 'op-immediate').length;
     expect(total).toBe(1);
 
     await worker.disconnect();
