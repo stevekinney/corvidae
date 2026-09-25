@@ -4,7 +4,7 @@ import { scratchOwner } from './scratch-repository.ts';
 import {
   assertNoForeignCommits,
   cloneTarget,
-  declaredBuildInputs,
+  foreignCommitOwnership,
   git,
   provenanceTrailer,
   runSync,
@@ -12,7 +12,6 @@ import {
   SyncError,
   type SyncResult,
 } from './sync.ts';
-import { loadTargetOwnedPolicy } from './target-owned.ts';
 
 /**
  * The two entry points COR-1195's GitHub Actions workflow drives, one `bun` invocation per job:
@@ -125,11 +124,14 @@ export async function reportDrift(options: {
   directory: string;
 }): Promise<DriftReport> {
   const clone = await cloneTarget({ remote: options.remote, directory: options.directory });
-  await assertNoForeignCommits(clone, {
-    policy: await loadTargetOwnedPolicy(),
-    target: options.target,
-    targetOwnedFiles: await declaredBuildInputs(options.target),
-  });
+  await assertNoForeignCommits(
+    clone,
+    await foreignCommitOwnership({
+      corvidaeRoot: options.corvidaeRoot,
+      target: options.target,
+      clone,
+    }),
+  );
   await stageSurface({
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,

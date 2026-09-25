@@ -307,6 +307,26 @@ export interface ForeignCommitOwnership {
    * COR-1190's ruling), which the transform reads for presence and never writes.
    */
   targetOwnedFiles?: ReadonlySet<string> | undefined;
+  /**
+   * What this sync's plan writes, prunes and retires. A path outside all three is one the sync
+   * leaves exactly as it is, so a hand change to it cannot be clobbered and is the target's own
+   * (COR-1223's inversion, applied to the guard by COR-1198). Absent, only the enumeration counts.
+   */
+  transform?: TransformReach | undefined;
+}
+
+/** The paths a sync can overwrite or delete: its emitted files and the prefixes it prunes or retires. */
+export interface TransformReach {
+  files: ReadonlySet<string>;
+  prefixes: readonly string[];
+}
+
+/** Whether a sync would write or delete this target-relative path. */
+function transformReaches(reach: TransformReach, path: string): boolean {
+  return (
+    reach.files.has(path) ||
+    reach.prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+  );
 }
 
 /**
@@ -316,15 +336,17 @@ export interface ForeignCommitOwnership {
  * one: a manifest's `version` is target-owned and the transform never writes it, so the target
  * has to, and a guard that called that foreign would refuse every release. A commit is the
  * target's own when each path it touches is either target-owned by `target-owned.json`'s
- * enumeration — the changelog, the readme, the release workflow — or a manifest the transform
+ * enumeration — the changelog, the readme, the release workflow — or outside everything the sync
+ * writes, prunes or retires (release tooling, a package README), or a manifest the transform
  * composes whose changed top-level keys are all outside the transform's own `manifestKeys`. A
- * manifest added or deleted outright is the transform's business, and so is any other path:
- * emitted source, a vendored tsconfig, the emitted workflow.
+ * manifest added or deleted outright is the transform's business, and so is any other path the
+ * sync reaches: emitted source, a vendored tsconfig, the emitted workflow, a file inside a source
+ * tree it prunes.
  */
 async function isTargetOwnedCommit(
   directory: string,
   sha: string,
-  { policy, target, targetOwnedFiles }: ForeignCommitOwnership,
+  { policy, target, targetOwnedFiles, transform }: ForeignCommitOwnership,
 ): Promise<boolean> {
   const status = await git(directory, 'show', '--format=', '--name-status', sha);
   const transformOwnedKeys = new Set(policy.insideFiles.manifestKeys.map((entry) => entry.key));
@@ -334,6 +356,7 @@ async function isTargetOwnedCommit(
     const path = fields[fields.length - 1] ?? '';
     if (findTargetOwner(policy, path, target) !== undefined) continue;
     if (targetOwnedFiles?.has(path)) continue;
+    if (transform !== undefined && !transformReaches(transform, path)) continue;
     if (basename(path) !== 'package.json' || !kind.startsWith('M')) return false;
     const before = await git(directory, 'show', `${sha}^:${path}`);
     const after = await git(directory, 'show', `${sha}:${path}`);
@@ -360,6 +383,33 @@ export async function declaredBuildInputs(target: string): Promise<Set<string>> 
     }
   }
   return files;
+}
+
+/**
+ * Everything the foreign-commit guard needs for one target, read against the clone as it arrived:
+ * the enumeration, the declared build inputs, and the reach of the plan this sync would stage.
+ */
+export async function foreignCommitOwnership(options: {
+  corvidaeRoot: string;
+  target: MirrorTarget;
+  clone: string;
+}): Promise<ForeignCommitOwnership> {
+  const policy = await loadTargetOwnedPolicy();
+  const plan = await planSurface({
+    corvidaeRoot: options.corvidaeRoot,
+    target: options.target,
+    targetDirectory: options.clone,
+    policy,
+  });
+  return {
+    policy,
+    target: options.target,
+    targetOwnedFiles: await declaredBuildInputs(options.target),
+    transform: {
+      files: new Set(Object.keys(plan.files)),
+      prefixes: [...plan.source.ownedPrefixes, ...retiredDirectoriesFor(policy, options.target)],
+    },
+  };
 }
 
 /** Top-level keys whose serialized value differs between two JSON documents. */
@@ -806,11 +856,14 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     directory: options.directory,
     branch: options.branch,
   });
-  await assertNoForeignCommits(clone, {
-    policy: await loadTargetOwnedPolicy(),
-    target: options.target,
-    targetOwnedFiles: await declaredBuildInputs(options.target),
-  });
+  await assertNoForeignCommits(
+    clone,
+    await foreignCommitOwnership({
+      corvidaeRoot: options.corvidaeRoot,
+      target: options.target,
+      clone,
+    }),
+  );
 
   // Read before the sync branch is created below, and only in pull-request mode: it is the base
   // a pull request opens against, and the direct-push path never needs it because it pushes back

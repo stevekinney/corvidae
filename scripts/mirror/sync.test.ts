@@ -730,6 +730,73 @@ describe('the foreign-commit guard', () => {
     endToEndTimeout,
   );
 
+  /**
+   * COR-1198. agent-bureau#639 (`d750218`) changed the target's release tooling, its root
+   * `bunfig.toml` and three package READMEs: paths no `target-owned.json` glob names, and none of
+   * which the transform writes or prunes. Under COR-1223's inversion an unenumerated path the plan
+   * never touches is the target's, so a sync cannot clobber the commit and the guard must not
+   * refuse it.
+   */
+  test(
+    "a hand commit to paths the transform neither writes nor prunes is the target's own",
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const releaser = harness.runDirectory('release-tooling');
+        await mkdir(releaser, { recursive: true });
+        await git(releaser, 'clone', '--quiet', harness.remote, releaser);
+        await Bun.write(join(releaser, 'scripts/release.ts'), 'export const release = true;\n');
+        await Bun.write(join(releaser, 'bunfig.toml'), '[install]\nexact = true\n');
+        await Bun.write(
+          join(releaser, 'packages/cryptography/README.md'),
+          '# @lostgradient/cryptography\n',
+        );
+        await git(releaser, 'add', '--all');
+        await git(releaser, 'commit', '--quiet', '--message', 'Tune the release tooling');
+        await git(releaser, 'push', '--quiet', 'origin', 'HEAD:main');
+
+        const result = await sync(harness, 'after-release-tooling');
+        expect(['skip', 'pushed']).toContain(result.decision);
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    'a hand commit adding a file inside a source tree the transform prunes is still foreign',
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const intruder = harness.runDirectory('prunable-intruder');
+        await mkdir(intruder, { recursive: true });
+        await git(intruder, 'clone', '--quiet', harness.remote, intruder);
+        await Bun.write(
+          join(intruder, 'packages/lifecycle/src/hand-added.ts'),
+          'export const handAdded = true;\n',
+        );
+        await git(intruder, 'add', '--all');
+        await git(intruder, 'commit', '--quiet', '--message', 'Add a file the sync would prune');
+        await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
+        const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
+        const foreignSha = intruderHead.trim();
+
+        let thrown: unknown;
+        try {
+          await sync(harness, 'after-prunable-intrusion');
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(ForeignCommitError);
+        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+          foreignSha,
+        ]);
+      });
+    },
+    endToEndTimeout,
+  );
+
   test(
     'a hand commit that changes a transform-owned manifest key is still foreign',
     async () => {
