@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import type { DiffReviewState, DiffReviewTargetInput } from '../../diff-review-state/index.ts';
@@ -404,5 +404,121 @@ describe('DiffReview component shell: drafts inventory Open', () => {
     // the removed target's draft was never going to appear regardless of
     // filter value, so clearing it here would be gratuitous.
     expect(filter.value).toBe('unrelated-filter-text');
+  });
+});
+
+describe('DiffReview component: readonly rejects mutation at the handler (defense in depth)', () => {
+  // Contract: "underlying action handlers also return `readonly`" -- every
+  // mutating dispatch must reject in read-only mode even if some future
+  // change to the disabled/hidden UI around it stopped preventing the
+  // interaction from reaching the handler. Each test below defeats the UI
+  // layer itself (removing `disabled`, or reaching a control the contract
+  // says stays available in read-only mode) so it exercises the dispatch's
+  // own `{ readonly }` option, not just the surrounding markup.
+
+  function stateWithPendingDraft(): DiffReviewState {
+    const state = createdState(twoFileTargets);
+    const withDraft = reduceDiffReviewState(state, {
+      type: 'create-draft',
+      draftId: 'pending-draft',
+      targetId: 't1',
+      anchor: { kind: 'file', fileOccurrence: 0 },
+      body: 'existing draft text',
+    });
+    if (!withDraft.ok) throw new Error('fixture setup failed');
+    return withDraft.value;
+  }
+
+  test('update-draft: typing in the reopened composer never mutates state (composer textarea uses native readonly, not disabled, by contract)', async () => {
+    const onStateChange = mock(() => {});
+    const { getByText, getByLabelText } = render(DiffReview, {
+      targets: twoFileTargets,
+      state: stateWithPendingDraft(),
+      onStateChange,
+      readonly: true,
+    });
+    // The drafts inventory's "Open" action stays available in read-only mode
+    // per contract, so this reaches a real, currently-focusable textarea --
+    // no UI bypass needed for this one. Opening itself dispatches an allowed
+    // navigation action (`select-file`), so the mutation assertion below
+    // only cares about calls made AFTER that legitimate one.
+    await fireEvent.click(getByText('Review drafts'));
+    await fireEvent.click(getByText('Open'));
+    const callsAfterOpen = onStateChange.mock.calls.length;
+    await fireEvent.input(getByLabelText('Comment'), { target: { value: 'attempted edit' } });
+    expect(onStateChange.mock.calls.length).toBe(callsAfterOpen);
+  });
+
+  test('set-reviewed: force-enabling the Reviewed checkbox still cannot mutate state', async () => {
+    const onStateChange = mock(() => {});
+    const { getAllByLabelText } = render(DiffReview, {
+      targets: twoFileTargets,
+      state: createdState(twoFileTargets),
+      onStateChange,
+      readonly: true,
+    });
+    const checkbox = getAllByLabelText('Reviewed')[1] as HTMLInputElement;
+    // Bypass the UI-level guard: the contract's own protection here is the
+    // checkbox's `disabled` attribute, so defeat it directly before firing.
+    checkbox.disabled = false;
+    await fireEvent.click(checkbox);
+    expect(onStateChange).not.toHaveBeenCalled();
+  });
+
+  test('save-draft (composer Save): force-enabling Save still cannot mutate state', async () => {
+    const onStateChange = mock(() => {});
+    const { getByText } = render(DiffReview, {
+      targets: twoFileTargets,
+      state: stateWithPendingDraft(),
+      onStateChange,
+      readonly: true,
+    });
+    await fireEvent.click(getByText('Review drafts'));
+    await fireEvent.click(getByText('Open'));
+    // Opening itself dispatches an allowed navigation action (`select-file`);
+    // the mutation assertion below only cares about calls made AFTER that.
+    const callsAfterOpen = onStateChange.mock.calls.length;
+    const saveButton = getByText('Save') as HTMLButtonElement;
+    // Bypass the UI-level guard: `disabled={readonly || ...}` is the only
+    // thing stopping this click today.
+    saveButton.disabled = false;
+    await fireEvent.click(saveButton);
+    expect(onStateChange.mock.calls.length).toBe(callsAfterOpen);
+  });
+
+  test('save-draft/discard-draft (drafts-inventory list actions) have no rendered control to bypass in read-only mode', () => {
+    // Structural check, not a bypass: `DiffReviewDraftsInventory` removes
+    // its own Save/Discard buttons entirely (`{#if !readonly}`) rather than
+    // disabling them, so there is no DOM node whose `disabled` attribute
+    // could be stripped. `saveDraft`/`discardDraft` in `diff-review.svelte`
+    // still forward `{ readonly }` to their dispatch, per the contract, so a
+    // future change to this markup can't reopen the gap.
+    const { queryByText, getByText } = render(DiffReview, {
+      targets: twoFileTargets,
+      state: stateWithPendingDraft(),
+      onStateChange: () => {},
+      readonly: true,
+    });
+    fireEvent.click(getByText('Review drafts'));
+    expect(queryByText('Save')).toBeNull();
+    expect(queryByText('Discard')).toBeNull();
+    expect(getByText('Open')).not.toBeNull();
+  });
+
+  test('navigation (select-file) keeps working in read-only mode', async () => {
+    // Contract: navigation actions stay allowed in read-only mode. This
+    // guards against a future change accidentally routing `selectFile`
+    // through the same readonly-rejecting dispatch as the mutating actions.
+    const onStateChange = mock((next: DiffReviewState) => next);
+    const { container } = render(DiffReview, {
+      targets: twoFileTargets,
+      state: createdState(twoFileTargets),
+      onStateChange,
+      readonly: true,
+    });
+    const buttons = container.querySelectorAll('.diff-review-file-list-button');
+    await fireEvent.click(buttons[1]!);
+    expect(onStateChange).toHaveBeenCalledTimes(1);
+    expect(onStateChange.mock.calls[0]?.[0]?.selectedFileOccurrence).toBe(1);
   });
 });

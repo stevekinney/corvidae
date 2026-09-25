@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import type { DiffReviewState } from '../../diff-review-state/index.ts';
@@ -108,6 +108,31 @@ describe('DiffReview component comments panel: mutations', () => {
     expect(queryByText('Resolve')).toBeNull();
     expect(queryByText('Delete')).toBeNull();
     expect(container.querySelector('.diff-review-comments-filter')).not.toBeNull();
+  });
+});
+
+describe('DiffReview component comments panel: readonly rejects mutation at the handler (defense in depth)', () => {
+  // Contract: "underlying action handlers also return `readonly`". Edit,
+  // Delete, Resolve, and Reopen are removed from the DOM entirely in
+  // read-only mode (`{#if !readonly}`, no `disabled` fallback to bypass),
+  // already covered above by "readonly hides mutating controls". The review
+  // note textarea is the one control here that stays rendered-but-`disabled`,
+  // so it is the one this suite can force-bypass to prove the dispatch
+  // itself -- not just the `disabled` attribute -- rejects the mutation.
+
+  test('set-review-note: force-enabling the Review note textarea still cannot mutate state', async () => {
+    const onStateChange = mock(() => {});
+    const { getByLabelText } = render(DiffReviewComments, {
+      state: stateWithTwoComments(),
+      onStateChange,
+      readonly: true,
+    });
+    const textarea = getByLabelText('Review note') as HTMLTextAreaElement;
+    // Bypass the UI-level guard: `disabled={readonly}` is the only thing
+    // stopping this change today.
+    textarea.disabled = false;
+    await fireEvent.change(textarea, { target: { value: 'attempted note' } });
+    expect(onStateChange).not.toHaveBeenCalled();
   });
 });
 

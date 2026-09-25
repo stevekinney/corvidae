@@ -137,6 +137,7 @@
       reviewState,
       { type: 'set-reviewed', targetId, fileOccurrence, reviewed },
       onStateChange,
+      { readonly },
     );
   }
 
@@ -161,6 +162,7 @@
         newPath: result.newPath,
       },
       onStateChange,
+      { readonly },
     );
     if (outcome.ok) activeDraftId = draftId;
   }
@@ -178,6 +180,7 @@
         anchor: { kind: 'file', fileOccurrence },
       },
       onStateChange,
+      { readonly },
     );
     if (outcome.ok) activeDraftId = draftId;
   }
@@ -188,6 +191,7 @@
       reviewState,
       { type: 'update-draft', draftId: activeDraftId, body },
       onStateChange,
+      { readonly },
     );
   }
 
@@ -202,6 +206,7 @@
       reviewState,
       { type: 'save-draft', draftId: activeDraftId },
       onStateChange,
+      { readonly },
     );
     if (outcome.ok) closeComposer();
   }
@@ -242,6 +247,7 @@
       reviewState,
       { type: 'save-draft', draftId },
       onStateChange,
+      { readonly },
     );
     if (outcome.ok && draftId === activeDraftId) closeComposer();
   }
@@ -251,6 +257,7 @@
       reviewState,
       { type: 'discard-draft', draftId },
       onStateChange,
+      { readonly },
     );
     if (outcome.ok && draftId === activeDraftId) closeComposer();
   }

@@ -56,23 +56,33 @@
   const visibleComments = $derived(filterDiffReviewComments(reviewState.comments, filter));
 
   function editComment(id: string, body: string): void {
-    dispatchDiffReviewAction(reviewState, { type: 'edit-comment', id, body }, onStateChange);
+    dispatchDiffReviewAction(reviewState, { type: 'edit-comment', id, body }, onStateChange, {
+      readonly,
+    });
   }
 
   function deleteComment(id: string): void {
-    dispatchDiffReviewAction(reviewState, { type: 'delete-comment', id }, onStateChange);
+    dispatchDiffReviewAction(reviewState, { type: 'delete-comment', id }, onStateChange, {
+      readonly,
+    });
   }
 
   function resolveComment(id: string): void {
-    dispatchDiffReviewAction(reviewState, { type: 'resolve-comment', id }, onStateChange);
+    dispatchDiffReviewAction(reviewState, { type: 'resolve-comment', id }, onStateChange, {
+      readonly,
+    });
   }
 
   function reopenComment(id: string): void {
-    dispatchDiffReviewAction(reviewState, { type: 'reopen-comment', id }, onStateChange);
+    dispatchDiffReviewAction(reviewState, { type: 'reopen-comment', id }, onStateChange, {
+      readonly,
+    });
   }
 
   function setReviewNote(body: string): void {
-    dispatchDiffReviewAction(reviewState, { type: 'set-review-note', body }, onStateChange);
+    dispatchDiffReviewAction(reviewState, { type: 'set-review-note', body }, onStateChange, {
+      readonly,
+    });
   }
 
   /**
