@@ -110,6 +110,17 @@ function renderScratchPreparationStep(scratchDirectory: string): string {
   ].join('\n');
 }
 
+/**
+ * One argv element as a shell word. `VerifyStep.command` is real argv locally, so an element may
+ * carry spaces or quotes (the relocate step's `bun -e` script does); those are single-quoted here.
+ * A `${{ … }}` expression is replaced by GitHub before the shell sees the line, so it neither needs
+ * quoting on its own nor breaks it inside quotes.
+ */
+export function shellWord(argument: string): string {
+  if (/^[\w@%+=:,./-]+$/.test(argument.replaceAll(/\$\{\{[^}]*\}\}/g, 'x'))) return argument;
+  return `'${argument.replaceAll("'", String.raw`'\''`)}'`;
+}
+
 /** One `VerifyStep` rendered as a GitHub Actions step. */
 function renderStep(step: VerifyStep): string {
   const lines = [`      - name: ${step.description}`, `        working-directory: ${step.cwd}`];
@@ -130,7 +141,7 @@ function renderStep(step: VerifyStep): string {
       );
     }
   }
-  if (step.command.length > 0) runLines.push(step.command.join(' '));
+  if (step.command.length > 0) runLines.push(step.command.map(shellWord).join(' '));
   if (runLines.length === 0) return lines.join('\n');
   lines.push(
     '        run: |',

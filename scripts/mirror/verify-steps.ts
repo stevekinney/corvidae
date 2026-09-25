@@ -7,10 +7,24 @@ import {
   nodeImportableSpecifierEntries,
   resolveTool,
   smokeScript,
-  tarballFilename,
+  tarballStem,
+  verifyTarballFilename,
   type SmokeTestPackage,
 } from './packaging.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
+
+/**
+ * Renames `<stem>-<version>.tgz` in a source directory to a fixed destination, reading the version
+ * from the package manifest in the working directory. It runs as `bun -e` with its three
+ * arguments last, so the same argv works under `Bun.spawn` locally and, shell-quoted by
+ * `renderStep`, as a line in the rendered workflow.
+ */
+export const relocateTarballScript = [
+  'const [source, stem, destination] = process.argv.slice(-3);',
+  'const { readFileSync, renameSync } = require("node:fs");',
+  'const { version } = JSON.parse(readFileSync("package.json", "utf8"));',
+  'renameSync(require("node:path").join(source, stem + "-" + version + ".tgz"), destination);',
+].join(' ');
 
 /**
  * The one ordered list of commands `verifyTarget` runs against a staged clone, shared with the
@@ -238,11 +252,12 @@ export function buildVerifySteps(
    * also where the *real* release pipeline (`publish-release.ts`) expects to find it. A
    * `pack-script` package's pack step therefore writes into its own package directory first, same
    * as release does, and a `pack-relocate` step immediately after moves it here — see the pack
-   * loop below. The filename convention is identical either way: `tarballFilename` matches every
-   * `pack-for-publish.ts`'s own `getPackFileName`/`tarballFileName` helper byte for byte.
+   * loop below. Either way the relocate step renames it to `verifyTarballFilename`, which carries
+   * no version: the rendered workflow also runs on a later Version Packages pull request, where
+   * the version the sync saw is no longer the one the pack writes (COR-1198).
    */
   const tarballFor = (entry: PublishedPackage): string =>
-    join(tarballsDirectory, tarballFilename(entry.publicName, entry.version));
+    join(tarballsDirectory, verifyTarballFilename(entry.publicName));
   const ordered = orderByDependencies(inputs.published);
 
   for (const entry of ordered) {
@@ -296,15 +311,8 @@ export function buildVerifySteps(
     });
     if (packScript) {
       // `pack-for-publish.ts` always writes into its own package directory (see `tarballFor`'s
-      // comment above), so its output has to be moved into the shared `tarballsDirectory` before
-      // `publint`/`attw`/the consumer project — which all read `tarballFor(entry)` — can find it.
-      // Two argv-only steps rather than one `mkdir -p ... && mv ...`: `VerifyStep.command` is
-      // real argv locally (`Bun.spawn`, no shell) but a flat, naively-joined `run:` line in the
-      // rendered workflow (`mirror-verify-workflow.ts`'s `renderStep`) — a shell operator embedded
-      // in one argv element would run fine locally and render as a broken, unquoted command in the
-      // workflow. `mkdir -p` is idempotent, so repeating it once per pack-script package costs
-      // nothing.
-      const packedTarballName = tarballFilename(entry.publicName, entry.version);
+      // comment above), and `mv` does not create a destination directory. `mkdir -p` is
+      // idempotent, so repeating it once per pack-script package costs nothing.
       steps.push({
         kind: 'pack-relocate',
         description: `prepare the shared tarballs directory for ${entry.publicName}`,
@@ -312,14 +320,24 @@ export function buildVerifySteps(
         command: ['mkdir', '-p', tarballsDirectory],
         publicName: entry.publicName,
       });
-      steps.push({
-        kind: 'pack-relocate',
-        description: `move ${entry.publicName}'s packed tarball into the shared tarballs directory`,
-        cwd,
-        command: ['mv', packedTarballName, join(tarballsDirectory, packedTarballName)],
-        publicName: entry.publicName,
-      });
     }
+    // The packed file carries the version the manifest holds when this step runs, which in the
+    // rendered workflow can be later than the version the sync saw, so the rename reads the
+    // version from the package's own manifest at run time rather than baking one in (COR-1198).
+    steps.push({
+      kind: 'pack-relocate',
+      description: `move ${entry.publicName}'s packed tarball into the shared tarballs directory`,
+      cwd,
+      command: [
+        'bun',
+        '-e',
+        relocateTarballScript,
+        packScript ? '.' : tarballsDirectory,
+        tarballStem(entry.publicName),
+        tarballFor(entry),
+      ],
+      publicName: entry.publicName,
+    });
     const tarball = tarballFor(entry);
     steps.push({
       kind: 'publint',

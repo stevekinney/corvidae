@@ -137,7 +137,24 @@ export interface PackOptions {
  * here rather than silently producing a workflow step that reads a tarball nothing wrote.
  */
 export function tarballFilename(publicName: string, version: string): string {
-  return `${publicName.replace(/^@/, '').replace('/', '-')}-${version}.tgz`;
+  return `${tarballStem(publicName)}-${version}.tgz`;
+}
+
+/** The part of a packed tarball's filename that does not change with the version. */
+export function tarballStem(publicName: string): string {
+  return publicName.replace(/^@/, '').replace('/', '-');
+}
+
+/**
+ * The version-free name a packed tarball is moved to in the verification scratch directory.
+ *
+ * COR-1198. `mirror-verify.yaml` is rendered at sync time but runs on every later pull request,
+ * including a Version Packages pull request that bumps each manifest's version before packing. A
+ * step that named the tarball by the version the sync saw read a file nothing wrote, so every
+ * step after the pack names it by the public name alone.
+ */
+export function verifyTarballFilename(publicName: string): string {
+  return `${tarballStem(publicName)}.tgz`;
 }
 
 /**
