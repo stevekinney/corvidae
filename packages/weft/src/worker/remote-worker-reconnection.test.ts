@@ -468,7 +468,15 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
     const resolvedAfterStale = await readResolvedRecord(setup.engine, operationId);
     expect(resolvedAfterStale === undefined || resolvedAfterStale === null).toBe(true);
 
-    // Fresh completion: worker-a echoes attempt 2's token — accepted.
+    // Fresh completion: worker-a echoes attempt 2's token — accepted. Await
+    // the server's own taskResultAck for THIS attempt token directly (a
+    // stronger observed event than polling storage) rather than sleeping and
+    // re-reading — it both proves acceptance and pins that the ack
+    // correlates to attempt 2 specifically, not some other disposition.
+    const ackPromise = workerA.nextServerMessage(
+      (m) => m.type === 'taskResultAck' && m.attemptToken === dispatch2.attemptToken,
+      { timeoutMs: 2_000 },
+    );
     workerA.send({
       type: 'taskResult',
       operationId,
@@ -476,14 +484,11 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
       value: 'fresh-attempt-2',
       attemptToken: dispatch2.attemptToken,
     });
+    const ack = await ackPromise;
+    if (ack.type !== 'taskResultAck') throw new Error('expected taskResultAck');
+    expect(ack.disposition).toBe('applied');
 
-    let resolved: unknown;
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
-      resolved = await readResolvedRecord(setup.engine, operationId);
-      if (resolved !== undefined && resolved !== null) break;
-      await sleepForTesting(10);
-    }
+    const resolved = await readResolvedRecord(setup.engine, operationId);
     expect(resolved !== undefined && resolved !== null).toBe(true);
     // The fresh attempt's value won; the rejected stale completion never wrote.
     // Terminal ledger records don't persist the value itself (see
