@@ -4,6 +4,12 @@
 
 import type { TaskResultMessage } from './protocol.ts';
 
+/** The minimum shape any buffered outbox entry must carry — the composite key. */
+export interface OutboxKeyed {
+  readonly operationId: string;
+  readonly attemptToken: string;
+}
+
 /**
  * Hard ceiling on unacknowledged `taskResult` frames buffered for resend
  * across a reconnect. Reaching it triggers intake backpressure on the worker
@@ -39,9 +45,17 @@ function outboxKey(operationId: string, attemptToken: string): string {
  * that the server's response reached back. Only a matching `taskResultAck`
  * (see `acknowledge()`) removes an entry; nothing else does, including
  * disconnects and reconnects.
+ *
+ * Generic over the buffered entry shape (COR-235) so `LongPollWorker` can
+ * reuse this exact abstraction for its own HTTP result POST body — which
+ * needs a `workerId` field `TaskResultMessage` does not carry, since a
+ * long-poll worker has no persistent connection to derive identity from —
+ * rather than a second, parallel buffer implementation. `RemoteWorker`'s own
+ * usage is unaffected: the default type parameter is exactly the type it
+ * always used.
  */
-export class TaskResultOutbox {
-  readonly #entries = new Map<string, TaskResultMessage>();
+export class TaskResultOutbox<TEntry extends OutboxKeyed = TaskResultMessage> {
+  readonly #entries = new Map<string, TEntry>();
   readonly #max: number;
   #warnedFull = false;
 
@@ -80,8 +94,13 @@ export class TaskResultOutbox {
    * immediately before every send attempt, successful or not, so the entry
    * is durable in this outbox regardless of what the send does next.
    */
-  buffer(message: TaskResultMessage): void {
+  buffer(message: TEntry): void {
     this.#entries.set(outboxKey(message.operationId, message.attemptToken), message);
+  }
+
+  /** Whether an unacknowledged entry is still buffered for `(operationId, attemptToken)`. */
+  has(operationId: string, attemptToken: string): boolean {
+    return this.#entries.has(outboxKey(operationId, attemptToken));
   }
 
   /**
@@ -120,7 +139,7 @@ export class TaskResultOutbox {
   }
 
   /** Snapshot of buffered results in insertion (flush) order. */
-  drainOrder(): TaskResultMessage[] {
+  drainOrder(): TEntry[] {
     return [...this.#entries.values()];
   }
 

@@ -75,6 +75,17 @@ describe('TaskResultOutbox', () => {
     expect(outbox.drainOrder()).toEqual([message]);
   });
 
+  it('has() reports whether a specific (operationId, attemptToken) is still buffered', () => {
+    const outbox = new TaskResultOutbox();
+    outbox.buffer(completed('op-1', 'result', 'attempt-1'));
+    expect(outbox.has('op-1', 'attempt-1')).toBe(true);
+    expect(outbox.has('op-1', 'attempt-2')).toBe(false);
+    expect(outbox.has('op-2', 'attempt-1')).toBe(false);
+
+    outbox.acknowledge('op-1', 'attempt-1');
+    expect(outbox.has('op-1', 'attempt-1')).toBe(false);
+  });
+
   it('acknowledge removes only the entry matching both operationId and attemptToken', () => {
     const outbox = new TaskResultOutbox();
     outbox.buffer(completed('op-1', 'stale-result', 'stale-attempt'));
