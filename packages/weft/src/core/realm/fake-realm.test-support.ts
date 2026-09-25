@@ -168,9 +168,21 @@ export class FakeRealm {
     this.lifecycle.beginDrain();
   }
 
-  /** `Draining` -> `Terminated`. */
+  /**
+   * `Draining` -> `Terminated`, rejecting every turn still pending. Once a
+   * realm is not `Active`, {@link acceptResult} refuses everything with
+   * `realm-not-active`, so a turn dispatched before `beginDrain()` and
+   * still outstanding at `terminate()` can never be legitimately accepted
+   * — its caller's `dispatchTurn()` promise would otherwise stay
+   * unsettled forever. Settling it here, the same way {@link crash} does,
+   * closes that hang; it is not the cooperative in-flight completion
+   * during `Draining` that COR-113 (Crash, Cancellation, and Disposal
+   * Hardening) still owns, which would let such a turn resolve
+   * successfully instead of being rejected.
+   */
   terminate(): void {
     this.lifecycle.terminate();
+    this.#settlePendingTurns();
   }
 
   /**
@@ -182,6 +194,11 @@ export class FakeRealm {
    */
   crash(): void {
     this.lifecycle.crash();
+    this.#settlePendingTurns();
+  }
+
+  /** Reject every still-pending turn with `realm-not-active`. Shared by {@link crash} and {@link terminate}, the two transitions after which no pending turn can ever be legitimately accepted. */
+  #settlePendingTurns(): void {
     for (const [turnId, pending] of this.#pendingTurns) {
       const settle = pending.settle;
       pending.settle = null;

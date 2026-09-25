@@ -180,17 +180,18 @@ describe('FakeRealm', () => {
       );
     });
 
-    it('refuses to accept a result once terminated, even for a turn number that was legitimately in flight', async () => {
+    it('rejects a turn still pending at termination, and refuses to accept a result once terminated', async () => {
       const realm = fakeRealm();
       await readyAndActive(realm);
       const pending = realm.dispatchTurn(turn({ turnId: 1 }));
-      pending.catch(() => {
-        /* expected: the realm crashes/terminates before this settles successfully */
-      });
+      expect(realm.pendingTurnCount).toBe(1);
 
       realm.beginDrain();
       realm.terminate();
       expect(realm.lifecycle.state).toBe('terminated');
+
+      await expect(pending).rejects.toThrow('Turn 1 was not accepted: realm-not-active');
+      expect(realm.pendingTurnCount).toBe(0);
 
       const lateResult = realm.acceptResult(1, 'too-late');
       expect(lateResult).toEqual({ accepted: false, reason: 'realm-not-active' });
