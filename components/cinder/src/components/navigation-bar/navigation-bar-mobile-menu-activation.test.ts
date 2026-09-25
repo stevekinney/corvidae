@@ -2,19 +2,24 @@
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
+  actionButtonSnippet,
   glyphToggleSnippet,
+  inlineControlBeforeNegativeNavigationSnippet,
   textSnippet,
   toggleSnippet,
 } from './navigation-bar-snippet-helpers.ts';
 import {
+  emitNavigationBarResize,
   getItemsRegion,
   openCollapsedMobileMenu,
+  waitForMobilePanelPosition,
   withResizeObserver,
 } from './navigation-bar-test-helpers.ts';
 setupHappyDom();
 const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { resetEscapeStack } = await import('../../_internal/overlay.ts');
 const { default: NavigationBar } = await import('./navigation-bar.svelte');
+const { tick } = await import('svelte');
 
 afterEach(() => {
   cleanup();
@@ -64,6 +69,42 @@ describe('NavigationBar', () => {
     expect(toggle?.getAttribute('aria-label')).toBe('Open menu');
     expect(toggle?.textContent?.trim()).toBe('☰');
     expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  test('a glyph toggle click opens the mobile menu and Tab from it enters the panel', async () => {
+    // glyphToggleSnippet wires its own click/keydown listeners in its
+    // `setup()` (see navigation-bar-snippet-helpers.ts), separately from
+    // toggleSnippet's — this exercises that copy of the wiring rather than
+    // relying on toggleSnippet's coverage to stand in for it.
+    await withResizeObserver(async () => {
+      const { container } = render(NavigationBar, {
+        items: inlineControlBeforeNegativeNavigationSnippet(),
+        menuToggle: glyphToggleSnippet(),
+        actions: actionButtonSnippet(),
+      });
+      await tick();
+      const nav = requiredInstance(container.querySelector('nav'), HTMLElement);
+      const toggle = requiredInstance(
+        container.querySelector('#toggle-glyph-btn'),
+        HTMLButtonElement,
+      );
+
+      emitNavigationBarResize(nav, 640);
+      await tick();
+
+      await fireEvent.click(toggle);
+      expect(getItemsRegion(container).getAttribute('data-open')).toBe('true');
+
+      const itemsRegion = await waitForMobilePanelPosition(container);
+      const enabledItem = requiredInstance(
+        itemsRegion.querySelector('[data-key="enabled"]'),
+        HTMLButtonElement,
+      );
+
+      toggle.focus();
+      await fireEvent.keyDown(toggle, { key: 'Tab' });
+      expect(document.activeElement).toBe(enabledItem);
+    });
   });
 
   test('aria-controls value equals the items region id', () => {

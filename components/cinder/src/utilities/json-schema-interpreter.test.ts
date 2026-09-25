@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
+import { compileSchema } from 'json-schema-library';
+
 import {
+  childNodes,
   compileInterpreted,
   dedupeInterpreterErrors,
   isRefResolutionSchemaError,
@@ -211,5 +214,93 @@ describe('json-schema-interpreter: pointer helpers', () => {
   test('stripPointerHash converts the root and nested pointers', () => {
     expect(stripPointerHash('#')).toBe('');
     expect(stripPointerHash('#/a/b')).toBe('/a/b');
+  });
+});
+
+// Unlike float/double/password/binary (always-valid no-op formats, see
+// AJV_FORMATS_FIXTURES above), int32 and int64 run a real check —
+// int32Format also enforces the 32-bit signed range, int64Format enforces
+// integer-ness. These pin the actual rejection path both formats share.
+describe('json-schema-interpreter: int32/int64 formats actually reject bad values', () => {
+  test('int32 rejects a non-integer number', async () => {
+    const compiled = await compileInterpreted({ type: 'number', format: 'int32' }, '2020-12');
+    const result = compiled.validate(1.5);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]?.code).toBe('format-int32-error');
+    expect(result.errors[0]?.message).toContain('not a valid int32');
+  });
+
+  test('int32 rejects a number outside the 32-bit signed range', async () => {
+    const compiled = await compileInterpreted({ type: 'number', format: 'int32' }, '2020-12');
+    const tooLarge = compiled.validate(2 ** 31);
+    const tooSmall = compiled.validate(-(2 ** 31) - 1);
+    expect(tooLarge.valid).toBe(false);
+    expect(tooSmall.valid).toBe(false);
+    expect(compiled.validate(2 ** 31 - 1).valid).toBe(true);
+    expect(compiled.validate(-(2 ** 31)).valid).toBe(true);
+  });
+
+  test('int64 rejects a non-integer number', async () => {
+    const compiled = await compileInterpreted({ type: 'number', format: 'int64' }, '2020-12');
+    const result = compiled.validate(1.5);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]?.code).toBe('format-int64-error');
+    expect(result.errors[0]?.message).toContain('not a valid int64');
+  });
+});
+
+// `collectRefErrors`'s eager walk declares `dependentSchemas` as a child-
+// bearing field explicitly (see `childNodes`), so a $ref nested under it
+// must be caught the same way a $ref under `properties` or `items` is.
+describe('json-schema-interpreter: dependentSchemas participates in the eager ref walk', () => {
+  test('an unresolved $ref nested under dependentSchemas is caught eagerly', async () => {
+    const compiled = await compileInterpreted(
+      {
+        type: 'object',
+        dependentSchemas: {
+          creditCard: { $ref: '#/nonexistent' },
+        },
+      },
+      '2019-09',
+    );
+    expect(compiled.schemaErrors).toEqual([]);
+    expect(compiled.refErrors.length).toBeGreaterThan(0);
+    expect(compiled.refErrors[0]?.pointer).toBe('#/dependentSchemas/creditCard');
+    // Lazy validate alone would miss it, same as the `properties`-nested case above.
+    expect(compiled.validate({}).valid).toBe(true);
+  });
+
+  test('a resolved $ref nested under dependentSchemas produces no ref error and still validates', async () => {
+    const compiled = await compileInterpreted(
+      {
+        type: 'object',
+        dependentSchemas: {
+          creditCard: { $ref: '#/$defs/billing' },
+        },
+        $defs: { billing: { type: 'object', required: ['address'] } },
+      },
+      '2019-09',
+    );
+    expect(compiled.refErrors).toEqual([]);
+    expect(compiled.validate({ creditCard: '1234' }).valid).toBe(false);
+    expect(compiled.validate({ creditCard: '1234', address: '123 Main St' }).valid).toBe(true);
+  });
+});
+
+describe('childNodes', () => {
+  test('walks propertyDependencies children when a draft populates that opt-in keyword', () => {
+    const root = compileSchema({
+      type: 'object',
+      properties: { circle: { type: 'number' }, square: { type: 'string' } },
+    });
+    const circle = root.properties?.['circle'];
+    const square = root.properties?.['square'];
+    if (circle === undefined || square === undefined) throw new Error('fixture nodes missing');
+
+    // No draft this module compiles with registers `propertyDependencies`, so a
+    // compiled node never carries it; build the one a registering draft would.
+    const node = { ...circle, propertyDependencies: { shape: { circle, square } } };
+
+    expect(childNodes(node)).toEqual([circle, square]);
   });
 });
