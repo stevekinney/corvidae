@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { loadPackageMap } from './package-map.ts';
 import { runCommand, type CommandResult, type CommandRunner } from './packaging.ts';
 import {
   commitExists,
@@ -348,13 +349,27 @@ describe('recordSourceDigest', () => {
   test('refuses a publish-as workspace with no lastPublishedVersion', async () => {
     await withScratch(async (scratch) => {
       await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
+      // Every publish-as entry in the real map now records a lastPublishedVersion (COR-1198), so
+      // this forces one back to null on an overridden map rather than pinning the assertion to
+      // whichever real workspace happens to be unpublished today.
+      const map = await loadPackageMap();
+      const entry = map.workspaces['@lostgradient/operative'];
+      if (entry?.disposition !== 'publish-as') {
+        throw new Error('package-map.json must record @lostgradient/operative as publish-as');
+      }
       await expect(
         recordSourceDigest({
           corvidaeRoot,
-          // Real map: `@lostgradient/cryptography` carries `lastPublishedVersion: null`.
-          workspace: '@lostgradient/cryptography',
+          workspace: '@lostgradient/operative',
           targetRepositoryDirectory: scratch,
           npmRunner: stubNpmView(undefined),
+          packageMap: {
+            ...map,
+            workspaces: {
+              ...map.workspaces,
+              '@lostgradient/operative': { ...entry, lastPublishedVersion: null },
+            },
+          },
         }),
       ).rejects.toThrow('lastPublishedVersion is null');
     });

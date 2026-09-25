@@ -252,6 +252,15 @@ export interface RecordOptions {
   targetRepositoryDirectory: string;
   npmRunner?: CommandRunner;
   gitRunner?: CommandRunner;
+  /**
+   * `package-map.json`, overridden. Every production call (`run` below) omits this and reads the
+   * committed file, so a real recording always resolves against what is actually there. Tests
+   * accept the same override `dispositionFor` (package-map.ts) and `planManifests` (manifests.ts)
+   * already do, so a test can exercise a workspace shape the live map no longer has — such as a
+   * `publish-as` entry with no `lastPublishedVersion` — without pinning the assertion to whichever
+   * real workspace happens to be unpublished today.
+   */
+  packageMap?: PackageMap | undefined;
 }
 
 export interface RecordResult {
@@ -274,8 +283,9 @@ export async function recordSourceDigest({
   targetRepositoryDirectory,
   npmRunner = runCommand,
   gitRunner = runCommand,
+  packageMap,
 }: RecordOptions): Promise<RecordResult> {
-  const map = await loadPackageMap();
+  const map = packageMap ?? (await loadPackageMap());
   const entry = map.workspaces[workspace];
   if (entry === undefined) {
     throw new RegistryVerificationError(`${workspace}: no entry in package-map.json`);
