@@ -76,7 +76,7 @@
       "basis": "runtime-closure-forced",
       "lastPublishedVersion": "0.0.1",
       "requiredBy": ["armorer", "operative"],
-      "reason": "Inside the runtime dependency closure of published armorer and operative, so it must publish or those packages are uninstallable. Never published before. The unscoped name `cryptography` belongs to an unrelated third party (jnssnmrcs, 1.2.3, 2018) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
+      "reason": "Inside the runtime dependency closure of published armorer and operative, so it must publish or those packages are uninstallable. First published 2026-09-25: the owner claimed the name with one interactive publish so npm trusted publishing could be registered for agent-bureau's release.yml, and the provenance release followed through that workflow (COR-1194, COR-1198). The unscoped name `cryptography` belongs to an unrelated third party (jnssnmrcs, 1.2.3, 2018) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
     },
     "@lostgradient/embeddings": {
       "disposition": "publish-as",
@@ -84,7 +84,7 @@
       "basis": "runtime-closure-forced",
       "lastPublishedVersion": "0.0.1",
       "requiredBy": ["armorer", "operative"],
-      "reason": "Inside the runtime dependency closure of published armorer and operative. Never published before. The unscoped name `embeddings` belongs to an unrelated third party (pagepixels, 2.0.5, 2023) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
+      "reason": "Inside the runtime dependency closure of published armorer and operative. First published 2026-09-25: the owner claimed the name with one interactive publish so npm trusted publishing could be registered for agent-bureau's release.yml, and the provenance release followed through that workflow (COR-1194, COR-1198). The unscoped name `embeddings` belongs to an unrelated third party (pagepixels, 2.0.5, 2023) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
     },
     "@lostgradient/tool-protocol": {
       "disposition": "publish-as",
@@ -92,7 +92,7 @@
       "basis": "runtime-closure-forced",
       "lastPublishedVersion": "0.0.1",
       "requiredBy": ["armorer", "conversationalist", "operative", "chat"],
-      "reason": "Inside the runtime dependency closure of four published packages. Never published before. The unscoped name `tool-protocol` is genuinely unregistered, but the scoped name was chosen for consistency with its siblings and approved by the repository owner 2026-09-18."
+      "reason": "Inside the runtime dependency closure of four published packages. First published 2026-09-25: the owner claimed the name with one interactive publish so npm trusted publishing could be registered for agent-bureau's release.yml, and the provenance release followed through that workflow (COR-1194, COR-1198). The unscoped name `tool-protocol` is genuinely unregistered, but the scoped name was chosen for consistency with its siblings and approved by the repository owner 2026-09-18."
     },
     "@lostgradient/lifecycle": {
       "disposition": "publish-as",
@@ -100,7 +100,7 @@
       "basis": "runtime-closure-forced",
       "lastPublishedVersion": "0.0.2",
       "requiredBy": ["armorer", "conversationalist", "operative", "chat"],
-      "reason": "Inside the runtime dependency closure of four published packages, reached both directly and through tool-protocol. Never published — agent-bureau's manifest is `private: true` at 0.0.1. The unscoped name `lifecycle` belongs to an unrelated third party (kmalakoff, 1.0.4, 2015) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
+      "reason": "Inside the runtime dependency closure of four published packages, reached both directly and through tool-protocol. First published 2026-09-25: the owner claimed the name with one interactive publish so npm trusted publishing could be registered for agent-bureau's release.yml, and the provenance release followed through that workflow (COR-1194, COR-1198). The unscoped name `lifecycle` belongs to an unrelated third party (kmalakoff, 1.0.4, 2015) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
     },
     "@lostgradient/typescript": {
       "disposition": "private-workspace",
