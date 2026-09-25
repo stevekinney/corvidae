@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import {
   checkDeclarationAgreement,
+  DeclarationAgreementError,
   describeDeclarationFinding,
   type DeclarationAgreement,
 } from './declaration-agreement.ts';
@@ -199,5 +200,62 @@ export declare namespace TypesOnly { type Inner = number }
     );
     // `bun.default` answers to `bun.types` and `default` to `types`; each pair is one module.
     expect(result.examined).toEqual([]);
+  });
+
+  test('a runtime condition no `types` condition governs answers to every declaration in the entry', async () => {
+    // The skeleton operative, armorer and the other agent-bureau packages use: TypeScript reads
+    // `import.types` while Bun loads the sibling `bun` condition, which no `types` sits above.
+    const result = await checkFixture(
+      {
+        'src/storage.ts': 'export declare const Storage: unknown;\n',
+        'src/bun-storage.ts': 'export class BunStorage {}\n',
+        'src/node-storage.ts': 'export class Storage {}\n',
+      },
+      {
+        './storage': {
+          bun: './dist/bun-storage.js',
+          import: { types: './dist/storage.d.ts', default: './dist/node-storage.js' },
+        },
+      },
+    );
+    expect(result.examined).toEqual(['./storage']);
+    expect(result.findings.map((finding) => [finding.runtime, finding.missing])).toEqual([
+      ['src/bun-storage.ts', ['Storage']],
+    ]);
+  });
+
+  test('runtime modules that re-export each other each provide the whole cycle', async () => {
+    const result = await checkFixture(
+      {
+        'src/storage.ts':
+          'export declare const first: number;\nexport declare const second: number;\n',
+        'src/first.ts': "export * from './second.ts';\nexport const first = 1;\n",
+        'src/second.ts': "export * from './first.ts';\nexport const second = 2;\n",
+      },
+      {
+        './storage': {
+          types: './dist/storage.d.ts',
+          bun: './dist/first.js',
+          default: './dist/second.js',
+        },
+      },
+    );
+    expect(result.examined).toEqual(['./storage']);
+    expect(result.findings).toEqual([]);
+  });
+
+  test('a package configuration TypeScript cannot fully parse refuses rather than weakening resolution', async () => {
+    const check = checkFixture(
+      {
+        'tsconfig.json': JSON.stringify({ extends: './missing-base.json' }),
+        'src/storage.ts': 'export declare const Storage: unknown;\n',
+        'src/bun-storage.ts': "export * from './implementation.ts';\n",
+        'src/node-storage.ts': "export * from './implementation.ts';\n",
+        'src/implementation.ts': 'export class Storage {}\n',
+      },
+      sqliteShape,
+    );
+    await expect(check).rejects.toThrow(DeclarationAgreementError);
+    await expect(check).rejects.toThrow('missing-base.json');
   });
 });

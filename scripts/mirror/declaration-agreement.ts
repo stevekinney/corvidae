@@ -112,15 +112,23 @@ function divergentPairs(
     const source = sourceModuleFor(target, sourceRoot, packageRoot);
     if (source !== undefined) declarations.set(condition, source);
   }
+  const everyDeclaration = [...new Set(declarations.values())];
   const pairs = new Map<string, [string, string]>();
   for (const [condition, target] of flattened) {
     if (isDeclarationCondition(condition)) continue;
-    const declaration = governingDeclaration(condition, declarations);
     const runtime = sourceModuleFor(target, sourceRoot, packageRoot);
     // A target with no source is `checkTargetCoverage`'s `no-source` finding already, and a
     // wildcard names no single module; neither is something this check can compare.
-    if (declaration === undefined || runtime === undefined || declaration === runtime) continue;
-    pairs.set(`${declaration}\u0000${runtime}`, [declaration, runtime]);
+    if (runtime === undefined) continue;
+    // A runtime condition with no `types` above it — `{ bun: …, import: { types, default } }` —
+    // is still typed by whichever declaration the consumer's compiler happens to pick, which is
+    // exactly how a Bun import comes to be checked against a declaration it never loads. With no
+    // way to say which one, it has to satisfy all of them.
+    const governing = governingDeclaration(condition, declarations);
+    for (const declaration of governing === undefined ? everyDeclaration : [governing]) {
+      if (declaration !== runtime)
+        pairs.set(`${declaration}\u0000${runtime}`, [declaration, runtime]);
+    }
   }
   return [...pairs.values()];
 }
@@ -137,6 +145,9 @@ const exportShapeOnly: ts.CompilerOptions = {
   noLib: true,
   types: [],
 };
+
+/** TS18003, "No inputs were found in config file". */
+const noInputsFound = 18_003;
 
 /** The package's own compiler options, so its path mappings and extension imports resolve. */
 function compilerOptionsFor(packageRoot: string): ts.CompilerOptions {
@@ -155,6 +166,19 @@ function compilerOptionsFor(packageRoot: string): ts.CompilerOptions {
     );
   }
   const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, packageRoot, undefined, path);
+  // A broken `extends` or an invalid option does not stop TypeScript; it parses what it can and
+  // reports the rest here. Carrying on would resolve modules under weaker options than the
+  // package's own, and an `export *` that then fails to resolve reads as a missing value. "No
+  // inputs were found" is the one error that says nothing about options: this check names its
+  // own root files and never reads the configuration's `include`.
+  const errors = parsed.errors.filter((error) => error.code !== noInputsFound);
+  if (errors.length > 0) {
+    throw new DeclarationAgreementError(
+      `${path} could not be parsed:\n${errors
+        .map((error) => `  ${ts.flattenDiagnosticMessageText(error.messageText, '\n')}`)
+        .join('\n')}`,
+    );
+  }
   return { ...parsed.options, ...exportShapeOnly };
 }
 
@@ -163,12 +187,18 @@ export class DeclarationAgreementError extends Error {}
 /**
  * The value names each module exports, resolved through its re-exports.
  *
- * Memoized per source file for the life of one program, which is one package's check.
+ * Memoized per source file for the life of one program, which is one package's check — but only
+ * a result computed without meeting a module already on the walk. Inside an `export *` cycle the
+ * module being re-entered answers with nothing, which is right for the module that started the
+ * walk (it already holds its own names) and wrong for every other member, which would otherwise be
+ * cached missing them. Those are recomputed when asked for directly instead.
  */
 class ValueExports {
   readonly #checker: ts.TypeChecker;
   readonly #memo = new Map<ts.SourceFile, Set<string>>();
   readonly #inProgress = new Set<ts.SourceFile>();
+  /** Whether the walk in progress has re-entered a module it was already inside. */
+  #reenteredCycle = false;
 
   constructor(program: ts.Program) {
     this.#checker = program.getTypeChecker();
@@ -177,9 +207,12 @@ class ValueExports {
   of(file: ts.SourceFile): Set<string> {
     const memoized = this.#memo.get(file);
     if (memoized !== undefined) return memoized;
-    // A re-export cycle contributes nothing new on its second visit; TypeScript resolves the
-    // same cycle the same way.
-    if (this.#inProgress.has(file)) return new Set();
+    if (this.#inProgress.has(file)) {
+      this.#reenteredCycle = true;
+      return new Set();
+    }
+    const enclosingReentered = this.#reenteredCycle;
+    this.#reenteredCycle = false;
     this.#inProgress.add(file);
     const values = new Set<string>();
     const moduleSymbol = this.#checker.getSymbolAtLocation(file);
@@ -203,7 +236,8 @@ class ValueExports {
       }
     }
     this.#inProgress.delete(file);
-    this.#memo.set(file, values);
+    if (!this.#reenteredCycle) this.#memo.set(file, values);
+    this.#reenteredCycle = enclosingReentered || this.#reenteredCycle;
     return values;
   }
 
@@ -216,10 +250,11 @@ class ValueExports {
   /** Whether a name another module re-exports from `specifier` is a value there. */
   #exportsValue(specifier: ts.Expression, name: string, symbol: ts.Symbol): boolean {
     const target = this.#moduleFile(specifier);
-    if (target !== undefined) return this.of(target).has(name);
-    // An ambient or unresolvable module has no file to walk. Fall back to what the checker
-    // resolves the alias to; an unresolved one is treated as a value, which errs toward asking
-    // the runtime module for it rather than toward excusing it.
+    if (target !== undefined && !this.#inProgress.has(target)) return this.of(target).has(name);
+    // An ambient or unresolvable module has no file to walk, and one already on the walk has no
+    // complete answer yet. Fall back to what the checker resolves the alias to; an unresolved one
+    // is treated as a value, which errs toward asking the runtime module for it rather than
+    // toward excusing it.
     const resolved = this.#checker.getAliasedSymbol(symbol);
     return (resolved.flags & ts.SymbolFlags.Value) !== 0;
   }
