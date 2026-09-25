@@ -1,11 +1,12 @@
 import { expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 const root = join(import.meta.dir, '..');
 
 /**
- * Every nested oxlint configuration a workspace carries, root-relative.
+ * Every nested oxlint configuration under `directory`, relative to it and sorted.
  *
  * A nested `.oxlintrc.json` replaces the root policy for every file beneath it rather than merging
  * with it, so a synthetic file under `packages/weft/` is governed by `packages/weft/.oxlintrc.json`
@@ -13,10 +14,50 @@ const root = join(import.meta.dir, '..');
  * by linking each of these at the same relative location, then lets oxlint discover them. Read from
  * the tree rather than listed by hand, so a workspace that adopts its own configuration is exercised
  * here without anyone remembering to add it.
+ *
+ * Every depth counts, because oxlint's discovery has no depth limit: a configuration directly
+ * under `scripts/` or three directories into a workspace governs its subtree exactly as a
+ * workspace-root one does. Installed packages and dot-directories are not policy.
  */
-const nestedConfigurations = [
-  ...new Bun.Glob('*/*/.oxlintrc.json').scanSync({ cwd: root, dot: true, onlyFiles: true }),
-].filter((path) => !path.startsWith('node_modules/') && !path.startsWith('.'));
+function nestedConfigurationsUnder(directory: string): string[] {
+  const glob = new Bun.Glob(
+    '{applications,components,packages,internal,scripts}/**/.oxlintrc.json',
+  );
+  return [...glob.scanSync({ cwd: directory, dot: true, onlyFiles: true })]
+    .filter((path) =>
+      path
+        .split('/')
+        .slice(0, -1)
+        .every((segment) => segment !== 'node_modules' && !segment.startsWith('.')),
+    )
+    .toSorted();
+}
+
+const nestedConfigurations = nestedConfigurationsUnder(root);
+
+test('nested configurations are found at every depth, outside installed packages and dot-directories', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-lint-policy-'));
+  try {
+    for (const path of [
+      '.oxlintrc.json',
+      'scripts/.oxlintrc.json',
+      'packages/example/.oxlintrc.json',
+      'packages/example/src/deep/.oxlintrc.json',
+      'packages/example/node_modules/dependency/.oxlintrc.json',
+      'components/.cache/.oxlintrc.json',
+      '.github/policy/.oxlintrc.json',
+    ]) {
+      await Bun.write(join(directory, path), '{}\n');
+    }
+    expect(nestedConfigurationsUnder(directory)).toEqual([
+      'packages/example/.oxlintrc.json',
+      'packages/example/src/deep/.oxlintrc.json',
+      'scripts/.oxlintrc.json',
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 /**
  * Lint one synthetic file with whichever configuration governs its path in the real tree.
