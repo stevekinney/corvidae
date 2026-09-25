@@ -98,9 +98,19 @@ function activityHeartbeatRejectionMessage(
   if (reason === 'attempt-token-mismatch') {
     return `activityHeartbeat for operation "${operationId}" rejected — stale attempt token`;
   }
-  if (reason === 'unknown-operation') {
-    return `activityHeartbeat for operation "${operationId}" rejected — unknown operation`;
-  }
+  // No `'unknown-operation'` branch: this function's only caller,
+  // `onActivityHeartbeatMessage`, always builds `reason` from
+  // `authorizeTaskResultForCurrentAttempt(currentAttemptFromInFlightTask(...), ...)`
+  // (`task-result-authorization.ts`), and `currentAttemptFromInFlightTask`
+  // returns `'stale'` — never `'unknown'` — for a missing in-flight entry.
+  // `'unknown-operation'` is reachable only through the ledger-backed
+  // `currentAttemptFromLedgerRecord` view `taskResultRejectionMessage` above
+  // uses for the `taskResult` fallback path, which has no `activityHeartbeat`
+  // equivalent (there is no ledger fallback for a lost heartbeat — see
+  // `onActivityHeartbeatMessage`'s doc comment). The parameter stays typed as
+  // the full `TaskResultAuthorizationFailure` union to match that sibling
+  // function's signature; an unreachable `'unknown-operation'` falls through
+  // to the same wording as `'worker-mismatch'` below.
   return `activityHeartbeat for operation "${operationId}" rejected — task not assigned to worker "${workerId ?? ''}"`;
 }
 
