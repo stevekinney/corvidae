@@ -339,24 +339,38 @@ describe('the guard against the real workspaces', () => {
     return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
   };
 
-  test.each([
+  // One plan per test: a cinder plan takes about 1.7s on a loaded machine, so three in one test
+  // (planned, missing, mismatched) sat right at the default five-second budget and timed out
+  // whenever other work shared the machine.
+  const edges = [
     ['agent-bureau', '@lostgradient/weft'],
     ['cinder', 'conversationalist'],
-  ] as const)(
-    '%s plans when %s is current and refuses when it is not',
-    async (target, dependency) => {
-      const current = await packageMapWithCurrentDigests();
-      expect(await outcome(planSurface({ corvidaeRoot, target, packageMap: current }))).toBe(
-        'planned',
-      );
-      for (const packageMap of [
-        await withDigest(dependency, undefined),
-        await withDigest(dependency, '0'.repeat(64)),
-      ]) {
-        const refusal = planSurface({ corvidaeRoot, target, packageMap });
-        await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
-        await expect(refusal).rejects.toThrow(dependency);
-      }
-    },
-  );
+  ] as const;
+
+  test.each(edges)('%s plans when %s is current', async (target) => {
+    const current = await packageMapWithCurrentDigests();
+    expect(await outcome(planSurface({ corvidaeRoot, target, packageMap: current }))).toBe(
+      'planned',
+    );
+  });
+
+  test.each(edges)('%s refuses when %s has no recorded digest', async (target, dependency) => {
+    const refusal = planSurface({
+      corvidaeRoot,
+      target,
+      packageMap: await withDigest(dependency, undefined),
+    });
+    await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
+    await expect(refusal).rejects.toThrow(dependency);
+  });
+
+  test.each(edges)('%s refuses when %s has a mismatched digest', async (target, dependency) => {
+    const refusal = planSurface({
+      corvidaeRoot,
+      target,
+      packageMap: await withDigest(dependency, '0'.repeat(64)),
+    });
+    await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
+    await expect(refusal).rejects.toThrow(dependency);
+  });
 });
