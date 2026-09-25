@@ -283,10 +283,11 @@ async function applyTaskResult(
  * `LongPollTaskResultRejectionReason` names the full set. Mirrors the
  * WebSocket transport's correlated `protocolError` (protocol v7,
  * `websocket-worker.ts`'s `commitAndAcknowledgeTaskResult`/
- * `applyTaskResultFallback`) in semantics, not shape: `LongPollWorker` has no
- * outbox to drop an entry from itself, but its own result-delivery retry
- * logic reads this same `reason` field to decide whether a rejection is
- * permanent (drop) or worth retrying.
+ * `applyTaskResultFallback`) in semantics, not shape: `LongPollWorker`'s own
+ * result-delivery buffer (`LongPollResultDelivery`) drops the matching
+ * buffered entry based on `operationId`/`attemptToken` correlation alone —
+ * `reason` is surfaced to callers for diagnostics/logging only and plays no
+ * part in that drop-versus-retry decision.
  */
 function taskResultForbiddenResponse(
   operationId: string,
