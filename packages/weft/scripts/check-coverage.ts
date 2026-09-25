@@ -1541,27 +1541,32 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       // authorization-rejection branch (was 218-224) for real, so both are
       // fully covered and dropped from this entry rather than carried
       // forward as dead allowance. The remaining gaps, at their current
-      // coordinates:
+      // coordinates — re-derived from a fresh coverage/lcov.info generated
+      // AFTER this file's own edits (deleting
+      // activityHeartbeatRejectionMessage's dead 'unknown-operation'
+      // branch), not by offset arithmetic against the pre-edit layout,
+      // which is what put an earlier pass at this same realignment about
+      // ten lines short of every coordinate below the edited region:
       //
-      // 1. The oversized-task-result-rejection persistence-failure log (150-153,
-      // was 141-144) and the `applyTaskResultFallback` rejection logger
-      // (277, was 247, the arrow-function callback passed to `.catch()` —
-      // the one missed function this entry allows) — each fires only when a
-      // storage write or the fallback path itself fails, which no current
-      // test forces.
+      // 1. The oversized-task-result-rejection persistence-failure log
+      // (160-163, was 141-144) and the `applyTaskResultFallback` rejection
+      // logger (287, was 247, the arrow-function callback passed to
+      // `.catch()` — the one missed function this entry allows) — each
+      // fires only when a storage write or the fallback path itself fails,
+      // which no current test forces.
       //
       // 2. The revision-mismatch protocol-error branch for a stale
-      // `taskResult` (246-254) — a genuine resend of the same original
+      // `taskResult` (256-264) — a genuine resend of the same original
       // message always echoes back whatever revision it echoed the first
       // time, so no current test can construct the mismatch without lying
       // about being a resend.
       //
-      // 3. The closed `WorkerToServerMessage` union's `default:` branch (622
-      // `default: {`, 625 `const exhaustiveCheck`, 626 `return
+      // 3. The closed `WorkerToServerMessage` union's `default:` branch
+      // (632 `default: {`, 635 `const exhaustiveCheck`, 636 `return
       // exhaustiveCheck`) is the same compile-time-only exhaustiveness guard
       // realigned above for `get-task-detail.ts` and
       // `task-ledger-recovery.ts`, plus the preceding `activityHeartbeat`
-      // case's closing brace (621), which reads 0 in this run — the same
+      // case's closing brace (631), which reads 0 in this run — the same
       // case-label/brace coverage-attribution artifact those sibling
       // entries already document.
       //
@@ -1577,10 +1582,10 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       // case-label/brace lines that can attribute inconsistently.
       {
         reason:
-          'Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (150-153, 277), a revision-mismatch rejection unreachable without fabricating a non-resend (246-254), and the closed WorkerToServerMessage union default branch (621, 622, 625, 626).',
+          'Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (160-163, 287), a revision-mismatch rejection unreachable without fabricating a non-resend (256-264), and the closed WorkerToServerMessage union default branch (631, 632, 635, 636).',
         functions: 1,
         lines: new Set([
-          150, 151, 152, 153, 246, 247, 248, 249, 250, 251, 252, 253, 254, 277, 621, 622, 625, 626,
+          160, 161, 162, 163, 256, 257, 258, 259, 260, 261, 262, 263, 264, 287, 631, 632, 635, 636,
         ]),
         requireUncoveredLines: true,
       },
