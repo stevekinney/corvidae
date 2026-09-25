@@ -1044,9 +1044,7 @@
       "workspace": "@lostgradient/cryptography",
       "version": "0.0.1",
       "fetchedAt": "2026-09-25",
-      "subpaths": [
-        "."
-      ]
+      "subpaths": ["."]
     },
     "@lostgradient/editor": {
       "workspace": "@lostgradient/editor",
@@ -1087,17 +1085,13 @@
       "workspace": "@lostgradient/embeddings",
       "version": "0.0.1",
       "fetchedAt": "2026-09-25",
-      "subpaths": [
-        "."
-      ]
+      "subpaths": ["."]
     },
     "@lostgradient/lifecycle": {
       "workspace": "@lostgradient/lifecycle",
       "version": "0.0.2",
       "fetchedAt": "2026-09-25",
-      "subpaths": [
-        "."
-      ]
+      "subpaths": ["."]
     },
     "@lostgradient/markdown": {
       "workspace": "@lostgradient/markdown",
@@ -1166,9 +1160,7 @@
       "workspace": "@lostgradient/tool-protocol",
       "version": "0.0.1",
       "fetchedAt": "2026-09-25",
-      "subpaths": [
-        "."
-      ]
+      "subpaths": ["."]
     },
     "@lostgradient/weft": {
       "workspace": "@lostgradient/weft",
