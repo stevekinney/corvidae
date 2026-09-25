@@ -516,6 +516,57 @@ async function buildHydrationBundle(directory: string, entrySource: string): Pro
   return result.outputs[0] ? await result.outputs[0].text() : '';
 }
 
+/** The path the hydration test page's `<script>` fetches its bundle from. Exported for its own test. */
+export const HYDRATION_BUNDLE_PATH = '/hydration-bundle.js';
+
+/**
+ * The hydration case's test page, referencing its bundle by URL rather than inlining it.
+ *
+ * A built bundle can legitimately contain HTML-tokenizer-significant byte sequences inside
+ * otherwise inert JS/data content -- confirmed, in the `annotated` fixture, to include the literal
+ * text `</script>` (from a bundled Shiki HTML-language TextMate grammar's own
+ * `"end":"(?=</(?i:script))"` pattern) and, elsewhere in the same ~13.7 MB bundle, `<!--` (33
+ * occurrences; unconfirmed which line). The old code interpolated the built bundle directly into
+ * `<script type="module">${bundle}</script>`. The BROWSER'S HTML PARSER recognizes `</script` as a
+ * real closing tag regardless of JS-string context, so it closed the real `<script>` element early
+ * at that embedded occurrence. Everything after that point in the bundle -- several megabytes of
+ * otherwise-valid, never-reached JS source -- then landed in the page as literal body markup
+ * instead of executing, and the HTML tokenizer's ordinary attribute-parsing rules turned bare JS
+ * identifiers sitting inside that leftover text into real DOM attributes: reproducing the exact
+ * failure and inspecting the resulting DOM found an `<svg>` element (from the bundled `qrcode`
+ * package's own SVG-string-building source, itself reachable only because
+ * `@lostgradient/cinder`'s root barrel includes `QrCode`) whose outerHTML was
+ * `<svg xmlns="..." '="" +="" width="" viewBox="" shape-rendering="crispEdges">` -- the JS source
+ * `'<svg xmlns="..." ' + width + viewBox + ' shape-rendering="crispEdges">'`, tokenized as markup,
+ * turns the bare identifiers `width` and `viewBox` into valueless attributes, which Blink's
+ * SVG-attribute-value parser then rejected as an empty `<length>` and an empty `viewBox`,
+ * respectively -- exactly the two observed console errors, and unrelated to any Editor/Cinder
+ * component's actual rendering. (A naive fix of escaping every `</script` occurrence before
+ * inlining is not sufficient: this bundle also contains `<!--`, which puts the HTML tokenizer into
+ * the script-data-escaped states where `<script`/`</script` sequences change meaning again,
+ * confirmed by that approach still producing a page-load `SyntaxError` when tried.) Confirmed by
+ * reproducing the identical bundle and switching only this page-construction detail (inline text
+ * vs. this external-script form): the errors disappear and the component mounts correctly, with no
+ * other change. Serving the bundle from its own URL removes the hazard by construction, for any
+ * bundle content: the HTML text never contains the bundle at all, so the HTML parser never
+ * tokenizes any of it.
+ */
+export function hydrationPageHtml(): string {
+  return `<!doctype html><html><body><div id="app"></div><script type="module" src="${HYDRATION_BUNDLE_PATH}"></script></body></html>`;
+}
+
+/** Serves the fixed test page at `/` and the bundle, verbatim, at {@link HYDRATION_BUNDLE_PATH}. */
+export function hydrationFetchHandler(bundle: string): (request: Request) => Response {
+  const html = hydrationPageHtml();
+  return (request) => {
+    const { pathname } = new URL(request.url);
+    if (pathname === HYDRATION_BUNDLE_PATH) {
+      return new Response(bundle, { headers: { 'content-type': 'text/javascript' } });
+    }
+    return new Response(html, { headers: { 'content-type': 'text/html' } });
+  };
+}
+
 async function runHydrationCase(
   directory: string,
   fixtureName: FixtureDefinition['name'],
@@ -535,11 +586,7 @@ async function runHydrationCase(
     };
   }
 
-  const html = `<!doctype html><html><body><div id="app"></div><script type="module">${bundle}</script></body></html>`;
-  const server = Bun.serve({
-    port: 0,
-    fetch: () => new Response(html, { headers: { 'content-type': 'text/html' } }),
-  });
+  const server = Bun.serve({ port: 0, fetch: hydrationFetchHandler(bundle) });
   try {
     const { chromium } = await import('@playwright/test');
     const browser = await chromium.launch();

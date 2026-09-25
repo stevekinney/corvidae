@@ -5,12 +5,15 @@ import { join } from 'node:path';
 
 import {
   buildManifest,
+  HYDRATION_BUNDLE_PATH,
+  hydrationFetchHandler,
+  hydrationPageHtml,
   parseArguments,
   runValidator,
   sha256File,
   type CaseResult,
-  type SpawnResult,
   type Spawner,
+  type SpawnResult,
 } from './validate-diff-review-registry.ts';
 
 const ABSOLUTE_CINDER = '/tmp/example/cinder.tgz';
@@ -396,5 +399,49 @@ describe('validate-diff-review-registry runValidator failure paths', () => {
       await rm(evidenceDirectory, { recursive: true, force: true });
       await rm(tarballDirectory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('validate-diff-review-registry hydration page construction (COR-1294)', () => {
+  // A minimal stand-in for a real installed-tarball bundle that happens to embed a
+  // `</script>`-shaped string -- exactly what an installed `@lostgradient/cinder` tarball's
+  // bundled Shiki HTML grammar (reached transitively through `CodeBlock`'s default highlighter,
+  // inlined because `buildHydrationBundle` bundles without `splitting: true`) contains verbatim.
+  // Everything past the closing `</script>` below is unreachable JS-syntax-wise, matching the real
+  // bundle: it exists only to prove the page construction never lets the HTML parser see it.
+  const BUNDLE_WITH_SCRIPT_CLOSER =
+    'const grammar = { end: "</script>" }; window.__MOUNTED__ = true; <svg width="" viewBox="">';
+
+  test('the served page never contains the bundle text, so a literal </script> in the bundle cannot close the tag early', () => {
+    const html = hydrationPageHtml();
+    expect(html).not.toContain(BUNDLE_WITH_SCRIPT_CLOSER);
+    // Exactly one `</script>` -- the page's own tag, closing its `src=` reference immediately.
+    // Before the fix, the bundle text sat between an opening and closing script tag, so a second,
+    // earlier `</script>` embedded in the bundle (this test's `BUNDLE_WITH_SCRIPT_CLOSER`) would
+    // close the real tag first; asserting there is only ever one proves that hazard is gone.
+    expect(html.split('</script>')).toHaveLength(2);
+    expect(html).toContain(`<script type="module" src="${HYDRATION_BUNDLE_PATH}">`);
+  });
+
+  test('the fetch handler serves the fixed page at "/" and the bundle verbatim at its own path', async () => {
+    const handler = hydrationFetchHandler(BUNDLE_WITH_SCRIPT_CLOSER);
+
+    const pageResponse = handler(new Request('http://localhost/'));
+    const pageText = await pageResponse.text();
+    expect(pageResponse.headers.get('content-type')).toBe('text/html');
+    // This is the regression: before the fix, this text WAS the page's own content, and a browser's
+    // HTML parser would close the `<script>` tag at the bundle's embedded `</script>`, dumping the
+    // remainder of the bundle into the page as markup instead of running it as JavaScript.
+    expect(pageText).not.toContain(BUNDLE_WITH_SCRIPT_CLOSER);
+
+    const bundleResponse = handler(new Request(`http://localhost${HYDRATION_BUNDLE_PATH}`));
+    expect(bundleResponse.headers.get('content-type')).toBe('text/javascript');
+    expect(await bundleResponse.text()).toBe(BUNDLE_WITH_SCRIPT_CLOSER);
+  });
+
+  test('an unrecognized path still falls back to the page, not a 404, matching the single-route test server', async () => {
+    const handler = hydrationFetchHandler(BUNDLE_WITH_SCRIPT_CLOSER);
+    const response = handler(new Request('http://localhost/anything-else'));
+    expect(response.headers.get('content-type')).toBe('text/html');
   });
 });
