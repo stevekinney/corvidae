@@ -233,6 +233,65 @@ describe('target coverage', () => {
   });
 });
 
+/**
+ * COR-1274: the subpaths whose `types` condition is authored separately from a runtime module,
+ * per target. Pinned rather than counted so an entry that starts or stops qualifying is a visible
+ * change: weft's SQLite subpath is the one that shipped unimportable, and cinder's six are
+ * stylesheet stubs whose `export {}` declares nothing a `.css` file could fail to provide.
+ */
+const declarationSubpathsByTarget: Readonly<Record<MirrorTarget, readonly string[]>> = {
+  weft: ['@lostgradient/weft ./storage/sqlite'],
+  cinder: [
+    '@lostgradient/cinder ./styles',
+    '@lostgradient/cinder ./styles/all',
+    '@lostgradient/cinder ./styles/foundation',
+    '@lostgradient/cinder ./styles/json-highlight',
+    '@lostgradient/cinder ./styles/tokens',
+    '@lostgradient/cinder ./styles/utilities',
+  ],
+  'agent-bureau': [],
+};
+
+describe('declaration agreement', () => {
+  for (const target of mirrorTargets) {
+    test(`${target}: every separately authored declaration is delivered by its runtime modules`, () => {
+      const { plan } = committedPlans[target];
+      const examined = plan.declarations.flatMap((result) =>
+        result.examined.map((subpath) => `${result.publicName} ${subpath}`),
+      );
+      expect(examined.toSorted()).toEqual([...declarationSubpathsByTarget[target]].toSorted());
+      expect(plan.declarations.flatMap((result) => result.findings)).toEqual([]);
+      // One result per published package, so a package the check skipped would show up here.
+      expect(plan.declarations.map((result) => result.publicName)).toEqual(
+        plan.published.map((entry) => entry.publicName),
+      );
+    });
+  }
+
+  test('a declared value its runtime module lacks refuses the plan', () => {
+    const { plan } = committedPlans.weft;
+    const finding = {
+      publicName: '@lostgradient/weft',
+      subpath: './storage/sqlite',
+      declaration: 'src/storage/sqlite.ts',
+      runtime: 'src/storage/bun-sql.ts',
+      missing: ['SQLiteStorage'],
+    };
+    const refused = {
+      ...plan,
+      coverage: [],
+      parity: [],
+      declarations: [
+        { publicName: finding.publicName, examined: [finding.subpath], findings: [finding] },
+      ],
+    };
+    expect(() => assertPublishable(refused, {})).toThrow(SurfaceError);
+    expect(() => assertPublishable(refused, {})).toThrow(
+      '@lostgradient/weft ./storage/sqlite: src/storage/sqlite.ts declares SQLiteStorage, which src/storage/bun-sql.ts does not export',
+    );
+  });
+});
+
 function describeUnexpected(
   findings: readonly { publicName: string; subpath: string }[],
 ): string[] {

@@ -1,6 +1,11 @@
 import { join } from 'node:path';
 
 import { discoverComponents } from '../../components/cinder/scripts/lib/discover-components.ts';
+import {
+  checkDeclarationAgreement,
+  describeDeclarationFinding,
+  type DeclarationAgreement,
+} from './declaration-agreement.ts';
 import { serializeJson } from './json-formatting.ts';
 import {
   ManifestTransformError,
@@ -137,6 +142,11 @@ export interface SurfacePlan extends Omit<ManifestPlan, 'files'> {
   parity: ParityResult[];
   /** Every exports target that cannot be shipped or has no source. Empty is the goal, not a given. */
   coverage: CoverageFinding[];
+  /**
+   * COR-1274: one result per published package, recording which subpaths have a `types`
+   * condition authored separately from their runtime module and any value the runtime lacks.
+   */
+  declarations: DeclarationAgreement[];
   typescript: TypeScriptPlan;
   /** The packages this target publishes, in discovery order. Private workspaces are absent. */
   published: PublishedPackage[];
@@ -256,6 +266,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
 
   const parity: ParityResult[] = [];
   const coverage: CoverageFinding[] = [];
+  const declarations: DeclarationAgreement[] = [];
   const published: PublishedPackage[] = [];
   const privateWorkspaces: PrivateWorkspace[] = [];
   const files = { ...manifestPlan.files };
@@ -327,6 +338,14 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
         sourceRoot: entry.build.sourceRoot,
         packageRoot,
         bin: resolved.bin,
+      }),
+    );
+    declarations.push(
+      checkDeclarationAgreement({
+        publicName: resolved.publicName,
+        exports: resolved.exports,
+        sourceRoot: entry.build.sourceRoot,
+        packageRoot,
       }),
     );
   }
@@ -404,6 +423,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     files: merged,
     parity,
     coverage,
+    declarations,
     typescript,
     published,
     privateWorkspaces,
@@ -478,9 +498,11 @@ export function unresolvedSubpaths(findings: readonly CoverageFinding[]): string
 
 /**
  * Refuse to publish a plan that narrows a published surface or points at something that cannot
- * ship. Both halves throw rather than warn: a subpath that disappears is a broken import for
- * somebody, and a subpath whose source is gone is a broken import that the build cannot even warn
- * about. Every offender is named in one message so a sync reports the whole problem at once.
+ * ship. Every half throws rather than warns: a subpath that disappears is a broken import for
+ * somebody, a subpath whose source is gone is a broken import that the build cannot even warn
+ * about, and a subpath whose declaration promises a value its runtime module lacks compiles for a
+ * consumer and then throws on import (COR-1274). Every offender is named in one message so a sync
+ * reports the whole problem at once.
  */
 export function assertPublishable(
   plan: SurfacePlan,
@@ -506,6 +528,11 @@ export function assertPublishable(
           : `  ${finding.publicName} ${finding.subpath} [${finding.condition}] -> ${finding.target}: no source at ${finding.sourcePath}`,
       );
     }
+  }
+  const undelivered = plan.declarations.flatMap((result) => result.findings);
+  if (undelivered.length > 0) {
+    lines.push('These published subpaths declare values their runtime modules do not export:');
+    for (const finding of undelivered) lines.push(`  ${describeDeclarationFinding(finding)}`);
   }
   if (lines.length > 0) throw new SurfaceError(lines.join('\n'));
 }

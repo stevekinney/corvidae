@@ -158,13 +158,6 @@
       }
     },
     {
-      "files": ["**/packages/weft/**"],
-      "rules": {
-        "unicorn/require-post-message-target-origin": "off",
-        "unicorn/prefer-add-event-listener": "off"
-      }
-    },
-    {
       "files": ["**/components/*/src/**", "**/packages/markdown/src/**"],
       "rules": {
         "typescript/no-unsafe-type-assertion": "error"
