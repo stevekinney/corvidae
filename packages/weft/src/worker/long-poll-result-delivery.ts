@@ -16,7 +16,13 @@ export const DEFAULT_RESULT_RETRY_MAX_DELAY_MS = 30_000;
  * `RemoteWorker`'s WebSocket does.
  */
 export interface LongPollTaskResultBody extends OutboxKeyed {
-  readonly workerId: string;
+  /**
+   * Optional to match `PolledTask.workerId`'s own optionality — a
+   * conforming server always includes it, but this stays defensive rather
+   * than fabricating a value. `JSON.stringify` omits an `undefined` property
+   * entirely, matching this transport's pre-COR-235 behavior exactly.
+   */
+  readonly workerId?: string;
   readonly status: 'completed' | 'failed' | 'cancelled';
   readonly value?: unknown;
   readonly error?: string;
@@ -129,15 +135,23 @@ export class LongPollResultDelivery {
   }
 
   /**
-   * Buffer a result and attempt its first delivery immediately — called
-   * exactly once per produced result, regardless of whether delivery is
-   * currently {@link suspend}ed: this is the actual output of just-completed
-   * work, not a scheduled retry, and always goes out (mirrors `RemoteWorker`'s
-   * `#executeTask`, which always attempts its result send once produced).
+   * Buffer a result and attempt its first delivery, resolving once that
+   * FIRST attempt's round trip completes (whether it acknowledged, was
+   * dropped, or scheduled a retry) — called exactly once per produced
+   * result, regardless of whether delivery is currently {@link suspend}ed:
+   * this is the actual output of just-completed work, not a scheduled retry,
+   * and always goes out (mirrors `RemoteWorker`'s `#executeTask`, which
+   * always attempts its result send once produced).
+   *
+   * The caller awaits only this first attempt, matching the pre-COR-235
+   * timing its own `#inFlight`/heartbeat bookkeeping already assumed — any
+   * RETRY beyond this first attempt runs on its own backgrounded timer,
+   * decoupled from whatever called `deliver()`, which is the actual fix:
+   * previously a failed send had nowhere further to go at all.
    */
-  deliver(message: LongPollTaskResultBody): void {
+  async deliver(message: LongPollTaskResultBody): Promise<void> {
     this.#outbox.buffer(message);
-    void this.#send(message, this.#retryBaseDelayMs);
+    await this.#send(message, this.#retryBaseDelayMs);
   }
 
   /**

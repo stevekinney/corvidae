@@ -9,6 +9,11 @@ import {
   executeWithInterceptors,
   type ComposedInterceptor,
 } from './execute-with-interceptors.ts';
+import {
+  DEFAULT_RESULT_RETRY_BASE_DELAY_MS,
+  DEFAULT_RESULT_RETRY_MAX_DELAY_MS,
+  LongPollResultDelivery,
+} from './long-poll-result-delivery.ts';
 import type { RemoteWorkerActivityFunction } from './workflow-activity-binding.ts';
 
 export interface LongPollWorkerOptions {
@@ -49,6 +54,18 @@ export interface LongPollWorkerOptions {
    * `30_000`.
    */
   disconnectTimeoutMs?: number;
+  /**
+   * Base delay (ms) before the first retry of a result POST that failed
+   * (network error) or was transiently rejected (COR-235). Defaults to
+   * {@link DEFAULT_RESULT_RETRY_BASE_DELAY_MS}. Exposed for tests that need
+   * fast retries — production code should rarely override it.
+   */
+  resultRetryBaseDelayMs?: number;
+  /**
+   * Upper bound (ms) the result-retry delay backs off to (COR-235). Defaults
+   * to {@link DEFAULT_RESULT_RETRY_MAX_DELAY_MS}.
+   */
+  resultRetryMaxDelayMs?: number;
 }
 
 type PolledTask = {
@@ -98,6 +115,20 @@ const DEFAULT_DISCONNECT_TIMEOUT_MS = 30_000;
  * since this transport has no server-to-worker push channel — aborts only
  * the attempt it names.
  *
+ * Result delivery is durable (COR-235), through {@link LongPollResultDelivery}
+ * — the long-poll counterpart to `RemoteWorker`'s `TaskResultOutbox` +
+ * reconnect-flush: a produced result is retained until the server's
+ * disposition (`applied`/`duplicate`/`dead-lettered`) is actually read,
+ * retried with a capped backoff on network failure or a transient rejection,
+ * and dropped only on a correlated permanent rejection (COR-1271). `stop()`
+ * suspends retrying (buffered entries survive) and reports how many results
+ * are still unacknowledged, exactly like `RemoteWorker.disconnect()`; a later
+ * `start()` resumes delivery for anything still buffered. Unlike
+ * `RemoteWorker`'s WebSocket outbox, this durability is process-memory only —
+ * a process restart loses whatever was still buffered, matching this
+ * transport's stateless-HTTP nature (there is no reconnect to resume across).
+ *
+
  * @example
  * ```ts
  * import { LongPollWorker } from '@lostgradient/weft';
@@ -129,6 +160,14 @@ export class LongPollWorker implements Disposable {
    * now runs under that `operationId`.
    */
   #taskAbortControllers: Map<string, { controller: AbortController; attemptToken: string }>;
+  /**
+   * Durable result delivery (COR-235) — the long-poll counterpart to
+   * `RemoteWorker`'s `TaskResultOutbox` + reconnect-flush. Constructed once
+   * (not per `start()`) so buffered, unacknowledged results survive a
+   * `stop()`/`start()` cycle exactly like `RemoteWorker`'s outbox survives a
+   * `disconnect()`/`connect()` cycle.
+   */
+  #delivery: LongPollResultDelivery;
 
   constructor(options: LongPollWorkerOptions) {
     this.#options = {
@@ -144,9 +183,19 @@ export class LongPollWorker implements Disposable {
     this.#abortController = new AbortController();
     this.#composedInterceptor = buildComposedInterceptor(options.interceptors);
     this.#taskAbortControllers = new Map();
+    this.#delivery = new LongPollResultDelivery({
+      resultUrl: this.#buildResultUrl(),
+      ...(this.#options.headers === undefined ? {} : { headers: this.#options.headers }),
+      retryBaseDelayMs: options.resultRetryBaseDelayMs ?? DEFAULT_RESULT_RETRY_BASE_DELAY_MS,
+      retryMaxDelayMs: options.resultRetryMaxDelayMs ?? DEFAULT_RESULT_RETRY_MAX_DELAY_MS,
+    });
   }
 
-  /** Start polling for tasks. */
+  /**
+   * Start polling for tasks, and resume delivery of any result still
+   * buffered from before a previous `stop()` (COR-235) — mirrors
+   * `RemoteWorker.connect()` flushing its outbox on every (re)connect.
+   */
   start(): void {
     if (this.#running) {
       return;
@@ -154,6 +203,7 @@ export class LongPollWorker implements Disposable {
 
     this.#running = true;
     this.#abortController = new AbortController();
+    this.#delivery.flush();
     void this.#pollLoop();
   }
 
@@ -166,8 +216,15 @@ export class LongPollWorker implements Disposable {
    * anyway, matching `RemoteWorker`'s identical `disconnectTimeoutMs` bound
    * on the same problem: a non-cooperative activity that ignores its
    * `AbortSignal` must not hold `stop()` open forever.
+   *
+   * Resolves with the number of buffered results still awaiting a durable
+   * disposition when the stop completes (COR-235) — mirrors `RemoteWorker.disconnect()`'s
+   * identical return shape. Delivery is SUSPENDED (every scheduled retry
+   * cancelled) rather than kept running in the background: this worker has
+   * no reconnect event of its own to resume on, so a caller that wants those
+   * results delivered must call `start()` again, which flushes them.
    */
-  async stop(): Promise<void> {
+  async stop(): Promise<{ unacknowledgedResults: number }> {
     this.#abortController.abort();
     this.#running = false;
     this.#abortAllTasks();
@@ -182,6 +239,15 @@ export class LongPollWorker implements Disposable {
         `[weft] LongPollWorker stop() timed out with ${String(this.#inFlight)} activities still in-flight — a non-cooperative activity may be ignoring its AbortSignal`,
       );
     }
+
+    this.#delivery.suspend();
+    const unacknowledgedResults = this.#delivery.unacknowledgedCount;
+    if (unacknowledgedResults > 0) {
+      console.warn(
+        `[weft] LongPollWorker stopped with ${String(unacknowledgedResults)} result(s) still unacknowledged; they will resend on the next start()`,
+      );
+    }
+    return { unacknowledgedResults };
   }
 
   get inFlight(): number {
@@ -192,10 +258,20 @@ export class LongPollWorker implements Disposable {
     return this.#running;
   }
 
+  /**
+   * Number of buffered results still awaiting a durable disposition
+   * (applied/duplicate/dead-lettered) from the server (COR-235). Zero means
+   * every result this worker has produced has been durably resolved.
+   */
+  get unacknowledgedResultCount(): number {
+    return this.#delivery.unacknowledgedCount;
+  }
+
   [Symbol.dispose](): void {
     this.#running = false;
     this.#abortController.abort();
     this.#abortAllTasks();
+    this.#delivery.dispose();
   }
 
   // ---------------------------------------------------------------------------
@@ -233,13 +309,31 @@ export class LongPollWorker implements Disposable {
     return `${this.#options.serverUrl}/api/v1/tasks/${encodeURIComponent(queue)}/heartbeat`;
   }
 
+  /**
+   * Whether the poll loop should decline to poll for new work right now:
+   * either execution is already at `concurrency`, or (COR-235) the
+   * result-delivery outbox is full — a worker whose buffered, unacknowledged
+   * results have hit `MAX_BUFFERED_TASK_RESULTS` should stop accepting new
+   * work rather than piling up results it cannot yet deliver, mirroring
+   * `RemoteWorker`'s identical outbox-full backpressure.
+   */
+  #atCapacity(): boolean {
+    if (this.#delivery.full) {
+      if (this.#delivery.shouldWarnFull()) {
+        console.warn(
+          `[weft] LongPollWorker result buffer full (${String(this.#delivery.unacknowledgedCount)}); declining new tasks until the backlog drains`,
+        );
+      }
+      return true;
+    }
+    return this.#inFlight >= (this.#options.concurrency ?? DEFAULT_CONCURRENCY);
+  }
+
   async #pollLoop(): Promise<void> {
     const pollUrl = this.#buildPollUrl();
-    const resultUrl = this.#buildResultUrl();
 
     while (this.#running && !this.#abortController.signal.aborted) {
-      // Only poll when we have capacity
-      if (this.#inFlight >= (this.#options.concurrency ?? DEFAULT_CONCURRENCY)) {
+      if (this.#atCapacity()) {
         await sleep(100);
         continue;
       }
@@ -262,7 +356,7 @@ export class LongPollWorker implements Disposable {
 
         const task = (await response.json()) as PolledTask;
 
-        void this.#executeTask(task, resultUrl);
+        void this.#executeTask(task);
       } catch {
         // Abort errors are expected during shutdown; network errors trigger a backoff
         if (this.#running) {
@@ -303,7 +397,7 @@ export class LongPollWorker implements Disposable {
     }
   }
 
-  async #executeTask(task: PolledTask, resultUrl: string): Promise<void> {
+  async #executeTask(task: PolledTask): Promise<void> {
     this.#inFlight += 1;
 
     const taskAbortController = new AbortController();
@@ -319,17 +413,20 @@ export class LongPollWorker implements Disposable {
     try {
       const activityFunction = this.#options.activities[task.activityName];
       if (activityFunction === undefined) {
-        await fetch(resultUrl, {
-          method: 'POST',
-          headers: { ...this.#options.headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            operationId: task.operationId,
-            workerId: task.workerId,
-            attemptToken: task.attemptToken,
-            status: 'failed',
-            error: `Unknown activity: ${task.activityName}`,
-          }),
-          signal: this.#abortController.signal,
+        // COR-235: every result — including this one — is durably retained
+        // and retried through `#delivery` rather than a single best-effort
+        // `fetch()`. `deliver()` buffers synchronously before attempting the
+        // first send (so the result cannot be lost even if this call were
+        // never awaited) and resolves once that first attempt's round trip
+        // completes, matching the pre-COR-235 timing `#inFlight`/heartbeat
+        // cleanup below already assumed. Any RETRY beyond this first attempt
+        // runs on its own backgrounded timer — the actual fix.
+        await this.#delivery.deliver({
+          operationId: task.operationId,
+          ...(task.workerId === undefined ? {} : { workerId: task.workerId }),
+          attemptToken: task.attemptToken,
+          status: 'failed',
+          error: `Unknown activity: ${task.activityName}`,
         });
         return;
       }
@@ -341,40 +438,26 @@ export class LongPollWorker implements Disposable {
         taskAbortController.signal,
       );
 
-      await fetch(resultUrl, {
-        method: 'POST',
-        headers: { ...this.#options.headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          operationId: task.operationId,
-          workerId: task.workerId,
-          attemptToken: task.attemptToken,
-          status: 'completed',
-          value: result,
-        }),
-        signal: this.#abortController.signal,
+      await this.#delivery.deliver({
+        operationId: task.operationId,
+        ...(task.workerId === undefined ? {} : { workerId: task.workerId }),
+        attemptToken: task.attemptToken,
+        status: 'completed',
+        value: result,
       });
     } catch (error) {
-      try {
-        const cancelled = taskAbortController.signal.aborted;
-        await fetch(resultUrl, {
-          method: 'POST',
-          headers: { ...this.#options.headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            operationId: task.operationId,
-            workerId: task.workerId,
-            attemptToken: task.attemptToken,
-            ...(cancelled
-              ? { status: 'cancelled', cancelled: true, error: 'Task cancelled' }
-              : {
-                  status: 'failed',
-                  error: error instanceof Error ? error.message : String(error),
-                }),
-          }),
-          signal: this.#abortController.signal,
-        });
-      } catch {
-        // Best-effort error reporting; server will eventually time out the task
-      }
+      const cancelled = taskAbortController.signal.aborted;
+      await this.#delivery.deliver({
+        operationId: task.operationId,
+        ...(task.workerId === undefined ? {} : { workerId: task.workerId }),
+        attemptToken: task.attemptToken,
+        ...(cancelled
+          ? { status: 'cancelled', cancelled: true, error: 'Task cancelled' }
+          : {
+              status: 'failed',
+              error: error instanceof Error ? error.message : String(error),
+            }),
+      });
     } finally {
       clearInterval(heartbeatTimer);
       this.#taskAbortControllers.delete(task.operationId);
