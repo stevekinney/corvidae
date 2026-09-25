@@ -16,8 +16,11 @@
  * see the design note for how those later slices attach.
  *
  * The `.test-support.ts` suffix is excluded from lint's complexity and
- * max-lines ceilings, and from `dist/`, per this package's existing
- * convention (see `src/testing/*.test-support.ts`).
+ * max-lines ceilings, per this package's existing convention (see
+ * `src/testing/*.test-support.ts`). Unlike some other packages in this
+ * workspace, `@lostgradient/weft` ships no build step — it exports
+ * TypeScript source directly — so there is no `dist/` for this suffix to
+ * additionally be excluded from.
  *
  * @module core/realm/fake-realm.test-support
  */
@@ -139,26 +142,44 @@ export class FakeRealm {
   }
 
   /**
-   * Apply a realm's result for `turnId`. Refused as `realm-not-active` when
-   * the realm is not `Active` — this is what makes a drained or terminated
-   * realm unable to emit an accepted late result, regardless of whether the
-   * turn was ever dispatched. Refused as `unknown-turn` when no pending
-   * turn matches, so an accepted result is always tied to a specific
-   * dispatch this fake realm itself created.
+   * Apply a realm's result for `envelope.turnId`. Refused as
+   * `realm-not-active` when the realm is not `Active` — this is what makes
+   * a drained or terminated realm unable to emit an accepted late result,
+   * regardless of whether the turn was ever dispatched. Refused as
+   * `unknown-turn` when no pending turn matches `envelope.turnId`, so an
+   * accepted result is always tied to a specific dispatch this fake realm
+   * itself created.
+   *
+   * Once a pending turn is found, its stored {@link RealmTurnEnvelope} — the
+   * one `dispatchTurn` validated and kept, not merely the `turnId` used to
+   * look it up — is compared against `envelope` with
+   * {@link validateRealmTurnEnvelope}. Any mismatch throws the same
+   * {@link RealmEnvelopeMismatchError} the dispatch direction rejects with,
+   * fencing this direction too: a slow realm's answer to a turn the host
+   * already gave up on (for example a stale result from a `realmGeneration`
+   * that has since crashed and been replaced) cannot resolve the pending
+   * turn, even when a fresh turn happens to reuse the same `turnId` after a
+   * restart. The pending turn itself is left untouched on a mismatch, so its
+   * real, still-outstanding caller keeps waiting for its own result.
    */
-  acceptResult(turnId: number, result: unknown): FakeRealmAcceptResultOutcome {
+  acceptResult(envelope: RealmTurnEnvelope, result: unknown): FakeRealmAcceptResultOutcome {
     if (this.lifecycle.state !== 'active') {
       return { accepted: false, reason: 'realm-not-active' };
     }
-    const pending = this.#pendingTurns.get(turnId);
+    const pending = this.#pendingTurns.get(envelope.turnId);
     if (!pending || !pending.settle) {
       return { accepted: false, reason: 'unknown-turn' };
+    }
+
+    const validation = validateRealmTurnEnvelope(pending.envelope, envelope);
+    if (!validation.ok) {
+      throw new RealmEnvelopeMismatchError(validation);
     }
 
     const outcome: FakeRealmAcceptResultOutcome = { accepted: true, result };
     const settle = pending.settle;
     pending.settle = null;
-    this.#pendingTurns.delete(turnId);
+    this.#pendingTurns.delete(envelope.turnId);
     settle(outcome);
     return outcome;
   }
