@@ -9,6 +9,7 @@
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src",
+    "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --coverage --coverage-reporter=lcov src && bun ../cinder/scripts/check-coverage-ratchet.ts --package-root .",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "svelte": "catalog:"
   },
   "devDependencies": {
+    "@floating-ui/dom": "catalog:",
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",

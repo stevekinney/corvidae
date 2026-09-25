@@ -50,7 +50,11 @@ function decodeBlockEvent(
   throw new Error('Invalid chat stream event');
 }
 function decodeStreamTextOrToolEvent(
-  type: string,
+  type:
+    | 'stream:text-delta'
+    | 'stream:tool-call-start'
+    | 'stream:tool-call-delta'
+    | 'stream:tool-call-complete',
   parsed: Record<string, unknown>,
   required: WireEnvelope,
 ): ChatStreamEvent {
@@ -63,8 +67,6 @@ function decodeStreamTextOrToolEvent(
       return decodeToolCallDelta(parsed, required);
     case 'stream:tool-call-complete':
       return decodeToolCallComplete(parsed, required);
-    default:
-      throw new Error('Invalid chat stream event');
   }
 }
 function decodeTextDelta(parsed: Record<string, unknown>, required: WireEnvelope): ChatStreamEvent {

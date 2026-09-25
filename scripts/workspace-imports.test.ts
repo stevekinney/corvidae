@@ -128,6 +128,11 @@ function isModuleLoadingCall(expression: ts.LeftHandSideExpression): boolean {
   if (ts.isIdentifier(receiver) && receiver.text === 'Bun') {
     return expression.name.text === 'resolve' || expression.name.text === 'resolveSync';
   }
+  // A `mock.module` specifier the workspace cannot resolve registers a virtual module that only
+  // intercepts imports made before the real package loads, so it silently stops mocking in a
+  // shared-process test run (COR-1296). Mocked packages must be declared like imported ones.
+  if (ts.isIdentifier(receiver) && receiver.text === 'mock')
+    return expression.name.text === 'module';
   if (expression.name.text !== 'resolve') return false;
   return (
     (ts.isIdentifier(receiver) && receiver.text === 'require') ||
@@ -173,6 +178,7 @@ describe('workspace imports', () => {
       const editor = import.meta.resolve('@lostgradient/editor');
       const editorSource = Bun.resolveSync('@lostgradient/editor', import.meta.dir);
       const chatSource = await Bun.resolve('@lostgradient/chat', import.meta.dir);
+      mock.module('@floating-ui/dom', () => ({}));
       const ignored = "require('bureau')";
     `;
     expect(importedPackageNames(source, 'consumer.ts')).toEqual(
@@ -184,6 +190,7 @@ describe('workspace imports', () => {
         '@lostgradient/editor',
         '@lostgradient/editor',
         '@lostgradient/chat',
+        '@floating-ui/dom',
       ]),
     );
   });
