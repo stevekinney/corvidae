@@ -33,15 +33,12 @@ export function renderSuggestions(
     pathLabel.className = 'template-completion-item-path';
     pathLabel.textContent = candidate.path;
     item.appendChild(pathLabel);
-    if (candidate.description || candidate.valueKind !== 'unknown') {
-      const secondary = document.createElement('span');
-      secondary.className = 'template-completion-item-description';
-      const parts: string[] = [];
-      if (candidate.valueKind && candidate.valueKind !== 'unknown') parts.push(candidate.valueKind);
-      if (candidate.description) parts.push(candidate.description);
-      secondary.textContent = parts.join(' — ');
-      item.appendChild(secondary);
-    }
+    const secondary = document.createElement('span');
+    secondary.className = 'template-completion-item-description';
+    const parts = [candidate.types?.join('|') ?? 'unknown'];
+    if (candidate.description) parts.push(candidate.description);
+    secondary.textContent = parts.join(' — ');
+    item.appendChild(secondary);
     item.addEventListener('mousedown', (event) => {
       event.preventDefault();
       event.stopPropagation();

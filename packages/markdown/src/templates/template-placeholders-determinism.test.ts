@@ -8,6 +8,7 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   buildPlaceholderCandidatesFromJsonSchema,
+  normalizePlaceholderDefinitions,
   resolveTemplatePlaceholders,
 } from './template-placeholders.js';
 
@@ -46,6 +47,47 @@ describe('determinism and purity', () => {
     buildPlaceholderCandidatesFromJsonSchema(schema);
 
     expect(schema).toEqual(schemaCopy);
+  });
+
+  it('buildPlaceholderCandidatesFromJsonSchema output does not depend on key insertion order', () => {
+    const forward = {
+      type: 'object',
+      properties: {
+        b: { type: ['null', 'string'], properties: { y: {}, x: {} } },
+        a: { type: 'nope' },
+        'c-d': {},
+      },
+    };
+    const reversed = {
+      properties: {
+        'c-d': {},
+        a: { type: 'nope' },
+        b: { properties: { x: {}, y: {} }, type: ['string', 'null'] },
+      },
+      type: 'object',
+    };
+
+    expect(buildPlaceholderCandidatesFromJsonSchema(reversed)).toEqual(
+      buildPlaceholderCandidatesFromJsonSchema(forward),
+    );
+  });
+
+  it('normalizePlaceholderDefinitions returns identical output and does not mutate its input', () => {
+    const definitions = {
+      candidates: [
+        { path: 'b', types: ['string', 'integer'] },
+        { path: 'a', title: 'A', description: undefined },
+        { path: 'b' },
+      ],
+    };
+    const copy = structuredClone(definitions);
+
+    const first = normalizePlaceholderDefinitions(definitions);
+    const second = normalizePlaceholderDefinitions(definitions);
+
+    expect(first).toEqual(second);
+    expect(definitions).toEqual(copy);
+    expect(definitions.candidates[0]!.types).toEqual(['string', 'integer']);
   });
 
   it('resolveTemplatePlaceholders returns identical output for identical input across two calls', () => {
