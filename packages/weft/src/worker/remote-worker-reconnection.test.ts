@@ -169,6 +169,21 @@ async function readResolvedRecord(engine: Engine, operationId: string): Promise<
 }
 
 /**
+ * Reads the current attempt's durable visibility-lease deadline for a
+ * `leased` (or `completing`, which still carries one) record, or `undefined`
+ * once the record has left that window entirely. Used to observe an
+ * `activityHeartbeat`'s effect directly rather than inferring it from a
+ * timing margin — see the same-worker stale-attempt test below.
+ */
+async function readLeaseDeadline(engine: Engine, operationId: string): Promise<number | undefined> {
+  const record = decodeRemoteTaskRecord(await engine.storage.get(taskLedgerKey(operationId)));
+  if (record === null) return undefined;
+  return record.state === 'leased' || record.state === 'completing'
+    ? record.leaseDeadline
+    : undefined;
+}
+
+/**
  * Wait until the ledger record for `operationId` has left the actively-held
  * `leased`/`completing` states — either it reached `terminal` (the usual
  * case, always checked via `readResolvedRecord` immediately before this at
@@ -375,14 +390,13 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
       activityName: 'test.echo',
       workflowType: 'test',
       input: { value: 'v' },
-      // Short enough that attempt 1 expires and the scanner (20ms poll) re-
-      // dispatches to the only worker as attempt 2, but long enough that the
-      // attempt-2 window — which the heartbeat below extends by this same
-      // visibilityTimeout — comfortably outlasts the stale/fresh completion
-      // exchange. At 150ms a slow CI runner could let attempt 2 expire and
-      // re-dispatch as attempt 3 before the fresh completion lands, turning the
-      // fresh token stale and flaking the test; 500ms gives ample slack without
-      // changing the behavior under test.
+      // Short enough that attempt 1 expires and the scanner (20ms poll)
+      // re-dispatches to the only worker as attempt 2 within this test's
+      // timeouts. The real `activityHeartbeat` sent below (awaited via
+      // `waitForCondition` as an observed barrier, not a race) is what
+      // actually keeps attempt 2 alive through the rest of the test — this
+      // value only needs to be long enough for attempt 1's own expire/
+      // re-dispatch cycle to complete reliably, not to outrace anything.
       visibilityTimeout: 500,
     });
 
@@ -402,8 +416,36 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
     // The token rotated even though the worker id did not.
     expect(dispatch2.attemptToken).not.toBe(dispatch1.attemptToken);
 
-    // Extend the deadline so the scanner cannot re-dispatch again mid-test.
-    workerA.send({ type: 'heartbeat', workerId: 'worker-a' });
+    // Extend attempt 2's own visibility lease with a real `activityHeartbeat`
+    // — a bare session `heartbeat` (as this test previously sent) renews only
+    // the worker-session lease and leaves an attempt's lease deadline
+    // completely untouched; only `activityHeartbeat` reaches
+    // `renewAttemptLease` (see `onActivityHeartbeatMessage`,
+    // `websocket-worker.ts`). Wait for that durable write to land — an
+    // observed barrier, not a timing margin — before proceeding, so the
+    // scanner is PROVABLY unable to re-dispatch attempt 2 mid-test rather
+    // than merely unlikely to within some window. A prior version of this
+    // test sent the no-op bare heartbeat and relied on the 500ms
+    // `visibilityTimeout` below outracing the 20ms scanner poll instead —
+    // exactly the timing-margin pattern this project's own audit history
+    // (COR-1264) already rejected elsewhere.
+    const baselineLeaseDeadline = await readLeaseDeadline(setup.engine, operationId);
+    if (baselineLeaseDeadline === undefined) {
+      throw new Error('expected attempt 2 to still be leased before heartbeating it');
+    }
+    workerA.send({
+      type: 'activityHeartbeat',
+      workerId: 'worker-a',
+      operationId,
+      attemptToken: dispatch2.attemptToken,
+    });
+    await waitForCondition(
+      async () => {
+        const deadline = await readLeaseDeadline(setup.engine, operationId);
+        return deadline !== undefined && deadline > baselineLeaseDeadline;
+      },
+      { timeoutMs: 2_000, label: 'activityHeartbeat durably extends attempt 2 visibility lease' },
+    );
 
     // Stale completion: worker-a echoes attempt 1's token. Same workerId, so the
     // ownership guard passes — the attempt guard must reject it.
