@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { loadPackageMap } from './package-map.ts';
 import { loadPackageSurface } from './package-surface.ts';
 import { runCommand } from './packaging.ts';
 import { planSurface } from './surface.ts';
@@ -421,17 +422,27 @@ describe('the mirror sync against a fake remote', () => {
 
         expect(first.decision).toBe('pushed');
         expect(first.changed.length).toBeGreaterThan(0);
-        // `firstPublish` is every manifest emitted at 0.0.0, which includes the private
-        // workspace. Nothing publishes that one, so the name reads wider than what it reports;
-        // pinned as observed rather than quietly filtered here. `@lostgradient/typescript` was in
-        // this list until COR-1287 and is not a regression by its absence: it ships from the
-        // cinder target, so the agent-bureau plan vendors its configuration rather than emitting
-        // a manifest for it, exactly as the weft plan always has.
-        expect(first.firstPublish.toSorted()).toEqual([
-          '@lostgradient/cryptography',
-          '@lostgradient/lifecycle',
-          privateWorkspaceName,
-        ]);
+        // `firstPublish` is every manifest emitted at 0.0.0: the private workspace always
+        // qualifies (nothing publishes `@lostgradient/skills`, so its name reads wider than what
+        // it reports), and a `publish-as` fixture workspace qualifies only while the real,
+        // committed `package-map.json` still records no `lastPublishedVersion` for it. Derived
+        // from that map rather than pinned as a literal, so a fixture workspace's own first
+        // publish (COR-1198 published both `@lostgradient/cryptography` and
+        // `@lostgradient/lifecycle`) does not silently go stale here. `@lostgradient/typescript`
+        // was in this list until COR-1287 and is not a regression by its absence: it ships from
+        // the cinder target, so the agent-bureau plan vendors its configuration rather than
+        // emitting a manifest for it, exactly as the weft plan always has.
+        const map = await loadPackageMap();
+        const expectedFirstPublish: string[] = Object.values(fixturePackages)
+          .filter((entry) => {
+            const disposition = map.workspaces[entry.workspace];
+            return (
+              disposition?.disposition === 'publish-as' && disposition.lastPublishedVersion === null
+            );
+          })
+          .map((entry) => entry.publicName);
+        expectedFirstPublish.push(privateWorkspaceName);
+        expect(first.firstPublish.toSorted()).toEqual(expectedFirstPublish.toSorted());
         // The private workspace is type-checked in the target even though nothing packs it: its
         // source ships now, and `typecheck` is the only check that reads it.
         expect(first.verification.privateTypechecks).toEqual([privateWorkspaceName]);

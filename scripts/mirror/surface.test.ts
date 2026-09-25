@@ -10,6 +10,7 @@ import {
   targetFor,
   type MirrorTarget,
 } from './manifests.ts';
+import { loadPackageMap } from './package-map.ts';
 import { loadPackageSurface } from './package-surface.ts';
 import { isFirstPublish } from './registry-baseline.ts';
 import { nonSourceNames, nonSourcePrefixes } from './source.ts';
@@ -151,21 +152,36 @@ describe('surface parity', () => {
    * does), so cinder now has none. Asserted per target rather than merged back into one list,
    * because a package appearing under the wrong target here is precisely the routing mistake the
    * member map exists to prevent, and a merged list would hide it.
+   *
+   * The expected set is derived from the committed `package-map.json` rather than written as a
+   * literal: COR-1198 published all four of agent-bureau's `runtime-closure-forced` packages
+   * (`@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`,
+   * `@lostgradient/tool-protocol`), so a literal list turned every one of those publishes into a
+   * test edit here — the same trap `weftRecordedVersion` in manifests.test.ts avoids for the same
+   * reason. `targetFor` is the hand-authored routing table (`membersOf`), independent of
+   * `isFirstPublish`/parity, so comparing its per-target grouping against what `committedPlans`
+   * actually produced still catches a workspace routed to, or emitted from, the wrong target.
    */
-  test('a package with no published predecessor is a first publish, not a failure', () => {
+  test('a package with no published predecessor is a first publish, not a failure', async () => {
+    const map = await loadPackageMap();
+    const expectedFirstPublishNames = (target: MirrorTarget): string[] =>
+      Object.entries(map.workspaces)
+        .filter(
+          ([workspace, entry]) =>
+            entry.disposition === 'publish-as' &&
+            entry.lastPublishedVersion === null &&
+            targetFor(workspace) === target,
+        )
+        .map(([, entry]) => (entry.disposition === 'publish-as' ? entry.name : ''))
+        .toSorted();
     const firstPublishNames = (target: MirrorTarget): string[] =>
       committedPlans[target].plan.parity
         .filter(isFirstPublish)
         .map((result) => result.publicName)
         .toSorted();
-    expect(firstPublishNames('cinder')).toEqual([]);
-    expect(firstPublishNames('agent-bureau')).toEqual([
-      '@lostgradient/cryptography',
-      '@lostgradient/embeddings',
-      '@lostgradient/lifecycle',
-      '@lostgradient/tool-protocol',
-    ]);
-    expect(firstPublishNames('weft')).toEqual([]);
+    for (const target of mirrorTargets) {
+      expect(firstPublishNames(target)).toEqual(expectedFirstPublishNames(target));
+    }
 
     for (const target of mirrorTargets) {
       for (const result of committedPlans[target].plan.parity.filter(isFirstPublish)) {
