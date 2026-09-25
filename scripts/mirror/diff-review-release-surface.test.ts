@@ -12,14 +12,14 @@ import { committedPlans } from './committed-plans.ts';
  * test: it reads the same committed, locally-computed plan (`committed-plans.ts`, no network) and
  * asserts each path by name, in both the editor's and cinder's emitted manifests.
  *
- * `@lostgradient/editor`'s `peerDependencies.@lostgradient/cinder` range is asserted the same way:
- * `package-surface.json`'s `peerDependencies` is only ever a *default* — `surface.ts`'s
- * `applySurfaceToManifest` supplies it exclusively when the target's own manifest does not already
- * carry the key, per `target-owned.json`'s ruling that a peer range is target-owned packaging
- * policy. The downstream `packages/editor/package.json` already has this key, so bumping it here
- * documents the required floor and supplies it for a fresh target, but does not by itself change
- * what a real publish emits — that edit belongs to whoever cuts the release in the mirror target,
- * as recorded in `components/editor/documentation/diff-review-contract.md`.
+ * `@lostgradient/editor`'s `peerDependencies.@lostgradient/cinder` AND `@lostgradient/markdown`
+ * ranges are asserted the same way: `package-surface.json`'s `peerDependencies` is only ever a
+ * *default* — `surface.ts`'s `applySurfaceToManifest` supplies it exclusively when the target's own
+ * manifest does not already carry the key, per `target-owned.json`'s ruling that a peer range is
+ * target-owned packaging policy. The downstream `packages/editor/package.json` already has this
+ * key, so bumping it here documents the required floor and supplies it for a fresh target, but does
+ * not by itself change what a real publish emits — that edit belongs to whoever cuts the release in
+ * the mirror target, as recorded in `components/editor/documentation/diff-review-contract.md`.
  */
 
 const editorManifestPath = 'packages/editor/package.json';
@@ -70,5 +70,25 @@ describe('DR-9 diff-review release surface', () => {
     // version assignment documented in the decision record.
     expect(Bun.semver.satisfies('0.26.2', range)).toBe(false);
     expect(Bun.semver.satisfies('0.27.0', range)).toBe(true);
+  });
+
+  test("the editor's Markdown peer range excludes versions that predate the flat root exports", () => {
+    const manifest = readManifest(editorManifestPath);
+    const peerDependencies = manifest['peerDependencies'] as Record<string, string>;
+    const range = peerDependencies['@lostgradient/markdown'];
+    expect(range).toBeString();
+    if (range === undefined) return;
+    // 0.5.0 is the last (and, as of this writing, only) registry-published Markdown version;
+    // its root barrel only re-exports `diff`/`pipeline` as namespaces (`export * as diff`,
+    // `export * as pipeline`) and does not carry `templates`/`rendering` at all, so none of
+    // diff-review's flat root imports (`computeLineDiff`, `getDiffStats`, `groupIntoHunks`,
+    // `parseOrThrow`, `normalize`, `contentEquals`, `contentEqualsWithFrontMatter`,
+    // `parseFrontMatter`, `validateFrontMatter`, `serializeYaml`, `stringifyFrontMatter`,
+    // `sanitizeHtml`, `parsePlaceholderTokens`, `validatePlaceholderTokens`) resolve against it.
+    // 0.6.0 is the minimum version this project records as carrying them, under this repository's
+    // convention that a new public API surface on a 0.x package is a minor bump — the barrel
+    // change also drops the `diff`/`pipeline` namespace exports, so it is not patch-eligible.
+    expect(Bun.semver.satisfies('0.5.0', range)).toBe(false);
+    expect(Bun.semver.satisfies('0.6.0', range)).toBe(true);
   });
 });
