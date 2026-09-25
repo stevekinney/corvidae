@@ -652,8 +652,11 @@ describe('handleTaskResultRequest revision authorization (WFT-20)', () => {
     expect(response?.status).toBe(403);
     // Pins the correlated 403 body: an operation/attempt this transport will
     // never apply carries the same identity a WebSocket worker would see on
-    // a correlated `protocolError` (protocol v7), even though this rejection
-    // has no outbox entry to drop.
+    // a correlated `protocolError` (protocol v7). This test drives
+    // `handleTaskResultRequest` directly, with no `LongPollResultDelivery`
+    // buffer in the loop to correlate this rejection against — that
+    // worker-side drop behavior is covered separately in
+    // `long-poll-result-delivery.test.ts`.
     expect(await response?.json()).toEqual({
       error: 'Forbidden',
       operationId: 'op-revision-missing',
