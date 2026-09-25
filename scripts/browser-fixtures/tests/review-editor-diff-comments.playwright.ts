@@ -190,9 +190,15 @@ test.describe('Diff review — ReviewEditor integration', () => {
     await mount.getByLabel('Diff comment', { exact: true }).fill('Reopen me later.');
     await mount.getByRole('button', { name: 'Cancel', exact: true }).click();
 
+    // The "Unsaved drafts" inventory lives in the shared comments panel, reachable from either
+    // tab -- switch to the Editor tab before Open, so this also proves the tab switch inside
+    // `handleDiffDraftOpen` (`activeView = 'diff'`) and the composer's mount both complete before
+    // the focus effect runs, not just the already-on-the-diff-tab case above.
+    await mount.getByRole('tab', { name: 'Editor' }).click();
     const inventory = mount.getByRole('region', { name: 'Unsaved drafts' });
     await inventory.getByRole('button', { name: 'Open', exact: true }).click();
 
+    await expect(mount.getByRole('tab', { name: 'Diff', selected: true })).toBeVisible();
     await expect(mount.getByLabel('Diff comment', { exact: true })).toBeFocused();
   });
 
