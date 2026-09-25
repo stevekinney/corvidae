@@ -1269,7 +1269,12 @@ describe('handleWorkerWebSocketMessage', () => {
 
       const rejection = JSON.parse(ws.sentMessages.at(-1)!);
       expect(rejection).toMatchObject({ type: 'protocolError', code: 'invalid_message' });
-      expect(String(rejection.message)).toContain('not assigned to worker');
+      // COR-237: this is the 'unknown-operation' class specifically (no
+      // ledger record has EVER existed for "op-never-dispatched"), which now
+      // gets its own wording distinct from 'stale-attempt'/'worker-mismatch'
+      // ("task not assigned to worker") — see the dedicated stale-vs-unknown
+      // classification tests in `task-result-authorization.test.ts`.
+      expect(String(rejection.message)).toContain('unknown operation');
       expect(ws.sentMessages.some((raw) => JSON.parse(raw).type === 'taskResultAck')).toBe(false);
       // Protocol v7: a worker can only correlate this permanent rejection
       // against its outbox entry — and stop resending it forever — if the

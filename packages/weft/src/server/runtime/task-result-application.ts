@@ -26,6 +26,7 @@ import { bridgeRemoteActivityResult } from './remote-activity-result-bridge.ts';
 import {
   commitTaskLedgerCompletion,
   dispatchTaskDeadLetteredEvent,
+  type TaskLedgerCompletionFailureReason,
   type TaskLedgerCompletionInput,
   type TaskResultDisposition,
 } from './task-ledger-completion.ts';
@@ -33,7 +34,12 @@ import { recordTaskExecutionLatencyMetric } from './task-metrics.ts';
 
 export type TaskResultApplicationResult =
   | Readonly<{ ok: true; disposition: TaskResultDisposition }>
-  | Readonly<{ ok: false; reason: string }>;
+  | Readonly<{
+      ok: false;
+      reason: string;
+      /** Present only for a named failure classification (COR-237) — see {@link TaskLedgerCompletionFailureReason}. */
+      reasonCode?: TaskLedgerCompletionFailureReason;
+    }>;
 
 /**
  * COR-152: deliver the real value/error a worker just sent to whichever
@@ -103,5 +109,9 @@ export async function applyWorkerTaskResult(
     return { ok: true, disposition: 'dead-lettered' };
   }
 
-  return { ok: false, reason: committed.reason };
+  return {
+    ok: false,
+    reason: committed.reason,
+    ...(committed.reasonCode !== undefined ? { reasonCode: committed.reasonCode } : {}),
+  };
 }

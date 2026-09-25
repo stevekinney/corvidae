@@ -60,11 +60,14 @@ function resolveTaskResultStatus(message: TaskResultMessage): 'completed' | 'fai
 /**
  * The `protocolError` text for a rejected `taskResult`, shared by
  * `onTaskResultMessage`'s fast path and its fallback (COR-233) so both
- * report the same wording for the same failure. `'no-current-attempt'` only
+ * report the same wording for the same failure. `'unknown-operation'` only
  * ever reaches this from the fallback (the fast path branches on
- * `inFlightTask === undefined` before authorizing), and reads the same as
- * `'worker-mismatch'` — from the worker's point of view, "no one recognizes
- * this attempt" and "someone else holds it" are both "not assigned to you".
+ * `inFlightTask === undefined` before authorizing) and gets its own,
+ * machine-distinguishable wording (COR-237): unlike `'stale-attempt'` and
+ * `'worker-mismatch'`, which both read as "someone else (or no one right
+ * now) holds this attempt", `'unknown-operation'` means no ledger record has
+ * ever existed for this `operationId` at all — a fundamentally different
+ * fact for a caller inspecting the rejection to act on.
  */
 function taskResultRejectionMessage(
   reason: TaskResultAuthorizationFailure,
@@ -73,6 +76,9 @@ function taskResultRejectionMessage(
 ): string {
   if (reason === 'attempt-token-mismatch') {
     return `taskResult for operation "${operationId}" rejected — stale attempt token`;
+  }
+  if (reason === 'unknown-operation') {
+    return `taskResult for operation "${operationId}" rejected — unknown operation`;
   }
   return `taskResult for operation "${operationId}" rejected — task not assigned to worker "${workerId ?? ''}"`;
 }
@@ -91,6 +97,9 @@ function activityHeartbeatRejectionMessage(
 ): string {
   if (reason === 'attempt-token-mismatch') {
     return `activityHeartbeat for operation "${operationId}" rejected — stale attempt token`;
+  }
+  if (reason === 'unknown-operation') {
+    return `activityHeartbeat for operation "${operationId}" rejected — unknown operation`;
   }
   return `activityHeartbeat for operation "${operationId}" rejected — task not assigned to worker "${workerId ?? ''}"`;
 }
@@ -408,9 +417,9 @@ function onActivityHeartbeatMessage(
   }
   // Authorization succeeding against an InFlightTask-derived CurrentAttempt
   // (see `currentAttemptFromInFlightTask`) implies `inFlightTask` is defined
-  // — the `undefined` case maps to `CurrentAttempt` `undefined`, which
+  // — the `undefined` case maps to `'stale'`, which
   // `authorizeTaskResultForCurrentAttempt` always rejects as
-  // 'no-current-attempt'.
+  // 'stale-attempt'.
   const task = inFlightTask as NonNullable<typeof inFlightTask>;
 
   const newDeadline = context.registry.extendVisibility(operationId, task.visibilityTimeout);
