@@ -219,6 +219,60 @@ describe('parsePlaceholderTokens grammar', () => {
     expect(spans(parsePlaceholderTokens('\\{{{a}}'))).toEqual([['placeholder', '{{a}}', 2, 7]]);
   });
 
+  it('resolves a CommonMark backslash escape inside the body before computing the path', () => {
+    // Source text: {{user\_name}} (one backslash) -- what the Markdown serializer
+    // produces from {{user_name}} after a rich-mode round trip.
+    const text = '{{user\\_name}}';
+    const [token] = parsePlaceholderTokens(text);
+
+    expect(text.length).toBe(14);
+    expect(token).toEqual({
+      raw: text,
+      path: 'user_name',
+      startOffset: 0,
+      endOffset: 14,
+      kind: 'placeholder',
+    });
+  });
+
+  it('treats a backslash-escaped backslash as one literal backslash, read left to right', () => {
+    // Source text: {{\\_}} (two backslashes then an underscore).
+    const text = '{{\\\\_}}';
+    const [token] = parsePlaceholderTokens(text);
+
+    expect(text.length).toBe(7);
+    expect(token?.path).toBe('\\_');
+  });
+
+  it('resolves the remaining escape golden cases from the issue', () => {
+    // {{\_meta\_}} -> path "_meta_", range [0, 12).
+    const meta = '{{\\_meta\\_}}';
+    expect(meta.length).toBe(12);
+    expect(spans(parsePlaceholderTokens(meta))).toEqual([['placeholder', meta, 0, 12]]);
+    expect(parsePlaceholderTokens(meta)[0]?.path).toBe('_meta_');
+
+    // {{a\*b}} -> path "a*b" (later invalid_path_format; not this scanner's job).
+    expect(parsePlaceholderTokens('{{a\\*b}}')[0]?.path).toBe('a*b');
+
+    // {{user\name}} -> a backslash before a non-escapable character stays,
+    // so the path is "user\name" (later invalid_path_format).
+    expect(parsePlaceholderTokens('{{user\\name}}')[0]?.path).toBe('user\\name');
+
+    // {{a\}}} -> token [0, 6) with path "a\" (the trailing backslash precedes
+    // no character inside the body, so it stays), followed by a literal "}".
+    const trailing = '{{a\\}}}';
+    expect(trailing.length).toBe(7);
+    expect(spans(parsePlaceholderTokens(trailing))).toEqual([['placeholder', '{{a\\}}', 0, 6]]);
+    expect(parsePlaceholderTokens(trailing)[0]?.path).toBe('a\\');
+
+    // {{a\{{b}} -> one malformed_token under the unchanged nested-brace rule;
+    // an escape inside the body never affects delimiter detection.
+    const nested = '{{a\\{{b}}';
+    expect(spans(parsePlaceholderTokens(nested))).toEqual([
+      ['malformed', nested, 0, nested.length],
+    ]);
+  });
+
   it('keeps UTF-16 offsets for adjacent, repeated and Unicode-surrounded tokens', () => {
     const text = 'é{{a}}😀{{b}}{{a}}ß';
 
@@ -308,6 +362,21 @@ describe('parseMarkdownPlaceholderTokens eligibility', () => {
     const source = '\\{{escaped}} &#123;&#123;numeric}} &lbrace;&lbrace;named}} &#x7b;{hex}}';
 
     expect(parseMarkdownPlaceholderTokens(source)).toEqual([]);
+  });
+
+  it('resolves body backslash escapes the same way the plain-text scanner does', () => {
+    // The Markdown-aware scanner delegates to parsePlaceholderTokens per text
+    // run, so it inherits the escape rule: {{user\_name}} resolves to path
+    // "user_name" (one literal backslash), and {{\_meta\_}} resolves to
+    // "_meta_" -- the serialized, round-trip-safe form of {{_meta_}}, which
+    // as raw unescaped Markdown is emphasis and splits into a malformed
+    // token instead (covered separately).
+    const source = 'Hello {{user\\_name}} and {{\\_meta\\_}}.';
+
+    const tokens = parseMarkdownPlaceholderTokens(source);
+
+    expect(tokens.map((token) => token.kind)).toEqual(['placeholder', 'placeholder']);
+    expect(tokens.map((token) => token.path)).toEqual(['user_name', '_meta_']);
   });
 
   it('never lets a token span a formatting boundary', () => {
