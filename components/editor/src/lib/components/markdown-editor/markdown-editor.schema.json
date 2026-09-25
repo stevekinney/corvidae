@@ -67,6 +67,11 @@
         "description": "Called when editor mode changes"
       },
       {
+        "name": "onPlaceholderDiagnosticsChange",
+        "reason": "function-or-snippet",
+        "description": "Called with the ordered placeholder diagnostics whenever that list changes.\nToken ranges index the Markdown `value`. Called with `[]` only to clear\nearlier diagnostics."
+      },
+      {
         "name": "onReady",
         "reason": "function-or-snippet",
         "description": "Called when the editor is ready (Milkdown initialized)"
@@ -90,6 +95,16 @@
         "name": "placeholderDecoration",
         "reason": "unknown-shape",
         "description": "Placeholder decoration configuration (DEP-583).\nWhen provided, decorates invalid {{…}} tokens with CSS class and data attributes."
+      },
+      {
+        "name": "placeholderDefinitions",
+        "reason": "unknown-shape",
+        "description": "Allowed placeholders, as a JSON Schema or explicit candidates. Drives\ncompletion, invalid-token decoration and diagnostics from one catalog.\nReplacing the object updates the live editor without recreating it."
+      },
+      {
+        "name": "placeholderValues",
+        "reason": "unknown-shape",
+        "description": "Placeholder values for filled preview. Never used for completion, and never\nincluded in a diagnostic. Supplying values without `placeholderDefinitions`,\nor values that are not a plain JSON object, reports a configuration diagnostic."
       },
       {
         "name": "plugins",

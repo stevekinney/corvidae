@@ -8,8 +8,10 @@ import {
   computeCompletionState,
   INACTIVE_STATE,
   templateCompletionPluginKey,
+  type CompletionState,
 } from './template-completion-state.js';
 import {
+  completionSource,
   createStateWithText,
   makeCandidate,
   makeCandidates,
@@ -44,14 +46,15 @@ describe('computeCompletionState', () => {
       { ...INACTIVE_STATE, active: true, query: 'inp' },
       transaction,
       state,
-      configuration,
+      completionSource(configuration),
     );
 
     expect(result).toEqual(INACTIVE_STATE);
   });
 
   it('updates activeIndex on meta navigate', () => {
-    const previousState = {
+    const previousState: CompletionState = {
+      ...INACTIVE_STATE,
       active: true,
       query: 'input',
       suggestions: candidates.filter((c) => c.path.startsWith('input')),
@@ -65,14 +68,20 @@ describe('computeCompletionState', () => {
       index: 2,
     });
 
-    const result = computeCompletionState(previousState, transaction, state, configuration);
+    const result = computeCompletionState(
+      previousState,
+      transaction,
+      state,
+      completionSource(configuration),
+    );
 
     expect(result.activeIndex).toBe(2);
     expect(result.active).toBe(true);
   });
 
   it('ignores navigation metadata with a non-finite or out-of-range index', () => {
-    const previousState = {
+    const previousState: CompletionState = {
+      ...INACTIVE_STATE,
       active: true,
       query: 'input',
       suggestions: filterAndSortCandidates(candidates, 'input'),
@@ -86,13 +95,19 @@ describe('computeCompletionState', () => {
       index: Number.POSITIVE_INFINITY,
     });
 
-    const result = computeCompletionState(previousState, transaction, state, configuration);
+    const result = computeCompletionState(
+      previousState,
+      transaction,
+      state,
+      completionSource(configuration),
+    );
 
     expect(result.activeIndex).toBe(0);
   });
 
   it('ignores async metadata containing malformed candidates', () => {
-    const previousState = {
+    const previousState: CompletionState = {
+      ...INACTIVE_STATE,
       active: true,
       query: 'input',
       suggestions: filterAndSortCandidates(candidates, 'input'),
@@ -106,13 +121,19 @@ describe('computeCompletionState', () => {
       candidates: [{ path: 'input.bad', types: ['not-a-type'] }],
     });
 
-    const result = computeCompletionState(previousState, transaction, state, configuration);
+    const result = computeCompletionState(
+      previousState,
+      transaction,
+      state,
+      completionSource(configuration),
+    );
 
     expect(result.suggestions).toEqual(previousState.suggestions);
   });
 
   it('merges async results and re-filters on meta asyncResults', () => {
-    const previousState = {
+    const previousState: CompletionState = {
+      ...INACTIVE_STATE,
       active: true,
       query: 'input',
       suggestions: filterAndSortCandidates(candidates, 'input'),
@@ -121,13 +142,16 @@ describe('computeCompletionState', () => {
       cursorPos: 8,
     };
     const asyncCandidates = [makeCandidate('input.email'), makeCandidate('input.phone')];
+    const source = completionSource(configuration);
     const state = createStateWithText('{{input', 7);
     const transaction = state.tr.setMeta(templateCompletionPluginKey, {
       type: 'asyncResults',
+      query: 'input',
       candidates: asyncCandidates,
+      source,
     });
 
-    const result = computeCompletionState(previousState, transaction, state, configuration);
+    const result = computeCompletionState(previousState, transaction, state, source);
 
     expect(result.active).toBe(true);
     // Should include original + new async candidates that match "input".
@@ -135,6 +159,31 @@ describe('computeCompletionState', () => {
     expect(paths).toContain('input.email');
     expect(paths).toContain('input.phone');
     expect(paths).toContain('input.name');
+  });
+
+  it('ignores async results requested under a different configuration', () => {
+    const previousState: CompletionState = {
+      ...INACTIVE_STATE,
+      active: true,
+      query: 'input',
+      suggestions: filterAndSortCandidates(candidates, 'input'),
+    };
+    const state = createStateWithText('{{input', 7);
+    const transaction = state.tr.setMeta(templateCompletionPluginKey, {
+      type: 'asyncResults',
+      query: 'input',
+      candidates: [makeCandidate('input.stale')],
+      source: completionSource(configuration),
+    });
+
+    const result = computeCompletionState(
+      previousState,
+      transaction,
+      state,
+      completionSource(configuration),
+    );
+
+    expect(result.suggestions.map((candidate) => candidate.path)).not.toContain('input.stale');
   });
 
   it('returns INACTIVE_STATE when query is below minimumQueryLength', () => {
@@ -146,7 +195,12 @@ describe('computeCompletionState', () => {
     const state = createStateWithText('{{in', 4);
     const transaction = state.tr;
 
-    const result = computeCompletionState(INACTIVE_STATE, transaction, state, configWithMinLength);
+    const result = computeCompletionState(
+      INACTIVE_STATE,
+      transaction,
+      state,
+      completionSource(configWithMinLength),
+    );
 
     expect(result).toEqual(INACTIVE_STATE);
   });
@@ -155,7 +209,12 @@ describe('computeCompletionState', () => {
     const state = createStateWithText('{{input', 7);
     const transaction = state.tr;
 
-    const result = computeCompletionState(INACTIVE_STATE, transaction, state, configuration);
+    const result = computeCompletionState(
+      INACTIVE_STATE,
+      transaction,
+      state,
+      completionSource(configuration),
+    );
 
     expect(result.active).toBe(true);
     expect(result.query).toBe('input');
@@ -164,7 +223,8 @@ describe('computeCompletionState', () => {
   });
 
   it('resets activeIndex to 0 when query changes', () => {
-    const previousState = {
+    const previousState: CompletionState = {
+      ...INACTIVE_STATE,
       active: true,
       query: 'input.n',
       suggestions: filterAndSortCandidates(candidates, 'input.n'),
@@ -176,7 +236,12 @@ describe('computeCompletionState', () => {
     const state = createStateWithText('{{input.a', 9);
     const transaction = state.tr;
 
-    const result = computeCompletionState(previousState, transaction, state, configuration);
+    const result = computeCompletionState(
+      previousState,
+      transaction,
+      state,
+      completionSource(configuration),
+    );
 
     expect(result.active).toBe(true);
     expect(result.query).toBe('input.a');
@@ -184,7 +249,8 @@ describe('computeCompletionState', () => {
   });
 
   it('preserves activeIndex when query has not changed', () => {
-    const previousState = {
+    const previousState: CompletionState = {
+      ...INACTIVE_STATE,
       active: true,
       query: 'input',
       suggestions: filterAndSortCandidates(candidates, 'input'),
@@ -195,7 +261,12 @@ describe('computeCompletionState', () => {
     const state = createStateWithText('{{input', 7);
     const transaction = state.tr;
 
-    const result = computeCompletionState(previousState, transaction, state, configuration);
+    const result = computeCompletionState(
+      previousState,
+      transaction,
+      state,
+      completionSource(configuration),
+    );
 
     expect(result.active).toBe(true);
     expect(result.query).toBe('input');
@@ -206,18 +277,29 @@ describe('computeCompletionState', () => {
     const state = createStateWithText('plain text', 5);
     const transaction = state.tr;
 
-    const result = computeCompletionState(INACTIVE_STATE, transaction, state, configuration);
+    const result = computeCompletionState(
+      INACTIVE_STATE,
+      transaction,
+      state,
+      completionSource(configuration),
+    );
 
     expect(result).toEqual(INACTIVE_STATE);
   });
 
-  it('returns INACTIVE_STATE when no candidates match and no async lookup configured', () => {
+  it('stays active with no suggestions when nothing matches, so the view can announce it', () => {
     const state = createStateWithText('{{zzzzz', 7);
     const transaction = state.tr;
 
-    const result = computeCompletionState(INACTIVE_STATE, transaction, state, configuration);
+    const result = computeCompletionState(
+      INACTIVE_STATE,
+      transaction,
+      state,
+      completionSource(configuration),
+    );
 
-    expect(result).toEqual(INACTIVE_STATE);
+    expect(result.active).toBe(true);
+    expect(result.suggestions).toEqual([]);
   });
 
   it('returns active state with empty suggestions when async lookup is configured but no static matches', () => {
@@ -229,7 +311,12 @@ describe('computeCompletionState', () => {
     const state = createStateWithText('{{zzzzz', 7);
     const transaction = state.tr;
 
-    const result = computeCompletionState(INACTIVE_STATE, transaction, state, configWithLookup);
+    const result = computeCompletionState(
+      INACTIVE_STATE,
+      transaction,
+      state,
+      completionSource(configWithLookup),
+    );
 
     expect(result.active).toBe(true);
     expect(result.suggestions).toHaveLength(0);
@@ -237,7 +324,8 @@ describe('computeCompletionState', () => {
   });
 
   it('clamps activeIndex when async results reduce the number of suggestions', () => {
-    const previousState = {
+    const previousState: CompletionState = {
+      ...INACTIVE_STATE,
       active: true,
       query: 'input',
       suggestions: filterAndSortCandidates(candidates, 'input'),
@@ -253,20 +341,24 @@ describe('computeCompletionState', () => {
       minimumQueryLength: 1,
     };
 
+    const source = completionSource(configSingle);
     const state = createStateWithText('{{input', 7);
     const transaction = state.tr.setMeta(templateCompletionPluginKey, {
       type: 'asyncResults',
+      query: 'input',
       candidates: asyncCandidates,
+      source,
     });
 
-    const result = computeCompletionState(previousState, transaction, state, configSingle);
+    const result = computeCompletionState(previousState, transaction, state, source);
 
     // activeIndex should be clamped to suggestions.length - 1.
     expect(result.activeIndex).toBeLessThanOrEqual(Math.max(0, result.suggestions.length - 1));
   });
 
-  it('returns INACTIVE_STATE when asyncResults produces no suggestions', () => {
-    const previousState = {
+  it('keeps an active empty result when asyncResults produces no suggestions', () => {
+    const previousState: CompletionState = {
+      ...INACTIVE_STATE,
       active: true,
       query: 'zzzzz',
       suggestions: [],
@@ -280,16 +372,20 @@ describe('computeCompletionState', () => {
       minimumQueryLength: 1,
     };
 
+    const source = completionSource(configNoMatch);
     const state = createStateWithText('{{zzzzz', 7);
     const transaction = state.tr.setMeta(templateCompletionPluginKey, {
       type: 'asyncResults',
+      query: 'zzzzz',
       candidates: [makeCandidate('unrelated.path')],
+      source,
     });
 
-    const result = computeCompletionState(previousState, transaction, state, configNoMatch);
+    const result = computeCompletionState(previousState, transaction, state, source);
 
     // "zzzzz" does not match "unrelated.path", so no suggestions after merge+filter.
-    expect(result).toEqual(INACTIVE_STATE);
+    expect(result.active).toBe(true);
+    expect(result.suggestions).toEqual([]);
   });
 
   it('uses default minimumQueryLength of 1 when not specified in configuration', () => {
@@ -301,7 +397,12 @@ describe('computeCompletionState', () => {
     const state = createStateWithText('{{i', 3);
     const transaction = state.tr;
 
-    const result = computeCompletionState(INACTIVE_STATE, transaction, state, configNoMinLength);
+    const result = computeCompletionState(
+      INACTIVE_STATE,
+      transaction,
+      state,
+      completionSource(configNoMinLength),
+    );
 
     expect(result.active).toBe(true);
     expect(result.query).toBe('i');
