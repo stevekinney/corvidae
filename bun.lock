@@ -164,6 +164,7 @@
       "devDependencies": {
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@playwright/test": "catalog:",
         "@testing-library/svelte": "catalog:",
         "@types/bun": "catalog:",
         "ajv": "catalog:",
