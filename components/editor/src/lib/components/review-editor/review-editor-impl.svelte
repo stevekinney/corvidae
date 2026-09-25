@@ -300,6 +300,10 @@
   let diffReviewAnnotationSelection = $state<DiffViewerAnnotationSelection | null>(null);
   let activeDiffDraftId = $state<string | null>(null);
   let diffViewerRef = $state<DiffViewerRef | undefined>(undefined);
+  /** Set by `handleDiffDraftOpen`; the effect below focuses the composer once it is in the DOM
+   * (COR-511 review follow-up, mirrors `diff-review.svelte`'s identical fix). */
+  let diffComposerFocusRequested = $state(false);
+  let diffComposerTextareaElement = $state<HTMLTextAreaElement | undefined>(undefined);
 
   const diffReviewEnabled = $derived(diffReviewState !== undefined);
   /** The state the diff tab and comment list render from. Only ever a validated value -- an
@@ -415,11 +419,27 @@
    * clear it. `ReviewEditor` is a single-target, single-file host, so "Open" reduces to opening
    * the diff tab and re-selecting that draft as the active composer; there is no file/target
    * filter to clear.
+   *
+   * Contract: "Open clears only the necessary filters and focuses its composer" (COR-511 review
+   * follow-up -- `activeView = 'diff'` above already satisfies the filter-clearing half for this
+   * single-target host; this request flag drives the effect below that focuses the reopened
+   * composer's `<textarea>` once it exists in the DOM, in both editable and read-only modes).
    */
   function handleDiffDraftOpen(draft: DiffReviewDraft): void {
     activeView = 'diff';
     activeDiffDraftId = draft.draftId;
+    diffComposerFocusRequested = true;
   }
+
+  // Focuses the diff composer once `handleDiffDraftOpen` has requested it and the composer
+  // textarea is actually in the DOM (it renders inside `{#if activeDiffDraft}` on the diff tab,
+  // so on a first open -- which also has to switch `activeView` -- the element does not exist yet
+  // in the same tick).
+  $effect(() => {
+    if (!diffComposerFocusRequested || !diffComposerTextareaElement) return;
+    diffComposerTextareaElement.focus();
+    diffComposerFocusRequested = false;
+  });
 
   function handleDiffDraftSave(draftId: string): void {
     const outcome = dispatchDiffReviewChange({ type: 'save-draft', draftId });
@@ -2505,9 +2525,14 @@
                    shared `DiffReviewDraftsInventory` leaf always shows regardless of `readonly`
                    (only its own Save/Discard are hidden). Before this, `activeDiffDraftId` could
                    only be set from `onAnnotationSelectionChange`, which is never wired when
-                   read-only -- so this branch was previously unreachable there. Native disabled
-                   controls plus visible explanatory text, per contract ("Use native disabled
-                   buttons/inputs with nearby visible explanatory text"). -->
+                   read-only -- so this branch was previously unreachable there. A disabled Save
+                   plus visible explanatory text, per contract ("Use native disabled buttons/
+                   inputs with nearby visible explanatory text"). The textarea itself uses native
+                   `readonly`, not `disabled` (COR-511 review): a `disabled` textarea can never
+                   receive focus in a real browser, which would silently break "Open ... focuses
+                   its composer" -- stated with no read-only exception -- for exactly this case.
+                   `readonly` blocks editing identically while keeping the element focusable and
+                   its text selectable/copyable. -->
               <p class="review-editor-diff-composer-readonly-note">
                 Enable editing to change or save this draft.
               </p>
@@ -2515,7 +2540,8 @@
             <textarea
               aria-label="Diff comment"
               value={activeDiffDraft.body}
-              disabled={isReadonly}
+              readonly={isReadonly}
+              bind:this={diffComposerTextareaElement}
               oninput={(event) => updateDiffComposerBody(event.currentTarget.value)}></textarea>
             <div class="review-editor-diff-composer-actions">
               <Button

@@ -178,6 +178,24 @@ test.describe('Diff review — ReviewEditor integration', () => {
     await expect(mount.getByRole('region', { name: 'Unsaved drafts' })).toHaveCount(0);
   });
 
+  test("Open on a pending draft focuses the reopened composer (COR-511 review, mirrors DiffReview's own fix)", async ({
+    page,
+  }) => {
+    const mount = page.locator('#example-mount-diff-comments');
+    await mount.getByRole('tab', { name: 'Diff' }).click();
+
+    const removedRow = mount.locator('.diff-row', { has: page.locator('.diff-line-removed') });
+    const control = removedRow.locator('[data-cinder-annotation-control][data-cinder-side="old"]');
+    await control.click();
+    await mount.getByLabel('Diff comment', { exact: true }).fill('Reopen me later.');
+    await mount.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    const inventory = mount.getByRole('region', { name: 'Unsaved drafts' });
+    await inventory.getByRole('button', { name: 'Open', exact: true }).click();
+
+    await expect(mount.getByLabel('Diff comment', { exact: true })).toBeFocused();
+  });
+
   test('opening a pending draft while read-only renders a disabled composer with an explanatory note', async ({
     page,
   }) => {
@@ -203,9 +221,16 @@ test.describe('Diff review — ReviewEditor integration', () => {
 
     const composer = mount.getByLabel('Diff comment', { exact: true });
     await expect(composer).toBeVisible();
-    await expect(composer).toBeDisabled();
+    // Not `disabled` (COR-511 review, mirrors the identical fix in
+    // `diff-review.svelte`): a `disabled` textarea can never receive focus
+    // in a real browser, which would silently break "Open ... focuses its
+    // composer" (contract, no stated read-only exception) for exactly this
+    // case. Native `readonly` blocks editing identically while keeping the
+    // element focusable and its text selectable/copyable.
+    await expect(composer).not.toBeEditable();
     await expect(mount.getByText('Enable editing to change or save this draft.')).toBeVisible();
     const saveButton = mount.getByRole('button', { name: 'Save', exact: true });
     await expect(saveButton).toBeDisabled();
+    await expect(composer).toBeFocused();
   });
 });

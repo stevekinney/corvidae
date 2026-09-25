@@ -51,4 +51,10 @@ This still has no continuous real-keyboard Tab-order walk of its own beyond the 
 
 **Human acceptance: waived, not performed, by Steve Kinney.** Linear comment `a5463ac9-c4d0-455b-ba01-d30c3fcfdb9a` on COR-511, read directly by this agent with `list_comments`: "Human acceptance gate waived by Steve Kinney (2026-09-23) … 'Nothing needs my sign off.'" No human reviewed this work. VoiceOver was not driven in this session.
 
+## Adversarial review follow-up (COR-511 verification review, no human review)
+
+Reviewing the diff-comments composer against the contract ("Open clears only the necessary filters and focuses its composer," no read-only exception stated) found a real gap: **`handleDiffDraftOpen` never focused the reopened composer, in either mode**, unlike `diff-review.svelte`'s own "Open" action. There was no `composerFocusRequested`-style wiring at all. Its read-only branch also used a `disabled` textarea, which — even after adding focus wiring — could never actually receive focus in a real browser (disabled elements are unfocusable), so read-only "Open" would still have silently failed to focus anything.
+
+Fixed: added the same request-flag-plus-`$effect` pattern already proven in `diff-review.svelte`, and changed the textarea from `disabled` to native `readonly` (blocks editing identically — Playwright's `toBeEditable()` still fails on it — while keeping the element focusable and its text selectable/copyable). Regression tests in `review-editor-diff-comments.playwright.ts`: a new editable-mode case, "Open on a pending draft focuses the reopened composer," and a `toBeFocused()` assertion added to the existing read-only "opening a pending draft while read-only" case. Both confirmed red (`toBeFocused()` timing out against the prior source) before the fix.
+
 Related components: `markdown-editor`.

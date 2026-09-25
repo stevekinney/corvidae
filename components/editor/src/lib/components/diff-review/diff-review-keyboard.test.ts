@@ -35,6 +35,20 @@ function stateWithComment(): DiffReviewState {
   return commented.value;
 }
 
+/** A state with one RESOLVED comment, so the item's mutation control is the "Reopen" button
+ * rather than "Resolve" (COR-511 review: the existing keyboard-matrix coverage only ever
+ * exercised the unresolved/"Resolve" case, leaving "Reopen" -- one of the contract's own named
+ * keyboard-matrix cases, "create/edit/delete/resolve/reopen" -- with no tab-reachability
+ * assertion at all). */
+function stateWithResolvedComment(): DiffReviewState {
+  const commented = stateWithComment();
+  const commentId = commented.comments[0]?.id;
+  if (!commentId) throw new Error('fixture setup failed');
+  const resolved = reduceDiffReviewState(commented, { type: 'resolve-comment', id: commentId });
+  if (!resolved.ok) throw new Error('fixture setup failed');
+  return resolved.value;
+}
+
 /** A state with one nonempty (pending) draft, so the toolbar's export gate
  * is blocked and its "Review drafts" control -- the only way to open the
  * drafts inventory -- is rendered. */
@@ -88,6 +102,26 @@ describe('DiffReview component shell: keyboard matrix', () => {
     ]) {
       nativelyFocusable(findButtonByText(container, label) ?? null);
     }
+  });
+
+  test('a resolved comment\'s "Reopen" control is a native, tab-reachable element, and activating it dispatches reopen-comment', async () => {
+    const state = stateWithResolvedComment();
+    let latest = state;
+    const { container } = render(DiffReview, {
+      targets,
+      state,
+      onStateChange: (next: DiffReviewState) => {
+        latest = next;
+      },
+    });
+
+    const reopen = findButtonByText(container, 'Reopen');
+    expect(reopen).not.toBeUndefined();
+    expect(reopen?.getAttribute('tabindex')).not.toBe('-1');
+    expect(findButtonByText(container, 'Resolve')).toBeUndefined();
+
+    await fireEvent.click(reopen!);
+    expect(latest.comments[0]?.resolved).toBe(false);
   });
 
   test("the drafts inventory's Open/Save/Discard actions are native, tab-reachable elements once opened", async () => {

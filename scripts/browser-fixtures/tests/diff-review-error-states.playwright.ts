@@ -204,9 +204,21 @@ test.describe('Diff review — read-only with a nonempty draft', () => {
     await mount.getByRole('button', { name: 'Review drafts' }).click();
     await mount.getByRole('button', { name: 'Open', exact: true }).click();
 
-    await expect(composer.getByLabel('Comment', { exact: true })).toBeVisible();
-    await expect(composer.getByLabel('Comment', { exact: true })).toBeDisabled();
+    const textarea = composer.getByLabel('Comment', { exact: true });
+    await expect(textarea).toBeVisible();
+    // Not `disabled` (COR-511 review): a `disabled` textarea can never
+    // receive focus in a real browser, which would silently break the
+    // contract's "Open ... focuses its composer" specifically in read-only
+    // mode. Native `readonly` blocks editing exactly like `disabled` does
+    // (Playwright's `fill`/`toBeEditable` treat both as non-editable) while
+    // keeping the element focusable and its text selectable/copyable.
+    await expect(textarea).not.toBeEditable();
     await expect(mount.getByText('Enable editing to change or save this draft.')).toBeVisible();
     await expect(composer.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    // "Open ... focuses its composer" (contract) has no stated read-only
+    // exception, and DR-8's matrix explicitly lists both "open hidden
+    // drafts" and "inspect read-only ... states" as cases to verify
+    // together.
+    await expect(textarea).toBeFocused();
   });
 });

@@ -358,3 +358,51 @@ describe('DiffReview component shell: reviewed markers', () => {
     expect(latest.reviewedMarkers).toHaveLength(1);
   });
 });
+
+describe('DiffReview component shell: drafts inventory Open', () => {
+  test('Open on a draft whose target was removed entirely leaves an unrelated path filter untouched (COR-511 review)', async () => {
+    // Regression: `openDraft` cleared `filterQuery` whenever the draft's own
+    // file entry was not in the *filtered* list, without first checking
+    // whether an entry existed at all. A draft on a target that no longer
+    // exists has no entry in `fileEntries` under ANY filter value, so the
+    // filter was never the reason it was hidden -- clearing it discarded a
+    // filter the host still needed, violating the contract's "Open clears
+    // ONLY the necessary filters."
+    const created = createDiffReviewState(twoTargetSession);
+    if (!created.ok) throw new Error('fixture setup failed');
+    const drafted = reduceDiffReviewState(created.value, {
+      type: 'create-draft',
+      draftId: 'draft-on-removed-target',
+      targetId: 'patch',
+      anchor: { kind: 'file', fileOccurrence: 0 },
+      body: 'A draft on a target about to be removed.',
+    });
+    if (!drafted.ok) throw new Error('fixture setup failed');
+    // Remove the 'patch' target entirely; the contract retains the draft
+    // ("Missing targets retain complete captured drafts/comments").
+    const readmeOnly = twoTargetSession.filter((target) => target.targetId === 'readme');
+    const removed = reduceDiffReviewState(drafted.value, {
+      type: 'set-targets',
+      targets: readmeOnly,
+    });
+    if (!removed.ok) throw new Error('fixture setup failed');
+
+    const { getByLabelText, getByText } = render(DiffReview, {
+      targets: readmeOnly,
+      state: removed.value,
+      onStateChange: () => {},
+    });
+
+    const filter = getByLabelText('Filter files by path') as HTMLInputElement;
+    await fireEvent.input(filter, { target: { value: 'unrelated-filter-text' } });
+    expect(filter.value).toBe('unrelated-filter-text');
+
+    await fireEvent.click(getByText('Review drafts'));
+    await fireEvent.click(getByText('Open'));
+
+    // The filter the host was using for an unrelated reason must survive --
+    // the removed target's draft was never going to appear regardless of
+    // filter value, so clearing it here would be gratuitous.
+    expect(filter.value).toBe('unrelated-filter-text');
+  });
+});

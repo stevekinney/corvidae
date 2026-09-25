@@ -214,6 +214,12 @@
    * itself the reason the draft's own file entry isn't currently visible.
    * `fileEntries` lists every target's files regardless of selection, so
    * this check needs no `reviewState` round-trip through `onStateChange`.
+   *
+   * A draft whose target was removed entirely has no entry in `fileEntries`
+   * under ANY filter value (COR-511 review follow-up) -- the filter was
+   * never the reason it is hidden, so clearing it would discard an
+   * unrelated filter the host still needs. Only clear when an entry exists
+   * unfiltered but the current filter is excluding it.
    */
   function openDraft(draft: DiffReviewDraft): void {
     if (effectiveTargets.some((target) => target.targetId === draft.targetId)) {
@@ -221,11 +227,13 @@
     }
     activeDraftId = draft.draftId;
     draftsOpen = true;
+    const matchesDraft = (entry: { targetId: string; fileOccurrence: number }): boolean =>
+      entry.targetId === draft.targetId && entry.fileOccurrence === draft.anchor.fileOccurrence;
+    const ownEntryExists = fileEntries.some(matchesDraft);
     const ownEntryVisible = filterDiffReviewFileEntries(fileEntries, filterQuery).some(
-      (entry) =>
-        entry.targetId === draft.targetId && entry.fileOccurrence === draft.anchor.fileOccurrence,
+      matchesDraft,
     );
-    if (!ownEntryVisible) filterQuery = '';
+    if (ownEntryExists && !ownEntryVisible) filterQuery = '';
     composerFocusRequested = true;
   }
 
@@ -371,11 +379,15 @@
           {#if readonly}
             <!-- Reaching a nonempty draft's composer while read-only is possible through the
                  drafts inventory's "Open" action, which always renders regardless of `readonly`
-                 (only its own Save/Discard are hidden) -- native disabled controls plus visible
+                 (only its own Save/Discard are hidden) -- a disabled Save plus visible
                  explanatory text, per the contract ("Use native disabled buttons/inputs with
                  nearby visible explanatory text"; "If read-only mode has nonempty drafts, export
                  stays blocked and explains that the host must enable editing to save/discard
-                 them"). Mirrors ReviewEditor's own diff-comment composer for the identical case. -->
+                 them"). The textarea itself uses native `readonly`, not `disabled` (COR-511
+                 review): a `disabled` textarea can never receive focus in a real browser, which
+                 would silently break "Open ... focuses its composer" -- stated with no read-only
+                 exception -- for exactly this case. `readonly` blocks editing identically while
+                 keeping the element focusable and its text selectable/copyable. -->
             <p class="diff-review-composer-readonly-note">
               Enable editing to change or save this draft.
             </p>
@@ -383,7 +395,7 @@
           <textarea
             aria-label="Comment"
             value={activeDraft.body}
-            disabled={readonly}
+            {readonly}
             bind:this={composerTextareaElement}
             oninput={(event) => updateComposerBody(event.currentTarget.value)}></textarea>
           <div class="diff-review-composer-actions">
