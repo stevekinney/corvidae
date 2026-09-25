@@ -286,6 +286,10 @@ describe('handleTaskResultRequest', () => {
     );
 
     expect(response?.status).toBe(403);
+    // COR-237: a long-poll-specific precondition, distinct from the shared
+    // identity-authorization vocabulary.
+    const queueMismatchBody = await response?.json();
+    expect(queueMismatchBody?.reason).toBe('queue-mismatch');
     const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-queue-mismatch')));
     expect(record?.state).toBe('leased');
   });
@@ -654,6 +658,8 @@ describe('handleTaskResultRequest revision authorization (WFT-20)', () => {
       error: 'Forbidden',
       operationId: 'op-revision-missing',
       attemptToken: 'attempt-token',
+      // COR-237: this permanent rejection now carries a machine-distinguishable reason.
+      reason: 'revision-mismatch',
     });
   });
 
@@ -686,6 +692,7 @@ describe('handleTaskResultRequest revision authorization (WFT-20)', () => {
       error: 'Forbidden',
       operationId: 'op-revision-wrong',
       attemptToken: 'attempt-token',
+      reason: 'revision-mismatch',
     });
   });
 
@@ -897,6 +904,10 @@ describe('handleTaskPollRequest', () => {
     );
 
     expect(rejected?.status).toBe(403);
+    // COR-237: a foreign workerId against a live attempt is worker-mismatch,
+    // machine-distinguishable from unknown-operation/stale-attempt.
+    const workerMismatchBody = await rejected?.json();
+    expect(workerMismatchBody?.reason).toBe('worker-mismatch');
 
     const accepted = await handleTaskResultRequest(
       context,
@@ -997,6 +1008,10 @@ describe('handleTaskPollRequest', () => {
       WORKER_PRINCIPAL,
     );
     expect(rejected?.status).toBe(403);
+    // COR-237: right worker, wrong token — attempt-token-mismatch, distinct
+    // from worker-mismatch even though both are 403s.
+    const attemptTokenMismatchBody = await rejected?.json();
+    expect(attemptTokenMismatchBody?.reason).toBe('attempt-token-mismatch');
 
     // The matching token is accepted.
     const accepted = await handleTaskResultRequest(
@@ -1134,6 +1149,11 @@ describe('handleTaskPollRequest', () => {
       WORKER_PRINCIPAL,
     );
     expect(response?.status).toBe(403);
+    // COR-237: no ledger record has ever existed for this operation —
+    // 'unknown-operation', distinct from 'stale-attempt' (see the next test,
+    // where a record genuinely exists but is not a current attempt).
+    const unknownOperationBody = await response?.json();
+    expect(unknownOperationBody?.reason).toBe('unknown-operation');
   });
 
   // COR-233 item 2: a `queued` record has no current attempt either — it was
@@ -1182,6 +1202,10 @@ describe('handleTaskPollRequest', () => {
       WORKER_PRINCIPAL,
     );
     expect(response?.status).toBe(403);
+    // COR-237: a record genuinely exists here (unlike the previous test) but
+    // is not a current attempt — 'stale-attempt', not 'unknown-operation'.
+    const staleAttemptBody = await response?.json();
+    expect(staleAttemptBody?.reason).toBe('stale-attempt');
     const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-queued')));
     expect(record?.state).toBe('queued');
   });
@@ -1271,6 +1295,8 @@ describe('handleTaskPollRequest', () => {
       error: 'Forbidden',
       operationId: 'op-conflict',
       attemptToken: 'attempt-token',
+      // COR-237: the one named ledger-commit outcome, not a generic rejection.
+      reason: 'conflicting-content',
     });
 
     // The original terminal record is untouched by the rejected resubmission.
