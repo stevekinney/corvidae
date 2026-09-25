@@ -1285,6 +1285,97 @@ describe('handleWorkerWebSocketMessage', () => {
       });
     });
 
+    // COR-237: 'worker-mismatch' proven at the actual WebSocket
+    // message-handling seam (`onTaskResultMessage`'s fast/in-flight path),
+    // not only as a direct-function unit case in
+    // `task-result-authorization.test.ts`. A different registered worker
+    // completing an attempt the registry still assigns to someone else — the
+    // original worker partitions or is displaced by a visibility-timeout
+    // reassignment, and a peer worker's own completion for the SAME
+    // operationId arrives instead — is distinct from an unassigned
+    // ('unknown-operation') or already-resolved ('stale-attempt') operation:
+    // here an in-flight entry exists and is live, it just names a different
+    // `workerId` than the one that sent this frame.
+    it('rejects a taskResult from a worker other than the one the registry currently assigns the attempt to (worker-mismatch)', async () => {
+      const context = minimalServerContext();
+      const options = minimalServeOptions();
+      const wsOwner = createFakeWs();
+      const wsIntruder = createFakeWs();
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        wsOwner as never,
+        registerMessageJson('w-owner', ['doWork'], { concurrency: 5 }),
+        NOOP_CLEANUP,
+      );
+      await waitForRegistrationSideEffect(
+        () => context.registry.getWorker('w-owner') !== undefined,
+      );
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        wsIntruder as never,
+        registerMessageJson('w-intruder', ['doWork'], { concurrency: 5 }),
+        NOOP_CLEANUP,
+      );
+      await waitForRegistrationSideEffect(
+        () => context.registry.getWorker('w-intruder') !== undefined,
+      );
+
+      context.registry.assignTask(
+        'w-owner',
+        'op-worker-mismatch',
+        30_000,
+        undefined,
+        'attempt-token',
+      );
+
+      const sentBeforeResult = wsIntruder.sentMessages.length;
+
+      // `wsIntruder` is registered as 'w-intruder' — a currently-registered
+      // worker, but NOT the one the in-flight entry assigns ('w-owner').
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        wsIntruder as never,
+        JSON.stringify({
+          type: 'taskResult',
+          operationId: 'op-worker-mismatch',
+          attemptToken: 'attempt-token',
+          status: 'completed',
+          value: 'done',
+        }),
+        NOOP_CLEANUP,
+      );
+
+      await waitForCondition(async () => wsIntruder.sentMessages.length > sentBeforeResult, {
+        timeoutMs: 1000,
+        intervalMs: 10,
+        label: 'worker-mismatch taskResult to be rejected',
+      });
+
+      const rejection = JSON.parse(wsIntruder.sentMessages.at(-1)!);
+      expect(rejection).toMatchObject({ type: 'protocolError', code: 'invalid_message' });
+      // COR-237: 'worker-mismatch' shares its outward wording with
+      // 'stale-attempt' ("task not assigned to worker") — see
+      // `taskResultRejectionMessage` — but this exercises the ownership
+      // guard specifically: a live in-flight entry assigned to a DIFFERENT
+      // currently-registered worker, not an unassigned or resolved
+      // operation. The intruder's own workerId in the message pins that.
+      expect(String(rejection.message)).toContain('task not assigned to worker "w-intruder"');
+      expect(rejection).toMatchObject({
+        operationId: 'op-worker-mismatch',
+        attemptToken: 'attempt-token',
+      });
+      expect(wsIntruder.sentMessages.some((raw) => JSON.parse(raw).type === 'taskResultAck')).toBe(
+        false,
+      );
+      // The rejection must not have disturbed the real owner's assignment.
+      expect(context.registry.isAssigned('op-worker-mismatch')).toBe(true);
+    });
+
     // COR-233 item 3: the headline fixture scenario at the transport-unit
     // level. `WorkerRegistry.completeTask()` deletes the in-flight entry the
     // instant the FIRST delivery of a result is processed — before the
