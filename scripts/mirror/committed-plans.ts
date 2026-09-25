@@ -33,19 +33,6 @@ import { findSourceEscapes, type SourceEscape } from './target-resolvability.ts'
 /** Corvidae's repository root, which is what these plans are built from. */
 export const corvidaeRoot = join(import.meta.dir, '..', '..');
 
-/**
- * The declared budget for a test that must build a real plan inside its own body, because it
- * needs a package map the shared plans above were not built with (`source-digest.test.ts`).
- *
- * Declared rather than discovered, as `sync.test.ts`'s `endToEndTimeout` is. A real plan is
- * bounded CPU work: measured at about 1.7s for cinder and 0.9s for weft with the machine at a load
- * of 45 on ten cores, and a test builds at most two. The five-second default holds on a quiet
- * machine but not on a shared one, where the load reached 100 and validate failed three times on
- * unrelated tests for that reason alone (COR-1198). Thirty seconds covers a tenfold slowdown of
- * the two-plan case with margin; a plan that genuinely hangs still fails.
- */
-export const realPlanTimeout = 30_000;
-
 export interface CommittedPlan {
   plan: SurfacePlan;
   /**
@@ -109,7 +96,12 @@ async function build(target: MirrorTarget, packageMap: PackageMap): Promise<Comm
  * `Record<MirrorTarget, …>` literal is what makes a third target a type error here rather than a
  * silently unplanned target in whichever test iterates `mirrorTargets`.
  */
-const packageMapForFixtures = await packageMapWithCurrentDigests();
+/**
+ * The package map every plan below is built from, exported so a suite that needs the same
+ * current-digest overlay (`source-digest.test.ts`) reads this one instead of hashing every
+ * published workspace again inside a test body.
+ */
+export const packageMapForFixtures = await packageMapWithCurrentDigests();
 
 export const committedPlans: Readonly<Record<MirrorTarget, CommittedPlan>> = {
   cinder: await build('cinder', packageMapForFixtures),

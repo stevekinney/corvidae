@@ -1,93 +1,32 @@
 /**
  * Template placeholder domain logic for saved-prompt/template authoring.
  *
- * Pure functions for JSON Schema candidate extraction, {{path}} token parsing,
- * validation against known paths, and deterministic template resolution.
+ * Pure functions for {{path}} token parsing, validation against known paths,
+ * and deterministic template resolution. Catalog extraction lives in
+ * `placeholder-schema-catalog.ts` and `placeholder-catalog.ts` and is
+ * re-exported here as part of this module's public surface.
  *
  * DEP-582: No ProseMirror or DOM dependencies.
  * DEP-625: For secure markdown rendering with sanitization, use renderTemplate from template-render.ts
  */
 
-import { RESERVED_SEGMENTS } from './placeholder-security.js';
+import { isBlockedSegment } from './placeholder-security.js';
 import type {
   PlaceholderCandidate,
   PlaceholderResolutionResult,
   PlaceholderToken,
   PlaceholderValidationIssue,
   PlaceholderValidationResult,
-  PlaceholderValueKind,
 } from './types.js';
+
+export { normalizePlaceholderDefinitions } from './placeholder-catalog.js';
+export { buildPlaceholderCandidatesFromJsonSchema } from './placeholder-schema-catalog.js';
 
 /** Valid placeholder path pattern: dot-separated identifiers starting with letter or underscore */
 const PATH_REGEX = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 
-/** Valid single path segment: one identifier (no dots) */
-const SEGMENT_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-/**
- * Validate a single path segment against security rules.
- *
- * DEP-625: Central security validation to prevent prototype pollution.
- * - Blocks empty segments (e.g., from "user..name")
- * - Enforces identifier rules (must match SEGMENT_REGEX)
- * - Blocks reserved segments (case-insensitive)
- * - Blocks segments starting with '__' (dunder properties)
- *
- * Returns true if the segment is blocked (invalid), false if allowed.
- *
- * @internal - Shared by template-placeholders.ts and preview-composer.ts
- */
-export function isBlockedSegment(segment: string): boolean {
-  // Block empty segments (e.g., from "user..name")
-  if (segment === '') {
-    return true;
-  }
-
-  // Enforce identifier rules (must match SEGMENT_REGEX)
-  if (!SEGMENT_REGEX.test(segment)) {
-    return true;
-  }
-
-  // Block reserved segments (case-insensitive)
-  if (RESERVED_SEGMENTS.has(segment.toLowerCase())) {
-    return true;
-  }
-
-  // Block segments starting with '__' (dunder properties)
-  // Note: SEGMENT_REGEX allows '__' prefixes (e.g., '__proto__', '__custom__')
-  // since '_' is a valid identifier character. This check is the only guard
-  // against arbitrary '__'-prefixed segments not in RESERVED_SEGMENTS.
-  if (segment.startsWith('__')) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Map a JSON Schema `type` value to a PlaceholderValueKind.
- * Returns 'unknown' for missing or unsupported type values.
- */
-function mapSchemaTypeToValueKind(type: unknown): PlaceholderValueKind {
-  switch (type) {
-    case 'string':
-      return 'string';
-    case 'number':
-    case 'integer':
-      return 'number';
-    case 'boolean':
-      return 'boolean';
-    case 'array':
-      return 'array';
-    case 'object':
-      return 'object';
-    default:
-      return 'unknown';
-  }
 }
 
 /**
@@ -98,7 +37,7 @@ function mapSchemaTypeToValueKind(type: unknown): PlaceholderValueKind {
  * - Validates all segments before resolution using isBlockedSegment()
  * - Uses Object.hasOwn() to prevent prototype chain traversal
  *
- * This function enforces the same identifier rules as PATH_REGEX/SEGMENT_REGEX
+ * This function enforces the same identifier rules as PATH_REGEX/PLACEHOLDER_SEGMENT_PATTERN
  * to ensure resolution behavior matches validation/candidate generation.
  */
 function getNestedValue(values: Record<string, unknown>, path: string): unknown {
@@ -183,62 +122,6 @@ function formatValueForReplacement(value: unknown): string {
   }
 
   return JSON.stringify(value);
-}
-
-/**
- * Extract placeholder candidates from a JSON Schema by recursively walking `properties`.
- *
- * For each property:
- * 1. Build the dot-separated path (e.g., "input.x").
- * 2. Determine valueKind from the type field.
- * 3. Extract description (string or undefined).
- * 4. Emit a candidate for the current path.
- * 5. If the property has nested properties, recurse (regardless of explicit type: 'object').
- * 6. Silently ignore $ref, allOf, anyOf, oneOf, if/then/else, patternProperties, additionalProperties.
- *
- * Returns candidates sorted lexicographically by path.
- */
-export function buildPlaceholderCandidatesFromJsonSchema(
-  schema: Record<string, unknown>,
-): PlaceholderCandidate[] {
-  const candidates: PlaceholderCandidate[] = [];
-
-  function walk(properties: Record<string, unknown>, prefix: string): void {
-    for (const key of Object.keys(properties)) {
-      // Skip keys that are not valid identifier segments — paths containing
-      // non-identifier characters (e.g. "first-name", "first.name") cannot
-      // be emitted as candidates because validatePlaceholderTokens would
-      // reject them as invalid_path_format and resolveTemplatePlaceholders
-      // would mis-resolve them by splitting on dots.
-      if (!SEGMENT_REGEX.test(key)) {
-        continue;
-      }
-
-      const property = properties[key];
-
-      if (!isRecord(property)) {
-        continue;
-      }
-
-      const path = prefix ? `${prefix}.${key}` : key;
-      const valueKind = mapSchemaTypeToValueKind(property['type']);
-      const description =
-        typeof property['description'] === 'string' ? property['description'] : undefined;
-
-      candidates.push({ path, description, valueKind });
-
-      // Recurse into nested properties regardless of explicit type: 'object'
-      if (isRecord(property['properties'])) {
-        walk(property['properties'], path);
-      }
-    }
-  }
-
-  if (isRecord(schema['properties'])) {
-    walk(schema['properties'], '');
-  }
-
-  return candidates.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
 /**

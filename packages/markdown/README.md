@@ -52,7 +52,36 @@ const html = renderTemplate('Hello {{name}}', { name: 'World' });
 console.log(diff, html);
 ```
 
-Use `resolveTemplatePlaceholders` when you need the substituted source and placeholder diagnostics before rendering. Import parsing, serialization, syntax-tree utilities, diffing, rendering, highlighting, templates, and URL utilities from the package root; there are no public package subpaths.
+Use `resolveTemplatePlaceholders` when you need the substituted source and placeholder diagnostics before rendering. Inside this workspace, import parsing, serialization, syntax-tree utilities, diffing, rendering, highlighting, templates, and URL utilities from the package root. The public package also declares the subpaths listed in `scripts/mirror/package-surface.json`: `./pipeline`, `./diff`, `./diff/line-diff`, `./diff/types`, `./rendering`, `./rendering/async`, `./rendering/types`, `./rendering/highlighter`, `./rendering/mermaid-cache`, `./utilities/safe-url`, `./utilities/sort-keys`, `./templates/sanitize-html`, `./templates/template-placeholders`, `./templates/template-render`, `./templates/placeholder-security`, and `./templates/types`.
+
+## Placeholder catalogs
+
+`normalizePlaceholderDefinitions(definitions)` turns placeholder definitions into the allowlist every placeholder feature shares. Definitions contain exactly one of `schema` (a JSON Schema object, the recommended path) or `candidates` (explicit `{ path, types?, title?, description? }` metadata). It returns sorted `candidates`, ordered `issues`, and `enabled`. Any issue sets `enabled` to `false`, which disables completion and fill until the definitions are fixed; `candidates` still lists the valid partial entries. A valid empty catalog is enabled and permits no paths.
+
+```typescript
+import { normalizePlaceholderDefinitions } from '@lostgradient/markdown';
+
+const catalog = normalizePlaceholderDefinitions({
+  schema: {
+    type: 'object',
+    properties: {
+      user: { type: 'object', properties: { name: { type: 'string', title: 'Name' } } },
+      tags: { type: 'array', items: { type: 'string' } },
+    },
+  },
+});
+// catalog.enabled === true; catalog.candidates paths: tags, user, user.name
+```
+
+Schema extraction is catalog extraction, not instance validation. It reads a root object schema and recursively declared `properties`, emitting whole objects, whole arrays and nested properties; `items` never creates indexed paths. `type` may be one of `string`, `number`, `integer`, `boolean`, `null`, `object` and `array`, or a list of them; an absent type is unknown. `title` and `description` are display metadata. `required`, `enum`, `const`, `default`, `examples`, `format`, numeric and string constraints, unused `$defs` and boolean `additionalProperties` are neither enforced nor used as values. `$ref`, `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`, `patternProperties` and schema-valued `additionalProperties` are reported as `unsupported_schema`, never followed, and never fetched. Property names must be ASCII identifiers (`[A-Za-z_][A-Za-z0-9_]*`) that are not reserved (`__proto__`, `constructor`, any `__` name, and similar, case-insensitively); other names are reported at their JSON Pointer rather than skipped.
+
+Definitions must be plain data: objects whose prototype is `null` or this realm's `Object.prototype`, read through own data properties. Getters are never invoked, and class instances, foreign-realm objects and accessor properties are reported. Transfer cross-realm data into the receiving realm first. Executable Proxy objects are outside the supported contract: JavaScript cannot reliably detect every proxy, so no guarantee is made that proxy traps do not run.
+
+## Breaking changes
+
+- `buildPlaceholderCandidatesFromJsonSchema(schema)` returned `PlaceholderCandidate[]`, silently skipping unsupported keywords and unaddressable property names. It now returns `{ candidates, issues }`, where `issues` holds `PlaceholderDiagnostic` entries located by JSON Pointers starting at `/schema`, and unsupported keywords, unaddressable or reserved names, malformed types and cycles are reported.
+- `PlaceholderCandidate` changed from `{ path; description: string | undefined; valueKind: PlaceholderValueKind }` to `{ path; types?: readonly PlaceholderSchemaType[]; title?: string; description?: string }`. `PlaceholderValueKind` and `valueKind` are removed; `integer` is no longer collapsed into `number`, type unions are kept, and an omitted `types` means unknown.
+- `isBlockedSegment` moved from the `./templates/template-placeholders` module to `./templates/placeholder-security`. The package root still exports it.
 
 ## Development
 

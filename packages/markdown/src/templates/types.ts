@@ -8,17 +8,158 @@
  * `@lostgradient/editor`'s `editor/types.ts`.
  */
 
-/** Value kind inferred from JSON Schema type field */
-export type PlaceholderValueKind = 'string' | 'number' | 'boolean' | 'array' | 'object' | 'unknown';
+/**
+ * A JSON value type a placeholder can declare.
+ *
+ * `integer` is a JSON number constrained to finite integers and stays distinct
+ * from `number` so callers can check integer-only placeholders. Declared type
+ * lists are normalized into this enumeration order: string, number, integer,
+ * boolean, null, object, array.
+ */
+export type PlaceholderSchemaType =
+  'string' | 'number' | 'integer' | 'boolean' | 'null' | 'object' | 'array';
 
-/** A single candidate path extracted from a JSON Schema */
+/**
+ * One addressable placeholder path with display and type metadata.
+ *
+ * Metadata never carries a value: schema `default`, `examples`, `enum` and
+ * `const` are not copied into a candidate.
+ */
 export interface PlaceholderCandidate {
-  /** Dot-separated property path (e.g., "input.x") */
+  /** Dot-separated identifier path, for example `input.x`. */
   path: string;
-  /** Schema description, if present */
-  description: string | undefined;
-  /** Inferred value kind from the schema type field */
-  valueKind: PlaceholderValueKind;
+  /**
+   * Declared JSON types, deduplicated and in {@link PlaceholderSchemaType}
+   * enumeration order. Omitted means unknown: any JSON type is accepted. An
+   * empty list is invalid metadata.
+   */
+  types?: readonly PlaceholderSchemaType[];
+  /** Display title from the schema `title` keyword or explicit metadata. */
+  title?: string;
+  /** Display description from the schema `description` keyword or explicit metadata. */
+  description?: string;
+}
+
+/**
+ * A JSON object keyed by strings.
+ *
+ * Runtime checks are stricter than this type can express: objects must be
+ * plain data (see {@link normalizePlaceholderDefinitions}).
+ */
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+/**
+ * Any JSON value. Numbers must be finite at runtime, which TypeScript cannot
+ * express.
+ */
+export type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
+
+/**
+ * A JSON Schema object supplied as placeholder definitions.
+ *
+ * Deliberately loose: the supported catalog subset is validated at runtime
+ * rather than typed, which avoids a general JSON Schema dependency.
+ */
+export interface JsonSchemaObject {
+  readonly [key: string]: unknown;
+}
+
+/**
+ * The high-level placeholder allowlist: exactly one of a JSON Schema (the
+ * recommended path) or explicit candidate metadata.
+ *
+ * Supplying both or neither is rejected by the type and, for untyped callers,
+ * by {@link normalizePlaceholderDefinitions} with an `invalid_definitions`
+ * diagnostic. An empty valid catalog permits no paths.
+ */
+export type PlaceholderDefinitions =
+  | { readonly schema: JsonSchemaObject; readonly candidates?: never }
+  | { readonly candidates: readonly PlaceholderCandidate[]; readonly schema?: never };
+
+/**
+ * Every structured placeholder diagnostic code.
+ *
+ * Definition and configuration codes: `invalid_definitions`,
+ * `invalid_schema`, `unsupported_schema`, `cyclic_schema`,
+ * `invalid_candidate`, `duplicate_candidate`, `invalid_values`,
+ * `conflicting_configuration`, `invalid_option`. Path codes shared by
+ * definitions and tokens: `blocked_path`, `invalid_path_format`. Token codes:
+ * `malformed_token`, `unknown_placeholder`, `missing_value`, `invalid_value`,
+ * `type_mismatch`.
+ */
+export type PlaceholderDiagnosticCode =
+  | 'invalid_definitions'
+  | 'invalid_schema'
+  | 'unsupported_schema'
+  | 'cyclic_schema'
+  | 'invalid_candidate'
+  | 'duplicate_candidate'
+  | 'blocked_path'
+  | 'invalid_path_format'
+  | 'malformed_token'
+  | 'unknown_placeholder'
+  | 'missing_value'
+  | 'invalid_value'
+  | 'type_mismatch'
+  | 'invalid_values'
+  | 'conflicting_configuration'
+  | 'invalid_option';
+
+/**
+ * Where a diagnostic applies.
+ *
+ * - `definition`: an RFC 6901 JSON Pointer relative to the definitions
+ *   object, such as `/schema/properties/user/properties/name` or
+ *   `/candidates/0/types`. The root is `''`.
+ * - `token`: a zero-based, end-exclusive UTF-16 range in the original source.
+ * - `configuration`: the option or component property at fault, such as
+ *   `definitions`, `values`, `valueMode`, `unresolved` or `mode`.
+ */
+export type PlaceholderDiagnosticLocation =
+  | { readonly kind: 'definition'; readonly pointer: string }
+  | { readonly kind: 'token'; readonly startOffset: number; readonly endOffset: number }
+  | { readonly kind: 'configuration'; readonly property: string };
+
+/**
+ * A structured placeholder problem. Diagnostics describe metadata locations
+ * and never include substituted or supplied values.
+ */
+export interface PlaceholderDiagnostic {
+  /** Machine-readable problem code. */
+  readonly code: PlaceholderDiagnosticCode;
+  /** Human-readable explanation that contains no supplied values. */
+  readonly message: string;
+  /** The placeholder path concerned, when one applies. */
+  readonly path?: string;
+  /** Where the problem was found. */
+  readonly location: PlaceholderDiagnosticLocation;
+}
+
+/**
+ * Candidates and definition diagnostics extracted from placeholder
+ * definitions. `candidates` holds every valid entry, sorted by path in
+ * code-unit order, even when `issues` is non-empty.
+ */
+export interface PlaceholderCatalogResult {
+  /** Valid candidates sorted by path in code-unit order. */
+  readonly candidates: readonly PlaceholderCandidate[];
+  /** Ordered, deduplicated definition diagnostics. */
+  readonly issues: readonly PlaceholderDiagnostic[];
+}
+
+/**
+ * The result of normalizing {@link PlaceholderDefinitions} once.
+ *
+ * Any diagnostic disables the whole high-level catalog for completion and
+ * fill: `enabled` is `false` whenever `issues` is non-empty. `candidates`
+ * still lists the valid partial entries so callers can explain the problem,
+ * but must not be used as the allowlist while `enabled` is `false`.
+ */
+export interface NormalizedPlaceholderDefinitions extends PlaceholderCatalogResult {
+  /** `true` only when there are no issues and the catalog may be used. */
+  readonly enabled: boolean;
 }
 
 /** A parsed {{...}} token with source offsets */

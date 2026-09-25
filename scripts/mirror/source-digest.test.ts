@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { corvidaeRoot, packageMapWithCurrentDigests, realPlanTimeout } from './committed-plans.ts';
-import { mirrorTargets } from './manifests.ts';
+import { committedPlans, corvidaeRoot, packageMapForFixtures } from './committed-plans.ts';
+import { mirrorTargets, type MirrorTarget } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
 import {
   assertEdgeNotStale,
@@ -310,29 +310,44 @@ describe('assertEdgeNotStale', () => {
  * the committed file is what an override-free sync reads, and a real edge refuses exactly when its
  * dependency's recorded digest is missing or no longer matches the source.
  */
-describe('the guard against the real workspaces', () => {
-  const outcome = (plan: Promise<unknown>): Promise<string> =>
-    plan.then(
-      () => 'planned',
-      (error: unknown) => `refused: ${(error as Error).message}`,
-    );
-
-  test.each([...mirrorTargets])(
-    'planSurface for %s reads the committed package-map.json when given no override',
-    async (target) => {
-      const committed = await loadPackageMap();
-      expect(await outcome(planSurface({ corvidaeRoot, target }))).toBe(
-        await outcome(planSurface({ corvidaeRoot, target, packageMap: committed })),
-      );
-    },
-    realPlanTimeout,
+const outcome = (plan: Promise<unknown>): Promise<string> =>
+  plan.then(
+    () => 'planned',
+    (error: unknown) => `refused: ${(error as Error).message}`,
   );
 
-  const withDigest = async (
-    workspace: string,
-    sourceDigest: string | undefined,
-  ): Promise<PackageMap> => {
-    const map = await packageMapWithCurrentDigests();
+/**
+ * COR-1316: each target planned twice over the real workspaces, once with no override and once
+ * with the committed map, at module scope for the reason `committed-plans.ts` gives. A full weft
+ * or agent-bureau plan is one to two seconds on a loaded machine, so doing both inside a test
+ * body left little of bun's five-second per-test budget. The tests below compare the outcomes.
+ */
+const committedPackageMap = await loadPackageMap();
+const readsCommittedMap = new Map<MirrorTarget, { withoutOverride: string; committed: string }>();
+for (const target of mirrorTargets) {
+  readsCommittedMap.set(target, {
+    withoutOverride: await outcome(planSurface({ corvidaeRoot, target })),
+    committed: await outcome(
+      planSurface({ corvidaeRoot, target, packageMap: committedPackageMap }),
+    ),
+  });
+}
+
+describe('the guard against the real workspaces', () => {
+  test.each([...mirrorTargets])(
+    'planSurface for %s reads the committed package-map.json when given no override',
+    (target) => {
+      const outcomes = readsCommittedMap.get(target);
+      expect(outcomes).toBeDefined();
+      expect(outcomes?.withoutOverride).toBe(outcomes?.committed);
+    },
+  );
+
+  // COR-1316: the current-digest overlay and both targets' plans are built once, at module scope,
+  // by `committed-plans.ts`. Rebuilding them here put roughly three seconds of hashing and
+  // planning on each test's own five-second clock, which a loaded machine pushed over the limit.
+  const withDigest = (workspace: string, sourceDigest: string | undefined): PackageMap => {
+    const map = packageMapForFixtures;
     const entry = map.workspaces[workspace];
     if (entry?.disposition !== 'publish-as') throw new Error(`${workspace} is not published`);
     const { sourceDigest: _current, ...rest } = entry;
@@ -340,49 +355,23 @@ describe('the guard against the real workspaces', () => {
     return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
   };
 
-  // One plan per test, each on the declared real-plan budget: three cinder plans in one test
-  // (planned, missing, mismatched) cost three times what any single case needs.
-  const edges = [
+  test.each([
     ['agent-bureau', '@lostgradient/weft'],
     ['cinder', 'conversationalist'],
-  ] as const;
-
-  test.each(edges)(
-    '%s plans when %s is current',
-    async (target) => {
-      const current = await packageMapWithCurrentDigests();
-      expect(await outcome(planSurface({ corvidaeRoot, target, packageMap: current }))).toBe(
-        'planned',
-      );
-    },
-    realPlanTimeout,
-  );
-
-  test.each(edges)(
-    '%s refuses when %s has no recorded digest',
+  ] as const)(
+    '%s plans when %s is current and refuses when it is not',
     async (target, dependency) => {
-      const refusal = planSurface({
-        corvidaeRoot,
-        target,
-        packageMap: await withDigest(dependency, undefined),
-      });
-      await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
-      await expect(refusal).rejects.toThrow(dependency);
+      // `committed-plans.ts` planned this target from the current-digest map at import, and a
+      // refusal there would have failed the whole file, so a present plan is the planned outcome.
+      expect(Object.keys(committedPlans[target].plan.files).length).toBeGreaterThan(0);
+      for (const packageMap of [
+        withDigest(dependency, undefined),
+        withDigest(dependency, '0'.repeat(64)),
+      ]) {
+        const refusal = planSurface({ corvidaeRoot, target, packageMap });
+        await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
+        await expect(refusal).rejects.toThrow(dependency);
+      }
     },
-    realPlanTimeout,
-  );
-
-  test.each(edges)(
-    '%s refuses when %s has a mismatched digest',
-    async (target, dependency) => {
-      const refusal = planSurface({
-        corvidaeRoot,
-        target,
-        packageMap: await withDigest(dependency, '0'.repeat(64)),
-      });
-      await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
-      await expect(refusal).rejects.toThrow(dependency);
-    },
-    realPlanTimeout,
   );
 });

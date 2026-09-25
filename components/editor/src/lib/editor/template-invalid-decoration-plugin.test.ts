@@ -61,11 +61,7 @@ const schema = new Schema({
 const DEFAULT_INVALID_CLASS = 'template-placeholder-invalid';
 
 function makeCandidates(...paths: string[]): PlaceholderCandidate[] {
-  return paths.map((path) => ({
-    path,
-    description: undefined,
-    valueKind: 'string' as const,
-  }));
+  return paths.map((path) => ({ path, types: ['string'] }));
 }
 
 /**
