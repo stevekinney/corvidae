@@ -128,11 +128,23 @@ function locationKey(diagnostic: PlaceholderDiagnostic): string {
 }
 
 /**
- * Order diagnostics deterministically and remove identical duplicates.
+ * Order a diagnostics list deterministically and remove identical duplicates.
  *
- * Definition and configuration diagnostics come first, by pointer or property
- * and then code in code-unit order; token diagnostics follow by start offset
- * and then code. Message and path break any remaining ties.
+ * Definition and configuration diagnostics sort first, by JSON Pointer or
+ * configuration property (in code-unit order) and then by `code`. Token
+ * diagnostics follow, ordered by their token's `startOffset` and then by
+ * `code`. Within either group, `message` and then `path` break any remaining
+ * tie. Two diagnostics are identical duplicates, and only the first is kept,
+ * when their `code`, `message`, `path` and `location` all match.
+ *
+ * The catalog extractor and the resolver both use this to order and
+ * deduplicate their own diagnostics before returning them; it is exported so
+ * other callers building a diagnostics list from the same primitives, such
+ * as an editor's live validation, apply the identical ordering and
+ * deduplication rule instead of reimplementing it.
+ *
+ * @param diagnostics - Diagnostics in any order, possibly with duplicates.
+ * @returns A new array, ordered and deduplicated as described above.
  */
 export function sortPlaceholderDiagnostics(
   diagnostics: readonly PlaceholderDiagnostic[],

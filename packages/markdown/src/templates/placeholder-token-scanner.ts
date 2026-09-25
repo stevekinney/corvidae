@@ -19,6 +19,9 @@ const CARRIAGE_RETURN = 0x0d;
 const SPACE = 0x20;
 const TAB = 0x09;
 
+/** The CommonMark escapable ASCII punctuation set. */
+const ESCAPABLE_PUNCTUATION = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
+
 function isLineEnd(code: number): boolean {
   return code === LINE_FEED || code === CARRIAGE_RETURN;
 }
@@ -37,6 +40,31 @@ function isEscaped(text: string, index: number): boolean {
     count++;
   }
   return count % 2 === 1;
+}
+
+/**
+ * Resolve CommonMark backslash escapes in a token body, left to right, after
+ * boundaries are found and before horizontal-whitespace trimming: a
+ * backslash immediately followed by an escapable ASCII punctuation character
+ * contributes that character and consumes both, so `\\_` (a backslash
+ * escaping a backslash) contributes a literal `\` followed by a separately
+ * read `_`. Any other backslash, including one with nothing after it,
+ * contributes itself and consumes only itself.
+ */
+function unescapeBody(body: string): string {
+  if (!body.includes('\\')) return body;
+  let result = '';
+  for (let index = 0; index < body.length; index++) {
+    const char = body[index]!;
+    const next = body[index + 1];
+    if (char === '\\' && next !== undefined && ESCAPABLE_PUNCTUATION.includes(next)) {
+      result += next;
+      index++;
+    } else {
+      result += char;
+    }
+  }
+  return result;
 }
 
 /** Trim only horizontal whitespace (spaces and tabs) from both ends. */
@@ -91,11 +119,16 @@ function readToken(text: string, start: number): PlaceholderToken {
     return malformed(text, start, balancedSpanEnd(text, start, lineEnd), '');
   }
   if (!closeOnLine) {
-    return malformed(text, start, lineEnd, trimHorizontal(text.slice(bodyStart, lineEnd)));
+    return malformed(
+      text,
+      start,
+      lineEnd,
+      trimHorizontal(unescapeBody(text.slice(bodyStart, lineEnd))),
+    );
   }
   return {
     raw: text.slice(start, close + 2),
-    path: trimHorizontal(text.slice(bodyStart, close)),
+    path: trimHorizontal(unescapeBody(text.slice(bodyStart, close))),
     startOffset: start,
     endOffset: close + 2,
     kind: 'placeholder',
@@ -109,9 +142,18 @@ function readToken(text: string, start: number): PlaceholderToken {
  * - A token is `{{`, optional spaces or tabs, a body, optional spaces or tabs
  *   and `}}`. `path` is the body without that horizontal whitespace; its
  *   format is checked by {@link validatePlaceholderTokens}, not here.
+ * - Inside the body, a backslash immediately before a CommonMark-escapable
+ *   ASCII punctuation character (`` !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~ ``) is
+ *   an escape: read left to right, it consumes both characters and
+ *   contributes the punctuation character, so `\\_` (an escaped backslash)
+ *   contributes `\_`. Any other backslash, including one with nothing after
+ *   it, stays in the path as itself. Escapes are resolved before horizontal
+ *   whitespace is trimmed and affect only path extraction: they never change
+ *   where a token starts, ends, or whether it is malformed.
  * - No token spans a line ending (LF, CR or CRLF).
  * - An opening `{{` preceded by an odd number of consecutive backslashes is
- *   literal; an even number (including zero) leaves it active.
+ *   literal; an even number (including zero) leaves it active. This
+ *   delimiter-parity rule is blind to escapes inside a body.
  * - Triple braces (`{{{`) and a nested `{{` before the closing `}}` make a
  *   `malformed` token over the balanced brace span, or up to the line end
  *   when the braces never balance. `{{{name}}}` is one malformed token.
@@ -120,8 +162,8 @@ function readToken(text: string, start: number): PlaceholderToken {
  * - Repeated and adjacent tokens are separate tokens.
  *
  * Offsets are zero-based, end-exclusive UTF-16 indices into `text`. A
- * malformed token's `path` is the trimmed text after an unclosed opener, or
- * empty for a nested or triple-brace span. Never throws.
+ * malformed token's `path` is the trimmed, escape-resolved text after an
+ * unclosed opener, or empty for a nested or triple-brace span. Never throws.
  *
  * @param text - One plain text run; Markdown structure is not interpreted.
  * @returns Tokens in source order.

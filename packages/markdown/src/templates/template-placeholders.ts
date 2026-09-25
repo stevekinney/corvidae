@@ -40,6 +40,7 @@ import type {
 } from './types.js';
 
 export { normalizePlaceholderDefinitions } from './placeholder-catalog.js';
+export { sortPlaceholderDiagnostics } from './placeholder-definition-data.js';
 export { buildPlaceholderCandidatesFromJsonSchema } from './placeholder-schema-catalog.js';
 export { parseMarkdownPlaceholderTokens } from './placeholder-source-scanner.js';
 export { PlaceholderTemplateError } from './placeholder-template-error.js';

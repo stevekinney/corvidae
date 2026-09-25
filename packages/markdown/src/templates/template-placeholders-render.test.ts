@@ -6,7 +6,12 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import type { PlaceholderResolutionOptions } from './types.js';
+import type {
+  JsonValue,
+  PlaceholderResolutionOptions,
+  PlaceholderUnresolvedMode,
+  PlaceholderValueMode,
+} from './types.js';
 
 /** Definitions that permit no placeholder paths, for templates without tokens. */
 const NO_PLACEHOLDERS: PlaceholderResolutionOptions = { definitions: { candidates: [] } };
@@ -15,6 +20,22 @@ const NO_PLACEHOLDERS: PlaceholderResolutionOptions = { definitions: { candidate
 function declare(...paths: string[]): PlaceholderResolutionOptions {
   return { definitions: { candidates: paths.map((path) => ({ path })) } };
 }
+
+/** One representative value per supported JSON kind, for the parity table below. */
+const JSON_KIND_FIXTURES: ReadonlyArray<{ readonly name: string; readonly value: JsonValue }> = [
+  { name: 'string', value: 'Alice' },
+  { name: 'string containing markdown syntax', value: '**important**' },
+  { name: 'number', value: 42 },
+  { name: 'negative zero', value: -0 },
+  { name: 'boolean true', value: true },
+  { name: 'boolean false', value: false },
+  { name: 'null', value: null },
+  { name: 'array', value: [1, 'x', [2, 3]] },
+  { name: 'nested object with unsorted keys', value: { b: 1, a: { z: 1, y: 2 } } },
+];
+
+const VALUE_MODES: readonly PlaceholderValueMode[] = ['text', 'markdown'];
+const UNRESOLVED_MODES: readonly PlaceholderUnresolvedMode[] = ['preserve', 'error'];
 
 describe('DEP-625: XSS prevention via renderTemplate', () => {
   // Tests use dynamic imports to avoid loading the heavy markdown rendering
@@ -312,6 +333,28 @@ describe('DEP-625: XSS prevention via renderTemplate', () => {
       expect(markdown).toContain('<strong>important</strong>');
     });
 
+    it('renders a safe link contributed by a value after opting into markdown', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate(
+        '{{value}}',
+        { value: '[docs](https://example.com)' },
+        { ...declare('value'), valueMode: 'markdown' },
+      );
+
+      expect(html).toBe('<p><a href="https://example.com">docs</a></p>');
+    });
+
+    it('renders block structure contributed by a value after opting into markdown', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate(
+        '{{value}}',
+        { value: '- one\n- two' },
+        { ...declare('value'), valueMode: 'markdown' },
+      );
+
+      expect(html).toBe('<ul>\n<li>one</li>\n<li>two</li>\n</ul>');
+    });
+
     it('throws PlaceholderTemplateError without rendering in strict mode', async () => {
       const { renderTemplate } = await import('./template-render.js');
       const { PlaceholderTemplateError } = await import('./template-placeholders.js');
@@ -319,6 +362,22 @@ describe('DEP-625: XSS prevention via renderTemplate', () => {
       expect(() =>
         renderTemplate('{{missing}}', {}, { ...declare('missing'), unresolved: 'error' }),
       ).toThrow(PlaceholderTemplateError);
+    });
+  });
+
+  describe('unresolved references stay readable', () => {
+    it('keeps a missing placeholder visible as literal text inside its paragraph', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate('Hi {{missing}}', {}, declare('missing'));
+
+      expect(html).toBe('<p>Hi {{missing}}</p>');
+    });
+
+    it('keeps an undeclared placeholder visible instead of silently dropping it', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate('{{other}}', {}, declare('missing'));
+
+      expect(html).toBe('<p>{{other}}</p>');
     });
   });
 
@@ -443,6 +502,191 @@ describe('DEP-625: XSS prevention via renderTemplate', () => {
       expect(html).toContain('1');
       expect(html).toContain('2');
       expect(html).toContain('3');
+    });
+  });
+
+  describe('math stays literal (renderTemplate is synchronous and math-free)', () => {
+    it('renders inline math source as literal text, not KaTeX markup', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate('$x$', {}, NO_PLACEHOLDERS);
+
+      expect(html).toContain('$x$');
+      expect(html).not.toContain('katex');
+    });
+
+    it('renders display math source as literal text, not KaTeX markup', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate('$$x$$', {}, NO_PLACEHOLDERS);
+
+      expect(html).toContain('$$x$$');
+      expect(html).not.toContain('katex');
+    });
+
+    it('renders math-shaped placeholder values as literal text by default', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate('{{value}}', { value: '$x$' }, declare('value'));
+
+      expect(html).toContain('$x$');
+      expect(html).not.toContain('katex');
+    });
+  });
+
+  describe('strict mode never returns partial HTML', () => {
+    it('throws before any HTML is produced when a token is unresolved', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const { PlaceholderTemplateError } = await import('./template-placeholders.js');
+
+      let html: string | undefined;
+      try {
+        html = renderTemplate(
+          '# Title\n\n{{missing}}',
+          {},
+          { ...declare('missing'), unresolved: 'error' },
+        );
+      } catch (error) {
+        expect(error).toBeInstanceOf(PlaceholderTemplateError);
+      }
+
+      expect(html).toBeUndefined();
+    });
+
+    it('rethrows the resolver error unchanged, with its ordered issues intact', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const { PlaceholderTemplateError } = await import('./template-placeholders.js');
+
+      try {
+        renderTemplate('{{missing}}', {}, { ...declare('missing'), unresolved: 'error' });
+        throw new Error('expected renderTemplate to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(PlaceholderTemplateError);
+        const templateError = error as InstanceType<typeof PlaceholderTemplateError>;
+        expect(templateError.issues).toHaveLength(1);
+        expect(templateError.issues[0]?.code).toBe('missing_value');
+      }
+    });
+  });
+
+  describe('parity: renderTemplate matches renderMarkdown(resolveTemplatePlaceholders(...).text)', () => {
+    // This proves renderTemplate has no second resolver, replacement regular
+    // expression or divergent formatter: it is exactly the shared resolver's
+    // text piped through the same sanitized renderMarkdown the unfilled
+    // preview path (COR-525) uses.
+    for (const fixture of JSON_KIND_FIXTURES) {
+      for (const valueMode of VALUE_MODES) {
+        for (const unresolved of UNRESOLVED_MODES) {
+          it(`matches for ${fixture.name} (valueMode: ${valueMode}, unresolved: ${unresolved})`, async () => {
+            const { renderTemplate } = await import('./template-render.js');
+            const { resolveTemplatePlaceholders } = await import('./template-placeholders.js');
+            const { renderMarkdown } = await import('../rendering/index.js');
+
+            const template = '{{value}}';
+            const values = { value: fixture.value };
+            const options: PlaceholderResolutionOptions = {
+              ...declare('value'),
+              valueMode,
+              unresolved,
+            };
+
+            const html = renderTemplate(template, values, options);
+            const { text } = resolveTemplatePlaceholders(template, values, options);
+            const expected = renderMarkdown(text).html;
+
+            expect(html).toBe(expected);
+          });
+        }
+      }
+    }
+  });
+
+  describe('attack fixtures at the renderTemplate boundary', () => {
+    it('keeps quotes as literal text without breaking out of surrounding markup', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate(
+        '{{value}}',
+        { value: 'He said "hello" and \'hi\'' },
+        declare('value'),
+      );
+
+      expect(html).toBe('<p>He said "hello" and \'hi\'</p>');
+    });
+
+    it('keeps backticks as literal text instead of creating a code span', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate('{{value}}', { value: '`rm -rf /`' }, declare('value'));
+
+      expect(html).toBe('<p>`rm -rf /`</p>');
+      expect(html).not.toContain('<code');
+    });
+
+    it('keeps table pipes inside their own cell instead of adding columns', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate(
+        '| Col |\n| --- |\n| {{value}} |\n',
+        { value: 'a|b|c' },
+        declare('value'),
+      );
+
+      expect(html).toContain('<td>a|b|c</td>');
+      expect(html.match(/<td>/g)).toHaveLength(1);
+    });
+
+    it('keeps a multiline value inside its enclosing block instead of splitting it', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate('{{value}}', { value: 'a\nb' }, declare('value'));
+
+      expect(html).toBe('<p>a\nb</p>');
+      expect(html.match(/<p>/g)).toHaveLength(1);
+    });
+
+    it('renders nested JSON as compact, key-sorted literal text', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate('{{value}}', { value: { b: 1, a: [2, 3] } }, declare('value'));
+
+      expect(html).toBe('<p>{"a":[2,3],"b":1}</p>');
+    });
+
+    it('removes a <script> tag contributed by a value in markdown mode', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate(
+        '{{value}}',
+        { value: '<script>alert(1)</script>' },
+        { ...declare('value'), valueMode: 'markdown' },
+      );
+
+      expect(html).toBe('');
+    });
+
+    it('neutralizes a javascript: link contributed by a value in markdown mode', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate(
+        '{{value}}',
+        { value: '[Click](javascript:alert(1))' },
+        { ...declare('value'), valueMode: 'markdown' },
+      );
+
+      expect(html).toBe('<p><a href="#">Click</a></p>');
+    });
+
+    it('neutralizes a javascript: image contributed by a value in markdown mode', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate(
+        '{{value}}',
+        { value: '![img](javascript:alert(1))' },
+        { ...declare('value'), valueMode: 'markdown' },
+      );
+
+      expect(html).toBe('<p><img src="" alt="img"></p>');
+    });
+
+    it('removes an event attribute contributed by a value in markdown mode', async () => {
+      const { renderTemplate } = await import('./template-render.js');
+      const html = renderTemplate(
+        '{{value}}',
+        { value: '<img src=x onerror=alert(1)>' },
+        { ...declare('value'), valueMode: 'markdown' },
+      );
+
+      expect(html).toBe('');
     });
   });
 });

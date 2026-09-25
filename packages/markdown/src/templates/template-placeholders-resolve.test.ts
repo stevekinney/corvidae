@@ -5,7 +5,13 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { PlaceholderTemplateError, resolveTemplatePlaceholders } from './template-placeholders.js';
+import { normalize } from '@lostgradient/markdown';
+
+import {
+  PlaceholderTemplateError,
+  resolveTemplatePlaceholders,
+  sortPlaceholderDiagnostics,
+} from './template-placeholders.js';
 import type {
   JsonObject,
   PlaceholderCandidate,
@@ -560,5 +566,97 @@ describe('resolveTemplatePlaceholders Markdown interaction caveats', () => {
     expect(
       resolveTemplatePlaceholders('{{n}}. item &{{x}};', { n: 42, x: 'lt' }, declare('n', 'x')),
     ).toEqual({ text: '42. item &lt;', issues: [] });
+  });
+});
+
+describe('resolveTemplatePlaceholders backslash-escaped paths', () => {
+  it('fills a body backslash-escaped path in text mode, replacing the full original range', () => {
+    // {{user\_name}} is what the Markdown serializer produces from
+    // {{user_name}} after one rich-mode edit or mode switch.
+    const template = 'Hello {{user\\_name}}!';
+
+    expect(
+      resolveTemplatePlaceholders(template, { user_name: 'Ada' }, declare('user_name')),
+    ).toEqual({ text: 'Hello Ada!', issues: [] });
+  });
+
+  it('fills a body backslash-escaped path in markdown mode, replacing the full original range', () => {
+    const template = 'Hello {{user\\_name}}!';
+
+    expect(
+      resolveTemplatePlaceholders(
+        template,
+        { user_name: 'Ada' },
+        { ...declare('user_name'), valueMode: 'markdown' },
+      ),
+    ).toEqual({ text: 'Hello Ada!', issues: [] });
+  });
+});
+
+describe('resolveTemplatePlaceholders round trip through normalize', () => {
+  it('fills {{user_name}} after normalize backslash-escapes it, exactly as for the raw template', () => {
+    const raw = resolveTemplatePlaceholders(
+      'Hello {{user_name}}',
+      { user_name: 'Ada' },
+      declare('user_name'),
+    );
+    const serialized = normalize('Hello {{user_name}}');
+    const normalized = resolveTemplatePlaceholders(
+      serialized,
+      { user_name: 'Ada' },
+      declare('user_name'),
+    );
+
+    expect(serialized).toBe('Hello {{user\\_name}}\n');
+    expect(normalized).toEqual({ text: 'Hello Ada\n', issues: [] });
+    expect(normalized.text.trim()).toBe(raw.text);
+  });
+
+  it('fills the escaped serialized form the rich editor produces for {{_meta_}}, which is stable under normalize', () => {
+    // A user types {{_meta_}} as unmarked text; the editor's serializer
+    // escapes it to {{\_meta\_}}, and normalize leaves that already-escaped
+    // form unchanged, so it keeps resolving across further round trips.
+    const serialized = '{{\\_meta\\_}}';
+
+    expect(normalize(serialized)).toBe(`${serialized}\n`);
+    expect(
+      resolveTemplatePlaceholders(normalize(serialized), { _meta_: 'x' }, declare('_meta_')),
+    ).toEqual({ text: 'x\n', issues: [] });
+  });
+
+  it('is not itself a round-trip case: raw unescaped {{_meta_}} is emphasis and stays unfillable', () => {
+    // Documented in the amendment: the underscores form emphasis, splitting
+    // the token, so this path can never be written as raw unescaped
+    // Markdown. Only the serialized escaped form above resolves.
+    const result = resolveTemplatePlaceholders('{{_meta_}}', { _meta_: 'x' }, declare('_meta_'));
+
+    expect(result.issues.map((issue) => issue.code)).toEqual(['malformed_token']);
+  });
+
+  it('fills {{user.first_name}} after normalize backslash-escapes its segment, exactly as for the raw template', () => {
+    const values = { user: { first_name: 'Ada' } };
+    const raw = resolveTemplatePlaceholders(
+      '{{user.first_name}}',
+      values,
+      declare('user.first_name'),
+    );
+    const serialized = normalize('{{user.first_name}}');
+    const normalized = resolveTemplatePlaceholders(serialized, values, declare('user.first_name'));
+
+    expect(serialized).toBe('{{user.first\\_name}}\n');
+    expect(normalized).toEqual({ text: 'Ada\n', issues: [] });
+    expect(normalized.text.trim()).toBe(raw.text);
+  });
+});
+
+describe('sortPlaceholderDiagnostics', () => {
+  it('is re-exported from template-placeholders.js for reuse outside the resolver', () => {
+    const template = '{{b}} {{a}}';
+    const bIssue = tokenIssue('unknown_placeholder', template, '{{b}}', 'b');
+    const aIssue = tokenIssue('unknown_placeholder', template, '{{a}}', 'a');
+
+    // {{b}} starts before {{a}} in source, so it sorts first by startOffset
+    // regardless of insertion order; the duplicate {{a}} entry collapses.
+    expect(sortPlaceholderDiagnostics([aIssue, bIssue, aIssue])).toEqual([bIssue, aIssue]);
   });
 });
