@@ -12,6 +12,7 @@ import { isBlockedSegment, isReservedSegment } from './placeholder-security.js';
 import {
   buildPlaceholderCandidatesFromJsonSchema,
   normalizePlaceholderDefinitions,
+  parseMarkdownPlaceholderTokens,
   parsePlaceholderTokens,
   resolveTemplatePlaceholders,
   validatePlaceholderTokens,
@@ -25,15 +26,16 @@ describe('validatePlaceholderTokens', () => {
     { path: 'input.x', types: ['string'] as const },
   ];
 
-  it('reports malformed_token issue for unclosed token', () => {
+  it('reports malformed_token without a path for an unclosed token', () => {
     const tokens = parsePlaceholderTokens('{{name');
-    const result = validatePlaceholderTokens(tokens, candidates);
 
-    expect(result.invalidTokens).toHaveLength(1);
-    expect(result.validTokens).toHaveLength(0);
-    expect(result.issues).toHaveLength(1);
-    expect(result.issues[0]!.reason).toBe('malformed_token');
-    expect(result.issues[0]!.token).toBe(tokens[0]!);
+    expect(validatePlaceholderTokens(tokens, candidates)).toEqual([
+      {
+        code: 'malformed_token',
+        message: expect.any(String),
+        location: { kind: 'token', startOffset: 0, endOffset: 6 },
+      },
+    ]);
   });
 
   const invalidPaths = [
@@ -41,73 +43,77 @@ describe('validatePlaceholderTokens', () => {
     ['double dot', 'a..b'],
     ['empty string', ''],
     ['leading dot', '.a'],
+    ['inner space', 'a b'],
   ] as const;
 
   it.each(invalidPaths)(
     'reports invalid_path_format for path with %s ("%s")',
     (_label, pathValue) => {
-      const token = {
-        raw: `{{${pathValue}}}`,
-        path: pathValue,
-        startOffset: 0,
-        endOffset: pathValue.length + 4,
-        closed: true,
-      };
+      const text = `{{${pathValue}}}`;
+      const issues = validatePlaceholderTokens(parsePlaceholderTokens(text), candidates);
 
-      const result = validatePlaceholderTokens([token], candidates);
-
-      expect(result.invalidTokens).toHaveLength(1);
-      expect(result.issues).toHaveLength(1);
-      expect(result.issues[0]!.reason).toBe('invalid_path_format');
+      expect(issues).toEqual([
+        {
+          code: 'invalid_path_format',
+          message: expect.any(String),
+          path: pathValue,
+          location: { kind: 'token', startOffset: 0, endOffset: text.length },
+        },
+      ]);
     },
   );
 
   it('reports unknown_placeholder for valid-format path not in candidate set', () => {
-    const tokens = parsePlaceholderTokens('{{unknown_field}}');
-    const result = validatePlaceholderTokens(tokens, candidates);
+    const issues = validatePlaceholderTokens(
+      parsePlaceholderTokens('{{unknown_field}}'),
+      candidates,
+    );
 
-    expect(result.invalidTokens).toHaveLength(1);
-    expect(result.validTokens).toHaveLength(0);
-    expect(result.issues).toHaveLength(1);
-    expect(result.issues[0]!.reason).toBe('unknown_placeholder');
+    expect(issues.map((issue) => [issue.code, issue.path])).toEqual([
+      ['unknown_placeholder', 'unknown_field'],
+    ]);
   });
 
-  it('places valid token in validTokens with zero issues for that token', () => {
-    const tokens = parsePlaceholderTokens('{{name}}');
-    const result = validatePlaceholderTokens(tokens, candidates);
-
-    expect(result.validTokens).toHaveLength(1);
-    expect(result.validTokens[0]!.path).toBe('name');
-    expect(result.invalidTokens).toHaveLength(0);
-    expect(result.issues).toHaveLength(0);
+  it('reports no issues for a declared token', () => {
+    expect(validatePlaceholderTokens(parsePlaceholderTokens('{{ name }}'), candidates)).toEqual([]);
   });
 
-  it('correctly partitions mixed valid and invalid tokens', () => {
-    const text = '{{name}} and {{}} and {{unknown}} and {{input.x';
-    const tokens = parsePlaceholderTokens(text);
-    const result = validatePlaceholderTokens(tokens, candidates);
+  it('orders mixed issues by source offset', () => {
+    const text = '{{name}} and {{}} and {{unknown}} and {{constructor}} and {{input.x';
+    const issues = validatePlaceholderTokens(parsePlaceholderTokens(text), candidates);
 
-    expect(result.validTokens).toHaveLength(1);
-    expect(result.validTokens[0]!.path).toBe('name');
-
-    expect(result.invalidTokens).toHaveLength(3);
-    expect(result.issues).toHaveLength(3);
-
-    const reasons = result.issues.map((issue) => issue.reason);
-    expect(reasons).toContain('invalid_path_format'); // {{}}
-    expect(reasons).toContain('unknown_placeholder'); // {{unknown}}
-    expect(reasons).toContain('malformed_token'); // {{input.x (unclosed)
+    expect(
+      issues.map((issue) => [
+        issue.code,
+        issue.location.kind === 'token' ? issue.location.startOffset : -1,
+      ]),
+    ).toEqual([
+      ['invalid_path_format', text.indexOf('{{}}')],
+      ['unknown_placeholder', text.indexOf('{{unknown}}')],
+      ['blocked_path', text.indexOf('{{constructor}}')],
+      ['malformed_token', text.indexOf('{{input.x')],
+    ]);
   });
 
-  it('references the original token with source offsets in each issue', () => {
+  it('carries the original token range in each diagnostic location', () => {
     const text = 'prefix {{bad..path}} suffix';
-    const tokens = parsePlaceholderTokens(text);
-    const result = validatePlaceholderTokens(tokens, candidates);
+    const [issue] = validatePlaceholderTokens(parsePlaceholderTokens(text), candidates);
 
-    expect(result.issues).toHaveLength(1);
-    expect(result.issues[0]!.token.startOffset).toBe(7);
-    expect(result.issues[0]!.token.endOffset).toBe(20);
-    expect(result.issues[0]!.token.raw).toBe('{{bad..path}}');
+    expect(issue?.location).toEqual({ kind: 'token', startOffset: 7, endOffset: 20 });
+    expect(text.slice(7, 20)).toBe('{{bad..path}}');
+  });
+
+  it('validates Markdown-scanned tokens with original offsets', () => {
+    const text = '`{{code}}` and **{{unknown}}**';
+    const issues = validatePlaceholderTokens(parseMarkdownPlaceholderTokens(text), candidates);
+
+    expect(issues.map((issue) => issue.location)).toEqual([
+      {
+        kind: 'token',
+        startOffset: text.indexOf('{{unknown}}'),
+        endOffset: text.indexOf('{{unknown}}') + '{{unknown}}'.length,
+      },
+    ]);
   });
 });
 
@@ -540,9 +546,12 @@ describe('reserved segment predicate', () => {
     const result = resolveTemplatePlaceholders(
       '{{user}}',
       { user: { 'first-name': 'Ada', 'dotted.key': 1 } },
-      candidates.map((candidate) => candidate.path),
+      { definitions: { candidates }, valueMode: 'markdown' },
     );
 
-    expect(result).toEqual({ text: '{"first-name":"Ada","dotted.key":1}', issues: [] });
+    expect(result).toEqual({
+      text: '&#123;&#34;dotted&#46;key&#34;&#58;1&#44;&#34;first&#45;name&#34;&#58;&#34;Ada&#34;&#125;',
+      issues: [],
+    });
   });
 });

@@ -9,6 +9,8 @@ import { describe, expect, it } from 'bun:test';
 import {
   buildPlaceholderCandidatesFromJsonSchema,
   normalizePlaceholderDefinitions,
+  parseMarkdownPlaceholderTokens,
+  parsePlaceholderTokens,
   resolveTemplatePlaceholders,
 } from './template-placeholders.js';
 
@@ -94,8 +96,9 @@ describe('determinism and purity', () => {
     const text = '{{a}} and {{b.c}}';
     const values = { a: 'x', b: { c: 'y' } };
 
-    const result1 = resolveTemplatePlaceholders(text, values);
-    const result2 = resolveTemplatePlaceholders(text, values);
+    const options = { definitions: { candidates: [{ path: 'a' }, { path: 'b.c' }] } };
+    const result1 = resolveTemplatePlaceholders(text, values, options);
+    const result2 = resolveTemplatePlaceholders(text, values, options);
 
     expect(result1).toEqual(result2);
   });
@@ -104,8 +107,24 @@ describe('determinism and purity', () => {
     const values = { a: 'hello', nested: { b: [1, 2, 3] } };
     const valuesCopy = JSON.parse(JSON.stringify(values));
 
-    resolveTemplatePlaceholders('{{a}} {{nested.b}} {{nested}}', values);
+    const definitions = {
+      candidates: [{ path: 'a' }, { path: 'nested' }, { path: 'nested.b' }],
+    };
+    const definitionsCopy = structuredClone(definitions);
 
+    const result = resolveTemplatePlaceholders('{{a}} {{nested.b}} {{nested}}', values, {
+      definitions,
+    });
+
+    expect(result.issues).toEqual([]);
     expect(values).toEqual(valuesCopy);
+    expect(definitions).toEqual(definitionsCopy);
+  });
+
+  it('parsers return identical output across calls', () => {
+    const text = '# {{a}}\n\n`{{b}}` {{c}} {{';
+
+    expect(parseMarkdownPlaceholderTokens(text)).toEqual(parseMarkdownPlaceholderTokens(text));
+    expect(parsePlaceholderTokens(text)).toEqual(parsePlaceholderTokens(text));
   });
 });
