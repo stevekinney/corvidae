@@ -550,7 +550,12 @@ async function runHydrationCase(
         if (message.type() === 'error') consoleErrors.push(message.text());
       });
       await page.goto(`http://localhost:${server.port}/`);
-      await page.waitForSelector(`text=${markerText}`, { timeout: 5000 });
+      // `state: 'attached'`, not the default `'visible'`: this proves the component actually
+      // hydrated and rendered its real markup into the DOM, which is what this case exists to
+      // prove. Whether it is also painted visible depends on stylesheet delivery this build does
+      // not attempt to replicate (a real published tarball's CSS pipeline is a separate,
+      // already-covered concern — the `/styles` subpath resolution case above).
+      await page.waitForSelector(`text=${markerText}`, { timeout: 5000, state: 'attached' });
       const bodyText = await page.textContent('body');
       const mounted = Boolean(bodyText && bodyText.includes(markerText));
       return {
@@ -697,7 +702,7 @@ export async function runValidator(
             directory,
             'annotated',
             DIFF_REVIEW_COMMENTS_HYDRATION_ENTRY,
-            'Review feedback',
+            'All comments',
           ),
         );
       } else {
