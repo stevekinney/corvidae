@@ -85,10 +85,10 @@ export interface PublishedPackage {
    * The emitted manifest's `version`, read back out rather than recomputed: `target-owned.json`'s
    * `insideFiles` policy never overlays `version`, so this is always whatever `composeManifest`
    * already resolved — the target's own preserved version, or `0.0.0`/`package-map.json`'s
-   * `lastPublishedVersion` on a first publish. COR-1286 needs it as a typed value so the shared
-   * verification step list (`verify-steps.ts`) can compute a package's packed tarball filename
-   * ahead of time with `packaging.ts`'s `tarballFilename`, the same way both `verifyTarget` and the
-   * rendered `mirror-verify.yaml` workflow do.
+   * `lastPublishedVersion` on a first publish. Reading it through `manifestVersion` is what refuses
+   * a published manifest that reaches the plan without one. The shared verification step list no
+   * longer names tarballs by it: the rendered `mirror-verify.yaml` also runs after a later version
+   * bump, so it reads the version at run time instead (COR-1198).
    */
   version: string;
   /**

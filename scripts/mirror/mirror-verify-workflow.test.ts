@@ -80,6 +80,32 @@ async function withFixture(
   }
 }
 
+describe('shellWord', () => {
+  /** What bash hands the command for each word, which is the only oracle that matters. */
+  function throughBash(words: readonly string[]): string[] {
+    const line = `printf '%s\\n' ${words.map(shellWord).join(' ')}`;
+    const result = Bun.spawnSync(['bash', '-c', line]);
+    expect(result.exitCode).toBe(0);
+    return result.stdout.toString().replace(/\n$/, '').split('\n');
+  }
+
+  test('a plain word is left exactly as it is', () => {
+    expect(shellWord('--ignore-scripts')).toBe('--ignore-scripts');
+    expect(shellWord('@arethetypeswrong/cli@0.18.5')).toBe('@arethetypeswrong/cli@0.18.5');
+  });
+
+  test('a GitHub expression stays unquoted, since GitHub replaces it before the shell runs', () => {
+    expect(shellWord('${{ runner.temp }}/mirror-verify/tarballs')).toBe(
+      '${{ runner.temp }}/mirror-verify/tarballs',
+    );
+  });
+
+  test('spaces, quotes, operators and the empty string reach the command intact', () => {
+    const words = ["it's", 'a b', 'x; rm -rf y', '$HOME', '"quoted"', ''];
+    expect(throughBash(words)).toEqual(words);
+  });
+});
+
 describe('readLockedVersion', () => {
   test('reads a package’s locked version out of a bun.lock text lockfile', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bun-lock-'));

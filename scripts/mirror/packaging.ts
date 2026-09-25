@@ -115,13 +115,11 @@ export interface PackOptions {
   destination: string;
   /**
    * When supplied, the pack's own filename is computed with {@link tarballFilename} and asserted
-   * against what `bun pm pack` actually printed, rather than trusted from stdout alone. COR-1286
-   * needs this: a shared step list that both `verifyTarget` and the rendered `mirror-verify.yaml`
-   * workflow read has nowhere to capture a runtime-parsed path in the rendered YAML, so the
-   * tarball's location there has to be a name computed ahead of time from `publicName` and
-   * `version`, the same way this option computes it. Optional and unused by every caller that
-   * predates COR-1286, so packing with only `packageDirectory`/`destination` behaves exactly as it
-   * always has.
+   * against what `bun pm pack` actually printed, rather than trusted from stdout alone. The shared
+   * step list's relocate step (`verify-steps.ts`'s `relocateTarballScript`) finds a packed tarball
+   * by exactly this `<stem>-<version>.tgz` convention, so this assertion is what notices if
+   * `bun pm pack` ever changes it. Optional, so packing with only `packageDirectory`/`destination`
+   * behaves exactly as it always has.
    */
   publicName?: string;
   version?: string;
@@ -193,7 +191,7 @@ export async function packWorkspace({
     const expected = join(destination, tarballFilename(publicName, version));
     if (expected !== tarball) {
       throw new PackagingError(
-        `bun pm pack wrote ${tarball} for ${publicName}@${version}, but tarballFilename computed ${expected}. The shared verification step list (COR-1286) depends on this name being predictable from the public name and version alone; a mismatch means \`bun pm pack\`'s naming convention changed underneath it.`,
+        `bun pm pack wrote ${tarball} for ${publicName}@${version}, but tarballFilename computed ${expected}. The shared verification step list's relocate step finds a packed tarball by this name; a mismatch means \`bun pm pack\`'s naming convention changed underneath it.`,
       );
     }
   }

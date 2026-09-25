@@ -310,9 +310,9 @@ export interface ForeignCommitOwnership {
   /**
    * What this sync's plan writes, prunes and retires. A path outside all three is one the sync
    * leaves exactly as it is, so a hand change to it cannot be clobbered and is the target's own
-   * (COR-1223's inversion, applied to the guard by COR-1198). Absent, only the enumeration counts.
+   * (COR-1223's inversion, applied to the guard by COR-1198).
    */
-  transform?: TransformReach | undefined;
+  transform: TransformReach;
 }
 
 /** The paths a sync can overwrite or delete: its emitted files and the prefixes it prunes or retires. */
@@ -348,15 +348,26 @@ async function isTargetOwnedCommit(
   sha: string,
   { policy, target, targetOwnedFiles, transform }: ForeignCommitOwnership,
 ): Promise<boolean> {
-  const status = await git(directory, 'show', '--format=', '--name-status', sha);
+  // `--no-renames`: a rename is judged as the deletion of its old path plus the addition of its
+  // new one, so moving an emitted file out of the sync's reach is still a deletion the sync would
+  // undo. `-z`: paths arrive unquoted, so one git would escape still matches the plan's keys.
+  const status = await git(
+    directory,
+    'show',
+    '--format=',
+    '--name-status',
+    '--no-renames',
+    '-z',
+    sha,
+  );
+  const fields = status.split('\0');
   const transformOwnedKeys = new Set(policy.insideFiles.manifestKeys.map((entry) => entry.key));
-  for (const line of status.split('\n').filter((entry) => entry.length > 0)) {
-    const fields = line.split('\t');
-    const kind = fields[0] ?? '';
-    const path = fields[fields.length - 1] ?? '';
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const kind = (fields[index] ?? '').trim();
+    const path = fields[index + 1] ?? '';
     if (findTargetOwner(policy, path, target) !== undefined) continue;
     if (targetOwnedFiles?.has(path)) continue;
-    if (transform !== undefined && !transformReaches(transform, path)) continue;
+    if (!transformReaches(transform, path)) continue;
     if (basename(path) !== 'package.json' || !kind.startsWith('M')) return false;
     const before = await git(directory, 'show', `${sha}^:${path}`);
     const after = await git(directory, 'show', `${sha}:${path}`);

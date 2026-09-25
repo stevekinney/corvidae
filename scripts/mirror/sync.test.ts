@@ -758,6 +758,48 @@ describe('the foreign-commit guard', () => {
 
         const result = await sync(harness, 'after-release-tooling');
         expect(['skip', 'pushed']).toContain(result.decision);
+        const synced = harness.runDirectory('after-release-tooling');
+        expect(await readFile(join(synced, 'scripts/release.ts'), 'utf8')).toBe(
+          'export const release = true;\n',
+        );
+        expect(await readFile(join(synced, 'bunfig.toml'), 'utf8')).toBe(
+          '[install]\nexact = true\n',
+        );
+        expect(await readFile(join(synced, 'packages/cryptography/README.md'), 'utf8')).toBe(
+          '# @lostgradient/cryptography\n',
+        );
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    'a hand commit moving an emitted file out of the sync’s reach is still foreign',
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const mover = harness.runDirectory('rename-out-of-reach');
+        await mkdir(mover, { recursive: true });
+        await git(mover, 'clone', '--quiet', harness.remote, mover);
+        // Git reports this as a rename whose new path the sync never touches; judged by that path
+        // alone it would pass, and the sync would then restore the old path beside it.
+        await git(mover, 'mv', 'packages/lifecycle/src/index.ts', 'packages/lifecycle/moved.ts');
+        await git(mover, 'commit', '--quiet', '--message', 'Move an emitted file out of src');
+        await git(mover, 'push', '--quiet', 'origin', 'HEAD:main');
+        const moverHead = await git(mover, 'rev-parse', 'HEAD');
+        const foreignSha = moverHead.trim();
+
+        let thrown: unknown;
+        try {
+          await sync(harness, 'after-rename-out-of-reach');
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(ForeignCommitError);
+        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+          foreignSha,
+        ]);
       });
     },
     endToEndTimeout,
