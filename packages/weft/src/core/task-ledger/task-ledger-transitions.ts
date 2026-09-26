@@ -408,6 +408,13 @@ export function requeueExpiredAttempt(
     retryCount: Math.max(current.retryCount, nextAttempt - 1),
     requeueCount: current.requeueCount + 1,
     lastRequeueReason: input.requeueReason,
+    // COR-226: a requeued attempt's heartbeat details survive into the
+    // queued record so the NEXT claim (`claimQueued`, via `pickAttemptFields`)
+    // inherits them — surfaced to the redispatched attempt's `task` frame as
+    // `lastHeartbeatDetails`.
+    ...(current.lastHeartbeatDetails !== undefined
+      ? { lastHeartbeatDetails: current.lastHeartbeatDetails }
+      : {}),
   };
   return { ok: true, nextRecord: queuedRecord };
 }
