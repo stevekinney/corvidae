@@ -462,10 +462,18 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       'src/core/realm/worker-realm.ts',
       {
         reason:
-          "The `messageerror` listener (COR-249) delegates to the exact same `#handleWorkerFailure` a real Worker `error` event already exercises end to end (worker-realm.test.ts's throwing-worker and timeout tests) — only its own one-line callback body is unreached, both as a LINE (324, shifted from 292 by COR-113's idempotent-termination hardening) and as its own FUNCTION. `messageerror` fires when structured-clone deserialization fails on the RECEIVING side; a `postMessage` call with a non-cloneable payload throws synchronously on the SENDING side instead (`DataCloneError`, confirmed directly against Bun 1.4.2), so there is no reliable, non-flaky way to manufacture the receiving-side failure from a test. A full-suite run's FNF/FNH (30/28) is two short, not one: the second is the same 'Bun's LCOV FNH undercounts a fully line-covered function' artifact documented for revision-realm-registry.ts's entry above and elsewhere in this registry, not reproduced when this file's own tests run in isolation (only the messageerror gap shows there).",
-        lines: new Set([324]),
+          "The `messageerror` listener (COR-249) delegates to the exact same `#handleWorkerFailure` a real Worker `error` event already exercises end to end (worker-realm.test.ts's throwing-worker and timeout tests) — its registration statement is unreached as a LINE (358, shifted from 324 by COR-246's `close`-event/`whenReclaimed` reclamation proof, itself shifted from 292 by COR-113's idempotent-termination hardening) and its callback is unreached as a FUNCTION. `messageerror` fires when structured-clone deserialization fails on the RECEIVING side; a `postMessage` call with a non-cloneable payload throws synchronously on the SENDING side instead (`DataCloneError`, confirmed directly against Bun 1.4.2), so there is no reliable, non-flaky way to manufacture the receiving-side failure from a test. A fresh full-suite lcov confirms the specific line the `error` listener's own textually-identical `this.#handleWorkerFailure();` call site sits on (the callback body, one line below the registration) reports nonzero hits despite `messageerror` itself never firing — the same 'Bun's LCOV attributes a hit count to the wrong source line for one of two textually-identical call-expression statements' class of artifact already documented for revision-realm-registry.ts's entry above and elsewhere in this registry — so the registration line, not the callback body line, is this allowance's stable target. A full-suite run's FNF/FNH is two short, not one: the second is the sibling 'Bun's LCOV FNH undercounts a fully line-covered function' artifact, not reproduced when this file's own tests run in isolation (only the messageerror gap shows there).",
+        lines: new Set([358]),
         functions: 2,
         requireUncoveredLines: true,
+      },
+    ],
+    [
+      'src/core/realm/child-process-realm.ts',
+      {
+        reason:
+          "A fresh full-suite coverage run reports 100% LINE coverage for this file (every DA: record has a nonzero hit count — child-process-realm.test.ts and realm-conformance.test.ts together exercise the ready handshake, digest mismatch, dispatch/release/failure, crash/terminate/discard, restart, the spawn-epoch stale-restart guard, and reclamation) but FNH is one short of FNF, with no `FNDA:0,` entry anywhere in the file's record. The same 'Bun's LCOV FNH undercounts a function whose every line is otherwise hit' artifact already documented for revision-realm-registry.ts's and revision-realm-execution-strategy.ts's entries above.",
+        functions: 1,
       },
     ],
     [
