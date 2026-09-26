@@ -2113,6 +2113,205 @@ describe('RemoteWorker', () => {
     await worker.disconnect();
   });
 
+  it('automatically sends attempt-fenced activityHeartbeat frames for a long-running attempt without the activity ever calling heartbeat() (COR-226)', async () => {
+    const messages: any[] = [];
+
+    server = createTestServer({
+      onMessage(ws, message) {
+        const parsed = JSON.parse(message);
+        messages.push(parsed);
+
+        if (parsed.type === 'register') {
+          // A short visibilityTimeout so the derived keepalive interval
+          // (a fraction of it, floored) fires within the test's timeout.
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-auto-heartbeat',
+              attemptToken: 'attempt-auto-heartbeat',
+              activityName: 'orders.longRunningActivity',
+              input: null,
+              visibilityTimeout: 3_000,
+            }),
+          );
+        }
+      },
+    });
+
+    let releaseActivity!: () => void;
+    const activityGate = new Promise<void>((resolve) => {
+      releaseActivity = resolve;
+    });
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workerId: 'auto-heartbeat-worker',
+      workflows: workflowsOf({
+        // Deliberately never calls context.heartbeat() itself — every
+        // activityHeartbeat observed below must come from the SDK's own
+        // automatic per-attempt keepalive, not an on-demand call.
+        longRunningActivity: async () => {
+          await activityGate;
+          return 'done';
+        },
+      }),
+    });
+
+    await worker.connect();
+
+    await waitForCondition(
+      () =>
+        messages.some(
+          (message) =>
+            message.type === 'activityHeartbeat' &&
+            message.operationId === 'op-auto-heartbeat' &&
+            message.attemptToken === 'attempt-auto-heartbeat',
+        ),
+      { timeoutMs: 2_000, label: 'automatic activityHeartbeat observed' },
+    );
+
+    const heartbeat = messages.find((message) => message.type === 'activityHeartbeat');
+    expect(heartbeat.workerId).toBe('auto-heartbeat-worker');
+    expect(heartbeat.details).toBeUndefined();
+
+    releaseActivity();
+    await waitForTaskResult(messages, 'long-running activity result');
+    await worker.disconnect();
+  });
+
+  it('sends the durably recorded cancellation reason on a cancelled taskResult instead of a generic literal (COR-223)', async () => {
+    const messages: any[] = [];
+    let taskStarted = false;
+    let receivedSignalReason: unknown;
+    let registeredSocket: any;
+
+    server = createTestServer({
+      onMessage(ws, message) {
+        const parsed = JSON.parse(message);
+        messages.push(parsed);
+
+        if (parsed.type === 'register') {
+          registeredSocket = ws;
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-cancel-reason',
+              attemptToken: 'attempt-cancel-reason',
+              activityName: 'orders.cancellableActivity',
+              input: null,
+            }),
+          );
+        }
+      },
+    });
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workerId: 'cancel-reason-worker',
+      workflows: workflowsOf({
+        cancellableActivity: async (_input: unknown, context) => {
+          taskStarted = true;
+          return new Promise((_resolve, reject) => {
+            context?.signal.addEventListener('abort', () => {
+              receivedSignalReason = context.signal.reason;
+              reject(new Error('Aborted'));
+            });
+          });
+        },
+      }),
+    });
+
+    await worker.connect();
+
+    await waitForCondition(() => taskStarted, {
+      timeoutMs: 1_000,
+      label: 'cancellable activity started',
+    });
+
+    registeredSocket.send(
+      JSON.stringify({
+        type: 'cancel',
+        operationId: 'op-cancel-reason',
+        attemptToken: 'attempt-cancel-reason',
+        reason: 'operator requested: customer refund',
+      }),
+    );
+
+    const taskResult = await waitForTaskResult(messages, 'cancelled task result with reason');
+    expect(taskResult.status).toBe('cancelled');
+    expect(taskResult.error).toBe('operator requested: customer refund');
+    expect(receivedSignalReason).toBe('operator requested: customer refund');
+
+    await worker.disconnect();
+  });
+
+  it("sends context.heartbeat(details) on demand and surfaces a prior attempt's lastHeartbeatDetails from the task frame (COR-226)", async () => {
+    const messages: any[] = [];
+    let receivedLastHeartbeatDetails: unknown;
+
+    server = createTestServer({
+      onMessage(ws, message) {
+        const parsed = JSON.parse(message);
+        messages.push(parsed);
+
+        if (parsed.type === 'register') {
+          // Simulates a redispatch: the server would normally derive this
+          // from the previous attempt's durably persisted
+          // lastHeartbeatDetails (see task-heartbeat.test.ts for the
+          // server-side ledger round trip); here the CLIENT's own wiring —
+          // reading it off the task frame into the activity context — is
+          // what is under test.
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-heartbeat-details',
+              attemptToken: 'attempt-heartbeat-details',
+              activityName: 'orders.detailsActivity',
+              input: null,
+              lastHeartbeatDetails: { progress: 0.5 },
+            }),
+          );
+        }
+      },
+    });
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workerId: 'heartbeat-details-worker',
+      workflows: workflowsOf({
+        detailsActivity: async (_input: unknown, context) => {
+          receivedLastHeartbeatDetails = context?.lastHeartbeatDetails;
+          context?.heartbeat({ progress: 0.75 });
+          return 'done';
+        },
+      }),
+    });
+
+    await worker.connect();
+
+    await waitForCondition(
+      () =>
+        messages.some(
+          (message) =>
+            message.type === 'activityHeartbeat' && message.operationId === 'op-heartbeat-details',
+        ),
+      { timeoutMs: 1_000, label: 'on-demand activityHeartbeat with details observed' },
+    );
+
+    const heartbeat = messages.find((message) => message.type === 'activityHeartbeat');
+    expect(heartbeat.details).toEqual({ progress: 0.75 });
+    expect(receivedLastHeartbeatDetails).toEqual({ progress: 0.5 });
+
+    await waitForTaskResult(messages, 'details activity result');
+    await worker.disconnect();
+  });
+
   it('activity function receives AbortSignal via context', async () => {
     let receivedSignal: AbortSignal | undefined;
     let receivedWorkflowExecutionToken: string | undefined;
