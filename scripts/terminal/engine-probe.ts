@@ -1,3 +1,4 @@
+import { chromium } from '@playwright/test';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -96,7 +97,12 @@ async function probeCandidate(
   const sourceExists =
     typeof packageJson.version === 'string' && (await Bun.file(packagePath).exists());
   provenance.push(`sourceExists=${sourceExists}`);
-  const base = installed.exitCode === 0 && sourceExists;
+  const browser =
+    installed.exitCode === 0 && sourceExists
+      ? await runBrowserProbe(candidate, directory)
+      : { passed: false, observation: 'install-or-source-failed' };
+  provenance.push(`browser=${browser.observation}`);
+  const base = installed.exitCode === 0 && sourceExists && browser.passed;
   const observations = [
     `package=${packageSpec}`,
     `integrity=${packageJson.integrity ?? 'lockfile-provenance'}`,
@@ -109,12 +115,66 @@ async function probeCandidate(
       passed: base,
       observations:
         id === 'split-utf8-and-control-sequences'
-          ? [...observations, `candidateByteSplitOracle=${splitOracle()}`]
-          : observations,
+          ? [...observations, `candidateByteSplitOracle=${splitOracle()}`, browser.observation]
+          : [...observations, browser.observation],
       versions: { bun: Bun.version, candidate: packageJson.version ?? 'unknown' },
       metrics: { measured: { value: base ? 1 : 0, unit: 'boolean' } },
     })),
   };
+}
+
+async function runBrowserProbe(
+  candidate: Candidate,
+  directory: string,
+): Promise<{ passed: boolean; observation: string }> {
+  const source =
+    candidate.name === 'ghostty-web'
+      ? `import { init, Terminal } from 'ghostty-web'; await init(); const terminal = new Terminal({ cols: 20, rows: 8 }); const write = (value) => new Promise((resolve) => terminal.write(value, resolve)); await write('A'); await write('\\u001b[31mR\\u001b[0m'); terminal.resize(24, 10); const text = terminal.buffer.active.getLine(0).translateToString(); const result = { text, columns: terminal.cols, rows: terminal.rows }; terminal.dispose(); globalThis.probeResult = result;`
+      : candidate.name === '@xterm/xterm'
+        ? `import { Terminal } from '@xterm/xterm'; const terminal = new Terminal({ cols: 20, rows: 8 }); terminal.open(document.body); const write = (value) => new Promise((resolve) => terminal.write(value, resolve)); await write('A'); await write('\\u001b[31mR\\u001b[0m'); terminal.resize(24, 10); const text = terminal.buffer.active.getLine(0).translateToString(); const result = { text, columns: terminal.cols, rows: terminal.rows }; terminal.dispose(); globalThis.probeResult = result;`
+        : `import { WTerm } from '@wterm/dom'; const terminal = new WTerm(document.body); await terminal.init(); terminal.write('A\\u001b[31mR\\u001b[0m'); const text = await terminal.readText(); const result = { text, columns: terminal.cols, rows: terminal.rows }; terminal.dispose(); globalThis.probeResult = result;`;
+  const entry = join(directory, 'probe.ts');
+  const outdir = join(directory, 'bundle');
+  await Bun.write(entry, source);
+  const bundle = await Bun.build({
+    entrypoints: [entry],
+    outdir,
+    target: 'browser',
+    format: 'esm',
+  });
+  if (!bundle.success)
+    return {
+      passed: false,
+      observation: `browser-build-failed:${bundle.logs.map((log) => log.message).join(';')}`,
+    };
+  const javascript = await Bun.file(join(outdir, 'probe.js')).text();
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<main></main>');
+    await page.addScriptTag({ content: javascript, type: 'module' });
+    await page.waitForFunction(() =>
+      Boolean((globalThis as unknown as { probeResult?: unknown }).probeResult),
+    );
+    const result = await page.evaluate(
+      () =>
+        (globalThis as unknown as { probeResult: { text: string; columns: number; rows: number } })
+          .probeResult,
+    );
+    const passed =
+      result.text.includes('A') &&
+      result.text.includes('R') &&
+      result.columns === 24 &&
+      result.rows === 10;
+    return {
+      passed,
+      observation: `browser-api text=${JSON.stringify(result.text)} size=${result.columns}x${result.rows}`,
+    };
+  } catch (error) {
+    return { passed: false, observation: `browser-api-error:${String(error)}` };
+  } finally {
+    await browser.close();
+  }
 }
 
 async function main(): Promise<void> {
