@@ -152,7 +152,9 @@ describe('terminal evidence schema', () => {
       const page = await browser.newPage();
       await page.setContent('<main>terminal probe fixture</main>');
       await page.evaluate(() => {
-        globalThis.probePhase = { phase: 'after-init' };
+        (globalThis as typeof globalThis & { probePhase?: unknown }).probePhase = {
+          phase: 'after-init',
+        };
       });
       const requests = ['/'];
       const diagnostics = ['console:info:fixture'];
