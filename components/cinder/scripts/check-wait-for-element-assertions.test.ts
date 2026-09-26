@@ -36,14 +36,55 @@ describe('waitFor element absence assertions', () => {
     'await waitFor(() => expect(queryMenu()).toBeTruthy());',
     'await waitFor(() => expect(queryMenu()).toBeDefined());',
     'await waitFor(() => expect(undefined).toBeUndefined());',
-    'await waitFor(() => expect(document.activeElement).toBe(button));',
     'await waitFor(() => expect(onClose).toHaveBeenCalled());',
     'flushSync();\nexpect(queryMenu()).toBeNull();',
     'await waitFor(check);',
   ])('accepts %s', (source) => {
     expect(inspect(source)).toEqual([]);
   });
+});
 
+describe('waitFor element identity assertions', () => {
+  test.each([
+    'await waitFor(() => expect(document.activeElement).toBe(button));',
+    'await waitFor(() => expect(button).toBe(document.activeElement));',
+    "await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox')));",
+    "await waitFor(() => expect(document.activeElement).toEqual(container.querySelector('input')));",
+    'await waitFor(() => expect(document.activeElement).toStrictEqual(button));',
+    'await waitFor(() => expect(menu?.parentElement).toBe(document.body));',
+    "await waitFor(() => expect(container.querySelector('.toast')).not.toBe(firstToast));",
+    "const first = container.querySelector('.toast');\nawait waitFor(() => expect(current).not.toBe(first));",
+    "const root = input.closest('.root');\nawait waitFor(() => {\n  const ancestor = input.closest('.compact');\n  expect(ancestor).not.toBe(root);\n});",
+    'let target: HTMLElement | null = null;\nawait waitFor(() => expect(target).toBe(other));',
+    "const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);\nawait waitFor(() => expect(current).toBe(button));",
+    "const items = container.querySelectorAll('li');\nawait waitFor(() => expect(items[0]).toBe(current));",
+    "function treeItem(label: string): HTMLElement {\n  return lookup(label);\n}\nawait waitFor(() => expect(current).toBe(treeItem('Beta')));",
+    'const renameInput = (): HTMLInputElement => lookup();\nawait waitFor(() => expect(current).toBe(renameInput()));',
+    'await waitFor(() => expect(current).toBe(lookup() as HTMLElement));',
+  ])('rejects %s', (source) => {
+    expect(inspect(source)).toHaveLength(1);
+  });
+
+  test.each([
+    'await waitFor(() => expect(document.activeElement === button).toBe(true));',
+    'await waitFor(() => expect(document.activeElement?.outerHTML).toBe(button.outerHTML));',
+    'let calls = 0;\nawait waitFor(() => expect(calls).toBe(1));',
+    "const writes: string[] = [];\nawait waitFor(() => expect(writes).toEqual(['payload']));",
+    "let clipboardValue = '';\nconst multiline = 'a\\nb';\nawait waitFor(() => expect(clipboardValue).toBe(multiline));",
+    "const idle = button.querySelector('svg path')?.getAttribute('d');\nawait waitFor(() => expect(current).not.toBe(idle));",
+    "await waitFor(() => expect(trigger.getAttribute('aria-label')).toBe(tooltipText));",
+    'await waitFor(() => expect(region()?.textContent).toBe(message));',
+    'await waitFor(() => expect(unresolved).toBe(alsoUnresolved));',
+    "await waitFor(() => expect(button.getAttribute('aria-expanded')).toBe('true'));",
+    'await waitFor(() => expect(errors[0]?.error).toBe(loadError));',
+    'function label(): string {\n  return "x";\n}\nawait waitFor(() => expect(current).toBe(label()));',
+    'flushSync();\nexpect(document.activeElement).toBe(button);',
+  ])('accepts %s', (source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
+
+describe('violation reporting', () => {
   test('reports the offending matcher call and its line', () => {
     const parsed = ts.createSourceFile(
       'fixture.test.ts',
