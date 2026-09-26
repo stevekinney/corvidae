@@ -85,7 +85,10 @@ async function probeCandidate(
   const packageSpec = `${candidate.name}@${candidate.version}`;
   const installed = await command(['bun', 'add', '--exact', packageSpec], directory);
   const packagePath = join(directory, 'node_modules', ...candidate.name.split('/'), 'package.json');
+  const lockfileBytes = await Bun.file(join(directory, 'bun.lock')).bytes();
+  const lockfileHash = new Bun.CryptoHasher('sha256').update(lockfileBytes).digest('hex');
   const provenance: string[] = [packageSpec, `installExit=${installed.exitCode}`];
+  provenance.push(`lockfileSha256=${lockfileHash}`);
   let packageJson: { version?: string; integrity?: string; exports?: unknown } = {};
   try {
     packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as typeof packageJson;
@@ -97,6 +100,13 @@ async function probeCandidate(
   const sourceExists =
     typeof packageJson.version === 'string' && (await Bun.file(packagePath).exists());
   provenance.push(`sourceExists=${sourceExists}`);
+  const assetFiles = await Array.fromAsync(
+    new Bun.Glob('**/*.{wasm,css}').scan({
+      cwd: join(directory, 'node_modules', ...candidate.name.split('/')),
+      onlyFiles: true,
+    }),
+  );
+  provenance.push(`assets=${assetFiles.join(',') || 'none'}`);
   const browser =
     installed.exitCode === 0 && sourceExists
       ? await runBrowserProbe(candidate, directory)
