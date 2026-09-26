@@ -168,6 +168,7 @@
       {...rest}
       {id}
       {rows}
+      {autofocus}
       {wrap}
       value={draftValue}
       spellcheck="false"
