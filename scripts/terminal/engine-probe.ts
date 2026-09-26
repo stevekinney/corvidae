@@ -89,7 +89,7 @@ async function sourceSha(): Promise<string> {
 function browserSource(candidate: Candidate): string {
   if (candidate.name === '@wterm/dom')
     return `import { WTerm } from '@wterm/dom'; import '@wterm/dom/css';
-globalThis.probePhase = 'module-loaded'; const host = document.querySelector('#terminal'); const events = []; const terminal = new WTerm(host, { cols: 10, rows: 4, autoResize: false, onData: (data) => events.push(data) }); globalThis.probePhase = 'before-init'; await terminal.init(); globalThis.probePhase = 'after-init'; const writes = []; const write = (data) => { const result = terminal.write(data); writes.push(result === undefined); }; write('A'); write(new Uint8Array([0xCE])); write(new Uint8Array([0xB1])); write('\\x1b[3'); write('1mR'); write('\\x1b[0m'); write('\\x1b[6n'); const text = host.textContent ?? ''; terminal.resize(20, 8); const readText = await terminal.readText(); terminal.search('A'); await new Promise((resolve) => setTimeout(resolve, 50)); const search = terminal.getSearchState().count > 0; const resized = terminal.cols === 20 && terminal.rows === 8; const cursorX = terminal.cursorX; const cursorY = terminal.cursorY; const attributes = terminal.getCell?.(0, 0) ?? null; terminal.destroy(); globalThis.probeResult = { writes, text: readText, readText, search, resized, events, replyCount: events.length, replyPayload: events[0] ?? null, cursorX, cursorY, attributes, disposed: host.textContent === '' };`;
+globalThis.probePhase = 'module-loaded'; const host = document.querySelector('#terminal'); const events = []; const terminal = new WTerm(host, { cols: 10, rows: 4, autoResize: false, onData: (data) => events.push(data) }); globalThis.probePhase = 'before-init'; await terminal.init(); globalThis.probePhase = 'after-init'; const writes = []; const write = (data) => { const result = terminal.write(data); writes.push(result === undefined); }; write('A'); write(new Uint8Array([0xCE])); write(new Uint8Array([0xB1])); write('\\x1b[3'); write('1mR'); write('\\x1b[0m'); write('\\x1b[6n'); const text = host.textContent ?? ''; terminal.resize(20, 8); const readText = await terminal.readText(); terminal.search('A'); await new Promise((resolve) => setTimeout(resolve, 50)); const search = terminal.getSearchState().count > 0; const resized = terminal.cols === 20 && terminal.rows === 8; const cursorX = terminal.cursorX; const cursorY = terminal.cursorY; const attributes = terminal.getCell?.(0, 0) ?? null; const replyCount = events.length; const replyPayload = events[0] ?? null; const suppression = replyCount === 1 && replyPayload === '\\x1b[1;4R'; terminal.destroy(); globalThis.probeResult = { writes, text: readText, readText, search, resized, events, replyCount, replyPayload, suppression, cursorX, cursorY, attributes, disposed: host.textContent === '' };`;
   if (candidate.name === 'ghostty-web')
     return `import { Ghostty, Terminal } from 'ghostty-web';
 globalThis.probePhase = 'module-loaded'; globalThis.probePhase = 'before-init'; const ghostty = await Ghostty.load('/ghostty-vt.wasm'); globalThis.probePhase = 'after-init'; const host = document.querySelector('#terminal'); const terminal = new Terminal({ cols: 10, rows: 4, ghostty }); terminal.open(host); globalThis.probePhase = 'opened'; const writes = []; const write = (data) => new Promise((resolve) => { const result = terminal.write(data, () => { writes.push(result === undefined); resolve(); }); }); await write(new Uint8Array([0x41])); await write(new Uint8Array([0xCE])); await write(new Uint8Array([0xB1])); await write(new Uint8Array([0x1b,0x5b,0x33])); await write(new Uint8Array([0x31,0x6d,0x52,0x1b,0x5b,0x30,0x6d])); let replies = 0; terminal.onData(() => { replies += 1; }); await write('\\x1b[6n'); const line = terminal.buffer.active.getLine(0); const cell = line?.getCell(1); const text = line?.translateToString(false) ?? ''; const softWrapMetadata = typeof line?.isWrapped === 'boolean' && line.isWrapped; terminal.resize(20, 8); const resized = terminal.cols === 20 && terminal.rows === 8; terminal.dispose(); globalThis.probeResult = { writes, text, cursorX: terminal.buffer.active.cursorX, cursorY: terminal.buffer.active.cursorY, red: cell?.getFgColor?.() ?? null, replies, suppression: replies === 1, softWrapMetadata, before: text, resized, disposed: host.querySelector('.xterm') === null };`;
@@ -318,7 +318,9 @@ async function probeCandidate(
   const installed = await command(['bun', 'add', '--exact', spec], directory);
   const packageDirectory = join(directory, 'node_modules', ...candidate.name.split('/'));
   const packagePath = join(packageDirectory, 'package.json');
+  const lockfilePath = join(directory, 'bun.lock');
   const packageExists = await Bun.file(packagePath).exists();
+  const lockfileExists = await Bun.file(lockfilePath).exists();
   const packageJson: Record<string, unknown> = packageExists
     ? JSON.parse(await readFile(packagePath, 'utf8'))
     : {};
@@ -334,7 +336,7 @@ async function probeCandidate(
   const provenance = {
     requested: spec,
     resolvedVersion,
-    lockfileSha256: sha256(await Bun.file(join(directory, 'bun.lock')).bytes()),
+    lockfileSha256: lockfileExists ? sha256(await Bun.file(lockfilePath).bytes()) : '',
     packageSha256: packageExists ? sha256(await Bun.file(packagePath).bytes()) : '',
     artifacts,
     exports: packageJson['exports'] ?? null,
@@ -351,6 +353,7 @@ async function probeCandidate(
     installed.exitCode === 0 &&
     resolvedVersion === candidate.version &&
     files.length > 0 &&
+    lockfileExists &&
     provenance.lockfileSha256.length === 64;
   const browser: BrowserResult = provenancePass
     ? await runBrowserProbe(candidate, directory)

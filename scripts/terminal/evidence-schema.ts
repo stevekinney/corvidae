@@ -261,7 +261,8 @@ export function validateEvidence(
           typeof metric['value'] !== 'number' ||
           !Number.isFinite(metric['value']) ||
           typeof metric['unit'] !== 'string' ||
-          metric['unit'].trim().length === 0,
+          metric['unit'].trim().length === 0 ||
+          !Object.keys(metric).every((key) => key === 'value' || key === 'unit'),
       )
     )
       errors.push('metric value or unit');
