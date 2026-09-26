@@ -27,7 +27,10 @@ import {
   currentAttemptFromLedgerRecord,
   type TaskResultAuthorizationFailure,
 } from './task-result-authorization.ts';
-import { taskResultPayloadSizeError } from './task-result-resolution.ts';
+import {
+  activityHeartbeatDetailsPayloadSizeError,
+  taskResultPayloadSizeError,
+} from './task-result-resolution.ts';
 import { WORKER_STREAM_RE } from './websocket-upgrade.ts';
 import {
   rejectProtocolMessage,
@@ -425,6 +428,23 @@ function onActivityHeartbeatMessage(
     });
     return;
   }
+
+  // COR-226: validate `details` at the protocol boundary, same bound and
+  // error shape a `taskResult` value already gets — an oversized heartbeat
+  // payload is rejected outright rather than silently truncated or ever
+  // durably persisted.
+  const detailsError = activityHeartbeatDetailsPayloadSizeError(
+    message.details,
+    context.payloadSizeMaxBytes,
+  );
+  if (detailsError !== null) {
+    sendWorkerProtocolMessage(ws, {
+      type: 'protocolError',
+      code: 'invalid_message',
+      message: detailsError.message,
+    });
+    return;
+  }
   // Authorization succeeding against an InFlightTask-derived CurrentAttempt
   // (see `currentAttemptFromInFlightTask`) implies `inFlightTask` is defined
   // — the `undefined` case maps to `'stale'`, which
@@ -465,6 +485,7 @@ function onActivityHeartbeatMessage(
             attemptToken,
             workerSessionId: workerId ?? '',
             leaseDurationMilliseconds: task.visibilityTimeout,
+            ...(message.details !== undefined ? { details: message.details } : {}),
           },
           now,
         ),

@@ -173,6 +173,14 @@ export type RenewAttemptLeaseInput = Readonly<{
   attemptToken: string;
   workerSessionId: string;
   leaseDurationMilliseconds: number;
+  /**
+   * Heartbeat details this renewal carries (COR-226), or omitted when the
+   * heartbeat carried none. Present-and-`undefined` is not a distinct wire
+   * state — this field is only ever supplied at all when the worker's
+   * heartbeat included a `details` value — so omitting it here always leaves
+   * `current.lastHeartbeatDetails` unchanged rather than clearing it.
+   */
+  details?: JSONValue;
 }>;
 
 /**
@@ -235,6 +243,7 @@ export function renewAttemptLease(
     generation: current.generation + 1,
     leaseDeadline: nextLeaseDeadline,
     lastHeartbeatAt: now,
+    ...(input.details !== undefined ? { lastHeartbeatDetails: input.details } : {}),
   };
   return { ok: true, nextRecord };
 }

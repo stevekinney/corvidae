@@ -584,8 +584,10 @@ describe('Long-poll activity heartbeat — same shared seam as WebSocket (COR-23
     });
     const response = await handleTaskHeartbeatRequest(context, options, request, url);
     expect(response?.status).toBe(200);
-    const body = (await response?.json()) as { ok: boolean; cancelled: boolean };
-    expect(body).toEqual({ ok: true, cancelled: true });
+    const body = (await response?.json()) as { ok: boolean; cancelled: boolean; reason?: string };
+    // COR-223: the cancellation response also echoes the durably recorded
+    // reason, so LongPollWorker can surface it instead of a generic literal.
+    expect(body).toEqual({ ok: true, cancelled: true, reason: 'operator requested' });
 
     // Cancelling is never renewed by a heartbeat, for either transport.
     const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-lp-1')));
