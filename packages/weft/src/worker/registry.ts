@@ -1,4 +1,6 @@
+/* oxlint-disable max-lines -- Worker lifecycle, leases, and routing share one cohesive registry state machine. */
 // Server-side worker tracking and pluggable routing policies.
+import { workerDeploymentRolloutBucket } from './deployment-routing.ts';
 import {
   DeploymentConsistencyGuard,
   type DeploymentConsistencyResult,
@@ -97,9 +99,13 @@ export class WorkerRegistry {
   #inFlightTasks: Map<string, InFlightTask>;
   #deploymentDrainStates: Map<string, DrainRecord>;
   #policy: RoutingPolicy;
+  /** Keyed by `${queue}::${activity}` — independent cursors per (queue, activity) pair. */
   #roundRobinCursor: Map<string, number>;
+  /** Per-worker, per-key in-flight counts for fair-share routing. */
   #fairShareCounts: FairShareCounters;
+  /** One `(deploymentName, buildId)` pair never registers two artifact digests. */
   #deploymentConsistency: DeploymentConsistencyGuard;
+  /** Bounded, in-memory log of declined `register` attempts (WFT-29). */
   #rejections: RegistrationRejectionEntry[];
 
   constructor(options?: WorkerRegistryOptions) {
@@ -218,6 +224,7 @@ export class WorkerRegistry {
     };
   }
 
+  /** Unregister a worker. Purges fair-share counters and in-flight task entries for this worker. */
   unregister(workerId: string): WorkerInfo | undefined {
     const info = this.#workers.get(workerId);
     if (info === undefined) return undefined;
@@ -234,6 +241,7 @@ export class WorkerRegistry {
     return info;
   }
 
+  /** Record a heartbeat from a worker. */
   heartbeat(workerId: string): void {
     const info = this.#workers.get(workerId);
     if (info !== undefined) {
@@ -241,6 +249,7 @@ export class WorkerRegistry {
     }
   }
 
+  /** Increment in-flight count for a worker. */
   taskAssigned(workerId: string): void {
     const info = this.#workers.get(workerId);
     if (info !== undefined) {
@@ -273,12 +282,22 @@ export class WorkerRegistry {
       fairShareKey,
       excludeWorkerIds,
       executionRequirement,
+      deploymentRouting,
+      workflowId,
     } = options;
     const eligible: WorkerInfo[] = [];
     let stickyCandidate: WorkerInfo | undefined;
     for (const worker of this.#workers.values()) {
       if (
-        !this.#workerIsEligible(worker, activityName, queue, excludeWorkerIds, executionRequirement)
+        !this.#workerIsEligible(
+          worker,
+          activityName,
+          queue,
+          excludeWorkerIds,
+          executionRequirement,
+          deploymentRouting,
+          workflowId,
+        )
       )
         continue;
       if (stickyId !== undefined && worker.id === stickyId) stickyCandidate = worker;
@@ -295,6 +314,8 @@ export class WorkerRegistry {
     queue: string | undefined,
     excludeWorkerIds: ReadonlySet<string> | undefined,
     executionRequirement: RoutingOptions['executionRequirement'],
+    deploymentRouting: RoutingOptions['deploymentRouting'],
+    workflowId: string | undefined,
   ): boolean {
     if (excludeWorkerIds?.has(worker.id)) return false;
     if (!matchesWorkerCapabilities(worker, activityName, queue)) return false;
@@ -304,6 +325,19 @@ export class WorkerRegistry {
       !workerMatchesRequirement(worker, executionRequirement, activityName)
     )
       return false;
+    if (deploymentRouting !== undefined) {
+      const bucket = workerDeploymentRolloutBucket(
+        deploymentRouting.deploymentName,
+        workflowId ?? activityName,
+        deploymentRouting.generation,
+      );
+      const selectedBuild =
+        deploymentRouting.rampingBuildId !== undefined && bucket < deploymentRouting.rampBasisPoints
+          ? deploymentRouting.rampingBuildId
+          : deploymentRouting.currentBuildId;
+      if (worker.manifest.deployment.name !== deploymentRouting.deploymentName) return false;
+      if (worker.manifest.deployment.buildId !== selectedBuild) return false;
+    }
     return true;
   }
 

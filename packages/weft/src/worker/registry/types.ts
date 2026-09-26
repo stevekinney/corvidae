@@ -156,6 +156,17 @@ export interface RoutingOptions {
    * land on a dead socket while peers are available.
    */
   excludeWorkerIds?: ReadonlySet<string>;
+  /** Durable routing generation selected before worker policy is applied. */
+  deploymentRouting?: {
+    deploymentName: string;
+    currentBuildId: string;
+    rampingBuildId?: string;
+    rampBasisPoints: number;
+    generation: number;
+    updatedAt: number;
+  };
+  /** Stable workflow/run identifier used for deterministic rollout bucketing. */
+  workflowId?: string;
   /** Exact deployment/build/revision constraints captured by the task lease. */
   executionRequirement?: WorkerExecutionRequirement;
 }

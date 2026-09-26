@@ -90,6 +90,22 @@ describe('revision-aware worker deployment routing', () => {
       candidates: [candidate('a', 'build-a'), candidate('b', 'build-b')],
     });
     expect(noRamp.buildId).toBe('build-a');
+    const oneBasisPoint = selectWorkerDeployment({
+      deploymentName: 'billing',
+      workflowId: 'same',
+      activityName: 'charge',
+      routing: routing('build-b', 1),
+      candidates: [candidate('a', 'build-a'), candidate('b', 'build-b')],
+    });
+    expect(oneBasisPoint.buildId).toBe('build-a');
+    const almostComplete = selectWorkerDeployment({
+      deploymentName: 'billing',
+      workflowId: 'same',
+      activityName: 'charge',
+      routing: routing('build-b', 9_999),
+      candidates: [candidate('a', 'build-a'), candidate('b', 'build-b')],
+    });
+    expect(almostComplete.buildId).toBe('build-b');
     const incompatible = selectWorkerDeployment({
       deploymentName: 'billing',
       workflowId: 'same',
@@ -99,13 +115,33 @@ describe('revision-aware worker deployment routing', () => {
     });
     expect(incompatible).toMatchObject({ candidate: undefined, reason: 'revision-incompatible' });
   });
+  it('protects references while draining and removing a version', async () => {
+    const catalog = new WorkerDeploymentCatalog(new MemoryStorage());
+    await catalog.registerVersion({
+      deploymentName: 'billing',
+      buildId: 'build-a',
+      artifactDigest: 'sha256:build-a',
+      manifestDigest: 'sha256:m',
+      manifest: manifest('build-a'),
+      state: 'ready',
+      firstSeenAt: 1,
+    });
+    await catalog.reference('billing', 'build-a', 1);
+    const retained = await catalog.markDraining('billing', 'build-a');
+    expect(retained?.state).toBe('ready');
+    expect(await catalog.removeVersion('billing', 'build-a')).toBe(false);
+    await catalog.reference('billing', 'build-a', -1);
+    const draining = await catalog.markDraining('billing', 'build-a');
+    expect(draining?.state).toBe('draining');
+    expect(await catalog.removeVersion('billing', 'build-a')).toBe(true);
+  });
   it('recovers immutable versions and routing pointers from durable storage', async () => {
     const storage = new MemoryStorage();
     const catalog = new WorkerDeploymentCatalog(storage);
     await catalog.registerVersion({
       deploymentName: 'billing',
       buildId: 'build-a',
-      artifactDigest: 'sha256:a',
+      artifactDigest: 'sha256:build-a',
       manifestDigest: 'sha256:m',
       manifest: manifest('build-a'),
       state: 'ready',
