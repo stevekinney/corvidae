@@ -41,6 +41,20 @@ export const remoteGreetingWorkflow = workflow({ name: 'remoteGreeting' })
   });
 
 /**
+ * `RemoteWorker`'s activity table is untyped at the input boundary
+ * (`(input: unknown) => Promise<unknown>`) — the wire carries JSON, not a
+ * statically known shape — so the worker-side implementation validates its
+ * own input with a real type guard rather than casting it.
+ */
+function isGreetingInput(value: unknown): value is { name: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { name?: unknown }).name === 'string'
+  );
+}
+
+/**
  * Run the remote-greeting workflow end to end: a real engine (remote-mode
  * activity execution), a real `serve()` server, and a real `RemoteWorker`
  * that supplies the actual implementation. Everything is disposed before
@@ -61,8 +75,12 @@ export async function runRemoteWorkerExample(name = 'Ada'): Promise<RemoteWorker
       remoteGreeting: {
         name: 'remoteGreeting',
         activities: {
-          formatGreetingRemotely: async (input: unknown) =>
-            `Hello, ${(input as { name: string }).name}! (via ${workerId})`,
+          async formatGreetingRemotely(input: unknown) {
+            if (!isGreetingInput(input)) {
+              throw new Error('expected { name: string }');
+            }
+            return `Hello, ${input.name}! (via ${workerId})`;
+          },
         },
       },
     },
