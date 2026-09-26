@@ -39,6 +39,16 @@ export interface CommandOptions {
   env?: Record<string, string | undefined> | undefined;
 }
 
+/** Target tools receive build settings, never the mirror App's signing credential. */
+export function childProcessEnvironment(
+  environment: Record<string, string | undefined> = Bun.env,
+): Record<string, string | undefined> {
+  const childEnvironment = { ...environment };
+  delete childEnvironment['MIRROR_APP_PRIVATE_KEY'];
+  delete childEnvironment['MIRROR_APP_PRIVATE_KEY_FILE'];
+  return childEnvironment;
+}
+
 /** Run one command to completion, capturing both streams and its exit code. */
 export async function runCommand(
   command: readonly string[],
@@ -48,7 +58,7 @@ export async function runCommand(
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',
-    ...(env ? { env } : {}),
+    env: childProcessEnvironment(env),
   });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(spawned.stdout).text(),

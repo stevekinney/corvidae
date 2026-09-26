@@ -175,9 +175,12 @@ async function runReport(argv: readonly string[]): Promise<number> {
  * mode creates and deletes nothing, so nothing it does should ever need one. Reaching this
  * function is itself a defect in this module, not a missing credential to source.
  */
-function installationOnlyApi(): GitHubApi {
+async function installationOnlyApi(): Promise<GitHubApi> {
+  const token = await installationTokenFromApp()();
+  delete Bun.env['MIRROR_APP_PRIVATE_KEY'];
+  delete Bun.env['MIRROR_APP_PRIVATE_KEY_FILE'];
   return createGitHubApi({
-    installationToken: installationTokenFromApp(),
+    installationToken: async () => token,
     userToken: async () => {
       throw new MirrorSyncActionError(
         'The pull-request dispatch never creates or deletes a repository, so it carries no user credential. Something asked for one.',
@@ -198,7 +201,7 @@ async function runDispatch(argv: readonly string[]): Promise<number> {
     corvidaeCommit = head.trim();
   }
   const branch = pullRequestBranchFor(corvidaeCommit);
-  const api = installationOnlyApi();
+  const api = await installationOnlyApi();
   const fullName = targetRepositoryFullName(target);
 
   const result: SyncResult = await runSync({

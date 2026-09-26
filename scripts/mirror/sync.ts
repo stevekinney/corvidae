@@ -15,6 +15,7 @@ import {
   assertSucceeded,
   assertTarballsPublishable,
   checkReadmePublicity,
+  childProcessEnvironment,
   defaultToolsRoot,
   PackagingError,
   runCommand,
@@ -138,7 +139,7 @@ export function gitEnvironment(
   const nextIndex = Number.isInteger(inheritedCount) && inheritedCount > 0 ? inheritedCount : 0;
 
   const mirrorEnvironment: Record<string, string | undefined> = {
-    ...environment,
+    ...childProcessEnvironment(environment),
     GIT_AUTHOR_NAME: mirrorIdentity.name,
     GIT_AUTHOR_EMAIL: mirrorIdentity.email,
     GIT_COMMITTER_NAME: mirrorIdentity.name,

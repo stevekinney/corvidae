@@ -8,6 +8,7 @@ import {
   type WorkspaceLayout,
 } from './layout-map.ts';
 import { dispositionFor, type PackageMap, type WorkspaceDisposition } from './package-map.ts';
+import { childProcessEnvironment } from './packaging.ts';
 import { assertEdgeNotStale, computeSourceDigest } from './source-digest.ts';
 import type { EmittedWorkspace } from './source.ts';
 import {
@@ -995,6 +996,7 @@ export async function stageTarget(
 export async function runInstall(directory: string, extra: readonly string[] = []): Promise<void> {
   const install = Bun.spawn(['bun', 'install', '--ignore-scripts', ...extra], {
     cwd: directory,
+    env: childProcessEnvironment(),
     stdout: 'pipe',
     stderr: 'pipe',
   });

@@ -26,6 +26,18 @@ import {
 } from './sync.ts';
 
 describe('gitEnvironment', () => {
+  test('excludes App signing credentials while preserving push authentication', () => {
+    const environment = gitEnvironment({
+      MIRROR_APP_PRIVATE_KEY: 'test-key',
+      MIRROR_APP_PRIVATE_KEY_FILE: '/test/key.pem',
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'http.extraHeader',
+      GIT_CONFIG_VALUE_0: 'Authorization: Bearer test-token',
+    });
+    expect(environment).not.toHaveProperty('MIRROR_APP_PRIVATE_KEY');
+    expect(environment).not.toHaveProperty('MIRROR_APP_PRIVATE_KEY_FILE');
+    expect(environment['GIT_CONFIG_VALUE_0']).toBe('Authorization: Bearer test-token');
+  });
   test('disables hooks the target may have armed in the clone', () => {
     // husky writes `core.hooksPath` into the clone's LOCAL config, which `GIT_CONFIG_GLOBAL` and
     // `GIT_CONFIG_SYSTEM` do not reach. Injecting it through `GIT_CONFIG_*` covers every git
