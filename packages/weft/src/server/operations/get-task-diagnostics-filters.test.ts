@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
 import { encode } from '../../core/codec.ts';
+import { encodeTaskAttemptRecord, taskAttemptKey } from '../../core/task-ledger/task-attempt.ts';
 import { taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
+import { sha256HexSync } from '../../worker/manifest/content-digest.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { principalFromJwtClaims } from '../principal.ts';
@@ -311,6 +313,59 @@ describe('weft.tasks.diagnostics filters', () => {
       ]);
     });
 
+    it('rejects on a mismatching deploymentName or artifactDigest, independent of any other field matching', async () => {
+      const storage = new MemoryStorage();
+      const engine = createEngine(storage);
+      const registry = new WorkerRegistry();
+      const taskQueue = new TaskQueue();
+
+      await putLeasedWithAttempt(
+        storage,
+        leasedFixture({
+          operationId: 'op-deployment-mismatch',
+          attemptToken: 'attempt-deployment-mismatch',
+          queue: 'default',
+        }),
+        executionIdentityFixture({
+          deploymentName: 'other-service',
+          artifactDigest: 'sha256:match',
+        }),
+      );
+      await putLeasedWithAttempt(
+        storage,
+        leasedFixture({
+          operationId: 'op-artifact-mismatch',
+          attemptToken: 'attempt-artifact-mismatch',
+          queue: 'default',
+        }),
+        executionIdentityFixture({ deploymentName: 'checkout', artifactDigest: 'sha256:other' }),
+      );
+
+      const deploymentResult = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: { staleHeartbeatAfterMs: 0, deploymentName: 'checkout' },
+      });
+      expect(deploymentResult.ok).toBe(true);
+      if (!deploymentResult.ok) throw new Error('expected diagnostics result');
+      expect(
+        diagnosticsValue(deploymentResult.value).items.map((item) => item.operationId),
+      ).toEqual(['op-artifact-mismatch']);
+
+      const artifactResult = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: { staleHeartbeatAfterMs: 0, artifactDigest: 'sha256:match' },
+      });
+      expect(artifactResult.ok).toBe(true);
+      if (!artifactResult.ok) throw new Error('expected diagnostics result');
+      expect(diagnosticsValue(artifactResult.value).items.map((item) => item.operationId)).toEqual([
+        'op-deployment-mismatch',
+      ]);
+    });
+
     it("filters by workerId against the attempt's executionIdentity.workerId, not the ledger's workerSessionId", async () => {
       const storage = new MemoryStorage();
       const engine = createEngine(storage);
@@ -400,6 +455,74 @@ describe('weft.tasks.diagnostics filters', () => {
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error('expected diagnostics result');
       expect(diagnosticsValue(result.value).items).toHaveLength(1);
+    });
+
+    it('excludes a queued record from every identity filter — no attempt has claimed it yet', async () => {
+      const storage = new MemoryStorage();
+      const engine = createEngine(storage);
+      const registry = new WorkerRegistry();
+      const taskQueue = new TaskQueue();
+
+      await putLedgerRecord(
+        storage,
+        queuedFixture({ operationId: 'op-queued-unclaimed', availableAt: 0 }),
+      );
+
+      const result = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: { staleQueuedAfterMs: 0, buildId: 'b1' },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected diagnostics result');
+      expect(diagnosticsValue(result.value).items).toHaveLength(0);
+    });
+
+    it("matches a resolved terminal record's identity filter via its retained attempt record", async () => {
+      const storage = new MemoryStorage();
+      const engine = createEngine(storage);
+      const registry = new WorkerRegistry();
+      const taskQueue = new TaskQueue();
+
+      await putLedgerRecord(
+        storage,
+        terminalFixture({
+          operationId: 'op-terminal-identity',
+          attemptToken: 'attempt-terminal-identity',
+          terminalAt: 0,
+          adopted: false,
+        }),
+      );
+      const digest = sha256HexSync('attempt-terminal-identity');
+      await storage.put(
+        taskAttemptKey('op-terminal-identity', digest),
+        encodeTaskAttemptRecord({
+          recordVersion: 1,
+          operationId: 'op-terminal-identity',
+          attempt: 1,
+          attemptTokenDigest: digest,
+          workerSessionId: 'w-1',
+          claimedAt: 0,
+          disposition: 'resolved',
+          dispositionAt: 0,
+          executionIdentity: executionIdentityFixture({ buildId: 'b-terminal' }),
+        }),
+      );
+
+      const result = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: { unadoptedAfterMs: 0, buildId: 'b-terminal' },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected diagnostics result');
+      expect(diagnosticsValue(result.value).items.map((item) => item.operationId)).toEqual([
+        'op-terminal-identity',
+      ]);
     });
   });
 });
