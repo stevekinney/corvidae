@@ -28,13 +28,29 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "passed", "observations"],
+        "required": ["id", "passed", "observations", "versions", "metrics"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "passed": { "type": "boolean" },
           "observations": { "type": "array", "items": { "type": "string" } },
-          "versions": { "type": "object", "additionalProperties": { "type": "string" } },
-          "metrics": { "type": "object", "additionalProperties": { "type": "number" } }
+          "versions": {
+            "type": "object",
+            "additionalProperties": { "type": "string", "minLength": 1 },
+            "minProperties": 1
+          },
+          "metrics": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "object",
+              "required": ["value", "unit"],
+              "properties": {
+                "value": { "type": "number" },
+                "unit": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            }
+          }
         },
         "additionalProperties": false
       },
