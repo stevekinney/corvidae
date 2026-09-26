@@ -29,6 +29,11 @@ on:
           - weft
           - cinder
           - agent-bureau
+      snapshot:
+        description: Dispatch the target release workflow with snapshot=true after syncing
+        type: boolean
+        required: true
+        default: false
 
   schedule:
     # Monday 06:17 UTC. An off-hour, off-the-hour time, so this does not compete with every other
@@ -89,7 +94,8 @@ jobs:
         env:
           MIRROR_APP_PRIVATE_KEY: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}
           TARGET: ${{ inputs.target }}
+          SNAPSHOT: ${{ inputs.snapshot }}
           CORVIDAE_COMMIT: ${{ github.sha }}
           WORK: ${{ runner.temp }}/mirror-sync-dispatch
           SCRATCH: ${{ runner.temp }}/mirror-sync-scratch
-        run: bun scripts/mirror/mirror-sync-action.ts --mode dispatch --target "$TARGET" --corvidae-commit "$CORVIDAE_COMMIT" --work "$WORK" --scratch "$SCRATCH"
+        run: bun scripts/mirror/mirror-sync-action.ts --mode dispatch --target "$TARGET" --snapshot "$SNAPSHOT" --corvidae-commit "$CORVIDAE_COMMIT" --work "$WORK" --scratch "$SCRATCH"

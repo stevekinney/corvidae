@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  dispatchSnapshotWorkflow,
   pullRequestBodyFor,
   pullRequestBranchFor,
   reportDrift,
   runMirrorSyncActionCommand,
+  snapshotDispatchFor,
   targetRemoteUrl,
   targetRepositoryFullName,
 } from './mirror-sync-action.ts';
@@ -43,6 +45,92 @@ describe('pullRequestBodyFor', () => {
     expect(body).toContain('Corvidae-Commit: abc123');
     expect(body).toContain('review threads on this diff are answered there');
     expect(body).toContain('1 changed path(s)');
+  });
+});
+
+describe('snapshotDispatchFor', () => {
+  test('uses each target workflow and the verified sync commit when changed', () => {
+    expect(
+      snapshotDispatchFor('weft', 'stevekinney/weft', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        commit: 'deadbeef',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+        pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+      }),
+    ).toEqual({
+      fullName: 'stevekinney/weft',
+      workflowFile: 'release.yaml',
+      ref: 'mirror-sync-deadbeef',
+      inputs: { snapshot: 'true', expected_sha: 'deadbeef' },
+    });
+    expect(
+      snapshotDispatchFor('cinder', 'stevekinney/cinder', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        commit: 'deadbeef',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+        pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+      }).workflowFile,
+    ).toBe('release.yaml');
+    expect(
+      snapshotDispatchFor('agent-bureau', 'stevekinney/agent-bureau', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        commit: 'deadbeef',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+        pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+      }).workflowFile,
+    ).toBe('release.yml');
+  });
+
+  test('uses the actual default branch and commit when sync skips', () => {
+    expect(
+      snapshotDispatchFor('agent-bureau', 'stevekinney/agent-bureau', 'mirror-sync-deadbeef', {
+        decision: 'skip',
+        baseBranch: 'trunk',
+        baseCommit: 'verified-target-sha',
+      }),
+    ).toEqual({
+      fullName: 'stevekinney/agent-bureau',
+      workflowFile: 'release.yml',
+      ref: 'trunk',
+      inputs: { snapshot: 'true', expected_sha: 'verified-target-sha' },
+    });
+  });
+
+  test('requires the verified commit and propagates dispatch failures', async () => {
+    expect(() =>
+      snapshotDispatchFor('weft', 'stevekinney/weft', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        commit: 'deadbeef',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+      }),
+    ).toThrow(/requires a source pull request/);
+    expect(() =>
+      snapshotDispatchFor('weft', 'stevekinney/weft', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+        pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+      }),
+    ).toThrow(/verified target commit/);
+
+    const api = {
+      dispatchWorkflow: async () => {
+        throw new Error('dispatch refused');
+      },
+    };
+    await expect(
+      dispatchSnapshotWorkflow(api, 'weft', 'stevekinney/weft', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        commit: 'deadbeef',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+        pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+      }),
+    ).rejects.toThrow('dispatch refused');
   });
 });
 
@@ -84,6 +172,36 @@ describe('runMirrorSyncActionCommand argument handling', () => {
       '/tmp/y',
     ]);
     expect(code).toBe(1);
+  });
+
+  test('rejects malformed --snapshot input before dispatch setup', async () => {
+    const messages: string[] = [];
+    const originalWrite = process.stderr.write;
+    const captureWrite: typeof process.stderr.write = (chunk) => {
+      messages.push(typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk));
+      return true;
+    };
+    process.stderr.write = captureWrite;
+
+    try {
+      const code = await runMirrorSyncActionCommand([
+        '--mode',
+        'dispatch',
+        '--target',
+        'weft',
+        '--snapshot',
+        'maybe',
+        '--work',
+        '/tmp/mirror-sync-action-invalid-snapshot',
+        '--scratch',
+        '/tmp/mirror-sync-action-invalid-snapshot-scratch',
+      ]);
+      expect(code).toBe(1);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+
+    expect(messages.join('')).toContain('--snapshot must be "true" or "false"');
   });
 });
 

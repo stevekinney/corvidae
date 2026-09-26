@@ -48,6 +48,53 @@ export function pullRequestBranchFor(corvidaeCommit: string): string {
   return `mirror-sync-${corvidaeCommit.slice(0, 12)}-${crypto.randomUUID()}`;
 }
 
+/** The target-owned release workflow filename used by the snapshot dispatch. */
+export function releaseWorkflowFor(target: MirrorTarget): 'release.yaml' | 'release.yml' {
+  return target === 'agent-bureau' ? 'release.yml' : 'release.yaml';
+}
+
+export function snapshotDispatchFor(
+  target: MirrorTarget,
+  fullName: string,
+  branch: string,
+  result: Pick<SyncResult, 'decision' | 'commit' | 'baseBranch' | 'baseCommit' | 'pullRequest'>,
+): {
+  fullName: string;
+  workflowFile: 'release.yaml' | 'release.yml';
+  ref: string;
+  inputs: { snapshot: 'true'; expected_sha: string };
+} {
+  const ref = result.decision === 'pushed' ? branch : result.baseBranch;
+  if (result.decision === 'pushed' && result.pullRequest === undefined) {
+    throw new MirrorSyncActionError(`${target}: snapshot dispatch requires a source pull request`);
+  }
+  const expectedSha = result.decision === 'pushed' ? result.commit : result.baseCommit;
+  if (expectedSha === undefined) {
+    throw new MirrorSyncActionError(
+      `${target}: snapshot dispatch lacks the verified target commit`,
+    );
+  }
+  return {
+    fullName,
+    workflowFile: releaseWorkflowFor(target),
+    ref,
+    inputs: { snapshot: 'true', expected_sha: expectedSha },
+  };
+}
+
+export async function dispatchSnapshotWorkflow(
+  api: Pick<GitHubApi, 'dispatchWorkflow'>,
+  target: MirrorTarget,
+  fullName: string,
+  branch: string,
+  result: Pick<SyncResult, 'decision' | 'commit' | 'baseBranch' | 'baseCommit' | 'pullRequest'>,
+): Promise<void> {
+  if (api.dispatchWorkflow === undefined) {
+    throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
+  }
+  await api.dispatchWorkflow(snapshotDispatchFor(target, fullName, branch, result));
+}
+
 /**
  * The pull request body, said once here rather than assembled inline so the wording COR-1195
  * requires — the source is corvidae, and review threads are answered there rather than on the
@@ -85,6 +132,16 @@ function requiredTarget(argv: readonly string[]): MirrorTarget {
 function readOption(argv: readonly string[], name: string): string | undefined {
   const index = argv.indexOf(`--${name}`);
   return index === -1 ? undefined : argv[index + 1];
+}
+
+function snapshotOption(argv: readonly string[]): boolean {
+  const index = argv.indexOf('--snapshot');
+  if (index === -1) return false;
+  const value = argv[index + 1];
+  if (value !== 'true' && value !== 'false') {
+    throw new MirrorSyncActionError('--snapshot must be "true" or "false"');
+  }
+  return value === 'true';
 }
 
 function required(argv: readonly string[], name: string): string {
@@ -191,6 +248,7 @@ async function installationOnlyApi(): Promise<GitHubApi> {
 
 async function runDispatch(argv: readonly string[]): Promise<number> {
   const target = requiredTarget(argv);
+  const snapshot = snapshotOption(argv);
   const corvidaeRoot = defaultCorvidaeRoot(argv);
   const workDirectory = required(argv, 'work');
   const scratchDirectory = required(argv, 'scratch');
@@ -226,7 +284,21 @@ async function runDispatch(argv: readonly string[]): Promise<number> {
   });
 
   if (result.decision === 'skip') {
-    process.stdout.write(`${target}: no change, nothing to open\n`);
+    if (snapshot) {
+      await dispatchSnapshotWorkflow(api, target, fullName, branch, result);
+      process.stdout.write(
+        `${target}: snapshot workflow dispatched for ${fullName}@${result.baseBranch} (${result.baseCommit})\n`,
+      );
+    } else {
+      process.stdout.write(`${target}: no change, nothing to open\n`);
+    }
+    return 0;
+  }
+  if (snapshot) {
+    await dispatchSnapshotWorkflow(api, target, fullName, branch, result);
+    process.stdout.write(
+      `${target}: source pull request ${result.pullRequest?.htmlUrl}; snapshot workflow dispatched for ${fullName}@${branch} (${result.commit})\n`,
+    );
     return 0;
   }
   if (!result.pullRequest) {

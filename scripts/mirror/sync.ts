@@ -848,6 +848,9 @@ export interface SyncResult {
   verification: VerifyResult;
   /** Present only when `SyncOptions.pullRequest` was supplied and something changed. */
   pullRequest?: { number: number; htmlUrl: string };
+  /** The branch and commit the clone had before a sync branch was created. */
+  baseBranch: string;
+  baseCommit: string;
 }
 
 /**
@@ -878,6 +881,8 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   // a pull request opens against, and the direct-push path never needs it because it pushes back
   // to whatever branch is already checked out.
   let base: string | undefined;
+  const baseCommit = await git(clone, 'rev-parse', 'HEAD');
+  const baseCommitBeforeSync = baseCommit.trim();
   if (options.pullRequest !== undefined) {
     const currentBranch = await git(clone, 'rev-parse', '--abbrev-ref', 'HEAD');
     base = currentBranch.trim();
@@ -916,6 +921,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   });
 
   if (changed.length === 0) {
+    const currentBranch = await git(clone, 'rev-parse', '--abbrev-ref', 'HEAD');
     return {
       decision: 'skip',
       target: options.target,
@@ -924,6 +930,8 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
       firstPublish: plan.firstPublish,
       seededFromPackageMap: plan.seededFromPackageMap,
       verification,
+      baseBranch: base ?? currentBranch.trim(),
+      baseCommit: baseCommitBeforeSync,
     };
   }
 
@@ -964,10 +972,13 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
       seededFromPackageMap: plan.seededFromPackageMap,
       verification,
       pullRequest,
+      baseBranch: base ?? '',
+      baseCommit: baseCommitBeforeSync,
     };
   }
 
   await git(clone, 'push', 'origin', 'HEAD');
+  const currentBranch = await git(clone, 'rev-parse', '--abbrev-ref', 'HEAD');
 
   return {
     decision: 'pushed',
@@ -978,6 +989,8 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     firstPublish: plan.firstPublish,
     seededFromPackageMap: plan.seededFromPackageMap,
     verification,
+    baseBranch: base ?? currentBranch.trim(),
+    baseCommit: baseCommitBeforeSync,
   };
 }
 

@@ -153,6 +153,40 @@ describe('createPullRequest', () => {
   });
 });
 
+describe('dispatchWorkflow', () => {
+  test('dispatches through the App installation with the exact ref and inputs', async () => {
+    const { api, seen } = harness([{ status: 204 }]);
+    const dispatchWorkflow = api.dispatchWorkflow;
+    expect(dispatchWorkflow).toBeDefined();
+    await dispatchWorkflow!({
+      fullName: 'stevekinney/weft',
+      workflowFile: 'release.yaml',
+      ref: 'mirror-sync-deadbeef',
+      inputs: { snapshot: 'true', expected_sha: 'deadbeef' },
+    });
+    expect(seen.at(0)).toMatchObject({
+      url: 'https://api.github.com/repos/stevekinney/weft/actions/workflows/release.yaml/dispatches',
+      method: 'POST',
+      authorization: 'Bearer installation-credential',
+      body: { ref: 'mirror-sync-deadbeef', inputs: { snapshot: 'true', expected_sha: 'deadbeef' } },
+    });
+  });
+
+  test('requires GitHub’s workflow dispatch response to be 204', async () => {
+    const { api } = harness([{ status: 202 }]);
+    const dispatchWorkflow = api.dispatchWorkflow;
+    expect(dispatchWorkflow).toBeDefined();
+    await expect(
+      dispatchWorkflow!({
+        fullName: 'stevekinney/weft',
+        workflowFile: 'release.yaml',
+        ref: 'main',
+        inputs: { snapshot: 'true', expected_sha: 'deadbeef' },
+      }),
+    ).rejects.toThrow(/HTTP 202/);
+  });
+});
+
 describe('readInstallationCoverage', () => {
   test('reports the selection and every repository across pages', async () => {
     const { api, seen } = harness([
