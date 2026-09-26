@@ -18,7 +18,7 @@ const { default: AccessGateFocusFixture } =
   await import('../../test/fixtures/access-gate-focus-fixture.svelte');
 const { default: AccessGateStatefulFixture } =
   await import('../../test/fixtures/access-gate-stateful-fixture.svelte');
-const { createRawSnippet, tick } = await import('svelte');
+const { createRawSnippet, tick, flushSync } = await import('svelte');
 const { renderSvelteOnServer } = await import('@lostgradient/testing');
 
 const accessGateSsrFixturePath = new URL(
@@ -380,9 +380,8 @@ describe('AccessGate', () => {
 
     await fireEvent.click(getByRole('button', { name: 'Grant scope' }));
 
-    await waitFor(() => {
-      expect(container.querySelector('.cinder-access-gate')).toBeNull();
-    });
+    flushSync();
+    expect(container.querySelector('.cinder-access-gate')?.outerHTML ?? null).toBeNull();
     button = requiredInstance(getByRole('button', { name: 'Stateful cancel' }), HTMLButtonElement);
     link = requiredInstance(getByRole('link', { name: 'Stateful link cancel' }), HTMLAnchorElement);
     customControl = getByRole('button', { name: 'Stateful custom cancel' });

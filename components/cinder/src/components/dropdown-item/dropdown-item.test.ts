@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
-import { createRawSnippet } from 'svelte';
+import { createRawSnippet, flushSync } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -51,7 +51,8 @@ describe('DropdownItem', () => {
       requiredInstance(container.querySelector('[role="menuitem"]'), HTMLElement),
     );
     expect(container.querySelector('output')?.textContent).toBe('copy');
-    await waitFor(() => expect(container.querySelector('[role="menu"]')).toBeNull());
+    flushSync();
+    expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
   });
 
   test('button has tabindex=-1 for roving-focus compatibility', async () => {
@@ -142,7 +143,8 @@ describe('DropdownItem — polymorphism', () => {
     const linkItem = requiredInstance(items[0], HTMLElement);
     await fireEvent.click(linkItem);
     expect(container.querySelector('output')?.textContent).toBe('link');
-    await waitFor(() => expect(container.querySelector('[role="menu"]')).toBeNull());
+    flushSync();
+    expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
   });
 
   test('clicking a submit item invokes onclick and closes the menu', async () => {
@@ -151,7 +153,8 @@ describe('DropdownItem — polymorphism', () => {
     const submitItem = requiredInstance(items[1], HTMLElement);
     await fireEvent.click(submitItem);
     expect(container.querySelector('output')?.textContent).toBe('submit');
-    await waitFor(() => expect(container.querySelector('[role="menu"]')).toBeNull());
+    flushSync();
+    expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
   });
 
   test('Space activates a link item (matching button-row keyboard behavior)', async () => {
