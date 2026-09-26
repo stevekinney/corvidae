@@ -9,13 +9,14 @@
  * file contains `WORKFLOW_IMPLEMENTATION_SENTINEL` while a bundle of the
  * host-side pool/registry modules does not.
  *
- * Reads `self.name` (set via `WorkerOptions.name`, {@link
- * import('../worker-realm.ts').WorkerRealmOptions.workerName}) as the
- * artifact digest this instance advertises, so one physical script can
- * stand in for several distinct revisions in tests — a real deployment
- * instead gives each revision its own built bootstrap module and derives
- * its digest from that build, as `WorkerRealmOptions.workerName`'s own doc
- * notes.
+ * Waits for the `realm-configure` message {@link
+ * import('../worker-realm.ts').WorkerRealm} always sends immediately after
+ * spawning a worker, before sending its own `ready` handshake — see that
+ * module's `#spawnWorker` doc for why `WorkerOptions.name` cannot carry this
+ * instead. `artifactDigest` lets one physical script stand in for several
+ * distinct revisions in tests; a real deployment instead gives each
+ * revision its own built bootstrap module and derives its digest from that
+ * build.
  *
  * Turns do not auto-complete: `realm-run` records the pending turn and
  * waits for an explicit `test-release`/`test-fail` control message, so
@@ -37,6 +38,11 @@ const DEFAULT_ARTIFACT_DIGEST = 'fixture-default-digest';
 const realmGeneration = crypto.randomUUID();
 const pendingRuns = new Map<number, RealmRunMessage>();
 
+interface ConfigureMessage {
+  readonly type: 'realm-configure';
+  readonly artifactDigest?: string;
+}
+
 interface TestReleaseMessage {
   readonly type: 'test-release';
   readonly turnId: number;
@@ -48,27 +54,27 @@ interface TestFailMessage {
   readonly error: string;
 }
 
-function currentArtifactDigest(): string {
-  const name = (self as unknown as { name?: string }).name;
-  return typeof name === 'string' && name.length > 0 ? name : DEFAULT_ARTIFACT_DIGEST;
-}
-
-function sendReady(): void {
+function sendReady(artifactDigest: string): void {
   const manifest = buildInternalRealmManifest(EXPECTED_WORKFLOW_TYPES);
-  const digest = currentArtifactDigest();
   self.postMessage({
     type: 'ready',
     protocolVersion: manifest.protocolVersion,
     realmGeneration,
     manifest: {
       ...manifest,
-      deployment: { ...manifest.deployment, buildId: digest, artifactDigest: digest },
+      deployment: { ...manifest.deployment, buildId: artifactDigest, artifactDigest },
     },
   });
 }
 
 self.onmessage = (event: MessageEvent) => {
-  const message = event.data as RealmRunMessage | TestReleaseMessage | TestFailMessage;
+  const message = event.data as
+    RealmRunMessage | ConfigureMessage | TestReleaseMessage | TestFailMessage;
+
+  if (message.type === 'realm-configure') {
+    sendReady(message.artifactDigest ?? DEFAULT_ARTIFACT_DIGEST);
+    return;
+  }
 
   if (message.type === 'realm-run') {
     pendingRuns.set(message.envelope.turnId, message);
@@ -100,5 +106,3 @@ self.onmessage = (event: MessageEvent) => {
     self.postMessage(failure);
   }
 };
-
-sendReady();

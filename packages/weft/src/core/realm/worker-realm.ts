@@ -71,11 +71,12 @@ export interface WorkerRealmOptions extends RealmLifecycleDependencies {
   readonly realmReadyTimeoutMs?: number;
   readonly maxProtocolMessageBytes?: number;
   /**
-   * Passed through as `WorkerOptions.name`, which becomes `self.name` inside
-   * the spawned Worker. A production bootstrap script is free to ignore it
-   * and derive its identity entirely from its own bundled build (one
-   * `workerUrl` per revision); test bootstraps use it to advertise a
-   * revision-specific identity from one shared fixture script.
+   * Sent as the `artifactDigest` field of the `realm-configure` message
+   * `#spawnWorker` always posts immediately after spawning, before the
+   * realm-ready handshake. A production bootstrap script is free to ignore
+   * this message entirely and derive its identity from its own bundled
+   * build (one `workerUrl` per revision); test bootstraps use it to
+   * advertise a revision-specific identity from one shared fixture script.
    */
   readonly workerName?: string;
   readonly smol?: boolean;
@@ -267,9 +268,8 @@ export class WorkerRealm {
   }
 
   #spawnWorker(): Worker {
-    const workerOptions: WorkerOptions & { smol?: boolean; name?: string } = {};
+    const workerOptions: WorkerOptions & { smol?: boolean } = {};
     if (this.#options.smol) workerOptions.smol = true;
-    if (this.#options.workerName !== undefined) workerOptions.name = this.#options.workerName;
     const worker = new Worker(this.#options.workerUrl, workerOptions);
     worker.addEventListener('message', (event: MessageEvent) => {
       void this.#handleMessage(event.data).catch(() => {});
@@ -280,6 +280,23 @@ export class WorkerRealm {
     worker.addEventListener('messageerror', () => {
       this.#handleWorkerFailure();
     });
+    // `WorkerOptions.name` is part of the Worker spec but Bun does not
+    // surface it as the spawned worker's own `self.name` (verified against
+    // Bun 1.4.2), so a test fixture cannot rely on it to learn which
+    // revision it should simulate. Sending an explicit `realm-configure`
+    // message as the very first thing this realm ever posts — before the
+    // realm-ready handshake, before any turn — gives a shared test fixture
+    // script a real, message-based way to learn its digest instead. A
+    // production bootstrap script has no use for this message (it already
+    // knows its own identity from its own build) and simply ignores it if
+    // its script never listens for the type.
+    const configureMessage: { type: 'realm-configure'; artifactDigest?: string } = {
+      type: 'realm-configure',
+      ...(this.#options.workerName === undefined
+        ? {}
+        : { artifactDigest: this.#options.workerName }),
+    };
+    worker.postMessage(configureMessage);
     return worker;
   }
 
