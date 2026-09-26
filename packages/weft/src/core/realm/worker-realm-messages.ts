@@ -45,10 +45,6 @@ function isRecordWithType(message: unknown, type: string): message is Record<str
   );
 }
 
-export function isRealmRunMessage(message: unknown): message is RealmRunMessage {
-  return isRecordWithType(message, 'realm-run');
-}
-
 export function isRealmResultMessage(message: unknown): message is RealmResultMessage {
   return isRecordWithType(message, 'realm-result');
 }

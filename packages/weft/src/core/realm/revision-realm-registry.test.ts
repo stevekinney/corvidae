@@ -226,6 +226,49 @@ describe('RevisionRealmRegistry', () => {
       });
       expect(registry.getPool('order-workflow', 'revision-a')).toBeUndefined();
     });
+
+    it('markActive reactivates a still-tracked pool (one with in-flight work), letting a concurrent new start through', async () => {
+      const registry = new RevisionRealmRegistry();
+      registry.ensurePool('order-workflow', 'revision-a', configFor('revision-a'));
+
+      const first = await registry.acquireForExecution(
+        'order-workflow',
+        'revision-a',
+        'execution-1',
+      );
+      if (!first.ok) throw new Error('unreachable');
+
+      registry.markInactive('order-workflow', 'revision-a');
+      registry.markActive('order-workflow', 'revision-a');
+
+      const second = await registry.acquireForExecution(
+        'order-workflow',
+        'revision-a',
+        'execution-2',
+      );
+      expect(second.ok).toBe(true);
+
+      registry.releaseAfterExecution('order-workflow', 'revision-a', first.realm);
+      if (second.ok) registry.releaseAfterExecution('order-workflow', 'revision-a', second.realm);
+    });
+  });
+
+  describe('dispose', () => {
+    it('discards every pool and realm regardless of state', async () => {
+      const registry = new RevisionRealmRegistry();
+      registry.ensurePool('order-workflow', 'revision-a', configFor('revision-a'));
+      const acquired = await registry.acquireForExecution(
+        'order-workflow',
+        'revision-a',
+        'execution-1',
+      );
+      if (!acquired.ok) throw new Error('unreachable');
+
+      registry.dispose();
+
+      expect(acquired.realm.lifecycle.state).toBe('terminated');
+      expect(registry.getPool('order-workflow', 'revision-a')).toBeUndefined();
+    });
   });
 });
 

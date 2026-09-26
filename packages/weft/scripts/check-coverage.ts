@@ -441,6 +441,15 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       },
     ],
     [
+      'src/core/realm/worker-realm.ts',
+      {
+        reason:
+          "The `messageerror` listener (COR-249) delegates to the exact same `#handleWorkerFailure` a real Worker `error` event already exercises end to end (worker-realm.test.ts's throwing-worker and timeout tests) — only its own one-line callback body is unreached. `messageerror` fires when structured-clone deserialization fails on the RECEIVING side; a `postMessage` call with a non-cloneable payload throws synchronously on the SENDING side instead (`DataCloneError`, confirmed directly against Bun 1.4.2), so there is no reliable, non-flaky way to manufacture the receiving-side failure from a test.",
+        lines: new Set([292]),
+        requireUncoveredLines: true,
+      },
+    ],
+    [
       'src/core/worker-checkpoint-resume-state.ts',
       {
         reason:

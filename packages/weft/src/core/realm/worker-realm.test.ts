@@ -1,8 +1,21 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 
+import {
+  advanceTimersByTime,
+  restoreRealTimers,
+  useFakeTimers,
+} from '../../testing/fake-timers.test-support.ts';
 import { WorkerRealm, type WorkerRealmActivation } from './worker-realm.ts';
 
 const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', import.meta.url);
+const unresponsiveWorkerUrl = new URL(
+  './__fixtures__/revision-realm-unresponsive-worker.ts',
+  import.meta.url,
+);
+const throwingWorkerUrl = new URL(
+  './__fixtures__/revision-realm-throwing-worker.ts',
+  import.meta.url,
+);
 
 function makeRealm(
   overrides: Partial<{
@@ -146,5 +159,48 @@ describe('WorkerRealm', () => {
     const outcome = await realm.waitUntilReady();
     expect(outcome.ok).toBe(true);
     realm.discard();
+  });
+
+  describe('a real Worker failure or a stalled handshake', () => {
+    afterEach(() => {
+      restoreRealTimers();
+    });
+
+    it('times out waitUntilReady when the realm never sends ready', async () => {
+      useFakeTimers();
+      const realm = new WorkerRealm({
+        workerUrl: unresponsiveWorkerUrl,
+        expectedWorkflowTypes: ['order-workflow'],
+        isReferenced: () => true,
+        maxRestarts: 0,
+        realmReadyTimeoutMs: 5,
+      });
+
+      const pending = realm.waitUntilReady();
+      await advanceTimersByTime(5);
+
+      const outcome = await pending;
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error('unreachable');
+      expect(outcome.failureCategory).toBe('timeout');
+      expect(realm.lifecycle.state).toBe('crashed');
+      realm.discard();
+    });
+
+    it('a real Worker error before the ready handshake ends the realm in Crashed, not a thrown exception', async () => {
+      const realm = new WorkerRealm({
+        workerUrl: throwingWorkerUrl,
+        expectedWorkflowTypes: ['order-workflow'],
+        isReferenced: () => true,
+        maxRestarts: 0,
+      });
+
+      const outcome = await realm.waitUntilReady();
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error('unreachable');
+      expect(outcome.failureCategory).toBe('system');
+      expect(realm.lifecycle.state).toBe('crashed');
+      realm.discard();
+    });
   });
 });

@@ -97,4 +97,30 @@ describe('RevisionRealmPool', () => {
     expect(pool.activeRealmCount).toBe(0);
     expect(pool.realmCount).toBe(0);
   });
+
+  it('markActive reverses a prior markInactive, letting acquireForExecution succeed again', async () => {
+    const pool = makePool();
+    pool.markInactive();
+    expect(await pool.acquireForExecution('execution-1')).toEqual({
+      ok: false,
+      reason: 'revision-not-active',
+    });
+
+    pool.markActive();
+    const outcome = await pool.acquireForExecution('execution-2');
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) pool.releaseAfterExecution(outcome.realm);
+  });
+
+  it("a crashed realm's restart() consults this pool's own isReferenced, refusing once the pool has gone inactive", async () => {
+    const pool = makePool();
+    const outcome = await pool.acquireForExecution('execution-1');
+    if (!outcome.ok) throw new Error('unreachable');
+
+    outcome.realm.crash();
+    pool.markInactive();
+
+    expect(outcome.realm.restart()).toEqual({ ok: false, reason: 'unreferenced' });
+    pool.forgetCrashedRealm(outcome.realm);
+  });
 });

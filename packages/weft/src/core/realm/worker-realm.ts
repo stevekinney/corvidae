@@ -118,6 +118,13 @@ export class WorkerRealm {
     return new Promise((resolve) => {
       this.#readyWaiters.push(resolve);
       this.#readyTimeout ??= setTimeout(() => {
+        // `#readyOutcome` may already be set if a real `ready`/error message
+        // settled this realm in the same tick this timer was scheduled to
+        // fire — `#settleReady` below is a no-op in that case, but the
+        // lifecycle transition must not double-fire either, so it is
+        // guarded the same way.
+        if (this.#readyOutcome) return;
+        this.lifecycle.markReady({ ok: false });
         this.#settleReady({
           ok: false,
           error: `Worker realm did not send a ready message within ${this.#options.realmReadyTimeoutMs ?? DEFAULT_REALM_READY_TIMEOUT_MS}ms`,
