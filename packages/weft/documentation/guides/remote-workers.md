@@ -2,7 +2,7 @@
 
 Your workflow engine runs on one machine, but your activities need to run on GPU nodes, region-specific servers, or isolated containers. Remote workers connect to the Weft server over WebSocket (or HTTP long-polling as a fallback) and execute activities wherever they're deployed. The [recovery and adoption guide](remote-task-recovery.md) explains how the server retains task ownership and outcomes across restarts.
 
-> [!NOTE] [`RemoteWorker`](../reference/api-workers.md#remoteworker) is an internal workspace API. The v6 task transport requires clients to match the [wire protocol](../reference/remote-worker-protocol.md), including its version and storage-capability requirements.
+> [!NOTE] [`RemoteWorker`](../reference/api-workers.md#remoteworker) is an internal workspace API. The v7 task transport requires clients to match the [wire protocol](../reference/remote-worker-protocol.md), including its version and storage-capability requirements.
 
 ## The RemoteWorker class
 
@@ -61,7 +61,7 @@ interface RemoteWorkerOptions {
 }
 ```
 
-On connection, the worker sends a v6 `register` message carrying its worker ID, concurrency limit, and a canonical manifest describing its deployment, runtime, and workflows. The server derives routing activities from the manifest and reads the queue from the connection URL. `connect()` resolves only after the server replies with `registerAck`; it rejects on `registerError` or if the socket closes before acknowledgement. The server tracks the accepted worker in the `WorkerRegistry`.
+On connection, the worker sends a v7 `register` message carrying its worker ID, concurrency limit, and a canonical manifest describing its deployment, runtime, and workflows. The server derives routing activities from the manifest and reads the queue from the connection URL. `connect()` resolves only after the server replies with `registerAck`; it rejects on `registerError` or if the socket closes before acknowledgement. The server tracks the accepted worker in the `WorkerRegistry`.
 
 ## Dispatching `ctx.run()` to remote workers
 
@@ -311,7 +311,17 @@ The poll response includes a synthetic `workerId` and per-claim `attemptToken`. 
 
 For each in-flight activity, `LongPollWorker` also `POST`s a heartbeat to `/api/v1/tasks/:queue/heartbeat` on a `heartbeatIntervalMs` interval (default 10 seconds, matching `HeartbeatManager`'s WebSocket-transport default) — COR-230's long-poll counterpart to the WebSocket transport's `activityHeartbeat`, renewing the same attempt-fenced visibility deadline through the identical server-side `renewAttemptLease` transition. Long-poll has no server-to-worker push channel, so a server-initiated cancellation (`WeftServer.cancelTask`) is signaled back on the heartbeat response's `cancelled` field instead of a pushed control message; `LongPollWorker` aborts that activity's own `AbortController` — keyed by `(operationId, attemptToken)`, exactly like `RemoteWorker`'s — and reports `status: "cancelled"` on its next result.
 
-Error handling is built in—network failures trigger a 1-second backoff, abort errors during shutdown are suppressed, and a missed heartbeat is simply retried on the next interval tick.
+Error handling for polling is built in—network failures trigger a 1-second backoff, abort errors during shutdown are suppressed, and a missed heartbeat is simply retried on the next interval tick. Result _delivery_ has its own, separate durability story — see the next section.
+
+## Result delivery and acknowledgement
+
+Producing a result and having the server durably apply it are two different events, and a worker never treats the first as proof of the second. Both worker classes retain a result until the server's disposition is actually confirmed, not merely until a send call returns.
+
+**`RemoteWorker`** buffers every `taskResult` in an in-memory outbox, keyed by `(operationId, attemptToken)`, before sending it over the socket. `WebSocket.send()` returning only proves the frame left the process — it proves nothing about whether the server received it or whether its response made it back. Only a matching `taskResultAck` (`{ type: 'taskResultAck', operationId, attemptToken, disposition }`, with `disposition` one of `"applied"`, `"duplicate"`, or `"dead-lettered"`) removes the entry. A reconnect resends every still-buffered result, in insertion order, over the fresh socket — the server's ledger makes a resend idempotent (a `"duplicate"` disposition) rather than re-executing the activity. `unacknowledgedResultCount` reports how many results are still waiting; `disconnect()` resolves with `{ unacknowledgedResults }` so a caller can tell whether anything is still outstanding when it disconnects deliberately, and a server-initiated graceful shutdown logs the same count if it is nonzero. A permanently-unappliable submission — an unknown operation, a stale or foreign attempt, a workflow-revision mismatch, or conflicting content resubmitted under one attempt token — is correlated back to the outbox entry via a `protocolError` naming the same `operationId`/`attemptToken` and dropped rather than resent forever.
+
+**`LongPollWorker`** gives every result POST — completed, failed, cancelled, or "unknown activity" — the equivalent treatment through its own delivery component, since HTTP long-polling has no persistent connection or reconnect event to hang an outbox flush on. A result is retained until its disposition response is actually read: `{ "ok": true, "disposition": "applied" | "duplicate" | "dead-lettered" }` acknowledges it; a network failure or a transient rejection (any non-2xx status, or a `403` whose body does not name this exact submission) retries with a capped exponential backoff (`resultRetryBaseDelayMs`, default `1_000`; `resultRetryMaxDelayMs`, default `30_000`); a correlated `403` — the response body's `operationId`/`attemptToken` matching this submission — is a permanent rejection and drops the buffered result, mirroring `RemoteWorker`'s protocol-level correlation. `unacknowledgedResultCount` mirrors `RemoteWorker`'s identical getter. `stop()` suspends delivery — every scheduled retry is cancelled, but buffered entries are kept — and resolves with `{ unacknowledgedResults }`, warning if the count is nonzero; the next `start()` immediately re-attempts delivery of anything still buffered. The poll loop itself also declines new work while this buffer is full, the same backpressure `RemoteWorker` applies to its own outbox.
+
+This durability is **process-memory only** for both worker classes: neither the outbox nor the long-poll delivery buffer survives a process restart. A result produced and buffered right before the worker process is killed is lost — the server's own visibility-timeout expiry is what eventually reclaims and redispatches that task to a live worker, not this in-memory retry mechanism. See the [protocol reference](../reference/remote-worker-protocol.md#taskresultack) for the exact wire shapes and the [rejection classification](../reference/remote-worker-protocol.md#protocolerror) both transports share.
 
 ## Graceful shutdown
 
@@ -322,6 +332,8 @@ await worker.disconnect();
 ```
 
 The server can also initiate shutdown by sending a `{ type: 'shutdown' }` message. The worker stops accepting new tasks, waits for in-flight work to complete, then closes.
+
+`RemoteWorker.disconnect()` and `LongPollWorker.stop()` both resolve with the same `{ unacknowledgedResults: number }` shape — how many produced results are still awaiting a durable disposition when the drain completes (see [Result delivery and acknowledgement](#result-delivery-and-acknowledgement) above). A nonzero count is not an error: for `RemoteWorker` those results resend automatically on the next `connect()`; for `LongPollWorker`, on the next `start()`.
 
 Both classes implement `Disposable` for immediate cleanup with `using`. That synchronous cleanup is not an awaited drain. Call `disconnect()` for a remote worker or `stop()` for a long-poll worker before leaving the scope when in-flight work must settle:
 
@@ -334,4 +346,4 @@ Both classes implement `Disposable` for immediate cleanup with `using`. That syn
 } // Immediate disposal after the awaited drain
 ```
 
-The `connected`, `inFlight`, and `shuttingDown` properties let you monitor worker status for health checks and dashboards.
+The `connected`, `inFlight`, `shuttingDown`, and `unacknowledgedResultCount` properties (the last shared by both worker classes) let you monitor worker status for health checks and dashboards.

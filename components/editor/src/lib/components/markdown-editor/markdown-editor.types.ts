@@ -119,7 +119,10 @@ export type MarkdownEditorProps = Omit<
   modeLabel?: string;
   /** Read-only mode */
   readonly?: boolean;
-  /** Placeholder text when empty */
+  /**
+   * Hint text shown while the editor is empty. Unrelated to `{{path}}` template
+   * placeholders, which `placeholderDefinitions` configures.
+   */
   placeholder?: string;
   /** Show formatting toolbar (DEP-37) */
   toolbarEnabled?: boolean;

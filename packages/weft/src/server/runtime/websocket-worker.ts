@@ -60,11 +60,14 @@ function resolveTaskResultStatus(message: TaskResultMessage): 'completed' | 'fai
 /**
  * The `protocolError` text for a rejected `taskResult`, shared by
  * `onTaskResultMessage`'s fast path and its fallback (COR-233) so both
- * report the same wording for the same failure. `'no-current-attempt'` only
+ * report the same wording for the same failure. `'unknown-operation'` only
  * ever reaches this from the fallback (the fast path branches on
- * `inFlightTask === undefined` before authorizing), and reads the same as
- * `'worker-mismatch'` — from the worker's point of view, "no one recognizes
- * this attempt" and "someone else holds it" are both "not assigned to you".
+ * `inFlightTask === undefined` before authorizing) and gets its own,
+ * machine-distinguishable wording (COR-237): unlike `'stale-attempt'` and
+ * `'worker-mismatch'`, which both read as "someone else (or no one right
+ * now) holds this attempt", `'unknown-operation'` means no ledger record has
+ * ever existed for this `operationId` at all — a fundamentally different
+ * fact for a caller inspecting the rejection to act on.
  */
 function taskResultRejectionMessage(
   reason: TaskResultAuthorizationFailure,
@@ -73,6 +76,9 @@ function taskResultRejectionMessage(
 ): string {
   if (reason === 'attempt-token-mismatch') {
     return `taskResult for operation "${operationId}" rejected — stale attempt token`;
+  }
+  if (reason === 'unknown-operation') {
+    return `taskResult for operation "${operationId}" rejected — unknown operation`;
   }
   return `taskResult for operation "${operationId}" rejected — task not assigned to worker "${workerId ?? ''}"`;
 }
@@ -92,6 +98,19 @@ function activityHeartbeatRejectionMessage(
   if (reason === 'attempt-token-mismatch') {
     return `activityHeartbeat for operation "${operationId}" rejected — stale attempt token`;
   }
+  // No `'unknown-operation'` branch: this function's only caller,
+  // `onActivityHeartbeatMessage`, always builds `reason` from
+  // `authorizeTaskResultForCurrentAttempt(currentAttemptFromInFlightTask(...), ...)`
+  // (`task-result-authorization.ts`), and `currentAttemptFromInFlightTask`
+  // returns `'stale'` — never `'unknown'` — for a missing in-flight entry.
+  // `'unknown-operation'` is reachable only through the ledger-backed
+  // `currentAttemptFromLedgerRecord` view `taskResultRejectionMessage` above
+  // uses for the `taskResult` fallback path, which has no `activityHeartbeat`
+  // equivalent (there is no ledger fallback for a lost heartbeat — see
+  // `onActivityHeartbeatMessage`'s doc comment). The parameter stays typed as
+  // the full `TaskResultAuthorizationFailure` union to match that sibling
+  // function's signature; an unreachable `'unknown-operation'` falls through
+  // to the same wording as `'worker-mismatch'` below.
   return `activityHeartbeat for operation "${operationId}" rejected — task not assigned to worker "${workerId ?? ''}"`;
 }
 
@@ -157,6 +176,20 @@ async function commitAndAcknowledgeTaskResult(
   if (applied.ok) {
     sendTaskResultAck(ws, operationId, message.attemptToken, applied.disposition);
   } else {
+    // `commitTaskLedgerCompletion` never turns this into an ack — conflicting
+    // content resubmitted under this exact attempt token, or the record
+    // having moved on to a queued/newer attempt by the time this reached the
+    // ledger — so the worker gets a correlated `protocolError` (protocol v7)
+    // instead of silence. `applyWorkerTaskResult` has no `ws` to answer with
+    // itself; this is the one place both callers of this function actually
+    // reach the worker.
+    sendWorkerProtocolMessage(ws, {
+      type: 'protocolError',
+      code: 'invalid_message',
+      message: `taskResult for operation "${operationId}" rejected — ${applied.reason}`,
+      operationId,
+      attemptToken: message.attemptToken,
+    });
     console.error(
       `[weft] Failed to commit task result for "${operationId}" through the durable ledger:`,
       applied.reason,
@@ -202,6 +235,8 @@ async function applyTaskResultFallback(
       type: 'protocolError',
       code: 'invalid_message',
       message: taskResultRejectionMessage(authorization.reason, operationId, workerId),
+      operationId,
+      attemptToken: message.attemptToken,
     });
     return;
   }
@@ -210,7 +245,10 @@ async function applyTaskResultFallback(
   // only enforced while the record still carries a `workflowRevision`. A
   // genuine resend of the same original message always echoes back whatever
   // it echoed the first time, so this only ever rejects a submission that is
-  // not actually the buffered resend it claims to be.
+  // not actually the buffered resend it claims to be. Permanent exactly like
+  // the authorization check above — the echoed revision on a resend of this
+  // exact message can never change — so it carries the same correlation
+  // (protocol v7).
   if (
     record !== null &&
     record.workflowRevision !== undefined &&
@@ -220,6 +258,8 @@ async function applyTaskResultFallback(
       type: 'protocolError',
       code: 'invalid_message',
       message: `taskResult for operation "${operationId}" rejected — revision mismatch`,
+      operationId,
+      attemptToken: message.attemptToken,
     });
     return;
   }
@@ -265,6 +305,8 @@ function onTaskResultMessage(
       type: 'protocolError',
       code: 'invalid_message',
       message: taskResultRejectionMessage(authorization.reason, operationId, workerId),
+      operationId,
+      attemptToken: message.attemptToken,
     });
     return;
   }
@@ -272,7 +314,9 @@ function onTaskResultMessage(
   // long-poll's strict policy: a missing echo is tolerated whenever the
   // in-flight entry itself carries no `workflowRevision` (the dispatch never
   // opted in, or a pre-WFT-20 worker SDK never echoes the field back) — a
-  // present-and-wrong echo always rejects.
+  // present-and-wrong echo always rejects. Permanent exactly like the
+  // authorization check above, so it carries the same correlation
+  // (protocol v7).
   if (
     inFlightTask.workflowRevision !== undefined &&
     message.workflowRevision !== inFlightTask.workflowRevision
@@ -281,6 +325,8 @@ function onTaskResultMessage(
       type: 'protocolError',
       code: 'invalid_message',
       message: `taskResult for operation "${operationId}" rejected — revision mismatch`,
+      operationId,
+      attemptToken: message.attemptToken,
     });
     return;
   }
@@ -302,9 +348,9 @@ function onTaskResultMessage(
  * Acknowledge a worker's `taskResult` (COR-240, protocol v4). Sent only when
  * `commitTaskLedgerCompletion` produced an applied, duplicate, or
  * dead-lettered disposition — never for a hard rejection (unknown
- * operation, stale attempt, conflicting content, queued/newer attempt),
- * which the caller already reported via `protocolError` before this would
- * be reached.
+ * operation, stale attempt, conflicting content, queued/newer attempt), which
+ * the caller reports via a correlated `protocolError` instead (protocol v7,
+ * see `commitAndAcknowledgeTaskResult`'s `else` branch).
  */
 function sendTaskResultAck(
   ws: ServerWebSocket<WebSocketData>,
@@ -381,9 +427,9 @@ function onActivityHeartbeatMessage(
   }
   // Authorization succeeding against an InFlightTask-derived CurrentAttempt
   // (see `currentAttemptFromInFlightTask`) implies `inFlightTask` is defined
-  // — the `undefined` case maps to `CurrentAttempt` `undefined`, which
+  // — the `undefined` case maps to `'stale'`, which
   // `authorizeTaskResultForCurrentAttempt` always rejects as
-  // 'no-current-attempt'.
+  // 'stale-attempt'.
   const task = inFlightTask as NonNullable<typeof inFlightTask>;
 
   const newDeadline = context.registry.extendVisibility(operationId, task.visibilityTimeout);

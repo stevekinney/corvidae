@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { ActivityInterceptor } from '../core/interceptor.ts';
-import { createDeferred, withTimeout } from '../testing/fake-timers.test-support.ts';
+import {
+  createDeferred,
+  waitForCondition,
+  withTimeout,
+} from '../testing/fake-timers.test-support.ts';
 import { LongPollWorker } from './long-poll.ts';
 
 // ---------------------------------------------------------------------------
@@ -151,6 +155,15 @@ describe('LongPollWorker', () => {
           return new Response(null, { status: 204 });
         }
 
+        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          // COR-235: a bare `{ ok: true }` (no disposition) is not a real
+          // server response — LongPollResultDelivery treats it as
+          // unrecognized and retries indefinitely, which would leave this
+          // test's aborted-but-successful result "unacknowledged" at
+          // stop() for reasons unrelated to what this test actually checks.
+          return Response.json({ ok: true, disposition: 'applied' });
+        }
+
         return Response.json({ ok: true });
       },
     });
@@ -294,7 +307,13 @@ describe('LongPollWorker', () => {
           const body = await request.json();
           completedTasks.push(body);
           taskCompleted.resolve();
-          return Response.json({ ok: true });
+          // COR-235: LongPollResultDelivery only acknowledges (and stops
+          // retrying) an applied/duplicate/dead-lettered disposition,
+          // matching the real server's actual response shape
+          // (handleTaskResultRequest always includes `disposition`) — a bare
+          // `{ ok: true }` with no disposition is treated as an unrecognized
+          // 2xx body and retried.
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -363,7 +382,7 @@ describe('LongPollWorker', () => {
           const body = await request.json();
           completedTasks.push(body);
           taskCompleted.resolve();
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -455,7 +474,7 @@ describe('LongPollWorker', () => {
           const body = await request.json();
           completedTasks.push(body);
           taskCompleted.resolve();
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -475,6 +494,15 @@ describe('LongPollWorker', () => {
       LONG_POLL_TEST_TIMEOUT_MS,
       'unknown activity completion',
     );
+    // taskCompleted resolves when the server RECEIVES the POST, before it
+    // has even sent a response — wait for the client to actually process
+    // that response and acknowledge (COR-235) before stopping, so stop()
+    // does not race a still-in-flight disposition read and report a
+    // spurious "still unacknowledged" warning for a result the server
+    // already durably applied.
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
+      timeoutMs: LONG_POLL_TEST_TIMEOUT_MS,
+    });
     await worker.stop();
 
     // Should have reported the unknown activity as a failure
@@ -484,9 +512,17 @@ describe('LongPollWorker', () => {
     expect(unknownCompletion.error).toBe('Unknown activity: nonExistent');
   });
 
-  it('handles error completion fetch failure gracefully', async () => {
+  it('retries a failed-activity result after a transient completion-endpoint failure, instead of dropping it (COR-235)', async () => {
+    // Before COR-235 this test asserted the opposite: a failed completion
+    // POST was a one-shot best-effort attempt, silently and permanently
+    // dropped on any further failure ("handles error completion fetch
+    // failure gracefully" — normalizing data loss as acceptable behavior).
+    // LongPollResultDelivery retains a result until its disposition is
+    // actually read, retrying a transient failure instead.
     const activityAttempted = createDeferred();
+    const resultDelivered = createDeferred();
     let pollCount = 0;
+    let resultAttempts = 0;
 
     server = Bun.serve({
       port: 0,
@@ -497,17 +533,23 @@ describe('LongPollWorker', () => {
           pollCount++;
           if (pollCount === 1) {
             return Response.json({
-              operationId: 'op-double-fail',
+              operationId: 'op-transient-result-failure',
               activityName: 'failingActivity',
               input: null,
+              attemptToken: 'attempt-token-transient-result-failure',
             });
           }
           return new Response(null, { status: 204 });
         }
 
         if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
-          // Make the completion endpoint fail too
-          return new Response('Server Error', { status: 500 });
+          resultAttempts += 1;
+          if (resultAttempts === 1) {
+            // The first submission fails transiently.
+            return new Response('Server Error', { status: 500 });
+          }
+          resultDelivered.resolve();
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -516,6 +558,8 @@ describe('LongPollWorker', () => {
 
     const worker = new LongPollWorker({
       serverUrl: `http://localhost:${server.port}`,
+      resultRetryBaseDelayMs: 10,
+      resultRetryMaxDelayMs: 50,
       activities: {
         failingActivity: async () => {
           activityAttempted.resolve();
@@ -530,10 +574,190 @@ describe('LongPollWorker', () => {
       LONG_POLL_TEST_TIMEOUT_MS,
       'failing activity attempt',
     );
-    await worker.stop();
+    await withTimeout(
+      resultDelivered.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'retried result delivery reaching the server',
+    );
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
+      timeoutMs: LONG_POLL_TEST_TIMEOUT_MS,
+    });
+    expect(resultAttempts).toBeGreaterThanOrEqual(2);
 
-    // Should not crash; worker should still stop cleanly
+    await worker.stop();
     expect(worker.running).toBe(false);
+  });
+
+  it('drops a buffered result on a correlated 403 and never resends it (COR-1271 identity)', async () => {
+    const activityAttempted = createDeferred();
+    const firstRejectionSent = createDeferred();
+    let pollCount = 0;
+    let resultAttempts = 0;
+
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+
+        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+          pollCount++;
+          if (pollCount === 1) {
+            return Response.json({
+              operationId: 'op-permanently-rejected-longpoll',
+              activityName: 'echoActivity',
+              input: 'hi',
+              attemptToken: 'attempt-token-permanently-rejected',
+            });
+          }
+          return new Response(null, { status: 204 });
+        }
+
+        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          resultAttempts += 1;
+          const body = await request.json();
+          // Every attempt is permanently rejected, correlated to the exact
+          // submission — the server will never apply this result no matter
+          // how many times it is resent.
+          const response = Response.json(
+            {
+              error: 'Forbidden',
+              operationId: body.operationId,
+              attemptToken: body.attemptToken,
+              reason: 'unknown-operation',
+            },
+            { status: 403 },
+          );
+          firstRejectionSent.resolve();
+          return response;
+        }
+
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const worker = new LongPollWorker({
+      serverUrl: `http://localhost:${server.port}`,
+      resultRetryBaseDelayMs: 10,
+      resultRetryMaxDelayMs: 50,
+      activities: {
+        echoActivity: async (input) => {
+          activityAttempted.resolve();
+          return input;
+        },
+      },
+    });
+
+    worker.start();
+    await withTimeout(
+      activityAttempted.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'echo activity attempt',
+    );
+    await withTimeout(
+      firstRejectionSent.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'first correlated 403',
+    );
+
+    // The correlated-403 drop is an observed event: unacknowledgedResultCount
+    // reaching 0 after the server has already answered with the correlated
+    // rejection means the entry was actually DROPPED, not merely "not yet
+    // delivered" (which is what a 0 BEFORE any attempt would prove nothing).
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
+      timeoutMs: LONG_POLL_TEST_TIMEOUT_MS,
+    });
+    const attemptsAtDrop = resultAttempts;
+
+    await worker.stop();
+    // No further attempts after stop() — confirms the entry was dropped
+    // rather than merely paused mid-retry.
+    expect(resultAttempts).toBe(attemptsAtDrop);
+  });
+
+  it('resumes delivery of an unacknowledged result on start() after stop() (COR-235)', async () => {
+    const activityAttempted = createDeferred();
+    const resultDelivered = createDeferred();
+    let pollCount = 0;
+    let resultAttempts = 0;
+    let serverHealthy = false;
+
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+
+        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+          pollCount++;
+          if (pollCount === 1) {
+            return Response.json({
+              operationId: 'op-resume-on-restart',
+              activityName: 'echoActivity',
+              input: 'hi',
+              attemptToken: 'attempt-token-resume-on-restart',
+            });
+          }
+          return new Response(null, { status: 204 });
+        }
+
+        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          resultAttempts += 1;
+          if (!serverHealthy) {
+            return new Response('Server Error', { status: 500 });
+          }
+          resultDelivered.resolve();
+          return Response.json({ ok: true, disposition: 'applied' });
+        }
+
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const worker = new LongPollWorker({
+      serverUrl: `http://localhost:${server.port}`,
+      // Large enough that the retry timer, not a coincidental fire, could
+      // never explain a resend landing right after start() — only start()'s
+      // own flush() can produce it within this test's timeout.
+      resultRetryBaseDelayMs: 10_000,
+      resultRetryMaxDelayMs: 30_000,
+      activities: {
+        echoActivity: async (input) => {
+          activityAttempted.resolve();
+          return input;
+        },
+      },
+    });
+
+    worker.start();
+    await withTimeout(
+      activityAttempted.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'echo activity attempt',
+    );
+    // Wait for the first (failing) delivery attempt to land before stopping,
+    // so stop() observes a genuinely unacknowledged result rather than
+    // racing the very first send.
+    await waitForCondition(() => resultAttempts >= 1, { timeoutMs: LONG_POLL_TEST_TIMEOUT_MS });
+
+    const stopped = await worker.stop();
+    expect(stopped.unacknowledgedResults).toBe(1);
+    const attemptsAtStop = resultAttempts;
+
+    // The server recovers, and the worker restarts — start() must re-flush
+    // the still-buffered result immediately rather than waiting out the
+    // (intentionally huge) retry backoff.
+    serverHealthy = true;
+    worker.start();
+    await withTimeout(
+      resultDelivered.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'resumed result delivery',
+    );
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
+      timeoutMs: LONG_POLL_TEST_TIMEOUT_MS,
+    });
+    expect(resultAttempts).toBeGreaterThan(attemptsAtStop);
+
+    await worker.stop();
   });
 
   it('handles non-Error throws in activities', async () => {
@@ -562,7 +786,7 @@ describe('LongPollWorker', () => {
           const body = await request.json();
           completedTasks.push(body);
           taskCompleted.resolve();
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -649,7 +873,7 @@ describe('LongPollWorker', () => {
           const body = await request.json();
           completedTasks.push(body);
           taskCompleted.resolve();
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -722,7 +946,7 @@ describe('LongPollWorker', () => {
           const body = await request.json();
           completedTasks.push(body);
           taskCompleted.resolve();
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -785,7 +1009,7 @@ describe('LongPollWorker', () => {
           const body = await request.json();
           completedTasks.push(body);
           taskCompleted.resolve();
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -864,7 +1088,7 @@ describe('LongPollWorker', () => {
         }
 
         if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -935,7 +1159,7 @@ describe('LongPollWorker', () => {
           const body = await request.json();
           completedTasks.push(body);
           taskResultReceived.resolve();
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });
@@ -1030,7 +1254,7 @@ describe('LongPollWorker', () => {
           const body = await request.json();
           completedTasks.push(body);
           if (body.operationId === 'op-fenced-b') bResultReceived.resolve();
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, disposition: 'applied' });
         }
 
         return new Response('not found', { status: 404 });

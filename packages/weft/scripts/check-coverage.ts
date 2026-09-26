@@ -1138,9 +1138,18 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       'src/cli/conformance.ts',
       {
         reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
+          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Realigned again (COR-235) after the process-lifecycle and wait/observation primitives (`waitForCondition`, `startWorker`/`stopWorker`, the worker-heartbeat/idle/registration waits, and the ledger readers) moved out to `conformance-harness.ts`, which carries its own allowance below — this file now has 100% function coverage and only the three defensive dispatch/cancel/shutdown failure throws remain uncovered. Realigned a third time (still COR-235) after adding the `waitForReassignmentPastFirstAttempt` import shifted the graceful-shutdown throw from line 216 to 217.',
+        lines: new Set([63, 136, 217]),
+        requireUncoveredLines: true,
+      },
+    ],
+    [
+      'src/cli/conformance-harness.ts',
+      {
+        reason:
+          "Process lifecycle and observation primitives extracted from `conformance.ts` (COR-235, to keep that file under the line-count ceiling). Same rationale as that file previously carried: `waitForCondition`'s catch clause is never exercised because no predicate in the passing conformance fixtures throws, and the disconnected-worker/registry-empty throws in `waitForRegisteredWorker`/`waitForReplacementWorker`/`waitForWorkerHeartbeat` are defensive failure paths no passing conformance run reaches.",
         functions: 1,
-        lines: new Set([53, 104, 126, 139, 149, 150, 166, 167, 251, 324, 394]),
+        lines: new Set([45, 99, 121, 134, 144, 161]),
         requireUncoveredLines: true,
       },
     ],
@@ -1588,38 +1597,60 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
     ],
     [
       'src/server/runtime/websocket-worker.ts',
-      // Realigned for corvidae from a fresh coverage/lcov.info (COR
-      // coverage-gate adoption). Two distinct classes of gap, kept in one
-      // entry because they are one file:
+      // Realigned for corvidae from a fresh coverage/lcov.info (COR-235/
+      // COR-237/COR-1271 result-acknowledgement work). The prior entry's
+      // coordinates (141-144, 159-162, 218-224, 585, 586, 589, 590) no
+      // longer point at the branches they were written against — COR-1271's
+      // correlated-rejection test now exercises the durable-ledger
+      // commit-failure branch (was 159-162) and the fallback path's
+      // authorization-rejection branch (was 218-224) for real, so both are
+      // fully covered and dropped from this entry rather than carried
+      // forward as dead allowance. The remaining gaps, at their current
+      // coordinates — re-derived from a fresh coverage/lcov.info generated
+      // AFTER this file's own edits (deleting
+      // activityHeartbeatRejectionMessage's dead 'unknown-operation'
+      // branch), not by offset arithmetic against the pre-edit layout,
+      // which is what put an earlier pass at this same realignment about
+      // ten lines short of every coordinate below the edited region:
       //
-      // 1. The closed WorkerToServerMessage union's `default:` branch (585
-      // `default: {`, 586 the exhaustiveness comment's code line, 589
-      // `const exhaustiveCheck`, 590 `return exhaustiveCheck`) is upstream's
-      // documented compile-time-only exhaustiveness guard, unreachable at
-      // runtime by construction — the same pattern realigned above for
-      // `get-task-detail.ts` and `task-ledger-recovery.ts`.
+      // 1. The oversized-task-result-rejection persistence-failure log
+      // (160-163, was 141-144) and the `applyTaskResultFallback` rejection
+      // logger (287, was 247, the arrow-function callback passed to
+      // `.catch()` — the one missed function this entry allows) — each
+      // fires only when a storage write or the fallback path itself fails,
+      // which no current test forces.
       //
-      // 2. corvidae additionally carries defensive error-logging branches
-      // upstream's copy does not reach in the current suite: the
-      // oversized-task-result-rejection persistence failure path (141-144),
-      // the durable-ledger commit failure path for an applied task result
-      // (159-162), the revision-mismatch protocol-error branch for a stale
-      // `taskResult` (218-224), and the `applyTaskResultFallback` rejection
-      // logger (247, the arrow-function callback passed to `.catch()` — the
-      // one missed function this entry allows). Each fires only when a
-      // storage write or the fallback path itself fails, which no current
-      // test forces.
+      // 2. The revision-mismatch protocol-error branch for a stale
+      // `taskResult` (256-264) — a genuine resend of the same original
+      // message always echoes back whatever revision it echoed the first
+      // time, so no current test can construct the mismatch without lying
+      // about being a resend.
       //
-      // `requireUncoveredLines: true` here (upstream's sibling entries omit
-      // it only for the narrow exhaustiveness-guard case-label/brace lines,
-      // which is not the majority of what this entry now allows).
+      // 3. The closed `WorkerToServerMessage` union's `default:` branch
+      // (632 `default: {`, 635 `const exhaustiveCheck`, 636 `return
+      // exhaustiveCheck`) is the same compile-time-only exhaustiveness guard
+      // realigned above for `get-task-detail.ts` and
+      // `task-ledger-recovery.ts`, plus the preceding `activityHeartbeat`
+      // case's closing brace (631), which reads 0 in this run — the same
+      // case-label/brace coverage-attribution artifact those sibling
+      // entries already document.
+      //
+      // (COR-237 also added an `'unknown-operation'` branch to
+      // `activityHeartbeatRejectionMessage` immediately above this file's
+      // line 102; that branch was unreachable by construction from its only
+      // caller and was deleted rather than allowed here — see that
+      // function's doc comment.)
+      //
+      // `requireUncoveredLines: true` here, as before: the majority of what
+      // this entry allows is real, meaningfully-defensive branches where a
+      // future covering test should trip this check, not the minority
+      // case-label/brace lines that can attribute inconsistently.
       {
         reason:
-          'Compile-time exhaustiveness guard for a closed discriminated union (585, 586, 589, 590), plus defensive error-logging branches for a storage write or fallback-path failure that no current test forces (141-144, 159-162, 218-224, 247).',
+          'Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (160-163, 287), a revision-mismatch rejection unreachable without fabricating a non-resend (256-264), and the closed WorkerToServerMessage union default branch (631, 632, 635, 636).',
         functions: 1,
         lines: new Set([
-          141, 142, 143, 144, 159, 160, 161, 162, 218, 219, 220, 221, 222, 223, 224, 247, 585, 586,
-          589, 590,
+          160, 161, 162, 163, 256, 257, 258, 259, 260, 261, 262, 263, 264, 287, 631, 632, 635, 636,
         ]),
         requireUncoveredLines: true,
       },

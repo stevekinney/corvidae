@@ -101,7 +101,7 @@ If `signal` is already aborted when called, returns a failed result immediately 
 
 ### `RemoteWorker`
 
-WebSocket-based remote worker client. Connects to the Weft server, sends a v6 registration, waits for `registerAck`, and then processes tasks dispatched by the server. Implements `Disposable`.
+WebSocket-based remote worker client. Connects to the Weft server, sends a v7 registration, waits for `registerAck`, and then processes tasks dispatched by the server. Implements `Disposable`.
 
 ```ts partial
 class RemoteWorker implements Disposable {
@@ -216,14 +216,24 @@ class LongPollWorker implements Disposable {
   constructor(options: LongPollWorkerOptions);
 
   start(): void;
-  async stop(): Promise<void>;
+  async stop(): Promise<{ unacknowledgedResults: number }>;
 
   get inFlight(): number;
   get running(): boolean;
+  get unacknowledgedResultCount(): number;
 
   [Symbol.dispose](): void;
 }
 ```
+
+| Method / Property | Returns | Description |
+| --- | --- | --- |
+| `start()` | `void` | Start polling for tasks, and (COR-235) resume delivery of any result still buffered from a previous `stop()` |
+| `stop()` | `Promise<{ unacknowledgedResults: number }>` | Stop polling, wait for in-flight activities up to `disconnectTimeoutMs`, then suspend result delivery. Resolves with the number of buffered results still awaiting a durable disposition -- mirrors `RemoteWorker.disconnect()`'s identical shape |
+| `inFlight` | `number` | Number of activities currently executing |
+| `running` | `boolean` | Whether the poll loop is active |
+| `unacknowledgedResultCount` | `number` | Number of buffered results still awaiting an `applied`/`duplicate`/`dead-lettered` disposition (COR-235) -- mirrors `RemoteWorker`'s identical getter |
+| `[Symbol.dispose]()` | `void` | Immediate shutdown -- stop polling and abort in-flight activities. Unlike `stop()`, this discards any unacknowledged results rather than preserving them for a later `start()` |
 
 ### `LongPollWorkerOptions`
 
@@ -236,6 +246,8 @@ class LongPollWorker implements Disposable {
 | `pollTimeout` | `number` | `30_000` | Long-poll timeout in ms |
 | `heartbeatIntervalMs` | `number` | `10_000` | Per-activity heartbeat interval (COR-230) — see [Long-poll fallback](../guides/remote-workers.md#long-poll-fallback). |
 | `disconnectTimeoutMs` | `number` | `30_000` | Bound on how long `stop()` waits for in-flight activities to finish after aborting them (COR-220) — matches `RemoteWorker`'s identical bound. A non-cooperative activity that ignores its `AbortSignal` cannot hold `stop()` open past this. |
+| `resultRetryBaseDelayMs` | `number` | `1_000` | Delay before the first retry of a result POST that failed or was transiently rejected (COR-235) — see [Result delivery and acknowledgement](../guides/remote-workers.md#result-delivery-and-acknowledgement). |
+| `resultRetryMaxDelayMs` | `number` | `30_000` | Upper bound the result-retry delay backs off to (COR-235). |
 
 **Example:**
 

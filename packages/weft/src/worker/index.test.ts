@@ -33,7 +33,7 @@ function createTestServer(options?: {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 6,
+                  protocolVersion: 7,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: parsed.concurrency ?? 10,
@@ -208,7 +208,7 @@ describe('RemoteWorker', () => {
       registerMessage = messages.find((m) => m.type === 'register');
     }
     expect(registerMessage).toBeDefined();
-    expect(registerMessage.protocolVersion).toBe(6);
+    expect(registerMessage.protocolVersion).toBe(7);
     expect(registerMessage.workerId).toBe('test-worker-1');
     expect(registerMessage.concurrency).toBe(5);
     expect(Object.keys(registerMessage.manifest.workflows['orders'].activities)).toEqual([
@@ -323,7 +323,7 @@ describe('RemoteWorker', () => {
 
     const realManifest = {
       manifestVersion: 1,
-      protocolVersion: 6,
+      protocolVersion: 7,
       sdkVersion: '9.9.9',
       runtime: { name: 'bun', version: '1.3.14' },
       deployment: { name: 'payments', buildId: 'build-real', artifactDigest: 'sha256:real-bytes' },
@@ -371,7 +371,7 @@ describe('RemoteWorker', () => {
           buildId: 'build-1',
           manifest: {
             manifestVersion: 1,
-            protocolVersion: 6,
+            protocolVersion: 7,
             sdkVersion: '1.0.0',
             runtime: { name: 'bun', version: '1.3.14' },
             deployment: { name: 'payments', buildId: 'build-1', artifactDigest: 'sha256:x' },
@@ -392,7 +392,7 @@ describe('RemoteWorker', () => {
           buildId: 'build-1',
           manifest: {
             manifestVersion: 1,
-            protocolVersion: 6,
+            protocolVersion: 7,
             sdkVersion: '1.0.0',
             runtime: { name: 'bun', version: '1.3.14' },
             deployment: { name: 'payments', buildId: 'build-1', artifactDigest: 'sha256:x' },
@@ -563,7 +563,7 @@ describe('RemoteWorker', () => {
       serverSocket.send(
         JSON.stringify({
           type: 'registerAck',
-          protocolVersion: 6,
+          protocolVersion: 7,
           workerId: 'ack-gated-heartbeat-worker',
           queue: 'default',
           concurrency: 10,
@@ -2044,7 +2044,7 @@ describe('RemoteWorker — connect URL resolution', () => {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 6,
+                  protocolVersion: 7,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: parsed.concurrency ?? 10,
@@ -2212,7 +2212,7 @@ function createTrackingServer(options?: {
           ws.send(
             JSON.stringify({
               type: 'registerAck',
-              protocolVersion: 6,
+              protocolVersion: 7,
               workerId: parsed.workerId,
               queue: 'default',
               concurrency: parsed.concurrency ?? 10,
@@ -2250,6 +2250,15 @@ function createReconnectServer(
      * to keep every other call site's frame counts unchanged.
      */
     ackTaskResults?: boolean;
+    /**
+     * Reply to every `taskResult` with a correlated `protocolError` (protocol
+     * v7) instead of a `taskResultAck` — simulating a hard rejection
+     * (unknown operation, stale/foreign attempt, revision mismatch, or
+     * conflicting content) the ledger will never turn into an ack no matter
+     * how many times the result is resent. Mutually exclusive with
+     * `ackTaskResults` in practice; only one should be set per test.
+     */
+    rejectTaskResults?: boolean;
   },
 ): {
   server: ReturnType<typeof Bun.serve>;
@@ -2282,7 +2291,7 @@ function createReconnectServer(
           ws.send(
             JSON.stringify({
               type: 'registerAck',
-              protocolVersion: 6,
+              protocolVersion: 7,
               workerId: parsed.workerId,
               queue: 'default',
               concurrency: 10,
@@ -2303,6 +2312,17 @@ function createReconnectServer(
                 operationId: parsed.operationId,
                 attemptToken: parsed.attemptToken,
                 disposition: 'applied',
+              }),
+            );
+          }
+          if (options?.rejectTaskResults === true && parsed.type === 'taskResult') {
+            ws.send(
+              JSON.stringify({
+                type: 'protocolError',
+                code: 'invalid_message',
+                message: `taskResult for operation "${parsed.operationId}" rejected — stale attempt token`,
+                operationId: parsed.operationId,
+                attemptToken: parsed.attemptToken,
               }),
             );
           }
@@ -2376,7 +2396,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     ackSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 6,
+        protocolVersion: 7,
         workerId: 'reentrancy-worker',
         queue: 'default',
         concurrency: 10,
@@ -2404,7 +2424,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
             ws.send(
               JSON.stringify({
                 type: 'registerAck',
-                protocolVersion: 6,
+                protocolVersion: 7,
                 workerId: parsed.workerId,
                 queue: 'default',
                 concurrency: 10,
@@ -2521,7 +2541,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     firstSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 6,
+        protocolVersion: 7,
         workerId: 'late',
         queue: 'default',
         concurrency: 10,
@@ -2537,7 +2557,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     secondSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 6,
+        protocolVersion: 7,
         workerId: 'current',
         queue: 'default',
         concurrency: 10,
@@ -2645,7 +2665,9 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
     const allFrames: any[] = [];
     // Deliver the task only on the first registration so a later reconnect
     // cannot re-deliver it; any second taskResult would have to come from the
-    // outbox re-flushing an already-acknowledged result.
+    // outbox re-flushing an already-acknowledged result. The second
+    // registration also gets its own, differently-named "fence" task — see
+    // the negative-assertion barrier below.
     const harness = createReconnectServer(
       (ws, idx) => {
         if (idx === 0) {
@@ -2656,6 +2678,16 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
               attemptToken: 'attempt-token',
               activityName: 'orders.echo',
               input: 'hi',
+            }),
+          );
+        } else if (idx === 1) {
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-fence',
+              attemptToken: 'fence-token',
+              activityName: 'orders.echo',
+              input: 'fence',
             }),
           );
         }
@@ -2688,11 +2720,33 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
       label: 'result acknowledged',
     });
 
-    // A subsequent reconnect must not re-flush an already-acknowledged result.
+    // A subsequent reconnect must not re-flush an already-acknowledged
+    // result. Proving that absence needs an observed barrier, not a raw
+    // sleep — a fixed window either passes trivially (nothing to race:
+    // op-immediate's flush, if it wrongly fired, already ran synchronously
+    // inside #handleRegisterAck before connect() even resolved) or is
+    // genuinely racing the localhost round-trip that lets the harness
+    // record it, in which case a fixed delay is a guess at that round-trip's
+    // length, not proof of it.
+    //
+    // Fence instead: op-fence is a SEPARATE task dispatched only after this
+    // registration's ack, so the worker cannot even start executing it until
+    // after any (wrongly) flushed op-immediate resend has already been
+    // handed to the same WebSocket for sending — a single connection
+    // delivers a sender's messages to the receiver in the order they were
+    // sent. Once the server has recorded op-fence's own taskResult, any
+    // op-immediate resend that will ever arrive from this reconnect has
+    // already arrived.
     await worker.disconnect();
     await worker.connect();
-    await sleepForTesting(50);
-    const total = harness.allFrames().filter((m) => m.type === 'taskResult').length;
+    await waitForCondition(
+      () =>
+        harness.framesFor(1).some((m) => m.type === 'taskResult' && m.operationId === 'op-fence'),
+      { timeoutMs: 1_000, label: 'fence task result' },
+    );
+    const total = harness
+      .allFrames()
+      .filter((m) => m.type === 'taskResult' && m.operationId === 'op-immediate').length;
     expect(total).toBe(1);
 
     await worker.disconnect();
@@ -2742,6 +2796,97 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
     const resent = harness.framesFor(1).find((m) => m.type === 'taskResult');
     expect(resent.operationId).toBe('op-never-acked');
     expect(resent.value).toBe('hi');
+
+    await worker.disconnect();
+  });
+
+  it('drops a permanently-rejected result on a correlated protocolError and never resends it on reconnect (protocol v7)', async () => {
+    // The full correlate-and-drop loop: a result is buffered, the server
+    // rejects it as a stale/unknown attempt via a correlated `protocolError`
+    // (rather than a `taskResultAck`, which would never come for a
+    // submission the ledger will never apply), the worker matches that
+    // rejection to the exact outbox entry that caused it and drops it, and a
+    // subsequent reconnect does not resend it. Before protocol v7 this
+    // `protocolError` carried no `operationId`/`attemptToken`, so the worker
+    // had no way to tell which buffered entry it named and resent the same
+    // permanently-unappliable result forever.
+    const harness = createReconnectServer(
+      (ws, idx) => {
+        if (idx === 0) {
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-permanently-rejected',
+              attemptToken: 'attempt-token',
+              activityName: 'orders.echo',
+              input: 'hi',
+            }),
+          );
+        } else if (idx === 1) {
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-fence',
+              attemptToken: 'fence-token',
+              activityName: 'orders.echo',
+              input: 'fence',
+            }),
+          );
+        }
+      },
+      { rejectTaskResults: true },
+    );
+    server = harness.server;
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workflows: workflowsOf({ echo: async (input) => input }),
+    });
+
+    await worker.connect();
+    await waitForCondition(() => harness.framesFor(0).some((m) => m.type === 'taskResult'), {
+      timeoutMs: 1_000,
+      label: 'first send',
+    });
+
+    // The fake server answers every taskResult with a correlated
+    // protocolError rather than an ack — wait for the outbox to actually
+    // drain in response to it rather than asserting a size synchronously,
+    // since the reject can already have been processed by the time this
+    // line runs.
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
+      timeoutMs: 1_000,
+      label: 'outbox entry dropped after correlated rejection',
+    });
+
+    // A subsequent reconnect must not resend the permanently-rejected
+    // result. Proving that absence needs an observed barrier rather than a
+    // fixed sleep, for the same reason as the fence-task rewrite above: a
+    // fixed window either passes trivially (the drop already happened
+    // synchronously before this line) or races an unspecified round-trip.
+    //
+    // Fence instead: op-fence is a SEPARATE task dispatched only on this
+    // reconnect's registration, so the worker cannot even start executing it
+    // until after any (wrongly) resent op-permanently-rejected result has
+    // already been handed to the same WebSocket for sending — a single
+    // connection delivers a sender's messages to the receiver in the order
+    // they were sent. Once the server has recorded op-fence's own
+    // taskResult, any op-permanently-rejected resend that will ever arrive
+    // from this reconnect has already arrived.
+    await worker.disconnect();
+    await worker.connect();
+    await waitForCondition(
+      () =>
+        harness.framesFor(1).some((m) => m.type === 'taskResult' && m.operationId === 'op-fence'),
+      { timeoutMs: 1_000, label: 'fence task result' },
+    );
+    expect(
+      harness
+        .framesFor(1)
+        .some((m) => m.type === 'taskResult' && m.operationId === 'op-permanently-rejected'),
+    ).toBe(false);
 
     await worker.disconnect();
   });
@@ -3271,7 +3416,7 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 6,
+                  protocolVersion: 7,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: 10,
@@ -3294,7 +3439,7 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
                 ws.send(
                   JSON.stringify({
                     type: 'registerAck',
-                    protocolVersion: 6,
+                    protocolVersion: 7,
                     workerId: parsed.workerId,
                     queue: 'default',
                     concurrency: 10,

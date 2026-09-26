@@ -302,7 +302,19 @@ export type RegisterErrorMessage = {
 };
 
 /**
- * Protocol-level error sent before closing a malformed worker stream.
+ * Protocol-level error sent before closing a malformed worker stream, or
+ * (protocol v7) reporting a `taskResult` the server will never apply no
+ * matter how many times it is resent.
+ *
+ * `operationId`/`attemptToken` (protocol v7) are present exactly when the
+ * rejection concerns a specific, permanently-unappliable `taskResult`
+ * submission — unknown operation, stale or foreign attempt, a
+ * workflow-revision mismatch, or conflicting content resubmitted under one
+ * attempt token — so a worker can match the rejection against its
+ * `TaskResultOutbox` (`worker/task-result-outbox.ts`) and stop resending it.
+ * Both are absent for `invalid_json`, `unknown_message_type`,
+ * `registration_required`, and any other malformed-frame rejection where no
+ * operation exists yet.
  *
  * @example
  * ```ts
@@ -313,6 +325,14 @@ export type RegisterErrorMessage = {
  *   code: 'invalid_message',
  *   message: 'taskResult.operationId must be a non-empty string',
  * };
+ *
+ * const correlated: ProtocolErrorMessage = {
+ *   type: 'protocolError',
+ *   code: 'invalid_message',
+ *   message: 'taskResult for operation "op-1" rejected — stale attempt token',
+ *   operationId: 'op-1',
+ *   attemptToken: 'attempt-token',
+ * };
  * ```
  */
 export type ProtocolErrorMessage = {
@@ -320,6 +340,8 @@ export type ProtocolErrorMessage = {
   readonly code:
     'invalid_json' | 'invalid_message' | 'unknown_message_type' | 'registration_required';
   readonly message: string;
+  readonly operationId?: string;
+  readonly attemptToken?: string;
 };
 
 /**

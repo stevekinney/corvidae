@@ -6,7 +6,8 @@ const schema = {
   properties: {
     placeholder: {
       type: 'string',
-      description: 'Placeholder text when empty',
+      description:
+        'Hint text shown while the editor is empty. Unrelated to `{{path}}` template placeholders, which `placeholderDefinitions` configures.',
     },
     id: {
       type: 'string',
