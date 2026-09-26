@@ -38,6 +38,8 @@ import {
   type JSONValue,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   RunAbortedEvent,
+  RunCompletedEvent,
+  RunErrorEvent,
   type RunnableAgent,
   ScheduleAttemptedEvent,
   type ScheduledAgentRunInput,
@@ -251,6 +253,35 @@ async function waitForRunCompletion(bureau: Bureau, runId: string) {
   for (let i = 0; i < 10; i++) {
     await yieldToPortableEventLoop();
   }
+}
+
+/**
+ * COR-1319 — waits on the run's own completion signal instead of a
+ * fixed event-loop-turn budget. `attachRunEventFeed` (see
+ * `run-event-feed-attachment.ts`) already publishes `run.completed` /
+ * `run.error` / `run.aborted` onto `bureau.runEventFeeds` for every run a
+ * bureau starts, so subscribing there settles exactly when the run actually
+ * finishes — however many turns skill activation's disk read, hash, and
+ * guardrail scan take — instead of guessing a fixed turn count up front and
+ * racing that guess against real I/O. `subscribe()` replays from the start
+ * of the feed before following live, so this is race-free whether the run
+ * has already settled by the time this is called or settles later.
+ */
+async function waitForRunSettled(bureau: Bureau, runId: string): Promise<void> {
+  const runFeed = bureau.runEventFeeds.get(runId);
+  if (!runFeed) {
+    throw new Error(`No run event feed registered for run ${runId}`);
+  }
+  for await (const envelope of runFeed.feed.subscribe()) {
+    if (
+      envelope.kind === RunCompletedEvent.type ||
+      envelope.kind === RunErrorEvent.type ||
+      envelope.kind === RunAbortedEvent.type
+    ) {
+      return;
+    }
+  }
+  throw new Error(`Run ${runId}'s event feed ended before it settled`);
 }
 
 /**
@@ -20877,11 +20908,12 @@ describe('skill guardrail scanning (COR-1226)', () => {
     });
 
     try {
-      // Waited on the run's own completion rather than a tick budget: activation now reads the
-      // bundle off disk, hashes it and scans it, which is genuinely more event-loop turns than the
-      // in-memory provider took. A budget sized for the old path would be measuring the wrong thing.
+      // Waits on the run's own completion event (`waitForRunSettled`) rather than a tick budget:
+      // activation now reads the bundle off disk, hashes it and scans it, which is genuinely more
+      // event-loop turns than the in-memory provider took, and a fixed turn budget measures the
+      // wrong thing (COR-1319).
       const run = await bureau.createRun({ message: 'activate the skill' });
-      await waitForRunCompletion(bureau, run.id);
+      await waitForRunSettled(bureau, run.id);
       expect(activateResult).toBeDefined();
 
       // The blocked shape, not the skill content.
@@ -20917,8 +20949,11 @@ describe('skill guardrail scanning (COR-1226)', () => {
     });
 
     try {
+      // Same race as the sibling "blocks a skill" test above: this skill's activation also
+      // reads the bundle off disk, hashes it and scans it, so it waits on the run's own
+      // completion event rather than a fixed tick budget. See `waitForRunSettled`.
       const run = await bureau.createRun({ message: 'activate the skill' });
-      await waitForRunCompletion(bureau, run.id);
+      await waitForRunSettled(bureau, run.id);
       expect(activateResult).toBeDefined();
 
       // A skill the guardrail does not trip is admitted unchanged — body verbatim, name attribute
