@@ -83,7 +83,9 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
     common['chromium-csp-and-assets'] = { passed: !requests.some((request) => request.includes('pageerror:')) && (candidate.name !== 'ghostty-web' || requests.some((request) => request.includes('ghostty-vt.wasm'))), observation: `csp=${csp};requests=${requests.join(',')}` };
     return { cells: common, requests };
   } catch (error) {
-    return { cells: fallbackCells(`harness-failure:${String(error)}`), requests, failure: String(error) };
+    const message = String(error);
+    const kind = message.includes('TimeoutError') ? 'timeout' : 'harness-failure';
+    return { cells: fallbackCells(`${kind}:${message}`), requests, failure: message };
   } finally { await browser.close(); server.stop(true); }
 }
 
