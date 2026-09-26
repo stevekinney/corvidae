@@ -24,6 +24,7 @@ async function sourceSha(): Promise<string> {
       'documentation/terminal',
       'package.json',
       'scripts/workspace-contract.test.ts',
+      'bun.lock',
     ],
     { cwd: root, stdout: 'pipe', stderr: 'pipe' },
   );
@@ -148,19 +149,26 @@ async function ptyProbe(): Promise<EvidenceCell[]> {
   const output: Uint8Array[] = [];
   let eofCode: number | undefined;
   let eofAt = 0;
-  const child = Bun.spawn(['sh', '-c', 'printf "pty-ready\\r\\n"; sleep 0.15; exit 0'], {
-    terminal: {
-      cols: 40,
-      rows: 10,
-      data(_terminal, bytes) {
-        output.push(bytes);
-      },
-      exit(_terminal, code) {
-        eofCode = code;
-        eofAt = Date.now();
+  const child = Bun.spawn(
+    [
+      'sh',
+      '-c',
+      'printf "pty-ready\\r\\n"; IFS= read -r value; printf "pty-input:%s\\r\\n" "$value"; stty size; exit 0',
+    ],
+    {
+      terminal: {
+        cols: 40,
+        rows: 10,
+        data(_terminal, bytes) {
+          output.push(bytes);
+        },
+        exit(_terminal, code) {
+          eofCode = code;
+          eofAt = Date.now();
+        },
       },
     },
-  });
+  );
   const terminal = child.terminal;
   if (!terminal)
     return expectedCellIds
@@ -168,7 +176,7 @@ async function ptyProbe(): Promise<EvidenceCell[]> {
       .map((id) => cell(id, false, ['unsupported-runtime:no terminal returned'], 0, 'boolean'));
   const startedAt = Date.now();
   terminal.resize(80, 24);
-  terminal.write('');
+  terminal.write('corvidae-input\n');
   const processExit = await child.exited;
   const processExitAt = Date.now();
   terminal.close();
@@ -181,16 +189,21 @@ async function ptyProbe(): Promise<EvidenceCell[]> {
   return [
     cell(
       'pty-launch-input-output',
-      text.includes('pty-ready') && processExit === 0,
+      text.includes('pty-ready') && text.includes('pty-input:corvidae-input') && processExit === 0,
       [`output=${JSON.stringify(text)}`, `processExit=${processExit}`],
       bytes,
       'bytes',
     ),
     cell(
       'pty-resize-and-eof',
-      terminal.closed && eofCode === 0 && eofAt > 0 && processExitAt >= eofAt,
+      terminal.closed &&
+        text.includes('24 80') &&
+        eofCode === 0 &&
+        eofAt > 0 &&
+        processExitAt >= eofAt,
       [
         `resize=80x24`,
+        `observedDimensions=${text.match(/\d+ \d+/)?.[0] ?? 'unobserved'}`,
         `ptyEofCode=${eofCode}`,
         `ptyEofAt=${eofAt - startedAt}ms`,
         `processExitAt=${processExitAt - startedAt}ms`,

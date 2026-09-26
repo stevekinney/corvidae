@@ -87,6 +87,12 @@ describe('terminal evidence schema', () => {
         'runtime',
       ),
     ).toContain('cell metrics');
+    expect(validateEvidence({ ...validReport, sourceSha: 'short' }, 'runtime')).toContain(
+      'schema constraints',
+    );
+    expect(validateEvidence({ ...validReport, observedAt: 'not-a-date' }, 'runtime')).toContain(
+      'schema constraints',
+    );
     expect(
       validateEvidence(
         {
@@ -144,6 +150,27 @@ describe('terminal evidence schema', () => {
         'engine',
       ),
     ).toContain('selected engine candidates');
+    expect(
+      validateEvidence(
+        {
+          ...engine,
+          candidates: [{ ...candidate, cells: [null] }],
+          passed: false,
+          selectedEngine: null,
+        },
+        'engine',
+      ),
+    ).toContain('candidate shape');
+    expect(
+      validateEvidence(
+        {
+          ...engine,
+          cells: [{ ...validReport.cells[0], id: '@xterm/xterm:launch', passed: false }],
+          passed: false,
+        },
+        'engine',
+      ),
+    ).toContain('candidate cell disagreement');
   });
 
   test('serializes browser failure phase in the Bun context', async () => {

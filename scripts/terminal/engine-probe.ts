@@ -27,7 +27,7 @@ const baseCsp =
 const cspFor = (candidate: Candidate): string => {
   if (candidate.name === 'ghostty-web' || candidate.name === '@wterm/dom')
     return `${baseCsp}; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'`;
-  return `${baseCsp}; script-src 'self'; connect-src 'self' ws: wss:`;
+  return `${baseCsp}; script-src 'self'; connect-src 'self'`;
 };
 type Candidate = (typeof candidates)[number];
 type BrowserCell = { passed: boolean; observation: string };
@@ -71,6 +71,7 @@ async function sourceSha(): Promise<string> {
       'documentation/terminal',
       'package.json',
       'scripts/workspace-contract.test.ts',
+      'bun.lock',
     ],
     { cwd: root, stdout: 'pipe', stderr: 'pipe' },
   );
@@ -88,7 +89,7 @@ async function sourceSha(): Promise<string> {
 function browserSource(candidate: Candidate): string {
   if (candidate.name === '@wterm/dom')
     return `import { WTerm } from '@wterm/dom'; import '@wterm/dom/css';
-globalThis.probePhase = 'module-loaded'; const host = document.querySelector('#terminal'); const events = []; const terminal = new WTerm(host, { cols: 10, rows: 4, autoResize: false, onData: (data) => events.push(data) }); globalThis.probePhase = 'before-init'; await terminal.init(); globalThis.probePhase = 'after-init'; const writes = []; const write = (data) => { const result = terminal.write(data); writes.push(result === undefined); }; write('A'); write(new Uint8Array([0xCE, 0xB1])); write('\\x1b[31mR\\x1b[0m'); write('\\x1b[6n'); const text = host.textContent ?? ''; terminal.resize(20, 8); const readText = await terminal.readText(); terminal.search('A'); await new Promise((resolve) => setTimeout(resolve, 50)); const search = terminal.getSearchState().count > 0; const resized = terminal.cols === 20 && terminal.rows === 8; terminal.destroy(); globalThis.probeResult = { writes, text: readText, readText, search, resized, events, suppression: Array.isArray(events), disposed: host.textContent === '' };`;
+globalThis.probePhase = 'module-loaded'; const host = document.querySelector('#terminal'); const events = []; const terminal = new WTerm(host, { cols: 10, rows: 4, autoResize: false, onData: (data) => events.push(data) }); globalThis.probePhase = 'before-init'; await terminal.init(); globalThis.probePhase = 'after-init'; const writes = []; const write = (data) => { const result = terminal.write(data); writes.push(result === undefined); }; write('A'); write(new Uint8Array([0xCE])); write(new Uint8Array([0xB1])); write('\\x1b[3'); write('1mR'); write('\\x1b[0m'); write('\\x1b[6n'); const text = host.textContent ?? ''; terminal.resize(20, 8); const readText = await terminal.readText(); terminal.search('A'); await new Promise((resolve) => setTimeout(resolve, 50)); const search = terminal.getSearchState().count > 0; const resized = terminal.cols === 20 && terminal.rows === 8; const cursorX = terminal.cursorX; const cursorY = terminal.cursorY; const attributes = terminal.getCell?.(0, 0) ?? null; terminal.destroy(); globalThis.probeResult = { writes, text: readText, readText, search, resized, events, replyCount: events.length, replyPayload: events[0] ?? null, cursorX, cursorY, attributes, disposed: host.textContent === '' };`;
   if (candidate.name === 'ghostty-web')
     return `import { Ghostty, Terminal } from 'ghostty-web';
 globalThis.probePhase = 'module-loaded'; globalThis.probePhase = 'before-init'; const ghostty = await Ghostty.load('/ghostty-vt.wasm'); globalThis.probePhase = 'after-init'; const host = document.querySelector('#terminal'); const terminal = new Terminal({ cols: 10, rows: 4, ghostty }); terminal.open(host); globalThis.probePhase = 'opened'; const writes = []; const write = (data) => new Promise((resolve) => { const result = terminal.write(data, () => { writes.push(result === undefined); resolve(); }); }); await write(new Uint8Array([0x41])); await write(new Uint8Array([0xCE])); await write(new Uint8Array([0xB1])); await write(new Uint8Array([0x1b,0x5b,0x33])); await write(new Uint8Array([0x31,0x6d,0x52,0x1b,0x5b,0x30,0x6d])); let replies = 0; terminal.onData(() => { replies += 1; }); await write('\\x1b[6n'); const line = terminal.buffer.active.getLine(0); const cell = line?.getCell(1); const text = line?.translateToString(false) ?? ''; const softWrapMetadata = typeof line?.isWrapped === 'boolean' && line.isWrapped; terminal.resize(20, 8); const resized = terminal.cols === 20 && terminal.rows === 8; terminal.dispose(); globalThis.probeResult = { writes, text, cursorX: terminal.buffer.active.cursorX, cursorY: terminal.buffer.active.cursorY, red: cell?.getFgColor?.() ?? null, replies, suppression: replies === 1, softWrapMetadata, before: text, resized, disposed: host.querySelector('.xterm') === null };`;
@@ -248,16 +249,22 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
     };
     if (candidate.name === '@wterm/dom') {
       common['screen-cursor-attributes'] = {
-        passed: text.includes('A') && text.includes('R'),
-        observation: `domText=${JSON.stringify(text)};cursor-api=unsupported`,
+        passed:
+          typeof raw['cursorX'] === 'number' &&
+          typeof raw['cursorY'] === 'number' &&
+          raw['attributes'] !== null,
+        observation: `domText=${JSON.stringify(text)};cursor=${formatUnknown(raw['cursorX'])},${formatUnknown(raw['cursorY'])};attributes=${formatUnknown(raw['attributes'])}`,
       };
       common['soft-wrap-selection-search'] = {
         passed: raw['search'] === true && typeof raw['readText'] === 'string',
         observation: `readText=${formatUnknown(raw['readText'])};search=${formatUnknown(raw['search'])};retained-dom=virtualized`,
       };
       common['read-only-reply-suppression'] = {
-        passed: raw['suppression'] === true,
-        observation: `queryReplies=${formatUnknown(raw['events'])};adapterSuppressed=${formatUnknown(raw['suppression'])}`,
+        passed:
+          raw['suppression'] === true &&
+          raw['replyCount'] === 1 &&
+          raw['replyPayload'] === '\u001b[1;1R',
+        observation: `queryReplies=${formatUnknown(raw['replyCount'])};replyPayload=${formatUnknown(raw['replyPayload'])};adapterSuppressed=${formatUnknown(raw['suppression'])}`,
       };
     }
     if (candidate.name === 'ghostty-web')
@@ -268,7 +275,11 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
     common['chromium-csp-and-assets'] = {
       passed:
         diagnostics.every(
-          (item) => !item.startsWith('pageerror:') && !item.startsWith('requestfailed:'),
+          (item) =>
+            !item.startsWith('pageerror:') &&
+            !item.startsWith('requestfailed:') &&
+            !item.startsWith('console:warning:') &&
+            !item.startsWith('console:error:'),
         ) &&
         (candidate.name === 'ghostty-web' || requests.includes('/candidate.css')) &&
         (candidate.name !== 'ghostty-web' || requests.includes('/ghostty-vt.wasm')),
