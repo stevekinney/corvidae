@@ -19,6 +19,10 @@ import type { StoredStreamChunk } from '../context.ts';
 import { createHandleCacheFinalizer } from '../engine-helpers.ts';
 import type { TypedEventTarget, WeftEventMap } from '../events.ts';
 import { RemoteActivityQueuedEvent } from '../events.ts';
+import {
+  WorkflowRevisionActivatedEvent,
+  WorkflowRevisionDrainingEvent,
+} from '../events/catalog-events.ts';
 import type { Interceptor } from '../interceptor.ts';
 import { ReviewCoordinator, type ReviewRequest } from '../review/index.ts';
 import { Scheduler } from '../scheduler.ts';
@@ -739,6 +743,13 @@ export class Engine<
       // bundle construction, before that field is set. `onLog` has no setter, so the
       // captured value never goes stale; it is the same object stored on internals. (#529)
       getLogSink: () => resolvedOptions.onLog ?? undefined,
+      // Realm mode only (COR-249's engine integration): a recovery re-launch
+      // omits `startWorkflow()`'s own `revision` parameter, so the strategy
+      // falls back to this durable, per-instance pin — already populated by
+      // every launch path (fresh start, fork, and recovery relaunch) before
+      // `strategy.startWorkflow()` is ever called.
+      getWorkflowRevisionPin: (workflowId) =>
+        getInternals(this).workflowTypeByWorkflowId.get(workflowId)?.revision,
     });
     getInternals(this).storage = storage;
     getInternals(this).abortController = new AbortController();
@@ -808,6 +819,22 @@ export class Engine<
     });
     getInternals(this).strategy = strategyBundle.strategy;
     getInternals(this).inlineStrategy = strategyBundle.inlineStrategy;
+    if (strategyBundle.revisionRealmRegistry) {
+      const revisionRealmRegistry = strategyBundle.revisionRealmRegistry;
+      getInternals(this).revisionRealmRegistry = revisionRealmRegistry;
+      // "Activation routes new starts only to the newly active revision; a
+      // run pinned to an older revision keeps executing in that revision's
+      // realm" (COR-249/ADR 0004) — wired from the REAL catalog events
+      // `activateCatalogRevisionCandidate()` dispatches, never a synthetic
+      // or synchronous call, so this only ever reflects a durably applied
+      // activation.
+      this.addEventListener(WorkflowRevisionDrainingEvent.type, (event) => {
+        revisionRealmRegistry.markInactive(event.workflowType, event.revision);
+      });
+      this.addEventListener(WorkflowRevisionActivatedEvent.type, (event) => {
+        revisionRealmRegistry.markActive(event.workflowType, event.revision);
+      });
+    }
     getInternals(this).queuedInlineWorkflowStarts = [];
     getInternals(this).queuedInlineWorkflowStartIds = new Set();
     getInternals(this).queuedOrLaunchingInlineWorkflowStartIds = new Set();
