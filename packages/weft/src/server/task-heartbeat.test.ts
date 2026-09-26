@@ -233,6 +233,44 @@ describe('Worker-session heartbeat vs. activity heartbeat (COR-230)', () => {
     ).toBe(false);
   });
 
+  it('rejects an activityHeartbeat whose details exceed the configured payload size limit (COR-226), and never renews the lease', async () => {
+    const { storage, options, context, ws, claimed } = await setUp();
+    // Test-only override, same pattern as `setCancellationGracePeriod` in
+    // task-cancellation.test.ts — `payloadSizeMaxBytes` is otherwise readonly.
+    (context as { payloadSizeMaxBytes: number | null }).payloadSizeMaxBytes = 10;
+
+    handleWorkerWebSocketMessage(
+      context,
+      options,
+      ws as never,
+      JSON.stringify({
+        type: 'activityHeartbeat',
+        workerId: 'w-1',
+        operationId: 'op-1',
+        attemptToken: 'attempt-1',
+        details: { farExceedsTenBytesOfEncodedPayload: true },
+      }),
+      NOOP_CLEANUP,
+    );
+
+    await waitForCondition(
+      () =>
+        ws.sentMessages.some(
+          (raw) => (JSON.parse(raw) as { type: string }).type === 'protocolError',
+        ),
+      { label: 'oversized heartbeat details rejected' },
+    );
+    const protocolError = ws.sentMessages
+      .map((raw) => JSON.parse(raw) as { type: string; message?: string })
+      .find((message) => message.type === 'protocolError');
+    expect(protocolError?.message).toContain('heartbeat details');
+
+    // Rejected before the renewal is even attempted — the lease is untouched.
+    const record = await readLeasedRecord(storage, 'op-1');
+    expect(record.leaseDeadline).toBe(claimed.leaseDeadline);
+    expect(record.lastHeartbeatDetails).toBeUndefined();
+  });
+
   it('acceptance criterion 3: a stale attemptToken is rejected and cannot modify the current attempt', async () => {
     const { storage, options, context, ws, claimed } = await setUp();
 
@@ -858,6 +896,24 @@ describe('Long-poll activity heartbeat — same shared seam as WebSocket (COR-23
       new URL(request.url),
     );
     expect(response?.status).toBe(413);
+  });
+
+  it('returns 413 when heartbeat details exceed the configured payload size limit (COR-226), and never renews the lease', async () => {
+    const { storage, options, context, claimed } = await setUpLongPoll();
+    (context as { payloadSizeMaxBytes: number | null }).payloadSizeMaxBytes = 10;
+
+    const { request, url } = heartbeatRequest({
+      operationId: 'op-lp-1',
+      workerId: 'longpoll-w1',
+      attemptToken: 'lp-attempt-1',
+      details: { farExceedsTenBytesOfEncodedPayload: true },
+    });
+    const response = await handleTaskHeartbeatRequest(context, options, request, url);
+    expect(response?.status).toBe(413);
+
+    const record = await readLeasedRecord(storage, 'op-lp-1');
+    expect(record.leaseDeadline).toBe(claimed.leaseDeadline);
+    expect(record.lastHeartbeatDetails).toBeUndefined();
   });
 
   it('returns 400 for an invalid JSON heartbeat body', async () => {
