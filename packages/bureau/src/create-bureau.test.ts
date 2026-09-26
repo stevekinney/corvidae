@@ -21007,8 +21007,12 @@ describe('skill lifecycle events reach the bureau emitter (COR-767)', () => {
     }
 
     try {
+      // COR-1325 — this run activates a skill, whose activation reads the bundle off disk,
+      // hashes it, and scans it (the same guardrail-scan cost COR-1319 already fixed for the
+      // COR-1226 tests), so it waits on the run's own completion event rather than the fixed
+      // 50-turn budget `waitForRunCompletion` uses. See `waitForRunSettled`.
       const run = await bureau.createRun({ message: 'activate the skill' });
-      await waitForRunCompletion(bureau, run.id);
+      await waitForRunSettled(bureau, run.id);
       expect(seen.length).toBeGreaterThanOrEqual(2);
 
       expect(seen.map((entry) => entry.type)).toEqual(['skill.loaded', 'skill.activated']);
@@ -21080,8 +21084,12 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
     });
 
     try {
+      // COR-1325 — activating `reader` reads its skill bundle off disk, hashes it, and runs it
+      // through the guardrail scan, which is genuinely more event-loop turns than
+      // `waitForRunCompletion`'s fixed 50-turn budget accounts for (the same race COR-1319 fixed
+      // for the COR-1226 guardrail tests). Wait on the run's own completion event instead.
       const run = await bureau.createRun({ message: 'narrow me' });
-      await waitForRunCompletion(bureau, run.id);
+      await waitForRunSettled(bureau, run.id);
 
       // Nothing active: both domain tools visible.
       expect(before).toContain('read_file');
@@ -21125,8 +21133,11 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
     });
 
     try {
+      // COR-1325 — same race as the sibling "hides a tool" test above: activating `reader`
+      // performs the disk read, hash, and guardrail scan that outruns `waitForRunCompletion`'s
+      // fixed 50-turn budget. Wait on the run's own completion event instead.
       const run = await bureau.createRun({ message: 'try to widen' });
-      await waitForRunCompletion(bureau, run.id);
+      await waitForRunSettled(bureau, run.id);
 
       // An allow list only ever narrows. A tool the owner never granted stays
       // absent no matter what a skill asks for.
