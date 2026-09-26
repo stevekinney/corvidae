@@ -1084,6 +1084,36 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         requireUncoveredLines: true,
       },
     ],
+    [
+      'src/core/engine/revision-realm-execution-construction.ts',
+      {
+        // `buildRevisionRealmExecutionStrategyBundle()`'s own doc marks this
+        // exact branch defensive: its sole caller (`createExecutionStrategyBundle`)
+        // always derives `revisionRealmExecution` from
+        // `resolveRevisionRealmExecutionForMode(options, workflowExecutionMode)`,
+        // which already throws whenever `workflowExecutionMode === 'realm'` and
+        // `options.revisionRealmExecution` is missing — the only way this
+        // function's own `workflowExecutionMode !== 'realm'` check above has
+        // already passed AND `revisionRealmExecution` is still null is to call
+        // it directly with mismatched arguments, the same class of guard already
+        // allowed for `dynamic-source-execution.ts`'s "Unreachable in practice"
+        // entry above.
+        reason:
+          "Defensive fail-loud guard for an invariant resolveRevisionRealmExecutionForMode() itself guarantees when called with the same workflowExecutionMode; has no reachable runtime path to test without calling this function directly with mismatched arguments (COR-249's engine integration, R2E).",
+        lines: new Set([78, 79, 80]),
+        requireUncoveredLines: true,
+      },
+    ],
+    [
+      'src/core/realm/revision-realm-execution-strategy.ts',
+      {
+        reason:
+          "outboundFailure()'s wrapped multi-line parameter list (COR-249's engine integration, R2E) — its body (line 100) and every call site are exercised by revision-realm-execution.test.ts and revision-realm-execution-strategy.test.ts, but Bun attributes a multi-line function signature's own lines as missed even when the function itself runs, the same class of attribution artifact already documented for src/core/engine/index.ts's re-export and factory closures above. A full-suite run's FNF/FNH (19/17) is two short, not one: the second is the same 'Bun's LCOV FNH undercounts a function whose every line is otherwise hit' artifact documented for revision-realm-registry.ts's and worker-realm.ts's entries above — not reproduced when only this file's own tests run (functions there resolve to 100 percent once lines 96-99 are excluded), only by the full suite's exact process composition.",
+        lines: new Set([96, 97, 98, 99]),
+        functions: 2,
+        requireUncoveredLines: true,
+      },
+    ],
   ],
 );
 

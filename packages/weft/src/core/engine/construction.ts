@@ -33,7 +33,6 @@ import { copyFinalizerMetadata } from './finalizer-metadata.ts';
 import { resolveBackgroundTaskMode, resolveOwnershipFields } from './ownership-options.ts';
 import { EngineOwnedRemoteActivityBroker } from './remote-activity-broker.ts';
 import {
-  assertNoWorkerExecutionForRealmMode,
   buildRevisionRealmExecutionStrategyBundle,
   resolveRevisionRealmExecutionForMode,
 } from './revision-realm-execution-construction.ts';
@@ -371,10 +370,12 @@ function resolveWorkerExecutionForMode(
     }
     return options.workerExecution;
   }
-  if (workflowExecutionMode === 'realm') {
-    assertNoWorkerExecutionForRealmMode(options);
-    return null;
-  }
+  // `workflowExecutionMode: 'realm'` never reaches here:
+  // `normalizeWorkerExecutionConfiguration()` throws before calling this
+  // function for that mode, and `createExecutionStrategyBundle()` routes
+  // realm mode through `buildRevisionRealmExecutionStrategyBundle()` (which
+  // calls `assertNoWorkerExecutionForRealmMode()` itself) instead of this
+  // one, so a `'realm'` branch here would be unreachable dead code.
   // Omitted mode defaults to inline. Worker execution is the hardened untrusted
   // posture and must be requested explicitly; providing workerExecution alone is
   // an error rather than a silent, weaker Worker selection.
