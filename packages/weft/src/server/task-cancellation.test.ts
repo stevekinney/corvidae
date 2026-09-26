@@ -42,6 +42,7 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskRecord,
 } from '../core/task-ledger/task-ledger.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import {
   restoreRealTimers,

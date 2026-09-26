@@ -173,14 +173,7 @@ export type RenewAttemptLeaseInput = Readonly<{
   attemptToken: string;
   workerSessionId: string;
   leaseDurationMilliseconds: number;
-  /**
-   * Heartbeat details this renewal carries (COR-226), or omitted when the
-   * heartbeat carried none. Present-and-`undefined` is not a distinct wire
-   * state — this field is only ever supplied at all when the worker's
-   * heartbeat included a `details` value — so omitting it here always leaves
-   * `current.lastHeartbeatDetails` unchanged rather than clearing it.
-   */
-  details?: JSONValue;
+  details?: JSONValue; // Heartbeat details (COR-226); omitted leaves `lastHeartbeatDetails` unchanged.
 }>;
 
 /**
@@ -408,10 +401,7 @@ export function requeueExpiredAttempt(
     retryCount: Math.max(current.retryCount, nextAttempt - 1),
     requeueCount: current.requeueCount + 1,
     lastRequeueReason: input.requeueReason,
-    // COR-226: a requeued attempt's heartbeat details survive into the
-    // queued record so the NEXT claim (`claimQueued`, via `pickAttemptFields`)
-    // inherits them — surfaced to the redispatched attempt's `task` frame as
-    // `lastHeartbeatDetails`.
+    // COR-226: survives into the queued record so the next claim inherits it.
     ...(current.lastHeartbeatDetails !== undefined
       ? { lastHeartbeatDetails: current.lastHeartbeatDetails }
       : {}),

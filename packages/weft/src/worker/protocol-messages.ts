@@ -115,15 +115,11 @@ export type HeartbeatMessage = {
  * the attempt's absolute deadline (`RemoteTaskLeased.attemptDeadline`),
  * which no heartbeat of either kind can extend.
  *
- * `details` (protocol v8) mirrors {@link
- * import('../core/types.ts').ActivityContext.heartbeat}'s `details` argument
- * for a worker-executed activity: the server persists it on the durable
- * attempt record as `lastHeartbeatDetails` and surfaces it to the NEXT
- * attempt (via {@link TaskMessage.lastHeartbeatDetails}) if this one is
- * redispatched. Omitted entirely when the activity's `heartbeat()` call
- * carried no details — never defaulted to `null`, which would durably
- * overwrite a still-meaningful previous value with an explicit "no details"
- * marker.
+ * `details` (v8) mirrors {@link
+ * import('../core/types.ts').ActivityContext.heartbeat}'s `details` argument:
+ * the server persists it as `lastHeartbeatDetails` and surfaces it to the
+ * NEXT attempt ({@link TaskMessage.lastHeartbeatDetails}) if redispatched.
+ * Omitted (never `null`) when the `heartbeat()` call carried no details.
  *
  * @example
  * ```ts
@@ -392,22 +388,17 @@ export type TaskMessage = {
   /** Unique, unguessable token identifying this dispatch attempt. */
   readonly attemptToken: string;
   /**
-   * The visibility timeout (ms) this dispatch was leased with (COR-226,
-   * protocol v8) — the basis for the worker's automatic per-attempt keepalive
-   * interval, mirroring {@link
-   * import('./long-poll.ts').PolledTask.visibilityTimeout}, which long-poll
-   * has always carried. Absent only for a hand-built message a test
-   * constructs directly; every server-dispatched `task` frame includes it.
+   * The visibility timeout (ms) this dispatch was leased with (COR-226, v8) —
+   * basis for the automatic per-attempt keepalive interval, mirroring
+   * {@link import('./long-poll.ts').PolledTask.visibilityTimeout}. Absent
+   * only for a hand-built test message; every real dispatch includes it.
    */
   readonly visibilityTimeout?: number;
   /**
-   * The heartbeat details the PREVIOUS attempt of this operation recorded
-   * before it was redispatched (COR-226, protocol v8) — echoes durably
-   * persisted `lastHeartbeatDetails` back to the new attempt so a
-   * worker-executed activity can resume from where its predecessor left off,
-   * mirroring {@link import('../core/types.ts').ActivityContext.lastHeartbeatDetails}'s
-   * inline-engine semantics. Absent when no prior attempt ever heartbeated
-   * with details.
+   * The PREVIOUS attempt's recorded heartbeat details (COR-226, v8), echoed
+   * back so a redispatched attempt can resume from them — mirrors {@link
+   * import('../core/types.ts').ActivityContext.lastHeartbeatDetails}. Absent
+   * when no prior attempt ever heartbeated with details.
    */
   readonly lastHeartbeatDetails?: RemoteWorkerJsonValue;
 };
@@ -421,12 +412,10 @@ export type TaskMessage = {
  * worker has already completed or superseded matches nothing rather than
  * aborting whatever now runs under that `operationId`.
  *
- * `reason` (COR-223, protocol v8) is the durably recorded
- * `cancellationReason` the server committed before sending this control —
- * echoed to the worker so the aborted activity's `AbortSignal.reason` and its
- * reported `taskResult` error carry the real, operator-supplied reason
- * instead of a generic literal. Always present on a server-sent `cancel`;
- * optional only so a hand-built message in a test may omit it.
+ * `reason` (COR-223, v8) is the durably recorded `cancellationReason` the
+ * server committed before sending this control, so the aborted activity's
+ * `AbortSignal.reason` and reported `taskResult` error carry the real reason
+ * instead of a generic literal. Optional only for a hand-built test message.
  *
  * @example
  * ```ts
