@@ -712,22 +712,21 @@ describe('Combobox filtering', () => {
     expect(originalRoot).not.toBeNull();
     await fireEvent.focus(input);
     await fireEvent.input(input, { target: { value: 'zzz' } });
-    await waitFor(() => {
-      const emptyState = container.querySelector('.cinder-combobox__empty');
-      const scopedPanel = document.body.querySelector(
-        '.cinder-combobox.compact .cinder-combobox__empty-panel',
-      );
-      // Documents the AGENTS.md override hook: `.cinder-combobox.compact
-      // .cinder-combobox__empty` must keep matching after the empty panel is
-      // portaled, so both classes need to land on the same ancestor.
-      const scopedAncestor = emptyState?.closest('.cinder-combobox.compact');
-      expect(scopedPanel).not.toBeNull();
-      expect(scopedPanel?.contains(emptyState)).toBe(true);
-      expect(scopedAncestor).not.toBeNull();
-      expect(scopedAncestor).not.toBe(originalRoot);
-      expect(originalRoot?.contains(scopedAncestor ?? null)).toBe(false);
-      expect(scopedAncestor?.querySelector('.cinder-combobox')?.outerHTML ?? null).toBeNull();
-    });
+    flushSync();
+    const emptyState = container.querySelector('.cinder-combobox__empty');
+    const scopedPanel = document.body.querySelector(
+      '.cinder-combobox.compact .cinder-combobox__empty-panel',
+    );
+    // Documents the AGENTS.md override hook: `.cinder-combobox.compact
+    // .cinder-combobox__empty` must keep matching after the empty panel is
+    // portaled, so both classes need to land on the same ancestor.
+    const scopedAncestor = emptyState?.closest('.cinder-combobox.compact');
+    expect(scopedPanel).not.toBeNull();
+    expect(scopedPanel?.contains(emptyState)).toBe(true);
+    expect(scopedAncestor).not.toBeNull();
+    expect(scopedAncestor).not.toBe(originalRoot);
+    expect(originalRoot?.contains(scopedAncestor ?? null)).toBe(false);
+    expect(scopedAncestor?.querySelector('.cinder-combobox')?.outerHTML ?? null).toBeNull();
   });
 
   test('custom filter callback is honored', async () => {

@@ -158,15 +158,14 @@ describe('ContextMenu', () => {
 
     await fireEvent.contextMenu(region, { clientX: 24, clientY: 36 });
 
-    await waitFor(() => {
-      const menu = queryMenu();
-      expect(menu).not.toBeNull();
-      expect(menu?.parentElement).toBe(document.body);
-      expect(menu?.getAttribute('data-cinder-position-ready')).toBe('false');
-      expect(menu?.getAttribute('data-cinder-requested-x')).toBe('24');
-      expect(menu?.getAttribute('data-cinder-requested-y')).toBe('36');
-      expect(menu?.style.cssText).toBe('');
-    });
+    flushSync();
+    const menu = queryMenu();
+    expect(menu).not.toBeNull();
+    expect(menu?.parentElement).toBe(document.body);
+    expect(menu?.getAttribute('data-cinder-position-ready')).toBe('false');
+    expect(menu?.getAttribute('data-cinder-requested-x')).toBe('24');
+    expect(menu?.getAttribute('data-cinder-requested-y')).toBe('36');
+    expect(menu?.style.cssText).toBe('');
   });
 
   test('consumer trigger handlers do not replace core context-menu handlers', async () => {
@@ -597,9 +596,8 @@ describe('ContextMenu', () => {
     const items = getAllByRole('menuitem');
     expect(items.length).toBe(4);
     expect(menu.contains(getByRole('menuitem', { name: 'Open' }))).toBe(true);
-    await waitFor(() => {
-      expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Open' }));
-    });
+    flushSync();
+    expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Open' }));
 
     // ArrowDown skips the disabled item and lands on the next enabled one.
     await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), {

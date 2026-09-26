@@ -2,8 +2,12 @@
   import type { HTMLAttributes } from 'svelte/elements';
   import type { LineDiff } from '@lostgradient/markdown';
   import type { BadgeVariant } from '@lostgradient/cinder';
+  import type { Snippet } from 'svelte';
 
-  import type { DiffViewerMode } from './diff-viewer.types.ts';
+  import type {
+    DiffViewerFrontMatterAnnotationContext,
+    DiffViewerMode,
+  } from './diff-viewer.types.ts';
 
   export type DiffFrontMatterProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
     /** Unique id for the front matter section */
@@ -18,6 +22,13 @@
     badgeLabel?: string | null;
     /** Badge variant */
     badgeVariant?: BadgeVariant;
+    /**
+     * Rendered whenever front matter is present, regardless of expanded state
+     * or whether it changed -- front matter is always "ambiguous" for
+     * line-level anchoring, so it always offers a file-level comment hook,
+     * with changed field names as context (COR-514 / DR-4).
+     */
+    fileAnnotation?: Snippet<[DiffViewerFrontMatterAnnotationContext]> | undefined;
     /** Additional CSS classes */
     class?: string;
   };
@@ -27,6 +38,7 @@
   import { classNames } from '../../utilities/class-names.ts';
   import FrontMatterHeader from './front-matter-header.svelte';
   import DiffLine from './diff-line.svelte';
+  import { extractFrontMatterChangedFields } from './diff-viewer.annotation.ts';
 
   let {
     id = 'front-matter',
@@ -35,6 +47,7 @@
     expanded = $bindable(true),
     badgeLabel = null,
     badgeVariant = 'warning',
+    fileAnnotation,
     class: className,
     ...rest
   }: DiffFrontMatterProps = $props();
@@ -44,6 +57,7 @@
    * Derived from the diffs - if any line is not 'same', there are changes.
    */
   const hasChanges = $derived(diffs.some((d) => d.type !== 'same'));
+  const changedFields = $derived(extractFrontMatterChangedFields(diffs));
 
   const toggleId = $derived(`${id}-toggle`);
   const contentId = $derived(`${id}-content`);
@@ -58,6 +72,10 @@
     {badgeLabel}
     {badgeVariant}
   />
+
+  {#if fileAnnotation}
+    {@render fileAnnotation({ changedFields })}
+  {/if}
 
   {#if expanded}
     <div id={contentId} class="front-matter-content">

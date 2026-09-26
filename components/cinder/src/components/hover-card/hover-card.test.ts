@@ -129,7 +129,7 @@ describe('HoverCard', () => {
     await waitFor(() => {
       const card = queryHoverCard();
       expect(card).not.toBeNull();
-      expect(card?.parentElement).toBe(document.body);
+      expect(card?.parentElement === document.body).toBe(true);
       expect(card?.getAttribute('role')).toBe('tooltip');
       expect(card?.hasAttribute('aria-label')).toBe(false);
       expect(card?.getAttribute('data-cinder-position-ready')).toBe('true');

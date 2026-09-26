@@ -80,7 +80,7 @@ describe('InlineConfirm', () => {
     });
 
     const cancel = getByRole('button', { name: 'Cancel' });
-    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    await waitFor(() => expect(document.activeElement === cancel).toBe(true));
     await fireEvent.keyDown(document, { key: 'Escape' });
     expect(cancellations).toBe(1);
     expect(queryByRole('group')).toBeNull();

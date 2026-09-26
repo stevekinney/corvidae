@@ -1780,6 +1780,16 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     },
   ],
   [
+    'scripts/check-documentation-code-blocks.ts',
+    {
+      reason:
+        'The `if (import.meta.main)` entry point only resolves the package paths, calls runDocumentationCodeBlockCheck(), prints its result and sets the exit code. It runs when `bun run typecheck` spawns the script, a separate process whose hits are never attributed to the parent LCOV report; runDocumentationCodeBlockCheck() itself is covered by check-documentation-code-blocks.test.ts against a fixture package.',
+      functions: 1,
+      lines: new Set([262, 263, 264, 265, 266, 267, 268, 269, 270, 271]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
     'src/core/engine/operations-activity.ts',
     {
       reason:
@@ -2349,6 +2359,17 @@ function writeFailureOutput(label: string, output: CapturedOutputTail): void {
   process.stderr.write(output.bytes);
 }
 
+/**
+ * Write one diagnostic line on the same `process.stderr` stream {@link writeFailureOutput}
+ * uses. Under Bun 1.4.2, a `console.error` issued while an earlier large
+ * `process.stderr.write` is still queued on a pipe is dropped outright, so the stage reason
+ * that follows a child's output tail vanished from turbo's log (COR-1329). Keeping every
+ * line after the tail on one ordered stream delivers it behind the tail instead.
+ */
+function writeDiagnosticLine(line: string): void {
+  process.stderr.write(`${line}\n`);
+}
+
 export async function runCoverageShard(
   shard: CoverageShard,
   dependencies: RunCoverageShardDependencies = {},
@@ -2427,11 +2448,11 @@ export async function runCoverageShard(
   if (exitCode !== 0) {
     writeFailureOutput(`${shard.name} stdout`, stdout);
     writeFailureOutput(`${shard.name} stderr`, stderr);
-    console.error(`${shard.name} coverage shard exited with code ${exitCode}.`);
+    writeDiagnosticLine(`${shard.name} coverage shard exited with code ${exitCode}.`);
 
     const signal = coverageProcess.signalCode ?? null;
     if (signal !== null && signal !== undefined) {
-      console.error(
+      writeDiagnosticLine(
         formatCoverageFailureReason(
           'child signal',
           `${shard.name} coverage shard was terminated by signal ${signal}.`,
@@ -2439,7 +2460,7 @@ export async function runCoverageShard(
         ),
       );
     } else {
-      console.error(
+      writeDiagnosticLine(
         formatCoverageFailureReason(
           'child exit',
           `${shard.name} coverage shard exited with code ${exitCode}.`,
@@ -2473,8 +2494,9 @@ export async function checkCoverage(
 
   if (shard.exitCode !== 0) {
     // The spawn/child-exit/child-signal stage reason was already printed inside
-    // runCoverageShard, closest to the failure; this line stays for continuity.
-    console.error('Coverage execution failed.');
+    // runCoverageShard, closest to the failure; this line stays for continuity, on the
+    // same ordered stream as that reason (see writeDiagnosticLine).
+    writeDiagnosticLine('Coverage execution failed.');
     return false;
   }
 
@@ -2536,8 +2558,19 @@ export async function checkCoverage(
   return coverage.covered;
 }
 
-// CLI entrypoint
+/**
+ * The CLI entry point. Sets `process.exitCode` instead of calling `process.exit()`: an
+ * explicit exit discards whatever `process.stderr` has not yet flushed to a pipe (under
+ * Bun 1.4.2 only part of a 2 MiB write arrived, and how much varied by run and host),
+ * which cut a failing run's output tail mid-line and every diagnostic after it out of
+ * turbo's log (COR-1329).
+ */
+export async function runCheckCoverageCli(
+  dependencies: CheckCoverageDependencies = {},
+): Promise<void> {
+  process.exitCode = (await checkCoverage(dependencies)) ? 0 : 1;
+}
+
 if (import.meta.main) {
-  const covered = await checkCoverage();
-  process.exit(covered ? 0 : 1);
+  await runCheckCoverageCli();
 }

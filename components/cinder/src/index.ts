@@ -824,12 +824,19 @@ export {
   parseUnifiedPatch,
 } from './components/source-diff-viewer/index.ts';
 export type {
+  SourceDiffAnnotationSelection,
+  SourceDiffAnnotationSide,
   SourceDiffFile,
+  SourceDiffFileAnnotationContext,
+  SourceDiffFileDescriptor,
   SourceDiffHunk,
   SourceDiffLine,
+  SourceDiffLineAnnotationContext,
   SourceDiffLineKind,
   SourceDiffParseResult,
+  SourceDiffViewerFocusResult,
   SourceDiffViewerProps,
+  SourceDiffViewerRef,
 } from './components/source-diff-viewer/index.ts';
 
 export { default as StackedListItem } from './components/stacked-list-item/index.ts';
