@@ -26,22 +26,15 @@ describe('VirtualList — adaptive overscan and settling under row controls', ()
     document.body.replaceChildren();
   });
 
-  test('converts scroll velocity with measured rows rather than the estimate', async () => {
-    // Structural, because the behaviour cannot be observed here: driving the velocity
-    // tracker needs two scroll events a controlled interval apart, and events fired
-    // from a test land in the same millisecond, which reads as an effectively infinite
-    // velocity and saturates adaptive overscan at its ceiling whichever row size it
-    // converts with. The arithmetic itself is covered in `adaptive-overscan.test.ts`;
-    // this pins the wiring, which is the half that was wrong.
-    const source = await Bun.file(
-      new URL('./virtual-list.svelte', import.meta.url).pathname,
-    ).text();
-    expect(source).toContain('itemSize: averageRowSize');
-    expect(source).toContain('resolveAdaptiveItemSize({');
-    // Measured rows only — the offsets total would let the untouched estimates
-    // dominate, which in a long list is the estimate again in all but name.
-    expect(source).toContain('measuredTotalSize: measurementStore.measuredTotalSize');
-  });
+  // The wiring this used to pin structurally — that the velocity-to-row conversion
+  // reads MEASURED row sizes (`averageRowSize`, built from
+  // `measurementStore.measuredTotalSize`) rather than the `itemHeight` estimate — is
+  // now exercised behaviourally in a real browser, where events carry real
+  // timestamps and the velocity tracker actually reports a nonzero value. See
+  // `scripts/browser-fixtures/tests/virtual-list.playwright.ts`'s adaptive-overscan
+  // suite (COR-376), which drives `dynamicSize` rows to a real measured height well
+  // away from the `itemHeight` estimate and asserts the adaptive row count tracks it.
+  // The arithmetic itself stays covered in `adaptive-overscan.test.ts`.
 
   test('leaves a settle pass running when a key comes from a control inside a row', async () => {
     // The list does not claim those keys, so the event scrolls nothing here — and

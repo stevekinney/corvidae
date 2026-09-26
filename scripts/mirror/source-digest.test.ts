@@ -333,6 +333,45 @@ for (const target of mirrorTargets) {
   });
 }
 
+// COR-1316: the current-digest overlay and both targets' plans are built once, at module scope,
+// by `committed-plans.ts`. Rebuilding them in a test put roughly three seconds of hashing and
+// planning on each test's own five-second clock, which a loaded machine pushed over the limit.
+const withDigest = (workspace: string, sourceDigest: string | undefined): PackageMap => {
+  const map = packageMapForFixtures;
+  const entry = map.workspaces[workspace];
+  if (entry?.disposition !== 'publish-as') throw new Error(`${workspace} is not published`);
+  const { sourceDigest: _current, ...rest } = entry;
+  const updated = sourceDigest === undefined ? rest : { ...rest, sourceDigest };
+  return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
+};
+
+/**
+ * COR-1331: each real stale edge's refusals, planned here with a missing and then a zeroed
+ * `sourceDigest` for its dependency. Each is a full `planSurface` for the target, and two of them
+ * in a test body crossed bun's five-second per-test clock inside a loaded `test:self` run. A plan
+ * that resolves instead of refusing is captured as `undefined`, which the test then rejects.
+ */
+const staleEdges = [
+  ['agent-bureau', '@lostgradient/weft'],
+  ['cinder', 'conversationalist'],
+] as const;
+const staleEdgeRefusals = new Map<MirrorTarget, unknown[]>();
+for (const [target, dependency] of staleEdges) {
+  const refusals: unknown[] = [];
+  for (const packageMap of [
+    withDigest(dependency, undefined),
+    withDigest(dependency, '0'.repeat(64)),
+  ]) {
+    refusals.push(
+      await planSurface({ corvidaeRoot, target, packageMap }).then(
+        () => undefined,
+        (error: unknown) => error,
+      ),
+    );
+  }
+  staleEdgeRefusals.set(target, refusals);
+}
+
 describe('the guard against the real workspaces', () => {
   test.each([...mirrorTargets])(
     'planSurface for %s reads the committed package-map.json when given no override',
@@ -343,34 +382,17 @@ describe('the guard against the real workspaces', () => {
     },
   );
 
-  // COR-1316: the current-digest overlay and both targets' plans are built once, at module scope,
-  // by `committed-plans.ts`. Rebuilding them here put roughly three seconds of hashing and
-  // planning on each test's own five-second clock, which a loaded machine pushed over the limit.
-  const withDigest = (workspace: string, sourceDigest: string | undefined): PackageMap => {
-    const map = packageMapForFixtures;
-    const entry = map.workspaces[workspace];
-    if (entry?.disposition !== 'publish-as') throw new Error(`${workspace} is not published`);
-    const { sourceDigest: _current, ...rest } = entry;
-    const updated = sourceDigest === undefined ? rest : { ...rest, sourceDigest };
-    return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
-  };
-
-  test.each([
-    ['agent-bureau', '@lostgradient/weft'],
-    ['cinder', 'conversationalist'],
-  ] as const)(
+  test.each(staleEdges)(
     '%s plans when %s is current and refuses when it is not',
-    async (target, dependency) => {
+    (target, dependency) => {
       // `committed-plans.ts` planned this target from the current-digest map at import, and a
       // refusal there would have failed the whole file, so a present plan is the planned outcome.
       expect(Object.keys(committedPlans[target].plan.files).length).toBeGreaterThan(0);
-      for (const packageMap of [
-        withDigest(dependency, undefined),
-        withDigest(dependency, '0'.repeat(64)),
-      ]) {
-        const refusal = planSurface({ corvidaeRoot, target, packageMap });
-        await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
-        await expect(refusal).rejects.toThrow(dependency);
+      const refusals = staleEdgeRefusals.get(target);
+      expect(refusals).toHaveLength(2);
+      for (const refusal of refusals ?? []) {
+        expect(refusal).toBeInstanceOf(StaleCrossTargetEdgeError);
+        expect((refusal as Error).message).toContain(dependency);
       }
     },
   );

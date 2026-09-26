@@ -2,7 +2,7 @@
 import * as matchers from '@testing-library/jest-dom/matchers';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { tick } from 'svelte';
+import { flushSync, tick } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { stripCinderComponentsLayer } from '../../test/css.ts';
@@ -610,7 +610,7 @@ describe('Combobox filtering', () => {
       // Semantic assertion, not a fake-disabled-option check: no option
       // elements exist at all — enabled or disabled — while the result set
       // is empty.
-      expect(container.querySelector('[role="option"]')).toBeNull();
+      expect(container.querySelector('[role="option"]')?.outerHTML ?? null).toBeNull();
       const emptyState = container.querySelector('.cinder-combobox__empty');
       const panel = emptyState?.closest('.cinder-popover') as HTMLElement | null;
       expect(emptyState?.textContent?.trim()).toBe('No results');
@@ -712,22 +712,21 @@ describe('Combobox filtering', () => {
     expect(originalRoot).not.toBeNull();
     await fireEvent.focus(input);
     await fireEvent.input(input, { target: { value: 'zzz' } });
-    await waitFor(() => {
-      const emptyState = container.querySelector('.cinder-combobox__empty');
-      const scopedPanel = document.body.querySelector(
-        '.cinder-combobox.compact .cinder-combobox__empty-panel',
-      );
-      // Documents the AGENTS.md override hook: `.cinder-combobox.compact
-      // .cinder-combobox__empty` must keep matching after the empty panel is
-      // portaled, so both classes need to land on the same ancestor.
-      const scopedAncestor = emptyState?.closest('.cinder-combobox.compact');
-      expect(scopedPanel).not.toBeNull();
-      expect(scopedPanel?.contains(emptyState)).toBe(true);
-      expect(scopedAncestor).not.toBeNull();
-      expect(scopedAncestor).not.toBe(originalRoot);
-      expect(originalRoot?.contains(scopedAncestor ?? null)).toBe(false);
-      expect(scopedAncestor?.querySelector('.cinder-combobox')).toBeNull();
-    });
+    flushSync();
+    const emptyState = container.querySelector('.cinder-combobox__empty');
+    const scopedPanel = document.body.querySelector(
+      '.cinder-combobox.compact .cinder-combobox__empty-panel',
+    );
+    // Documents the AGENTS.md override hook: `.cinder-combobox.compact
+    // .cinder-combobox__empty` must keep matching after the empty panel is
+    // portaled, so both classes need to land on the same ancestor.
+    const scopedAncestor = emptyState?.closest('.cinder-combobox.compact');
+    expect(scopedPanel).not.toBeNull();
+    expect(scopedPanel?.contains(emptyState)).toBe(true);
+    expect(scopedAncestor).not.toBeNull();
+    expect(scopedAncestor).not.toBe(originalRoot);
+    expect(originalRoot?.contains(scopedAncestor ?? null)).toBe(false);
+    expect(scopedAncestor?.querySelector('.cinder-combobox')?.outerHTML ?? null).toBeNull();
   });
 
   test('custom filter callback is honored', async () => {
@@ -800,11 +799,10 @@ describe('Combobox keyboard', () => {
     await fireEvent.keyDown(input, { key: 'ArrowDown' });
     await fireEvent.keyDown(input, { key: 'ArrowDown' });
     await fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => {
-      expect(input.value).toBe('Apricot');
-      // Listbox closes in the same selection effect — assert together.
-      expect(container.querySelector('[role="listbox"]')).toBeNull();
-    });
+    flushSync();
+    expect(input.value).toBe('Apricot');
+    // Listbox closes in the same selection effect — assert together.
+    expect(container.querySelector('[role="listbox"]')?.outerHTML ?? null).toBeNull();
   });
 
   test('Escape closes the listbox without selecting', async () => {
@@ -1098,7 +1096,8 @@ describe('Combobox Escape restores committed label', () => {
     await waitFor(() => expect(container.querySelector('[role="listbox"]')).not.toBeNull());
     const appleOption = await findOption('Apple');
     await fireEvent.mouseDown(appleOption);
-    await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+    flushSync();
+    expect(container.querySelector('[role="listbox"]')?.outerHTML ?? null).toBeNull();
     expect(input.value).toBe('Apple');
 
     // Type partial text to open the dropdown again
@@ -1225,9 +1224,10 @@ describe('Combobox Escape restores committed label', () => {
       // being torn down the instant `open` flips false — the whole point of
       // decoupling `panelMounted` from the live `emptyVisible` derived. The
       // element disappears once that exit genuinely completes.
-      await waitFor(() => {
-        expect(container.querySelector('.cinder-combobox__empty[data-cinder-active]')).toBeNull();
-      });
+      flushSync();
+      expect(
+        container.querySelector('.cinder-combobox__empty[data-cinder-active]')?.outerHTML ?? null,
+      ).toBeNull();
     } finally {
       releaseParentEscape();
     }
@@ -1246,7 +1246,8 @@ describe('Combobox Escape restores committed label', () => {
     await waitFor(() => expect(container.querySelector('[role="listbox"]')).not.toBeNull());
     const appleOption = await findOption('Apple');
     await fireEvent.mouseDown(appleOption);
-    await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+    flushSync();
+    expect(container.querySelector('[role="listbox"]')?.outerHTML ?? null).toBeNull();
     expect(input.value).toBe('Apple');
 
     // Dirty the input, then blur to nowhere (relatedTarget outside the listbox).

@@ -2,10 +2,11 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 /// <reference lib="dom" />
 
 import { describe, expect, test } from 'bun:test';
+import { flushSync } from 'svelte';
 import { treeItem, treeItemsSnippet } from './tree-test-helpers.ts';
 
 setupHappyDom();
-const { render, fireEvent, waitFor } = await import('@testing-library/svelte');
+const { render, fireEvent } = await import('@testing-library/svelte');
 const { default: Tree } = await import('./tree.svelte');
 
 const { default: TreeTestHarness } = await import('../_tree-test-harness.svelte');
@@ -81,16 +82,15 @@ describe('Tree — roving tabindex', () => {
     // invisible and unregisters.
     const parent = requiredInstance(treeItem(container, 'Parent'), HTMLElement);
     await fireEvent.keyDown(parent, { key: 'ArrowLeft' });
-    await waitFor(() => {
-      // After collapse, exactly one visible item should have tabindex=0.
-      const tabbables = [...container.querySelectorAll('[role="treeitem"]')].filter(
-        (element) => element.getAttribute('tabindex') === '0',
-      );
-      expect(tabbables.length).toBe(1);
-      // The focused item must be a root-level item (child is now hidden).
-      const focused = tabbables[0];
-      expect(focused?.getAttribute('aria-level')).toBe('1');
-      expect(document.activeElement).toBe(parent);
-    });
+    flushSync();
+    // After collapse, exactly one visible item should have tabindex=0.
+    const tabbables = [...container.querySelectorAll('[role="treeitem"]')].filter(
+      (element) => element.getAttribute('tabindex') === '0',
+    );
+    expect(tabbables.length).toBe(1);
+    // The focused item must be a root-level item (child is now hidden).
+    const focused = tabbables[0];
+    expect(focused?.getAttribute('aria-level')).toBe('1');
+    expect(document.activeElement).toBe(parent);
   });
 });
