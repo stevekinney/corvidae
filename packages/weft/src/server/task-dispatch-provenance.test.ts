@@ -390,7 +390,7 @@ describe('COR-205 durable attempt provenance', () => {
 
     const transitions: TaskAttemptTransitionEvent[] = [];
     engine.addEventListener(TaskAttemptTransitionEvent.type, (event) => {
-      transitions.push(event as TaskAttemptTransitionEvent);
+      transitions.push(event);
     });
 
     registerWorker(context, 'w-1', 'test.charge', {

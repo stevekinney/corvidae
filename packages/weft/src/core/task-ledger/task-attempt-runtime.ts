@@ -17,6 +17,7 @@
 import type { BatchOperation, Storage } from '../../storage/interface.ts';
 import { sha256HexSync } from '../../worker/manifest/content-digest.ts';
 import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
+import { TaskAttemptTransitionEvent } from '../events/activity-events.ts';
 import {
   decodeTaskAttemptRecord,
   encodeTaskAttemptRecord,
@@ -223,4 +224,39 @@ export function isCrossBuildRetry(
 ): boolean {
   if (previous === undefined || current === undefined) return false;
   return previous.buildId !== current.buildId || previous.artifactDigest !== current.artifactDigest;
+}
+
+export type TaskAttemptTransitionEventInput = Readonly<{
+  operationId: string;
+  workflowId?: string | undefined;
+  activityName: string;
+  attempt: number;
+  attemptTokenDigest: string;
+  workerSessionId: string;
+  executionIdentity: WorkerExecutionIdentity | undefined;
+  executionRequirement: WorkerExecutionRequirementInput | undefined;
+}>;
+
+/**
+ * Build the `TaskAttemptTransitionEvent` for one successful claim (COR-198),
+ * shared by both claim transports so `crossBuildRetry`/
+ * `previousExecutionIdentity` are computed exactly once, the same way, in
+ * both places. Skips the previous-attempt lookup entirely when this claim
+ * has no `executionIdentity` of its own (every long-poll claim) — a retry
+ * indicator against an identity that does not exist is meaningless, and
+ * `isCrossBuildRetry` would report `false` for it regardless.
+ */
+export async function buildTaskAttemptTransitionEvent(
+  storage: Pick<Storage, 'scan'>,
+  input: TaskAttemptTransitionEventInput,
+): Promise<TaskAttemptTransitionEvent> {
+  const previousExecutionIdentity =
+    input.executionIdentity === undefined
+      ? undefined
+      : await findPreviousAttemptExecutionIdentity(storage, input.operationId, input.attempt);
+  return new TaskAttemptTransitionEvent({
+    ...input,
+    crossBuildRetry: isCrossBuildRetry(previousExecutionIdentity, input.executionIdentity),
+    previousExecutionIdentity,
+  });
 }

@@ -60,25 +60,27 @@ export function hasExecutionIdentityFilter(input: GetTaskDiagnosticsInput): bool
   );
 }
 
+/** One (requested filter value, identity's own value) pair per identity dimension {@link matchesIdentity} checks. */
+function identityFilterPairs(
+  identity: WorkerExecutionIdentity,
+  input: GetTaskDiagnosticsInput,
+): ReadonlyArray<readonly [requested: string | undefined, actual: string]> {
+  return [
+    [input.deploymentName, identity.deploymentName],
+    [input.buildId, identity.buildId],
+    [input.artifactDigest, identity.artifactDigest],
+    [input.workerId, identity.workerId],
+    [input.workflowRevision, identity.workflowRevision],
+  ];
+}
+
 function matchesIdentity(
   identity: WorkerExecutionIdentity,
   input: GetTaskDiagnosticsInput,
 ): boolean {
-  if (input.deploymentName !== undefined && identity.deploymentName !== input.deploymentName) {
-    return false;
-  }
-  if (input.buildId !== undefined && identity.buildId !== input.buildId) return false;
-  if (input.artifactDigest !== undefined && identity.artifactDigest !== input.artifactDigest) {
-    return false;
-  }
-  if (input.workerId !== undefined && identity.workerId !== input.workerId) return false;
-  if (
-    input.workflowRevision !== undefined &&
-    identity.workflowRevision !== input.workflowRevision
-  ) {
-    return false;
-  }
-  return true;
+  return identityFilterPairs(identity, input).every(
+    ([requested, actual]) => requested === undefined || requested === actual,
+  );
 }
 
 /**

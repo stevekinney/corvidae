@@ -1,8 +1,8 @@
-import { TaskAttemptTransitionEvent } from '../../core/events/activity-events.ts';
 import type { JSONValue } from '../../core/json.ts';
 import {
   buildClaimAttemptRecordWrite,
   buildCurrentAttemptDispositionWrites,
+  buildTaskAttemptTransitionEvent,
   digestAttemptToken,
 } from '../../core/task-ledger/task-attempt-runtime.ts';
 import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
@@ -408,13 +408,9 @@ export async function markTaskClaimedByLongPollWorker(
     lastDispatchedAt: Date.now(),
   });
   recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
-
-  // COR-198: attempt-by-attempt worker transition. A long-poll claim never
-  // has an `executionIdentity` (see this function's own doc comment), so
-  // `crossBuildRetry` is always `false` here — there is no identity to
-  // compare on either side.
+  // COR-198: attempt-by-attempt worker transition.
   options.engine.dispatchEvent(
-    new TaskAttemptTransitionEvent({
+    await buildTaskAttemptTransitionEvent(options.engine.storage, {
       operationId: task.operationId,
       workflowId: task.workflowId,
       activityName: task.activityName,
@@ -423,8 +419,6 @@ export async function markTaskClaimedByLongPollWorker(
       workerSessionId,
       executionIdentity: undefined,
       executionRequirement: result.record.executionRequirement,
-      crossBuildRetry: false,
-      previousExecutionIdentity: undefined,
     }),
   );
 

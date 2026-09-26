@@ -1,9 +1,7 @@
-import { TaskAttemptTransitionEvent } from '../../core/events/activity-events.ts';
 import {
   buildClaimAttemptRecordWrite,
+  buildTaskAttemptTransitionEvent,
   digestAttemptToken,
-  findPreviousAttemptExecutionIdentity,
-  isCrossBuildRetry,
 } from '../../core/task-ledger/task-attempt-runtime.ts';
 import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
 import {
@@ -319,15 +317,9 @@ async function selectAndReserveWorker(
   });
 
   // COR-198: attempt-by-attempt worker transition, fired only after the
-  // durable claim above actually committed. The previous attempt's identity
-  // (bounded per-operation lookup) is `undefined` on a first attempt.
-  const previousExecutionIdentity = await findPreviousAttemptExecutionIdentity(
-    options.engine.storage,
-    task.operationId,
-    result.record.attempt,
-  );
+  // durable claim above actually committed.
   options.engine.dispatchEvent(
-    new TaskAttemptTransitionEvent({
+    await buildTaskAttemptTransitionEvent(options.engine.storage, {
       operationId: task.operationId,
       workflowId: task.workflowId,
       activityName: task.activityName,
@@ -336,8 +328,6 @@ async function selectAndReserveWorker(
       workerSessionId: worker.id,
       executionIdentity,
       executionRequirement: result.record.executionRequirement,
-      crossBuildRetry: isCrossBuildRetry(previousExecutionIdentity, executionIdentity),
-      previousExecutionIdentity,
     }),
   );
 
