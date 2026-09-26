@@ -345,7 +345,7 @@ describe('CodeBlock — explicit highlighter prop', () => {
       expect(token).not.toBeNull();
       // Verbatim: the highlighter's exact markup is in the DOM.
       expect(token?.textContent).toBe('const x = 1;');
-      expect(container.querySelector('.cinder-code-block__pre')).toBeNull();
+      expect(container.querySelector('.cinder-code-block__pre')?.outerHTML ?? null).toBeNull();
     });
   });
 

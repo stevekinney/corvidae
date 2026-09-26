@@ -27,6 +27,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { decodeTaskAttemptRecord, taskAttemptKey } from '../core/task-ledger/task-attempt.ts';
 import {
   beginCompletion,
   claimQueued,
@@ -49,14 +50,18 @@ import {
   useFakeTimers,
   waitForCondition,
 } from '../testing/fake-timers.test-support.ts';
+import { sha256HexSync } from '../worker/manifest/content-digest.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
-import { manifestForActivities } from '../worker/registry-fixtures.test-support.ts';
+import {
+  manifestForActivities,
+  TEST_ACCEPTED_MANIFEST_DIGEST,
+} from '../worker/registry-fixtures.test-support.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
 import {
   minimalServeOptions,
   minimalServerContext,
 } from './runtime/server-context.test-support.ts';
-import { cancelTask } from './runtime/task-dispatch.ts';
+import { cancelTask, dispatchTaskImpl } from './runtime/task-dispatch.ts';
 import { scanExpiredTasks } from './runtime/task-reconciliation.ts';
 import { handleWorkerWebSocketMessage } from './runtime/websocket-worker.ts';
 
@@ -593,5 +598,67 @@ describe('Non-cooperative cancellation settles within the deadline, marked uncer
 
     const record = await readRecord(storage, 'op-still-waiting');
     expect(record?.state).toBe('cancelling');
+  });
+
+  it('force-settlement durably marks the retiring TaskAttemptRecord cancelled with the uncertain-settlement reason (COR-202 residual)', async () => {
+    const storage = new MemoryStorage();
+    const options = minimalServeOptions(storage);
+    const context = minimalServerContext();
+    setCancellationGracePeriod(context, 5_000);
+    context.registry.register({
+      manifest: manifestForActivities(['charge']),
+      acceptedManifestDigest: TEST_ACCEPTED_MANIFEST_DIGEST,
+      id: 'w-uncoop-attempt',
+      queue: 'default',
+      activities: ['charge'],
+      concurrency: 5,
+    });
+    const sent: string[] = [];
+    context.workerSockets.set('w-uncoop-attempt', {
+      send: (msg: string) => sent.push(msg),
+    } as never);
+
+    useFakeTimers(Date.now());
+    const dispatched = await dispatchTaskImpl(context, options, {
+      operationId: 'op-uncooperative-attempt',
+      workflowType: 'test',
+      activityName: 'charge',
+      queue: 'default',
+      input: null,
+    });
+    expect(dispatched).toBe(true);
+    // Captured BEFORE `cancelTask` sends its own `cancel` frame — the last
+    // sent message after cancellation would be that `cancel` frame, not the
+    // original `task` frame carrying this attempt's token.
+    const attemptToken = (JSON.parse(sent.at(-1)!) as { attemptToken: string }).attemptToken;
+
+    const cancelled = await cancelTask(
+      context,
+      options,
+      'op-uncooperative-attempt',
+      'operator requested',
+    );
+    expect(cancelled).toBe(true);
+    const cancelling = await readRecord(storage, 'op-uncooperative-attempt');
+    if (cancelling?.state !== 'cancelling') throw new Error('Expected a cancelling record');
+
+    // The worker never responds. Advance past the grace period and drive
+    // the scan directly — no polling, one explicit barrier.
+    useFakeTimers(cancelling.cancellationDeadline + 10);
+    await scanExpiredTasks(context, options, NOOP_CLEANUP, cancelling.cancellationDeadline + 10);
+
+    const settled = await readRecord(storage, 'op-uncooperative-attempt');
+    expect(settled?.state).toBe('terminal');
+    expect(settled?.state === 'terminal' && settled.disposition).toBe('cancelled');
+
+    const digest = sha256HexSync(attemptToken);
+    const attempt = decodeTaskAttemptRecord(
+      await storage.get(taskAttemptKey('op-uncooperative-attempt', digest)),
+    );
+    if (attempt === null) throw new Error('Expected the force-settled attempt to remain durable');
+    expect(attempt.disposition).toBe('cancelled');
+    expect(attempt.dispositionReason).toBe(
+      'cancellation deadline elapsed with no cooperative result',
+    );
   });
 });

@@ -514,10 +514,9 @@ describe('Dropdown', () => {
       key: 'Escape',
     });
 
-    await waitFor(() => {
-      expect(container.querySelector('[role="menu"]')).toBeNull();
-      expect(document.activeElement).toBe(trigger);
-    });
+    flushSync();
+    expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   test('Escape with focus on trigger (outside menu) still closes compound menu', async () => {
@@ -539,10 +538,9 @@ describe('Dropdown', () => {
 
     await fireEvent.keyDown(trigger, { key: 'Escape' });
 
-    await waitFor(() => {
-      expect(container.querySelector('[role="menu"]')).toBeNull();
-      expect(document.activeElement).toBe(trigger);
-    });
+    flushSync();
+    expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   test('CIN-428 (modern/compound branch): inherits escape-stack registration transitively from DropdownMenu — with another registration underneath, Escape dismisses only the compound menu', async () => {
@@ -563,9 +561,8 @@ describe('Dropdown', () => {
       window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
       expect(parentEscapeCount).toBe(0);
-      await waitFor(() => {
-        expect(container.querySelector('[role="menu"]')).toBeNull();
-      });
+      flushSync();
+      expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
     } finally {
       releaseParent();
     }
@@ -597,10 +594,9 @@ describe('Dropdown', () => {
       key: 'Escape',
     });
 
-    await waitFor(() => {
-      expect(container.querySelector('[role="menu"]')).toBeNull();
-      expect(document.activeElement).toBe(trigger);
-    });
+    flushSync();
+    expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
+    expect(document.activeElement).toBe(trigger);
     // Exactly one focus restoration — without the fix, the compound parent
     // handler would call focusCompoundTrigger() a second time.
     expect(triggerFocusCalls).toBe(1);
@@ -739,9 +735,8 @@ describe('Dropdown', () => {
     // the click directly on the focused item to exercise the same native path.
     await fireEvent.click(requiredInstance(document.activeElement, HTMLElement));
 
-    await waitFor(() => {
-      expect(container.querySelector('[role="menu"]')).toBeNull();
-    });
+    flushSync();
+    expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
     expect(container.querySelector('output')?.textContent).toBe('share');
   });
 

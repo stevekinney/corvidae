@@ -38,7 +38,7 @@ mock.module('@floating-ui/dom', () => ({
 }));
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
-const { tick } = await import('svelte');
+const { tick, flushSync } = await import('svelte');
 const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
 const { default: CommandMenuHostFixture } =
   await import('../../test/fixtures/command-menu-host-fixture.svelte');
@@ -338,7 +338,8 @@ describe('CommandMenu', () => {
     const anchor = requiredInstance(getByTestId('anchor'), HTMLTextAreaElement);
 
     await fireEvent.keyDown(anchor, { key: 'Escape' });
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
 
     await fireEvent.click(getByTestId('reopen'));
     await settleCommandMenu();
@@ -355,7 +356,8 @@ describe('CommandMenu', () => {
     await waitFor(() => expect(queryMenu()).not.toBeNull());
 
     await fireEvent.keyDown(host, { key: 'Escape' });
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
 
     host.setSelectionRange(0, 0);
     await fireEvent.keyUp(host, { key: 'ArrowLeft' });
@@ -377,7 +379,8 @@ describe('CommandMenu', () => {
 
     await fireEvent.pointerDown(getByTestId('outside'));
     expect(dismissCount).toBe(1);
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
   });
 
   test('modified host-field navigation keys are not intercepted', async () => {
@@ -513,7 +516,8 @@ describe('CommandMenu', () => {
 
       await fireEvent.keyDown(host, { key: 'Enter' });
       expect(selected).toEqual([{ value: 'beta', query: 'a' }]);
-      await waitFor(() => expect(queryMenu()).toBeNull());
+      flushSync();
+      expect(queryMenu()?.outerHTML ?? null).toBeNull();
       expect(host.getAttribute('aria-controls')).toBeNull();
       expect(host.getAttribute('aria-activedescendant')).toBeNull();
 
@@ -524,7 +528,8 @@ describe('CommandMenu', () => {
 
       await fireEvent.keyDown(host, { key: 'Escape' });
       expect(dismissed).toHaveBeenCalledTimes(1);
-      await waitFor(() => expect(queryMenu()).toBeNull());
+      flushSync();
+      expect(queryMenu()?.outerHTML ?? null).toBeNull();
       expect(host.getAttribute('aria-controls')).toBeNull();
       expect(host.getAttribute('aria-activedescendant')).toBeNull();
     },
@@ -542,7 +547,8 @@ describe('CommandMenu', () => {
 
     await fireEvent.pointerDown(getByTestId('outside'));
     expect(dismissed).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
   });
 
   test('state changes clear active id when the menu closes or empties', async () => {
@@ -585,7 +591,8 @@ describe('CommandMenu escape-stack registration (CIN-427)', () => {
         cancelable: true,
       });
       anchor.dispatchEvent(escapeEvent);
-      await waitFor(() => expect(queryMenu()).toBeNull());
+      flushSync();
+      expect(queryMenu()?.outerHTML ?? null).toBeNull();
       expect(escapeEvent.defaultPrevented).toBe(true);
       expect(parentEscapeCount).toBe(0);
 
@@ -725,7 +732,8 @@ describe('CommandMenu escape-stack registration (CIN-427)', () => {
     window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await settleCommandMenu();
     expect(dismissed).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
   });
 
   test('Escape dismisses the menu with focus outside the anchor', async () => {
@@ -747,7 +755,8 @@ describe('CommandMenu escape-stack registration (CIN-427)', () => {
 
     window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(dismissCount).toBe(1);
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
   });
 });
 
@@ -893,7 +902,8 @@ describe('CommandMenu inline ghost-text completion (#970)', () => {
     expect(queryGhost()).toBeNull();
 
     await fireEvent.pointerDown(getByTestId('outside'));
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
 
     await typeIntoHost(host, '/al');
     await waitFor(() => expect(queryGhost()?.textContent).toBe('pha'));
@@ -984,7 +994,8 @@ describe('CommandMenu inline ghost-text completion (#970)', () => {
 
     expect(selected).toEqual([{ value: 'alpha', query: 'al' }]);
     expect(host.value).toBe('[alpha]');
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
   });
 
   test('End moves the active item to the last option instead of accepting ghost text', async () => {
@@ -1031,7 +1042,8 @@ describe('CommandMenu inline ghost-text completion (#970)', () => {
     await fireEvent.keyDown(host, { key: 'Escape' });
     await settleCommandMenu();
     expect(dismissed).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
   });
 
   test('disabled feature: without onComplete, no ghost text renders and Tab is untouched', async () => {

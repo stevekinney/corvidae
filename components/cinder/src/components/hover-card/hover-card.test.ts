@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { parse, type Declaration } from 'postcss';
-import { createRawSnippet } from 'svelte';
+import { createRawSnippet, flushSync } from 'svelte';
 
 import {
   expectNoLeakedTimers,
@@ -244,7 +244,8 @@ describe('HoverCard', () => {
     // A document-level Escape keydown dismisses the card while it is open.
     await fireEvent.keyDown(document, { key: 'Escape' });
 
-    await waitFor(() => expect(queryHoverCard()).toBeNull());
+    flushSync();
+    expect(queryHoverCard()?.outerHTML ?? null).toBeNull();
   });
 
   test('Escape uses the shared LIFO stack before an enclosing overlay handler', async () => {
@@ -266,7 +267,7 @@ describe('HoverCard', () => {
         cancelable: true,
       });
       window.dispatchEvent(firstEscape);
-      await waitFor(() => expect(queryHoverCard()).toBeNull());
+      await waitFor(() => expect(queryHoverCard()?.outerHTML ?? null).toBeNull());
 
       expect(firstEscape.defaultPrevented).toBe(true);
       expect(parentEscape).not.toHaveBeenCalled();
@@ -323,7 +324,7 @@ describe('HoverCard', () => {
     expect(queryHoverCard()).not.toBeNull();
 
     await Bun.sleep(25);
-    await waitFor(() => expect(queryHoverCard()).toBeNull());
+    await waitFor(() => expect(queryHoverCard()?.outerHTML ?? null).toBeNull());
   });
 
   test('controlled external close clears hover interest before another trigger enter', async () => {
@@ -351,7 +352,8 @@ describe('HoverCard', () => {
       trigger: triggerSnippet,
       children: textSnippet('Preview'),
     });
-    await waitFor(() => expect(queryHoverCard()).toBeNull());
+    flushSync();
+    expect(queryHoverCard()?.outerHTML ?? null).toBeNull();
 
     onOpenChange.mockClear();
     await fireEvent.mouseEnter(wrapper);
@@ -386,7 +388,8 @@ describe('HoverCard', () => {
       trigger: triggerSnippet,
       children: textSnippet('Preview'),
     });
-    await waitFor(() => expect(queryHoverCard()).toBeNull());
+    flushSync();
+    expect(queryHoverCard()?.outerHTML ?? null).toBeNull();
 
     onOpenChange.mockClear();
     await fireEvent.focusIn(wrapper);
@@ -421,7 +424,8 @@ describe('HoverCard', () => {
       trigger: triggerSnippet,
       children: textSnippet('Preview'),
     });
-    await waitFor(() => expect(queryHoverCard()).toBeNull());
+    flushSync();
+    expect(queryHoverCard()?.outerHTML ?? null).toBeNull();
 
     // Tabbing away clears the suppress flag so keyboard users are never trapped.
     await fireEvent.focusOut(wrapper, { relatedTarget: document.body });
@@ -505,7 +509,8 @@ describe('HoverCard', () => {
         closingCard?.dispatchEvent(event);
       }
 
-      await waitFor(() => expect(queryHoverCard()).toBeNull());
+      flushSync();
+      expect(queryHoverCard()?.outerHTML ?? null).toBeNull();
     } finally {
       window.getComputedStyle = originalGetComputedStyle;
     }

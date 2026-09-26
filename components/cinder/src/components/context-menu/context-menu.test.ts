@@ -31,7 +31,7 @@ mock.module('@floating-ui/dom', () => ({
 }));
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
-const { tick } = await import('svelte');
+const { tick, flushSync } = await import('svelte');
 const { default: ContextMenuHarness } = await import('./_context-menu-test-harness.svelte');
 const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
 
@@ -241,7 +241,8 @@ describe('ContextMenu', () => {
 
     expect(escapeEvent.defaultPrevented).toBe(true);
     expect(triggerKeyDown).not.toHaveBeenCalled();
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
   });
 
   test('inherits escape-stack registration transitively from DropdownMenu: dismisses only itself above another stack registration', async () => {
@@ -260,7 +261,8 @@ describe('ContextMenu', () => {
       window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
       expect(parentEscapeCount).toBe(0);
-      await waitFor(() => expect(queryMenu()).toBeNull());
+      flushSync();
+      expect(queryMenu()?.outerHTML ?? null).toBeNull();
     } finally {
       releaseParent();
     }
@@ -320,7 +322,8 @@ describe('ContextMenu', () => {
     );
     await fireEvent.click(openItem);
 
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
     expect(document.activeElement).toBe(triggerButton);
   });
 
@@ -426,7 +429,8 @@ describe('ContextMenu', () => {
     await waitFor(() => expect(queryMenu()).not.toBeNull());
     await fireEvent.pointerDown(outside, { pointerType: 'touch' });
 
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
   });
 
   test('outside pointerdown restores the captured focus instead of the focusable trigger wrapper', async () => {
@@ -447,7 +451,8 @@ describe('ContextMenu', () => {
     await waitFor(() => expect(queryMenu()).not.toBeNull());
     await fireEvent.pointerDown(outside);
 
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
     expect(document.activeElement).toBe(triggerButton);
   });
 
@@ -543,7 +548,8 @@ describe('ContextMenu', () => {
     // the click directly on the focused item to exercise the same native path.
     await fireEvent.click(requiredInstance(document.activeElement, HTMLElement));
 
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
     expect(container.querySelector('.context-menu-selected')?.textContent).toBe('rename');
   });
 
@@ -568,7 +574,8 @@ describe('ContextMenu', () => {
     // Escape both flips open to false (the close effect restores focus) and
     // runs DropdownMenu's own focusTrigger() call, so focus lands back inside
     // the trigger region rather than escaping to the body.
-    await waitFor(() => expect(queryMenu()).toBeNull());
+    flushSync();
+    expect(queryMenu()?.outerHTML ?? null).toBeNull();
     expect(region.contains(document.activeElement)).toBe(true);
   });
 
@@ -616,7 +623,8 @@ describe('ContextMenu', () => {
     expect(document.activeElement).toBe(getByRole('menuitem', { name: 'Rename' }));
     await fireEvent.click(requiredInstance(document.activeElement, HTMLElement));
 
-    await waitFor(() => expect(queryByRole('menu')).toBeNull());
+    flushSync();
+    expect(queryByRole('menu')?.outerHTML ?? null).toBeNull();
     expect(container.querySelector('.context-menu-selected')?.textContent).toBe('rename');
 
     // Re-open, then Escape closes the menu and restores focus to the trigger.
@@ -625,7 +633,8 @@ describe('ContextMenu', () => {
     await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), {
       key: 'Escape',
     });
-    await waitFor(() => expect(queryByRole('menu')).toBeNull());
+    flushSync();
+    expect(queryByRole('menu')?.outerHTML ?? null).toBeNull();
     expect(region.contains(document.activeElement)).toBe(true);
   });
 
@@ -639,7 +648,8 @@ describe('ContextMenu', () => {
 
     // Fire Escape on the trigger region (not inside the menu)
     await fireEvent.keyDown(region, { key: 'Escape' });
-    await waitFor(() => expect(queryByRole('menu')).toBeNull());
+    flushSync();
+    expect(queryByRole('menu')?.outerHTML ?? null).toBeNull();
   });
 
   test('keyboard context menu keys open at the focused target edge', async () => {

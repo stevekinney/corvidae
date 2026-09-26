@@ -79,7 +79,9 @@ describe('InlineLoading', () => {
 
     await waitFor(() => {
       expect(root?.getAttribute('data-cinder-status')).toBe('inactive');
-      expect(container.querySelector('.cinder-inline-loading__label')).toBeNull();
+      expect(
+        container.querySelector('.cinder-inline-loading__label')?.outerHTML ?? null,
+      ).toBeNull();
     });
   });
 
